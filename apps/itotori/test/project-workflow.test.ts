@@ -676,6 +676,48 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
   });
 
+  // SHARED-020 — the Itotori-side normalization must carry each expanded
+  // surface kind into the draft request WITHOUT collapsing it to generic
+  // dialogue. Regression guard: if the request builder dropped surfaceKind or
+  // reduced every unit to "dialogue", this fails.
+  it("carries the expanded surface kind through draft normalization (no collapse)", async () => {
+    const repository = repositoryFixture();
+    const seen: Array<{ sourceText: string; surfaceKind: string }> = [];
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider({
+        generate: (request) => {
+          const message = request.messages.findLast((candidate) => candidate.role === "user");
+          const payload = JSON.parse(String(message?.content)) as {
+            sourceText: string;
+            surfaceKind: string;
+          };
+          seen.push({ sourceText: payload.sourceText, surfaceKind: payload.surfaceKind });
+          return payload.sourceText;
+        },
+      }),
+    );
+    const bridge = bridgeV02Fixture();
+    await service.draftProject(projectFixture({ bridge, drafts: {} }), "fr-FR");
+
+    // Every request carried a surface kind (never undefined/collapsed away).
+    expect(
+      seen.every((entry) => typeof entry.surfaceKind === "string" && entry.surfaceKind.length > 0),
+    ).toBe(true);
+    // The full expanded vocabulary the fixture exercises survives to the request.
+    const seenKinds = new Set(seen.map((entry) => entry.surfaceKind));
+    const expectedKinds = new Set(bridge.units.map((unit) => unit.surfaceKind));
+    expect(seenKinds).toEqual(expectedKinds);
+    // A non-dialogue surface must NOT be reduced to dialogue: the count of
+    // "dialogue" requests equals the count of genuinely-dialogue units.
+    const dialogueUnits = bridge.units.filter((unit) => unit.surfaceKind === "dialogue").length;
+    expect(seen.filter((entry) => entry.surfaceKind === "dialogue")).toHaveLength(dialogueUnits);
+    // Spot-check a specific expanded kind rode through intact.
+    const choiceUnit = bridge.units.find((unit) => unit.surfaceKind === "choice_label")!;
+    expect(seen).toContainEqual({ sourceText: choiceUnit.sourceText, surfaceKind: "choice_label" });
+  });
+
   it("validates protected spans before writing patch exports", async () => {
     const repository = repositoryFixture();
     const service = new ItotoriProjectWorkflowService(repository, actor);

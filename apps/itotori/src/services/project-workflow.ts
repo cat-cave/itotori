@@ -20,7 +20,6 @@ import type {
   BridgeBundleV02,
   ConformanceManifestV01,
   ConformanceResultV01,
-  LocalizationUnitV02,
   FindingRecordV02,
   PatchExport,
   PatchResultStatusV02,
@@ -33,8 +32,11 @@ import {
   assertConformanceManifestResultJoinV01,
   assertConformanceManifestV01,
   assertConformanceResultV01,
+  assertNormalizedSurfacePreservesIdentity,
   ConformanceIngestionError,
   computePatchResultOutputHashRollupV02,
+  normalizeBridgeSurface,
+  normalizedProtectedSpanRaws,
 } from "@itotori/localization-bridge-schema";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import { summarizeBenchmarkReportMetadata } from "../benchmark-report-summary.js";
@@ -291,6 +293,17 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         continue;
       }
       const prompt = draftPromptPreset();
+      // SHARED-020 — normalize the unit's surface through the shared,
+      // surface-identity + protected-span preserving path. The expanded
+      // surface kind flows into the request (never collapsed to generic
+      // dialogue) and the assertion below fails loudly if normalization ever
+      // corrupts a span's offset / identity / semantic meaning.
+      const normalizedSurface = normalizeBridgeSurface(unit);
+      assertNormalizedSurfacePreservesIdentity(
+        unit,
+        normalizedSurface,
+        `draft.${unit.bridgeUnitId}`,
+      );
       const request: ModelInvocationRequest = {
         taskKind: "draft_translation",
         modelId: provider.descriptor.defaultModelId,
@@ -311,8 +324,9 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
             content: JSON.stringify({
               sourceLocale: unit.sourceLocale,
               targetLocale: locale,
-              sourceText: unit.sourceText,
-              protectedSpans: protectedSpanRaws(unit),
+              surfaceKind: normalizedSurface.surfaceKind,
+              sourceText: normalizedSurface.sourceText,
+              protectedSpans: normalizedProtectedSpanRaws(normalizedSurface),
             }),
           },
         ],
@@ -1222,13 +1236,6 @@ function deterministicPatchResultUuid(kind: string, seed: string): string {
 
 function isBridgeBundleV02(bridge: BridgeBundle | BridgeBundleV02): bridge is BridgeBundleV02 {
   return bridge.schemaVersion === "0.2.0";
-}
-
-function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
-  if ("spans" in unit) {
-    return unit.spans.map((span) => span.raw);
-  }
-  return unit.protectedSpans.map((span) => span.raw);
 }
 
 function protectedSpanMappingsForTarget(
