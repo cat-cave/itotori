@@ -209,6 +209,31 @@ The current `@itotori/db` repository test is the model: migrate, create a
 database context, reset test state, save an imported project, save drafts and
 runtime evidence, then assert the hello-world status read model.
 
+### Optional local skip vs. required DB validation (ITOTORI-121)
+
+A missing-`DATABASE_URL` run must never be mistaken for actual DB validation.
+The `@itotori/db` test runner (`packages/itotori-db/scripts/run-tests.mjs`)
+supports two explicitly-distinct modes:
+
+- **Fast-local skip** — `pnpm --filter @itotori/db test`. When `DATABASE_URL`
+  is unset it intentionally SKIPS the Postgres-backed suites so a quick check
+  stays fast. The skip is not silent: it prints a prominent banner, emits a
+  one-line grep-able marker (`ITOTORI_DB_TEST_SKIP {json}`), and writes a
+  machine-readable report to `.tmp/itotori-db/no-database-skipped.json`
+  carrying the package name, required env var, skipped-suite count + names, and
+  the remediation command. A green run in this mode did NOT validate the DB.
+- **Required DB validation** — `just test-db-strict` (or the `--require-
+database` script path used by `pnpm --filter @itotori/db test:db`). This is
+  the honesty gate: it runs the DB-backed suites and FAILS (non-zero) when
+  `DATABASE_URL` is missing/empty or a skip marker was recorded, so a skipped
+  run cannot masquerade as DB validation. Point it at a reachable Postgres
+  (`just db-up`). Use `scripts/assert-db-tests-not-skipped.mjs` to add the same
+  no-skip assertion to any lane.
+
+CI runs the required-validation path (`just ci-itotori` brings up Postgres and
+runs `test:db` + the no-skip assertion), so CI DB coverage is never weakened by
+the local fast-skip affordance.
+
 ## Rust Adapter Tests
 
 Rust tests run through Cargo and should use normal `#[test]` functions unless a

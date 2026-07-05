@@ -15,6 +15,7 @@ dashboard:
 check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
+    node --test scripts/db-test-skip-visibility.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/alpha-proof-gate.test.mjs
@@ -221,7 +222,9 @@ ci-itotori:
     just db-wait
     just db-reset
     pnpm --filter @itotori/db typecheck
+    rm -f .tmp/itotori-db/no-database-skipped.json
     pnpm --filter @itotori/db test:db
+    node scripts/assert-db-tests-not-skipped.mjs
     pnpm --filter @itotori/db build
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app test
@@ -271,6 +274,23 @@ db-migrate: db-cli-build
 
 db-reset: db-migrate
     node apps/itotori/dist/cli.js db-reset
+
+# ITOTORI-121: LOCAL honesty gate for the DB layer. Unlike the fast-local
+# `pnpm --filter @itotori/db test` (which SKIPS with a prominent, machine-
+# readable marker when DATABASE_URL is unset), this command NEVER passes on a
+# skip: it runs the Postgres-backed repository suites via the `--require-
+# database` path and then asserts no skip marker was recorded. It FAILS
+# (non-zero) when DATABASE_URL is missing/empty or the DB-backed tests did not
+# actually run, so "I validated the DB layer" can only be claimed when the
+# suites truly executed. Point it at a reachable Postgres (see `just db-up`);
+# it does not itself manage docker. Run `DATABASE_URL= just test-db-strict`
+# to see the missing-DATABASE_URL failure.
+test-db-strict:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -f .tmp/itotori-db/no-database-skipped.json
+    pnpm --filter @itotori/db test:db
+    node scripts/assert-db-tests-not-skipped.mjs
 
 # ALPHA-009: the suite alpha proof / public-fixture vertical is the required
 # integration guardrail (replaces the retired literal Hello World gate).
