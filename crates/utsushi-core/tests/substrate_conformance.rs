@@ -630,6 +630,46 @@ fn every_facade_exposed_schema_version_is_pinned() {
     assert_eq!(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha");
 }
 
+// §7.1 case 8b: the schema-authority doc's §3 version table must agree
+// with the pinned constants. This is the drift-guard that keeps
+// docs/utsushi-substrate-facade.md §3 honest — a bump to any pinned
+// constant without revising the doc table trips this test (UTSUSHI-223
+// bumped SNAPSHOT_SCHEMA_VERSION to 0.2.0-alpha; the doc had stayed at
+// 0.1.0-alpha until this guard was added).
+#[test]
+fn facade_documentation_schema_version_table_matches_pinned_constants() {
+    let doc = include_str!("../../../docs/utsushi-substrate-facade.md");
+    let pinned = [
+        (
+            "REFERENCE_TRACE_SCHEMA_VERSION",
+            REFERENCE_TRACE_SCHEMA_VERSION,
+        ),
+        ("CONFORMANCE_SCHEMA_VERSION", CONFORMANCE_SCHEMA_VERSION),
+        ("SNAPSHOT_SCHEMA_VERSION", SNAPSHOT_SCHEMA_VERSION),
+        ("REPLAY_LOG_SCHEMA_VERSION", REPLAY_LOG_SCHEMA_VERSION),
+    ];
+    for (name, value) in pinned {
+        // The §3 table row is: `| `NAME` | `value` | spec |`.
+        let name_needle = format!("`{name}`");
+        let row = doc
+            .lines()
+            .find(|line| line.contains(&name_needle))
+            .unwrap_or_else(|| {
+                panic!(
+                    "schema-authority doc docs/utsushi-substrate-facade.md \
+                     §3 has no row for {name}"
+                )
+            });
+        let value_needle = format!("`{value}`");
+        assert!(
+            row.contains(&value_needle),
+            "docs/utsushi-substrate-facade.md §3 row for {name} does not \
+             list the pinned value {value:?}; the doc has drifted from the \
+             substrate.rs const-assertion. Doc row: {row:?}",
+        );
+    }
+}
+
 // ---------------------------------------------------------------------
 // §7.1 case 9: SourceTag variant set is engine-neutral.
 // ---------------------------------------------------------------------

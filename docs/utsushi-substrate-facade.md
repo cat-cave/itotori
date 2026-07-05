@@ -50,7 +50,7 @@ compile-time const-assertion in `substrate.rs`:
 | Schema                           | Value         | Owning spec     |
 | -------------------------------- | ------------- | --------------- |
 | `REPLAY_LOG_SCHEMA_VERSION`      | `0.1.0-alpha` | UTSUSHI-021     |
-| `SNAPSHOT_SCHEMA_VERSION`        | `0.1.0-alpha` | UTSUSHI-023     |
+| `SNAPSHOT_SCHEMA_VERSION`        | `0.2.0-alpha` | UTSUSHI-023     |
 | `REFERENCE_TRACE_SCHEMA_VERSION` | `0.1.0-alpha` | UTSUSHI-060     |
 | `CONFORMANCE_SCHEMA_VERSION`     | `0.2.0-alpha` | UTSUSHI-026/028 |
 
