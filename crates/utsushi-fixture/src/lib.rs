@@ -14,6 +14,7 @@ pub mod jump_targets;
 mod launch_adapters;
 pub mod mv_mz_review_package;
 pub mod mv_mz_screenshot_evidence;
+pub mod mvmz_runtime_proof;
 mod reference_corpus;
 
 pub use engine_port::{

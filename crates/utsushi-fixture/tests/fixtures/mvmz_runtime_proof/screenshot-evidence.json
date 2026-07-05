@@ -1,0 +1,291 @@
+{
+  "adapterName": "utsushi-browser",
+  "adapterVersion": "0.0.0",
+  "approximations": [
+    {
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "mvmz.scene1.line1"
+        }
+      ],
+      "approximationId": "019ed050-0000-7000-8000-000000005000",
+      "approximationTier": "layout_probe",
+      "description": "Browser launch/capture proves bounded entrypoint reachability and screenshot production, but not RPG Maker scene instrumentation or reference-runtime fidelity.",
+      "evidenceTierCeiling": "E2",
+      "scope": "browser launch adapter"
+    }
+  ],
+  "branchEvents": [],
+  "captures": [
+    {
+      "artifactRef": {
+        "artifactId": "019ed050-0000-7000-8000-000000004000",
+        "artifactKind": "screenshot",
+        "byteSize": 597,
+        "mediaType": "image/png",
+        "uri": "artifacts/utsushi/runtime/019ed050-0000-7000-8000-000000001000/screenshots/019ed050-0000-7000-8000-000000004000.png"
+      },
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+        "sourceUnitKey": "mvmz.scene1.line1"
+      },
+      "captureId": "019ed050-0000-7000-8000-000000003000",
+      "evidenceTier": "E2",
+      "frame": 1,
+      "height": 180,
+      "width": 320
+    }
+  ],
+  "controlledPlaybackSession": {
+    "adapterName": "utsushi-browser",
+    "adapterVersion": "0.0.0",
+    "capabilityClass": "launch_capture",
+    "evidenceTier": "E2",
+    "featuresUsed": [
+      "launch",
+      "text_trace",
+      "screenshot",
+      "frame_capture",
+      "instrumentation_hooks"
+    ],
+    "fidelityTier": "layout_probe",
+    "limitations": [
+      "Chromium-compatible headless browser launch only; DOM instrumentation and branch control are not implemented in this adapter slice.",
+      "Screenshot bytes are ingested through the managed runtime artifact store and reported only by portable artifact URI.",
+      "RPG Maker MV/MZ support is limited to deployed browser-style entrypoints such as index.html or www/index.html.",
+      "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.",
+      "Environmental misconfiguration (missing or incompatible Chromium, version below 100.0.0, unavailable display surface) is a hard error with semantic codes in the utsushi.browser.* namespace.",
+      "Adapter-discovered common install paths are a fallback after PATH lookup and are not guaranteed; operators with custom installs must set UTSUSHI_BROWSER_BIN.",
+      "Browser executable resolved through the adapter probe (source: environment, version: 149.0.7827).",
+      "Browser capture is live headless screenshot evidence from a Chromium-compatible launch path, without DOM hooks, jump control, or reference-runtime comparison.",
+      "Browser launch target was recorded as repository-relative fixture entrypoint index.html; raw local paths are omitted from report metadata.",
+      "Browser launch completed in 525 ms under the core bounded process harness."
+    ],
+    "requestedOperation": "capture",
+    "sessionId": "019ed050-0000-7000-8000-000000006000",
+    "status": "passed"
+  },
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "evidenceTier": "E2",
+  "fidelityTier": "layout_probe",
+  "limitations": [
+    "Chromium-compatible headless browser launch only; DOM instrumentation and branch control are not implemented in this adapter slice.",
+    "Screenshot bytes are ingested through the managed runtime artifact store and reported only by portable artifact URI.",
+    "RPG Maker MV/MZ support is limited to deployed browser-style entrypoints such as index.html or www/index.html.",
+    "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.",
+    "Environmental misconfiguration (missing or incompatible Chromium, version below 100.0.0, unavailable display surface) is a hard error with semantic codes in the utsushi.browser.* namespace.",
+    "Adapter-discovered common install paths are a fallback after PATH lookup and are not guaranteed; operators with custom installs must set UTSUSHI_BROWSER_BIN.",
+    "Browser executable resolved through the adapter probe (source: environment, version: 149.0.7827).",
+    "Browser capture is live headless screenshot evidence from a Chromium-compatible launch path, without DOM hooks, jump control, or reference-runtime comparison.",
+    "Browser launch target was recorded as repository-relative fixture entrypoint index.html; raw local paths are omitted from report metadata.",
+    "Browser launch completed in 525 ms under the core bounded process harness."
+  ],
+  "observationHookEvents": [
+    {
+      "adapterId": {
+        "name": "utsushi-browser",
+        "version": "0.0.0"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "mvmz.scene1.line1"
+        }
+      ],
+      "environment": {
+        "display": "browser-headless",
+        "engine": "browser-smoke-fixture",
+        "locale": "ja-JP",
+        "platform": "linux",
+        "runtime": "browser"
+      },
+      "eventId": "019ed050-0000-7000-8000-000000007000",
+      "eventKind": "text",
+      "evidenceTier": "E1",
+      "observationSource": "fixture_declared",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Yuki",
+        "text": "PLACEHOLDER line1 -- authoritative text is observed from the live DOM, not this field.",
+        "textSurface": "dialogue"
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "fixture:mvmz-observation-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "fixture-source-v0.1",
+        "sourceId": "mvmz-observation-fixture"
+      }
+    },
+    {
+      "adapterId": {
+        "name": "utsushi-browser",
+        "version": "0.0.0"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "mvmz.scene1.line1"
+        }
+      ],
+      "environment": {
+        "display": "browser-headless",
+        "engine": "browser-smoke-fixture",
+        "locale": "ja-JP",
+        "platform": "linux",
+        "runtime": "browser"
+      },
+      "eventId": "019ed050-0000-7000-8000-000000007100",
+      "eventKind": "frame",
+      "evidenceTier": "E2",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "artifactRef": {
+          "artifactId": "019ed050-0000-7000-8000-000000004000",
+          "artifactKind": "screenshot",
+          "byteSize": 597,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/019ed050-0000-7000-8000-000000001000/screenshots/019ed050-0000-7000-8000-000000004000.png"
+        },
+        "frame": 1,
+        "height": 180,
+        "payloadKind": "frame",
+        "width": 320
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "fixture:mvmz-observation-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "fixture-source-v0.1",
+        "sourceId": "mvmz-observation-fixture"
+      }
+    }
+  ],
+  "recordings": [],
+  "referenceComparisons": [],
+  "runtimeCapabilities": {
+    "capabilityClass": "launch_capture",
+    "contractVersion": "0.2.0",
+    "evidenceTierCeiling": "E2",
+    "features": [
+      {
+        "description": "Launches browser-style runtime entrypoints through a bounded Chromium-compatible process. Required for MV/MZ alpha runtime evidence; a supported host environment must provide Chromium.",
+        "evidenceTierCeiling": "E1",
+        "feature": "launch",
+        "limitations": [
+          "Chromium binary is mandatory: PATH lookup or UTSUSHI_BROWSER_BIN. Absence is a hard utsushi.browser.chromium_unavailable error.",
+          "Launch is headless and does not yet inject RPG Maker observation hooks."
+        ],
+        "status": "partial"
+      },
+      {
+        "description": "Emits fixture-declared trace reachability after a bounded browser launch.",
+        "evidenceTierCeiling": "E1",
+        "feature": "text_trace",
+        "limitations": [
+          "The adapter does not inspect DOM text or RPG Maker scene state yet."
+        ],
+        "status": "partial"
+      },
+      {
+        "description": "Captures a headless browser screenshot and stores it through the runtime artifact store.",
+        "evidenceTierCeiling": "E2",
+        "feature": "screenshot",
+        "limitations": [
+          "Chromium-compatible --screenshot behaviour is part of the required launch contract."
+        ],
+        "status": "partial"
+      },
+      {
+        "description": "Reports the browser screenshot as frame capture evidence for smoke validation.",
+        "evidenceTierCeiling": "E2",
+        "feature": "frame_capture",
+        "limitations": [
+          "No pixel comparison or layout oracle is applied."
+        ],
+        "status": "partial"
+      },
+      {
+        "description": "The browser adapter launches a runtime process rather than reading static-only fixture state.",
+        "feature": "static_trace",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Branch discovery requires RPG Maker runtime instrumentation hooks.",
+        "feature": "branch_discovery",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Jump-to-moment control requires RPG Maker runtime instrumentation hooks.",
+        "feature": "jump",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Snapshot save and restore are not implemented for browser launch smoke validation.",
+        "feature": "snapshot",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Playback recording is not implemented for browser launch smoke validation.",
+        "feature": "recording",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Emits browser launch observation hook envelopes for text reachability and screenshot frame evidence.",
+        "evidenceTierCeiling": "E2",
+        "feature": "instrumentation_hooks",
+        "limitations": [
+          "Hook events are produced by the launch adapter envelope and are not injected RPG Maker runtime callbacks."
+        ],
+        "status": "partial"
+      },
+      {
+        "description": "The browser launch adapter does not inspect RPG Maker or JavaScript VM state.",
+        "feature": "vm_state_inspection",
+        "limitations": [],
+        "status": "unsupported"
+      },
+      {
+        "description": "Reference-runtime comparison is outside the browser launch adapter contract.",
+        "feature": "reference_comparison",
+        "limitations": [],
+        "status": "unsupported"
+      }
+    ],
+    "fidelityTierCeiling": "layout_probe",
+    "limitations": [
+      "No raw local screenshot path is exposed in runtime evidence reports.",
+      "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.",
+      "Environmental misconfiguration (missing/incompatible Chromium, unavailable display) is a hard error with semantic codes in the utsushi.browser.* namespace."
+    ]
+  },
+  "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
+  "schemaVersion": "0.2.0",
+  "sourceLocale": "ja-JP",
+  "status": "passed",
+  "traceEvents": [
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+        "sourceUnitKey": "mvmz.scene1.line1"
+      },
+      "eventKind": "text_observed",
+      "frame": 1,
+      "observedText": "PLACEHOLDER line1 -- authoritative text is observed from the live DOM, not this field.",
+      "traceEventId": "019ed050-0000-7000-8000-000000002000",
+      "traceKey": "mvmz.scene1.line1"
+    }
+  ],
+  "validationFindings": []
+}

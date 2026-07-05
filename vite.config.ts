@@ -48,6 +48,12 @@ export default defineConfig({
       "crates/kaifuu-tyrano/fixtures/**",
       "fixtures/kaifuu/repro-bundle/**",
       "crates/utsushi-fixture/tests/fixtures/mvmz_observation/**",
+      // UTSUSHI-102 MV/MZ runtime-observation proof artifacts: the real
+      // launched-Chromium E1 trace + screenshot evidence + deterministic proof
+      // verdict are byte-compared against the pipeline output by
+      // `committed_real_launch_evidence_reproduces_the_e1_proof` and the
+      // real-browser gate; the formatter must not rewrite them.
+      "crates/utsushi-fixture/tests/fixtures/mvmz_runtime_proof/**",
       // UTSUSHI-008 KAG command-trace golden is byte-compared against the
       // `trace-kag` subcommand's deterministic (sorted-key) output by
       // `cli_emits_committed_golden_trace`; the formatter must not rewrite it.

@@ -1,3 +1,4 @@
+mod mvmz_runtime_proof;
 mod render_validate;
 mod replay;
 mod replay_validate;
@@ -12,7 +13,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -99,6 +100,17 @@ fn run_cli_with_registry(
             // Skips the leading `rpgmaker-mv-capture` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             rpgmaker_mv_capture::run_rpgmaker_mv_capture_command(&tail)?;
+        }
+        Some("mvmz-runtime-proof") => {
+            // UTSUSHI-102 — the load-bearing MV/MZ launched-runtime observation
+            // proof. CONSUMES the UTSUSHI-006 browser trace-probe output (an
+            // actual launched Chromium `--dump-dom`) + the static fixture source
+            // + optional UTSUSHI-065 screenshot evidence, and emits a strict
+            // E1-vs-static proof verdict. Exits non-zero when the trace could
+            // not satisfy E1. Owns its own flag parsing; skips the leading
+            // `mvmz-runtime-proof` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            mvmz_runtime_proof::run_mvmz_runtime_proof_command(&tail)?;
         }
         Some("review-package") => {
             // UTSUSHI-010 — the MV/MZ alpha-proof CAPSTONE: aggregate the
