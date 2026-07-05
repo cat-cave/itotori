@@ -199,6 +199,71 @@ fn redacted_image_is_transformed_structure_not_solid() {
 }
 
 #[test]
+fn object_position_coordinate_overflow_is_skipped_not_panicking() {
+    // genaudit3 blit-coordinate-overflow hardening: `object.position`
+    // comes from VM state and can be arbitrary. Two image objects are
+    // placed at near-`i32::MAX` positions — one overflowing the X axis
+    // (`object.position.x + dx`), one the Y axis (`object.position.y +
+    // dy`). Under the OLD unchecked adds these OVERFLOW i32 (a panic under
+    // debug `overflow-checks`, a wraparound into a wrong/out-of-bounds
+    // pixel under release). Saturating arithmetic clamps the destination
+    // outside the framebuffer, so the corrupt objects contribute NOTHING
+    // and an in-range object still renders EXACTLY as it would alone.
+    let assets: Arc<dyn AssetPackage> = Arc::new(InMemoryG00Package {
+        entries: vec![(SYNTHETIC_TYPE0_STEM.to_string(), synthetic_type0_g00())],
+    });
+    let pass = RenderPass::with_dimensions(16, 16)
+        .expect("non-zero screen")
+        .with_assets(assets);
+
+    // Baseline: ONLY the in-range object at the origin.
+    let mut baseline = GraphicsObjectStack::new();
+    baseline
+        .set(
+            GraphicsPlane::Background,
+            0,
+            GraphicsObject::image(SYNTHETIC_TYPE0_STEM),
+        )
+        .expect("set in-range image");
+    let baseline_frame = pass.rasterise_with_policy(&baseline, RedactionPolicy::Full);
+    assert!(
+        baseline_frame.pixels().iter().any(|&b| b != 0),
+        "in-range object must paint (otherwise the test is vacuous)"
+    );
+
+    // Same in-range object PLUS two objects whose VM positions overflow.
+    let mut stack = GraphicsObjectStack::new();
+    stack
+        .set(
+            GraphicsPlane::Background,
+            0,
+            GraphicsObject::image(SYNTHETIC_TYPE0_STEM),
+        )
+        .expect("set in-range image");
+    let mut overflow_x = GraphicsObject::image(SYNTHETIC_TYPE0_STEM);
+    overflow_x.position.x = i32::MAX; // `position.x + dx` overflows
+    overflow_x.position.y = 0; // row stays in-bounds so the X loop runs
+    stack
+        .set(GraphicsPlane::Foreground, 0, overflow_x)
+        .expect("set x-overflow image");
+    let mut overflow_y = GraphicsObject::image(SYNTHETIC_TYPE0_STEM);
+    overflow_y.position.x = 0;
+    overflow_y.position.y = i32::MAX; // `position.y + dy` overflows
+    stack
+        .set(GraphicsPlane::Foreground, 1, overflow_y)
+        .expect("set y-overflow image");
+
+    // Must NOT panic, and the out-of-range objects contribute nothing:
+    // the frame is byte-identical to the in-range-only baseline.
+    let frame = pass.rasterise_with_policy(&stack, RedactionPolicy::Full);
+    assert_eq!(
+        frame.pixels(),
+        baseline_frame.pixels(),
+        "out-of-range object positions must be skipped, not alter the render"
+    );
+}
+
+#[test]
 fn emitted_png_embeds_zero_g00_bytes() {
     // Bind an AssetPackage that serves both decodable fixtures, build a
     // render stack whose background is a synthetic Wipe + Image objects

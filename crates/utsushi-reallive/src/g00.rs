@@ -866,9 +866,15 @@ fn decode_type2(
     let mut canvas_height = height as usize;
     if all_identical {
         for (i, region) in regions.iter_mut().enumerate() {
-            let dy = (i as i32) * (height as i32);
-            region.rect.y1 += dy;
-            region.rect.y2 += dy;
+            // `i` and `height` both originate from disk bytes; the band
+            // offset (and its accumulation into the region rect) is computed
+            // with saturating ops so a hostile region count / height can only
+            // push the rect out of the canvas — never overflow i32. A
+            // saturated coordinate lands outside `canvas_height` and is
+            // skipped by the per-pixel bounds check below.
+            let dy = (i as i32).saturating_mul(height as i32);
+            region.rect.y1 = region.rect.y1.saturating_add(dy);
+            region.rect.y2 = region.rect.y2.saturating_add(dy);
         }
         canvas_height = (height as usize).saturating_mul(region_count);
     }
@@ -911,8 +917,12 @@ fn decode_type2(
             let sw = rd_u16(&decoded, src + 6);
             let sh = rd_u16(&decoded, src + 8);
             src += 0x5c;
-            let dst_x = bx + region.rect.x1;
-            let dst_y = by + region.rect.y1;
+            // `bx`/`by` (sub-bitmap offsets) and `region.rect.{x1,y1}` are
+            // all read verbatim from disk; sum with saturating ops so a
+            // corrupt/out-of-range region can only saturate to i32::MIN/MAX
+            // (skipped by the bounds check), never wrap into a wrong pixel.
+            let dst_x = bx.saturating_add(region.rect.x1);
+            let dst_y = by.saturating_add(region.rect.y1);
             let sub_pixels = sw.saturating_mul(sh);
             for row in 0..sh {
                 for col in 0..sw {
@@ -920,8 +930,8 @@ fn decode_type2(
                     if s + 4 > decoded.len() {
                         continue;
                     }
-                    let px = dst_x + col as i32;
-                    let py = dst_y + row as i32;
+                    let px = dst_x.saturating_add(col as i32);
+                    let py = dst_y.saturating_add(row as i32);
                     if px < 0 || py < 0 || px as usize >= canvas_w || py as usize >= canvas_height {
                         continue;
                     }
@@ -1411,6 +1421,142 @@ mod tests {
         bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
         bytes.extend_from_slice(&lzss);
         bytes
+    }
+
+    /// Like [`synth_type2`] but with a caller-chosen region rectangle and
+    /// sub-bitmap top-left, so a test can drive out-of-range coordinates
+    /// through the region-blit arithmetic (`dst = sub_xy + region.rect`).
+    fn synth_type2_region(
+        w: u16,
+        h: u16,
+        bgra: &[u8],
+        rect: (i32, i32, i32, i32),
+        sub_xy: (u16, u16),
+    ) -> Vec<u8> {
+        let wh4 = w as usize * h as usize * 4;
+        assert_eq!(bgra.len(), wh4);
+        let offset = 12usize;
+        let block_len = 0x74 + 0x5c + wh4;
+        let length = block_len;
+        let mut unc = Vec::new();
+        unc.extend_from_slice(&1u32.to_le_bytes()); // region_deal2
+        unc.extend_from_slice(&(offset as u32).to_le_bytes()); // offset@4
+        unc.extend_from_slice(&(length as u32).to_le_bytes()); // length@8
+        unc.extend_from_slice(&[0u8; 0x74]); // region block header
+        let mut sub = vec![0u8; 0x5c];
+        sub[0..2].copy_from_slice(&sub_xy.0.to_le_bytes()); // sub x (bx)
+        sub[2..4].copy_from_slice(&sub_xy.1.to_le_bytes()); // sub y (by)
+        sub[6..8].copy_from_slice(&w.to_le_bytes()); // w
+        sub[8..10].copy_from_slice(&h.to_le_bytes()); // h
+        unc.extend_from_slice(&sub);
+        unc.extend_from_slice(bgra);
+        let uncompressed_size = unc.len();
+
+        let lzss = encode_all_literals(&unc, LzssVariant::Scn2k);
+        let mut bytes = vec![G00_TYPE_REGIONED_LZSS];
+        bytes.extend_from_slice(&w.to_le_bytes());
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // region_count
+        bytes.extend_from_slice(&rect.0.to_le_bytes()); // x1
+        bytes.extend_from_slice(&rect.1.to_le_bytes()); // y1
+        bytes.extend_from_slice(&rect.2.to_le_bytes()); // x2
+        bytes.extend_from_slice(&rect.3.to_le_bytes()); // y2
+        bytes.extend_from_slice(&0i32.to_le_bytes()); // origin_x
+        bytes.extend_from_slice(&0i32.to_le_bytes()); // origin_y
+        bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+        bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
+        bytes.extend_from_slice(&lzss);
+        bytes
+    }
+
+    /// Build a type-2 container carrying TWO identical full-canvas region
+    /// records whose rect `y1 == y2 == region_y`, exercising the
+    /// "overlaid image" band-offset accumulation (`region.rect.y1 += dy`).
+    fn synth_type2_two_identical_regions(w: u16, h: u16, region_y: i32) -> Vec<u8> {
+        let wh4 = w as usize * h as usize * 4;
+        let bgra = vec![0u8; wh4]; // transparent sub-bitmaps
+        let block = || {
+            let mut b = Vec::new();
+            b.extend_from_slice(&[0u8; 0x74]); // block header
+            let mut sub = vec![0u8; 0x5c];
+            sub[6..8].copy_from_slice(&w.to_le_bytes());
+            sub[8..10].copy_from_slice(&h.to_le_bytes());
+            b.extend_from_slice(&sub);
+            b.extend_from_slice(&bgra);
+            b
+        };
+        let b0 = block();
+        let b1 = block();
+        let table_len = 4 + 8 * 2; // region_deal2 + two (offset,length) pairs
+        let off0 = table_len;
+        let off1 = off0 + b0.len();
+        let mut unc = Vec::new();
+        unc.extend_from_slice(&2u32.to_le_bytes()); // region_deal2
+        unc.extend_from_slice(&(off0 as u32).to_le_bytes());
+        unc.extend_from_slice(&(b0.len() as u32).to_le_bytes());
+        unc.extend_from_slice(&(off1 as u32).to_le_bytes());
+        unc.extend_from_slice(&(b1.len() as u32).to_le_bytes());
+        unc.extend_from_slice(&b0);
+        unc.extend_from_slice(&b1);
+        let uncompressed_size = unc.len();
+
+        let lzss = encode_all_literals(&unc, LzssVariant::Scn2k);
+        let mut bytes = vec![G00_TYPE_REGIONED_LZSS];
+        bytes.extend_from_slice(&w.to_le_bytes());
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes()); // region_count
+        for _ in 0..2 {
+            bytes.extend_from_slice(&0i32.to_le_bytes()); // x1
+            bytes.extend_from_slice(&region_y.to_le_bytes()); // y1
+            bytes.extend_from_slice(&((w as i32) - 1).to_le_bytes()); // x2
+            bytes.extend_from_slice(&region_y.to_le_bytes()); // y2 == y1 (height 1)
+            bytes.extend_from_slice(&0i32.to_le_bytes()); // origin_x
+            bytes.extend_from_slice(&0i32.to_le_bytes()); // origin_y
+        }
+        bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+        bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
+        bytes.extend_from_slice(&lzss);
+        bytes
+    }
+
+    #[test]
+    fn type2_region_coordinate_overflow_is_skipped_not_panicking() {
+        // The region's `x1` sits at i32::MAX and the sub-bitmap top-left is
+        // non-zero, so the OLD unchecked `bx + region.rect.x1` (and the
+        // per-pixel `dst_x + col`) OVERFLOW i32 — a panic under debug
+        // `overflow-checks`, a silent wraparound into a wrong pixel under
+        // release. Saturating arithmetic clamps the destination to i32::MAX,
+        // which the bounds check rejects, so the corrupt region writes
+        // NOTHING and the canvas stays fully transparent — no panic, no OOB.
+        let bgra = [0x11u8, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0x77];
+        let bytes = synth_type2_region(2, 1, &bgra, (i32::MAX, 0, 1, 0), (1, 0));
+        let (image, _warnings) = decode_g00(&bytes).expect("decode must not panic");
+        assert_eq!(image.width, 2);
+        assert_eq!(image.height, 1);
+        assert_eq!(image.pixels_rgba.len(), 2 * 4);
+        assert!(
+            image.pixels_rgba.iter().all(|&b| b == 0),
+            "out-of-range region must not write any pixel (stays transparent)"
+        );
+    }
+
+    #[test]
+    fn type2_band_offset_overflow_is_saturated_not_panicking() {
+        // Two identical regions whose rect `y1 == y2 == i32::MAX`. The
+        // "overlaid image" munge accumulates a per-band `dy` into each
+        // region's `y1`/`y2`; for the second band the OLD `region.rect.y1 +=
+        // dy` OVERFLOWS i32 (panic under debug overflow-checks). Saturating
+        // accumulation clamps to i32::MAX and the band is skipped by the
+        // per-pixel bounds check — decode completes, no panic, no OOB.
+        let bytes = synth_type2_two_identical_regions(2, 1, i32::MAX);
+        let (image, _warnings) = decode_g00(&bytes).expect("decode must not panic");
+        assert_eq!(image.width, 2);
+        // Overlaid-image munge doubles the canvas height (2 bands × h=1).
+        assert_eq!(image.regions.len(), 2);
+        assert!(
+            image.pixels_rgba.iter().all(|&b| b == 0),
+            "out-of-range bands must not write any pixel"
+        );
     }
 
     #[test]

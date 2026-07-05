@@ -2257,14 +2257,18 @@ impl RenderPass {
         };
         let src_stride = (src_w as usize) * RGBA_BYTES_PER_PIXEL;
         for dy in 0..dst_h {
-            let py = object.position.y + dy as i32;
+            // `object.position` comes from VM state and can be arbitrary;
+            // saturating_add keeps a corrupt/out-of-range position from
+            // overflowing i32 — a saturated coordinate falls outside the
+            // framebuffer and is skipped by the bounds check below.
+            let py = object.position.y.saturating_add(dy as i32);
             if py < 0 || py >= framebuffer.height as i32 {
                 continue;
             }
             // Nearest-neighbour source row.
             let sy = ((dy as u64 * src_h as u64) / dst_h as u64) as u32;
             for dx in 0..dst_w {
-                let px = object.position.x + dx as i32;
+                let px = object.position.x.saturating_add(dx as i32);
                 if px < 0 || px >= framebuffer.width as i32 {
                     continue;
                 }
