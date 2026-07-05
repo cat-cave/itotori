@@ -214,9 +214,20 @@ pub mod rgss3_smoke;
 pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
+pub mod wolf_protection_detector;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+pub use wolf_protection_detector::{
+    WOLF_ENGINE_FAMILY, WOLF_PROTECTION_DETECTOR_REPORT_SCHEMA_VERSION,
+    WOLF_PROTECTION_DETECTOR_SCHEMA_VERSION, WOLF_PROTECTION_DETECTOR_SUPPORT_BOUNDARY,
+    WolfArchiveProtectionSignal, WolfCapabilityTuple, WolfProtectionDetectorEntryReport,
+    WolfProtectionDetectorFixture, WolfProtectionDetectorFixtureEntry,
+    WolfProtectionDetectorReport, WolfProtectionDiagnostic, WolfProtectionMatrixRow,
+    WolfProtectionProfile, WolfSecretRequirement, derive_wolf_capability_tuple,
+    derive_wolf_protection_profile, read_wolf_protection_detector_fixture,
+    run_wolf_protection_detector, wolf_protection_diagnostic_matrix,
+};
 
 pub use mv_mz_encrypted_audio::{
     MV_MZ_ENCRYPTED_AUDIO_CRYPTO_PROFILE_ID, MV_MZ_ENCRYPTED_AUDIO_ENGINE_FAMILY,

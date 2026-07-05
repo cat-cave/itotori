@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "0.1.0",
+  "detectorSetId": "wolf/protection-detector",
+  "sourceNodeId": "KAIFUU-120",
+  "engineFamily": "wolf",
+  "entries": [
+    {
+      "fixtureId": "wolf.plain",
+      "variant": "dxa-unencrypted",
+      "container": "wolf_archive",
+      "protectionSignal": "unencrypted",
+      "crypto": "null_key",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "secretRequirements": [],
+      "expectedProfile": "plain",
+      "expectedSemanticCodes": []
+    },
+    {
+      "fixtureId": "wolf.protected",
+      "variant": "dxa-static-key-encrypted",
+      "container": "wolf_archive",
+      "protectionSignal": "static_key_protected",
+      "crypto": "fixed_key",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "secretRequirements": [
+        {
+          "requirementId": "wolf.archive.static-key",
+          "keyRef": "local-secret:wolf-static-key"
+        }
+      ],
+      "expectedProfile": "protected",
+      "expectedSemanticCodes": ["kaifuu.unsupported_layered_transform"]
+    },
+    {
+      "fixtureId": "wolf.helper-required",
+      "variant": "wolf-pro-dynamic-key",
+      "container": "wolf_archive",
+      "protectionSignal": "dynamic_key_helper_gated",
+      "crypto": "helper_gated",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "secretRequirements": [
+        {
+          "requirementId": "wolf.archive.dynamic-key",
+          "keyRef": "local-secret:wolf-dynamic-key"
+        }
+      ],
+      "expectedProfile": "helper_required",
+      "expectedSemanticCodes": ["kaifuu.helper_required"]
+    },
+    {
+      "fixtureId": "wolf.unknown-variant",
+      "variant": "unrecognized-dx-container",
+      "container": "wolf_archive",
+      "protectionSignal": "unrecognized_protection",
+      "crypto": "unknown",
+      "codec": "unknown",
+      "surface": "unknown",
+      "secretRequirements": [],
+      "expectedProfile": "unknown",
+      "expectedSemanticCodes": ["kaifuu.unknown_engine_variant"]
+    },
+    {
+      "fixtureId": "wolf.unknown-missing-crypto",
+      "variant": "key-gated-no-requirement",
+      "container": "wolf_archive",
+      "protectionSignal": "static_key_protected",
+      "crypto": "fixed_key",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "secretRequirements": [],
+      "expectedProfile": "unknown",
+      "expectedSemanticCodes": ["kaifuu.missing_capability.crypto"]
+    }
+  ]
+}
