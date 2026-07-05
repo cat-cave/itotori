@@ -1,6 +1,17 @@
-import { FINDING_KINDS, TRIAGE_SEVERITIES } from "@itotori/localization-bridge-schema";
+import {
+  EVIDENCE_KINDS,
+  FINDING_KINDS,
+  LOCALIZATION_QUALITY_CATEGORIES,
+  PROVENANCE_KINDS,
+  TRIAGE_SEVERITIES,
+  TRIAGE_SUBJECT_KINDS,
+} from "@itotori/localization-bridge-schema";
 import type { JsonObject, JsonValue } from "../providers/types.js";
-import { runDeterministicPreExportQa } from "../services/deterministic-pre-export-qa.js";
+import {
+  assertDeterministicPreExportQaOutput,
+  DETERMINISTIC_PRE_EXPORT_QA_CHECK_CODES,
+  runDeterministicPreExportQa,
+} from "../services/deterministic-pre-export-qa.js";
 import type { ProjectState } from "../services/project-workflow.js";
 import type {
   AgentJobInput,
@@ -157,6 +168,126 @@ export const deterministicPreExportQaInputSchema = {
   },
 } satisfies RegistrySchemaDescriptor;
 
+// Structured contract for a single emitted QA finding (the `failures` item):
+// exact unit reference, a known check code, structured evidence, and a
+// structured repair hint. Replaces the previous `{ type: "object" }` item that
+// accepted arbitrary shapes (ITOTORI-143).
+const deterministicPreExportQaFindingSchema = {
+  type: "object",
+  required: [
+    "checkCode",
+    "unitId",
+    "sourceUnitKey",
+    "sourceText",
+    "targetText",
+    "message",
+    "expected",
+    "observed",
+    "repairHint",
+    "findingKind",
+    "qualityCategory",
+    "severity",
+  ],
+  additionalProperties: false,
+  properties: {
+    checkCode: { enum: [...DETERMINISTIC_PRE_EXPORT_QA_CHECK_CODES] },
+    unitId: { type: "string", minLength: 1 },
+    sourceUnitKey: { type: "string", minLength: 1 },
+    sourceText: { type: "string" },
+    targetText: { type: "string" },
+    message: { type: "string", minLength: 1 },
+    expected: { type: "string" },
+    observed: { type: "string" },
+    repairHint: { type: "string", minLength: 1 },
+    findingKind: { enum: [...FINDING_KINDS] },
+    qualityCategory: { enum: [...LOCALIZATION_QUALITY_CATEGORIES] },
+    severity: { enum: [...TRIAGE_SEVERITIES] },
+  },
+} satisfies JsonObject;
+
+// Structured contract for a derived finding record. Enforces the structural
+// contract (id, enum classification, affected unit references, structured
+// evidence and provenance) without UUID7 strictness, since the tool derives
+// ids from project/unit keys.
+const deterministicPreExportQaFindingRecordSchema = {
+  type: "object",
+  required: [
+    "findingId",
+    "findingKind",
+    "severity",
+    "qualityCategory",
+    "title",
+    "description",
+    "impact",
+    "createdAt",
+    "affectedRefs",
+    "evidence",
+    "provenance",
+    "causalLinks",
+  ],
+  additionalProperties: false,
+  properties: {
+    findingId: { type: "string", minLength: 1 },
+    findingKind: { enum: [...FINDING_KINDS] },
+    severity: { enum: [...TRIAGE_SEVERITIES] },
+    qualityCategory: { enum: [...LOCALIZATION_QUALITY_CATEGORIES] },
+    title: { type: "string", minLength: 1 },
+    description: { type: "string", minLength: 1 },
+    impact: { type: "string", minLength: 1 },
+    createdAt: { type: "string", minLength: 1 },
+    reportedByTaskId: { type: "string", minLength: 1 },
+    firstSeenEventId: { type: "string", minLength: 1 },
+    affectedRefs: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["subjectKind", "subjectId"],
+        additionalProperties: false,
+        properties: {
+          subjectKind: { enum: [...TRIAGE_SUBJECT_KINDS] },
+          subjectId: { type: "string", minLength: 1 },
+          label: { type: "string" },
+        },
+      },
+    },
+    evidence: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["evidenceId", "evidenceKind", "summary", "provenanceIds"],
+        additionalProperties: false,
+        properties: {
+          evidenceId: { type: "string", minLength: 1 },
+          evidenceKind: { enum: [...EVIDENCE_KINDS] },
+          summary: { type: "string", minLength: 1 },
+          expectedValue: { type: "string" },
+          observedValue: { type: "string" },
+          provenanceIds: { type: "array", items: { type: "string", minLength: 1 } },
+        },
+      },
+    },
+    provenance: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["provenanceId", "provenanceKind"],
+        additionalProperties: false,
+        properties: {
+          provenanceId: { type: "string", minLength: 1 },
+          provenanceKind: { enum: [...PROVENANCE_KINDS] },
+          checkId: { type: "string", minLength: 1 },
+          checkName: { type: "string", minLength: 1 },
+          checkVersion: { type: "string", minLength: 1 },
+        },
+      },
+    },
+    causalLinks: { type: "array", items: { type: "object" } },
+  },
+} satisfies JsonObject;
+
 export const deterministicPreExportQaOutputSchema = {
   schemaId: "itotori.tool.deterministic-pre-export-qa.output",
   schemaVersion: "1.0.0",
@@ -167,8 +298,8 @@ export const deterministicPreExportQaOutputSchema = {
     additionalProperties: false,
     properties: {
       outputKind: { const: "deterministic_pre_export_qa" },
-      failures: { type: "array", items: { type: "object" } },
-      findings: { type: "array", items: { type: "object" } },
+      failures: { type: "array", items: deterministicPreExportQaFindingSchema },
+      findings: { type: "array", items: deterministicPreExportQaFindingRecordSchema },
     },
   },
 } satisfies RegistrySchemaDescriptor;
@@ -308,11 +439,16 @@ export function deterministicPreExportQa(
   input: DeterministicPreExportQaInput,
 ): DeterministicPreExportQaOutput {
   const result = runDeterministicPreExportQa(input.project as unknown as ProjectState);
-  return {
+  const output: DeterministicPreExportQaOutput = {
     outputKind: "deterministic_pre_export_qa",
     failures: result.failures as unknown as JsonObject[],
-    findings: result.findings as JsonObject[],
+    findings: result.findings as unknown as JsonObject[],
   };
+  // Fail-closed: contract-validate every emitted finding (exact unit ref, known
+  // check code, structured evidence + repair hint) before it crosses the tool
+  // boundary — no arbitrary object array items (ITOTORI-143).
+  assertDeterministicPreExportQaOutput(output);
+  return output;
 }
 
 export const deterministicPreExportQaOutputFixture = deterministicPreExportQa(
