@@ -264,6 +264,10 @@ export const migrations = [
     id: "0051_source_unit_asset_tombstone",
     file: "0051_source_unit_asset_tombstone.sql",
   },
+  {
+    id: "0052_job_lifecycle_events",
+    file: "0052_job_lifecycle_events.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

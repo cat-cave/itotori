@@ -37,6 +37,7 @@ export type {
   ManagedArtifactCleanupScope,
 } from "./managed-artifact-refs.js";
 export {
+  jobEventTypeValues,
   jobIdempotencyPolicyValues,
   jobStatusValues,
   jobTaskTypeValues,
@@ -122,6 +123,7 @@ export type {
   TranslationMemoryMatchKind,
   TranslationMemoryReuseStatus,
   TranslationMemorySegmentStatus,
+  JobEventType,
   JobIdempotencyPolicy,
   JobStatus,
   JobTaskType,
@@ -212,11 +214,16 @@ export type {
   ManualFeedbackScreenshotAttachment,
   ManualFeedbackSourceInput,
 } from "./repositories/feedback-repository.js";
-export { createUuid7, ItotoriEventQueueRepository } from "./repositories/event-queue-repository.js";
+export {
+  createUuid7,
+  DEFAULT_JOB_EVENT_RETENTION_DAYS,
+  ItotoriEventQueueRepository,
+} from "./repositories/event-queue-repository.js";
 export type {
   ClaimJobsOptions,
   ClaimOutboxEventsOptions,
   ItotoriEventQueueRepositoryPort,
+  JobEventRecord,
   JobIdempotencyInput,
   JobQueueInput,
   JobQueueRecord,
@@ -224,6 +231,7 @@ export type {
   OutboxEventRecord,
   OutboxEventWithJobsInput,
   OutboxEventWithJobsResult,
+  PruneJobEventsOptions,
   QueueErrorRecord,
   QueueFailureInput,
   QueueJsonRecord,

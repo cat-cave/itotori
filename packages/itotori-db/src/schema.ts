@@ -2039,6 +2039,56 @@ export const jobQueue = pgTable(
   ],
 );
 
+// ITOTORI-045 — append-only audit trail for the job-queue lifecycle. One
+// immutable row is written by the `itotori_job_events_capture` DB trigger for
+// every genuine `itotori_jobs.status` transition (or insert), so the queue's
+// history cannot be silently rewritten. See migration 0052 for the capture +
+// append-only triggers and the retention policy enforced by pruneJobEvents().
+export const jobEventTypeValues = {
+  enqueued: "enqueued",
+  claimed: "claimed",
+  succeeded: "succeeded",
+  retryScheduled: "retry_scheduled",
+  deadLettered: "dead_lettered",
+  cancelled: "cancelled",
+  requeued: "requeued",
+} as const;
+
+export type JobEventType = (typeof jobEventTypeValues)[keyof typeof jobEventTypeValues];
+
+export const jobEvents = pgTable(
+  "itotori_job_events",
+  {
+    jobEventId: text("job_event_id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobQueue.jobId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    queueName: text("queue_name").notNull(),
+    eventType: text("event_type").$type<JobEventType>().notNull(),
+    priorStatus: text("prior_status").$type<JobStatus>(),
+    nextStatus: text("next_status").$type<JobStatus>().notNull(),
+    attemptCount: integer("attempt_count").notNull(),
+    workerId: text("worker_id"),
+    correlationId: text("correlation_id").notNull(),
+    detail: jsonb("detail")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_job_events_job_time_idx").on(table.jobId, table.recordedAt),
+    index("itotori_job_events_project_time_idx").on(table.projectId, table.recordedAt),
+    index("itotori_job_events_status_time_idx").on(table.nextStatus, table.recordedAt),
+  ],
+);
+
 export const modelProviders = pgTable(
   "itotori_model_providers",
   {

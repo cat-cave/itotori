@@ -51,6 +51,7 @@ import {
   feedbackReports,
   feedbackSources,
   findings,
+  jobEvents,
   jobQueue,
   localeBranches,
   localeBranchStatusValues,
@@ -411,6 +412,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.systemReset);
     await this.db.execute(sql`
       truncate
+        ${jobEvents},
         ${jobQueue},
         ${eventOutbox},
         ${costLedgerEntries},

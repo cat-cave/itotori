@@ -4,6 +4,8 @@ import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
   eventOutbox,
+  jobEvents,
+  type JobEventType,
   type JobIdempotencyPolicy,
   jobIdempotencyPolicyValues,
   jobQueue,
@@ -79,6 +81,41 @@ export type JobQueueRecord = {
   result: QueueJsonRecord | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+/**
+ * One append-only row of the job-queue lifecycle audit trail. Written by the
+ * `itotori_job_events_capture` DB trigger for every genuine `itotori_jobs`
+ * status transition; immutable (rewrite/ad-hoc-delete rejected by the
+ * `itotori_job_events_append_only` trigger). See migration 0052.
+ */
+export type JobEventRecord = {
+  jobEventId: string;
+  jobId: string;
+  projectId: string;
+  localeBranchId: string | null;
+  queueName: string;
+  eventType: JobEventType;
+  priorStatus: JobStatus | null;
+  nextStatus: JobStatus;
+  attemptCount: number;
+  workerId: string | null;
+  correlationId: string;
+  detail: QueueJsonRecord;
+  recordedAt: Date;
+};
+
+/**
+ * Retention window for the job-queue lifecycle audit trail. Events for a job
+ * still in a non-terminal state are kept regardless of age; events for a
+ * terminal job (succeeded/dead_letter/cancelled) are kept until this many days
+ * old, after which pruneJobEvents() may remove them via the sanctioned prune
+ * path. See migration 0052.
+ */
+export const DEFAULT_JOB_EVENT_RETENTION_DAYS = 90;
+
+export type PruneJobEventsOptions = {
+  olderThanDays?: number;
 };
 
 export type OutboxEventInput = {
@@ -210,6 +247,8 @@ export interface ItotoriEventQueueRepositoryPort {
     outboxEventId: string,
   ): Promise<OutboxEventRecord | null>;
   getJob(actor: AuthorizationActor, jobId: string): Promise<JobQueueRecord | null>;
+  getJobEvents(actor: AuthorizationActor, jobId: string): Promise<JobEventRecord[]>;
+  pruneJobEvents(actor: AuthorizationActor, options?: PruneJobEventsOptions): Promise<number>;
 }
 
 export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryPort {
@@ -593,6 +632,56 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     );
     return rows[0] === undefined ? null : jobFromRow(rows[0]);
   }
+
+  async getJobEvents(actor: AuthorizationActor, jobId: string): Promise<JobEventRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.queueRead);
+    const rows = await executeRows(
+      this.db as unknown as QueueSqlExecutor,
+      sql`
+        select * from ${jobEvents}
+        where job_id = ${jobId}
+        order by recorded_at asc, job_event_id asc
+      `,
+    );
+    return rows.map(jobEventFromRow);
+  }
+
+  /**
+   * Retention: prune job-lifecycle audit events for TERMINAL jobs
+   * (succeeded/dead_letter/cancelled) older than the retention window. Events
+   * for non-terminal jobs and events younger than the window are kept. Runs
+   * through the sanctioned prune path — a transaction-local
+   * `itotori.job_events_prune` flag the append-only trigger recognises — so no
+   * other DELETE can silently erase an event. Returns the number of pruned
+   * events.
+   */
+  async pruneJobEvents(
+    actor: AuthorizationActor,
+    options: PruneJobEventsOptions = {},
+  ): Promise<number> {
+    await requirePermission(this.db, actor, permissionValues.queueManage);
+    const olderThanDays = normalizeRetentionDays(options.olderThanDays);
+    return this.db.transaction(async (tx) => {
+      const executor = tx as unknown as QueueSqlExecutor;
+      await executor.execute(sql`set local itotori.job_events_prune = 'on'`);
+      const rows = await executeRows(
+        executor,
+        sql`
+          delete from ${jobEvents} e
+          using ${jobQueue} j
+          where e.job_id = j.job_id
+            and j.status in (
+              ${jobStatusValues.succeeded},
+              ${jobStatusValues.deadLetter},
+              ${jobStatusValues.cancelled}
+            )
+            and e.recorded_at < now() - (${olderThanDays}::double precision * interval '1 day')
+          returning e.job_event_id
+        `,
+      );
+      return rows.length;
+    });
+  }
 }
 
 async function insertOutboxEvent(
@@ -817,6 +906,24 @@ function jobFromRow(row: Record<string, unknown>): JobQueueRecord {
   };
 }
 
+function jobEventFromRow(row: Record<string, unknown>): JobEventRecord {
+  return {
+    jobEventId: rowString(row, "job_event_id"),
+    jobId: rowString(row, "job_id"),
+    projectId: rowString(row, "project_id"),
+    localeBranchId: nullableRowString(row, "locale_branch_id"),
+    queueName: rowString(row, "queue_name"),
+    eventType: rowString(row, "event_type") as JobEventType,
+    priorStatus: nullableRowString(row, "prior_status") as JobStatus | null,
+    nextStatus: rowString(row, "next_status") as JobStatus,
+    attemptCount: rowNumber(row, "attempt_count"),
+    workerId: nullableRowString(row, "worker_id"),
+    correlationId: rowString(row, "correlation_id"),
+    detail: rowJsonRecord(row, "detail"),
+    recordedAt: rowDate(row, "recorded_at"),
+  };
+}
+
 export function createUuid7(date = new Date()): string {
   const timestamp = BigInt(date.getTime());
   const bytes = randomBytes(16);
@@ -952,6 +1059,16 @@ function normalizeRetryAfterSeconds(value: number | undefined): number {
   }
   if (!Number.isFinite(value) || value < 0 || value > 86400) {
     throw new Error("queue retry seconds must be from 0 through 86400");
+  }
+  return value;
+}
+
+function normalizeRetentionDays(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_JOB_EVENT_RETENTION_DAYS;
+  }
+  if (!Number.isFinite(value) || value < 0 || value > 36500) {
+    throw new Error("job event retention days must be from 0 through 36500");
   }
   return value;
 }
