@@ -49,6 +49,7 @@
 mod bridge;
 mod codes;
 mod database_terms;
+mod encrypted_asset_slice;
 mod escape;
 mod extract;
 mod integration;
@@ -74,6 +75,15 @@ pub use database_terms::{
     StableDatabaseUnit, UnitContainer, extract_database as extract_database_units,
     extract_database_file, extract_system as extract_system_units, extract_system_file,
     is_database_file as is_k110_database_file, patch_file as patch_database_file,
+};
+pub use encrypted_asset_slice::{
+    EncryptedAssetSuffix, MV_MZ_SLICE_CRYPTO_PROFILE_ID, MV_MZ_SLICE_ENGINE_FAMILY,
+    MV_MZ_SLICE_FIXTURE_ID, MV_MZ_SLICE_REQUIREMENT_ID, MV_MZ_SLICE_SCHEMA_VERSION,
+    MV_MZ_SLICE_SOURCE_NODE_ID, MV_MZ_SLICE_SUPPORT_BOUNDARY, MV_MZ_SLICE_VARIANT, MediaCapability,
+    MvMzKeySource, MvMzKeySourceKind, MvMzSliceDiagnostic, MvMzSliceEntryReport, MvMzSliceError,
+    MvMzSliceInternalError, MvMzSliceOp, MvMzSliceOutcome, MvMzSliceReport, MvMzSliceVerifyProof,
+    SlicePatchProof, SliceReplacement, SliceRoundTripProof, canonical_slice_fixture,
+    run_mv_mz_slice, run_slice_op,
 };
 pub use escape::{EscapeSpan, scan_escape_spans};
 pub use extract::{
