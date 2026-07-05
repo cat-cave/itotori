@@ -450,6 +450,103 @@ fn rejects_research_evidence_locator_not_matching_kind_shape() {
     );
 }
 
+fn research_map_with_evidence(kind: EvidenceKind, locator: &str) -> ImplementationMap {
+    let mut map = baseline_map();
+    map.subsystems[0].status = SubsystemStatus::Research {
+        evidence_refs: vec![EvidenceRef {
+            kind,
+            locator: locator.to_string(),
+            caption: "Caption".to_string(),
+        }],
+    };
+    map
+}
+
+fn assert_locator_rejected(kind: EvidenceKind, locator: &str) {
+    let map = research_map_with_evidence(kind, locator);
+    let errors = validate(&map).expect_err("malformed locator must fail");
+    assert_has_error(
+        &errors,
+        |e| matches!(e, ImplMapError::ResearchEvidenceLocatorMalformed { .. }),
+        "ResearchEvidenceLocatorMalformed",
+    );
+}
+
+fn assert_locator_accepted(kind: EvidenceKind, locator: &str) {
+    let map = research_map_with_evidence(kind, locator);
+    // `validate` returns `Ok` only when the map has zero errors, so a
+    // successful result is itself proof the locator was not rejected.
+    validate(&map)
+        .unwrap_or_else(|errors| panic!("valid {kind:?} locator {locator:?} rejected: {errors:?}"));
+}
+
+#[test]
+fn rejects_fixture_evidence_locator_outside_fixtures_root() {
+    assert_locator_rejected(EvidenceKind::Fixture, "corpora/reallive/seen.txt");
+    assert_locator_rejected(EvidenceKind::Fixture, "docs/note.md");
+    assert_locator_rejected(EvidenceKind::Fixture, "/abs/fixtures/x");
+    assert_locator_rejected(EvidenceKind::Fixture, "fixtures/../secret");
+}
+
+#[test]
+fn accepts_fixture_evidence_locator_under_fixtures_root() {
+    assert_locator_accepted(EvidenceKind::Fixture, "fixtures/reallive/seen-triple");
+}
+
+#[test]
+fn rejects_doc_evidence_locator_outside_docs_root() {
+    assert_locator_rejected(EvidenceKind::Doc, "notes/provenance.md");
+    assert_locator_rejected(EvidenceKind::Doc, "fixtures/x.md");
+    assert_locator_rejected(EvidenceKind::Doc, "/etc/docs/x");
+}
+
+#[test]
+fn accepts_doc_evidence_locator_under_docs_root() {
+    assert_locator_accepted(EvidenceKind::Doc, "docs/utsushi-siglus-vm-provenance.md");
+}
+
+#[test]
+fn rejects_reference_impl_anchor_without_colon_uri_shape() {
+    // No colon at all.
+    assert_locator_rejected(EvidenceKind::ReferenceImplAnchor, "siglus_rs");
+    // Colon at the very start / end.
+    assert_locator_rejected(EvidenceKind::ReferenceImplAnchor, ":path/only");
+    assert_locator_rejected(EvidenceKind::ReferenceImplAnchor, "scheme:");
+    // Non-letter-led scheme.
+    assert_locator_rejected(EvidenceKind::ReferenceImplAnchor, "1scheme:path");
+}
+
+#[test]
+fn accepts_reference_impl_anchor_with_colon_uri_shape() {
+    assert_locator_accepted(
+        EvidenceKind::ReferenceImplAnchor,
+        "https://github.com/xmoezzz/siglus_rs",
+    );
+    assert_locator_accepted(
+        EvidenceKind::ReferenceImplAnchor,
+        "rlvm:src/machine/rlmachine.cc",
+    );
+}
+
+#[test]
+fn malformed_locator_error_redacts_local_path_in_render() {
+    let map = research_map_with_evidence(EvidenceKind::Fixture, "/home/trevor/leak/fixtures/x");
+    let errors = validate(&map).expect_err("absolute host path must fail");
+    let rendered = errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains(REDACTED_LOCAL_PATH_TOKEN),
+        "expected local path to be redacted, got: {rendered}",
+    );
+    assert!(
+        !rendered.contains("/home/trevor/leak"),
+        "raw host path leaked into diagnostic: {rendered}",
+    );
+}
+
 #[test]
 fn rejects_empty_capability_list_on_subsystem() {
     let mut map = baseline_map();

@@ -79,6 +79,8 @@ pub enum ImplMapError {
         subsystem_id: SubsystemId,
         index: usize,
         kind: EvidenceKind,
+        /// Offending locator (path-safe: redacted when rendered).
+        locator: String,
     },
     ValidationCommandEmpty {
         id: ValidationCommandId,
@@ -275,11 +277,13 @@ impl fmt::Display for ImplMapError {
                 subsystem_id,
                 index,
                 kind,
+                locator,
             } => write!(
                 formatter,
-                "subsystem {} evidence_ref[{}] locator does not match its kind ({}) shape",
+                "subsystem {} evidence_ref[{}] locator {} does not match its kind ({}) shape",
                 redact_for_diagnostic(subsystem_id.as_str()),
                 index,
+                redact_for_diagnostic(locator),
                 evidence_kind_label(*kind),
             ),
             Self::ValidationCommandEmpty { id } => write!(

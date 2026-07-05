@@ -375,6 +375,7 @@ fn validate_subsystem_status(
                         subsystem_id: subsystem.id.clone(),
                         index,
                         kind: evidence.kind,
+                        locator: evidence.locator.clone(),
                     });
                 }
             }
@@ -426,21 +427,45 @@ fn is_evidence_locator_valid(kind: EvidenceKind, locator: &str) -> bool {
         return false;
     }
     match kind {
-        EvidenceKind::Fixture | EvidenceKind::Doc => {
-            // Forward-slash path; no absolute host paths, no `..`.
-            !trimmed.starts_with('/')
-                && !trimmed.starts_with('\\')
-                && !trimmed.split('/').any(|seg| seg == "..")
-                && trimmed.contains('/')
-        }
+        // Fail-closed: a Fixture ref MUST live under the `fixtures/` root and a
+        // Doc ref under the `docs/` root, so audit-channel triage of research
+        // evidence is mechanical. Anything outside its known root is rejected.
+        EvidenceKind::Fixture => is_rooted_repo_path(trimmed, "fixtures/"),
+        EvidenceKind::Doc => is_rooted_repo_path(trimmed, "docs/"),
         EvidenceKind::RoadmapNode => is_node_id(trimmed),
-        EvidenceKind::ReferenceImplAnchor => {
-            // Either a https://... URL or a colon-tagged anchor token.
-            trimmed.starts_with("https://")
-                || trimmed.starts_with("http://")
-                || trimmed.contains(':')
-        }
+        // A reference-impl anchor MUST be a colon-anchored URI (`scheme:path`),
+        // e.g. `https://github.com/...` or `rlvm:src/machine/rlmachine.cc`.
+        EvidenceKind::ReferenceImplAnchor => is_colon_anchored_uri(trimmed),
     }
+}
+
+/// A repo-relative path anchored at a known `root` prefix (e.g. `fixtures/`).
+/// Rejects absolute host paths and any `..` traversal segment.
+fn is_rooted_repo_path(value: &str, root: &str) -> bool {
+    value.starts_with(root)
+        && !value.starts_with('/')
+        && !value.starts_with('\\')
+        && !value.split('/').any(|seg| seg == "..")
+}
+
+/// A colon-anchored URI shape: a non-empty `scheme` (letter-led, made of
+/// ASCII alphanumerics plus `+`, `-`, `.`) followed by `:` and a non-empty
+/// path/authority remainder. Accepts `https://github.com/...` and generic
+/// `scheme:path` anchor tokens; rejects bare (colon-less) tokens and strings
+/// whose colon sits at the very start or end.
+fn is_colon_anchored_uri(value: &str) -> bool {
+    let Some((scheme, rest)) = value.split_once(':') else {
+        return false;
+    };
+    if scheme.is_empty() || rest.is_empty() {
+        return false;
+    }
+    let mut chars = scheme.chars();
+    let first_is_alpha = chars.next().is_some_and(|c| c.is_ascii_alphabetic());
+    first_is_alpha
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
 }
 
 // ---------------------------------------------------------------------------
