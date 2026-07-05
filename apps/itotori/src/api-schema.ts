@@ -5,7 +5,9 @@ import type {
   CatalogConfidence,
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
+  CatalogConflictKind,
   CatalogConflictReviewReadModel,
+  CatalogConflictReviewStatus,
   CatalogExternalIdKind,
   CatalogLanguageStatus,
   CatalogLanguageStatusScope,
@@ -29,7 +31,10 @@ import type {
 import {
   assetLocalizationDecisionAssetKindList,
   assetLocalizationDecisionPolicyList,
+  catalogCandidateMatchStatusValues,
   catalogConfidenceValues,
+  catalogConflictKindValues,
+  catalogConflictStatusValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
@@ -2520,6 +2525,11 @@ export function assertCatalogCompletenessBenchmarkPools(
   }
 }
 
+const catalogConflictReviewStatusValues: readonly CatalogConflictReviewStatus[] = [
+  ...Object.values(catalogConflictStatusValues),
+  ...Object.values(catalogCandidateMatchStatusValues),
+];
+
 export function assertCatalogConflictReviewReadModel(
   value: unknown,
   label = "CatalogConflictReviewReadModel",
@@ -2561,10 +2571,14 @@ export function assertCatalogConflictReviewReadModel(
       ["error", "warning", "info"] as const,
       `${label}.rows[${index}].severity`,
     );
-    assertString(row.status, `${label}.rows[${index}].status`);
+    assertEnum(row.status, catalogConflictReviewStatusValues, `${label}.rows[${index}].status`);
     assertString(row.reasonCode, `${label}.rows[${index}].reasonCode`);
     assertString(row.reasonDetail, `${label}.rows[${index}].reasonDetail`);
-    assertNullableString(row.conflictKind, `${label}.rows[${index}].conflictKind`);
+    assertNullableEnum(
+      row.conflictKind,
+      Object.values(catalogConflictKindValues) as CatalogConflictKind[],
+      `${label}.rows[${index}].conflictKind`,
+    );
     assertDateLike(row.detectedAt, `${label}.rows[${index}].detectedAt`);
     if (row.resolution !== null) {
       const resolution = asStrictRecord(row.resolution, `${label}.rows[${index}].resolution`, [
@@ -3484,7 +3498,11 @@ function assertConflictReviewExactLinkRefs(value: unknown, label: string): void 
     assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
     assertString(row.sourceId, `${label}[${index}].sourceId`);
     assertNoCatalogPrivateLeakage(row.sourceId, `${label}[${index}].sourceId`);
-    assertString(row.externalIdKind, `${label}[${index}].externalIdKind`);
+    assertEnum(
+      row.externalIdKind,
+      Object.values(catalogExternalIdKindValues) as CatalogExternalIdKind[],
+      `${label}[${index}].externalIdKind`,
+    );
     assertString(row.workId, `${label}[${index}].workId`);
     assertNullableString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
   }
@@ -3628,6 +3646,19 @@ function assertEnum<T extends string>(
   label: string,
 ): asserts value is T {
   if (typeof value !== "string" || !allowed.includes(value as T)) {
-    throw new Error(`${label} must be one of ${allowed.join(", ")}`);
+    throw new Error(
+      `${label} must be one of ${allowed.join(", ")} (received ${JSON.stringify(value)})`,
+    );
   }
+}
+
+function assertNullableEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  label: string,
+): asserts value is T | null {
+  if (value === null) {
+    return;
+  }
+  assertEnum(value, allowed, label);
 }

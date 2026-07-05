@@ -9,6 +9,7 @@ import {
   permissionValues,
   reviewerQueueActionValues,
   type CandidateAssetRecord,
+  type CatalogConflictReviewReadModel,
   type Permission,
   type ProjectCostReport,
 } from "@itotori/db";
@@ -1144,6 +1145,148 @@ describe("Itotori API handlers", () => {
     expect(response.statusCode).toBe(500);
     expect(response.body).toMatchObject({ code: "internal_error" });
     expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
+      name: "status",
+      field: /\.status must be one of/u,
+      invalid: "totally-invalid-status",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [{ ...catalogConflictReviewFixture.rows[0]!, status: "totally-invalid-status" }],
+      },
+    },
+    {
+      name: "conflictKind",
+      field: /\.conflictKind must be one of/u,
+      invalid: "totally-invalid-conflict-kind",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            conflictKind: "totally-invalid-conflict-kind",
+          },
+        ],
+      },
+    },
+    {
+      name: "externalIdKind",
+      field: /\.externalIdKind must be one of/u,
+      invalid: "totally-invalid-external-id-kind",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            exactLinkRefs: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.exactLinkRefs[0]!,
+                externalIdKind: "totally-invalid-external-id-kind",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      name: "catalogSource",
+      field: /\.catalogSource must be one of/u,
+      invalid: "totally-invalid-source",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.sourceIds[0]!,
+                catalogSource: "totally-invalid-source",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      name: "sourceRecordKind",
+      field: /\.sourceRecordKind must be one of/u,
+      invalid: "totally-invalid-record-kind",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.provenance[0]!,
+                sourceRecordKind: "totally-invalid-record-kind",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ])(
+    "rejects arbitrary strings for the catalog conflict enum field $name",
+    async ({ body, field, invalid }) => {
+      const services = serviceFixture();
+      services.catalogRepository.catalogConflictReview.mockResolvedValueOnce(
+        body as CatalogConflictReviewReadModel,
+      );
+
+      const response = await handleItotoriApiRequest(
+        { method: "GET", pathname: "/api/catalog/conflicts" },
+        services,
+      );
+
+      expect(response.statusCode).toBe(500);
+      expect(response.body).toMatchObject({ code: "internal_error" });
+      expect(response.body.error).toMatch(field);
+      expect(response.body.error).toContain(invalid);
+    },
+  );
+
+  it("accepts valid enum values for every catalog conflict enum field", async () => {
+    const services = serviceFixture();
+    const body: CatalogConflictReviewReadModel = {
+      ...catalogConflictReviewFixture,
+      rows: [
+        {
+          ...catalogConflictReviewFixture.rows[0]!,
+          status: "duplicate_source",
+          conflictKind: "title",
+          exactLinkRefs: [
+            {
+              ...catalogConflictReviewFixture.rows[0]!.exactLinkRefs[0]!,
+              externalIdKind: "release_record",
+            },
+          ],
+          sourceIds: [
+            {
+              ...catalogConflictReviewFixture.rows[0]!.sourceIds[0]!,
+              catalogSource: "egs",
+            },
+          ],
+          provenance: [
+            {
+              ...catalogConflictReviewFixture.rows[0]!.provenance[0]!,
+              catalogSource: "egs",
+              sourceRecordKind: "normalized_record",
+            },
+          ],
+        },
+      ],
+    };
+    services.catalogRepository.catalogConflictReview.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/conflicts" },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body });
   });
 
   it.each([
