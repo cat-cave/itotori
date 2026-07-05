@@ -194,6 +194,7 @@ pub mod patch_transaction;
 pub mod plain_xp3_smoke;
 pub mod registry;
 pub mod repro_bundle;
+pub mod rgss3_profile;
 pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
