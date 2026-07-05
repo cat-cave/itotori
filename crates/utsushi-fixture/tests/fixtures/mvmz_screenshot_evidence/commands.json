@@ -1,0 +1,58 @@
+{
+  "gameId": "mvmz-screenshot-evidence-fixture",
+  "title": "MV/MZ Screenshot Evidence Fixture",
+  "sourceLocale": "ja-JP",
+  "adapter": {
+    "name": "utsushi-mvmz-screenshot-evidence",
+    "version": "0.1.0-alpha"
+  },
+  "captureMetadata": {
+    "viewport": {
+      "width": 816,
+      "height": 624
+    },
+    "deviceScaleFactor": 1,
+    "adapter": "utsushi-browser"
+  },
+  "commands": [
+    {
+      "sourceFile": "Map012.json",
+      "container": {
+        "kind": "map_event",
+        "eventId": 7,
+        "eventIndex": 3,
+        "pageIndex": 0
+      },
+      "commandIndex": 5,
+      "code": 401,
+      "textRole": "show_text",
+      "sourceText": "The lighthouse keeps its vigil over the quiet bay."
+    },
+    {
+      "sourceFile": "Map012.json",
+      "container": {
+        "kind": "map_event",
+        "eventId": 7,
+        "eventIndex": 3,
+        "pageIndex": 0
+      },
+      "commandIndex": 8,
+      "optionIndex": 0,
+      "code": 102,
+      "textRole": "choice_option",
+      "sourceText": "Signal the passing ship."
+    },
+    {
+      "sourceFile": "CommonEvents.json",
+      "container": {
+        "kind": "common_event",
+        "commonEventId": 4,
+        "entryIndex": 3
+      },
+      "commandIndex": 2,
+      "code": 401,
+      "textRole": "show_text",
+      "sourceText": "A gentle wind carries the salt of the sea."
+    }
+  ]
+}

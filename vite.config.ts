@@ -28,6 +28,11 @@ export default defineConfig({
     // preserved byte-for-byte.
     ignorePatterns: [
       "crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**",
+      // UTSUSHI-065 MV/MZ screenshot-evidence golden is byte-compared against
+      // `serde_json::to_string_pretty` output by
+      // `fixture_report_matches_committed_golden_bytes`; letting the formatter
+      // rewrite it would break that byte-equality gate.
+      "crates/utsushi-fixture/tests/fixtures/mvmz_screenshot_evidence/evidence.golden.json",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
