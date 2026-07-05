@@ -1421,208 +1421,52 @@ fn encode_string(value: &str, encoding: SourceEncoding) -> Result<Vec<u8>, Strin
     }
 }
 
+/// Encode `value` as Shift-JIS bytes for encoded string-slot preflight.
+///
+/// # Shift-JIS codec contract
+///
+/// This uses the WHATWG Shift_JIS encoder from `encoding_rs` (the same codec
+/// the runtime crates decode/encode with), which is a *complete* Shift-JIS
+/// encoder covering the full mappable repertoire: ASCII, halfwidth katakana
+/// (JIS X 0201), and every JIS X 0208 double-byte character (common kanji,
+/// fullwidth latin/digits, fullwidth punctuation, hiragana, katakana). It
+/// supersedes the KAIFUU-082 hand-coded subset, which only mapped ASCII,
+/// halfwidth katakana, hiragana, katakana, and a handful of punctuation marks
+/// and therefore wrongly rejected common kanji and most fullwidth text.
+///
+/// The contract is *predictable*: any character in the Shift-JIS repertoire is
+/// accepted and encoded to its canonical byte sequence; any character outside
+/// it (emoji, rare CJK extension, etc.) is rejected with `Err`. Callers surface
+/// that as a typed [`STRING_SLOT_INVALID_ENCODING`] diagnostic naming the slot
+/// id and byte range, so there is no silent pass or wrong-size result.
 fn encode_shift_jis(value: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    for character in value.chars() {
-        if character.is_ascii() {
-            bytes.push(character as u8);
-            continue;
-        }
-        let codepoint = character as u32;
-        if (0xff61..=0xff9f).contains(&codepoint) {
-            bytes.push((codepoint - 0xff61 + 0xa1) as u8);
-            continue;
-        }
-        if let Some(pair) = shift_jis_common_pair(character) {
-            bytes.extend(pair);
-            continue;
-        }
+    let (encoded, _encoding, had_unmappable) = encoding_rs::SHIFT_JIS.encode(value);
+    if had_unmappable {
+        let (char_index, encoded_byte_offset, offending) = locate_first_unmappable_shift_jis(value);
         return Err(format!(
-            "character U+{codepoint:04X} is not representable by the supported Shift-JIS preflight table"
+            "character {offending:?} (U+{codepoint:04X}) at char index {char_index} \
+             (encoded byte offset {encoded_byte_offset}) is not representable in Shift-JIS",
+            codepoint = offending as u32,
         ));
     }
-    Ok(bytes)
+    Ok(encoded.into_owned())
 }
 
-fn shift_jis_common_pair(character: char) -> Option<[u8; 2]> {
-    let pair = match character {
-        '　' => [0x81, 0x40],
-        '、' => [0x81, 0x41],
-        '。' => [0x81, 0x42],
-        '，' => [0x81, 0x43],
-        '．' => [0x81, 0x44],
-        '・' => [0x81, 0x45],
-        'ー' => [0x81, 0x5b],
-        '「' => [0x81, 0x75],
-        '」' => [0x81, 0x76],
-        '『' => [0x81, 0x77],
-        '』' => [0x81, 0x78],
-        'ぁ' => [0x82, 0x9f],
-        'あ' => [0x82, 0xa0],
-        'ぃ' => [0x82, 0xa1],
-        'い' => [0x82, 0xa2],
-        'ぅ' => [0x82, 0xa3],
-        'う' => [0x82, 0xa4],
-        'ぇ' => [0x82, 0xa5],
-        'え' => [0x82, 0xa6],
-        'ぉ' => [0x82, 0xa7],
-        'お' => [0x82, 0xa8],
-        'か' => [0x82, 0xa9],
-        'が' => [0x82, 0xaa],
-        'き' => [0x82, 0xab],
-        'ぎ' => [0x82, 0xac],
-        'く' => [0x82, 0xad],
-        'ぐ' => [0x82, 0xae],
-        'け' => [0x82, 0xaf],
-        'げ' => [0x82, 0xb0],
-        'こ' => [0x82, 0xb1],
-        'ご' => [0x82, 0xb2],
-        'さ' => [0x82, 0xb3],
-        'ざ' => [0x82, 0xb4],
-        'し' => [0x82, 0xb5],
-        'じ' => [0x82, 0xb6],
-        'す' => [0x82, 0xb7],
-        'ず' => [0x82, 0xb8],
-        'せ' => [0x82, 0xb9],
-        'ぜ' => [0x82, 0xba],
-        'そ' => [0x82, 0xbb],
-        'ぞ' => [0x82, 0xbc],
-        'た' => [0x82, 0xbd],
-        'だ' => [0x82, 0xbe],
-        'ち' => [0x82, 0xbf],
-        'ぢ' => [0x82, 0xc0],
-        'っ' => [0x82, 0xc1],
-        'つ' => [0x82, 0xc2],
-        'づ' => [0x82, 0xc3],
-        'て' => [0x82, 0xc4],
-        'で' => [0x82, 0xc5],
-        'と' => [0x82, 0xc6],
-        'ど' => [0x82, 0xc7],
-        'な' => [0x82, 0xc8],
-        'に' => [0x82, 0xc9],
-        'ぬ' => [0x82, 0xca],
-        'ね' => [0x82, 0xcb],
-        'の' => [0x82, 0xcc],
-        'は' => [0x82, 0xcd],
-        'ば' => [0x82, 0xce],
-        'ぱ' => [0x82, 0xcf],
-        'ひ' => [0x82, 0xd0],
-        'び' => [0x82, 0xd1],
-        'ぴ' => [0x82, 0xd2],
-        'ふ' => [0x82, 0xd3],
-        'ぶ' => [0x82, 0xd4],
-        'ぷ' => [0x82, 0xd5],
-        'へ' => [0x82, 0xd6],
-        'べ' => [0x82, 0xd7],
-        'ぺ' => [0x82, 0xd8],
-        'ほ' => [0x82, 0xd9],
-        'ぼ' => [0x82, 0xda],
-        'ぽ' => [0x82, 0xdb],
-        'ま' => [0x82, 0xdc],
-        'み' => [0x82, 0xdd],
-        'む' => [0x82, 0xde],
-        'め' => [0x82, 0xdf],
-        'も' => [0x82, 0xe0],
-        'ゃ' => [0x82, 0xe1],
-        'や' => [0x82, 0xe2],
-        'ゅ' => [0x82, 0xe3],
-        'ゆ' => [0x82, 0xe4],
-        'ょ' => [0x82, 0xe5],
-        'よ' => [0x82, 0xe6],
-        'ら' => [0x82, 0xe7],
-        'り' => [0x82, 0xe8],
-        'る' => [0x82, 0xe9],
-        'れ' => [0x82, 0xea],
-        'ろ' => [0x82, 0xeb],
-        'ゎ' => [0x82, 0xec],
-        'わ' => [0x82, 0xed],
-        'を' => [0x82, 0xf0],
-        'ん' => [0x82, 0xf1],
-        'ァ' => [0x83, 0x40],
-        'ア' => [0x83, 0x41],
-        'ィ' => [0x83, 0x42],
-        'イ' => [0x83, 0x43],
-        'ゥ' => [0x83, 0x44],
-        'ウ' => [0x83, 0x45],
-        'ェ' => [0x83, 0x46],
-        'エ' => [0x83, 0x47],
-        'ォ' => [0x83, 0x48],
-        'オ' => [0x83, 0x49],
-        'カ' => [0x83, 0x4a],
-        'ガ' => [0x83, 0x4b],
-        'キ' => [0x83, 0x4c],
-        'ギ' => [0x83, 0x4d],
-        'ク' => [0x83, 0x4e],
-        'グ' => [0x83, 0x4f],
-        'ケ' => [0x83, 0x50],
-        'ゲ' => [0x83, 0x51],
-        'コ' => [0x83, 0x52],
-        'ゴ' => [0x83, 0x53],
-        'サ' => [0x83, 0x54],
-        'ザ' => [0x83, 0x55],
-        'シ' => [0x83, 0x56],
-        'ジ' => [0x83, 0x57],
-        'ス' => [0x83, 0x58],
-        'ズ' => [0x83, 0x59],
-        'セ' => [0x83, 0x5a],
-        'ゼ' => [0x83, 0x5b],
-        'ソ' => [0x83, 0x5c],
-        'ゾ' => [0x83, 0x5d],
-        'タ' => [0x83, 0x5e],
-        'ダ' => [0x83, 0x5f],
-        'チ' => [0x83, 0x60],
-        'ヂ' => [0x83, 0x61],
-        'ッ' => [0x83, 0x62],
-        'ツ' => [0x83, 0x63],
-        'ヅ' => [0x83, 0x64],
-        'テ' => [0x83, 0x65],
-        'デ' => [0x83, 0x66],
-        'ト' => [0x83, 0x67],
-        'ド' => [0x83, 0x68],
-        'ナ' => [0x83, 0x69],
-        'ニ' => [0x83, 0x6a],
-        'ヌ' => [0x83, 0x6b],
-        'ネ' => [0x83, 0x6c],
-        'ノ' => [0x83, 0x6d],
-        'ハ' => [0x83, 0x6e],
-        'バ' => [0x83, 0x6f],
-        'パ' => [0x83, 0x70],
-        'ヒ' => [0x83, 0x71],
-        'ビ' => [0x83, 0x72],
-        'ピ' => [0x83, 0x73],
-        'フ' => [0x83, 0x74],
-        'ブ' => [0x83, 0x75],
-        'プ' => [0x83, 0x76],
-        'ヘ' => [0x83, 0x77],
-        'ベ' => [0x83, 0x78],
-        'ペ' => [0x83, 0x79],
-        'ホ' => [0x83, 0x7a],
-        'ボ' => [0x83, 0x7b],
-        'ポ' => [0x83, 0x7c],
-        'マ' => [0x83, 0x7d],
-        'ミ' => [0x83, 0x7e],
-        'ム' => [0x83, 0x80],
-        'メ' => [0x83, 0x81],
-        'モ' => [0x83, 0x82],
-        'ャ' => [0x83, 0x83],
-        'ヤ' => [0x83, 0x84],
-        'ュ' => [0x83, 0x85],
-        'ユ' => [0x83, 0x86],
-        'ョ' => [0x83, 0x87],
-        'ヨ' => [0x83, 0x88],
-        'ラ' => [0x83, 0x89],
-        'リ' => [0x83, 0x8a],
-        'ル' => [0x83, 0x8b],
-        'レ' => [0x83, 0x8c],
-        'ロ' => [0x83, 0x8d],
-        'ヮ' => [0x83, 0x8e],
-        'ワ' => [0x83, 0x8f],
-        'ヲ' => [0x83, 0x92],
-        'ン' => [0x83, 0x93],
-        'ヴ' => [0x83, 0x94],
-        _ => return None,
-    };
-    Some(pair)
+/// Locate the first character the Shift-JIS encoder cannot map, returning its
+/// char index, the byte offset it would occupy in the encoded output, and the
+/// offending character itself. Used to build a precise reject diagnostic.
+fn locate_first_unmappable_shift_jis(value: &str) -> (usize, usize, char) {
+    let mut encoded_byte_offset = 0usize;
+    for (char_index, character) in value.chars().enumerate() {
+        let mut buffer = [0u8; 4];
+        let single = character.encode_utf8(&mut buffer);
+        let (bytes, _encoding, had_unmappable) = encoding_rs::SHIFT_JIS.encode(single);
+        if had_unmappable {
+            return (char_index, encoded_byte_offset, character);
+        }
+        encoded_byte_offset += bytes.len();
+    }
+    (0, 0, '\u{0}')
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
@@ -3014,11 +2858,105 @@ mod tests {
         let report = slot.preflight("hello 🚀", &[], None);
 
         assert_eq!(report.status, OperationStatus::Failed);
-        assert_eq!(report.diagnostics[0].code, STRING_SLOT_INVALID_ENCODING);
-        assert_eq!(
-            report.diagnostics[0].remediation_code,
-            "replace_unencodable_character"
+        let diagnostic = &report.diagnostics[0];
+        assert_eq!(diagnostic.code, STRING_SLOT_INVALID_ENCODING);
+        assert_eq!(diagnostic.remediation_code, "replace_unencodable_character");
+        // Typed diagnostic names the slot id and byte range (the crux).
+        assert_eq!(diagnostic.slot_id, "sjis-fixed-line");
+        assert_eq!(diagnostic.byte_range, ByteSpan::new(128, 140).unwrap());
+        // The message pinpoints the offending character and its encoded offset:
+        // "hello " is 6 ASCII bytes, so the emoji is char index 6 at byte offset 6.
+        assert!(
+            diagnostic.message.contains("char index 6"),
+            "message should name the offending char index: {}",
+            diagnostic.message
         );
+        assert!(
+            diagnostic.message.contains("encoded byte offset 6"),
+            "message should name the encoded byte offset: {}",
+            diagnostic.message
+        );
+    }
+
+    #[test]
+    fn encoded_string_slot_accepts_common_shift_jis_kanji_within_budget() {
+        // Regression for KAIFUU-148: the KAIFUU-082 hand-coded subset had no
+        // kanji, so common game text like 日本語 was wrongly rejected. The
+        // encoding_rs Shift-JIS codec maps it to 6 bytes, which fits the
+        // 12-byte (128..140) sjis-fixed-line budget.
+        let value = string_slot_fixture("shift_jis_fixed");
+        let slot: EncodedStringSlot = serde_json::from_value(value["slot"].clone()).unwrap();
+
+        let report = slot.preflight("日本語", &[], None);
+
+        assert_eq!(report.status, OperationStatus::Passed, "{report:?}");
+        assert!(report.diagnostics.is_empty(), "{report:?}");
+        assert_eq!(encode_shift_jis("日本語").unwrap().len(), 6);
+    }
+
+    #[test]
+    fn encoded_string_slot_accepts_fullwidth_shift_jis_within_budget() {
+        // Fullwidth punctuation / ideographic space were also outside the
+        // hand-coded subset. ！？　 is three double-byte characters (6 bytes),
+        // fitting the 12-byte budget.
+        let value = string_slot_fixture("shift_jis_fixed");
+        let slot: EncodedStringSlot = serde_json::from_value(value["slot"].clone()).unwrap();
+
+        let report = slot.preflight("！？　", &[], None);
+
+        assert_eq!(report.status, OperationStatus::Passed, "{report:?}");
+        assert!(report.diagnostics.is_empty(), "{report:?}");
+        let encoded = encode_shift_jis("！？　").unwrap();
+        assert_eq!(encoded.len(), 6);
+        // Canonical JIS X 0208 byte sequences (predictable contract).
+        assert_eq!(encoded, vec![0x81, 0x49, 0x81, 0x48, 0x81, 0x40]);
+    }
+
+    #[test]
+    fn encoded_string_slot_rejects_unmappable_shift_jis_with_slot_id_and_byte_range() {
+        // U+20BB7 (𠮷, a CJK Extension B ideograph) is a valid Unicode scalar
+        // but is not in the Shift-JIS repertoire, so it must reject with a
+        // typed diagnostic naming the slot id + byte range, not silently pass.
+        let value = string_slot_fixture("shift_jis_fixed");
+        let slot: EncodedStringSlot = serde_json::from_value(value["slot"].clone()).unwrap();
+
+        let report = slot.preflight("日\u{20BB7}", &[], None);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let diagnostic = &report.diagnostics[0];
+        assert_eq!(diagnostic.code, STRING_SLOT_INVALID_ENCODING);
+        assert_eq!(diagnostic.slot_id, "sjis-fixed-line");
+        assert_eq!(diagnostic.byte_range, ByteSpan::new(128, 140).unwrap());
+        // 日 encodes to 2 Shift-JIS bytes, so the offending char is index 1 at
+        // encoded byte offset 2.
+        assert!(
+            diagnostic.message.contains("char index 1"),
+            "{}",
+            diagnostic.message
+        );
+        assert!(
+            diagnostic.message.contains("encoded byte offset 2"),
+            "{}",
+            diagnostic.message
+        );
+    }
+
+    #[test]
+    fn encoded_string_slot_distinguishes_over_budget_mappable_from_unmappable() {
+        // Mappable-but-over-budget must fail on the *budget* (overflow), which
+        // is a distinct failure mode from unmappable (invalid encoding). Seven
+        // kanji encode to 14 bytes, exceeding the 12-byte fixed-width budget.
+        let value = string_slot_fixture("shift_jis_fixed");
+        let slot: EncodedStringSlot = serde_json::from_value(value["slot"].clone()).unwrap();
+
+        let report = slot.preflight("日本語日本語日", &[], None);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let diagnostic = &report.diagnostics[0];
+        assert_eq!(diagnostic.code, STRING_SLOT_OVERFLOW);
+        assert_eq!(diagnostic.remediation_code, "shorten_translation");
+        assert_eq!(diagnostic.slot_id, "sjis-fixed-line");
+        assert_eq!(encode_shift_jis("日本語日本語日").unwrap().len(), 14);
     }
 
     #[test]
