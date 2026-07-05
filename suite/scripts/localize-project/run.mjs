@@ -1231,7 +1231,7 @@ function buildInventoryReadiness({ realCorpusSource, projectMetadata, detection,
  * `run.routingPosture.zdr`). Cost is NEVER approximated or hardcoded — it
  * is summed from the real `usage.cost` the live OpenRouter calls reported.
  */
-function summarizeProviderBilledCost(providerRunArtifactsDir) {
+export function summarizeProviderBilledCost(providerRunArtifactsDir) {
   if (!existsSync(providerRunArtifactsDir)) {
     return {
       available: false,

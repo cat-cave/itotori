@@ -40,6 +40,7 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = resolve(
 );
 const {
   verifyProviderRunArtifactsAfterStage,
+  summarizeProviderBilledCost,
   classifyChainFailure,
   assertZeroUnknownOpcodes,
   CHAIN_OUTCOMES,
@@ -190,6 +191,48 @@ function writeProviderProofFixture({ artifactRunId = "openrouter-proof-1" } = {}
     patchReportPath,
     providerRunArtifactsDir,
   };
+}
+
+// Seed a `provider-runs/<runId>/provider-run.json` tree with caller-chosen
+// billed cost + ZDR posture per run, mirroring the real artifact shape written
+// by `writeProviderProofFixture`. Used to exercise `summarizeProviderBilledCost`
+// — the cost-from-real-artifacts path that sums billed micro-USD and counts
+// ZDR-enforced invocations straight off the persisted artifacts.
+function writeProviderRunCostArtifacts(runs) {
+  const providerRunArtifactsDir = mkdtempSync(join(tmpdir(), "itotori-provider-run-cost-"));
+  for (const run of runs) {
+    const runId = run.runId;
+    const providerRunDir = join(providerRunArtifactsDir, runId);
+    mkdirSync(providerRunDir, { recursive: true });
+    writeJson(join(providerRunDir, "provider-run.json"), {
+      schemaVersion: "itotori.provider-run.v0",
+      run: {
+        runId,
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        status: "succeeded",
+        provider: {
+          providerFamily: "openrouter",
+          endpointFamily: "chat-completions",
+          requestedModelId: MODEL_ID,
+          requestedProviderId: PROVIDER_ID,
+          actualModelId: MODEL_ID,
+        },
+        cost: {
+          costKind: run.costKind ?? "billed",
+          amountMicrosUsd: run.amountMicrosUsd,
+        },
+        routingPosture: {
+          order: [PROVIDER_ID],
+          allow_fallbacks: true,
+          data_collection: "deny",
+          zdr: run.zdr,
+        },
+      },
+      request: { requestedModelId: MODEL_ID },
+    });
+  }
+  return { providerRunArtifactsDir };
 }
 
 function writeJson(path, value) {
@@ -588,6 +631,66 @@ test("driver provider artifact proof rejects count-only runId mismatches", () =>
     );
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("summarizeProviderBilledCost sums billed cost + counts ZDR from real provider-run.json artifacts", () => {
+  // Seed TWO real provider-run.json artifacts with known billed cost + ZDR
+  // posture so the cost-from-real-artifacts path has to READ + SUM the on-disk
+  // artifacts (not a mock). One run is billed+ZDR, the other billed but with
+  // ZDR NOT enforced — so a correct summary sums both costs yet counts only
+  // one ZDR-enforced invocation.
+  const { providerRunArtifactsDir } = writeProviderRunCostArtifacts([
+    { runId: "openrouter-cost-1", amountMicrosUsd: 2_070_000, zdr: true },
+    { runId: "openrouter-cost-2", amountMicrosUsd: 930_000, zdr: false },
+  ]);
+  try {
+    const summary = summarizeProviderBilledCost(providerRunArtifactsDir);
+    assert.equal(summary.available, true);
+    assert.equal(summary.invocationCount, 2);
+    // 2_070_000 + 930_000 == 3_000_000 micro-USD, summed off the real artifacts.
+    assert.equal(summary.billedMicrosUsd, 3_000_000);
+    assert.equal(summary.billedUsd, "3.00000000");
+    // Only the first run had routingPosture.zdr === true.
+    assert.equal(summary.zdrEnforcedCount, 1);
+  } finally {
+    rmSync(providerRunArtifactsDir, { recursive: true, force: true });
+  }
+});
+
+test("summarizeProviderBilledCost ignores non-billed cost artifacts and reports absent dir", () => {
+  // A missing artifacts dir yields the zeroed, unavailable summary.
+  const absent = summarizeProviderBilledCost(
+    join(tmpdir(), `itotori-provider-run-cost-absent-${process.pid}`),
+  );
+  assert.deepEqual(absent, {
+    available: false,
+    invocationCount: 0,
+    billedMicrosUsd: 0,
+    billedUsd: "0.00000000",
+    zdrEnforcedCount: 0,
+  });
+
+  // An estimated (non-"billed") cost artifact is counted as an invocation but
+  // must NOT contribute to the billed total — cost is summed only from real
+  // billed amounts. The billed run alongside it is the only ZDR-enforced one.
+  const { providerRunArtifactsDir } = writeProviderRunCostArtifacts([
+    { runId: "openrouter-billed", amountMicrosUsd: 1_500_000, zdr: true },
+    {
+      runId: "openrouter-estimated",
+      amountMicrosUsd: 9_000_000,
+      costKind: "estimated",
+      zdr: false,
+    },
+  ]);
+  try {
+    const summary = summarizeProviderBilledCost(providerRunArtifactsDir);
+    assert.equal(summary.invocationCount, 2);
+    assert.equal(summary.billedMicrosUsd, 1_500_000);
+    assert.equal(summary.billedUsd, "1.50000000");
+    assert.equal(summary.zdrEnforcedCount, 1);
+  } finally {
+    rmSync(providerRunArtifactsDir, { recursive: true, force: true });
   }
 });
 
