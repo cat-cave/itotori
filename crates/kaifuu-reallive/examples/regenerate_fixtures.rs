@@ -19,10 +19,21 @@ use kaifuu_reallive::{
 
 const SLOT: u16 = 1;
 
+/// Resolve this crate's manifest directory for locating the tracked fixtures
+/// tree this generator (re)writes.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so an example binary
+/// reused from a different (since-removed) worktree would target a dead path.
+/// `cargo run --example` sets `CARGO_MANIFEST_DIR` in the RUNTIME environment to
+/// the LIVE crate directory of the current invocation; prefer that, falling back
+/// to the compile-time constant only when run outside cargo.
+fn manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures");
+    let base = manifest_dir().join("tests").join("fixtures");
 
     write_seen(&base, "smoke-scene-001", &smoke_scene_001())?;
     write_seen(&base, "truncated-scene-001", &truncated_scene_001())?;

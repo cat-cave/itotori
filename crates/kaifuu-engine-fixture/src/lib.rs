@@ -46,6 +46,23 @@ use kaifuu_core::{
 };
 use serde_json::{Value, json};
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so a
+/// test binary reused from a different (since-removed) worktree points fixture
+/// reads at a dead path and fails with an opaque `Os { code: 2, NotFound }`.
+/// `cargo test` sets `CARGO_MANIFEST_DIR` in the test binary's RUNTIME
+/// environment to the LIVE crate directory of the current invocation; prefer
+/// that, falling back to the compile-time constant only when run outside cargo.
+/// Lookup only — never writes, so tracked fixtures stay strictly read-only.
+#[cfg(test)]
+pub(crate) fn test_manifest_dir() -> std::path::PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR").map_or_else(
+        || std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        std::path::PathBuf::from,
+    )
+}
+
 pub const FIXTURE_ADAPTER_ID: &str = "kaifuu.fixture";
 pub const XP3_DETECTOR_ADAPTER_ID: &str = "kaifuu.kirikiri_xp3";
 pub const SIGLUS_DETECTOR_ADAPTER_ID: &str = "kaifuu.siglus";
@@ -6138,7 +6155,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn repo_root() -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+        crate::test_manifest_dir().join("../..")
     }
 
     fn public_fixture_dir() -> std::path::PathBuf {
@@ -6187,7 +6204,7 @@ mod tests {
     }
 
     fn hello_fixture_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
+        crate::test_manifest_dir().join("../../fixtures/hello-game")
     }
 
     fn expected_asset_inventory_path() -> PathBuf {
@@ -9237,7 +9254,7 @@ mod tests {
     fn reallive_174_fixture_dir(name: &str) -> PathBuf {
         // Build a writable temp dir containing the bridge-inventory-001
         // SEEN.TXT / Gameexe.ini fixtures from the kaifuu-reallive crate.
-        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        let src_dir = crate::test_manifest_dir()
             .join("../kaifuu-reallive/tests/fixtures/bridge-inventory-001");
         let seen_bytes = fs::read(src_dir.join("SEEN.TXT")).unwrap();
         let gameexe_bytes = fs::read(src_dir.join("Gameexe.ini")).unwrap();

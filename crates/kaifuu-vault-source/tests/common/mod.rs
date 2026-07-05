@@ -24,6 +24,18 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
+/// reused from a different (since-removed) worktree would point fixture reads at
+/// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
+/// RUNTIME environment to the LIVE crate directory; prefer that, falling back to
+/// the compile-time constant only outside cargo.
+pub fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 /// Neutralise the ambient `ITOTORI_VAULT_ROOT` / `ITOTORI_SCRATCH_ROOT`
 /// environment variables so tests that pass an explicit `vault_root_override`
 /// are deterministic regardless of the surrounding shell.
@@ -113,8 +125,7 @@ impl SyntheticVault {
         .unwrap();
 
         // Materialise catalog.db from seed.sql.
-        let seed_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/synthetic-vault/seed.sql");
+        let seed_path = test_manifest_dir().join("tests/fixtures/synthetic-vault/seed.sql");
         let seed_sql = std::fs::read_to_string(&seed_path).unwrap();
         let catalog_path = vault_root.join("catalog.db");
         let conn = Connection::open(&catalog_path).unwrap();

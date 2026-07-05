@@ -191,7 +191,7 @@ fn this_crate_has_no_references_to_kaifuu_secrets_local() {
     // Acceptance criterion: secrets in `.kaifuu/secrets.local/` remain
     // Linux-side and are never read from or written into the vault by
     // this adapter. Verified by inspection of the crate's sources.
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let root = common::test_manifest_dir().join("src");
     let mut hits = Vec::new();
     walk_collect_secret_references(&root, &mut hits);
     assert!(

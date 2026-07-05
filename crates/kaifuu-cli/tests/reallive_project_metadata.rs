@@ -7,12 +7,24 @@ use kaifuu_reallive::{
 };
 use serde_json::Value;
 
+/// Resolve this crate's manifest directory (runtime `CARGO_MANIFEST_DIR`).
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
+/// reused from a different (since-removed) worktree would resolve to a dead
+/// path. `cargo test` sets `CARGO_MANIFEST_DIR` in the RUNTIME environment to
+/// the LIVE crate directory; prefer that, falling back to the compile-time
+/// constant only outside cargo.
+fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 fn kaifuu_cli_binary() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_BIN_EXE_kaifuu-cli"));
     if path.exists() {
         return path;
     }
-    path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    path = test_manifest_dir()
         .parent()
         .and_then(|p| p.parent())
         .map(|p| p.join("target/debug/kaifuu-cli"))

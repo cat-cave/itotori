@@ -13,9 +13,20 @@ use std::path::PathBuf;
 use kaifuu_siglus::{SiglusOpcode, parse_scene_bytecode};
 use serde_json::Value;
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
+/// reused from a different (since-removed) worktree would point fixture reads at
+/// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
+/// RUNTIME environment to the LIVE crate directory; prefer that, falling back to
+/// the compile-time constant only outside cargo.
+fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 fn manifest_value() -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/synthetic/coverage-manifest.v0.json");
+    let path = test_manifest_dir().join("../../fixtures/synthetic/coverage-manifest.v0.json");
     let bytes = std::fs::read(&path)
         .unwrap_or_else(|err| panic!("read coverage manifest {}: {err}", path.display()));
     serde_json::from_slice(&bytes).expect("coverage manifest is valid JSON")

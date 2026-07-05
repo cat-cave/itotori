@@ -22,8 +22,20 @@ use kaifuu_siglus::{
     run_known_key_smoke_from_fixture,
 };
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
+/// reused from a different (since-removed) worktree would point fixture reads at
+/// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
+/// RUNTIME environment to the LIVE crate directory; prefer that, falling back to
+/// the compile-time constant only outside cargo.
+fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/kaifuu/siglus")
+    test_manifest_dir().join("../../fixtures/kaifuu/siglus")
 }
 
 fn load_fixture() -> SiglusKnownKeySmokeFixture {

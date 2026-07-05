@@ -11,6 +11,21 @@ use kaifuu_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so a
+/// test binary reused from a different (since-removed) worktree points fixture
+/// reads at a dead path and fails with an opaque `Os { code: 2, NotFound }`.
+/// `cargo test` sets `CARGO_MANIFEST_DIR` in the test binary's RUNTIME
+/// environment to the LIVE crate directory of the current invocation; prefer
+/// that, falling back to the compile-time constant only when run outside cargo.
+/// Lookup only — never writes, so tracked fixtures stay strictly read-only.
+#[cfg(test)]
+pub(crate) fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 // KAIFUU-171 — end-to-end encrypted-XP3 contract scaffolding harness. Lives in
 // this crate because it is the only one that can reach both the kaifuu-core
 // XP3 contract functions and the delta apply contract.

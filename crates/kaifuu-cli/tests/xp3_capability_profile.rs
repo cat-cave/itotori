@@ -11,7 +11,7 @@
 //! used; the report carries only counts and hashes.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::Value;
@@ -20,8 +20,20 @@ fn kaifuu_cli_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_kaifuu-cli"))
 }
 
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
+/// reused from a different (since-removed) worktree would point fixture reads at
+/// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
+/// RUNTIME environment to the LIVE crate directory; prefer that, falling back to
+/// the compile-time constant only outside cargo.
+fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 fn kirikiri_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+    test_manifest_dir()
         .join("../..")
         .join("fixtures/kaifuu/kirikiri")
 }

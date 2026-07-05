@@ -3259,6 +3259,22 @@ fn flag_values<'a>(args: &'a [String], name: &str) -> Vec<&'a str> {
 mod tests {
     use super::*;
 
+    /// Resolve this crate's manifest directory for locating tracked test
+    /// fixtures.
+    ///
+    /// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so
+    /// a test binary reused from a different (since-removed) worktree points
+    /// fixture reads at a dead path and fails with an opaque
+    /// `Os { code: 2, NotFound }`. `cargo test` sets `CARGO_MANIFEST_DIR` in the
+    /// test binary's RUNTIME environment to the LIVE crate directory of the
+    /// current invocation; prefer that, falling back to the compile-time
+    /// constant only when run outside cargo. Lookup only — never writes, so
+    /// tracked fixtures stay strictly read-only.
+    fn test_manifest_dir() -> PathBuf {
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+    }
+
     /// ALPHA-006a — the alpha extract entrypoint sources Oshioki Sweetie HD
     /// BY-ID through the read-only vault adapter and yields a `Seen.txt` whose
     /// per-file sha256 equals the known direct-path bytes. Env-gated + ignored;
@@ -3509,17 +3525,15 @@ mod tests {
     }
 
     fn public_fixture_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
+        test_manifest_dir().join("../../fixtures/hello-game")
     }
 
     fn public_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(relative_path)
+        test_manifest_dir().join("../..").join(relative_path)
     }
 
     fn core_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        test_manifest_dir()
             .join("../kaifuu-core")
             .join(relative_path)
     }
@@ -9655,7 +9669,7 @@ mod tests {
     // =========================================================================
 
     fn kirikiri_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/kirikiri")
             .join(relative_path)
@@ -10289,7 +10303,7 @@ mod tests {
     // ----- KAIFUU-039 — RPG Maker MV/MZ encrypted-media readiness CLI -----
 
     fn rpgmaker_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/rpgmaker")
             .join(relative_path)

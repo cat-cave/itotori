@@ -709,7 +709,7 @@ mod tests {
     use super::*;
 
     fn fixture_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/public/kaifuu-encrypted-xp3-contract-scaffold")
     }
