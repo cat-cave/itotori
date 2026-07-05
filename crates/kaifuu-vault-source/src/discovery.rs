@@ -293,32 +293,45 @@ fn load_candidate(conn: &Connection, rid: i64) -> Result<ReleaseCandidate, Vault
         )
         .map_err(map_query_err)?;
 
-    let engine: Option<String> = conn
-        .query_row(
-            "SELECT value FROM v_current_facts \
+    // Distinguish a legitimately-absent fact (QueryReturnedNoRows -> None)
+    // from a real query/decode/schema-drift/corruption error, which must
+    // propagate as a structured error rather than being silently swallowed
+    // to None and masking catalog issues. Mirrors the ByEngineClaim path.
+    let engine: Option<String> = match conn.query_row(
+        "SELECT value FROM v_current_facts \
              WHERE entity_type = 'release' AND entity_id = ?1 AND field = 'engine'",
-            rusqlite::params![rid],
-            |r| r.get(0),
-        )
-        .ok();
+        rusqlite::params![rid],
+        |r| r.get(0),
+    ) {
+        Ok(value) => Some(value),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(map_query_err(e)),
+    };
 
-    let engine_version: Option<String> = conn
-        .query_row(
-            "SELECT value FROM v_current_facts \
+    let engine_version: Option<String> = match conn.query_row(
+        "SELECT value FROM v_current_facts \
              WHERE entity_type = 'release' AND entity_id = ?1 AND field = 'engine_version'",
-            rusqlite::params![rid],
-            |r| r.get(0),
-        )
-        .ok();
+        rusqlite::params![rid],
+        |r| r.get(0),
+    ) {
+        Ok(value) => Some(value),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(map_query_err(e)),
+    };
 
-    let engine_needs_review = conn
-        .query_row(
-            "SELECT 1 FROM v_facts_needs_review \
+    // A genuine "no matching row" is the benign default (not flagged); any
+    // other error (decode/schema-drift/corruption) must surface rather than
+    // silently defaulting engine_needs_review to false.
+    let engine_needs_review = match conn.query_row(
+        "SELECT 1 FROM v_facts_needs_review \
              WHERE entity_type = 'release' AND entity_id = ?1 AND field = 'engine' LIMIT 1",
-            rusqlite::params![rid],
-            |_| Ok(()),
-        )
-        .is_ok();
+        rusqlite::params![rid],
+        |_| Ok(()),
+    ) {
+        Ok(()) => true,
+        Err(rusqlite::Error::QueryReturnedNoRows) => false,
+        Err(e) => return Err(map_query_err(e)),
+    };
 
     // `DISTINCT` is required under catalog schema v3: v3 widened the
     // `release_languages` primary key from `(release_id, language_code)` to
@@ -447,6 +460,10 @@ mod tests {
                  id INTEGER PRIMARY KEY, work_id INTEGER, \
                  edition_name TEXT, release_date TEXT, store TEXT);\
              INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE v_current_facts (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT, value TEXT);\
+             CREATE TABLE v_facts_needs_review (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT);\
              CREATE TABLE release_languages (release_id INTEGER, language_code);\
              INSERT INTO release_languages (release_id, language_code) \
                  VALUES (1, NULL);\
@@ -471,6 +488,10 @@ mod tests {
                  id INTEGER PRIMARY KEY, work_id INTEGER, \
                  edition_name TEXT, release_date TEXT, store TEXT);\
              INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE v_current_facts (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT, value TEXT);\
+             CREATE TABLE v_facts_needs_review (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT);\
              CREATE TABLE release_languages (release_id INTEGER, language_code);\
              INSERT INTO release_languages (release_id, language_code) \
                  VALUES (1, 'ja');\
@@ -483,5 +504,89 @@ mod tests {
         let candidate = load_candidate(&conn, 1).unwrap();
         assert_eq!(candidate.languages, vec!["ja".to_string()]);
         assert_eq!(candidate.platforms, vec!["windows".to_string()]);
+    }
+
+    #[test]
+    fn load_candidate_returns_benign_none_when_engine_fact_row_is_absent() {
+        // A genuinely-absent engine/engine_version fact (QueryReturnedNoRows)
+        // is the benign default: engine/engine_version None, needs_review
+        // false. This must NOT be conflated with a real DB error.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE releases (\
+                 id INTEGER PRIMARY KEY, work_id INTEGER, \
+                 edition_name TEXT, release_date TEXT, store TEXT);\
+             INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE v_current_facts (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT, value TEXT);\
+             CREATE TABLE v_facts_needs_review (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT);\
+             CREATE TABLE release_languages (release_id INTEGER, language_code);\
+             CREATE TABLE release_platforms (release_id INTEGER, platform TEXT);",
+        )
+        .unwrap();
+
+        let candidate = load_candidate(&conn, 1).unwrap();
+        assert_eq!(candidate.engine, None);
+        assert_eq!(candidate.engine_version, None);
+        assert!(!candidate.engine_needs_review);
+    }
+
+    #[test]
+    fn load_candidate_propagates_engine_fact_decode_error_instead_of_none() {
+        // Regression guard: a real query/decode error on the engine fact
+        // (here an integer value that fails to decode as String) must
+        // PROPAGATE as a typed error, not be silently swallowed to None via
+        // `.ok()`. Same guarantee as the ByEngineClaim path.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE releases (\
+                 id INTEGER PRIMARY KEY, work_id INTEGER, \
+                 edition_name TEXT, release_date TEXT, store TEXT);\
+             INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE v_current_facts (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT, value);\
+             INSERT INTO v_current_facts (entity_type, entity_id, field, value) \
+                 VALUES ('release', 1, 'engine', X'00');\
+             CREATE TABLE v_facts_needs_review (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT);\
+             CREATE TABLE release_languages (release_id INTEGER, language_code);\
+             CREATE TABLE release_platforms (release_id INTEGER, platform TEXT);",
+        )
+        .unwrap();
+
+        let err = load_candidate(&conn, 1)
+            .expect_err("a non-decodable engine fact value must surface a typed error");
+        assert!(
+            matches!(err, VaultSourceError::CatalogSchemaUnsupported { .. }),
+            "expected CatalogSchemaUnsupported, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_candidate_propagates_needs_review_query_error_instead_of_false() {
+        // Regression guard: if the needs-review lookup errors for a reason
+        // other than "no row" (here the view/table is missing -> schema
+        // drift), the loader must surface a typed error rather than defaulting
+        // engine_needs_review to false via `.is_ok()`.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE releases (\
+                 id INTEGER PRIMARY KEY, work_id INTEGER, \
+                 edition_name TEXT, release_date TEXT, store TEXT);\
+             INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE v_current_facts (\
+                 entity_type TEXT, entity_id INTEGER, field TEXT, value TEXT);\
+             CREATE TABLE release_languages (release_id INTEGER, language_code);\
+             CREATE TABLE release_platforms (release_id INTEGER, platform TEXT);",
+        )
+        .unwrap();
+
+        let err = load_candidate(&conn, 1)
+            .expect_err("a missing v_facts_needs_review view must surface a typed error");
+        assert!(
+            matches!(err, VaultSourceError::CatalogSchemaUnsupported { .. }),
+            "expected CatalogSchemaUnsupported, got {err:?}"
+        );
     }
 }
