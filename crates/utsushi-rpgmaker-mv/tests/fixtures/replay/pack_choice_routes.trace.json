@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "linkedEvents": [
+    {
+      "eventKind": "text",
+      "bridgeRefs": [
+        {
+          "sourceUnitKey": "mvmz.map012.ev005.p0.msg000",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000003"
+        }
+      ],
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Yuki",
+        "lines": ["Which road will you take?"]
+      }
+    },
+    {
+      "eventKind": "choice",
+      "payload": {
+        "payloadKind": "choice",
+        "options": [
+          {
+            "label": "The forest path",
+            "routeKey": "route.forest.yuki",
+            "bridgeRef": {
+              "sourceUnitKey": "mvmz.map012.ev005.p0.ch000.opt000",
+              "bridgeUnitId": "019ed050-0000-7000-8000-000000000004"
+            }
+          },
+          {
+            "label": "The mountain pass",
+            "routeKey": "route.mountain.sora",
+            "bridgeRef": {
+              "sourceUnitKey": "mvmz.map012.ev005.p0.ch000.opt001",
+              "bridgeUnitId": "019ed050-0000-7000-8000-000000000005"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "finalState": {
+    "switches": [],
+    "variables": []
+  },
+  "diagnostics": []
+}

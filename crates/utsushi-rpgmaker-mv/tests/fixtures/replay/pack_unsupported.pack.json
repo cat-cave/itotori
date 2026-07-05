@@ -1,0 +1,17 @@
+{
+  "eventList": [
+    { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2, "Kaede"] },
+    { "code": 401, "indent": 0, "parameters": ["The door creaked open."] },
+    { "code": 356, "indent": 0, "parameters": ["PluginCommand doSomething"] },
+    { "code": 121, "indent": 0, "parameters": [1, 1, 0] },
+    { "code": 205, "indent": 0, "parameters": [3] },
+    { "code": 0, "indent": 0, "parameters": [] }
+  ],
+  "sourceUnitLinks": [
+    {
+      "commandIndex": 0,
+      "sourceUnitKey": "mvmz.map020.ev001.p0.msg000",
+      "bridgeUnitId": "019ed050-0000-7000-8000-000000000006"
+    }
+  ]
+}

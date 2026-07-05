@@ -1,0 +1,34 @@
+{
+  "eventList": [
+    { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2, "Yuki"] },
+    { "code": 401, "indent": 0, "parameters": ["Which road will you take?"] },
+    { "code": 102, "indent": 0, "parameters": [["The forest path", "The mountain pass"], 1] },
+    { "code": 0, "indent": 0, "parameters": [] }
+  ],
+  "sourceUnitLinks": [
+    {
+      "commandIndex": 0,
+      "sourceUnitKey": "mvmz.map012.ev005.p0.msg000",
+      "bridgeUnitId": "019ed050-0000-7000-8000-000000000003"
+    }
+  ],
+  "routeAlignments": [
+    {
+      "commandIndex": 2,
+      "options": [
+        {
+          "optionIndex": 0,
+          "routeKey": "route.forest.yuki",
+          "sourceUnitKey": "mvmz.map012.ev005.p0.ch000.opt000",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000004"
+        },
+        {
+          "optionIndex": 1,
+          "routeKey": "route.mountain.sora",
+          "sourceUnitKey": "mvmz.map012.ev005.p0.ch000.opt001",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000005"
+        }
+      ]
+    }
+  ]
+}

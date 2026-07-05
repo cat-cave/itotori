@@ -1,0 +1,22 @@
+{
+  "eventList": [
+    { "code": 101, "indent": 0, "parameters": ["face", 0, 0, 2, "Yuki"] },
+    { "code": 401, "indent": 0, "parameters": ["Good morning."] },
+    { "code": 401, "indent": 0, "parameters": ["The festival starts today."] },
+    { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2, "Sora"] },
+    { "code": 401, "indent": 0, "parameters": ["I can't wait!"] },
+    { "code": 0, "indent": 0, "parameters": [] }
+  ],
+  "sourceUnitLinks": [
+    {
+      "commandIndex": 0,
+      "sourceUnitKey": "mvmz.map012.ev003.p0.msg000",
+      "bridgeUnitId": "019ed050-0000-7000-8000-000000000001"
+    },
+    {
+      "commandIndex": 3,
+      "sourceUnitKey": "mvmz.map012.ev003.p0.msg001",
+      "bridgeUnitId": "019ed050-0000-7000-8000-000000000002"
+    }
+  ]
+}

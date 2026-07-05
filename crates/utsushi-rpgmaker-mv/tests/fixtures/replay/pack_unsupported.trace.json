@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "linkedEvents": [
+    {
+      "eventKind": "text",
+      "bridgeRefs": [
+        {
+          "sourceUnitKey": "mvmz.map020.ev001.p0.msg000",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000006"
+        }
+      ],
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Kaede",
+        "lines": ["The door creaked open."]
+      }
+    }
+  ],
+  "finalState": {
+    "switches": [{ "switchId": 1, "value": true }],
+    "variables": []
+  },
+  "diagnostics": [
+    {
+      "code": 356,
+      "commandIndex": 2,
+      "severity": "unsupported",
+      "reasonKind": "command_outside_subset",
+      "message": "event command code 356 is outside the declared replay subset"
+    },
+    {
+      "code": 205,
+      "commandIndex": 4,
+      "severity": "unsupported",
+      "reasonKind": "command_outside_subset",
+      "message": "event command code 205 is outside the declared replay subset"
+    }
+  ]
+}

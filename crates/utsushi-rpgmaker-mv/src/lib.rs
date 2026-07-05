@@ -66,10 +66,15 @@
 #![forbid(unsafe_code)]
 
 pub mod event_data;
+pub mod pack;
 pub mod port;
 pub mod replay;
 
 pub use event_data::{DataDir, DataLayout, EventDataError, MessageLine, PlaybackProgram, TextRole};
+pub use pack::{
+    LinkedChoiceEvent, LinkedChoiceOption, LinkedEvent, LinkedTextEvent, OptionAlignment,
+    PackError, PackOutcome, ReplayPack, SourceUnitLink, replay_pack,
+};
 pub use port::{RpgmakerMvObservationSinks, RpgmakerMvTextSink, UtsushiRpgmakerMvPort};
 pub use replay::{
     DiagnosticReason, DiagnosticSeverity, ReplayDiagnostic, ReplayEvent, ReplayOutcome,
