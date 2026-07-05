@@ -190,6 +190,7 @@ pub use protected_spans::{
 pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
 pub use scope::TranslationScope;
 pub use xor2::{
-    XOR2_KEY_LEN, XOR2_SEGMENT_LENGTH, XOR2_SEGMENT_OFFSET, Xor2Cipher, Xor2DecScene, Xor2Report,
-    compiler_version_uses_xor2, recover_and_decrypt_archive, recover_archive_cipher,
+    DecompressedArchive, XOR2_KEY_LEN, XOR2_SEGMENT_LENGTH, XOR2_SEGMENT_OFFSET, Xor2Cipher,
+    Xor2DecScene, Xor2Report, compiler_version_uses_xor2, decompress_archive_scenes,
+    recover_and_decrypt_archive, recover_archive_cipher,
 };

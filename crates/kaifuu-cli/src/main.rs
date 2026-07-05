@@ -326,8 +326,8 @@ fn run_with_args_and_registry(
 /// `--bundle-output`.
 fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
-        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, Xor2DecScene,
-        compiler_version_uses_xor2, decompress_avg32, gameexe::parse_gameexe_inventory,
+        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, compiler_version_uses_xor2,
+        decompress_archive_scenes, decompress_avg32, gameexe::parse_gameexe_inventory,
         parse_archive, parse_real_bytecode, produce_bundle, recover_and_decrypt_archive,
     };
 
@@ -429,40 +429,16 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     // scene. Gated on `compiler_version_uses_xor2`, so non-xor2 titles
     // (e.g. Kanon's 10002) take the original single-scene path unchanged.
     let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
-        let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(index.entries.len());
-        let mut target_index: Option<usize> = None;
-        for other in &index.entries {
-            let off = other.byte_offset as usize;
-            let end = off + other.byte_len as usize;
-            if end > seen_bytes.len() {
-                continue;
-            }
-            let blob = &seen_bytes[off..end];
-            let Ok(other_header) = SceneHeader::parse(blob) else {
-                continue;
-            };
-            let bo = other_header.bytecode_offset as usize;
-            let bc = other_header.bytecode_compressed_size as usize;
-            let bu = other_header.bytecode_uncompressed_size as usize;
-            if bo + bc > blob.len() {
-                continue;
-            }
-            let Ok(dec) = decompress_avg32(&blob[bo..bo + bc], bu) else {
-                continue;
-            };
-            if other.scene_id == scene_id {
-                target_index = Some(scenes.len());
-            }
-            scenes.push(Xor2DecScene {
-                compiler_version: other_header.compiler_version,
-                bytecode: dec,
-            });
-        }
+        // Build the decompressed corpus through the single shared helper so the
+        // extract and patchback paths cannot diverge on which scenes feed key
+        // recovery (see `decompress_archive_scenes`).
+        let mut corpus = decompress_archive_scenes(&seen_bytes, &index);
+        let target_index = corpus.position_of(scene_id);
         // Recover + validate-before-consume the per-game key over the whole
         // archive; scenes whose compiler_version does not set use_xor_2 are
         // left untouched. The raw key never crosses this boundary (only a
         // one-way sha256 commitment is surfaced by the report).
-        let report = recover_and_decrypt_archive(&mut scenes);
+        let report = recover_and_decrypt_archive(&mut corpus.scenes);
         if !report.validated {
             return Err(format!(
                 "kaifuu.reallive.xor2.decrypt_failed: scene {scene_id} sets use_xor_2 \
@@ -479,7 +455,7 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         let idx = target_index.ok_or_else(|| -> Box<dyn std::error::Error> {
             format!("scene {scene_id} vanished from archive during xor_2 recovery").into()
         })?;
-        scenes.swap_remove(idx).bytecode
+        corpus.scenes.swap_remove(idx).bytecode
     } else {
         decompressed
     };

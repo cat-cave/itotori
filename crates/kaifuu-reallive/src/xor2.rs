@@ -49,7 +49,10 @@
 
 use sha2::{Digest, Sha256};
 
+use crate::archive::RealLiveSceneIndex;
+use crate::decompressor::decompress_avg32;
 use crate::opcode::parse_real_bytecode;
+use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader};
 
 /// Decompressed-bytecode offset at which the `xor_2` segment begins.
 /// rlvm Key/Visual-Arts constant (`XorKey::xor_offset`).
@@ -76,6 +79,87 @@ pub fn compiler_version_uses_xor2(compiler_version: u32) -> bool {
 pub struct Xor2DecScene {
     pub compiler_version: u32,
     pub bytecode: Vec<u8>,
+}
+
+/// The decompressed corpus of a whole SEEN.TXT archive, produced by
+/// [`decompress_archive_scenes`] and consumed by the cross-scene `xor_2`
+/// key-recovery attack. `scenes[i]` is the decompressed bytecode of the
+/// archive scene whose id is `scene_ids[i]`; the two run in lockstep and the
+/// recovery functions never reorder [`Self::scenes`], so a caller can map a
+/// target scene id to its position with [`Self::position_of`].
+#[derive(Debug, Clone)]
+pub struct DecompressedArchive {
+    /// One entry per successfully-decompressed populated scene, in archive
+    /// directory order. Handed directly to [`recover_and_decrypt_archive`] /
+    /// [`recover_archive_cipher`].
+    pub scenes: Vec<Xor2DecScene>,
+    /// `scene_ids[i]` is the archive scene id of `scenes[i]`.
+    pub scene_ids: Vec<u16>,
+}
+
+impl DecompressedArchive {
+    /// Position of `scene_id` inside [`Self::scenes`], if that scene was
+    /// present and decompressed. `None` when the scene is absent or failed a
+    /// decompress guard.
+    #[must_use]
+    pub fn position_of(&self, scene_id: u16) -> Option<usize> {
+        self.scene_ids.iter().position(|id| *id == scene_id)
+    }
+}
+
+/// Decompress every populated scene of a RealLive SEEN.TXT archive into the
+/// corpus consumed by the cross-scene `xor_2` key-recovery attack
+/// ([`recover_and_decrypt_archive`] / [`recover_archive_cipher`]).
+///
+/// This is the SINGLE source of truth for the decompress -> [`Xor2DecScene`]
+/// corpus loop shared by the extract path (`kaifuu-cli`) and the patchback
+/// path (`patchback::bundle_driven`). Both MUST build the corpus identically:
+/// a divergence in which scenes feed key recovery — or in the `[256, 513)`
+/// known-plaintext sample they contribute — could silently recover a different
+/// key on one path than the other.
+///
+/// Per-scene guards (a scene failing any guard is skipped, never fatal — the
+/// caller surfaces its own target scene's failure with full context):
+/// - the declared `(byte_offset, byte_len)` blob must lie inside `archive_bytes`;
+/// - the [`SceneHeader`] must parse;
+/// - `bytecode_offset` must be `>= SCENE_HEADER_BYTE_LEN` (the bytecode lives
+///   after the fixed header — an offset inside the header region is malformed
+///   and would decompress header bytes as garbage into the corpus) AND
+///   `bytecode_offset + bytecode_compressed_size` must lie inside the blob;
+/// - the AVG32 decompression must succeed.
+#[must_use]
+pub fn decompress_archive_scenes(
+    archive_bytes: &[u8],
+    index: &RealLiveSceneIndex,
+) -> DecompressedArchive {
+    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(index.entries.len());
+    let mut scene_ids: Vec<u16> = Vec::with_capacity(index.entries.len());
+    for entry in &index.entries {
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        if blob_end > archive_bytes.len() {
+            continue;
+        }
+        let blob = &archive_bytes[blob_start..blob_end];
+        let Ok(header) = SceneHeader::parse(blob) else {
+            continue;
+        };
+        let bo = header.bytecode_offset as usize;
+        let bc = header.bytecode_compressed_size as usize;
+        let bu = header.bytecode_uncompressed_size as usize;
+        if bo < SCENE_HEADER_BYTE_LEN || bo + bc > blob.len() {
+            continue;
+        }
+        let Ok(bytecode) = decompress_avg32(&blob[bo..bo + bc], bu) else {
+            continue;
+        };
+        scenes.push(Xor2DecScene {
+            compiler_version: header.compiler_version,
+            bytecode,
+        });
+        scene_ids.push(entry.scene_id);
+    }
+    DecompressedArchive { scenes, scene_ids }
 }
 
 /// Sanitized outcome of [`recover_and_decrypt_archive`]. Counts / offsets /
@@ -568,6 +652,112 @@ mod tests {
             scenes.iter().map(|s| &s.bytecode).collect::<Vec<_>>(),
             before.iter().map(|s| &s.bytecode).collect::<Vec<_>>(),
             "a non-validated candidate must never mutate the corpus"
+        );
+    }
+
+    /// Build a synthetic SEEN.TXT archive with the given scenes. Each tuple is
+    /// `(scene_id, compiler_version, bytecode_offset, plaintext)`. A
+    /// `bytecode_offset` inside the header region models a malformed scene.
+    fn build_archive(scenes: &[(u16, u32, u32, Vec<u8>)]) -> Vec<u8> {
+        use crate::archive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN;
+        use crate::compressor::compress_avg32_literal;
+
+        let dir_len = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let mut directory = vec![0u8; dir_len];
+        let mut payload: Vec<u8> = Vec::new();
+        for (scene_id, compiler_version, bytecode_offset, plaintext) in scenes {
+            let compressed = compress_avg32_literal(plaintext).expect("compress synthetic");
+            let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
+            header[0x04..0x08].copy_from_slice(&compiler_version.to_le_bytes());
+            header[0x20..0x24].copy_from_slice(&bytecode_offset.to_le_bytes());
+            header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
+            header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+            // The compressed payload is placed at SCENE_HEADER_BYTE_LEN; a
+            // malformed `bytecode_offset` (inside the header) still parses but
+            // must be rejected by the shared helper's lower-bound guard.
+            let mut blob = header;
+            blob.extend_from_slice(&compressed);
+
+            let file_offset = dir_len + payload.len();
+            let slot = (*scene_id as usize) * 8;
+            directory[slot..slot + 4].copy_from_slice(&(file_offset as u32).to_le_bytes());
+            directory[slot + 4..slot + 8].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+            payload.extend_from_slice(&blob);
+        }
+        let mut archive = directory;
+        archive.extend_from_slice(&payload);
+        archive
+    }
+
+    #[test]
+    fn decompress_archive_scenes_is_the_single_shared_corpus_source() {
+        use crate::archive::parse_archive;
+
+        // Scenes 1 & 2 are well-formed (bytecode after the 0x1d0 header).
+        // Scene 3 is malformed: bytecode_offset = 0x20 sits INSIDE the header
+        // region — the corrected lower-bound guard must exclude it. This is
+        // exactly the guard the extract path previously LACKED, so before the
+        // dedup extract and patchback disagreed on scene 3's membership.
+        let archive = build_archive(&[
+            (
+                1,
+                110002,
+                SCENE_HEADER_BYTE_LEN as u32,
+                synthetic_clean_scene(220),
+            ),
+            (
+                2,
+                110002,
+                SCENE_HEADER_BYTE_LEN as u32,
+                synthetic_clean_scene(230),
+            ),
+            (3, 110002, 0x20, synthetic_clean_scene(10)),
+        ]);
+        let index = parse_archive(&archive).expect("archive must parse");
+        assert_eq!(index.entries.len(), 3, "all three slots are populated");
+
+        let corpus = decompress_archive_scenes(&archive, &index);
+
+        // The malformed scene 3 is excluded; only the two well-formed scenes
+        // feed key recovery.
+        assert_eq!(
+            corpus.scene_ids,
+            vec![1, 2],
+            "bytecode_offset inside the header must be excluded from the corpus"
+        );
+        assert_eq!(corpus.scenes.len(), 2);
+        assert_eq!(corpus.position_of(1), Some(0));
+        assert_eq!(corpus.position_of(2), Some(1));
+        assert_eq!(
+            corpus.position_of(3),
+            None,
+            "excluded scene has no position"
+        );
+        assert_eq!(
+            corpus.position_of(999),
+            None,
+            "absent scene has no position"
+        );
+
+        // The extract path (whole-archive corpus, target lookup) and the
+        // patchback path (whole-archive corpus, cipher recovery) build the
+        // corpus through this SAME call — assert the two invocations produce
+        // byte-identical corpora so the divergence cannot recur.
+        let extract_corpus = decompress_archive_scenes(&archive, &index);
+        let patchback_corpus = decompress_archive_scenes(&archive, &index);
+        assert_eq!(extract_corpus.scene_ids, patchback_corpus.scene_ids);
+        assert_eq!(
+            extract_corpus
+                .scenes
+                .iter()
+                .map(|s| (s.compiler_version, &s.bytecode))
+                .collect::<Vec<_>>(),
+            patchback_corpus
+                .scenes
+                .iter()
+                .map(|s| (s.compiler_version, &s.bytecode))
+                .collect::<Vec<_>>(),
+            "extract and patchback must build an identical shared corpus"
         );
     }
 

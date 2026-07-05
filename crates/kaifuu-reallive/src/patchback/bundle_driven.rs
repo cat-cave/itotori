@@ -52,7 +52,9 @@ use crate::opcode::{
 };
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
 use crate::scope::TranslationScope;
-use crate::xor2::{Xor2Cipher, Xor2DecScene, compiler_version_uses_xor2, recover_archive_cipher};
+use crate::xor2::{
+    Xor2Cipher, compiler_version_uses_xor2, decompress_archive_scenes, recover_archive_cipher,
+};
 
 /// Stable error codes published per the KAIFUU-211 acceptance criteria.
 pub const PATCHBACK_PROVENANCE_MISMATCH_CODE: &str =
@@ -544,35 +546,12 @@ fn recover_xor2_cipher_if_needed(
 
     // Decompress every populated scene for the cross-scene key recovery (the
     // known-plaintext attack samples the `[256, 513)` segment of every eligible
-    // scene). Scenes that fail to decompress are skipped here; if the EDITED
-    // scene itself is undecodable the emit loop surfaces it with context.
-    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(scene_index.entries.len());
-    for entry in &scene_index.entries {
-        let blob_start = entry.byte_offset as usize;
-        let blob_end = blob_start + entry.byte_len as usize;
-        if blob_end > original_seen_txt.len() {
-            continue;
-        }
-        let blob = &original_seen_txt[blob_start..blob_end];
-        let Ok(header) = SceneHeader::parse(blob) else {
-            continue;
-        };
-        let bo = header.bytecode_offset as usize;
-        let bc = header.bytecode_compressed_size as usize;
-        let bu = header.bytecode_uncompressed_size as usize;
-        if bo < SCENE_HEADER_BYTE_LEN || bo + bc > blob.len() {
-            continue;
-        }
-        let Ok(decompressed) = decompress_avg32(&blob[bo..bo + bc], bu) else {
-            continue;
-        };
-        scenes.push(Xor2DecScene {
-            compiler_version: header.compiler_version,
-            bytecode: decompressed,
-        });
-    }
+    // scene). This uses the single shared helper so the patchback corpus is
+    // built identically to the extract corpus (see `decompress_archive_scenes`)
+    // — a divergence would risk recovering a different key on one path.
+    let corpus = decompress_archive_scenes(original_seen_txt, scene_index);
 
-    match recover_archive_cipher(&scenes) {
+    match recover_archive_cipher(&corpus.scenes) {
         Ok(cipher) => Ok(Some(cipher)),
         Err(report) => Err(PatchbackError::DecompressFailure {
             scene_id: 0,
