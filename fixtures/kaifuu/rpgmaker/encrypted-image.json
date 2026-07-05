@@ -2,7 +2,7 @@
   "schemaVersion": "0.1.0",
   "pathId": "kaifuu-rpgmaker-mv-mz-encrypted-image",
   "sourceNodeId": "KAIFUU-115",
-  "engineFamily": "rpgmaker",
+  "engineFamily": "rpg_maker_mv_mz",
   "entries": [
     {
       "entryId": "image-valid-pictures",

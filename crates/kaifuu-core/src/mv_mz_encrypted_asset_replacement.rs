@@ -82,7 +82,7 @@ use crate::{
 
 pub const MV_MZ_ASSET_REPLACEMENT_SCHEMA_VERSION: &str = "0.1.0";
 
-pub const MV_MZ_ASSET_REPLACEMENT_ENGINE_FAMILY: &str = "rpgmaker";
+pub const MV_MZ_ASSET_REPLACEMENT_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 pub const MV_MZ_ASSET_REPLACEMENT_VARIANT: &str = "mv_or_mz";
 pub const MV_MZ_ASSET_REPLACEMENT_FIXTURE_ID: &str = "kaifuu-rpgmaker-mv-mz-asset-replacement";
 /// The MV/MZ asset-XOR scheme id — shared verbatim with the image/audio paths.
@@ -1170,7 +1170,7 @@ mod tests {
     #[test]
     fn canonical_path_declares_and_validates_every_leg() {
         let path = MvMzAssetReplacementPath::canonical().unwrap();
-        assert_eq!(path.engine_family, "rpgmaker");
+        assert_eq!(path.engine_family, "rpg_maker_mv_mz");
         assert_eq!(path.variant, "mv_or_mz");
         assert_eq!(path.container, ContainerTransform::ProjectAsset);
         assert_eq!(

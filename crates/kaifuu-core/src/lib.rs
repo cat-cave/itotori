@@ -2012,7 +2012,7 @@ fn rpg_maker_mv_mz_surfaces(scan: &ArchiveDetectionScan) -> Vec<ArchiveDetection
             };
             Some(ArchiveDetectionSurface {
                 fixture_id: profile.fixture_id.to_string(),
-                engine_family: "rpgmaker".to_string(),
+                engine_family: "rpg_maker_mv_mz".to_string(),
                 variant: profile.variant.to_string(),
                 container: ContainerTransform::ProjectAsset,
                 crypto: profile.crypto,
@@ -20649,7 +20649,7 @@ mod tests {
         }));
         assert!(rpg_maker.surfaces.iter().any(|surface| {
             surface.fixture_id == "kaifuu-rpgmaker-mv-image-rpgmvp"
-                && surface.engine_family == "rpgmaker"
+                && surface.engine_family == "rpg_maker_mv_mz"
                 && surface.variant == "mv_or_mz"
                 && surface.container == ContainerTransform::ProjectAsset
                 && surface.crypto == CryptoTransform::RpgMakerAssetXor
@@ -20903,7 +20903,7 @@ mod tests {
                 .iter()
                 .find(|surface| surface.fixture_id.ends_with(suffix))
                 .unwrap_or_else(|| panic!("missing surface for suffix {suffix}"));
-            assert_eq!(surface.engine_family, "rpgmaker");
+            assert_eq!(surface.engine_family, "rpg_maker_mv_mz");
             assert_eq!(surface.variant, "mv_or_mz");
             assert_eq!(surface.container, ContainerTransform::ProjectAsset);
             assert_eq!(surface.crypto, CryptoTransform::RpgMakerAssetXor);
@@ -20963,7 +20963,7 @@ mod tests {
             RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES.len()
         );
         for surface in &rpg_maker.surfaces {
-            assert_eq!(surface.engine_family, "rpgmaker");
+            assert_eq!(surface.engine_family, "rpg_maker_mv_mz");
             assert_eq!(surface.variant, "unknown_suffix");
             assert_eq!(surface.container, ContainerTransform::ProjectAsset);
             assert_eq!(surface.crypto, CryptoTransform::Unknown);

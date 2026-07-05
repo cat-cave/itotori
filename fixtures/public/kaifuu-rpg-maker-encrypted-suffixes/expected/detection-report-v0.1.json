@@ -747,7 +747,7 @@
         "surfaces": [
           {
             "fixtureId": "kaifuu-rpgmaker-mv-audio-rpgmvm",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -774,7 +774,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mv-audio-rpgmvo",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -801,7 +801,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mv-image-rpgmvp",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -828,7 +828,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mv-video-rpgmvu",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -855,7 +855,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mz-audio-m4a_",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -882,7 +882,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mz-audio-ogg_",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -909,7 +909,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-mz-image-png_",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "mv_or_mz",
             "container": "project_asset",
             "crypto": "rpg_maker_asset_xor",
@@ -936,7 +936,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-plain-audio-m4a",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "plain_asset",
             "container": "project_asset",
             "crypto": "null_key",
@@ -948,7 +948,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-plain-audio-ogg",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "plain_asset",
             "container": "project_asset",
             "crypto": "null_key",
@@ -960,7 +960,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-plain-image-png",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "plain_asset",
             "container": "project_asset",
             "crypto": "null_key",
@@ -972,7 +972,7 @@
           },
           {
             "fixtureId": "kaifuu-rpgmaker-unknown-webp_",
-            "engineFamily": "rpgmaker",
+            "engineFamily": "rpg_maker_mv_mz",
             "variant": "unknown_suffix",
             "container": "project_asset",
             "crypto": "unknown",

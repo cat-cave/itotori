@@ -66,9 +66,9 @@ pub use crate::mv_mz_asset_xor::MvMzAssetVariantError as MvMzImageVariantError;
 
 pub const MV_MZ_ENCRYPTED_IMAGE_SCHEMA_VERSION: &str = "0.1.0";
 
-/// Canonical `engine_family` wire value for this path (matches the node
-/// acceptance text `engine_family=rpgmaker`).
-pub const MV_MZ_ENCRYPTED_IMAGE_ENGINE_FAMILY: &str = "rpgmaker";
+/// Canonical `engine_family` wire value for this path (the repo-wide
+/// canonical MV/MZ token).
+pub const MV_MZ_ENCRYPTED_IMAGE_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 /// Canonical `variant` wire value (MV and MZ share the asset-XOR scheme).
 pub const MV_MZ_ENCRYPTED_IMAGE_VARIANT: &str = "mv_or_mz";
 /// Stable id of this path / its public fixture.
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn canonical_path_declares_and_validates_every_leg() {
         let path = MvMzEncryptedImagePath::canonical().unwrap();
-        assert_eq!(path.engine_family, "rpgmaker");
+        assert_eq!(path.engine_family, "rpg_maker_mv_mz");
         assert_eq!(path.variant, "mv_or_mz");
         assert_eq!(path.container, ContainerTransform::ProjectAsset);
         assert_eq!(path.codec, CodecTransform::PngImage);

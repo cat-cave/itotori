@@ -52,7 +52,7 @@ pub const MV_MZ_READINESS_SCHEMA_VERSION: &str = "0.1.0";
 pub const MV_MZ_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "0.1.0";
 
 /// Canonical `engine_family` wire value for the readiness record.
-pub const MV_MZ_ENGINE_FAMILY: &str = "rpg_maker";
+pub const MV_MZ_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 /// Canonical `variant` wire value (MV and MZ share the JSON-text corpus).
 pub const MV_MZ_VARIANT: &str = "mv_or_mz";
 
@@ -353,7 +353,7 @@ impl MvMzFixtureProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum MvMzReadinessViolation {
-    /// Record `engine_family` is not `rpg_maker`.
+    /// Record `engine_family` is not `rpg_maker_mv_mz`.
     WrongEngineFamily { found: String },
     /// Record `variant` is not `mv_or_mz`.
     WrongVariant { found: String },
@@ -775,7 +775,7 @@ mod tests {
     #[test]
     fn canonical_record_validates_and_covers_all_roles() {
         let record = MvMzReadinessRecord::canonical();
-        assert_eq!(record.engine_family, "rpg_maker");
+        assert_eq!(record.engine_family, "rpg_maker_mv_mz");
         assert_eq!(record.variant, "mv_or_mz");
         assert_eq!(record.capability, CapabilityLevel::Inventory);
         assert_eq!(record.json_text_surfaces.len(), 6);

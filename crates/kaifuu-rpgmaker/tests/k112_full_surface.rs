@@ -417,7 +417,7 @@ fn capability_tuple_is_honest_and_limited() {
         "the emitted tuple must be honest; violations: {:?}",
         tuple.violations()
     );
-    assert_eq!(tuple.engine_family, "rpg_maker");
+    assert_eq!(tuple.engine_family, "rpg_maker_mv_mz");
     assert_eq!(tuple.variant, "mv_or_mz");
     assert_eq!(tuple.capability, CapabilityLevel::Patch);
 

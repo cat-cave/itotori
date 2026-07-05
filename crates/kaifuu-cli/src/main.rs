@@ -8039,7 +8039,7 @@ mod tests {
         assert_eq!(rpg_maker.detected_variant, "mv_or_mz_with_unknown_suffix");
         assert!(rpg_maker.surfaces.iter().any(|surface| {
             surface.fixture_id == "kaifuu-rpgmaker-mv-image-rpgmvp"
-                && surface.engine_family == "rpgmaker"
+                && surface.engine_family == "rpg_maker_mv_mz"
                 && surface.variant == "mv_or_mz"
                 && surface.container == ContainerTransform::ProjectAsset
                 && surface.crypto == CryptoTransform::RpgMakerAssetXor
