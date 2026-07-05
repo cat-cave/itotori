@@ -785,6 +785,33 @@ pub fn validate_contract_compatibility_report_v02(value: &Value) -> BridgeContra
     Ok(())
 }
 
+/// Validate a v0.2 patch-export bundle.
+///
+/// # Duplicate protected-span policy (KAIFUU-170)
+///
+/// A `protectedSpanMappings[]` entry may be one of two shapes, and the two are
+/// deliberately governed by different duplicate rules:
+///
+/// - **Legacy (v0.1-shaped) spans** carry only `raw` plus a target byte range
+///   and no source identity (`sourceSpanId`/`sourceStartByte`/`sourceEndByte`).
+///   These are **compatibility-preserving**: a duplicate `raw` value is
+///   ALLOWED. The same protected literal (a variable token, a markup tag, a
+///   glossary term) legitimately recurs inside one unit, and the distinct
+///   target byte ranges disambiguate the occurrences. Rejecting duplicate raw
+///   would drop faithful coverage of repeated tokens and break patches emitted
+///   by older exporters that never populated source identity.
+/// - **v0.2 source-identity spans** additionally carry a `sourceSpanId`
+///   (UUID7). A `sourceSpanId` names exactly one source span, so it is held to
+///   a **strict identity requirement**: a duplicate `sourceSpanId` within an
+///   entry is an identity collision and is REJECTED with the typed diagnostic
+///   `kaifuu.patch_export.duplicate_source_span_identity`. Two identity spans
+///   with the SAME `raw` but DISTINCT `sourceSpanId`s stay allowed — that is
+///   exactly the reordered/duplicate-raw case source identity exists to carry
+///   (see `MIGRATING-0.2.md`).
+///
+/// This keeps legacy v0.1 raw-only exports genuinely distinct from v0.2
+/// identity-carrying exports: the former preserve duplicates, the latter reject
+/// duplicate identities.
 pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
     let patch = as_record(value, "PatchExportV02")?;
     assert_schema_version(patch, "PatchExportV02")?;
@@ -847,12 +874,25 @@ pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
             "protectedSpanMappings",
             &format!("{label}.protectedSpanMappings"),
         )?;
+        // KAIFUU-170: v0.2 source identities (`sourceSpanId`) must be unique
+        // within an entry (strict identity). Legacy raw-only spans carry no
+        // identity and are intentionally NOT tracked here, so duplicate `raw`
+        // stays compatibility-preserving. See the doc comment above.
+        let mut seen_source_span_ids: HashSet<&str> = HashSet::new();
         for (mapping_index, mapping) in mappings.iter().enumerate() {
             let mapping_label = format!("{label}.protectedSpanMappings[{mapping_index}]");
             let mapping = as_record(mapping, &mapping_label)?;
             assert_required_string(mapping, "raw", &format!("{mapping_label}.raw"))?;
             if let Some(source_span_id) = mapping.get("sourceSpanId") {
                 assert_uuid7_value(source_span_id, &format!("{mapping_label}.sourceSpanId"))?;
+                let source_span_id = source_span_id
+                    .as_str()
+                    .expect("sourceSpanId validated as a string by assert_uuid7_value");
+                if !seen_source_span_ids.insert(source_span_id) {
+                    return error(format!(
+                        "{mapping_label}.sourceSpanId duplicates an earlier protected-span source identity within {label}: kaifuu.patch_export.duplicate_source_span_identity"
+                    ));
+                }
             }
             let source_start = mapping
                 .get("sourceStartByte")

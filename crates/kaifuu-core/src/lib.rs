@@ -28041,6 +28041,85 @@ mod tests {
         }
     }
 
+    /// KAIFUU-170 — legacy (raw-only) protected spans are compatibility-
+    /// preserving: a duplicate `raw` value with no source identity is ALLOWED,
+    /// disambiguated by distinct target byte ranges. This locks in the documented
+    /// legacy v0.1 policy so it stays distinct from the strict v0.2 identity path.
+    #[test]
+    fn patch_export_v02_allows_duplicate_raw_legacy_spans_without_source_identity() {
+        let mut fixture = contract_example_fixture_value("./patch-export-v0.2.json");
+        // The same protected literal "{player}" recurs twice in one unit, each
+        // occurrence carrying only `raw` + a distinct target range (no
+        // sourceSpanId / sourceStartByte / sourceEndByte).
+        fixture["entries"][0]["protectedSpanMappings"] = serde_json::json!([
+            { "raw": "{player}", "targetStart": 0, "targetEnd": 8 },
+            { "raw": "{player}", "targetStart": 20, "targetEnd": 28 },
+        ]);
+        contracts::validate_patch_export_v02(&fixture)
+            .expect("legacy raw-only duplicate protected spans must stay compatibility-preserving");
+    }
+
+    /// KAIFUU-170 — v0.2 source-identity spans are strict: a duplicate
+    /// `sourceSpanId` within an entry is an identity collision and is rejected
+    /// with the typed diagnostic.
+    #[test]
+    fn patch_export_v02_rejects_duplicate_source_span_identity() {
+        let mut fixture = contract_example_fixture_value("./patch-export-v0.2.json");
+        fixture["entries"][0]["protectedSpanMappings"] = serde_json::json!([
+            {
+                "raw": "{player}",
+                "sourceSpanId": "019ed001-0000-7000-8000-000000000801",
+                "sourceStartByte": 0,
+                "sourceEndByte": 8,
+                "targetStart": 0,
+                "targetEnd": 8
+            },
+            {
+                "raw": "{other}",
+                "sourceSpanId": "019ed001-0000-7000-8000-000000000801",
+                "sourceStartByte": 9,
+                "sourceEndByte": 16,
+                "targetStart": 20,
+                "targetEnd": 27
+            },
+        ]);
+        let error = contracts::validate_patch_export_v02(&fixture)
+            .expect_err("duplicate sourceSpanId must be rejected under strict v0.2 identity")
+            .to_string();
+        assert!(
+            error.contains("kaifuu.patch_export.duplicate_source_span_identity"),
+            "rejection must carry the typed diagnostic, got: {error}"
+        );
+    }
+
+    /// KAIFUU-170 — the v0.2 identity path stays distinct from the legacy path:
+    /// two spans with the SAME `raw` but DISTINCT `sourceSpanId`s are allowed
+    /// (the reordered/duplicate-raw case source identity exists to carry).
+    #[test]
+    fn patch_export_v02_allows_duplicate_raw_with_distinct_source_span_identity() {
+        let mut fixture = contract_example_fixture_value("./patch-export-v0.2.json");
+        fixture["entries"][0]["protectedSpanMappings"] = serde_json::json!([
+            {
+                "raw": "{player}",
+                "sourceSpanId": "019ed001-0000-7000-8000-000000000801",
+                "sourceStartByte": 0,
+                "sourceEndByte": 8,
+                "targetStart": 0,
+                "targetEnd": 8
+            },
+            {
+                "raw": "{player}",
+                "sourceSpanId": "019ed001-0000-7000-8000-000000000802",
+                "sourceStartByte": 20,
+                "sourceEndByte": 28,
+                "targetStart": 20,
+                "targetEnd": 28
+            },
+        ]);
+        contracts::validate_patch_export_v02(&fixture)
+            .expect("duplicate raw with distinct source identity must stay allowed under v0.2");
+    }
+
     #[test]
     fn shared_contract_fixture_suite_accepts_permission_local_user_grants() {
         let fixture = contract_example_fixture_value("./permission-local-user-v0.2.json");

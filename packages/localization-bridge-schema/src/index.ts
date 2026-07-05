@@ -5235,8 +5235,22 @@ function assertPatchExportEntryV02(
   assertSourceRevisionV02(entry.sourceRevision, `${label}.sourceRevision`);
   assertString(entry.targetText, `${label}.targetText`);
   const mappings = asArray(entry.protectedSpanMappings, `${label}.protectedSpanMappings`);
+  // KAIFUU-170: v0.2 source identities (`sourceSpanId`) must be unique within an
+  // entry (strict identity). Legacy raw-only spans carry no identity and are
+  // intentionally NOT tracked, so duplicate `raw` stays compatibility-preserving.
+  const seenSourceSpanIds = new Set<string>();
   for (const [index, mapping] of mappings.entries()) {
-    assertProtectedSpanMappingV02(mapping, `${label}.protectedSpanMappings[${index}]`);
+    const mappingLabel = `${label}.protectedSpanMappings[${index}]`;
+    assertProtectedSpanMappingV02(mapping, mappingLabel);
+    const sourceSpanId = (mapping as { sourceSpanId?: unknown }).sourceSpanId;
+    if (typeof sourceSpanId === "string") {
+      if (seenSourceSpanIds.has(sourceSpanId)) {
+        throw new Error(
+          `${mappingLabel}.sourceSpanId duplicates an earlier protected-span source identity within ${label}: kaifuu.patch_export.duplicate_source_span_identity`,
+        );
+      }
+      seenSourceSpanIds.add(sourceSpanId);
+    }
   }
 }
 

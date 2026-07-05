@@ -80,6 +80,17 @@ Do not collapse unknown speakers into a single string or boolean.
   `sourceSpanId` plus `sourceStartByte`/`sourceEndByte` so reordered or
   duplicate raw spans are matched by source identity and explicit target byte
   range, not by source span order.
+- Duplicate protected-span policy (KAIFUU-170): the two span shapes are governed
+  by different duplicate rules. **Legacy raw-only spans** (only `raw` plus a
+  target range, no source identity) are compatibility-preserving — a duplicate
+  `raw` is ALLOWED, because the same protected literal legitimately recurs in a
+  unit and its distinct target range disambiguates it, and older exporters that
+  never populated source identity must keep patching. **v0.2 source-identity
+  spans** (carrying `sourceSpanId`) are strict — a `sourceSpanId` names exactly
+  one source span, so a duplicate `sourceSpanId` within an entry is rejected
+  with `kaifuu.patch_export.duplicate_source_span_identity`. Two identity spans
+  with the same `raw` but distinct `sourceSpanId`s remain allowed (that is the
+  reordered/duplicate-raw case source identity exists to carry).
 - `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
   unit lists. `source_hash_mismatch` includes both expected and actual source
   hashes so stale patches cannot pass silently. `bridge_unit_id_mismatch`

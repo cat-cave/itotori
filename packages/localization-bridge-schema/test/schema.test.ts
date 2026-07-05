@@ -1923,6 +1923,55 @@ describe("localization bridge schema guards", () => {
     );
   });
 
+  it("rejects duplicate source-identity protected spans (KAIFUU-170 strict v0.2 identity)", () => {
+    const bridge = bridgeV02Example();
+    const patchExport = patchExportV02Example(bridge, 1);
+    const entry = asTestRecord(
+      (patchExport.entries as Array<Record<string, unknown>>)[0],
+      "first v0.2 patch export entry",
+    );
+    // Two mappings reusing the SAME sourceSpanId is an identity collision.
+    entry.protectedSpanMappings = [
+      {
+        raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000861",
+        sourceStartByte: 0,
+        sourceEndByte: 6,
+        targetStart: 0,
+        targetEnd: 6,
+      },
+      {
+        raw: "{other}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000861",
+        sourceStartByte: 9,
+        sourceEndByte: 16,
+        targetStart: 11,
+        targetEnd: 18,
+      },
+    ];
+
+    expect(() => assertPatchExportV02(patchExport)).toThrow(
+      /kaifuu\.patch_export\.duplicate_source_span_identity/,
+    );
+  });
+
+  it("accepts legacy raw-only duplicate protected spans (KAIFUU-170 compatibility-preserving)", () => {
+    const bridge = bridgeV02Example();
+    const patchExport = patchExportV02Example(bridge, 1);
+    const entry = asTestRecord(
+      (patchExport.entries as Array<Record<string, unknown>>)[0],
+      "first v0.2 patch export entry",
+    );
+    // Legacy raw-only spans (no sourceSpanId): duplicate `raw` stays allowed,
+    // disambiguated by distinct target ranges.
+    entry.protectedSpanMappings = [
+      { raw: "{name}", targetStart: 0, targetEnd: 6 },
+      { raw: "{name}", targetStart: 11, targetEnd: 17 },
+    ];
+
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+  });
+
   it("reports protected span mapping mismatches for wrong source identity or collapsed duplicates", () => {
     const bridge = bridgeV02Example();
     const unit = asTestRecord(bridgeV02Units(bridge)[0], "first v0.2 unit");
@@ -1953,10 +2002,13 @@ describe("localization bridge schema guards", () => {
       "first v0.2 patch export entry",
     );
     entry.targetText = "{name} and {name}";
+    // Collapsed duplicates: both mappings resolve to the SAME source span (851,
+    // bytes 0..6) via explicit byte-range identity. This stays schema-valid
+    // (KAIFUU-170 only rejects duplicate `sourceSpanId`, which is absent here),
+    // so it reaches the compatibility evaluator, which flags the collapse.
     entry.protectedSpanMappings = [
       {
         raw: "{name}",
-        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
         sourceStartByte: 0,
         sourceEndByte: 6,
         targetStart: 0,
@@ -1964,11 +2016,10 @@ describe("localization bridge schema guards", () => {
       },
       {
         raw: "{name}",
-        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
         sourceStartByte: 0,
         sourceEndByte: 6,
-        targetStart: 0,
-        targetEnd: 6,
+        targetStart: 11,
+        targetEnd: 17,
       },
     ];
 
