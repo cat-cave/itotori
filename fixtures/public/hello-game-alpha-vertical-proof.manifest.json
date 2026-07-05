@@ -24,7 +24,7 @@
       "path": "fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json",
       "role": "alpha-proof-manifest",
       "mediaType": "application/json",
-      "sha256": "779a9d97e2623143b786753ece90c5fee287f399adc69bccbec0fb40641bb45e",
+      "sha256": "a8f8d055aa57328b6e886b07a7dae26a37ee6c83ca4bc95c1d26a3487e497f22",
       "bytes": 6699,
       "redistributable": true
     }

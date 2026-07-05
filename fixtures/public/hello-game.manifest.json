@@ -40,16 +40,16 @@
       "path": "fixtures/hello-game/expected/bridge-v0.2.json",
       "role": "bridge-bundle",
       "mediaType": "application/json",
-      "sha256": "6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc",
-      "bytes": 31595,
+      "sha256": "724e1fa64fb7ff3f5d8b43381435d80b892c0fe3373ee70f1565a5469d595689",
+      "bytes": 31575,
       "redistributable": true
     },
     {
       "path": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
       "role": "patch-export",
       "mediaType": "application/json",
-      "sha256": "1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5",
-      "bytes": 8706,
+      "sha256": "e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a",
+      "bytes": 8686,
       "redistributable": true
     },
     {
@@ -72,8 +72,8 @@
       "path": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
       "role": "delta-package",
       "mediaType": "application/json",
-      "sha256": "a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2",
-      "bytes": 1990,
+      "sha256": "1229878319572b0aee28fd8121c62ec87ffd4b415813c1009debc81cc77666cd",
+      "bytes": 1970,
       "redistributable": true
     },
     {

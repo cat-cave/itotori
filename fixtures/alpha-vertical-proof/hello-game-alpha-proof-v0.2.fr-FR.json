@@ -5,7 +5,7 @@
   "fixture": {
     "fixtureId": "hello-game",
     "publicManifestUri": "fixtures/public/hello-game.manifest.json",
-    "publicManifestHash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20",
+    "publicManifestHash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
     "publicRedistribution": "allowed"
   },
   "engineProfile": {
@@ -35,7 +35,7 @@
       "artifactId": "019ed025-0000-7000-8000-000000000302",
       "artifactKind": "public_fixture_manifest",
       "uri": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20",
+      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
       "mediaType": "application/json",
       "byteSize": 5060
     },
@@ -43,17 +43,17 @@
       "artifactId": "019ed012-0000-7000-8000-000000000001",
       "artifactKind": "bridge_bundle",
       "uri": "fixtures/hello-game/expected/bridge-v0.2.json",
-      "hash": "sha256:6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc",
+      "hash": "sha256:724e1fa64fb7ff3f5d8b43381435d80b892c0fe3373ee70f1565a5469d595689",
       "mediaType": "application/json",
-      "byteSize": 31595
+      "byteSize": 31575
     },
     "patchExport": {
       "artifactId": "019ed012-0000-7000-8000-000000000901",
       "artifactKind": "patch_export",
       "uri": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
-      "hash": "sha256:1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5",
+      "hash": "sha256:e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a",
       "mediaType": "application/json",
-      "byteSize": 8706
+      "byteSize": 8686
     },
     "patchResult": {
       "artifactId": "019ed012-0000-7000-8000-000000000902",
@@ -67,9 +67,9 @@
       "artifactId": "019ed012-0000-7000-8000-000000000903",
       "artifactKind": "delta_package",
       "uri": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
-      "hash": "sha256:a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2",
+      "hash": "sha256:1229878319572b0aee28fd8121c62ec87ffd4b415813c1009debc81cc77666cd",
       "mediaType": "application/json",
-      "byteSize": 1990
+      "byteSize": 1970
     },
     "runtimeReport": {
       "artifactId": "019ed012-0000-7000-8000-000000000904",
@@ -106,7 +106,7 @@
     {
       "scope": "public_fixture_manifest",
       "contentId": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20"
+      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac"
     },
     {
       "scope": "source_bundle",
@@ -116,7 +116,7 @@
     {
       "scope": "bridge_bundle",
       "contentId": "fixtures/hello-game/expected/bridge-v0.2.json",
-      "hash": "sha256:6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc"
+      "hash": "sha256:724e1fa64fb7ff3f5d8b43381435d80b892c0fe3373ee70f1565a5469d595689"
     },
     {
       "scope": "bridge_unit",
@@ -126,7 +126,7 @@
     {
       "scope": "patch_export",
       "contentId": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
-      "hash": "sha256:1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5"
+      "hash": "sha256:e5608e2c45c26aa0414f05be3bfcafd12af0189ece174435a4d227eb49d2180a"
     },
     {
       "scope": "patch_result",
@@ -136,7 +136,7 @@
     {
       "scope": "delta_package",
       "contentId": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
-      "hash": "sha256:a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2"
+      "hash": "sha256:1229878319572b0aee28fd8121c62ec87ffd4b415813c1009debc81cc77666cd"
     },
     {
       "scope": "runtime_report",
