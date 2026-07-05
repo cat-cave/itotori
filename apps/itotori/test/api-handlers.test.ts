@@ -13,6 +13,7 @@ import {
   type ProjectCostReport,
 } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
+import { findUncoveredProjectWorkflowMutations } from "./api-mutation-coverage-guard.js";
 import { assertForbiddenApiMutation } from "../../../packages/itotori-db/test/authorization-test-helpers.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import {
@@ -2131,6 +2132,18 @@ describe("Itotori API handlers", () => {
     const sourcePermissionGateIds = sourceApiPermissionGateIds();
     const sourceMutationRoutes = sourceApiMutationRoutes();
     assertNoUndeclaredAppPermissionCalls();
+
+    // SHARED-026 — shape-robust coverage: every mutating projectWorkflow call,
+    // regardless of routing shape (route-table / switch / helper-predicate),
+    // must be preceded by a requireApiPermission gate. See
+    // api-mutation-coverage-guard.test.ts for the negative fixtures.
+    const apiHandlersSourceUrl = new URL("../src/api-handlers.ts", import.meta.url);
+    expect(
+      findUncoveredProjectWorkflowMutations(
+        readFileSync(apiHandlersSourceUrl, "utf8"),
+        apiHandlersSourceUrl.pathname,
+      ),
+    ).toEqual([]);
 
     expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
       sourcePermissionGateIds.sort(),
