@@ -7,8 +7,8 @@
 //!
 //! The harness emits a v0.2 PatchResult JSON (see
 //! [`crate::contracts::validate_patch_result_v02`]) on every outcome — including
-//! preflight failures — alongside the legacy in-Rust [`crate::PatchResult`]
-//! shape used by the existing `EngineAdapter::patch` callers.
+//! preflight failures. This v0.2 surface is the sole patch-result
+//! representation the harness produces.
 
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
@@ -22,9 +22,9 @@ use sha2::{Digest, Sha256};
 use crate::contracts::validate_patch_result_v02;
 use crate::{
     AdapterCapabilities, BRIDGE_SCHEMA_VERSION_V02, CapabilityStatus,
-    LayeredAccessOperationContract, OperationStatus, PatchResult,
-    SEMANTIC_PATCH_RESULT_OUTPUT_HASH_DRIFT, SEMANTIC_PATCH_RESULT_SOURCE_INCOMPATIBLE,
-    SEMANTIC_PATCH_TRANSACTION_BYTE_BUDGET_EXCEEDED, SEMANTIC_PATCH_TRANSACTION_CANCELLED,
+    LayeredAccessOperationContract, SEMANTIC_PATCH_RESULT_OUTPUT_HASH_DRIFT,
+    SEMANTIC_PATCH_RESULT_SOURCE_INCOMPATIBLE, SEMANTIC_PATCH_TRANSACTION_BYTE_BUDGET_EXCEEDED,
+    SEMANTIC_PATCH_TRANSACTION_CANCELLED,
     SEMANTIC_PATCH_TRANSACTION_EXPECTED_OUTPUT_HASH_MALFORMED,
     SEMANTIC_PATCH_TRANSACTION_PROMOTE_FAILED, SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK,
     SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED, SEMANTIC_PATCH_TRANSACTION_SOURCE_MISSING,
@@ -191,9 +191,6 @@ pub struct PatchTransactionOutcome {
     /// v0.2 PatchResult JSON, guaranteed (in debug builds) to pass
     /// [`crate::contracts::validate_patch_result_v02`].
     pub patch_result_v02: Value,
-    /// Legacy in-Rust struct preserved for existing `EngineAdapter::patch`
-    /// callers.
-    pub legacy_patch_result: PatchResult,
 }
 
 /// Errors signalling caller misuse of the state machine.
@@ -770,7 +767,6 @@ impl<'a> PatchTransaction<'a> {
             TransactionState::Cancelled
         };
         let patch_result_v02 = build_patch_result_v02(&self.config, final_state, &self.diagnostics);
-        let legacy_patch_result = build_legacy_patch_result(&self.config, final_state);
 
         #[cfg(debug_assertions)]
         {
@@ -784,7 +780,6 @@ impl<'a> PatchTransaction<'a> {
         PatchTransactionOutcome {
             final_state,
             patch_result_v02,
-            legacy_patch_result,
         }
     }
 }
@@ -853,36 +848,6 @@ fn is_canonical_sha256(value: &str) -> bool {
     value[7..]
         .bytes()
         .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn build_legacy_patch_result(
-    config: &PatchTransactionConfig<'_>,
-    final_state: TransactionState,
-) -> PatchResult {
-    let status = if final_state == TransactionState::Promoted {
-        OperationStatus::Passed
-    } else {
-        OperationStatus::Failed
-    };
-    let output_hash = if final_state == TransactionState::Promoted {
-        config.expected_output_hash.to_string()
-    } else {
-        String::new()
-    };
-    PatchResult {
-        schema_version: BRIDGE_SCHEMA_VERSION_V02.to_string(),
-        patch_result_id: deterministic_uuid7(&[
-            "patch-tx-rs",
-            config.patch_export_id,
-            config.asset_id,
-            config.run_id,
-            &format!("{final_state:?}"),
-        ]),
-        patch_export_id: config.patch_export_id.to_string(),
-        status,
-        output_hash,
-        failures: vec![],
-    }
 }
 
 fn build_patch_result_v02(
@@ -1221,6 +1186,47 @@ mod tests {
             outcome.patch_result_v02["outputHash"].as_str().unwrap(),
             expected_rollup
         );
+    }
+
+    #[test]
+    fn outcome_carries_only_the_v02_surface_no_legacy_patch_result() {
+        // Regression guard for genaudit1-06 (no-legacy-compat): the transaction
+        // outcome must expose ONLY the v0.2 PatchResult surface. The exhaustive
+        // destructure below fails to compile if any legacy dual-plumbing field
+        // (e.g. the former `legacy_patch_result`) is re-added to the struct.
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("SEEN.TXT");
+        let source = vec![b'A'; 32];
+        write_source(&output_path, &source);
+        let target = vec![b'B'; 32];
+        let expected_source_hash = sha256_hash_bytes(&source);
+        let expected_output_hash = sha256_hash_bytes(&target);
+        let capabilities = capabilities_with_identity_patch();
+        let required = ["identity"];
+        let config = make_config(
+            &output_path,
+            &expected_source_hash,
+            &expected_output_hash,
+            32,
+            64,
+            &required,
+            &capabilities,
+        );
+        let mut transaction = PatchTransaction::new(config);
+        transaction.run_preflight().unwrap();
+        transaction.stage(&target).unwrap();
+        transaction.verify().unwrap();
+        transaction.promote().unwrap();
+
+        let outcome = transaction.into_outcome();
+        // Exhaustive destructure: adding a field back breaks this line.
+        let PatchTransactionOutcome {
+            final_state,
+            patch_result_v02,
+        } = outcome;
+        assert_eq!(final_state, TransactionState::Promoted);
+        assert_eq!(patch_result_v02["status"], "passed");
+        assert!(validate_patch_result_v02(&patch_result_v02).is_ok());
     }
 
     #[test]
