@@ -29,6 +29,9 @@ import * as ts from "typescript";
  * rather than silently skipped.
  */
 export const READ_ONLY_PROJECT_WORKFLOW_METHODS: ReadonlySet<string> = new Set([
+  // ITOTORI-050 — the server-side project/branch ownership lookup consumed by
+  // the mutation scoping policy. A read, never a mutation.
+  "listLocaleBranchIdentities",
   "getDashboardStatus",
   "getDashboardDecisions",
   "getRuntimeStatus",

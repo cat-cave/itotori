@@ -10,6 +10,7 @@ import {
   reviewerQueueActionValues,
   type CandidateAssetRecord,
   type CatalogConflictReviewReadModel,
+  type LocaleBranchIdentity,
   type Permission,
   type ProjectCostReport,
 } from "@itotori/db";
@@ -88,6 +89,7 @@ const candidateAssetApiFixture: CandidateAssetRecord = {
 type ApiMutationPermissionGateId = keyof typeof apiMutationPermissionGates;
 type MutatingProjectWorkflowService = Exclude<
   keyof ItotoriApiServices["projectWorkflow"],
+  | "listLocaleBranchIdentities"
   | "getDashboardStatus"
   | "getDashboardDecisions"
   | "getRuntimeStatus"
@@ -113,6 +115,7 @@ type ApiMutationRoute = {
 };
 
 const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projectWorkflow"]>([
+  "listLocaleBranchIdentities",
   "getDashboardStatus",
   "getDashboardDecisions",
   "getRuntimeStatus",
@@ -2221,9 +2224,186 @@ describe("Itotori API handlers", () => {
 
     expect(response.statusCode).toBe(200);
     expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
-      nonJapaneseTargetProjectFixture,
+      { ...nonJapaneseTargetProjectFixture, localeBranchId: "locale-de-en-us" },
       "en-US",
     );
+  });
+
+  describe("ITOTORI-050 server-side project/branch ownership scoping", () => {
+    it("drafts an in-scope branch and writes with the SERVER-SIDE branch id", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/branches", {
+          project: projectFixture,
+          targetLocale: "fr-FR",
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(200);
+      // The write is keyed on the server-side authoritative branch, not the
+      // client's copy — proving the client cannot smuggle a foreign branch.
+      expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "project-1", localeBranchId: "locale-1" }),
+        "fr-FR",
+      );
+      expect(services.projectWorkflow.listLocaleBranchIdentities).toHaveBeenCalledWith("project-1");
+    });
+
+    it("refuses a branch draft whose client-supplied ProjectState carries a FORGED branch id", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/branches", {
+          // Attacker keeps the owned projectId (passes assertPathProject) but
+          // forges a branch id the server does not attribute to project-1.
+          project: { ...projectFixture, localeBranchId: "locale-owned-by-someone-else" },
+          targetLocale: "fr-FR",
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
+    });
+
+    it("refuses a branch draft against an UNKNOWN / out-of-scope project", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-not-owned/branches", {
+          project: {
+            ...projectFixture,
+            projectId: "project-not-owned",
+            localeBranchId: "locale-1",
+          },
+          targetLocale: "fr-FR",
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
+    });
+
+    it("refuses runtime-evidence ingest whose ProjectState carries a foreign branch id", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/runtime-evidence", {
+          project: { ...projectFixture, localeBranchId: "locale-forged" },
+          runtimeReport: runtimeReportFixture,
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.ingestRuntimeReport).not.toHaveBeenCalled();
+    });
+
+    it("ingests in-scope runtime-evidence with the server-side branch id", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/runtime-evidence", {
+          project: projectFixture,
+          runtimeReport: runtimeReportFixture,
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(200);
+      expect(services.projectWorkflow.ingestRuntimeReport).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "project-1", localeBranchId: "locale-1" }),
+        runtimeReportFixture,
+      );
+    });
+
+    it("refuses a finding record naming a foreign branch id", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/findings", {
+          localeBranchId: "locale-forged",
+          finding: findingRecordFixture,
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.recordFinding).not.toHaveBeenCalled();
+    });
+
+    it("records a project-scoped finding (no branch id) once the project is server-side verified", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/findings", { finding: findingRecordFixture }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(200);
+      expect(services.projectWorkflow.recordFinding).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a decision record against an unknown project", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-not-owned/decisions", {
+          localeBranchId: "locale-1",
+          event: decisionEventFixture,
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.recordDecision).not.toHaveBeenCalled();
+    });
+
+    it("refuses a benchmark whose (real) branch is not owned by the project in the path", async () => {
+      const services = serviceFixture();
+
+      // The report's branch (019ed006-…-b1) is a real branch of project-1, but
+      // it is submitted under project-de-en, which does NOT own it. The
+      // server-side ownership check refuses it before recording.
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-de-en/benchmarks", {
+          benchmarkReport: benchmarkReportFixture,
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.recordBenchmarkReport).not.toHaveBeenCalled();
+    });
+
+    it("checks the ownership scope only AFTER the permission gate", async () => {
+      const services = serviceFixture();
+      services.authorization.requirePermission.mockRejectedValueOnce(
+        new AuthorizationError(deniedActor, permissionValues.draftWrite),
+      );
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/branches", {
+          project: { ...projectFixture, localeBranchId: "locale-forged" },
+          targetLocale: "fr-FR",
+        }),
+        services,
+      );
+
+      // A missing permission is refused before the scope lookup runs at all.
+      expect(response.statusCode).toBe(403);
+      expect(services.projectWorkflow.listLocaleBranchIdentities).not.toHaveBeenCalled();
+      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
+    });
   });
 
   it("rejects malformed request bodies before checking permissions", async () => {
@@ -2574,6 +2754,36 @@ function post(pathname: string, body: unknown): ItotoriApiRequest {
   return { method: "POST", pathname, body };
 }
 
+function localeBranchIdentityFixture(
+  projectId: string,
+  localeBranchId: string,
+): LocaleBranchIdentity {
+  return {
+    localeBranchId,
+    projectId,
+    sourceBundleId: `${projectId}:source-bundle`,
+    sourceBundleRevisionId: `${projectId}:source-bundle:rev-1`,
+    sourceLocale: "ja-JP",
+    targetLocale: "en-US",
+    branchName: localeBranchId,
+    status: "active",
+  };
+}
+
+/**
+ * ITOTORI-050 — the SERVER-SIDE ownership set the scoping policy reads. Only
+ * the branches the fixtures legitimately own are returned; any other
+ * project/branch id resolves to an empty set (unknown project) and is refused.
+ */
+function ownedLocaleBranchIdentitiesFixture(projectId: string): LocaleBranchIdentity[] {
+  const ownedBranchIdsByProject: Record<string, string[]> = {
+    "project-1": ["locale-1", "019ed006-0000-7000-8000-0000000000b1"],
+    "project-de-en": ["locale-de-en-us"],
+  };
+  const branchIds = ownedBranchIdsByProject[projectId] ?? [];
+  return branchIds.map((localeBranchId) => localeBranchIdentityFixture(projectId, localeBranchId));
+}
+
 function apiGate(
   gateId: ApiMutationPermissionGateId,
   request: ItotoriApiRequest,
@@ -2885,6 +3095,9 @@ function serviceFixture(): ItotoriApiServices {
       requirePermission: vi.fn<[Permission], Promise<void>>(async () => {}),
     },
     projectWorkflow: {
+      listLocaleBranchIdentities: vi.fn(async (projectId: string) =>
+        ownedLocaleBranchIdentitiesFixture(projectId),
+      ),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),

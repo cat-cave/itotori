@@ -8,6 +8,7 @@ import type {
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
   ItotoriTranslationMemoryService,
+  LocaleBranchIdentity,
   ProjectCostReport,
   ProjectDashboardStatus,
   ProviderRunLedgerInput,
@@ -164,6 +165,14 @@ export class PatchResultIngestionError extends Error {
 
 export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
+  /**
+   * ITOTORI-050 — the server-side project/branch ownership lookup. Returns the
+   * locale branches the DB attributes to `projectId` (read-only). Project
+   * mutation routes consume this to derive the authoritative branch scope
+   * server-side rather than trusting a client-supplied ProjectState / branch
+   * id. See `services/project-mutation-scope.ts`.
+   */
+  listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
@@ -226,6 +235,13 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async reset(): Promise<void> {
     await this.repository.reset(this.actor);
+  }
+
+  async listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]> {
+    // ITOTORI-050 — server-side project/branch ownership lookup. Delegates to
+    // the repository's `where project_id = <projectId>` read; the returned set
+    // is the authoritative scope a project mutation may target.
+    return await this.repository.listLocaleBranchIdentities(projectId);
   }
 
   async getDashboardStatus(): Promise<ProjectDashboardStatus> {

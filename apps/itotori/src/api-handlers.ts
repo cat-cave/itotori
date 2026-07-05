@@ -74,6 +74,11 @@ import type {
   ItotoriProjectWorkflowPort,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
+import {
+  ProjectMutationScopeError,
+  requireOwnedBranchScope,
+  resolveProjectMutationScope,
+} from "./services/project-mutation-scope.js";
 import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.js";
 import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
@@ -158,6 +163,7 @@ export type ItotoriApiServices = {
   };
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
+    | "listLocaleBranchIdentities"
     | "getDashboardStatus"
     | "getDashboardDecisions"
     | "getRuntimeStatus"
@@ -545,37 +551,79 @@ async function routeItotoriApiRequest(
       const body = parseDraftBranchRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
       await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
-      const project = await services.projectWorkflow.draftProject(body.project, body.targetLocale);
+      // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
+      // lookup and write with the authoritative branch id; a client-supplied
+      // ProjectState carrying a foreign/forged localeBranchId is refused here
+      // before draftProject touches the repository.
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: body.project.localeBranchId,
+      });
+      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
+      const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
       const status = await services.projectWorkflow.getDashboardStatus();
       return ok("branches.draft", { project, status });
     }
     case "findings": {
       const body = parseRecordFindingRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
-      const result = await services.projectWorkflow.recordFinding(projectRoute.projectId, body);
+      // ITOTORI-050 — verify the project (and, when supplied, the branch)
+      // server-side before recording; a foreign/forged branch id is refused.
+      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
+      });
+      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
+      const result = await services.projectWorkflow.recordFinding(scope.projectId, scopedBody);
       return ok("findings.record", result);
     }
     case "decisions": {
       const body = parseRecordDecisionRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
-      const result = await services.projectWorkflow.recordDecision(projectRoute.projectId, body);
+      // ITOTORI-050 — verify the project (and, when supplied, the branch)
+      // server-side before recording; a foreign/forged branch id is refused.
+      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
+      });
+      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
+      const result = await services.projectWorkflow.recordDecision(scope.projectId, scopedBody);
       return ok("decisions.record", result);
     }
     case "benchmarks": {
       const body = parseRecordBenchmarkRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
-      const result = await services.projectWorkflow.recordBenchmarkReport(
-        projectRoute.projectId,
-        body,
-      );
+      // ITOTORI-050 — the benchmark self-identifies its branch (the parser
+      // already rejects a report without one); verify that branch is
+      // server-side owned by the project before recording.
+      const benchmarkLocaleBranchId = body.benchmarkReport.localeBranchId;
+      if (benchmarkLocaleBranchId === undefined) {
+        throw new ApiValidationError(
+          "ApiRecordBenchmarkRequest.benchmarkReport.localeBranchId is required",
+        );
+      }
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: benchmarkLocaleBranchId,
+      });
+      const result = await services.projectWorkflow.recordBenchmarkReport(scope.projectId, body);
       return ok("benchmarks.record", result);
     }
     case "runtime-evidence": {
       const body = parseRuntimeEvidenceRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
       await requireApiPermission(services, apiMutationPermissionGates.runtimeEvidenceIngest);
+      // ITOTORI-050 — verify the client-supplied ProjectState's branch is
+      // server-side owned by the project; write with the authoritative branch
+      // id so a forged ProjectState cannot ingest evidence into a foreign
+      // branch.
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: body.project.localeBranchId,
+      });
+      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
       const result = await services.projectWorkflow.ingestRuntimeReport(
-        body.project,
+        scopedProject,
         body.runtimeReport,
       );
       return ok("runtimeEvidence.ingest", result.result);
@@ -1364,6 +1412,12 @@ function errorResponse(error: unknown): ApiJsonResponse {
   if (error instanceof AuthorizationError) {
     return errorBody(403, "forbidden", error.message);
   }
+  // ITOTORI-050 — a mutation targeting a project/branch outside the server-side
+  // ownership scope is refused as forbidden (broken object-level authorization),
+  // distinct from a bad request or a missing-permission denial.
+  if (error instanceof ProjectMutationScopeError) {
+    return errorBody(403, "forbidden", error.message);
+  }
   if (
     error instanceof AssetLocalizationDecisionRepositoryError &&
     error.code === "asset_decision_not_found"
@@ -1412,4 +1466,20 @@ function assertPathProject(pathProjectId: string, bodyProjectId: string): void {
       `path project ${pathProjectId} does not match body project ${bodyProjectId}`,
     );
   }
+}
+
+/**
+ * ITOTORI-050 — rewrite a record request's client-supplied `localeBranchId`
+ * to the server-side authoritative value once ownership is verified. When the
+ * client supplied no branch (`serverLocaleBranchId === null`, a project-scoped
+ * record) the body is returned unchanged.
+ */
+function scopeRecordBranch<T extends { localeBranchId?: string }>(
+  body: T,
+  serverLocaleBranchId: string | null,
+): T {
+  if (serverLocaleBranchId === null) {
+    return body;
+  }
+  return { ...body, localeBranchId: serverLocaleBranchId };
 }
