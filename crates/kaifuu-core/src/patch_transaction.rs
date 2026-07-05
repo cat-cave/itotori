@@ -81,6 +81,13 @@ pub struct PatchTransactionConfig<'a> {
 /// The legal forward transitions are
 /// `Idle → Preflight → Staged → Verified → Promoted`. Any failure routes
 /// to the corresponding `*Failed` terminal state.
+///
+/// A stage-time write failure (the staged bytes never landed, so no atomic
+/// rename was ever attempted) terminates in [`Self::StageFailed`], distinct
+/// from [`Self::PromoteFailed`] which is reserved for a promote-time rename
+/// failure (the staged bytes wrote and verified, but the final atomic swap
+/// failed). Callers inspecting `outcome.final_state` can therefore tell a
+/// safe-to-retry stage failure apart from a verify-passed promote failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionState {
     Idle,
@@ -90,6 +97,11 @@ pub enum TransactionState {
     Promoted,
     PreflightFailed,
     VerifyFailed,
+    /// A stage-time write failure: the staged payload could not be written
+    /// (or a stage-time invariant failed) and no rename was attempted.
+    StageFailed,
+    /// A promote-time rename failure: staging wrote and verified, but the
+    /// atomic rename onto `output_path` failed and was rolled back.
     PromoteFailed,
     Cancelled,
 }
@@ -101,6 +113,7 @@ impl TransactionState {
             Self::Promoted
                 | Self::PreflightFailed
                 | Self::VerifyFailed
+                | Self::StageFailed
                 | Self::PromoteFailed
                 | Self::Cancelled
         )
@@ -611,7 +624,9 @@ impl<'a> PatchTransaction<'a> {
             cause,
             severity: DiagnosticSeverity::Fatal,
         });
-        self.state = TransactionState::PromoteFailed;
+        // Stage-time write failure: no rename was ever attempted, so this is
+        // distinct from a promote-time rename failure (PromoteFailed).
+        self.state = TransactionState::StageFailed;
     }
 
     /// Re-read the staged payload and verify its sha256 matches
@@ -745,6 +760,7 @@ impl<'a> PatchTransaction<'a> {
             }),
             TransactionState::PreflightFailed
             | TransactionState::VerifyFailed
+            | TransactionState::StageFailed
             | TransactionState::PromoteFailed
             | TransactionState::Cancelled => {
                 // Already terminal — cancel is a no-op.
@@ -882,8 +898,9 @@ fn build_patch_result_v02(
     let status = match final_state {
         TransactionState::Promoted => "passed",
         // The terminal failure states (PreflightFailed / VerifyFailed /
-        // PromoteFailed / Cancelled) and any non-terminal default all map to
-        // "failed"; non-terminal states are routed via into_outcome upstream.
+        // StageFailed / PromoteFailed / Cancelled) and any non-terminal default
+        // all map to "failed"; non-terminal states are routed via into_outcome
+        // upstream.
         _ => "failed",
     };
     result.insert("status".to_string(), Value::String(status.to_string()));
@@ -975,21 +992,19 @@ fn rollback_diagnostic_code(
         TransactionState::VerifyFailed => {
             SEMANTIC_PATCH_TRANSACTION_STAGED_VERIFY_ROLLED_BACK.to_string()
         }
+        TransactionState::StageFailed => {
+            // Stage-time write failure: no rename was attempted. The precise
+            // diagnostic code that fired (staged_write_failed, staged_collision,
+            // relocation_unsupported, …) is the most accurate rollback marker.
+            diagnostics.first().map_or_else(
+                || SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED.to_string(),
+                |d| d.diagnostic_code.clone(),
+            )
+        }
         TransactionState::PromoteFailed => {
-            // Distinguish stage-time failures (recorded as PromoteFailed) from
-            // an actual rename failure; the diagnostic code that fired is the
-            // most precise rollback marker.
-            if diagnostics
-                .iter()
-                .any(|d| d.diagnostic_code == SEMANTIC_PATCH_TRANSACTION_PROMOTE_FAILED)
-            {
-                SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK.to_string()
-            } else {
-                diagnostics.first().map_or_else(
-                    || SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED.to_string(),
-                    |d| d.diagnostic_code.clone(),
-                )
-            }
+            // Promote-time rename failure: staging wrote and verified, but the
+            // atomic swap failed and was rolled back.
+            SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK.to_string()
         }
         TransactionState::Cancelled => SEMANTIC_PATCH_TRANSACTION_CANCELLED.to_string(),
         _ => diagnostics.first().map_or_else(
@@ -1575,7 +1590,9 @@ mod tests {
         // Stage a payload one byte longer than the preflighted length.
         let oversized = vec![b'B'; 33];
         transaction.stage(&oversized).unwrap();
-        assert_eq!(transaction.state(), TransactionState::PromoteFailed);
+        // Stage-time invariant failure: no rename was ever attempted, so this
+        // is a StageFailed (distinct from a promote-time PromoteFailed).
+        assert_eq!(transaction.state(), TransactionState::StageFailed);
         let staged_path = dir
             .path()
             .join(".staging")
@@ -1757,7 +1774,8 @@ mod tests {
         let mut transaction = PatchTransaction::new(config);
         transaction.run_preflight().unwrap();
         transaction.stage(&target).unwrap();
-        assert_eq!(transaction.state(), TransactionState::PromoteFailed);
+        // Stage-time collision failure: no rename was attempted → StageFailed.
+        assert_eq!(transaction.state(), TransactionState::StageFailed);
         // Squatter file is preserved — we did not remove it (we never owned it).
         assert!(existing.exists());
         let outcome = transaction.into_outcome();
@@ -1769,6 +1787,108 @@ mod tests {
             .collect();
         assert!(codes.contains(&SEMANTIC_PATCH_TRANSACTION_STAGED_COLLISION));
         assert!(validate_patch_result_v02(&outcome.patch_result_v02).is_ok());
+    }
+
+    /// KAIFUU-186: a stage-time write failure (no rename ever attempted) must
+    /// terminate in `StageFailed`, distinct from the promote-time rename
+    /// failure state (`PromoteFailed`). The two are safe-to-retry vs
+    /// verify-passed-but-swap-failed and must be tellable apart via
+    /// `outcome.final_state`.
+    #[test]
+    fn stage_write_failure_and_promote_rename_failure_terminate_in_distinct_states() {
+        let capabilities = capabilities_with_identity_patch();
+        let required = ["identity"];
+
+        // --- Stage-time write failure: block the staging directory so the
+        // staged bytes can never be written and no rename is attempted. ---
+        let stage_dir = tempfile::tempdir().unwrap();
+        let stage_output = stage_dir.path().join("SEEN.TXT");
+        let source = vec![b'A'; 32];
+        write_source(&stage_output, &source);
+        let stage_source_hash = sha256_hash_bytes(&source);
+        let target = vec![b'B'; 32];
+        let stage_output_hash = sha256_hash_bytes(&target);
+        // Occupy `<output_dir>/.staging` with a regular file so `create_dir_all`
+        // for the staging directory fails at stage time.
+        fs::write(stage_dir.path().join(".staging"), b"blocker").unwrap();
+        let stage_config = make_config(
+            &stage_output,
+            &stage_source_hash,
+            &stage_output_hash,
+            32,
+            32,
+            &required,
+            &capabilities,
+        );
+        let mut stage_txn = PatchTransaction::new(stage_config);
+        stage_txn.run_preflight().unwrap();
+        stage_txn.stage(&target).unwrap();
+        assert_eq!(
+            stage_txn.state(),
+            TransactionState::StageFailed,
+            "a stage-time write failure must terminate in StageFailed"
+        );
+        let stage_outcome = stage_txn.into_outcome();
+        assert_eq!(stage_outcome.final_state, TransactionState::StageFailed);
+        // Output bytes untouched; nothing was promoted.
+        assert_eq!(fs::read(&stage_output).unwrap(), source);
+        let stage_codes: Vec<&str> = stage_outcome.patch_result_v02["failures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["diagnosticCode"].as_str().unwrap())
+            .collect();
+        assert!(stage_codes.contains(&SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED));
+        let stage_partial = &stage_outcome.patch_result_v02["partialWrite"];
+        assert_eq!(stage_partial["disposition"], "rolled_back");
+        assert_eq!(
+            stage_partial["rollbackDiagnosticCode"].as_str().unwrap(),
+            SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED
+        );
+        assert!(validate_patch_result_v02(&stage_outcome.patch_result_v02).is_ok());
+
+        // --- Promote-time rename failure: stage + verify succeed, but the
+        // atomic rename onto output_path fails. ---
+        let promote_dir = tempfile::tempdir().unwrap();
+        let promote_output = promote_dir.path().join("SEEN.TXT");
+        write_source(&promote_output, &source);
+        let promote_config = make_config(
+            &promote_output,
+            &stage_source_hash,
+            &stage_output_hash,
+            32,
+            32,
+            &required,
+            &capabilities,
+        );
+        let mut promote_txn = PatchTransaction::new(promote_config);
+        promote_txn.run_preflight().unwrap();
+        promote_txn.stage(&target).unwrap();
+        promote_txn.verify().unwrap();
+        // Replace output_path with a non-empty directory so the rename fails.
+        fs::remove_file(&promote_output).unwrap();
+        fs::create_dir(&promote_output).unwrap();
+        fs::write(promote_output.join("guard.bin"), b"guard").unwrap();
+        promote_txn.promote().unwrap();
+        assert_eq!(
+            promote_txn.state(),
+            TransactionState::PromoteFailed,
+            "a promote-time rename failure must terminate in PromoteFailed"
+        );
+        let promote_outcome = promote_txn.into_outcome();
+        assert_eq!(promote_outcome.final_state, TransactionState::PromoteFailed);
+        let promote_partial = &promote_outcome.patch_result_v02["partialWrite"];
+        assert_eq!(
+            promote_partial["rollbackDiagnosticCode"].as_str().unwrap(),
+            SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK
+        );
+        assert!(validate_patch_result_v02(&promote_outcome.patch_result_v02).is_ok());
+
+        // The crux: the two failure modes are DISTINGUISHABLE via final_state.
+        assert_ne!(
+            stage_outcome.final_state, promote_outcome.final_state,
+            "stage-time and promote-time failures must be distinct states"
+        );
     }
 
     #[test]

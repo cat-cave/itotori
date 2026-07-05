@@ -712,6 +712,7 @@ fn is_terminal(state: &TransactionState) -> bool {
         TransactionState::Promoted
             | TransactionState::PreflightFailed
             | TransactionState::VerifyFailed
+            | TransactionState::StageFailed
             | TransactionState::PromoteFailed
             | TransactionState::Cancelled
     )
