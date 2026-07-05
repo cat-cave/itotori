@@ -666,6 +666,10 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
 
 /// The IO shell: read every committed artifact by path and delegate to
 /// [`build_mvmz_demo_bundle`].
+// reason: this is the byte-level IO shell that reads the six independent
+// committed proof/capture/trace/manifest artifacts by their own on-disk paths;
+// each path is a distinct filesystem input, so grouping them into a struct
+// would just relocate the same arity onto the caller with no clarity gain.
 #[allow(clippy::too_many_arguments)]
 pub fn mvmz_demo_bundle_from_paths(
     patched_runtime_proof_path: &Path,
