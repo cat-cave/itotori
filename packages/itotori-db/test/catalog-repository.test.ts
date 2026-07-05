@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
+  type CatalogArtifactMappingErrorCode,
+  CatalogArtifactMappingError,
   type CatalogOpportunityFactorName,
   type CatalogOpportunityRow,
   ItotoriCatalogRepository,
@@ -51,6 +53,27 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-17T12:00:00.000Z";
+
+/**
+ * Asserts a catalog artifact-mapping validation failure exposes the expected
+ * stable machine-readable code (not merely a matching message string), and
+ * returns the caught error so callers can additionally assert the message.
+ */
+async function expectArtifactMappingError(
+  promise: Promise<unknown>,
+  expectedCode: CatalogArtifactMappingErrorCode,
+): Promise<CatalogArtifactMappingError> {
+  let caught: unknown;
+  try {
+    await promise;
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught, "expected upsertWork to reject").toBeInstanceOf(CatalogArtifactMappingError);
+  const error = caught as CatalogArtifactMappingError;
+  expect(error.code).toBe(expectedCode);
+  return error;
+}
 
 describe("ItotoriCatalogRepository", () => {
   it("persists source-independent work identity, provenance, releases, language status, conflicts, local scans, and seed targets", async () => {
@@ -797,7 +820,7 @@ describe("ItotoriCatalogRepository", () => {
       await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Mapping parent fixture");
       await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Mapping other fixture");
 
-      await expect(
+      const sourceError = await expectArtifactMappingError(
         repo.upsertWork(localActor, {
           workId: parentWorkId,
           canonicalTitle: "Mapping parent fixture",
@@ -810,9 +833,13 @@ describe("ItotoriCatalogRepository", () => {
             },
           ],
         }),
-      ).rejects.toThrow("releaseMapping.sourceReleaseId must belong to the parent work");
+        "release_mapping_release_belongs_to_other_work",
+      );
+      expect(sourceError.message).toContain(
+        "releaseMapping.sourceReleaseId must belong to the parent work",
+      );
 
-      await expect(
+      const targetError = await expectArtifactMappingError(
         repo.upsertWork(localActor, {
           workId: parentWorkId,
           canonicalTitle: "Mapping parent fixture",
@@ -825,7 +852,52 @@ describe("ItotoriCatalogRepository", () => {
             },
           ],
         }),
-      ).rejects.toThrow("releaseMapping.targetReleaseId must belong to the parent work");
+        "release_mapping_release_belongs_to_other_work",
+      );
+      expect(targetError.message).toContain(
+        "releaseMapping.targetReleaseId must belong to the parent work",
+      );
+
+      // A mapping endpoint that references no known release for the parent work
+      // surfaces the distinct "not in work" code.
+      const unknownError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1236),
+              sourceReleaseId: parentReleaseId,
+              targetReleaseId: uuid(1237),
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+        "release_mapping_release_not_in_work",
+      );
+      expect(unknownError.message).toContain(
+        "releaseMapping.targetReleaseId must reference a release for the parent work",
+      );
+
+      // Source and target being identical is a distinct, machine-classifiable mode.
+      const identicalError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1238),
+              sourceReleaseId: parentReleaseId,
+              targetReleaseId: parentReleaseId,
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+        "release_mapping_endpoints_identical",
+      );
+      expect(identicalError.message).toContain(
+        "releaseMapping source and target releases must differ",
+      );
     } finally {
       await context.close();
     }
@@ -842,7 +914,7 @@ describe("ItotoriCatalogRepository", () => {
       await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Install parent fixture");
       await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Install other fixture");
 
-      await expect(
+      const belongsError = await expectArtifactMappingError(
         repo.upsertWork(localActor, {
           workId: parentWorkId,
           canonicalTitle: "Install parent fixture",
@@ -854,7 +926,31 @@ describe("ItotoriCatalogRepository", () => {
             },
           ],
         }),
-      ).rejects.toThrow("installState.releaseId must belong to the parent work");
+        "install_state_release_belongs_to_other_work",
+      );
+      expect(belongsError.message).toContain(
+        "installState.releaseId must belong to the parent work",
+      );
+
+      // An install-state referencing an entirely unknown release exposes the
+      // distinct "not in work" code.
+      const unknownError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Install parent fixture",
+          installStates: [
+            {
+              installStateId: uuid(1245),
+              releaseId: uuid(1246),
+              installState: catalogInstallStateValues.patchTarget,
+            },
+          ],
+        }),
+        "install_state_release_not_in_work",
+      );
+      expect(unknownError.message).toContain(
+        "installState.releaseId must reference a release for the parent work",
+      );
     } finally {
       await context.close();
     }
@@ -887,7 +983,7 @@ describe("ItotoriCatalogRepository", () => {
       });
       const otherEntry = requiredTestRow(localScan.entries, "cross-work local scan entry");
 
-      await expect(
+      const scanError = await expectArtifactMappingError(
         repo.upsertWork(localActor, {
           workId: parentWorkId,
           canonicalTitle: "Scan parent fixture",
@@ -900,7 +996,106 @@ describe("ItotoriCatalogRepository", () => {
             },
           ],
         }),
-      ).rejects.toThrow("installState.localScanEntryId must belong to the install state work");
+        "install_state_local_scan_entry_belongs_to_other_work",
+      );
+      expect(scanError.message).toContain(
+        "installState.localScanEntryId must belong to the install state work",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects reusing a release id that already belongs to a different work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1260);
+      const parentReleaseId = uuid(1261);
+      const otherWorkId = uuid(1262);
+      const otherReleaseId = uuid(1263);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Reuse parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Reuse other fixture");
+
+      const reuseError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Reuse parent fixture",
+          releases: [
+            {
+              releaseId: otherReleaseId,
+              catalogSource: catalogSourceValues.dlsite,
+              sourceReleaseId: otherReleaseId,
+              releaseTitle: "Reuse other fixture",
+              releaseKind: catalogReleaseKindValues.original,
+            },
+          ],
+        }),
+        "release_belongs_to_other_work",
+      );
+      expect(reuseError.message).toContain(
+        "release.releaseId must not already belong to a different work",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("maps valid cross-work release mappings and install states without error", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const workId = uuid(1270);
+      const baseReleaseId = uuid(1271);
+      const remasterReleaseId = uuid(1272);
+
+      const snapshot = await repo.upsertWork(localActor, {
+        workId,
+        canonicalTitle: "Valid mapping fixture",
+        originalLanguage: "ja-JP",
+        releases: [
+          {
+            releaseId: baseReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: baseReleaseId,
+            releaseTitle: "Base edition",
+            releaseKind: catalogReleaseKindValues.original,
+          },
+          {
+            releaseId: remasterReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: remasterReleaseId,
+            releaseTitle: "Remastered edition",
+            releaseKind: catalogReleaseKindValues.remaster,
+          },
+        ],
+        releaseMappings: [
+          {
+            releaseMappingId: uuid(1273),
+            sourceReleaseId: remasterReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.remasterOf,
+          },
+        ],
+        installStates: [
+          {
+            installStateId: uuid(1274),
+            releaseId: baseReleaseId,
+            installState: catalogInstallStateValues.patchTarget,
+          },
+        ],
+      });
+
+      expect(snapshot.releaseMappings).toHaveLength(1);
+      expect(snapshot.releaseMappings[0]).toMatchObject({
+        sourceReleaseId: remasterReleaseId,
+        targetReleaseId: baseReleaseId,
+      });
+      expect(snapshot.installStates).toHaveLength(1);
+      expect(snapshot.installStates[0]).toMatchObject({
+        releaseId: baseReleaseId,
+        installState: catalogInstallStateValues.patchTarget,
+      });
     } finally {
       await context.close();
     }

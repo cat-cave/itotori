@@ -386,10 +386,13 @@ export type {
   StyleGuideFixtureFlowResult,
 } from "./services/style-guide-fixture-flow.js";
 export {
+  catalogArtifactMappingErrorCodes,
+  CatalogArtifactMappingError,
   catalogCompletenessPoolValues,
   ItotoriCatalogRepository,
 } from "./repositories/catalog-repository.js";
 export type {
+  CatalogArtifactMappingErrorCode,
   CatalogCompletenessBenchmarkPools,
   CatalogCompletenessConflictSummary,
   CatalogCompletenessPool,

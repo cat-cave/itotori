@@ -107,6 +107,47 @@ export type {
 export type CatalogJsonRecord = Record<string, unknown>;
 export type CatalogDateInput = string | Date;
 
+/**
+ * Stable, machine-readable codes for catalog artifact-mapping validation
+ * failures — specifically cross-work release mapping and install-state artifact
+ * validation. API/CLI callers classify failures on these codes rather than
+ * string-matching the human-readable message.
+ */
+export const catalogArtifactMappingErrorCodes = [
+  /** An input release already belongs to a different work than the one being written. */
+  "release_belongs_to_other_work",
+  /** A release-mapping endpoint references a release owned by a different work. */
+  "release_mapping_release_belongs_to_other_work",
+  /** A release-mapping endpoint references a release that is not part of the parent work. */
+  "release_mapping_release_not_in_work",
+  /** A release-mapping's source and target releases are identical. */
+  "release_mapping_endpoints_identical",
+  /** An install-state references a release owned by a different work. */
+  "install_state_release_belongs_to_other_work",
+  /** An install-state references a release that is not part of the parent work. */
+  "install_state_release_not_in_work",
+  /** An install-state references a local-scan entry owned by a different work. */
+  "install_state_local_scan_entry_belongs_to_other_work",
+] as const;
+
+export type CatalogArtifactMappingErrorCode = (typeof catalogArtifactMappingErrorCodes)[number];
+
+/**
+ * Structured domain error for catalog artifact-mapping validation failures.
+ * Mirrors the established repository-error pattern (e.g.
+ * {@link WorkspaceCorrectionRepositoryError}): a stable `code` plus a useful
+ * human-readable message.
+ */
+export class CatalogArtifactMappingError extends Error {
+  constructor(
+    readonly code: CatalogArtifactMappingErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CatalogArtifactMappingError";
+  }
+}
+
 export type CatalogSourceProvenanceInput = {
   sourceProvenanceId?: string;
   catalogSource: CatalogSource;
@@ -4731,7 +4772,10 @@ async function assertWorkScopedArtifactReferences(
   for (const releaseId of inputReleaseIds) {
     const workId = existingReleaseWorkIds.get(releaseId);
     if (workId !== undefined && workId !== input.workId) {
-      throw new Error("release.releaseId must not already belong to a different work");
+      throw new CatalogArtifactMappingError(
+        "release_belongs_to_other_work",
+        "release.releaseId must not already belong to a different work",
+      );
     }
   }
 
@@ -4742,6 +4786,8 @@ async function assertWorkScopedArtifactReferences(
       input.workId,
       inputReleaseIds,
       existingReleaseWorkIds,
+      "release_mapping_release_belongs_to_other_work",
+      "release_mapping_release_not_in_work",
     );
     assertReleaseBelongsToWork(
       mapping.targetReleaseId,
@@ -4749,6 +4795,8 @@ async function assertWorkScopedArtifactReferences(
       input.workId,
       inputReleaseIds,
       existingReleaseWorkIds,
+      "release_mapping_release_belongs_to_other_work",
+      "release_mapping_release_not_in_work",
     );
   }
 
@@ -4759,6 +4807,8 @@ async function assertWorkScopedArtifactReferences(
       input.workId,
       inputReleaseIds,
       existingReleaseWorkIds,
+      "install_state_release_belongs_to_other_work",
+      "install_state_release_not_in_work",
     );
   }
 
@@ -4786,7 +4836,10 @@ async function assertWorkScopedArtifactReferences(
   for (const localScanEntryId of localScanEntryIds) {
     const workId = localScanEntryWorkIds.get(localScanEntryId);
     if (workId !== input.workId) {
-      throw new Error("installState.localScanEntryId must belong to the install state work");
+      throw new CatalogArtifactMappingError(
+        "install_state_local_scan_entry_belongs_to_other_work",
+        "installState.localScanEntryId must belong to the install state work",
+      );
     }
   }
 }
@@ -4797,18 +4850,26 @@ function assertReleaseBelongsToWork(
   workId: string,
   inputReleaseIds: Set<string>,
   existingReleaseWorkIds: Map<string, string>,
+  belongsToOtherWorkCode: CatalogArtifactMappingErrorCode,
+  notInWorkCode: CatalogArtifactMappingErrorCode,
 ): void {
   const existingWorkId = existingReleaseWorkIds.get(releaseId);
   if (existingWorkId === workId) {
     return;
   }
   if (existingWorkId !== undefined) {
-    throw new Error(`${fieldName} must belong to the parent work`);
+    throw new CatalogArtifactMappingError(
+      belongsToOtherWorkCode,
+      `${fieldName} must belong to the parent work`,
+    );
   }
   if (inputReleaseIds.has(releaseId)) {
     return;
   }
-  throw new Error(`${fieldName} must reference a release for the parent work`);
+  throw new CatalogArtifactMappingError(
+    notInWorkCode,
+    `${fieldName} must reference a release for the parent work`,
+  );
 }
 
 function assertExternalIdInput(input: CatalogExternalIdInput): NormalizedExternalIdInput {
@@ -4894,7 +4955,10 @@ function assertReleaseMappingInput(
   const sourceReleaseId = requiredString(input.sourceReleaseId, "releaseMapping.sourceReleaseId");
   const targetReleaseId = requiredString(input.targetReleaseId, "releaseMapping.targetReleaseId");
   if (sourceReleaseId === targetReleaseId) {
-    throw new Error("releaseMapping source and target releases must differ");
+    throw new CatalogArtifactMappingError(
+      "release_mapping_endpoints_identical",
+      "releaseMapping source and target releases must differ",
+    );
   }
   return {
     releaseMappingId: input.releaseMappingId ?? createUuid7(),
