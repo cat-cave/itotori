@@ -19756,18 +19756,18 @@ pub fn run_round_trip_golden(
         }
     };
 
-    let Some(unchanged_output_dir) = run_golden_patch_phase(
+    let Some(unchanged_output_dir) = run_golden_patch_phase(GoldenPatchPhaseArgs {
         adapter,
-        &mut report,
-        "unchanged_patch",
-        request.game_dir,
-        request.work_dir,
-        "unchanged-patch",
-        &unchanged_patch,
-        "unchanged patch applied successfully",
-        "unchanged_patch_error",
-        "successful unchanged patch",
-    )?
+        report: &mut report,
+        phase: "unchanged_patch",
+        game_dir: request.game_dir,
+        work_dir: request.work_dir,
+        work_child: "unchanged-patch",
+        patch_export: &unchanged_patch,
+        success_details: "unchanged patch applied successfully",
+        patch_error_code: "unchanged_patch_error",
+        patch_expected: "successful unchanged patch",
+    })?
     else {
         return Ok(finalize_golden_report(report));
     };
@@ -19808,20 +19808,34 @@ pub fn run_round_trip_golden(
     Ok(finalize_golden_report(report))
 }
 
-// reason: cohesive golden-patch phase driver; the arguments are distinct pipeline stages, not a bag a struct would clarify.
-#[allow(clippy::too_many_arguments)]
-fn run_golden_patch_phase(
-    adapter: &dyn EngineAdapter,
-    report: &mut GoldenRoundTripReport,
-    phase: &str,
-    game_dir: &Path,
-    work_dir: &Path,
-    work_child: &str,
-    patch_export: &PatchExport,
-    success_details: &str,
-    patch_error_code: &str,
-    patch_expected: &str,
-) -> KaifuuResult<Option<PathBuf>> {
+/// Arguments for [`run_golden_patch_phase`], grouping the distinct pipeline-stage
+/// inputs into a single struct so the driver keeps a one-argument signature.
+struct GoldenPatchPhaseArgs<'a> {
+    adapter: &'a dyn EngineAdapter,
+    report: &'a mut GoldenRoundTripReport,
+    phase: &'a str,
+    game_dir: &'a Path,
+    work_dir: &'a Path,
+    work_child: &'a str,
+    patch_export: &'a PatchExport,
+    success_details: &'a str,
+    patch_error_code: &'a str,
+    patch_expected: &'a str,
+}
+
+fn run_golden_patch_phase(args: GoldenPatchPhaseArgs<'_>) -> KaifuuResult<Option<PathBuf>> {
+    let GoldenPatchPhaseArgs {
+        adapter,
+        report,
+        phase,
+        game_dir,
+        work_dir,
+        work_child,
+        patch_export,
+        success_details,
+        patch_error_code,
+        patch_expected,
+    } = args;
     match adapter.patch_preflight(PatchPreflightRequest {
         game_dir,
         patch_export,
@@ -20676,18 +20690,18 @@ fn report_translated_patch(
         None,
     );
 
-    let Some(output_dir) = run_golden_patch_phase(
+    let Some(output_dir) = run_golden_patch_phase(GoldenPatchPhaseArgs {
         adapter,
         report,
-        "translated_patch",
+        phase: "translated_patch",
         game_dir,
         work_dir,
-        "translated-patch",
-        &patch_export,
-        "translated patch applied successfully",
-        "translated_patch_error",
-        "successful translated patch",
-    )?
+        work_child: "translated-patch",
+        patch_export: &patch_export,
+        success_details: "translated patch applied successfully",
+        patch_error_code: "translated_patch_error",
+        patch_expected: "successful translated patch",
+    })?
     else {
         return Ok(());
     };
