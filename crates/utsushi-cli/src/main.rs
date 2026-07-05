@@ -173,8 +173,25 @@ fn run_cli_with_registry(
             if let Some(artifact_root) = artifact_root.as_deref() {
                 request = request.with_artifact_root(artifact_root);
             }
-            let value = registry.run(&adapter_name, operation, &request)?;
-            write_json(&PathBuf::from(output), &value)?;
+            match registry.run(&adapter_name, operation, &request) {
+                Ok(value) => write_json(&PathBuf::from(output), &value)?,
+                Err(error) => {
+                    // A NON-fixture input is refused with a typed
+                    // `utsushi.unsupported_input_shape` diagnostic. Emit the
+                    // structured diagnostic envelope as JSON on stdout, then
+                    // propagate the error so the process exits non-zero (main
+                    // renders the human-readable message on stderr).
+                    if let Some(unsupported) =
+                        error.downcast_ref::<utsushi_fixture::UnsupportedInputShape>()
+                    {
+                        println!(
+                            "{}",
+                            serde_json::to_string(&unsupported.to_diagnostic_json())?
+                        );
+                    }
+                    return Err(error);
+                }
+            }
         }
         None => return Err(USAGE.into()),
     }

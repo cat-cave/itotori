@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs;
 use std::path::Path;
 
@@ -149,10 +150,106 @@ pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
     adapter.smoke_validate(&RuntimeRequest::new(input_root))
 }
 
+/// Engine family the fixture runtime adapter attempts when it reads an
+/// input root. The fixture adapter interprets its input as a synthetic,
+/// deterministic fixture manifest (`source.json`); it never emulates a
+/// commercial engine, so the family it attempts is the fixture family
+/// itself. Carried on the [`UnsupportedInputShape`] diagnostic so a caller
+/// can see which family was being attempted when the input was refused.
+pub const FIXTURE_ENGINE_FAMILY: &str = "fixture";
+
+/// Structured diagnostic emitted when the fixture runtime adapter is handed
+/// an input that is not a valid fixture — for example a real game directory,
+/// or any directory missing the `source.json` fixture manifest. The adapter
+/// refuses such input with this typed `utsushi.unsupported_input_shape`
+/// diagnostic (carrying the attempted `engine_family` and a helpful detail)
+/// instead of surfacing an opaque `os::Error::NotFound` from the underlying
+/// manifest read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedInputShape {
+    engine_family: String,
+    detail: String,
+}
+
+impl UnsupportedInputShape {
+    /// Stable diagnostic code in the `utsushi.*` namespace.
+    pub const CODE: &'static str = "utsushi.unsupported_input_shape";
+
+    pub fn new(engine_family: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            engine_family: engine_family.into(),
+            detail: detail.into(),
+        }
+    }
+
+    pub fn code(&self) -> &'static str {
+        Self::CODE
+    }
+
+    pub fn engine_family(&self) -> &str {
+        &self.engine_family
+    }
+
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+
+    /// Structured diagnostic envelope emitted on stdout by the CLI:
+    /// `{"diagnostic":{"code":..., "engine_family":..., "detail":...}}`.
+    pub fn to_diagnostic_json(&self) -> Value {
+        json!({
+            "diagnostic": {
+                "code": Self::CODE,
+                "engine_family": self.engine_family,
+                "detail": self.detail,
+            }
+        })
+    }
+}
+
+impl fmt::Display for UnsupportedInputShape {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}: input for engine family {} is not a valid fixture: {}",
+            Self::CODE,
+            self.engine_family,
+            self.detail,
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedInputShape {}
+
 pub(crate) fn read_source(input_root: &Path) -> UtsushiResult<Value> {
-    Ok(serde_json::from_str(&fs::read_to_string(
-        input_root.join("source.json"),
-    )?)?)
+    // Refuse a NON-fixture input with a typed diagnostic BEFORE the raw
+    // filesystem read would surface an opaque `os::Error::NotFound`. A valid
+    // fixture input is a directory carrying a `source.json` manifest with a
+    // non-empty `units` array; anything else (a real game directory, an empty
+    // directory, a malformed manifest) is refused here.
+    let manifest_path = input_root.join("source.json");
+    if !manifest_path.is_file() {
+        return Err(UnsupportedInputShape::new(
+            FIXTURE_ENGINE_FAMILY,
+            "input is not a fixture: expected a fixture manifest named source.json (a fixture directory carries a source.json with a non-empty `units` array)",
+        )
+        .into());
+    }
+    let raw = fs::read_to_string(&manifest_path)?;
+    let source: Value = serde_json::from_str(&raw).map_err(|error| {
+        UnsupportedInputShape::new(
+            FIXTURE_ENGINE_FAMILY,
+            format!("fixture manifest source.json is not valid JSON: {error}"),
+        )
+    })?;
+    if !source.get("units").is_some_and(Value::is_array) {
+        return Err(UnsupportedInputShape::new(
+            FIXTURE_ENGINE_FAMILY,
+            "fixture manifest source.json is missing the required `units` array",
+        )
+        .into());
+    }
+    Ok(source)
 }
 
 pub(crate) fn first_unit(source: &Value) -> UtsushiResult<&Value> {
@@ -576,6 +673,78 @@ mod tests {
         )
         .unwrap();
         dir
+    }
+
+    #[test]
+    fn read_source_refuses_non_fixture_input_with_typed_diagnostic() {
+        // A directory that is NOT a fixture (no source.json manifest) — the
+        // shape a real game directory would present.
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "utsushi-fixture-nonfixture-{}-{nonce}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // A stray non-manifest file, to prove detection is by shape (missing
+        // source.json), not merely by an empty directory.
+        fs::write(dir.join("Game.exe"), b"not a fixture").unwrap();
+
+        let error = read_source(&dir).expect_err("non-fixture input must be refused");
+        let diagnostic = error
+            .downcast_ref::<UnsupportedInputShape>()
+            .expect("refusal must be a typed UnsupportedInputShape, not a raw NotFound");
+        assert_eq!(diagnostic.code(), "utsushi.unsupported_input_shape");
+        assert_eq!(diagnostic.engine_family(), FIXTURE_ENGINE_FAMILY);
+
+        let json = diagnostic.to_diagnostic_json();
+        assert_eq!(
+            json["diagnostic"]["code"],
+            Value::from("utsushi.unsupported_input_shape")
+        );
+        assert_eq!(
+            json["diagnostic"]["engine_family"],
+            Value::from(FIXTURE_ENGINE_FAMILY)
+        );
+        assert!(json["diagnostic"]["detail"].is_string());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_source_refuses_manifest_missing_units_array() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "utsushi-fixture-nounits-{}-{nonce}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("source.json"), r#"{"gameId":"x"}"#).unwrap();
+
+        let error = read_source(&dir).expect_err("manifest without units must be refused");
+        let diagnostic = error
+            .downcast_ref::<UnsupportedInputShape>()
+            .expect("refusal must be a typed UnsupportedInputShape");
+        assert_eq!(diagnostic.code(), "utsushi.unsupported_input_shape");
+        assert_eq!(diagnostic.engine_family(), FIXTURE_ENGINE_FAMILY);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_source_accepts_valid_fixture() {
+        let dir = temp_game("valid-source");
+        let source = read_source(&dir).expect("a valid fixture must still be read");
+        assert!(source["units"].is_array());
+        assert!(first_unit(&source).is_ok());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
