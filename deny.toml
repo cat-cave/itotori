@@ -27,17 +27,16 @@ allow-wildcard-paths = true
 # Both skips below are transitive, upstream-pinned duplicates that cannot be
 # aligned from itotori's manifests (they come from third-party crates' own
 # version requirements). They are narrow (exact-version) skips, NOT a blanket
-# `multiple-versions = "allow"`.
+# `multiple-versions = "allow"`. Each `[[bans.skip]]` is preceded on the line
+# immediately above by a `# reason:` comment (enforced by
+# scripts/verify-deny-strict.mjs).
+
+# reason: getrandom 0.2.17 comes ONLY from redox_users (a Redox-OS-target-only transitive dep of `dirs` -> dirs-sys); it never builds on our Linux/macOS targets, and the live graph otherwise resolves a single getrandom 0.4 via uuid — no upstream dedup available.
 [[bans.skip]]
-# getrandom 0.2.17 is pulled ONLY by redox_users (a Redox-OS-target-only
-# transitive dep of `dirs`); it never builds on our Linux/macOS targets. The
-# live graph otherwise uses getrandom 0.4 (via uuid).
 name = "getrandom"
 version = "=0.2.17"
 
+# reason: hashbrown 0.16.1 is pinned by jsonschema 0.46 -> referencing (a dev-dep) while rusqlite 0.40 -> hashlink pulls hashbrown 0.17; neither is bumpable without an upstream release aligning the two — no dedup available.
 [[bans.skip]]
-# hashbrown 0.16.1 is pinned by jsonschema 0.46 -> referencing (a dev-dep);
-# rusqlite 0.40 -> hashlink pulls hashbrown 0.17. Neither is bumpable without
-# an upstream release aligning the two.
 name = "hashbrown"
 version = "=0.16.1"

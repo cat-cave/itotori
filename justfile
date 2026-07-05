@@ -45,6 +45,7 @@ check:
     node --test fixtures/generate-kaifuu-encrypted-public-fixtures.test.mjs
     just impl-map-schema-validate
     node scripts/verify-toolchain-policy.mjs
+    node scripts/verify-deny-strict.mjs
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
