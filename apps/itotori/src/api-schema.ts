@@ -3017,6 +3017,41 @@ export function assertDashboardDecisionReadModel(
       `${label}.pendingDecisions[${index}].runtimeStatus`,
     );
     assertString(decision.createdAt, `${label}.pendingDecisions[${index}].createdAt`);
+    // ITOTORI-114 — KIND-SPECIFIC nullable-field invariants (fail-closed).
+    // A read-model row whose fields contradict its decisionKind is a
+    // corrupt/mislabelled record; reject it rather than surface (and
+    // mis-count) an internally-inconsistent decision on the dashboard.
+    const decisionLabel = `${label}.pendingDecisions[${index}]`;
+    switch (decision.decisionKind) {
+      case "project_finding":
+        // A project-level finding is neither branch- nor run-scoped:
+        // every branch/run field MUST be null.
+        assertNull(decision.localeBranchId, `${decisionLabel}.localeBranchId (project_finding)`);
+        assertNull(decision.targetLocale, `${decisionLabel}.targetLocale (project_finding)`);
+        assertNull(decision.branchStatus, `${decisionLabel}.branchStatus (project_finding)`);
+        assertNull(decision.runtimeRunId, `${decisionLabel}.runtimeRunId (project_finding)`);
+        assertNull(decision.runtimeStatus, `${decisionLabel}.runtimeStatus (project_finding)`);
+        break;
+      case "locale_branch_finding":
+        // A branch finding is scoped to a locale branch (localeBranchId
+        // required) and is NOT a runtime validation (run fields null).
+        assertString(
+          decision.localeBranchId,
+          `${decisionLabel}.localeBranchId (locale_branch_finding)`,
+        );
+        assertNull(decision.runtimeRunId, `${decisionLabel}.runtimeRunId (locale_branch_finding)`);
+        assertNull(
+          decision.runtimeStatus,
+          `${decisionLabel}.runtimeStatus (locale_branch_finding)`,
+        );
+        break;
+      case "runtime_validation":
+        // A runtime validation finding MUST identify its runtime run; it
+        // may also carry branch context, but it is counted as a runtime
+        // validation (by decisionKind below), never as a branch finding.
+        assertString(decision.runtimeRunId, `${decisionLabel}.runtimeRunId (runtime_validation)`);
+        break;
+    }
   }
   assertDecisionCount(
     counts.pendingDecisionCount,
@@ -3406,6 +3441,12 @@ function assertLiteral<T extends string>(
 function assertNullableString(value: unknown, label: string): asserts value is string | null {
   if (value !== null && typeof value !== "string") {
     throw new Error(`${label} must be a string or null`);
+  }
+}
+
+function assertNull(value: unknown, label: string): asserts value is null {
+  if (value !== null) {
+    throw new Error(`${label} must be null`);
   }
 }
 

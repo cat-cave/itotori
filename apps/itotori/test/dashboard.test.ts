@@ -228,4 +228,100 @@ describe("Itotori dashboard", () => {
       } as never),
     ).toThrow("projectKey");
   });
+
+  // ITOTORI-114 — KIND-SPECIFIC nullable-field invariants (fail-closed). A
+  // decision record whose fields contradict its decisionKind must be
+  // REJECTED by the read-model schema, never silently accepted or mis-counted.
+  describe("decision read-model kind-specific invariants (ITOTORI-114)", () => {
+    const [projectFinding, localeBranchFinding, runtimeValidation] =
+      dashboardDecisionsFixture.pendingDecisions;
+
+    it("accepts a valid record of each decision kind", () => {
+      // The base fixture carries one valid record of each kind, including a
+      // runtime_validation that legitimately carries branch context.
+      expect(() => apiJson("projects.decisions", dashboardDecisionsFixture)).not.toThrow();
+      expect(projectFinding!.decisionKind).toBe("project_finding");
+      expect(projectFinding!.localeBranchId).toBeNull();
+      expect(projectFinding!.runtimeRunId).toBeNull();
+      expect(localeBranchFinding!.decisionKind).toBe("locale_branch_finding");
+      expect(localeBranchFinding!.localeBranchId).not.toBeNull();
+      expect(runtimeValidation!.decisionKind).toBe("runtime_validation");
+      expect(runtimeValidation!.runtimeRunId).not.toBeNull();
+    });
+
+    it("rejects a project_finding that carries a localeBranchId", () => {
+      expect(() =>
+        apiJson("projects.decisions", {
+          ...dashboardDecisionsFixture,
+          pendingDecisions: [
+            { ...projectFinding!, localeBranchId: "locale-1" },
+            localeBranchFinding!,
+            runtimeValidation!,
+          ],
+        }),
+      ).toThrow("localeBranchId");
+    });
+
+    it("rejects a project_finding that carries a runtimeRunId", () => {
+      expect(() =>
+        apiJson("projects.decisions", {
+          ...dashboardDecisionsFixture,
+          pendingDecisions: [
+            { ...projectFinding!, runtimeRunId: "runtime-9", runtimeStatus: "failed" },
+            localeBranchFinding!,
+            runtimeValidation!,
+          ],
+        }),
+      ).toThrow("runtimeRunId");
+    });
+
+    it("rejects a locale_branch_finding missing its localeBranchId", () => {
+      expect(() =>
+        apiJson("projects.decisions", {
+          ...dashboardDecisionsFixture,
+          pendingDecisions: [
+            projectFinding!,
+            {
+              ...localeBranchFinding!,
+              localeBranchId: null,
+              targetLocale: null,
+              branchStatus: null,
+            },
+            runtimeValidation!,
+          ],
+        }),
+      ).toThrow("localeBranchId");
+    });
+
+    it("rejects a runtime_validation missing its runtimeRunId", () => {
+      expect(() =>
+        apiJson("projects.decisions", {
+          ...dashboardDecisionsFixture,
+          pendingDecisions: [
+            projectFinding!,
+            localeBranchFinding!,
+            { ...runtimeValidation!, runtimeRunId: null, runtimeStatus: null },
+          ],
+        }),
+      ).toThrow("runtimeRunId");
+    });
+
+    it("does not count a runtime_validation (even with a localeBranchId) as a branch finding", () => {
+      // The fixture's runtime_validation carries localeBranchId "locale-1".
+      // It is counted by decisionKind — as a runtime validation, never as a
+      // locale branch finding. A count that folds it into the branch total
+      // (2 instead of 1) is a contradictory read-model and is rejected.
+      expect(runtimeValidation!.localeBranchId).not.toBeNull();
+      expect(() =>
+        apiJson("projects.decisions", {
+          ...dashboardDecisionsFixture,
+          counts: {
+            ...dashboardDecisionsFixture.counts,
+            localeBranchFindingDecisionCount: 2,
+            runtimeValidationDecisionCount: 0,
+          },
+        }),
+      ).toThrow("localeBranchFindingDecisionCount");
+    });
+  });
 });
