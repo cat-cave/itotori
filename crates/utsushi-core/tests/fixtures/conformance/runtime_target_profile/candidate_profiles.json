@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "workIds": ["fixture-archive#work:2:0", "fixture-archive#work:2:1"],
+    "editionIds": ["fixture-archive#edition:steam-jp"],
+    "sourceRevisions": ["fixture-source-v0.1"],
+    "bridgeUnitFixtureRevisions": ["fixture-bridge-rev-v0.1"],
+    "runtimeTargetIds": ["fixture:mvmz-patched-fixture"],
+    "proofManifestIds": ["cac432af-03e2-7aa5-955b-bc1d66a3629a"]
+  },
+  "candidates": [
+    {
+      "schemaVersion": "utsushi.runtime_target_profile.v0.1",
+      "workId": "fixture-archive#work:2:0",
+      "editionId": "fixture-archive#edition:steam-jp",
+      "sourceRevision": "fixture-source-v0.1",
+      "bridgeUnitFixtureRevision": "fixture-bridge-rev-v0.1",
+      "runtimeTargetId": "fixture:mvmz-patched-fixture",
+      "readinessLevel": "alpha",
+      "proofManifestId": "cac432af-03e2-7aa5-955b-bc1d66a3629a"
+    },
+    {
+      "workId": "fixture-archive#work:2:1",
+      "sourceRevision": "fixture-source-v0.1",
+      "bridgeUnitFixtureRevision": "fixture-bridge-rev-v0.1",
+      "runtimeTargetId": "fixture:mvmz-patched-fixture",
+      "readinessLevel": "real-game-testing-ready",
+      "proofManifestId": "cac432af-03e2-7aa5-955b-bc1d66a3629a"
+    }
+  ],
+  "rejected": [
+    {
+      "workId": "fixture-archive#work:2:0",
+      "editionId": "fixture-archive#edition:steam-jp",
+      "sourceRevision": "fixture-source-v0.1",
+      "bridgeUnitFixtureRevision": "fixture-bridge-rev-v0.1",
+      "runtimeTargetId": "fixture:arbitrary-unregistered-target",
+      "readinessLevel": "alpha",
+      "proofManifestId": "cac432af-03e2-7aa5-955b-bc1d66a3629a"
+    }
+  ]
+}

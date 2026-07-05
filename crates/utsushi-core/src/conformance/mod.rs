@@ -33,6 +33,7 @@ pub mod diagnostics;
 pub mod fixtures;
 pub mod manifest;
 pub mod result;
+pub mod runtime_target_profile;
 pub mod snapshot_check;
 pub mod trace_branch;
 
@@ -53,6 +54,11 @@ pub use manifest::{
     SubsystemRequirement,
 };
 pub use result::{ConformanceResult, EvidenceRef, ResultOutcome};
+pub use runtime_target_profile::{
+    RUNTIME_TARGET_PROFILE_SCHEMA_VERSION, ReadinessLevel, RuntimeTargetMetadata,
+    RuntimeTargetProfile, RuntimeTargetProfileError, RuntimeTargetProfileFixture,
+    RuntimeTargetResolutionError, resolve_runtime_target_profile,
+};
 pub use snapshot_check::{SnapshotConformanceCheck, unsupported_snapshot_restore_result};
 
 use crate::{EvidenceTier, port::PortManifest};
