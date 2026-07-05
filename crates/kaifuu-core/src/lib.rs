@@ -97,6 +97,12 @@ pub const SEMANTIC_HELPER_ALLOWLIST_EXECUTABLE_NAME_MISMATCH: &str =
     "kaifuu.helper_allowlist.executable_name_mismatch";
 pub const SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY: &str =
     "kaifuu.helper_allowlist.undeclared_capability";
+/// The trusted-staging copy could not be materialized (source symlink, staging
+/// symlink squat, unreadable source, or an unsupported non-Unix platform), so
+/// the validated bytes could not be bound to execution. Fail closed rather than
+/// hashing-then-launching the mutable source path (KAIFUU-164 hash-to-exec
+/// TOCTOU).
+pub const SEMANTIC_HELPER_ALLOWLIST_STAGING_FAILED: &str = "kaifuu.helper_allowlist.staging_failed";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
@@ -8982,11 +8988,29 @@ impl HelperRegistryEntry {
         "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     }
 
-    pub fn validate_binary_launch(
+    /// Stage the registered helper binary into a trusted staging directory and
+    /// validate the STAGED bytes against the allowlist entry.
+    ///
+    /// This is the hardened replacement for the old hash-then-exec-path launch
+    /// seam (KAIFUU-164): instead of hashing the mutable `executable_path` and
+    /// later launching that same path — a hash-to-exec TOCTOU where an attacker
+    /// who can write the path swaps the binary between the hash-check and the
+    /// exec — the source bytes are copied ONCE into `staging_dir` (a directory
+    /// the untrusted source cannot write), the hash is computed from the STAGED
+    /// copy, and the returned [`StagedHelperBinary`] is the execution reference
+    /// (a held descriptor to the staged copy on Unix). A swap of the original
+    /// path after staging has no effect: the bytes that were validated are
+    /// exactly the bytes bound to execution.
+    ///
+    /// `staging_dir` MUST be a caller-controlled trusted directory (e.g. a
+    /// freshly allocated Kaifuu-owned temp dir), never a directory writable by
+    /// the untrusted helper source.
+    pub fn stage_and_validate_binary_launch(
         &self,
         request: HelperBinaryLaunchValidationRequest<'_>,
-    ) -> HelperBinaryLaunchValidationResult {
-        validate_helper_binary_launch(self, request)
+        staging_dir: &Path,
+    ) -> HelperBinaryLaunchOutcome {
+        stage_and_validate_helper_binary_launch(self, request, staging_dir)
     }
 
     pub fn validate(&self) -> HelperRegistryValidationResult {
@@ -9534,15 +9558,320 @@ impl HelperRegistryDiagnostic {
     }
 }
 
-fn validate_helper_binary_launch(
+/// The outcome of a hardened helper-binary launch: the serializable validation
+/// verdict plus, on success, the trusted staged copy that IS the execution
+/// reference.
+///
+/// `staged` is `Some` only when validation passed. It carries the bytes whose
+/// hash was validated, in a trusted staging directory (held open on Unix), so a
+/// caller launches the staged copy — never the mutable source path — and a swap
+/// of the source after validation cannot change what runs.
+#[derive(Debug)]
+pub struct HelperBinaryLaunchOutcome {
+    pub validation: HelperBinaryLaunchValidationResult,
+    pub staged: Option<StagedHelperBinary>,
+}
+
+impl HelperBinaryLaunchOutcome {
+    /// Whether the launch validation passed.
+    pub fn passed(&self) -> bool {
+        self.validation.status == OperationStatus::Passed
+    }
+}
+
+/// A helper binary whose validated bytes have been bound to execution through a
+/// trusted staging COPY (KAIFUU-164).
+///
+/// The bytes were copied ONCE (no-follow) from the source into a trusted
+/// staging directory, and [`staged_hash`](Self::staged_hash) is the sha256 of
+/// those STAGED bytes. On Unix an open read-only descriptor to the staged copy
+/// is retained ([`execution_fd`](Self::execution_fd)) as the execution
+/// reference; the mutable source path is never re-opened. The staged copy is
+/// removed on drop (the held descriptor remains valid for any in-flight use).
+#[derive(Debug)]
+pub struct StagedHelperBinary {
+    path: PathBuf,
+    hash: String,
+    #[cfg(unix)]
+    fd: std::os::fd::OwnedFd,
+}
+
+impl StagedHelperBinary {
+    /// Path to the trusted staged copy — the launch target. Distinct from the
+    /// (mutable, untrusted) source path.
+    pub fn staged_path(&self) -> &Path {
+        &self.path
+    }
+
+    /// sha256 (`sha256:<hex>`) of the STAGED bytes — the bytes bound to
+    /// execution, exactly the bytes that were validated against the allowlist.
+    pub fn staged_hash(&self) -> &str {
+        &self.hash
+    }
+
+    /// The open read-only descriptor to the staged copy: the execution
+    /// reference. A launcher should reference this descriptor (or
+    /// [`staged_path`](Self::staged_path)) and never re-open the source path.
+    #[cfg(unix)]
+    pub fn execution_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        use std::os::fd::AsFd;
+        self.fd.as_fd()
+    }
+
+    /// Verify the STAGED bytes against a registered allowlist hash. On mismatch
+    /// the staged copy is consumed (dropped, its file removed) so nothing is
+    /// left to execute, and a typed [`HelperBinaryStagingError::StagedHashMismatch`]
+    /// is returned — tamper detected at stage time. On match the staged copy is
+    /// returned as the bound execution reference.
+    pub fn verify_registered_hash(
+        self,
+        registered_hash: &str,
+    ) -> Result<Self, HelperBinaryStagingError> {
+        if self.hash == registered_hash {
+            Ok(self)
+        } else {
+            Err(HelperBinaryStagingError::StagedHashMismatch {
+                expected: registered_hash.to_string(),
+                observed: self.hash.clone(),
+            })
+        }
+    }
+}
+
+/// Stage a helper binary into the trusted directory and verify the STAGED bytes
+/// against `registered_hash`, binding the validated bytes to execution.
+///
+/// This is the standalone hardened primitive behind the registry launch path:
+/// the source is copied once (no-follow) into `staging_dir`, the hash is
+/// computed from the STAGED copy, and on a match the returned
+/// [`StagedHelperBinary`] is the execution reference. A swap of the source path
+/// afterwards has no effect. A hash mismatch yields a typed
+/// [`HelperBinaryStagingError::StagedHashMismatch`] with nothing left to run.
+pub fn stage_and_verify_helper_binary(
+    registered_hash: &str,
+    source_path: &Path,
+    staging_dir: &Path,
+    staged_name: &str,
+) -> Result<StagedHelperBinary, HelperBinaryStagingError> {
+    stage_helper_binary_no_follow(source_path, staging_dir, staged_name)?
+        .verify_registered_hash(registered_hash)
+}
+
+impl Drop for StagedHelperBinary {
+    fn drop(&mut self) {
+        // Best-effort removal of the trusted staged copy. On Unix the held
+        // descriptor keeps the inode alive for any in-flight use even after the
+        // path is unlinked.
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// A typed failure while staging a helper binary into the trusted directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HelperBinaryStagingError {
+    /// The source path does not exist. (Surfaced by the launch validator as a
+    /// `missing_binary` diagnostic, not a staging failure.)
+    SourceMissing,
+    /// The source path is a symlink; the staging copy refuses to chase it out to
+    /// attacker-chosen bytes.
+    SourceSymlink,
+    /// A symlink squatted on (or an entry raced into) the staged leaf inside the
+    /// trusted directory; the no-follow, exclusive create refused it.
+    StagingSymlink,
+    /// The STAGED bytes' hash does not match the registered allowlist hash —
+    /// tamper detected at stage time, before anything could be launched.
+    StagedHashMismatch { expected: String, observed: String },
+    /// An I/O error while reading the source or writing the staged copy.
+    Io(String),
+    /// Fd-relative no-follow staging is only implemented on Unix.
+    Unsupported,
+}
+
+impl fmt::Display for HelperBinaryStagingError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SourceMissing => formatter.write_str("helper binary source path is missing"),
+            Self::SourceSymlink => {
+                formatter.write_str("helper binary source path is a symlink (refused no-follow)")
+            }
+            Self::StagingSymlink => formatter
+                .write_str("a symlink squatted on the trusted staged copy (refused no-follow)"),
+            Self::StagedHashMismatch { expected, observed } => write!(
+                formatter,
+                "staged helper binary hash {observed} does not match registered hash {expected}"
+            ),
+            Self::Io(message) => write!(formatter, "helper binary staging I/O error: {message}"),
+            Self::Unsupported => {
+                formatter.write_str("helper binary staging requires a Unix platform")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HelperBinaryStagingError {}
+
+/// Deterministic, path-separator-free staged leaf name derived from the
+/// allowlist entry id (hashed so no untrusted characters reach the filesystem).
+fn staged_helper_binary_name(allowlist_entry_id: &str) -> String {
+    format!(
+        "kaifuu-helper-staged-{}",
+        sha256_hex(allowlist_entry_id.as_bytes())
+    )
+}
+
+/// Copy the source helper binary into the trusted `staging_dir` and bind the
+/// STAGED bytes to execution.
+///
+/// The source is opened and read exactly ONCE (no-follow; a symlink source is
+/// refused). The bytes are written into a FRESH regular file inside the trusted
+/// directory (`O_EXCL | O_NOFOLLOW`, after clearing any stale/squatting entry),
+/// then re-opened no-follow read-only as the returned execution reference. The
+/// returned hash is of the re-read staged bytes. A swap of the source path
+/// afterwards cannot affect the staged copy.
+#[cfg(unix)]
+fn stage_helper_binary_no_follow(
+    source_path: &Path,
+    staging_dir: &Path,
+    staged_name: &str,
+) -> Result<StagedHelperBinary, HelperBinaryStagingError> {
+    use std::ffi::OsStr;
+    use std::os::fd::AsFd;
+
+    use rustix::fs::{AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+
+    fn io(error: impl Into<io::Error>) -> HelperBinaryStagingError {
+        HelperBinaryStagingError::Io(error.into().to_string())
+    }
+
+    // 1. Read the source bytes exactly once, no-follow. A symlink source is
+    //    refused so we never chase a link to attacker-chosen bytes.
+    let source_fd = match rustix::fs::open(
+        source_path,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(fd) => fd,
+        Err(Errno::NOENT) => return Err(HelperBinaryStagingError::SourceMissing),
+        Err(Errno::LOOP) => return Err(HelperBinaryStagingError::SourceSymlink),
+        Err(error) => return Err(io(error)),
+    };
+    let source_stat = rustix::fs::fstat(source_fd.as_fd()).map_err(io)?;
+    if !FileType::from_raw_mode(source_stat.st_mode).is_file() {
+        // A directory / device / fifo is not a launchable regular file; treat as
+        // missing rather than staging it.
+        return Err(HelperBinaryStagingError::SourceMissing);
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::from(source_fd)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+
+    // 2. Open the trusted staging directory (the caller's trust anchor).
+    let dir_fd = rustix::fs::open(
+        staging_dir,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(io)?;
+
+    // 3. Clear any stale/squatting entry, then create a FRESH regular file
+    //    (`O_EXCL | O_NOFOLLOW`): a symlink can neither pre-exist (unlinked) nor
+    //    be followed, so the write lands on a real file in the trusted dir.
+    let staged_leaf = OsStr::new(staged_name);
+    match rustix::fs::unlinkat(dir_fd.as_fd(), staged_leaf, AtFlags::empty()) {
+        Ok(()) | Err(Errno::NOENT) => {}
+        Err(error) => return Err(io(error)),
+    }
+    let write_fd = match rustix::fs::openat(
+        dir_fd.as_fd(),
+        staged_leaf,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::RUSR | Mode::WUSR,
+    ) {
+        Ok(fd) => fd,
+        Err(Errno::EXIST) => return Err(HelperBinaryStagingError::StagingSymlink),
+        Err(error) => return Err(io(error)),
+    };
+    let mut write_file = std::fs::File::from(write_fd);
+    write_file.write_all(&bytes).map_err(io)?;
+    write_file.sync_all().map_err(io)?;
+    drop(write_file);
+
+    // 4. Re-open the staged copy no-follow read-only: this descriptor is the
+    //    execution reference (kept at offset 0), and the validated hash is of
+    //    THESE staged bytes — read through an INDEPENDENT no-follow open so the
+    //    execution descriptor's file offset is not consumed.
+    let open_staged = |flags: OFlags| -> Result<std::os::fd::OwnedFd, HelperBinaryStagingError> {
+        match rustix::fs::openat(
+            dir_fd.as_fd(),
+            staged_leaf,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | flags,
+            Mode::empty(),
+        ) {
+            Ok(fd) => Ok(fd),
+            Err(Errno::LOOP) => Err(HelperBinaryStagingError::StagingSymlink),
+            Err(error) => Err(io(error)),
+        }
+    };
+    let exec_fd = open_staged(OFlags::empty())?;
+    let hash_fd = open_staged(OFlags::empty())?;
+    let mut staged_bytes = Vec::new();
+    std::fs::File::from(hash_fd)
+        .read_to_end(&mut staged_bytes)
+        .map_err(io)?;
+    let staged_hash = sha256_hash_bytes(&staged_bytes);
+
+    Ok(StagedHelperBinary {
+        path: staging_dir.join(staged_name),
+        hash: staged_hash,
+        fd: exec_fd,
+    })
+}
+
+/// Non-Unix fallback: fd-relative no-follow staging is Unix-only. Rather than
+/// fall back to an unsafe hash-then-launch of the mutable path, staging is
+/// unsupported (surfaced as a typed staging failure).
+#[cfg(not(unix))]
+fn stage_helper_binary_no_follow(
+    _source_path: &Path,
+    _staging_dir: &Path,
+    _staged_name: &str,
+) -> Result<StagedHelperBinary, HelperBinaryStagingError> {
+    Err(HelperBinaryStagingError::Unsupported)
+}
+
+fn stage_and_validate_helper_binary_launch(
     entry: &HelperRegistryEntry,
     request: HelperBinaryLaunchValidationRequest<'_>,
-) -> HelperBinaryLaunchValidationResult {
+    staging_dir: &Path,
+) -> HelperBinaryLaunchOutcome {
     let mut diagnostics = Vec::new();
-    let observed_hash = match fs::metadata(request.executable_path) {
-        Ok(metadata) if metadata.is_file() => sha256_file_ref(request.executable_path).ok(),
-        _ => None,
-    };
+
+    // Bind the validated bytes to execution through a trusted staging COPY. The
+    // source path is read exactly ONCE (no-follow) and copied into the trusted
+    // `staging_dir`; the observed hash is of the STAGED bytes, and the staged
+    // copy (held open) is the execution reference. The mutable source path is
+    // never re-opened, so a swap after this point cannot change what runs.
+    let staged_name = staged_helper_binary_name(request.allowlist_entry_id);
+    let (observed_hash, staged, staging_error) =
+        match stage_helper_binary_no_follow(request.executable_path, staging_dir, &staged_name) {
+            Ok(staged) => (Some(staged.staged_hash().to_string()), Some(staged), None),
+            Err(HelperBinaryStagingError::SourceMissing) => (None, None, None),
+            Err(error) => (None, None, Some(error)),
+        };
+
+    if let Some(error) = staging_error {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_STAGING_FAILED,
+            "executablePath",
+            "reinstall_helper_binary",
+            &format!("helper binary could not be safely staged for launch: {error}"),
+        );
+    }
 
     let allowlist_entry = entry
         .binary_allowlist
@@ -9560,7 +9889,7 @@ fn validate_helper_binary_launch(
             "install_or_select_allowed_helper",
             "helper binary allowlist entry is not registered",
         );
-        return helper_binary_launch_validation_result(request, observed_hash, diagnostics);
+        return helper_binary_launch_outcome(request, observed_hash, diagnostics, staged);
     };
 
     if allowlist_entry.helper_id != request.helper_id || entry.helper_id != request.helper_id {
@@ -9652,19 +9981,25 @@ fn validate_helper_binary_launch(
         }
     }
 
-    helper_binary_launch_validation_result(request, observed_hash, diagnostics)
+    helper_binary_launch_outcome(request, observed_hash, diagnostics, staged)
 }
 
-fn helper_binary_launch_validation_result(
+/// Build the launch outcome. The staged execution reference is retained only
+/// when validation PASSED: a failed validation must never hand a caller an
+/// executable handle, and a mismatched/failed staged copy is dropped (its temp
+/// file removed on `Drop`) so nothing runs.
+fn helper_binary_launch_outcome(
     request: HelperBinaryLaunchValidationRequest<'_>,
     observed_hash: Option<String>,
     diagnostics: Vec<HelperBinaryLaunchDiagnostic>,
-) -> HelperBinaryLaunchValidationResult {
-    HelperBinaryLaunchValidationResult {
+    staged: Option<StagedHelperBinary>,
+) -> HelperBinaryLaunchOutcome {
+    let passed = diagnostics.is_empty();
+    let validation = HelperBinaryLaunchValidationResult {
         schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
         helper_id: redact_for_log_or_report(request.helper_id),
         allowlist_entry_id: redact_for_log_or_report(request.allowlist_entry_id),
-        status: if diagnostics.is_empty() {
+        status: if passed {
             OperationStatus::Passed
         } else {
             OperationStatus::Failed
@@ -9672,6 +10007,10 @@ fn helper_binary_launch_validation_result(
         observed_hash,
         platform: redact_for_log_or_report(request.platform),
         diagnostics,
+    };
+    HelperBinaryLaunchOutcome {
+        validation,
+        staged: if passed { staged } else { None },
     }
 }
 
@@ -23306,18 +23645,34 @@ mod tests {
         let allowed_binary = public_helper_binary_path("kaifuu-fixture-helper");
         let mismatch_binary = public_helper_binary_path("kaifuu-fixture-helper-mismatch");
 
-        let allowed = valid_entry.validate_binary_launch(HelperBinaryLaunchValidationRequest {
-            helper_id: FIXTURE_HELPER_REGISTRY_ID,
-            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
-            executable_path: &allowed_binary,
-            platform: "fixture-any",
-            helper_version: "0.1.0",
-            required_capabilities: &[HelperCapability::FixtureInvocation],
-        });
+        let allowed_staging = tempfile::tempdir().unwrap();
+        let allowed_outcome = valid_entry.stage_and_validate_binary_launch(
+            HelperBinaryLaunchValidationRequest {
+                helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                executable_path: &allowed_binary,
+                platform: "fixture-any",
+                helper_version: "0.1.0",
+                required_capabilities: &[HelperCapability::FixtureInvocation],
+            },
+            allowed_staging.path(),
+        );
+        let allowed = allowed_outcome.validation;
         assert_eq!(allowed.status, OperationStatus::Passed, "{allowed:#?}");
         assert_eq!(
             allowed.observed_hash.as_deref(),
             Some("sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c")
+        );
+        // The passed launch bound the validated bytes to a trusted staged copy,
+        // distinct from the mutable source path.
+        let staged = allowed_outcome
+            .staged
+            .as_ref()
+            .expect("passed launch binds a staged execution reference");
+        assert_ne!(staged.staged_path(), allowed_binary.as_path());
+        assert_eq!(
+            staged.staged_hash(),
+            "sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c"
         );
 
         let cases = [
@@ -23387,15 +23742,20 @@ mod tests {
             expected_code,
         ) in cases
         {
+            let case_staging = tempfile::tempdir().unwrap();
             let report = entry
-                .validate_binary_launch(HelperBinaryLaunchValidationRequest {
-                    helper_id: FIXTURE_HELPER_REGISTRY_ID,
-                    allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
-                    executable_path: &executable_path,
-                    platform,
-                    helper_version,
-                    required_capabilities,
-                })
+                .stage_and_validate_binary_launch(
+                    HelperBinaryLaunchValidationRequest {
+                        helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                        allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                        executable_path: &executable_path,
+                        platform,
+                        helper_version,
+                        required_capabilities,
+                    },
+                    case_staging.path(),
+                )
+                .validation
                 .redacted_for_report();
             assert_eq!(
                 report.status,
@@ -28614,5 +28974,227 @@ mod tests {
         // Load-bearing flags survive redaction.
         assert!(!redacted.script_capability_claimed);
         assert!(!redacted.decrypted_bytes_persisted);
+    }
+
+    // ---------------------------------------------------------------------
+    // KAIFUU-164 — hash-to-exec TOCTOU: validated bytes bound to execution
+    // through a trusted staging copy.
+    // ---------------------------------------------------------------------
+
+    /// A registry entry whose single allowlist entry pins `registered_hash` for
+    /// a `helper-bin`-named helper (fixture-any platform, version 0.1.0,
+    /// FixtureInvocation capability).
+    fn staging_launch_entry(registered_hash: &str) -> HelperRegistryEntry {
+        let mut entry = FixtureHelperStubAdapter::registry_entry();
+        let allowlist_entry = &mut entry.binary_allowlist.entries[0];
+        allowlist_entry.sha256_hash = registered_hash.to_string();
+        allowlist_entry.executable_name = "helper-bin".to_string();
+        entry
+    }
+
+    fn launch_request<'a>(
+        entry: &'a HelperRegistryEntry,
+        source: &'a Path,
+        required: &'a [HelperCapability],
+    ) -> HelperBinaryLaunchValidationRequest<'a> {
+        HelperBinaryLaunchValidationRequest {
+            helper_id: &entry.helper_id,
+            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            executable_path: source,
+            platform: "fixture-any",
+            helper_version: "0.1.0",
+            required_capabilities: required,
+        }
+    }
+
+    #[test]
+    fn helper_launch_binds_validated_bytes_via_trusted_staging_copy_defeats_swap() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let staging_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("helper-bin");
+
+        let original = b"ORIGINAL-VALIDATED-HELPER-BYTES\n";
+        fs::write(&source, original).unwrap();
+        let original_hash = sha256_hash_bytes(original);
+
+        let entry = staging_launch_entry(&original_hash);
+        let required = [HelperCapability::FixtureInvocation];
+        let outcome = entry.stage_and_validate_binary_launch(
+            launch_request(&entry, &source, &required),
+            staging_dir.path(),
+        );
+
+        assert!(
+            outcome.passed(),
+            "validation should pass: {:?}",
+            outcome.validation.diagnostics
+        );
+        let staged = outcome
+            .staged
+            .as_ref()
+            .expect("passed launch must bind a staged execution reference");
+        // The validated hash is of the STAGED bytes and equals the original.
+        assert_eq!(staged.staged_hash(), original_hash);
+        // The execution target is the trusted staged copy, NOT the source.
+        assert_ne!(staged.staged_path(), source.as_path());
+        assert!(staged.staged_path().starts_with(staging_dir.path()));
+
+        // Swap the source binary AFTER validation with attacker-chosen bytes.
+        let swapped = b"SWAPPED-EVIL-HELPER-BYTES-THAT-MUST-NEVER-RUN\n";
+        fs::write(&source, swapped).unwrap();
+        let swapped_hash = sha256_hash_bytes(swapped);
+        assert_ne!(original_hash, swapped_hash);
+
+        // What would execute (the staged copy) is UNCHANGED by the swap.
+        let staged_bytes = fs::read(staged.staged_path()).unwrap();
+        assert_eq!(staged_bytes.as_slice(), original);
+        assert_eq!(sha256_hash_bytes(&staged_bytes), original_hash);
+
+        // Mutation proof: the OLD hash-then-exec-path approach re-opened the
+        // mutable source at launch — which now hashes to the SWAPPED bytes, i.e.
+        // it would run the attacker binary. The staging copy defeats exactly
+        // this.
+        let source_hash_at_launch = sha256_file_ref(&source).unwrap();
+        assert_eq!(
+            source_hash_at_launch, swapped_hash,
+            "re-hashing the mutable source at launch yields the swapped bytes (the TOCTOU the staging copy defeats)"
+        );
+        assert_ne!(
+            source_hash_at_launch, original_hash,
+            "the source path no longer holds the validated bytes after the swap"
+        );
+
+        // On Unix the held execution descriptor still reads the validated bytes.
+        #[cfg(unix)]
+        {
+            use std::io::Read as _;
+            use std::os::fd::AsFd;
+            let dup = staged.execution_fd().try_clone_to_owned().unwrap();
+            let mut file = std::fs::File::from(dup);
+            let _ = file.as_fd();
+            let mut via_fd = Vec::new();
+            file.read_to_end(&mut via_fd).unwrap();
+            assert_eq!(via_fd.as_slice(), original);
+        }
+    }
+
+    #[test]
+    fn helper_launch_detects_staged_hash_tamper_with_typed_error() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let staging_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("helper-bin");
+
+        // Register the EXPECTED bytes' hash, but the source on disk is tampered.
+        let expected_hash = sha256_hash_bytes(b"EXPECTED-HELPER-BYTES\n");
+        let tampered = b"TAMPERED-HELPER-BYTES\n";
+        fs::write(&source, tampered).unwrap();
+        let tampered_hash = sha256_hash_bytes(tampered);
+
+        // (a) Direct stage-time typed error (acceptance #3).
+        let error = stage_and_verify_helper_binary(
+            &expected_hash,
+            &source,
+            staging_dir.path(),
+            &staged_helper_binary_name(FIXTURE_HELPER_ALLOWLIST_REF_ID),
+        )
+        .expect_err("tampered staged bytes must be a typed error");
+        assert_eq!(
+            error,
+            HelperBinaryStagingError::StagedHashMismatch {
+                expected: expected_hash.clone(),
+                observed: tampered_hash.clone(),
+            }
+        );
+
+        // (b) Through the launch validator: HASH_MISMATCH diagnostic on the
+        // STAGED bytes, and NO staged execution reference is handed back.
+        let entry = staging_launch_entry(&expected_hash);
+        let required = [HelperCapability::FixtureInvocation];
+        let outcome = entry.stage_and_validate_binary_launch(
+            launch_request(&entry, &source, &required),
+            staging_dir.path(),
+        );
+        assert!(!outcome.passed());
+        assert!(
+            outcome.staged.is_none(),
+            "a failed launch must not bind an executable handle"
+        );
+        assert_eq!(
+            outcome.validation.observed_hash.as_deref(),
+            Some(tampered_hash.as_str())
+        );
+        assert!(
+            outcome
+                .validation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH),
+            "expected hash-mismatch diagnostic: {:?}",
+            outcome.validation.diagnostics
+        );
+    }
+
+    #[test]
+    fn helper_launch_refuses_symlinked_source_instead_of_chasing_it() {
+        #[cfg(unix)]
+        {
+            let src_dir = tempfile::tempdir().unwrap();
+            let staging_dir = tempfile::tempdir().unwrap();
+            let real = src_dir.path().join("real-target");
+            let bytes = b"REAL-TARGET-BYTES\n";
+            fs::write(&real, bytes).unwrap();
+            let link = src_dir.path().join("helper-bin");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+
+            // Direct primitive: a symlink source is a typed refusal.
+            let error = stage_helper_binary_no_follow(
+                &link,
+                staging_dir.path(),
+                &staged_helper_binary_name(FIXTURE_HELPER_ALLOWLIST_REF_ID),
+            )
+            .expect_err("symlink source must be refused");
+            assert_eq!(error, HelperBinaryStagingError::SourceSymlink);
+
+            // Through the launch validator: a staging-failed diagnostic, no
+            // staged handle.
+            let entry = staging_launch_entry(&sha256_hash_bytes(bytes));
+            let required = [HelperCapability::FixtureInvocation];
+            let outcome = entry.stage_and_validate_binary_launch(
+                launch_request(&entry, &link, &required),
+                staging_dir.path(),
+            );
+            assert!(!outcome.passed());
+            assert!(outcome.staged.is_none());
+            assert!(
+                outcome
+                    .validation
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == SEMANTIC_HELPER_ALLOWLIST_STAGING_FAILED)
+            );
+        }
+    }
+
+    #[test]
+    fn staged_helper_copy_is_removed_on_drop() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let staging_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("helper-bin");
+        let bytes = b"HELPER\n";
+        fs::write(&source, bytes).unwrap();
+        let name = staged_helper_binary_name(FIXTURE_HELPER_ALLOWLIST_REF_ID);
+        let staged_path = {
+            let staged = stage_and_verify_helper_binary(
+                &sha256_hash_bytes(bytes),
+                &source,
+                staging_dir.path(),
+                &name,
+            )
+            .unwrap();
+            let path = staged.staged_path().to_path_buf();
+            assert!(path.exists());
+            path
+        };
+        assert!(!staged_path.exists(), "staged copy must be removed on drop");
     }
 }

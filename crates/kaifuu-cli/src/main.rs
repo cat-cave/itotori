@@ -2048,18 +2048,33 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
                         .ok_or_else(|| format!("unsupported helper capability {capability}").into())
                 })
                 .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
-            let result = entry
-                .validate_binary_launch(HelperBinaryLaunchValidationRequest {
+            // Bind the validated bytes to execution through a trusted staging
+            // COPY (KAIFUU-164): the helper binary is copied into a fresh
+            // Kaifuu-owned staging directory the untrusted source cannot write,
+            // the hash is validated against the STAGED bytes, and the staged
+            // copy is the execution reference — a swap of `executable_path`
+            // after this check cannot change what would run. The staged copy is
+            // dropped (removed) when `outcome` goes out of scope.
+            let staging_dir = allocate_patch_staging_dir(&output)?;
+            let outcome = entry.stage_and_validate_binary_launch(
+                HelperBinaryLaunchValidationRequest {
                     helper_id: &entry.helper_id,
                     allowlist_entry_id,
                     executable_path: &executable_path,
                     platform,
                     helper_version,
                     required_capabilities: &required_capabilities,
-                })
-                .redacted_for_report();
+                },
+                &staging_dir,
+            );
+            let result = outcome.validation.redacted_for_report();
             let failed = result.status == kaifuu_core::OperationStatus::Failed;
-            write_json(&output, &result)?;
+            let write_result = write_json(&output, &result);
+            // Drop the staged execution reference (removes the staged copy) and
+            // then clear the trusted staging directory.
+            drop(outcome);
+            remove_patch_staging_dir(&staging_dir)?;
+            write_result?;
             if failed {
                 return Err(format!(
                     "helper binary allowlist validation failed for {} / {}: {}",
