@@ -269,7 +269,12 @@ function isItotoriDashboardRoute(pathname: string): boolean {
   return (
     pathname === "/style-guide-builder" ||
     /^\/reviewer-queue\/(?:batch|[^/]+)$/u.test(pathname) ||
-    /^\/projects\/[^/]+\/locale-branches\/[^/]+\/asset-decisions(?:\/batch)?$/u.test(pathname)
+    /^\/projects\/[^/]+\/locale-branches\/[^/]+\/asset-decisions(?:\/batch)?$/u.test(pathname) ||
+    // ITOTORI-040 — the localization workspace SPA. Mirrors the client-side
+    // `workspaceRoutePathRegex` so every workspace deep link (source/draft/
+    // final comparison, scene/asset browse, search, corrections) resolves to
+    // the dashboard index and re-routes inside the SPA.
+    /^\/workspace(?:\/(?:projects|scenes|assets|comparison|search|corrections))?$/u.test(pathname)
   );
 }
 

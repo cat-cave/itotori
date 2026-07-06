@@ -14,6 +14,7 @@ import {
   type ReviewerBatchPreviewServicePort,
   type ReviewerDetailContext,
 } from "./reviewer/index.js";
+import { parseWorkspaceRoute, renderWorkspaceRoute } from "./workspace/index.js";
 import { assertItotoriApiResponse } from "./api-schema.js";
 import { reviewerQueueActionList, reviewerQueueActionValues } from "@itotori/db";
 
@@ -22,6 +23,7 @@ const root = document.querySelector<HTMLDivElement>("#app")!;
 const assetDecisionsParams = parseAssetDecisionsRoute(window.location.pathname);
 const reviewerDetailParams = parseReviewerDetailRoute(window.location.pathname);
 const reviewerBatchHit = parseReviewerBatchRoute(window.location.pathname);
+const workspaceRoute = parseWorkspaceRoute(window.location.pathname, window.location.search);
 if (assetDecisionsParams !== null) {
   await renderAssetDecisionsRoute(root, assetDecisionsParams);
 } else if (reviewerBatchHit !== null) {
@@ -41,10 +43,20 @@ if (assetDecisionsParams !== null) {
   `;
   const context = await fetchReviewerDetailContext(reviewerDetailParams.reviewItemId);
   root.innerHTML = renderReviewerDetailView(context);
+} else if (workspaceRoute !== null) {
+  await renderWorkspaceRoute(root, workspaceRoute, { fetchJson: fetchWorkspaceJson });
 } else if (window.location.pathname === "/style-guide-builder") {
   await renderStyleGuideBuilderRoute(root);
 } else {
   await renderDashboard(root);
+}
+
+async function fetchWorkspaceJson(apiPath: string): Promise<unknown> {
+  const response = await fetch(apiPath, { headers: { accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`workspace API request failed: ${response.status}`);
+  }
+  return await response.json();
 }
 
 function reviewerBatchRequestFromSearch(search: string): ReviewerBatchActionRequest {

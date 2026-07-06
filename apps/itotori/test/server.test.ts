@@ -177,6 +177,25 @@ describe("Itotori server API contracts", () => {
           await expect(dashboardResponse.text()).resolves.toBe("itotori dashboard");
         }
 
+        // ITOTORI-040 — the localization workspace SPA must be reachable at
+        // /workspace deep links for ANY project (project/unit context comes
+        // from query params, not the path). Each variant resolves to the
+        // dashboard index so the SPA loader can re-route client-side.
+        for (const pathname of [
+          "/workspace",
+          "/workspace/projects",
+          "/workspace/scenes",
+          "/workspace/assets",
+          "/workspace/comparison",
+          "/workspace/search",
+          "/workspace/corrections",
+        ]) {
+          const workspaceResponse = await fetch(`${origin}${pathname}`);
+          expect(workspaceResponse.status).toBe(200);
+          expect(workspaceResponse.headers.get("content-type")).toBe("text/html");
+          await expect(workspaceResponse.text()).resolves.toBe("itotori dashboard");
+        }
+
         for (const pathname of [
           "/reviewer-queue",
           "/reviewer-queue/batch/",
@@ -186,6 +205,8 @@ describe("Itotori server API contracts", () => {
           "/projects/project-1/locale-branches/locale-1/asset-decisions/extra",
           "/projects/project-1/locale-branches/locale-1/asset-decisions/%2e%2e",
           "/projects/project-1/locale-branches/locale-1",
+          "/workspace/unknown",
+          "/workspace/projects/extra",
         ]) {
           const notFoundResponse = await fetch(`${origin}${pathname}`);
           expect(notFoundResponse.status).toBe(404);
