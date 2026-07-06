@@ -1059,6 +1059,68 @@ describe("Itotori API handlers", () => {
 
   it.each([
     {
+      query: "?targetLanguage=",
+      error: /targetLanguage/u,
+    },
+    {
+      query: "?pool=official_english_conflict",
+      error: /pool/u,
+    },
+    {
+      query: "?targetLanguage=en-US&typo=1",
+      error: /unknown catalog completeness query parameter: typo/u,
+    },
+  ])("rejects malformed catalog completeness query $query", async ({ query, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness", search: query },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.catalogRepository.catalogCompletenessBenchmarkPools).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?source=made_up_source",
+      error: /source/u,
+    },
+    {
+      query: "?severity=fatal",
+      error: /severity/u,
+    },
+    {
+      query: "?status=made_up_status",
+      error: /status/u,
+    },
+    {
+      query: "?catalogRecordId=",
+      error: /catalogRecordId/u,
+    },
+    {
+      query: "?catalogRecordId=work-duplicate&typo=1",
+      error: /unknown catalog conflict query parameter: typo/u,
+    },
+  ])("rejects malformed catalog conflict review query $query", async ({ query, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/conflicts", search: query },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.catalogRepository.catalogConflictReview).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
       name: "local path",
       body: {
         ...catalogConflictReviewFixture,

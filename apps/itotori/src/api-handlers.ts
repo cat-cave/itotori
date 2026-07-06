@@ -1075,6 +1075,7 @@ function parseCatalogOpportunityRankingFilter(search = ""): CatalogOpportunityRa
 
 function parseCatalogCompletenessPoolFilter(search = ""): CatalogCompletenessPoolFilter {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["targetLanguage", "pool"], "catalog completeness");
   const filter: CatalogCompletenessPoolFilter = {};
   const targetLanguage = params.get("targetLanguage");
   if (targetLanguage !== null) {
@@ -1210,6 +1211,11 @@ function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSee
 
 function parseCatalogConflictReviewFilter(search = ""): CatalogConflictReviewFilter {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["source", "severity", "status", "catalogRecordId"],
+    "catalog conflict",
+  );
   const filter: CatalogConflictReviewFilter = {};
   const source = params.get("source");
   if (source !== null) {
