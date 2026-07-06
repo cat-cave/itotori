@@ -79,6 +79,15 @@ export const DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH =
   "fixtures/benchmark-stages/public-fixture.json";
 
 /**
+ * Deterministic identity pinned for the checked-in PUBLIC-fixture harness run.
+ * These are the fixture's replay-stable `benchmarkRunId` / `generatedAt`; a REAL
+ * benchmark run supplies its own values (e.g. via the `--benchmark-run-id` /
+ * `--generated-at` CLI flags), so neither identity is hardcoded in the run path.
+ */
+export const DEFAULT_PUBLIC_BENCHMARK_RUN_ID = "019ed026-0000-7000-8000-000000000001";
+export const DEFAULT_PUBLIC_BENCHMARK_GENERATED_AT = "2026-06-26T00:00:00.000Z";
+
+/**
  * Thrown when a stage cannot produce the composed output it is meant to emit
  * (e.g. a fixture carrying zero QA agents, so the QA-agent stage would yield
  * zero evaluations). Surfaces as a visible failed stage rather than an

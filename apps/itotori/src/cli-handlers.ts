@@ -89,6 +89,8 @@ import {
   DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH,
+  DEFAULT_PUBLIC_BENCHMARK_RUN_ID,
+  DEFAULT_PUBLIC_BENCHMARK_GENERATED_AT,
   benchmarkSetReadModelFromSeedsFixture,
   benchmarkSetSelectionInputFromSetsFixture,
   buildPublicBenchmarkHarnessStages,
@@ -943,6 +945,12 @@ async function runBenchmarkHarnessHandler(
   const stagesFixturePath =
     optionalFlag(args, "--benchmark-stages") ?? DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH;
   const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/benchmark-harness";
+  // Identity is threaded through args so a REAL run supplies its own values; the
+  // public fixture pins its deterministic, replay-stable defaults when the flags
+  // are omitted — keeping the checked-in fixture output byte-identical.
+  const benchmarkRunId =
+    optionalFlag(args, "--benchmark-run-id") ?? DEFAULT_PUBLIC_BENCHMARK_RUN_ID;
+  const generatedAt = optionalFlag(args, "--generated-at") ?? DEFAULT_PUBLIC_BENCHMARK_GENERATED_AT;
 
   const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
     dependencies.io.readJson(seedsPath),
@@ -958,9 +966,9 @@ async function runBenchmarkHarnessHandler(
   });
 
   const manifest = await runBenchmarkHarnessCommand({
-    benchmarkRunId: "019ed026-0000-7000-8000-000000000001",
+    benchmarkRunId,
     benchmarkName: "itotori-026 public-fixture benchmark harness run",
-    generatedAt: "2026-06-26T00:00:00.000Z",
+    generatedAt,
     outputDir,
     stages,
     io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
