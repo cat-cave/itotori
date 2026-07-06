@@ -25,8 +25,24 @@
 // validated report's recomputed `costLedger`. A stage throws when its named
 // prerequisite output is missing/invalid, which the orchestrator records as a
 // visible failed stage (failure propagation).
+//
+// Report-shape validation is NOT deferred to the final cost-quality stage: each
+// intermediate stage validates the report SLICE it produces (compared
+// systems + provider-run cost records, deterministic-QA results, QA-agent
+// evaluations) against the v0.2 schema at its ORIGIN via `assertReportSlice`.
+// A malformed slice therefore fails at the stage that emitted it — with an
+// error naming exactly where — rather than being carried downstream and only
+// rejected by `assertBenchmarkReportV02` at the final stage. The final stage
+// still owns the whole-report, cross-slice checks (cost-ledger recompute,
+// referential integrity); the per-slice checks add no duplicate recompute.
 
 import type { CatalogBenchmarkSeedFinderReadModel } from "@itotori/db";
+import {
+  assertBenchmarkComparedSystemV02,
+  assertBenchmarkProviderRunV02,
+  assertDeterministicQaResultV02,
+  assertQaAgentEvaluationV02,
+} from "@itotori/localization-bridge-schema";
 import {
   assembleBenchmarkReport,
   evaluateQaAgents,
@@ -143,6 +159,21 @@ function rawMtlBaselineStage(inputs: PublicBenchmarkHarnessFixtureInputs): Bench
         corpus: inputs.stagesFixture.corpus,
         recordedSystems: inputs.stagesFixture.recordedSystems,
       });
+      // Validate the report slice at its ORIGIN. The compared systems and
+      // provider-run cost records this stage emits become `systemsCompared` /
+      // `providerModelCostRecords` in the final BenchmarkReportV02; validating
+      // them here makes a malformed slice fail at THIS stage rather than being
+      // carried downstream and only surfacing at the final cost-quality stage.
+      assertReportSlice(
+        result.systems,
+        "raw-mtl-baseline.systems",
+        assertBenchmarkComparedSystemV02,
+      );
+      assertReportSlice(
+        result.providerRuns,
+        "raw-mtl-baseline.providerRuns",
+        assertBenchmarkProviderRunV02,
+      );
       return {
         artifactKind: "raw-mtl-baseline-report",
         label: "Raw MTL baseline compared systems",
@@ -166,6 +197,10 @@ function deterministicQaStage(): BenchmarkHarnessStage {
         startedAt: "2026-06-28T12:01:05.000Z",
         completedAt: "2026-06-28T12:01:05.100Z",
       });
+      // Validate the report slice at its ORIGIN: these results become
+      // `deterministicQaResults` in the final report, so a malformed one must
+      // fail HERE, not be deferred to the cost-quality stage.
+      assertReportSlice(result.results, "deterministic-qa.results", assertDeterministicQaResultV02);
       return {
         artifactKind: "deterministic-qa-report",
         label: "Deterministic QA results",
@@ -197,6 +232,20 @@ function qaAgentEvaluationStage(
           "QA-agent evaluation produced zero evaluations",
         );
       }
+      // Validate the report slice at its ORIGIN: these evaluations and their
+      // provider-run cost records become `qaAgentEvaluations` /
+      // `providerModelCostRecords` in the final report; a malformed one must
+      // fail HERE, not be deferred to the cost-quality stage.
+      assertReportSlice(
+        result.evaluations,
+        "qa-agent-evaluation.evaluations",
+        assertQaAgentEvaluationV02,
+      );
+      assertReportSlice(
+        result.providerRuns,
+        "qa-agent-evaluation.providerRuns",
+        assertBenchmarkProviderRunV02,
+      );
       return {
         artifactKind: "qa-agent-evaluation-report",
         label: "QA-agent evaluations",
@@ -272,6 +321,27 @@ function costQualityReportStage(
       };
     },
   };
+}
+
+/**
+ * Assert every element of a report slice at its ORIGINATING stage, applying the
+ * schema's per-element validator with an indexed label. This moves report-shape
+ * validation forward from the final cost-quality stage (which composes
+ * `assembleBenchmarkReport` → `assertBenchmarkReportV02`) to the stage that
+ * produces the slice, so a malformed element fails EARLY with an error that
+ * names exactly where it went wrong. The final-stage validation still owns the
+ * cross-slice, whole-report checks (cost-ledger recompute, referential
+ * integrity); this adds only cheap, deterministic per-element structural
+ * validation at the source — no duplicate recompute.
+ */
+function assertReportSlice<T>(
+  elements: readonly T[],
+  label: string,
+  assertElement: (value: unknown, label: string) => void,
+): void {
+  elements.forEach((element, index) => {
+    assertElement(element, `${label}[${index}]`);
+  });
 }
 
 function upstreamArtifact<T>(

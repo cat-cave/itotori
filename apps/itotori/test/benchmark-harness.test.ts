@@ -249,12 +249,15 @@ describe("benchmark harness — failure propagation", () => {
     }
   });
 
-  it("propagates a cost-quality renderer failure when a provider cost record is malformed (cost cannot be faked)", async () => {
+  it("rejects a malformed provider cost record at its ORIGINATING stage (raw-mtl-baseline), not deferred to the final cost-quality stage", async () => {
     const io = memoryIo();
     const fixture = structuredClone(stagesFixture());
-    // A non-integer micros amount cannot pass the schema's cost-record check;
-    // the renderer's assertBenchmarkReportV02 rejects it. A faked cost cannot
-    // be smuggled past the recompute.
+    // A non-integer micros amount cannot pass the schema's cost-record check.
+    // This cost record is EMITTED by the raw-mtl-baseline stage, so the harness
+    // validates that report slice at its origin: the malformed record fails at
+    // raw-mtl-baseline with an error naming exactly where it went wrong —
+    // instead of being carried through stages 3-4 and only rejected by
+    // assertBenchmarkReportV02 at the final cost-quality stage.
     fixture.recordedSystems[1].providerRun.cost.amountMicrosUsd = 1570.5;
     const inputs: PublicBenchmarkHarnessFixtureInputs = {
       ...publicFixtureInputs(),
@@ -264,10 +267,50 @@ describe("benchmark harness — failure propagation", () => {
       runArgs(buildPublicBenchmarkHarnessStages(inputs), io),
     );
     expect(manifest.status).toBe("failed");
-    expect(manifest.failedStageId).toBe("cost-quality-report");
+    // Fails at the ORIGINATING stage, not the final cost-quality stage.
+    expect(manifest.failedStageId).toBe("raw-mtl-baseline");
     expect(manifest.costSummary).toBeNull();
-    const record = manifest.stages.find((stage) => stage.stageId === "cost-quality-report");
+    const record = manifest.stages.find((stage) => stage.stageId === "raw-mtl-baseline");
     expect(record?.status).toBe("failed");
+    if (record?.status === "failed") {
+      // The error points to where the malformed slice element lives.
+      expect(record.failure.message).toContain("raw-mtl-baseline.providerRuns");
+      expect(record.failure.message).toContain("amountMicrosUsd");
+    }
+    // The downstream cost-quality stage never runs — it is short-circuited.
+    const costRecord = manifest.stages.find((stage) => stage.stageId === "cost-quality-report");
+    expect(costRecord?.status).toBe("skipped_upstream_failed");
+  });
+
+  it("rejects a malformed QA-agent provider cost record at its ORIGINATING stage (qa-agent-evaluation)", async () => {
+    const io = memoryIo();
+    const fixture = structuredClone(stagesFixture());
+    // A non-integer micros amount on a QA-agent provider run. That cost record
+    // is EMITTED by the qa-agent-evaluation stage, so it is validated at that
+    // stage's origin — earlier stages (raw-mtl-baseline, deterministic-qa) stay
+    // well-formed and succeed.
+    fixture.qaAgents[0].providerRun.cost.amountMicrosUsd = 980.5;
+    const inputs: PublicBenchmarkHarnessFixtureInputs = {
+      ...publicFixtureInputs(),
+      stagesFixture: fixture,
+    };
+    const manifest = await runBenchmarkHarnessCommand(
+      runArgs(buildPublicBenchmarkHarnessStages(inputs), io),
+    );
+    expect(manifest.status).toBe("failed");
+    expect(manifest.failedStageId).toBe("qa-agent-evaluation");
+    const rawMtl = manifest.stages.find((stage) => stage.stageId === "raw-mtl-baseline");
+    const deterministicQa = manifest.stages.find((stage) => stage.stageId === "deterministic-qa");
+    expect(rawMtl?.status).toBe("succeeded");
+    expect(deterministicQa?.status).toBe("succeeded");
+    const record = manifest.stages.find((stage) => stage.stageId === "qa-agent-evaluation");
+    expect(record?.status).toBe("failed");
+    if (record?.status === "failed") {
+      expect(record.failure.message).toContain("qa-agent-evaluation.providerRuns");
+      expect(record.failure.message).toContain("amountMicrosUsd");
+    }
+    const costRecord = manifest.stages.find((stage) => stage.stageId === "cost-quality-report");
+    expect(costRecord?.status).toBe("skipped_upstream_failed");
   });
 
   it("fails the qa-agent-evaluation stage when the fixture names no QA agents", async () => {

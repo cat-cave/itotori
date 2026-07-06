@@ -6390,7 +6390,7 @@ function assertBenchmarkCommandLineV02(
   }
 }
 
-function assertBenchmarkComparedSystemV02(
+export function assertBenchmarkComparedSystemV02(
   value: unknown,
   label: string,
 ): asserts value is BenchmarkComparedSystemV02 {
@@ -6422,7 +6422,7 @@ function assertBenchmarkArtifactRefV02(
   assertOptionalString(ref.mediaType, `${label}.mediaType`);
 }
 
-function assertBenchmarkProviderRunV02(
+export function assertBenchmarkProviderRunV02(
   value: unknown,
   label: string,
 ): asserts value is BenchmarkProviderRunV02 {
@@ -6758,7 +6758,7 @@ function assertBenchmarkPenaltySummaryV02(
   );
 }
 
-function assertDeterministicQaResultV02(
+export function assertDeterministicQaResultV02(
   value: unknown,
   label: string,
 ): asserts value is DeterministicQaResultV02 {
@@ -6781,7 +6781,7 @@ function assertDeterministicQaResultV02(
   }
 }
 
-function assertQaAgentEvaluationV02(
+export function assertQaAgentEvaluationV02(
   value: unknown,
   label: string,
 ): asserts value is QaAgentEvaluationV02 {
