@@ -176,3 +176,28 @@ export {
   type BlindJudgeLiveOptions,
   type BlindJudgeLiveResult,
 } from "./blind-judge-live.js";
+
+export {
+  HUMAN_CALIBRATION_ANCHOR_POLICY,
+  HumanCalibrationAnchorError,
+  PANEL_DIVERGENCE_ALERT_THRESHOLD,
+  assertHumanRatingRecord,
+  assertHumanRatingRecordIsBlind,
+  buildHumanRatingBundles,
+  buildPanelHumanCalibrationReport,
+  deanonymizeHumanRatings,
+  lockHumanRatingAnchor,
+  type BuildHumanRatingBundlesInput,
+  type BuildHumanRatingBundlesResult,
+  type BuildPanelHumanCalibrationReportInput,
+  type DeanonymizedHumanScore,
+  type DimensionCalibration,
+  type HumanDimensionRating,
+  type HumanRatingBlinding,
+  type HumanRatingBundle,
+  type HumanRatingRecord,
+  type LockHumanRatingAnchorOptions,
+  type LockedHumanRatingAnchor,
+  type PanelDivergenceDirection,
+  type PanelHumanCalibrationReport,
+} from "./human-calibration-anchor.js";
