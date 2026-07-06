@@ -31,6 +31,31 @@ function labels(path, contents) {
   return findViolations(path, contents).map((v) => v.pattern);
 }
 
+// Invoke the auditor CLI as a fully CAPTURED subprocess.
+//
+// On a detected violation the auditor writes `ITOTORI-225 audit failed: ...`
+// to ITS stderr. The default `execFileSync` stdio inherits the child's stderr
+// onto THIS test process's own stderr, so that failure line escaped the test
+// even though the probes below are INTENTIONAL detection checks, not real repo
+// violations. Tooling that greps the test's stderr for that string (e.g.
+// `qd advance`, which treats a stderr match as a lifecycle failure) then
+// false-tripped on a passing test. Capturing stdout+stderr here (stdin
+// ignored) keeps the child's output inside this helper: the tests still PROVE
+// detection by asserting on the captured stderr, but the parent stderr stays
+// clean. Returns the exit code plus the captured streams (stderr empty on a
+// clean pass).
+function runAuditCli(...files) {
+  try {
+    const stdout = execFileSync("node", [scriptPath, ...files], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (err) {
+    return { code: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
+  }
+}
+
 test("catches a hardcoded non-zero amountMicrosUsd literal", () => {
   const hits = labels(PROD_PATH, "    amountMicrosUsd: 12_500,");
   assert.deepEqual(hits, ["hardcoded non-zero amountMicrosUsd literal"]);
@@ -98,21 +123,20 @@ test("CLI exits 1 on a crafted file with a hardcoded amountUsd literal", () => {
   const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
   const probe = join(dir, "probe-amountusd.ts");
   writeFileSync(probe, 'export const run = {\n  amountUsd: "0.05",\n};\n');
-  let code = 0;
-  try {
-    execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
-  } catch (err) {
-    code = err.status;
-  }
+  const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
+  // Detection is proven via the CAPTURED stderr; it never reaches this test's
+  // own stderr (so `qd advance`'s failure-string grep no longer false-trips).
+  assert.match(stderr, /ITOTORI-225 audit failed/u);
 });
 
 test("CLI exits 0 on a crafted file with only ZERO_COST amountUsd shapes", () => {
   const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
   const probe = join(dir, "probe-amountusd-zero.ts");
   writeFileSync(probe, 'export const run = {\n  amountUsd: "0",\n  amountMicrosUsd: 0,\n};\n');
-  const out = execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
-  assert.match(out, /audit passed/u);
+  const { code, stdout } = runAuditCli(probe);
+  assert.equal(code, 0);
+  assert.match(stdout, /audit passed/u);
 });
 
 test("catches an object-form costUsd amount literal", () => {
@@ -176,13 +200,9 @@ test("CLI exits 1 on a crafted file with a multi-line costUsd object", () => {
       "",
     ].join("\n"),
   );
-  let code = 0;
-  try {
-    execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
-  } catch (err) {
-    code = err.status;
-  }
+  const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
+  assert.match(stderr, /ITOTORI-225 audit failed/u);
 });
 
 test("catches a bare non-zero cost numeric literal", () => {
@@ -353,19 +373,16 @@ test("CLI exits 1 on a crafted file containing amountMicrosUsd: 12_500", () => {
   const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
   const probe = join(dir, "probe-amount.ts");
   writeFileSync(probe, "export const run = {\n  amountMicrosUsd: 12_500,\n};\n");
-  let code = 0;
-  try {
-    execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
-  } catch (err) {
-    code = err.status;
-  }
+  const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
+  assert.match(stderr, /ITOTORI-225 audit failed/u);
 });
 
 test("CLI exits 0 on a crafted file with only ZERO_COST shapes", () => {
   const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
   const probe = join(dir, "probe-zero.ts");
   writeFileSync(probe, "export const run = {\n  amountMicrosUsd: 0,\n  cost: 0,\n};\n");
-  const out = execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
-  assert.match(out, /audit passed/u);
+  const { code, stdout } = runAuditCli(probe);
+  assert.equal(code, 0);
+  assert.match(stdout, /audit passed/u);
 });
