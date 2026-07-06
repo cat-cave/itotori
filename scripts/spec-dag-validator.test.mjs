@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeDag, validateDag } from "./spec-dag.mjs";
+import { normalizeDag, validateDag, validateFindingDagAction } from "./spec-dag.mjs";
 
 test("accepts an implementable node with runnable verification and concrete outputs", () => {
   const errors = errorsFor(
@@ -1053,6 +1053,98 @@ test("a complete P1 real-game-testing-ready node need not be an ancestor of RGT-
   assert.ok(
     !errors.some((error) => error.includes("RGT-DONE-001 is P1 real-game-testing-ready work")),
     `expected no RGT-005 ancestor error for a complete node, got:\n${errors.join("\n")}`,
+  );
+});
+
+test("append-to-node target may be non-planned for the illustrative example but not for real reports", () => {
+  const targetNodeId = "TARGET-001";
+  const specId = "SPEC-001";
+  const finding = {
+    id: `${specId}-F001`,
+    severity: "P2",
+    orchestration: {
+      nextAction: "append_to_existing_dag_node",
+      existingDagNodeUpdate: { targetNodeId },
+    },
+  };
+  const report = { spec: { id: specId } };
+
+  for (const status of ["in_progress", "done", "complete", "blocked", "cancelled"]) {
+    const nodeById = new Map([[targetNodeId, { id: targetNodeId, status }]]);
+
+    const exampleErrors = validateFindingDagAction(
+      report,
+      finding,
+      "roadmap/examples/x.json",
+      nodeById,
+      {
+        isExampleFixture: true,
+      },
+    );
+    assert.deepEqual(
+      exampleErrors,
+      [],
+      `illustrative example must accept a non-planned (${status}) append target, got:\n${exampleErrors.join("\n")}`,
+    );
+
+    const realErrors = validateFindingDagAction(report, finding, "report.json", nodeById, {
+      isExampleFixture: false,
+    });
+    assertError(
+      realErrors,
+      `existingDagNodeUpdate.targetNodeId ${targetNodeId} must be planned, not ${status}`,
+      `real submitted report must still reject a non-planned (${status}) append target`,
+    );
+  }
+});
+
+test("append-to-node target still requires existence and non-self-reference for the example", () => {
+  const specId = "SPEC-001";
+  const finding = {
+    id: `${specId}-F001`,
+    severity: "P2",
+    orchestration: {
+      nextAction: "append_to_existing_dag_node",
+      existingDagNodeUpdate: { targetNodeId: "MISSING-001" },
+    },
+  };
+  const report = { spec: { id: specId } };
+
+  const missingErrors = validateFindingDagAction(
+    report,
+    finding,
+    "roadmap/examples/x.json",
+    new Map(),
+    {
+      isExampleFixture: true,
+    },
+  );
+  assertError(
+    missingErrors,
+    "existingDagNodeUpdate.targetNodeId MISSING-001 does not exist",
+    "the example still requires the append target to exist",
+  );
+
+  const selfRefFinding = {
+    id: `${specId}-F001`,
+    severity: "P2",
+    orchestration: {
+      nextAction: "append_to_existing_dag_node",
+      existingDagNodeUpdate: { targetNodeId: specId },
+    },
+  };
+  const nodeById = new Map([[specId, { id: specId, status: "in_progress" }]]);
+  const selfRefErrors = validateFindingDagAction(
+    report,
+    selfRefFinding,
+    "roadmap/examples/x.json",
+    nodeById,
+    { isExampleFixture: true },
+  );
+  assertError(
+    selfRefErrors,
+    `finding ${specId}-F001 must not append follow-up work to the audited spec ${specId}`,
+    "the example still rejects appending follow-up to the audited spec",
   );
 });
 

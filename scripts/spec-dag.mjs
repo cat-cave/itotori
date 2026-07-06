@@ -875,7 +875,9 @@ function validateAuditReportArtifacts(dagValue) {
       continue;
     }
 
-    const reportErrors = validateAuditReport(report, exampleFile.displayPath, validate, dagValue);
+    const reportErrors = validateAuditReport(report, exampleFile.displayPath, validate, dagValue, {
+      isExampleFixture: true,
+    });
     errors.push(...reportErrors);
     if (reportErrors.length === 0) {
       errors.push(
@@ -938,7 +940,7 @@ function compileAuditReportValidator() {
   }
 }
 
-function validateAuditReport(report, displayPath, validate, dagValue) {
+function validateAuditReport(report, displayPath, validate, dagValue, options = {}) {
   const errors = [];
   if (!validate(report)) {
     for (const error of validate.errors ?? []) {
@@ -949,11 +951,11 @@ function validateAuditReport(report, displayPath, validate, dagValue) {
     return errors;
   }
 
-  errors.push(...validateAuditReportSemantics(report, displayPath, dagValue));
+  errors.push(...validateAuditReportSemantics(report, displayPath, dagValue, options));
   return errors;
 }
 
-function validateAuditReportSemantics(report, displayPath, dagValue) {
+function validateAuditReportSemantics(report, displayPath, dagValue, options = {}) {
   const errors = [];
   const findings = report.findings;
   const counts = { P0: 0, P1: 0, P2: 0, P3: 0 };
@@ -988,7 +990,7 @@ function validateAuditReportSemantics(report, displayPath, dagValue) {
         `${displayPath} finding ${finding.id} proposed node priority ${proposedNode.priority} must match severity ${finding.severity}`,
       );
     }
-    errors.push(...validateFindingDagAction(report, finding, displayPath, nodeById));
+    errors.push(...validateFindingDagAction(report, finding, displayPath, nodeById, options));
   }
 
   for (const severity of Object.keys(counts)) {
@@ -1028,7 +1030,7 @@ function validateAuditReportSemantics(report, displayPath, dagValue) {
   return errors;
 }
 
-function validateFindingDagAction(report, finding, displayPath, nodeById) {
+export function validateFindingDagAction(report, finding, displayPath, nodeById, options = {}) {
   const errors = [];
   const orchestration = finding.orchestration;
   if (!["P2", "P3"].includes(finding.severity)) {
@@ -1044,7 +1046,13 @@ function validateFindingDagAction(report, finding, displayPath, nodeById) {
       );
       return errors;
     }
-    if (targetNode.status !== "planned") {
+    // The committed illustrative example fixture references a real DAG node by id to
+    // demonstrate shape, but the DAG is driven to 100% completion where no node stays
+    // `planned`. Requiring the example's target to be live-`planned` couples a checked-in
+    // fixture to mutable DAG status (an unsatisfiable coupling at 100% completion), so the
+    // example only asserts existence + non-self-reference. The live-`planned` liveness
+    // requirement is meaningful only for REAL submitted audit reports being ingested.
+    if (!options.isExampleFixture && targetNode.status !== "planned") {
       errors.push(
         `${displayPath} finding ${finding.id} existingDagNodeUpdate.targetNodeId ${targetNodeId} must be planned, not ${targetNode.status}`,
       );
