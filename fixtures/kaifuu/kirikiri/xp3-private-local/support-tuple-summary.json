@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "0.1.0",
+  "summaryId": "kaifuu/k102/xp3-support-tuple-summary",
+  "supportTuples": [
+    {
+      "schemaVersion": "0.1.0",
+      "engineFamily": "kirikiri_xp3",
+      "engineVariant": "kirikiri_xp3_known_key",
+      "container": "xp3",
+      "crypto": "key_profile",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "patchBackMode": "repack_archive",
+      "profileOrFixtureId": "compat/kirikiri-xp3/known-key-extract",
+      "secretRequirementIds": [
+        {
+          "requirementId": "kirikiri-xp3-key-profile",
+          "secretRef": "prompt:fixture/kirikiri/xp3-archive-password"
+        }
+      ],
+      "diagnostics": [
+        {
+          "layer": "crypto",
+          "status": "known_key_only",
+          "reasonId": "kaifuu.key_validation_failed",
+          "severity": "P3",
+          "detail": "extract limited to a catalogued known key; arbitrary titles unsupported"
+        }
+      ],
+      "claimedLevel": "extract",
+      "evidence": {
+        "extraction": {
+          "evidenceId": "evidence/extract/xp3-known-key",
+          "proofHash": "sha256:3131313131313131313131313131313131313131313131313131313131313131"
+        }
+      }
+    },
+    {
+      "schemaVersion": "0.1.0",
+      "engineFamily": "kirikiri_xp3",
+      "engineVariant": "kirikiri_xp3_fixture_patch",
+      "container": "xp3",
+      "crypto": "key_profile",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "patchBackMode": "repack_archive",
+      "profileOrFixtureId": "compat/kirikiri-xp3/fixture-patch-back",
+      "secretRequirementIds": [
+        {
+          "requirementId": "kaifuu-k100-xp3-crypt-key",
+          "secretRef": "local-secret:kaifuu-kirikiri-crypt-fixture-key"
+        }
+      ],
+      "diagnostics": [],
+      "claimedLevel": "patch",
+      "evidence": {
+        "extraction": {
+          "evidenceId": "evidence/extract/xp3-fixture",
+          "proofHash": "sha256:4141414141414141414141414141414141414141414141414141414141414141"
+        },
+        "validation": {
+          "evidenceId": "evidence/validate/xp3-fixture",
+          "proofHash": "sha256:4242424242424242424242424242424242424242424242424242424242424242"
+        },
+        "patchBack": {
+          "evidenceId": "evidence/patch/xp3-fixture",
+          "proofHash": "sha256:4343434343434343434343434343434343434343434343434343434343434343"
+        }
+      }
+    }
+  ]
+}

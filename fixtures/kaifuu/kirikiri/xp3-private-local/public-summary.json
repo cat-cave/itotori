@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "0.1.0",
+  "summaryId": "kaifuu/k102/xp3-private-local-summary",
+  "supportBoundary": "Kaifuu KiriKiri XP3 private-local summary COMPOSES an operator's local helper-result aggregate (KAIFUU-085 ref+hash HelperResults), support-tuple summary (KAIFUU-105 ClaimedSupportTuples), and XP3 patch-back summaries into ONE redacted validation summary. It exposes ONLY safe metadata: profile ids, secret REQUIREMENT ids, proof hashes, capability levels, statuses, counts, and typed diagnostics. It NEVER carries secret key bytes, private paths, decrypted or story text, screenshots, retail bytes, or unredacted helper logs. Every private-local row is optional (an empty render is valid + deterministic), so a private-local aggregate is never a public-CI dependency. The composed body is deep-scanned before it is returned; any secret-shaped material fails the render loudly and nothing is returned to persist.",
+  "status": "passed",
+  "helperResultCount": 2,
+  "supportTupleCount": 2,
+  "patchSummaryCount": 1,
+  "honestTupleCount": 2,
+  "overclaimTupleCount": 0,
+  "capabilityLevels": ["localKeyImport", "manualEntry"],
+  "helperRows": [
+    {
+      "helperResultId": "helper-result/kaifuu/k102/xp3/helper-required",
+      "profileId": "019ed000-0000-7000-8000-0000000a2001",
+      "capabilityLevel": "manualEntry",
+      "diagnosticCode": "helper_required",
+      "redactionStatus": "not_required",
+      "secretRequirementIds": ["kirikiri-xp3-key-profile"],
+      "redactedLogHash": "sha256:1010101010101010101010101010101010101010101010101010101010101010",
+      "proofHashes": ["sha256:1111111111111111111111111111111111111111111111111111111111111111"],
+      "validationStatus": "passed"
+    },
+    {
+      "helperResultId": "helper-result/kaifuu/k102/xp3/missing-key",
+      "profileId": "019ed000-0000-7000-8000-0000000a2002",
+      "capabilityLevel": "localKeyImport",
+      "diagnosticCode": "missing_key",
+      "redactionStatus": "redacted",
+      "secretRequirementIds": ["kirikiri-xp3-key-profile"],
+      "redactedLogHash": "sha256:2020202020202020202020202020202020202020202020202020202020202020",
+      "proofHashes": [],
+      "validationStatus": "passed"
+    }
+  ],
+  "supportRows": [
+    {
+      "profileOrFixtureId": "compat/kirikiri-xp3/known-key-extract",
+      "engineFamily": "kirikiri_xp3",
+      "engineVariant": "kirikiri_xp3_known_key",
+      "claimedLevel": "extract",
+      "patchBackMode": "repack_archive",
+      "secretRequirementIds": ["kirikiri-xp3-key-profile"],
+      "evidenceProofHashes": ["sha256:3131313131313131313131313131313131313131313131313131313131313131"],
+      "honest": true,
+      "status": "passed",
+      "diagnosticCount": 1
+    },
+    {
+      "profileOrFixtureId": "compat/kirikiri-xp3/fixture-patch-back",
+      "engineFamily": "kirikiri_xp3",
+      "engineVariant": "kirikiri_xp3_fixture_patch",
+      "claimedLevel": "patch",
+      "patchBackMode": "repack_archive",
+      "secretRequirementIds": ["kaifuu-k100-xp3-crypt-key"],
+      "evidenceProofHashes": ["sha256:4141414141414141414141414141414141414141414141414141414141414141", "sha256:4242424242424242424242424242424242424242424242424242424242424242", "sha256:4343434343434343434343434343434343434343434343434343434343434343"],
+      "honest": true,
+      "status": "passed",
+      "diagnosticCount": 0
+    }
+  ],
+  "patchRows": [
+    {
+      "fixtureId": "kirikiri-xp3-patch-back-fixture",
+      "patchBackMode": "repack_archive",
+      "secretRequirementId": "kaifuu-k100-xp3-crypt-key",
+      "redactionStatus": "redacted",
+      "totalMembers": 2,
+      "membersPatched": 1,
+      "membersBytePreserved": 1,
+      "identityByteIdentical": true,
+      "identitySourceHash": "sha256:9f6e0035369a1cd8dfed2dabc40ac7ad75b491776d17a23185c6b0421160c298",
+      "identityRebuiltHash": "sha256:9f6e0035369a1cd8dfed2dabc40ac7ad75b491776d17a23185c6b0421160c298",
+      "verificationProofHash": "sha256:80d48c08ff97aa66b8488e81ec9f54329423b5b38640cd080a9047ca1db8c6a2",
+      "secretRequirementVerified": true,
+      "status": "passed"
+    }
+  ],
+  "redactionSummary": {
+    "deepScanPerformed": true,
+    "stringsScanned": 50,
+    "secretLeakFindings": 0,
+    "redactionBoundaryOk": true,
+    "aggregateRedactionStatus": "redacted"
+  },
+  "diagnostics": []
+}
+

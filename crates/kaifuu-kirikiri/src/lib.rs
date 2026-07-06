@@ -46,6 +46,7 @@ mod parse;
 mod patch;
 pub mod xp3_crypt;
 pub mod xp3_patch;
+pub mod xp3_private_local_summary;
 
 pub use parse::{
     KsDocument, KsEncoding, KsFinding, KsFindingKind, KsUnit, TextRole, parse_ks,
@@ -64,6 +65,12 @@ pub use xp3_patch::{
     Xp3PatchCapability, Xp3PatchChangeReport, Xp3PatchCoverage, Xp3PatchError,
     Xp3PatchIdentityReport, Xp3PatchManifest, Xp3PatchReport, Xp3PatchVerification,
     Xp3TextReplacement, run_xp3_patch_smoke_from_fixture, run_xp3_patch_smoke_from_paths,
+};
+pub use xp3_private_local_summary::{
+    Xp3HelperResultAggregate, Xp3HelperResultRow, Xp3PatchSummaryRow,
+    Xp3PrivateLocalRedactionSummary, Xp3PrivateLocalSummary, Xp3PrivateLocalSummaryDiagnostic,
+    Xp3PrivateLocalSummaryInput, Xp3SupportTupleRow, Xp3SupportTupleSummaryFixture,
+    render_xp3_private_local_summary,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable
