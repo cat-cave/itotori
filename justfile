@@ -513,11 +513,8 @@ affected:
 roadmap-validate:
     node scripts/spec-dag.mjs validate
 
-roadmap-ready:
-    node scripts/spec-dag.mjs ready
-
-roadmap-pop:
-    node scripts/spec-dag.mjs pop
+# Inspecting/choosing work is qd's job now (the orchestration ledger).
+# Run `qd ready` (or `qd status`) directly instead of a legacy roadmap recipe.
 
 roadmap-dashboard:
     pnpm --filter @itotori/spec-dag-dashboard build

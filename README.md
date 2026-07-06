@@ -89,6 +89,7 @@ re-derives the readiness-doc claims from the generated capability + benchmark
 artifacts and the SHARED-025 proof manifest, so the docs cannot drift. It runs
 inside `just check` / `just ci`.
 
-The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
-Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect
-the next PR-sized specs.
+The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`
+and imported into the qd orchestration ledger, which is the source of truth for
+inspecting and choosing work. Run `qd ready` (or `qd status`) to see the next
+PR-sized specs. Use `just roadmap-validate` to validate the `spec-dag.json` data.

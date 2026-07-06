@@ -530,7 +530,7 @@ For documentation-only adapter planning changes, run:
 node scripts/spec-dag.mjs validate
 pnpm exec vp check
 git diff --check
-just roadmap-ready
+qd ready
 ```
 
 For adapter code or fixture changes, add the focused commands that protect the
