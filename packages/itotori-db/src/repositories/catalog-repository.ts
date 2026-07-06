@@ -84,7 +84,11 @@ import {
   catalogOpportunityWeightsVersion,
   scoreCatalogOpportunity,
 } from "../services/catalog-opportunity-ranking.js";
-import { catalogPlatformLanguageConflictReasonCode } from "../services/catalog-platform-language-conflicts.js";
+import {
+  catalogPlatformLanguageConflictOriginValues,
+  catalogPlatformLanguageConflictReasonCode,
+  type CatalogPlatformLanguageConflictOrigin,
+} from "../services/catalog-platform-language-conflicts.js";
 export type {
   CatalogOpportunityAdapterReadinessSignal,
   CatalogOpportunityBenchmarkUsefulnessSignal,
@@ -671,6 +675,12 @@ export type CatalogConflictReviewRow = {
   status: CatalogConflictReviewStatus;
   reasonCode: string;
   reasonDetail: string;
+  /**
+   * Whether this conflict's candidate payload was hand-authored by a fixture or derived
+   * from live repository candidate rows. Meaningful for platform-language conflicts;
+   * defaults to `fixture_authored` for other review rows.
+   */
+  conflictOrigin: CatalogPlatformLanguageConflictOrigin;
   conflictKind: CatalogConflictKind | null;
   detectedAt: Date;
   resolution: CatalogConflictReviewResolution | null;
@@ -781,6 +791,7 @@ export type CatalogAlphaBenchmarkOpportunityDecision = "seed" | "demoted";
 export type CatalogAlphaBenchmarkOpportunityDemotion = {
   reasonCode: string;
   reasonDetail: string;
+  conflictOrigin: CatalogPlatformLanguageConflictOrigin;
   conflictId: string | null;
   severity: CatalogConflictReviewSeverity;
   sourceIds: CatalogConflictReviewSourceId[];
@@ -923,6 +934,7 @@ export type CatalogOpportunityRuntimeEvidenceReadiness = {
 
 export type CatalogOpportunityDemotion = {
   reasonCode: string;
+  conflictOrigin: CatalogPlatformLanguageConflictOrigin;
   conflictId: string | null;
   severity: CatalogConflictReviewSeverity;
   sourceIds: CatalogConflictReviewSourceId[];
@@ -2794,6 +2806,7 @@ function alphaBenchmarkDemotionFromConflict(
   return {
     reasonCode: row.reasonCode,
     reasonDetail: row.reasonDetail,
+    conflictOrigin: row.conflictOrigin,
     conflictId: row.conflictId,
     severity: row.severity,
     sourceIds: row.sourceIds,
@@ -2821,12 +2834,21 @@ function alphaBenchmarkOpportunityFromDraft(
       decision === "seed"
         ? alphaBenchmarkSeedExplanation(draft.candidatePool)
         : `Demoted from alpha benchmark seed output because ${demotions
-            .map((demotion) => demotion.reasonCode)
+            .map(
+              (demotion) =>
+                `${demotion.reasonCode} (${alphaBenchmarkDemotionOriginLabel(demotion.conflictOrigin)})`,
+            )
             .join(", ")}.`,
     sourceIds: draft.work.sourceIds,
     statuses: draft.work.statuses,
     demotions,
   };
+}
+
+function alphaBenchmarkDemotionOriginLabel(origin: CatalogPlatformLanguageConflictOrigin): string {
+  return origin === catalogPlatformLanguageConflictOriginValues.repositoryDerived
+    ? "repository-derived"
+    : "fixture-authored";
 }
 
 function alphaBenchmarkSeedExplanation(pool: CatalogCompletenessPool): string {
@@ -3657,6 +3679,7 @@ function catalogOpportunityDemotionFromConflict(
 ): CatalogOpportunityDemotion {
   return {
     reasonCode: row.reasonCode,
+    conflictOrigin: row.conflictOrigin,
     conflictId: row.conflictId,
     severity: row.severity,
     sourceIds: row.sourceIds,
@@ -3947,10 +3970,24 @@ function catalogConflictReviewRowFromConflict(
     status: conflict.status as CatalogConflictStatus,
     reasonCode: conflictReasonCode(conflict, exactLinkRefs),
     reasonDetail: conflict.summary,
+    conflictOrigin: conflictOriginFromMetadata(metadata),
     conflictKind: conflict.conflictKind as CatalogConflictKind,
     detectedAt: conflict.detectedAt,
     resolution: conflictResolutionFromMetadata(conflict.status as CatalogConflictStatus, metadata),
   };
+}
+
+/**
+ * Read the fixture-authored vs repository-derived origin off a conflict's metadata,
+ * defaulting to `fixture_authored` when unstamped (e.g. legacy conflicts).
+ */
+function conflictOriginFromMetadata(
+  metadata: CatalogJsonRecord,
+): CatalogPlatformLanguageConflictOrigin {
+  const origin = stringMetadata(metadata, "conflictOrigin");
+  return origin === catalogPlatformLanguageConflictOriginValues.repositoryDerived
+    ? catalogPlatformLanguageConflictOriginValues.repositoryDerived
+    : catalogPlatformLanguageConflictOriginValues.fixtureAuthored;
 }
 
 function catalogConflictReviewRowFromCandidate(
@@ -4010,6 +4047,7 @@ function catalogConflictReviewRowFromCandidate(
     status: candidateRecord.status,
     reasonCode: candidateReasonCode(candidateRecord, sourcePeerRows),
     reasonDetail: candidateReasonDetail(candidateRecord, sourcePeerRows),
+    conflictOrigin: catalogPlatformLanguageConflictOriginValues.fixtureAuthored,
     conflictKind: catalogConflictKindValues.title,
     detectedAt: candidateRecord.createdAt,
     resolution: null,

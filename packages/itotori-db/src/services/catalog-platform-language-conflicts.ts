@@ -24,6 +24,26 @@ export const catalogPlatformLanguageConflictSchemaVersion =
 export const catalogPlatformLanguageConflictReasonCode =
   "official_english_platform_disagreement" as const;
 
+/**
+ * How a platform-language conflict's candidate payload was produced.
+ *
+ * - `fixture_authored`: the candidate evidence was hand-authored by a fixture (the
+ *   caller passed an explicit `candidateEvidence` array).
+ * - `repository_derived`: the candidate evidence was derived by reading the current
+ *   VNDB / EGS / DLsite / local candidate rows out of the catalog repository.
+ *
+ * The origin is stamped into the conflict metadata so downstream demotion
+ * explanations can distinguish a hand-authored conflict from one generated against
+ * live repository evidence.
+ */
+export const catalogPlatformLanguageConflictOriginValues = {
+  fixtureAuthored: "fixture_authored",
+  repositoryDerived: "repository_derived",
+} as const;
+
+export type CatalogPlatformLanguageConflictOrigin =
+  (typeof catalogPlatformLanguageConflictOriginValues)[keyof typeof catalogPlatformLanguageConflictOriginValues];
+
 export const catalogPlatformLanguageConflictStatusValues = {
   conflict: "conflict",
   noConflict: "no_conflict",
@@ -99,6 +119,11 @@ export type CatalogPlatformLanguageConflictRequest = {
   sourceField?: string;
   fixtureId?: string;
   detectedAt?: string;
+  /**
+   * How the candidate evidence was produced. Defaults to `fixture_authored`; the
+   * repository-derived augmentation service sets this to `repository_derived`.
+   */
+  conflictOrigin?: CatalogPlatformLanguageConflictOrigin;
 };
 
 export type CatalogPlatformLanguageConflictFact = {
@@ -281,9 +306,12 @@ export function augmentCatalogPlatformLanguageConflicts(
     );
   }
 
+  const conflictOrigin =
+    request.conflictOrigin ?? catalogPlatformLanguageConflictOriginValues.fixtureAuthored;
   const conflictEvidence = conflictCandidates.map((candidate) => candidate.evidence);
   const metadata = compactJson({
     reasonCode: catalogPlatformLanguageConflictReasonCode,
+    conflictOrigin,
     severity: "warning",
     targetLanguage,
     sourceField: request.sourceField,

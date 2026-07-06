@@ -345,6 +345,7 @@ export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
       status: "open",
       reasonCode: "duplicate_external_id",
       reasonDetail: "DLsite id was observed against multiple catalog identities.",
+      conflictOrigin: "fixture_authored",
       conflictKind: "external_id",
       detectedAt: new Date("2026-06-17T00:00:00.000Z"),
       resolution: null,

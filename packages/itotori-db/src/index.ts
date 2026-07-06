@@ -970,6 +970,7 @@ export {
   augmentCatalogPlatformLanguageConflicts,
   catalogPlatformLanguageConflictCompatibilityBasisValues,
   catalogPlatformLanguageConflictDiagnosticCodeValues,
+  catalogPlatformLanguageConflictOriginValues,
   catalogPlatformLanguageConflictReasonCode,
   catalogPlatformLanguageConflictSchemaVersion,
   catalogPlatformLanguageConflictStatusValues,
@@ -980,10 +981,25 @@ export type {
   CatalogPlatformLanguageConflictDiagnosticCode,
   CatalogPlatformLanguageConflictEvidence,
   CatalogPlatformLanguageConflictFact,
+  CatalogPlatformLanguageConflictOrigin,
   CatalogPlatformLanguageConflictRequest,
   CatalogPlatformLanguageConflictResult,
   CatalogPlatformLanguageConflictStatus,
 } from "./services/catalog-platform-language-conflicts.js";
+export {
+  catalogRepositoryDerivedCandidateSourceValues,
+  catalogRepositoryDerivedConflictDiagnosticCodeValues,
+  deriveCatalogPlatformLanguageConflictsFromRepository,
+} from "./services/catalog-repository-derived-platform-language-conflicts.js";
+export type {
+  CatalogRepositoryDerivedComparedRow,
+  CatalogRepositoryDerivedConflictDiagnostic,
+  CatalogRepositoryDerivedConflictDiagnosticCode,
+  CatalogRepositoryDerivedConflictReader,
+  CatalogRepositoryDerivedConflictWorkLookup,
+  CatalogRepositoryDerivedPlatformLanguageConflictRequest,
+  CatalogRepositoryDerivedPlatformLanguageConflictResult,
+} from "./services/catalog-repository-derived-platform-language-conflicts.js";
 export {
   assertCatalogResolverFixtureArtifact,
   catalogResolverFixtureDiagnosticCodeValues,

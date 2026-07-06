@@ -1887,11 +1887,17 @@ function assertCatalogOpportunityDemotions(value: unknown, label: string): void 
     const demotionLabel = `${label}[${index}]`;
     const demotion = asStrictRecord(demotionValue, demotionLabel, [
       "reasonCode",
+      "conflictOrigin",
       "conflictId",
       "severity",
       "sourceIds",
     ]);
     assertPublicOpportunityString(demotion.reasonCode, `${demotionLabel}.reasonCode`);
+    assertEnum(
+      demotion.conflictOrigin,
+      ["fixture_authored", "repository_derived"] as const,
+      `${demotionLabel}.conflictOrigin`,
+    );
     assertNullablePublicOpportunityString(demotion.conflictId, `${demotionLabel}.conflictId`);
     assertEnum(
       demotion.severity,
@@ -2596,6 +2602,7 @@ export function assertCatalogConflictReviewReadModel(
       "status",
       "reasonCode",
       "reasonDetail",
+      "conflictOrigin",
       "conflictKind",
       "detectedAt",
       "resolution",
@@ -2618,6 +2625,11 @@ export function assertCatalogConflictReviewReadModel(
     assertEnum(row.status, catalogConflictReviewStatusValues, `${label}.rows[${index}].status`);
     assertString(row.reasonCode, `${label}.rows[${index}].reasonCode`);
     assertString(row.reasonDetail, `${label}.rows[${index}].reasonDetail`);
+    assertEnum(
+      row.conflictOrigin,
+      ["fixture_authored", "repository_derived"] as const,
+      `${label}.rows[${index}].conflictOrigin`,
+    );
     assertNullableEnum(
       row.conflictKind,
       Object.values(catalogConflictKindValues) as CatalogConflictKind[],

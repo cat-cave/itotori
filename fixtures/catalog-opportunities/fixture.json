@@ -4263,6 +4263,7 @@
         "demotions": [
           {
             "reasonCode": "official_english_conflict",
+            "conflictOrigin": "fixture_authored",
             "conflictId": "019ed161-0000-7000-8000-000000000110:demotion:1",
             "severity": "warning",
             "sourceIds": [
