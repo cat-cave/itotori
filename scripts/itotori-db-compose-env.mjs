@@ -25,13 +25,17 @@ async function writeComposeEnv(env) {
   const outputPath = env.ITOTORI_DB_COMPOSE_ENV_PATH || defaultComposeEnvPath;
   const values = composeEnvValues(env);
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(
-    outputPath,
-    `${Object.entries(values)
-      .map(([key, value]) => `${key}=${escapeEnvFileValue(value)}`)
-      .join("\n")}\n`,
-  );
+  await writeFile(outputPath, renderComposeEnvFile(values));
   console.log(`wrote ${outputPath} for ${values.COMPOSE_PROJECT_NAME}`);
+}
+
+// Render the full `KEY=value\n` env file. Each value is encoded so Compose's
+// dotenv interpolation gives back the credential byte-for-byte (see
+// encodeEnvFileValue). Exported for round-trip testing.
+export function renderComposeEnvFile(values) {
+  return `${Object.entries(values)
+    .map(([key, value]) => `${key}=${encodeEnvFileValue(value, key)}`)
+    .join("\n")}\n`;
 }
 
 export function composeEnvValues(env = process.env) {
@@ -119,8 +123,54 @@ function realRoot(root) {
   }
 }
 
-function escapeEnvFileValue(value) {
-  return JSON.stringify(String(value).replace(/\r?\n/gu, ""));
+// Dollar-safe compose env-file value encoder (UNIV-022).
+//
+// `docker compose --env-file` runs each value through compose-go's dotenv
+// interpolation. In an UNQUOTED or DOUBLE-QUOTED value, `$VAR` / `${VAR}` are
+// expanded and only `$$` survives as a literal `$` — so a DB credential
+// containing a bare `$` (e.g. `p$4ssw0rd`) is MANGLED (`$4ssw0rd` expands to
+// empty). The previous `JSON.stringify` encoder emitted a double-quoted value
+// and did NOT escape `$`, so any `$` in a decoded DATABASE_URL credential was
+// silently corrupted before Postgres ever saw it.
+//
+// compose-go dotenv, by contrast, treats a SINGLE-QUOTED value as a raw
+// literal: no variable expansion and no backslash escape processing. The only
+// bytes a single-quoted value cannot carry are a single quote itself (there is
+// no in-quote escape for it) and a newline. So we single-quote every value,
+// which preserves `$`, double quotes, spaces, backslashes, and braces
+// byte-for-byte, and REJECT — with a semantic diagnostic naming the offending
+// character — the two bytes that a single-quoted value provably cannot
+// round-trip. Credentials generally never contain those, so the reject path is
+// a guard, not a routine outcome.
+export function encodeEnvFileValue(value, name = "value") {
+  const str = String(value);
+  const newline = str.match(/[\r\n]/u);
+  if (newline) {
+    const char = newline[0] === "\n" ? "newline (\\n)" : "carriage return (\\r)";
+    throw new Error(
+      `cannot encode ${name} into a compose env file: value contains a ${char}, ` +
+        `which a single-quoted compose env-file value cannot carry`,
+    );
+  }
+  if (str.includes("'")) {
+    throw new Error(
+      `cannot encode ${name} into a compose env file: value contains a single quote ('), ` +
+        `which cannot be represented in a single-quoted compose env-file value ` +
+        `(compose-go dotenv has no in-quote escape for it)`,
+    );
+  }
+  return `'${str}'`;
+}
+
+// Reference decoder modelling compose-go's dotenv single-quote parsing: strip
+// the surrounding single quotes to recover the raw literal. Encoding a value
+// and decoding the result must reproduce the input byte-for-byte. Exported so
+// the round-trip test can prove the model without requiring a compose binary.
+export function decodeComposeEnvFileValue(encoded) {
+  if (encoded.length < 2 || encoded[0] !== "'" || encoded[encoded.length - 1] !== "'") {
+    throw new Error(`not a single-quoted compose env-file value: ${encoded}`);
+  }
+  return encoded.slice(1, -1);
 }
 
 function pathToMainUrl(value) {

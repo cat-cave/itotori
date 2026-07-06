@@ -88,6 +88,33 @@ port and `COMPOSE_PROJECT_NAME` so both port bindings and Docker resource names
 do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose
 env derives a disposable project name from the worktree directory.
 
+### DATABASE_URL credential characters (dollar-safe env-file encoding)
+
+`docker compose` runs each `--env-file` value through Compose's dotenv
+interpolation, so a decoded `DATABASE_URL` credential (user, password, or
+database name) containing a `$` would otherwise be mangled: in an unquoted or
+double-quoted value `$VAR` / `${VAR}` expand and only `$$` survives as a literal
+`$`. The generated compose env file therefore writes every credential as a
+**single-quoted** value, which compose-go's dotenv parser treats as a raw
+literal (no variable expansion, no backslash escapes). This preserves the
+following byte-for-byte:
+
+- dollar signs (`$`, `$$`, `${...}`), which would otherwise interpolate;
+- double quotes, spaces and tabs, backslashes, `#`, `=`, and braces.
+
+A single-quoted value provably cannot carry two bytes, so the generator
+**rejects** them with a semantic diagnostic naming the offending character
+rather than emitting a value Compose would silently corrupt:
+
+- a single quote (`'`) — compose-go dotenv has no in-quote escape for it;
+- a newline (`\n`) or carriage return (`\r`).
+
+The no-secret public defaults (`itotori` / `itotori` / `itotori`) contain none
+of these and are unaffected. Note that the `podman-compose` provider diverges
+from compose-go by expanding `${DEFINED_VAR}` even inside single quotes; that is
+a provider bug, not an encoder gap — real `docker compose` (used in CI) keeps
+single-quoted values fully literal.
+
 The compose service passes Postgres runtime server settings instead of initdb-only flags:
 `max_connections=400` and `shared_buffers=512MB`. The buffer value keeps the same 4x ratio from
 Postgres' default 128MB as the connection increase from the default 100, so a container recreate

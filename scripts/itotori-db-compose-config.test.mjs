@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
-import { composeEnvValues, deriveHostPort, resolveDatabaseUrl } from "./itotori-db-compose-env.mjs";
+import {
+  composeEnvValues,
+  decodeComposeEnvFileValue,
+  deriveHostPort,
+  encodeEnvFileValue,
+  renderComposeEnvFile,
+  resolveDatabaseUrl,
+} from "./itotori-db-compose-env.mjs";
 
 const compose = readFileSync("docker-compose.yml", "utf8");
 const justfile = readFileSync("justfile", "utf8");
@@ -190,4 +200,151 @@ test("local qd CI uses the DB-owning full-CI wrapper", () => {
   const qdConfig = readFileSync(".qd/config.toml", "utf8");
   assert.match(qdConfig, /check_command = "nix develop --command bash -lc 'just check'"/u);
   assert.match(qdConfig, /ci_command = "nix develop --command bash -lc 'just qd-full-ci'"/u);
+});
+
+// ---------------------------------------------------------------------------
+// UNIV-022: dollar-safe compose env-file encoding. Compose interpolates
+// env-file values, so a `$` in a decoded DATABASE_URL credential must survive
+// that interpolation byte-for-byte (or be rejected with a semantic diagnostic).
+// ---------------------------------------------------------------------------
+
+// Bytes a compose credential can contain that Compose interpolation would
+// otherwise mangle (`$`, `${...}`) or that other encoders would corrupt.
+const preservedCredentials = [
+  "p$4ssw0rd", // bare $ — would expand to `p` under compose interpolation
+  "a$$b", // literal $$ — would collapse under interpolation
+  "pre${HOME}post", // ${...} braces — would expand to the HOME value
+  'has "double" quotes',
+  "has spaces and\ttab",
+  "back\\slash\\path",
+  "trailing#hash and =equals",
+  "itotori", // the public no-secret default
+  "", // empty credential
+];
+
+test("encodeEnvFileValue round-trips $/quotes/spaces/backslashes through the compose model", () => {
+  for (const credential of preservedCredentials) {
+    const encoded = encodeEnvFileValue(credential, "ITOTORI_DB_PASSWORD");
+    assert.equal(
+      decodeComposeEnvFileValue(encoded),
+      credential,
+      `credential ${JSON.stringify(credential)} must survive encode -> compose parse unchanged`,
+    );
+    // Single-quoted output is a raw literal under compose-go dotenv: it must
+    // not open the door to interpolation ($ stays bare, never doubled/dropped).
+    assert.equal(encoded, `'${credential}'`);
+  }
+});
+
+test("encodeEnvFileValue rejects bytes a single-quoted value cannot carry, naming the char", () => {
+  assert.throws(
+    () => encodeEnvFileValue("pa'ss", "ITOTORI_DB_PASSWORD"),
+    /ITOTORI_DB_PASSWORD.*single quote \('\)/u,
+    "a single quote must be rejected with a diagnostic naming the offending char",
+  );
+  assert.throws(
+    () => encodeEnvFileValue("line1\nline2", "ITOTORI_DB_PASSWORD"),
+    /ITOTORI_DB_PASSWORD.*newline \(\\n\)/u,
+    "a newline must be rejected with a diagnostic naming the offending char",
+  );
+  assert.throws(
+    () => encodeEnvFileValue("has\rcr", "ITOTORI_DB_NAME"),
+    /ITOTORI_DB_NAME.*carriage return \(\\r\)/u,
+  );
+});
+
+test("a $-bearing DATABASE_URL credential survives the full compose-env render", () => {
+  // A password with a literal `$` (percent-encoded in the URL userinfo).
+  const url = "postgres://us%24er:p%244ss%24@127.0.0.1:56000/it%24db";
+  const values = composeEnvValues({ DATABASE_URL: url });
+  assert.equal(values.ITOTORI_DB_USER, "us$er");
+  assert.equal(values.ITOTORI_DB_PASSWORD, "p$4ss$");
+  assert.equal(values.ITOTORI_DB_NAME, "it$db");
+
+  const rendered = renderComposeEnvFile(values);
+  for (const [key, value] of Object.entries(values)) {
+    const line = rendered.split("\n").find((l) => l.startsWith(`${key}=`));
+    assert.notEqual(line, undefined, `rendered env must contain ${key}`);
+    assert.equal(
+      decodeComposeEnvFileValue(line.slice(key.length + 1)),
+      String(value),
+      `${key} must round-trip through encode -> compose parse`,
+    );
+  }
+});
+
+test("public no-secret defaults render and round-trip unchanged", () => {
+  const values = composeEnvValues({
+    DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori",
+  });
+  const rendered = renderComposeEnvFile(values);
+  assert.match(rendered, /ITOTORI_DB_USER='itotori'\n/u);
+  assert.match(rendered, /ITOTORI_DB_PASSWORD='itotori'\n/u);
+  assert.match(rendered, /ITOTORI_DB_NAME='itotori'\n/u);
+  for (const [key, value] of Object.entries(values)) {
+    const line = rendered.split("\n").find((l) => l.startsWith(`${key}=`));
+    assert.equal(decodeComposeEnvFileValue(line.slice(key.length + 1)), String(value));
+  }
+});
+
+// Real compose-config proof: write a minimal compose file + generated env file
+// with a `$`-bearing password and confirm `docker compose config` reports the
+// credential unchanged. Skipped when no compose CLI is present (e.g. minimal CI
+// images); the encoder-model tests above still prove preservation.
+test("docker compose config preserves a $-bearing generated credential", (t) => {
+  let composeCli = null;
+  for (const [cmd, args] of [
+    ["docker", ["compose"]],
+    ["podman-compose", []],
+  ]) {
+    try {
+      execFileSync(cmd, [...args, "version"], { stdio: "ignore" });
+      composeCli = [cmd, args];
+      break;
+    } catch {
+      // try the next CLI
+    }
+  }
+  if (!composeCli) {
+    t.skip("no docker/podman compose CLI available");
+    return;
+  }
+
+  const dir = mkdtempSync(path.join(tmpdir(), "univ022-compose-"));
+  writeFileSync(
+    path.join(dir, "docker-compose.yml"),
+    [
+      "services:",
+      "  postgres:",
+      "    image: postgres:18",
+      "    environment:",
+      "      POSTGRES_PASSWORD: ${ITOTORI_DB_PASSWORD:-itotori}",
+      "",
+    ].join("\n"),
+  );
+
+  // Representative UNIV-022 credentials: a bare `$` (which the previous
+  // double-quoted encoder let Compose interpolate away), a literal `$$`, plus
+  // spaces/quotes/backslashes. `${DEFINED_VAR}` is deliberately excluded here:
+  // compose-go keeps it literal inside single quotes, but the podman-compose
+  // provider expands it against the OS env — a tool divergence, not an encoder
+  // fault — so the brace-ref preservation is asserted by the compose-model
+  // round-trip tests above (which follow compose-go semantics), not this one.
+  const [cmd, baseArgs] = composeCli;
+  for (const credential of ["p$4ssw0rd", "a$$b", "sp ace$x", 'q"q$y', "back\\slash$z"]) {
+    const values = composeEnvValues({
+      DATABASE_URL: `postgres://itotori:${encodeURIComponent(credential)}@127.0.0.1:56000/itotori`,
+    });
+    writeFileSync(path.join(dir, "gen.env"), renderComposeEnvFile(values));
+    const out = execFileSync(cmd, [...baseArgs, "--env-file", "gen.env", "config"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    const parsed = out.split("\n").find((l) => /POSTGRES_PASSWORD:/u.test(l));
+    assert.notEqual(parsed, undefined, "compose config must report POSTGRES_PASSWORD");
+    assert.ok(
+      parsed.includes(credential),
+      `compose config must preserve ${JSON.stringify(credential)}; got: ${parsed.trim()}`,
+    );
+  }
 });
