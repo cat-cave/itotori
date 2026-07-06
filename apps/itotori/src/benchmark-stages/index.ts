@@ -206,6 +206,29 @@ export {
 } from "./blind-judge-live.js";
 
 export {
+  FAN_CORRECTED_CALIBRATION_POLICY,
+  FAN_CORRECTED_ENGINE,
+  FanCorrectedCalibrationError,
+  PANEL_PREFERENCE_TIE_THRESHOLD,
+  adjudicationPreferredRole,
+  assertFanCorrectedCase,
+  assertPanelBlindToProvenance,
+  buildFanCorrectedCalibration,
+  fanCorrectedJudgeUnits,
+  runFanCorrectedCalibration,
+  swapProvenanceRoles,
+  type BuildFanCorrectedCalibrationInput,
+  type ContestedVerdict,
+  type FanCorrectedCalibrationReport,
+  type FanCorrectedCase,
+  type FanCorrectedCaseCalibration,
+  type FanCorrectedRenderingRole,
+  type PanelCasePreference,
+  type RunFanCorrectedCalibrationInput,
+  type RunFanCorrectedCalibrationResult,
+} from "./fan-corrected-calibration-cases.js";
+
+export {
   HUMAN_CALIBRATION_ANCHOR_POLICY,
   HumanCalibrationAnchorError,
   PANEL_DIVERGENCE_ALERT_THRESHOLD,
