@@ -27,6 +27,31 @@ export {
 } from "./deterministic-qa.js";
 
 export {
+  DEFAULT_METRIC_CONFIG,
+  DeterministicMetricSuiteError,
+  runDeterministicMetricSuite,
+  glossaryConsistency,
+  namedEntityConsistency,
+  wrapCompliance,
+  untranslatedResidue,
+  speakerAttribution,
+  choiceBranchCorrectness,
+  voiceStyleFingerprint,
+  backTranslationTripwire,
+  BACK_TRANSLATION_CHECK_NAME,
+  type BackTranslationTripwire,
+  type CanonTerm,
+  type DeterministicMetricConfig,
+  type DeterministicMetricSuiteInput,
+  type DeterministicMetricSuiteResult,
+  type MetricScore,
+  type MetricSystemInput,
+  type MetricUnit,
+  type ScoredMetricOutcome,
+  type TripwireOutcome,
+} from "./deterministic-metrics/index.js";
+
+export {
   QaAgentEvaluationError,
   evaluateQaAgents,
   type QaAgentCalibrationSummary,
