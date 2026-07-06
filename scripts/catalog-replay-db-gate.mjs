@@ -45,7 +45,7 @@ const resultsPath = path.join(tmpDir, "catalog-replay-results.json");
 const generalSkipMarkerPath = path.join(tmpDir, "no-database-skipped.json");
 
 const remediationCommand =
-  "just db-up && just db-migrate && DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori just catalog-replay-db-strict";
+  'just db-up && just db-migrate && DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" just catalog-replay-db-strict';
 
 await mkdir(tmpDir, { recursive: true });
 // Start from a clean slate so a stale artifact never stands in for this run.

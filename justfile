@@ -1,5 +1,16 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
-export DATABASE_URL := env_var_or_default('DATABASE_URL', 'postgres://itotori:itotori@127.0.0.1:55433/itotori')
+# DATABASE_URL is per-worktree, NOT a shared fixed port. When it is unset, the DB
+# recipes below derive a unique-per-worktree connection string from
+# scripts/itotori-db-compose-env.mjs (a hash of the canonical worktree root mapped
+# into an ephemeral port range), so two worktrees running `just db-up`/`db-reset`
+# concurrently never collide on a host port and one worktree's `db-reset` can
+# never truncate another's DB. A hardcoded shared default here would re-introduce
+# exactly that hazard, so the fallback is intentionally EMPTY. An explicit
+# DATABASE_URL (the devshell hook, CI, or an operator) still wins as the escape
+# hatch. Deriving in the top-level export is not viable: `just` evaluates an
+# exported variable's backtick eagerly on every invocation, so the derivation
+# lives in the recipes that actually connect.
+export DATABASE_URL := env_var_or_default('DATABASE_URL', '')
 export COMPOSE_DISABLE_ENV_FILE := '1'
 export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default('ITOTORI_DB_COMPOSE_ENV_PATH', '.tmp/itotori-db/compose.env')
 
@@ -283,10 +294,10 @@ db-cli-build:
     pnpm --filter @itotori/app build
 
 db-migrate: db-cli-build
-    node apps/itotori/dist/cli.js db-migrate
+    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-migrate
 
 db-reset: db-migrate
-    node apps/itotori/dist/cli.js db-reset
+    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-reset
 
 # ITOTORI-121: LOCAL honesty gate for the DB layer. Unlike the fast-local
 # `pnpm --filter @itotori/db test` (which SKIPS with a prominent, machine-
@@ -399,8 +410,8 @@ hello-draft: build
 hello-patch: build
     rm -rf .tmp/hello-patch
     mkdir -p .tmp/hello-patch
-    node apps/itotori/dist/cli.js db-migrate
-    node apps/itotori/dist/cli.js db-reset
+    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-migrate
+    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-reset
     node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-patch/agentic-loop-bundle.json --draft-artifact-output .tmp/hello-patch/draft-artifact-bundle.json
     node apps/itotori/dist/cli.js export-patch-v2 --project apps/itotori/test/fixtures/patch-export-v2-project.json --draft-bundle .tmp/hello-patch/draft-artifact-bundle.json --locale en-US --output .tmp/hello-patch/patch-export-bundle.json
     node scripts/print-patch-export-bundle-summary.mjs .tmp/hello-patch/patch-export-bundle.json

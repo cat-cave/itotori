@@ -9,6 +9,8 @@ const justfile = readFileSync("justfile", "utf8");
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const alphaProofWorkflow = readFileSync(".github/workflows/alpha-proof.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");
+const catalogReplayGate = readFileSync("scripts/catalog-replay-db-gate.mjs", "utf8");
+const styleGuideGate = readFileSync("scripts/style-guide-fixture-flow-db-gate.mjs", "utf8");
 
 // Two roots that exercise both the same-basename-different-parent collision the
 // CARGO_TARGET_DIR scheme guards against and a plain distinct worktree.
@@ -59,6 +61,72 @@ test("explicit DATABASE_URL wins; otherwise the per-worktree port is used", () =
   // The compose env file publishes that same derived host port.
   const values = composeEnvValues({ ITOTORI_DB_WORKTREE_ROOT: rootA });
   assert.equal(values.ITOTORI_DB_HOST_PORT, derivedPort);
+});
+
+test("distinct worktree roots derive distinct default DATABASE_URLs (no shared DB)", () => {
+  const urlA = resolveDatabaseUrl({ ITOTORI_DB_WORKTREE_ROOT: rootA });
+  const urlB = resolveDatabaseUrl({ ITOTORI_DB_WORKTREE_ROOT: rootB });
+  const urlC = resolveDatabaseUrl({ ITOTORI_DB_WORKTREE_ROOT: rootC });
+
+  // Different default DATABASE_URLs are what stop one worktree's `db-reset`
+  // from truncating another worktree's DB.
+  assert.notEqual(urlA, urlB, "distinct worktree roots must not share a default DATABASE_URL");
+  assert.notEqual(
+    urlA,
+    urlC,
+    "same basename under a different parent must not share a default DATABASE_URL",
+  );
+});
+
+test("justfile has NO shared fixed default host port; connect recipes derive per-worktree", () => {
+  // The top-level DATABASE_URL export must fall back to EMPTY, never a shared
+  // fixed host port. A hardcoded default here masks the per-worktree derivation
+  // and lets two worktrees collide / truncate each other on `just db-up`/`db-reset`.
+  assert.match(
+    justfile,
+    /export DATABASE_URL := env_var_or_default\('DATABASE_URL', ''\)\n/u,
+    "DATABASE_URL default must be empty (per-worktree derivation happens in recipes)",
+  );
+  assert.doesNotMatch(
+    justfile,
+    /export DATABASE_URL := env_var_or_default\('DATABASE_URL', 'postgres:/u,
+    "justfile must not hardcode a shared fixed DATABASE_URL default",
+  );
+
+  // db-migrate / db-reset (the recipes that CONNECT) must derive the
+  // per-worktree URL from the compose-env script when DATABASE_URL is unset,
+  // so they target the same per-worktree Postgres that `db-up` brought up.
+  const dbMigrate = justfile.match(/^db-migrate: db-cli-build\n(?<body>(?:    .+\n)+)/mu);
+  assert.notEqual(dbMigrate, null);
+  assert.match(
+    dbMigrate.groups.body,
+    /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)" node apps\/itotori\/dist\/cli\.js db-migrate/u,
+  );
+
+  const dbReset = justfile.match(/^db-reset: db-migrate\n(?<body>(?:    .+\n)+)/mu);
+  assert.notEqual(dbReset, null);
+  assert.match(
+    dbReset.groups.body,
+    /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)" node apps\/itotori\/dist\/cli\.js db-reset/u,
+  );
+});
+
+test("db-strict remediation hints derive per-worktree (no shared fixed host port)", () => {
+  for (const [name, gate] of [
+    ["catalog-replay", catalogReplayGate],
+    ["style-guide-fixture-flow", styleGuideGate],
+  ]) {
+    assert.doesNotMatch(
+      gate,
+      /127\.0\.0\.1:55433/u,
+      `${name} remediation must not suggest a shared fixed host port`,
+    );
+    assert.match(
+      gate,
+      /DATABASE_URL="\$\(node scripts\/itotori-db-compose-env\.mjs --print-database-url\)"/u,
+      `${name} remediation must derive the per-worktree DATABASE_URL`,
+    );
+  }
 });
 
 test("devshell derives DATABASE_URL per worktree without a hardcoded shared port", () => {
