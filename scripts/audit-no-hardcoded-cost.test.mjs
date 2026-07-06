@@ -41,6 +41,71 @@ test("catches an object-form costUsd amount literal", () => {
   assert.deepEqual(hits, ["hardcoded non-zero costUsd object amount literal"]);
 });
 
+test("catches an object-form costUsd amount literal split ACROSS multiple lines", () => {
+  // Prettier can split the costUsd money object across lines, stranding the
+  // `amount:` line without a `cost` token. The block scanner joins the object
+  // first, so the hardcoded amount is still caught. Reported on the opener.
+  const multiline = ["costUsd: {", '  unit: "usd",', '  amount: "0.0125",', "},"].join("\n");
+  const hits = findViolations(PROD_PATH, multiline);
+  assert.deepEqual(
+    hits.map((v) => v.pattern),
+    ["hardcoded non-zero costUsd object amount literal"],
+  );
+  assert.equal(hits[0].line, 1);
+});
+
+test("leaves a multi-line ZERO_COST costUsd object alone", () => {
+  const multiline = ["costUsd: {", '  unit: "usd",', '  amount: "0.00000000",', "},"].join("\n");
+  assert.deepEqual(labels(PROD_PATH, multiline), []);
+});
+
+test("does not double-report a single-line costUsd object", () => {
+  // The block scanner subsumes the single-line case; it must fire EXACTLY once.
+  const hits = findViolations(PROD_PATH, '    costUsd: { unit: "usd", amount: "0.01250000" },');
+  assert.equal(hits.length, 1);
+});
+
+test("ignores a multi-line NON-costUsd object with a decimal amount (no false positive)", () => {
+  // A standalone `amount:` inside an unrelated object (e.g. a refund/token
+  // field) must NOT trip — the scanner anchors on `costUsd: {`.
+  const multiline = ["refund: {", '  unit: "usd",', '  amount: "5.00",', "},"].join("\n");
+  assert.deepEqual(labels(PROD_PATH, multiline), []);
+});
+
+test("a per-line audit-allow marker inside a multi-line costUsd object opts it out", () => {
+  const multiline = [
+    "costUsd: {",
+    '  unit: "usd",',
+    '  amount: "0.0125", // itotori-225-audit-allow: synthetic fixture cost',
+    "},",
+  ].join("\n");
+  assert.deepEqual(labels(PROD_PATH, multiline), []);
+});
+
+test("CLI exits 1 on a crafted file with a multi-line costUsd object", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
+  const probe = join(dir, "probe-costusd-multiline.ts");
+  writeFileSync(
+    probe,
+    [
+      "export const run = {",
+      "  costUsd: {",
+      '    unit: "usd",',
+      '    amount: "0.0125",',
+      "  },",
+      "};",
+      "",
+    ].join("\n"),
+  );
+  let code = 0;
+  try {
+    execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
+  } catch (err) {
+    code = err.status;
+  }
+  assert.equal(code, 1);
+});
+
 test("catches a bare non-zero cost numeric literal", () => {
   const hits = labels(PROD_PATH, "      cost: 0.0125,");
   assert.deepEqual(hits, ["hardcoded non-zero bare cost numeric literal"]);

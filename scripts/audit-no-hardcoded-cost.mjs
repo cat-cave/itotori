@@ -252,13 +252,103 @@ const FORBIDDEN_PATTERNS = [
     // Object-form `costUsd: { unit: "usd", amount: "0.01250000" }` — the
     // decimal-string amount inside a costUsd money object. Non-zero only;
     // `amount: "0.00000000"` is the zero shape and is left alone. Scoped to
-    // an `amount:` that sits inside a `costUsd: { ... }` object on the same
-    // line so unrelated `amount:` fields never trip.
+    // an `amount:` that sits inside a `costUsd: { ... }` object.
+    //
+    // `objectForm: true` diverts this pattern OUT of the per-line loop into
+    // the dedicated block scanner below (`findCostUsdObjectViolations`): the
+    // costUsd `{ ... }` object is joined across newlines FIRST, then this
+    // regex is applied to the joined block. That catches the prettier-split
+    // shape
+    //     costUsd: {
+    //       unit: "usd",
+    //       amount: "0.0125",
+    //     }
+    // which the per-line pass missed (its `amount:` line carried no costUsd
+    // token), while staying scoped to a costUsd object so unrelated `amount:`
+    // fields (token counts, versions, UI dimensions) never trip.
     label: "hardcoded non-zero costUsd object amount literal",
     regex: /\b["'`]?costUsd["'`]?\s*:\s*\{[^}]*\b["'`]?amount["'`]?\s*:\s*["'`](?=[\d.]*[1-9])/u,
     costLiteral: true,
+    objectForm: true,
   },
 ];
+
+// The per-line comment prefixes that mark a line as commentary rather than
+// real code/data. Shared by the per-line pass and the costUsd block scanner.
+function isCommentLine(trimmed) {
+  return (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("*") ||
+    trimmed.startsWith("/*") ||
+    trimmed.startsWith("--") ||
+    trimmed.startsWith("#")
+  );
+}
+
+// The per-line audit-allow escape hatch: `// itotori-225-audit-allow: <reason>`
+// with a non-empty reason. Shared by both passes.
+function hasAuditAllowMarker(line) {
+  return /itotori-225-audit-allow:\s*\S/u.test(line);
+}
+
+// Multi-line-aware scan for object-form `costUsd` cost literals.
+//
+// Prettier can split a large `costUsd: { unit: "usd", amount: "0.0125" }`
+// object across several lines, in which case the `amount:` line stands alone
+// with no `cost` token and the per-line pass matches NOTHING. Here we locate
+// each `costUsd: {` opener, walk forward accumulating lines until the object's
+// braces balance, JOIN the block into one logical line, and apply the same
+// costUsd-object regex. Because we anchor on `costUsd: {` and only join up to
+// its matching `}`, an unrelated `amount:` outside a costUsd object is never
+// considered — no false positives on token counts / versions / UI dimensions.
+//
+// This subsumes the single-line case too (the object simply balances on its
+// opening line), so the pattern is removed from the per-line loop via its
+// `objectForm` flag to avoid double-reporting. Reported against the line the
+// object opens on.
+function findCostUsdObjectViolations(path, lines, pattern, costLiteralAllowed) {
+  if (costLiteralAllowed) return [];
+  const found = [];
+  const openRe = /["'`]?costUsd["'`]?\s*:\s*\{/u;
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+    if (isCommentLine(trimmed)) continue;
+    const opener = openRe.exec(lines[i]);
+    if (!opener) continue;
+    // Walk forward from the matched `{`, balancing braces, until the object
+    // closes; join the block (newlines flattened to spaces) for matching.
+    let depth = 0;
+    let started = false;
+    let markerSeen = false;
+    let joined = "";
+    for (let j = i; j < lines.length; j += 1) {
+      if (hasAuditAllowMarker(lines[j])) markerSeen = true;
+      const seg = j === i ? lines[j].slice(opener.index) : lines[j];
+      joined += ` ${seg}`;
+      for (const ch of seg) {
+        if (ch === "{") {
+          depth += 1;
+          started = true;
+        } else if (ch === "}") {
+          depth -= 1;
+        }
+      }
+      if (started && depth <= 0) break;
+    }
+    // A per-line audit-allow marker anywhere in the object block opts it out,
+    // matching the per-line pass's single-line behaviour.
+    if (markerSeen) continue;
+    if (pattern.regex.test(joined)) {
+      found.push({
+        file: path,
+        line: i + 1,
+        pattern: pattern.label,
+        excerpt: trimmed.slice(0, 200),
+      });
+    }
+  }
+  return found;
+}
 
 function listTrackedFiles() {
   const out = execSync("git ls-files apps packages scripts fixtures", {
@@ -317,13 +407,7 @@ export function findViolations(path, contents) {
     // only flag lines that look like real code/data: bare comment lines
     // beginning with `//`, `*`, `--`, or `#` are exempt.
     const trimmed = line.trim();
-    if (
-      trimmed.startsWith("//") ||
-      trimmed.startsWith("*") ||
-      trimmed.startsWith("/*") ||
-      trimmed.startsWith("--") ||
-      trimmed.startsWith("#")
-    ) {
+    if (isCommentLine(trimmed)) {
       continue;
     }
     // Per-line escape hatch: `// itotori-225-audit-allow: <reason>` marks a
@@ -333,10 +417,13 @@ export function findViolations(path, contents) {
     // amount to exercise the ledger). This is the ONLY per-line opt-out; a
     // non-empty reason must follow the marker so a reviewer can judge each
     // exemption individually. There is no blanket per-tree exemption.
-    if (/itotori-225-audit-allow:\s*\S/u.test(line)) {
+    if (hasAuditAllowMarker(line)) {
       continue;
     }
     for (const pattern of FORBIDDEN_PATTERNS) {
+      // Object-form costUsd is handled by the multi-line-aware block scanner
+      // below, not the per-line pass (see `objectForm` on the pattern).
+      if (pattern.objectForm) continue;
       if (pattern.costLiteral && costLiteralAllowed) continue;
       if (pattern.legacyEnum && legacyEnumAllowed) continue;
       if (pattern.regex.test(line)) {
@@ -348,6 +435,11 @@ export function findViolations(path, contents) {
         });
       }
     }
+  }
+  // Multi-line-aware object-form costUsd scan (subsumes the single-line case).
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (!pattern.objectForm) continue;
+    found.push(...findCostUsdObjectViolations(path, lines, pattern, costLiteralAllowed));
   }
   return found;
 }
