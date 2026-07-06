@@ -266,6 +266,85 @@ function formatLeaseRevalidationMessage(details: JobLeaseRevalidationDetails): s
   );
 }
 
+/**
+ * Why an outbox-lease revalidation rejected a publish / fail mark. The outbox
+ * analog of {@link jobLeaseRevalidationReasons}: the running state is
+ * `publishing`, so `not_publishing` (rather than `not_running`) names an event
+ * that is no longer in the leased publishing state (already published, recovered
+ * back to retry, or dead-lettered). Detection order matches the job path:
+ * `not_found` (row gone) → `not_publishing` (already terminal / recovered, e.g.
+ * a duplicate mark) → `owner_mismatch` (another publisher took the lease over) →
+ * `lease_expired` (this publisher still names itself owner but its lease elapsed
+ * before it revalidated).
+ */
+export const outboxLeaseRevalidationReasons = {
+  notFound: "not_found",
+  notPublishing: "not_publishing",
+  ownerMismatch: "owner_mismatch",
+  leaseExpired: "lease_expired",
+} as const;
+
+export type OutboxLeaseRevalidationReason =
+  (typeof outboxLeaseRevalidationReasons)[keyof typeof outboxLeaseRevalidationReasons];
+
+export type OutboxLeaseOperation = "publish" | "fail";
+
+export type OutboxLeaseRevalidationDetails = {
+  outboxEventId: string;
+  operation: OutboxLeaseOperation;
+  reason: OutboxLeaseRevalidationReason;
+  /** The publisher that attempted the mark (the lease owner it believed it held). */
+  expectedOwner: string;
+  /** The lease owner recorded in the row right now (null once released/recovered). */
+  actualOwner: string | null;
+  /** The event's current status (null when the row no longer exists). */
+  outboxStatus: OutboxStatus | null;
+  /** The lease expiry recorded in the row right now (null when released/recovered). */
+  leaseExpiresAt: Date | null;
+};
+
+/**
+ * Raised when a publisher tries to mark an outbox event published (or failed)
+ * whose lease no longer belongs to it — the lease expired, was recovered, or was
+ * taken over by another publisher. The offending write is a no-op (0 rows
+ * matched) so outbox state is NOT mutated; this error is the clear, structured
+ * diagnostic naming expected vs actual owner plus the current status/expiry. The
+ * outbox analog of {@link JobLeaseRevalidationError}. See ITOTORI-046.
+ */
+export class OutboxLeaseRevalidationError extends Error {
+  readonly outboxEventId: string;
+  readonly operation: OutboxLeaseOperation;
+  readonly reason: OutboxLeaseRevalidationReason;
+  readonly expectedOwner: string;
+  readonly actualOwner: string | null;
+  readonly outboxStatus: OutboxStatus | null;
+  readonly leaseExpiresAt: Date | null;
+
+  constructor(details: OutboxLeaseRevalidationDetails) {
+    super(formatOutboxLeaseRevalidationMessage(details));
+    this.name = "OutboxLeaseRevalidationError";
+    this.outboxEventId = details.outboxEventId;
+    this.operation = details.operation;
+    this.reason = details.reason;
+    this.expectedOwner = details.expectedOwner;
+    this.actualOwner = details.actualOwner;
+    this.outboxStatus = details.outboxStatus;
+    this.leaseExpiresAt = details.leaseExpiresAt;
+  }
+}
+
+function formatOutboxLeaseRevalidationMessage(details: OutboxLeaseRevalidationDetails): string {
+  const actualOwner = details.actualOwner === null ? "<none>" : details.actualOwner;
+  const status = details.outboxStatus === null ? "<absent>" : details.outboxStatus;
+  const expiry = details.leaseExpiresAt === null ? "<none>" : details.leaseExpiresAt.toISOString();
+  return (
+    `publisher "${details.expectedOwner}" cannot ${details.operation} outbox event ` +
+    `${details.outboxEventId}: lease ownership revalidation failed (reason=${details.reason}, ` +
+    `expectedOwner="${details.expectedOwner}", actualOwner="${actualOwner}", ` +
+    `status=${status}, leaseExpiresAt=${expiry})`
+  );
+}
+
 type InsertOutboxEventResult = {
   outboxEvent: OutboxEventRecord;
   inserted: boolean;
@@ -432,8 +511,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     workerId: string,
   ): Promise<OutboxEventRecord> {
     await requirePermission(this.db, actor, permissionValues.queueManage);
+    const executor = this.db as unknown as QueueSqlExecutor;
     const rows = await executeRows(
-      this.db as unknown as QueueSqlExecutor,
+      executor,
       sql`
         update ${eventOutbox}
         set
@@ -447,10 +527,15 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
         where outbox_event_id = ${outboxEventId}
           and status = ${outboxStatusValues.publishing}
           and locked_by = ${workerId}
+          and lease_expires_at is not null
+          and lease_expires_at > now()
         returning *
       `,
     );
-    return singleOutboxRow(rows, outboxEventId);
+    if (rows[0] === undefined) {
+      await throwOutboxLeaseRevalidationError(executor, outboxEventId, workerId, "publish");
+    }
+    return outboxEventFromRow(rows[0] as Record<string, unknown>);
   }
 
   async markOutboxEventFailed(
@@ -462,8 +547,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     await requirePermission(this.db, actor, permissionValues.queueManage);
     const error = errorMessage(input.error);
     const retryAfterSeconds = normalizeRetryAfterSeconds(input.retryAfterSeconds);
+    const executor = this.db as unknown as QueueSqlExecutor;
     const rows = await executeRows(
-      this.db as unknown as QueueSqlExecutor,
+      executor,
       sql`
         update ${eventOutbox} e
         set
@@ -492,10 +578,15 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
         where e.outbox_event_id = ${outboxEventId}
           and e.status = ${outboxStatusValues.publishing}
           and e.locked_by = ${workerId}
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > now()
         returning e.*
       `,
     );
-    return singleOutboxRow(rows, outboxEventId);
+    if (rows[0] === undefined) {
+      await throwOutboxLeaseRevalidationError(executor, outboxEventId, workerId, "fail");
+    }
+    return outboxEventFromRow(rows[0] as Record<string, unknown>);
   }
 
   async recoverExpiredOutboxLeases(actor: AuthorizationActor): Promise<OutboxEventRecord[]> {
@@ -1001,6 +1092,77 @@ function classifyLeaseRevalidationReason(
   // Running and owned by this worker, yet the guarded write matched no row: the
   // lease elapsed before revalidation.
   return jobLeaseRevalidationReasons.leaseExpired;
+}
+
+/**
+ * The outbox analog of {@link throwJobLeaseRevalidationError}: a guarded outbox
+ * write (markOutboxEventPublished/markOutboxEventFailed) matched 0 rows, so the
+ * publisher's lease is no longer valid. Read the current row (read-only — no
+ * mutation) to classify why and raise an {@link OutboxLeaseRevalidationError}
+ * naming expected vs actual owner, status, and expiry. The guarded UPDATE already
+ * required `status = publishing AND locked_by = worker AND lease not expired`, so
+ * a match of publishing + matching owner leaves lease expiry as the only
+ * remaining cause and no wall-clock re-comparison is needed here.
+ */
+async function throwOutboxLeaseRevalidationError(
+  executor: QueueSqlExecutor,
+  outboxEventId: string,
+  workerId: string,
+  operation: OutboxLeaseOperation,
+): Promise<never> {
+  const rows = await executeRows(
+    executor,
+    sql`
+      select status, locked_by, lease_expires_at
+      from ${eventOutbox}
+      where outbox_event_id = ${outboxEventId}
+      limit 1
+    `,
+  );
+  const row = rows[0];
+  if (row === undefined) {
+    throw new OutboxLeaseRevalidationError({
+      outboxEventId,
+      operation,
+      reason: outboxLeaseRevalidationReasons.notFound,
+      expectedOwner: workerId,
+      actualOwner: null,
+      outboxStatus: null,
+      leaseExpiresAt: null,
+    });
+  }
+  const outboxStatus = rowString(row, "status") as OutboxStatus;
+  const actualOwner = nullableRowString(row, "locked_by");
+  const leaseExpiresAt = nullableRowDate(row, "lease_expires_at");
+  const reason = classifyOutboxLeaseRevalidationReason(outboxStatus, actualOwner, workerId);
+  throw new OutboxLeaseRevalidationError({
+    outboxEventId,
+    operation,
+    reason,
+    expectedOwner: workerId,
+    actualOwner,
+    outboxStatus,
+    leaseExpiresAt,
+  });
+}
+
+function classifyOutboxLeaseRevalidationReason(
+  outboxStatus: OutboxStatus,
+  actualOwner: string | null,
+  workerId: string,
+): OutboxLeaseRevalidationReason {
+  if (outboxStatus !== outboxStatusValues.publishing) {
+    // Already terminal (published/dead_letter) or recovered back to a claimable
+    // state (covers a duplicate mark of an already-published event).
+    return outboxLeaseRevalidationReasons.notPublishing;
+  }
+  if (actualOwner !== workerId) {
+    // Still publishing, but another publisher holds the lease now.
+    return outboxLeaseRevalidationReasons.ownerMismatch;
+  }
+  // Publishing and owned by this publisher, yet the guarded write matched no row:
+  // the lease elapsed before revalidation.
+  return outboxLeaseRevalidationReasons.leaseExpired;
 }
 
 function outboxEventFromRow(row: Record<string, unknown>): OutboxEventRecord {

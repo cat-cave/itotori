@@ -239,6 +239,8 @@ export {
   ItotoriEventQueueRepository,
   JobLeaseRevalidationError,
   jobLeaseRevalidationReasons,
+  OutboxLeaseRevalidationError,
+  outboxLeaseRevalidationReasons,
 } from "./repositories/event-queue-repository.js";
 export type {
   ClaimJobsOptions,
@@ -255,6 +257,9 @@ export type {
   OutboxEventRecord,
   OutboxEventWithJobsInput,
   OutboxEventWithJobsResult,
+  OutboxLeaseOperation,
+  OutboxLeaseRevalidationDetails,
+  OutboxLeaseRevalidationReason,
   PruneJobEventsOptions,
   QueueErrorRecord,
   QueueFailureInput,

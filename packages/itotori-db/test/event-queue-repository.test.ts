@@ -7,6 +7,8 @@ import {
   JobLeaseRevalidationError,
   jobLeaseRevalidationReasons,
   type JobQueueInput,
+  OutboxLeaseRevalidationError,
+  outboxLeaseRevalidationReasons,
 } from "../src/repositories/event-queue-repository.js";
 import {
   ItotoriProjectRepository,
@@ -226,7 +228,7 @@ describe("ItotoriEventQueueRepository", () => {
 
       await expect(
         publisher.publishAvailable({ limit: 1, leaseSeconds: 60, retryAfterSeconds: 0 }),
-      ).resolves.toEqual({ claimed: 1, published: 0, failed: 1 });
+      ).resolves.toEqual({ claimed: 1, published: 0, failed: 1, leaseLost: 0 });
 
       const afterFailure = await queue.getOutboxEvent(localActor, "outbox-agent-task");
       expect(afterFailure).toMatchObject({
@@ -243,7 +245,7 @@ describe("ItotoriEventQueueRepository", () => {
 
       await expect(
         publisher.publishAvailable({ limit: 1, leaseSeconds: 60, retryAfterSeconds: 0 }),
-      ).resolves.toEqual({ claimed: 1, published: 1, failed: 0 });
+      ).resolves.toEqual({ claimed: 1, published: 1, failed: 0, leaseLost: 0 });
 
       const published = await queue.getOutboxEvent(localActor, "outbox-agent-task");
       expect(published).toMatchObject({
@@ -304,6 +306,244 @@ describe("ItotoriEventQueueRepository", () => {
       await expect(
         queue.claimOutboxEvents(localActor, "publisher-retry", { limit: 1 }),
       ).resolves.toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  async function seedOutboxEvent(queue: ItotoriEventQueueRepository): Promise<void> {
+    await queue.appendOutboxEvent(localActor, {
+      outboxEventId: "outbox-agent-task",
+      projectId: "project-test",
+      localeBranchId: "locale-en-us",
+      eventType: outboxEventTypeValues.agentTaskRequested,
+      idempotencyKey: "outbox:agent-task",
+      payload: { agentTask: "context-summary" },
+      maxAttempts: 3,
+    });
+  }
+
+  it("rejects an outbox publish mark from an expired-but-unrecovered lease and stays deterministic", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await seedOutboxEvent(queue);
+
+      const [claimed] = await queue.claimOutboxEvents(localActor, "publisher-a", {
+        limit: 1,
+        leaseSeconds: 0,
+      });
+      expect(claimed).toMatchObject({
+        outboxEventId: "outbox-agent-task",
+        status: outboxStatusValues.publishing,
+        lockedBy: "publisher-a",
+        attemptCount: 1,
+      });
+
+      // Lease is expired (leaseSeconds: 0) but NOT yet recovered: the row still
+      // reads status=publishing, locked_by=publisher-a. A naive owner-only check
+      // would let publisher-a mark it published; revalidation must reject it.
+      const error = await queue
+        .markOutboxEventPublished(localActor, "outbox-agent-task", "publisher-a")
+        .then(
+          () => {
+            throw new Error("expected stale publish mark to be rejected");
+          },
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(OutboxLeaseRevalidationError);
+      const revalidation = error as OutboxLeaseRevalidationError;
+      expect(revalidation.reason).toBe(outboxLeaseRevalidationReasons.leaseExpired);
+      expect(revalidation.operation).toBe("publish");
+      expect(revalidation.expectedOwner).toBe("publisher-a");
+      expect(revalidation.actualOwner).toBe("publisher-a");
+      expect(revalidation.outboxStatus).toBe(outboxStatusValues.publishing);
+      expect(revalidation.leaseExpiresAt).toBeInstanceOf(Date);
+      expect(revalidation.message).toContain("lease ownership revalidation failed");
+      expect(revalidation.message).toContain("reason=lease_expired");
+
+      // Final outbox state was NOT corrupted by the rejected mark.
+      const afterReject = await queue.getOutboxEvent(localActor, "outbox-agent-task");
+      expect(afterReject).toMatchObject({
+        status: outboxStatusValues.publishing,
+        lockedBy: "publisher-a",
+        publishedAt: null,
+        attemptCount: 1,
+      });
+
+      // Recovery remains the sole authority and the retry stays deterministic.
+      const recovered = await queue.recoverExpiredOutboxLeases(localActor);
+      expect(recovered).toHaveLength(1);
+      expect(recovered[0]).toMatchObject({
+        outboxEventId: "outbox-agent-task",
+        status: outboxStatusValues.retryWaiting,
+        attemptCount: 1,
+        lockedBy: null,
+      });
+
+      const [reclaimed] = await queue.claimOutboxEvents(localActor, "publisher-b", { limit: 1 });
+      expect(reclaimed).toMatchObject({
+        status: outboxStatusValues.publishing,
+        lockedBy: "publisher-b",
+        attemptCount: 2,
+      });
+      const published = await queue.markOutboxEventPublished(
+        localActor,
+        "outbox-agent-task",
+        "publisher-b",
+      );
+      expect(published).toMatchObject({
+        status: outboxStatusValues.published,
+        attemptCount: 2,
+        publishedAt: expect.any(Date),
+        lockedBy: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects an outbox mark from a publisher whose lease was taken over by another owner", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await seedOutboxEvent(queue);
+
+      await queue.claimOutboxEvents(localActor, "publisher-a", { limit: 1, leaseSeconds: 0 });
+      await queue.recoverExpiredOutboxLeases(localActor);
+      const [ownerB] = await queue.claimOutboxEvents(localActor, "publisher-b", { limit: 1 });
+      expect(ownerB).toMatchObject({
+        status: outboxStatusValues.publishing,
+        lockedBy: "publisher-b",
+        attemptCount: 2,
+      });
+
+      // publisher-a is stale: publisher-b now owns the publishing lease.
+      const error = await queue
+        .markOutboxEventPublished(localActor, "outbox-agent-task", "publisher-a")
+        .then(
+          () => {
+            throw new Error("expected ownership-transfer mark to be rejected");
+          },
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(OutboxLeaseRevalidationError);
+      const revalidation = error as OutboxLeaseRevalidationError;
+      expect(revalidation.reason).toBe(outboxLeaseRevalidationReasons.ownerMismatch);
+      expect(revalidation.expectedOwner).toBe("publisher-a");
+      expect(revalidation.actualOwner).toBe("publisher-b");
+      expect(revalidation.outboxStatus).toBe(outboxStatusValues.publishing);
+
+      // The genuine owner (publisher-b) is unaffected and still publishes cleanly.
+      const afterReject = await queue.getOutboxEvent(localActor, "outbox-agent-task");
+      expect(afterReject).toMatchObject({
+        status: outboxStatusValues.publishing,
+        lockedBy: "publisher-b",
+        publishedAt: null,
+      });
+      const published = await queue.markOutboxEventPublished(
+        localActor,
+        "outbox-agent-task",
+        "publisher-b",
+      );
+      expect(published).toMatchObject({
+        status: outboxStatusValues.published,
+        lockedBy: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a duplicate outbox publish mark without re-publishing the event", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await seedOutboxEvent(queue);
+
+      const [claimed] = await queue.claimOutboxEvents(localActor, "publisher-a", { limit: 1 });
+      expect(claimed?.status).toBe(outboxStatusValues.publishing);
+
+      const first = await queue.markOutboxEventPublished(
+        localActor,
+        "outbox-agent-task",
+        "publisher-a",
+      );
+      expect(first).toMatchObject({ status: outboxStatusValues.published });
+      const firstPublishedAt = first.publishedAt;
+      expect(firstPublishedAt).toBeInstanceOf(Date);
+
+      const error = await queue
+        .markOutboxEventPublished(localActor, "outbox-agent-task", "publisher-a")
+        .then(
+          () => {
+            throw new Error("expected duplicate publish mark to be rejected");
+          },
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(OutboxLeaseRevalidationError);
+      const revalidation = error as OutboxLeaseRevalidationError;
+      expect(revalidation.reason).toBe(outboxLeaseRevalidationReasons.notPublishing);
+      expect(revalidation.actualOwner).toBeNull();
+      expect(revalidation.outboxStatus).toBe(outboxStatusValues.published);
+
+      // The duplicate must NOT re-stamp the publish time or otherwise mutate state.
+      const afterDuplicate = await queue.getOutboxEvent(localActor, "outbox-agent-task");
+      expect(afterDuplicate).toMatchObject({ status: outboxStatusValues.published });
+      expect(afterDuplicate?.publishedAt?.getTime()).toBe(firstPublishedAt?.getTime());
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a stale outbox fail mark so retry transitions stay deterministic", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await seedOutboxEvent(queue);
+
+      const [claimed] = await queue.claimOutboxEvents(localActor, "publisher-a", {
+        limit: 1,
+        leaseSeconds: 0,
+      });
+      expect(claimed).toMatchObject({ status: outboxStatusValues.publishing, attemptCount: 1 });
+
+      // A stale publisher must not be able to drive the retry/dead-letter transition.
+      const error = await queue
+        .markOutboxEventFailed(localActor, "outbox-agent-task", "publisher-a", {
+          error: new Error("stale broker outage"),
+        })
+        .then(
+          () => {
+            throw new Error("expected stale fail mark to be rejected");
+          },
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(OutboxLeaseRevalidationError);
+      expect((error as OutboxLeaseRevalidationError).reason).toBe(
+        outboxLeaseRevalidationReasons.leaseExpired,
+      );
+      expect((error as OutboxLeaseRevalidationError).operation).toBe("fail");
+
+      // Still publishing (not mis-transitioned) and no error recorded by the stale mark;
+      // recovery performs the single, deterministic retry transition.
+      const afterReject = await queue.getOutboxEvent(localActor, "outbox-agent-task");
+      expect(afterReject).toMatchObject({
+        status: outboxStatusValues.publishing,
+        lastError: null,
+        attemptCount: 1,
+      });
+      const recovered = await queue.recoverExpiredOutboxLeases(localActor);
+      expect(recovered).toHaveLength(1);
+      expect(recovered[0]).toMatchObject({
+        status: outboxStatusValues.retryWaiting,
+        attemptCount: 1,
+        lastError: "lease expired",
+      });
     } finally {
       await context.close();
     }
