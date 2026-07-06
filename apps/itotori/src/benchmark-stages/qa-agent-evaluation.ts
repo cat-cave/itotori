@@ -125,18 +125,33 @@ export function evaluateQaAgents(input: QaAgentEvaluationInput): QaAgentEvaluati
       seed: BenchmarkSeededDefectOracleV02;
     }> = [];
     const falsePositiveUnitIds: string[] = [];
+    // Finding-level count of matched findings (a finding that covers >=1 seed
+    // counts ONCE here regardless of how many seeds share its unit). Backs the
+    // finding-scoped precision, distinct from the seed-level truePositives.
+    let matchedFindingCount = 0;
     let unscorableCount = 0;
     let adjudicatedCount = 0;
 
     for (const recorded of agent.recordedFindings) {
       const finding = buildLlmQaFinding(agent, recorded);
-      const matchedSeed = (seedsByUnitId.get(recorded.affectedUnitId) ?? [])[0];
-      if (matchedSeed !== undefined) {
-        finding.seededDefectId = matchedSeed.seededDefectId;
-        matchedFindings.push({ finding: recorded, seed: matchedSeed });
-        const ids = matchedFindingIdsBySeed.get(matchedSeed.seededDefectId) ?? [];
-        ids.push(finding.findingId);
-        matchedFindingIdsBySeed.set(matchedSeed.seededDefectId, ids);
+      // MULTI-SEED (it091): matching is BY LOCATION, so a finding on a unit
+      // matches EVERY seed on that unit independently. A multi-seed unit no
+      // longer collapses to its first seed (which under-counted true positives
+      // and inflated false negatives) — each seed is credited so the seed-level
+      // TP/FN reflect all seeds a finding covers.
+      const seedsOnUnit = seedsByUnitId.get(recorded.affectedUnitId) ?? [];
+      const [firstSeed] = seedsOnUnit;
+      if (firstSeed !== undefined) {
+        // The emitted record carries a single seededDefectId; stamp the first
+        // seed on the unit while every seed is credited as matched below.
+        finding.seededDefectId = firstSeed.seededDefectId;
+        matchedFindingCount += 1;
+        for (const matchedSeed of seedsOnUnit) {
+          matchedFindings.push({ finding: recorded, seed: matchedSeed });
+          const ids = matchedFindingIdsBySeed.get(matchedSeed.seededDefectId) ?? [];
+          ids.push(finding.findingId);
+          matchedFindingIdsBySeed.set(matchedSeed.seededDefectId, ids);
+        }
       } else if (recorded.unscorable !== true) {
         falsePositiveUnitIds.push(recorded.affectedUnitId);
       }
@@ -172,9 +187,6 @@ export function evaluateQaAgents(input: QaAgentEvaluationInput): QaAgentEvaluati
     // coherent values.
     const truePositives = matchedSeedIds.size;
     const falsePositives = falsePositiveUnitIds.length;
-    // Finding-level count of matched findings backs the finding-scoped precision
-    // (distinct from the seed-level truePositives above).
-    const matchedFindingCount = matchedFindings.length;
     const falseNegativeSeedIds = allSeeds
       .map((seed) => seed.seededDefectId)
       .filter((seedId) => !matchedSeedIds.has(seedId));

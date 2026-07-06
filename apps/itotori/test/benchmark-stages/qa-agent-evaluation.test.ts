@@ -161,6 +161,51 @@ describe("qa-agent-evaluation stage", () => {
     expect(seedA?.matchedFindingIds).toHaveLength(2);
   });
 
+  it("matches EVERY seed on a multi-seed unit independently (not first-only)", () => {
+    // U2 carries THREE seeds; a single finding lands on U2. Location-based
+    // matching credits ALL of them, so seeds A and B on U2 are both found. Seed
+    // C lives on an un-covered unit (U3) and stays a false negative. Under the
+    // old first-only match, U2's finding matched seed-A alone, so seeds B and C
+    // were both false negatives (1 TP + 2 FN); the fix yields 2 TP + 1 FN.
+    const agent: QaAgentRecordedRun = {
+      qaAgentId: "terminology-qa-agent",
+      qaAgentVersion: "0.2.0",
+      evaluatedSystemId: "itotori-draft",
+      limitations: ["smoke"],
+      providerRun: providerRun(),
+      recordedFindings: [recordedFinding(U2, "terminology", "major")],
+    };
+    const result = evaluateQaAgents({
+      agents: [agent],
+      seededDefectOracle: [
+        seed("seed-A", U2, "terminology", "major"),
+        seed("seed-B", U2, "accuracy", "major"),
+        seed("seed-C", U3, "accuracy", "critical"),
+      ],
+    });
+
+    const calibration = result.calibration[0];
+    // Both seeds on U2 are matched independently — not capped at the first.
+    expect(calibration.truePositives).toBe(2);
+    expect(calibration.matchedSeededDefectIds).toEqual(["seed-A", "seed-B"]);
+    expect(calibration.falseNegatives).toBe(1);
+    expect(calibration.falseNegativeSeededDefectIds).toEqual(["seed-C"]);
+    // Internal consistency preserved: truePositives + falseNegatives == totalSeeds.
+    expect(calibration.truePositives + calibration.falseNegatives).toBe(3);
+    expect(calibration.falsePositives).toBe(0);
+
+    const metrics = result.evaluations[0].metrics;
+    // Seed-level recall reflects both matched seeds: 2 of 3.
+    expect(metrics.seededRecall).toBeCloseTo(2 / 3, 6);
+    // The single finding matched (>=1 seed), 0 false positives => precision 1.
+    expect(metrics.seededPrecision).toBe(1);
+    // The one finding is recorded against BOTH seeds it covers on the unit.
+    const seedA = result.seededDefectOracle.find((s) => s.seededDefectId === "seed-A");
+    const seedB = result.seededDefectOracle.find((s) => s.seededDefectId === "seed-B");
+    expect(seedA?.matchedFindingIds).toHaveLength(1);
+    expect(seedB?.matchedFindingIds).toEqual(seedA?.matchedFindingIds);
+  });
+
   it("scores category/severity/root-cause calibration against the matched seed", () => {
     const metrics = evaluateQaAgents(input()).evaluations[0].metrics;
     expect(metrics.categoryAccuracy).toBe(1); // terminology == terminology
