@@ -630,6 +630,158 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
+  // ITOTORI-131: the NORMAL draft write path (ItotoriProjectRepository.saveDrafts)
+  // must persist style_guide_version_id = the in-force approved style-guide
+  // version, so approval invalidation can target those drafts WITHOUT relying on
+  // manually-seeded provenance (sibling of ITOTORI-130, which handled the
+  // pre-provenance backfill for rows written before the provenance column
+  // existed). This test writes drafts through saveDrafts -- not a manual UPDATE,
+  // not importSourceBundle -- and asserts the persisted provenance equals the
+  // approved version in force at write time. It fails if saveDrafts stops
+  // attaching the approved style-guide provenance (the persisted value goes NULL).
+  it("saveDrafts persists style_guide_version_id equal to the in-force approved style-guide version", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(context.db);
+
+      const approvedVersionId = "sgv-normal-write-v1";
+      // Approve V1: the style-guide version "in force" at draft-write time. This
+      // is what a normal saveDrafts write must stamp onto every draft it writes.
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: approvedVersionId,
+        status: styleGuideVersionStatusValues.approved,
+        policy: { tone: "formal" },
+      });
+
+      // Normal repository write path -- NOT a manual UPDATE and NOT
+      // importSourceBundle (which leaves provenance NULL, the ITOTORI-130 case).
+      await projectRepository.saveDrafts(localActor, projectFixture());
+
+      const rows = await context.db.execute(sql`
+        select bridge_unit_id, style_guide_version_id
+        from ${localeBranchUnits}
+        where locale_branch_id = 'locale-en-us' and target_text is not null
+        order by bridge_unit_id
+      `);
+      // Every normally-written draft carries the in-force approved provenance.
+      expect(rows.rows).toEqual([
+        {
+          bridge_unit_id: "bridge-unit-current-policy",
+          style_guide_version_id: approvedVersionId,
+        },
+        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: approvedVersionId },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  // ITOTORI-131: approval invalidation must be able to target drafts whose
+  // provenance came from a NORMAL saveDrafts write -- not manually-seeded rows.
+  // Positive: a draft stamped by saveDrafts with the in-force version is flagged
+  // when that version becomes the approval's prior. Mutation-check (the negative
+  // half): a normally-written draft whose provenance PREDATES the approval prior
+  // must NOT be flagged. If saveDrafts stopped attaching provenance, the draft
+  // would carry NULL and the unknown-provenance over-flag policy (ITOTORI-130)
+  // would flag it on every approval-with-prior -- so the negative assertion (and
+  // the provenance sanity assertion) fail exactly when the stamping is dropped.
+  it("targets saveDrafts-written drafts on the matching approval and excludes them once their normal-write provenance predates the approval prior", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideService(repository);
+      const projectRepository = new ItotoriProjectRepository(context.db);
+
+      const v1 = "sgv-normal-invalidation-v1";
+      const v2 = "sgv-normal-invalidation-v2";
+      const v3 = "sgv-normal-invalidation-v3";
+
+      // V1 approved (in force). saveDrafts then stamps the drafts with V1 via the
+      // normal write path -- no manual provenance seeding anywhere in this test.
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: v1,
+        status: styleGuideVersionStatusValues.approved,
+        policy: { tone: "formal" },
+      });
+      await projectRepository.saveDrafts(localActor, projectFixture());
+
+      // Provenance sanity: it came from the normal write, not a seeded row.
+      const stamped = await context.db.execute(sql`
+        select bridge_unit_id, style_guide_version_id
+        from ${localeBranchUnits}
+        where locale_branch_id = 'locale-en-us' and target_text is not null
+        order by bridge_unit_id
+      `);
+      expect(stamped.rows).toEqual([
+        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: v1 },
+        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: v1 },
+      ]);
+
+      // Approve V2 (prior = V1): the normally-written drafts (provenance V1) are
+      // targeted by approval invalidation.
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: v2,
+        expectedPreviousVersionId: v1,
+        policy: { tone: "casual" },
+      });
+      const approvedV2 = await service.approveStyleGuideVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: v2,
+        expectedLatestVersionId: v2,
+      });
+      const flaggedV2 = affectedReferences(
+        approvedV2.invalidationOutboxEvents.map(
+          (event) => event.payload as Record<string, unknown>,
+        ),
+        "drafts",
+      );
+      expect(flaggedV2).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+        ]),
+      );
+      expect(flaggedV2).toHaveLength(2);
+
+      // The drafts are NOT re-saved, so their normal-write provenance stays V1.
+      // Approve V3 (prior = V2): the drafts predate the prior version and must
+      // NOT be flagged. A NULL-provenance draft would be over-flagged here, so
+      // this is the mutation-check for the saveDrafts stamping.
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: v3,
+        expectedPreviousVersionId: v2,
+        policy: { tone: "playful" },
+      });
+      const approvedV3 = await service.approveStyleGuideVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: v3,
+        expectedLatestVersionId: v3,
+      });
+      const flaggedV3 = affectedReferences(
+        approvedV3.invalidationOutboxEvents.map(
+          (event) => event.payload as Record<string, unknown>,
+        ),
+        "drafts",
+      );
+      expect(flaggedV3).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects unauthorized, stale, missing-branch, and rejected approvals before writing events", async () => {
     const context = await isolatedMigratedContext();
     try {
