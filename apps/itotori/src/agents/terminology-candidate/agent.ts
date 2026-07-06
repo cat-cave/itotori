@@ -1,4 +1,8 @@
-import { createUuid7 } from "@itotori/db";
+import {
+  createUuid7,
+  type AuthorizationActor,
+  type ItotoriTerminologyCandidateRepositoryPort,
+} from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
@@ -28,6 +32,14 @@ import {
 
 export type GenerateTerminologyCandidatesOptions = {
   provider: ModelProvider;
+  // ITOTORI-150 — optional repository-side pre-persist conflict check.
+  // When both are supplied, `existsTerminologyTermBySurfaceForm` is queried
+  // in the pre-persist loop (mirroring staleness.ts) so a glossary term a
+  // curator inserted mid-run surfaces SYNCHRONOUSLY as an
+  // `ExistingGlossaryConflictError` at pre-persist — closing the TOCTOU
+  // window between input-context load and persist.
+  repository?: ItotoriTerminologyCandidateRepositoryPort;
+  actor?: AuthorizationActor;
 };
 
 export async function generateTerminologyCandidates(
@@ -118,6 +130,25 @@ export async function generateTerminologyCandidates(
     const conflict = conflictIndex.get(emitted.surfaceForm);
     if (conflict !== undefined) {
       throw new ExistingGlossaryConflictError(emitted.surfaceForm, conflict);
+    }
+    // ITOTORI-150 — repository-side pre-persist conflict check, PARALLEL to
+    // the conflictIndex check above and mirroring staleness.ts. Closes the
+    // TOCTOU window: a glossary term a curator inserted between input-context
+    // load and persist surfaces SYNCHRONOUSLY here as
+    // `ExistingGlossaryConflictError` — even when the input `existingGlossary`
+    // was empty — instead of asynchronously as a `RejectedByReviewer` at the
+    // next staleness scan.
+    if (options.repository !== undefined && options.actor !== undefined) {
+      const repositoryConflict = await options.repository.existsTerminologyTermBySurfaceForm(
+        options.actor,
+        {
+          projectId: input.projectId,
+          surfaceForm: emitted.surfaceForm,
+        },
+      );
+      if (repositoryConflict !== null) {
+        throw new ExistingGlossaryConflictError(emitted.surfaceForm, repositoryConflict);
+      }
     }
     const citedUnitIds: string[] = [];
     const citedUnitHashes: string[] = [];

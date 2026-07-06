@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type {
+  AuthorizationActor,
+  ExistsTerminologyTermBySurfaceFormInput,
+  ItotoriTerminologyCandidateRepositoryPort,
+} from "@itotori/db";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   buildConflictIndex,
@@ -111,6 +116,42 @@ const successPackJson = JSON.stringify({
     },
   ],
 });
+
+// ITOTORI-150 — a minimal repository stub whose only meaningful method is
+// `existsTerminologyTermBySurfaceForm` (the one queried by the agent's
+// pre-persist loop). Every other port method is unused by this path and
+// throws to keep the fixture honest.
+class SurfaceFormConflictRepository implements ItotoriTerminologyCandidateRepositoryPort {
+  public glossary = new Map<string, string>(); // surfaceForm -> termId
+
+  async existsTerminologyTermBySurfaceForm(
+    _actor: AuthorizationActor,
+    input: ExistsTerminologyTermBySurfaceFormInput,
+  ): Promise<string | null> {
+    return this.glossary.get(input.surfaceForm) ?? null;
+  }
+
+  saveCandidate(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+  loadCandidatesByProject(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+  markCandidateStale(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+  markCandidateRejected(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+  markCandidatePromoted(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+  currentSourceHashesForBridgeUnits(): never {
+    throw new Error("not used by the terminology-candidate agent pre-persist path");
+  }
+}
+
+const i150Actor: AuthorizationActor = { userId: "test-user" };
 
 describe("terminology-candidate prompt template", () => {
   it("is byte-stable across calls (same input -> same hash)", () => {
@@ -265,6 +306,34 @@ describe("generateTerminologyCandidates", () => {
     await expect(generateTerminologyCandidates(input, { provider })).rejects.toBeInstanceOf(
       ExistingGlossaryConflictError,
     );
+  });
+
+  it("ITOTORI-150: repository-side surface-form conflict throws ExistingGlossaryConflictError at pre-persist (no input-glossary conflict, no async round trip)", async () => {
+    // Empty input glossary: the conflictIndex path finds NOTHING, so this
+    // proves the repository-side check is what fires — closing the TOCTOU
+    // window (a curator inserted the term mid-run) synchronously at
+    // pre-persist instead of asynchronously as RejectedByReviewer.
+    const input: TerminologyCandidateInput = { ...inputFixture(), existingGlossary: [] };
+    const pack = JSON.stringify({
+      candidates: [
+        {
+          kind: "ProperNoun",
+          surfaceForm: "ハル", // appears in unit a01's text; NOT in input glossary
+          rationale: "主人公の固有名。",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+      ],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: () => pack,
+    });
+    const repository = new SurfaceFormConflictRepository();
+    repository.glossary.set("ハル", "019ed018-0000-7000-8000-000000000t01");
+    await expect(
+      generateTerminologyCandidates(input, { provider, repository, actor: i150Actor }),
+    ).rejects.toBeInstanceOf(ExistingGlossaryConflictError);
   });
 
   it("rejects a candidate with empty citation list (TerminologyCandidateUncitedError)", async () => {
