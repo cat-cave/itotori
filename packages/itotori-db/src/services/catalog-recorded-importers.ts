@@ -2750,9 +2750,9 @@ async function conflictInputs(
   sourceProvenanceId: string,
   workId: string,
 ): Promise<CatalogConflictInput[]> {
-  // Cache of resolved cross-source provenance by `${catalogSource}:${sourceId}`,
+  // Cache of resolved cross-source attribution by `${catalogSource}:${sourceId}`,
   // so multiple evidence rows that cite the same original source share one lookup.
-  const resolvedProvenanceBySourceKey = new Map<string, string | null>();
+  const resolvedAttributionBySourceKey = new Map<string, CrossSourceEvidenceAttribution>();
   const inputs: CatalogConflictInput[] = [];
   for (const [index, conflict] of (fact.conflicts ?? []).entries()) {
     const conflictId =
@@ -2773,33 +2773,58 @@ async function conflictInputs(
         // than the importer's own payload, attribute the row to that original source's
         // stored provenance (so demotion output names IGDB/Wikidata/VNDB/EGS/DLsite/
         // local instead of collapsing every row to the importer-payload provenance).
-        // Only when no explicit provenance is carried AND no original source can be
-        // resolved does the row fall back to the current importer-payload provenance.
-        const explicitOrResolved =
-          evidenceFact.sourceProvenanceId ??
-          (await resolveCrossSourceEvidenceProvenance(
+        // A cross-source reference whose source is NOT yet ingested is a legitimate
+        // FORWARD-REFERENCE (CATALOG-079): the conflict may cite a source before it is
+        // ever crawled. Such a row keeps sourceProvenanceId null and carries its
+        // `<catalogSource>:<sourceId>` subject identity so review/demotion names the
+        // REAL cited source rather than mis-attributing the row to the importer.
+        // Only OWN-SOURCE evidence (or evidence carrying no source identity)
+        // legitimately defaults to the importer-payload provenance.
+        const explicit = evidenceFact.sourceProvenanceId;
+        let evidenceProvenanceId: string | null;
+        let evidenceSubjectFallback: string;
+        if (explicit !== undefined) {
+          evidenceProvenanceId = explicit;
+          evidenceSubjectFallback = explicit;
+        } else {
+          const attribution = await resolveCrossSourceEvidenceAttribution(
             catalogRepository,
             actor,
             context.adapter.catalogSource,
             fact.sourceId,
             evidenceFact.metadata,
-            resolvedProvenanceBySourceKey,
-          ));
-        const evidenceProvenanceId = explicitOrResolved ?? sourceProvenanceId;
-        evidence.push({
+            resolvedAttributionBySourceKey,
+          );
+          const sourceKey = attribution.sourceKey;
+          if (sourceKey !== null && attribution.provenanceId === null) {
+            // Cross-source FORWARD-REFERENCE: the cited source is not yet ingested.
+            // Keep sourceProvenanceId null and carry the `<catalogSource>:<sourceId>`
+            // subject identity so review/demotion names the REAL cited source.
+            evidenceProvenanceId = null;
+            evidenceSubjectFallback = sourceKey;
+          } else {
+            evidenceProvenanceId = attribution.provenanceId ?? sourceProvenanceId;
+            evidenceSubjectFallback = evidenceProvenanceId;
+          }
+        }
+        const evidenceSubjectId = evidenceFact.subjectId ?? evidenceSubjectFallback;
+        const evidenceInput: CatalogConflictEvidenceInput = {
           conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
             conflictId,
             String(evidenceIndex),
             evidenceFact.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-            evidenceFact.subjectId ?? evidenceProvenanceId,
+            evidenceSubjectId,
           ]),
           subjectKind:
             evidenceFact.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-          subjectId: evidenceFact.subjectId ?? evidenceProvenanceId,
-          sourceProvenanceId: evidenceProvenanceId,
+          subjectId: evidenceSubjectId,
           evidencePosition: evidenceFact.evidencePosition ?? evidenceIndex,
           metadata: compactJson({ ...evidenceFact.metadata, ...importMetadata }),
-        });
+        };
+        if (evidenceProvenanceId !== null) {
+          evidenceInput.sourceProvenanceId = evidenceProvenanceId;
+        }
+        evidence.push(evidenceInput);
       }
     } else {
       evidence = [
@@ -2849,39 +2874,56 @@ async function conflictInputs(
   return inputs;
 }
 
-// Resolve the original-source provenance for a cross-source conflict-evidence row.
+// The cross-source attribution for a conflict-evidence row. `sourceKey` is the
+// `<catalogSource>:<sourceId>` subject identity for a cross-source reference whose
+// cited source is OTHER than the importer's own payload (null for own-source and
+// for evidence carrying no source identity). `provenanceId` is the cited source's
+// stored external-id provenance when persisted, or null when the source is not yet
+// ingested — a legitimate FORWARD-REFERENCE (CATALOG-079).
+type CrossSourceEvidenceAttribution = {
+  provenanceId: string | null;
+  sourceKey: string | null;
+};
+
+// Resolve the original-source attribution for a cross-source conflict-evidence row.
 // Platform-language conflict evidence (and any future cross-source conflict) carries
 // the original evidence's `catalogSource`/`sourceId` in its metadata; when those cite
 // a source OTHER than the importer's own payload, the row is attributed to that
-// source's stored external-id provenance — the same provenance attribution the
-// repository-derived conflict service uses — so demotion output names the original
-// evidence source. Returns null when the evidence is own-source, carries no source
-// identity, or no stored row exists (callers then default to importer provenance).
-async function resolveCrossSourceEvidenceProvenance(
+// source — the same attribution the repository-derived conflict service uses — so
+// review/demotion output names the original evidence source. The cited source may NOT
+// be catalogued locally yet (a forward-reference to a source not yet ingested, e.g.
+// an official platform source arriving before the candidate source is crawled); in
+// that case `provenanceId` is null and `sourceKey` carries the `<catalogSource>:<sourceId>`
+// identity, so the caller preserves the real cited source instead of mis-attributing
+// the row to the importer-payload provenance. Own-source evidence and evidence carrying
+// no source identity return `{ provenanceId: null, sourceKey: null }` (callers default
+// those to the importer-payload provenance).
+async function resolveCrossSourceEvidenceAttribution(
   catalogRepository: ItotoriCatalogRepositoryPort,
   actor: AuthorizationActor,
   importerCatalogSource: CatalogSource,
   importerSourceId: string,
   evidenceMetadata: CatalogJsonRecord | undefined,
-  cache: Map<string, string | null>,
-): Promise<string | null> {
+  cache: Map<string, CrossSourceEvidenceAttribution>,
+): Promise<CrossSourceEvidenceAttribution> {
+  const ownSource: CrossSourceEvidenceAttribution = { provenanceId: null, sourceKey: null };
   if (evidenceMetadata === undefined) {
-    return null;
+    return ownSource;
   }
   const catalogSourceValue = optionalString(evidenceMetadata, "catalogSource");
   const sourceId = optionalString(evidenceMetadata, "sourceId");
   if (sourceId === undefined) {
-    return null;
+    return ownSource;
   }
   if (
     catalogSourceValue === undefined ||
     !(Object.values(catalogSourceValues) as string[]).includes(catalogSourceValue)
   ) {
-    return null;
+    return ownSource;
   }
   const catalogSource = catalogSourceValue as CatalogSource;
   if (catalogSource === importerCatalogSource && sourceId === importerSourceId) {
-    return null;
+    return ownSource;
   }
   const cacheKey = `${catalogSource}:${sourceId}`;
   const cached = cache.get(cacheKey);
@@ -2892,9 +2934,12 @@ async function resolveCrossSourceEvidenceProvenance(
   const externalId = snapshot?.externalIds.find(
     (row) => row.catalogSource === catalogSource && row.sourceId === sourceId,
   );
-  const resolved = externalId?.sourceProvenanceId ?? null;
-  cache.set(cacheKey, resolved);
-  return resolved;
+  const attribution: CrossSourceEvidenceAttribution = {
+    provenanceId: externalId?.sourceProvenanceId ?? null,
+    sourceKey: cacheKey,
+  };
+  cache.set(cacheKey, attribution);
+  return attribution;
 }
 
 function seedTargetInput(

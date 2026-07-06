@@ -3936,6 +3936,21 @@ function catalogConflictReviewRowFromConflict(
     reportCatalogConflictOriginMetadataDrop(originMetadataDrop);
   }
   const metadataSourceIdRows = metadataSourceIds(metadata);
+  // A provenance-less `sourceProvenance` evidence subject bearing a
+  // `<catalogSource>:<sourceId>` identity is a FORWARD-REFERENCE to a source not
+  // yet ingested (CATALOG-079): it carries no provenance row to look up, but its
+  // subject identity still names the REAL cited source. Surface it into
+  // `sourceIds` so review/demotion attributes the evidence to that source rather
+  // than silently dropping it for lack of a provenance row. This mirrors how the
+  // repository-derived conflict service surfaces cross-source identities.
+  const crossSourceSubjectIdentities = evidenceRows
+    .filter(
+      (evidence) =>
+        evidence.subjectKind === catalogConflictSubjectKindValues.sourceProvenance &&
+        evidence.sourceProvenanceId === null,
+    )
+    .map((evidence) => parseCatalogSourceRecordIdentity(evidence.subjectId))
+    .filter((identity): identity is CatalogConflictReviewSourceId => identity !== null);
   const priorCandidateIds = stringArrayMetadata(metadata, "priorCandidateIds");
   const candidateIds = uniqueStrings([
     ...priorCandidateIds,
@@ -3962,12 +3977,14 @@ function catalogConflictReviewRowFromConflict(
     sourceIds: uniqueSourceIds([
       ...exactLinkRefs,
       ...metadataSourceIdRows.filter(isPublicSourceId),
+      ...crossSourceSubjectIdentities.filter(isPublicSourceId),
       ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
     ]),
     provenance: uniqueProvenance(provenance),
     privateSourceCount: countPrivateSourceIdentities(
       rawExactLinkRefs,
       metadataSourceIdRows,
+      crossSourceSubjectIdentities,
       rawProvenance,
     ),
     severity: conflictSeverity(conflict, exactLinkRefs),
@@ -5249,12 +5266,31 @@ async function assertConflictEvidenceSubjectReferences(
  * a persisted provenance row.
  */
 function isCatalogSourceRecordIdentity(subjectId: string): boolean {
+  const parsed = parseCatalogSourceRecordIdentity(subjectId);
+  return parsed !== null;
+}
+
+/**
+ * Parse a `<catalogSource>:<sourceId>` source-record identity into its
+ * `{ catalogSource, sourceId }` components, or return null when the identity is
+ * not well-formed or names an unknown catalog source. Used to surface a
+ * provenance-less cross-source evidence subject (a forward-reference to a source
+ * not yet ingested — CATALOG-079) into the review/demotion `sourceIds` so the
+ * REAL cited source is named rather than silently dropped for lack of a row.
+ */
+function parseCatalogSourceRecordIdentity(subjectId: string): CatalogConflictReviewSourceId | null {
   const separator = subjectId.indexOf(":");
   if (separator <= 0 || separator === subjectId.length - 1) {
-    return false;
+    return null;
   }
   const catalogSource = subjectId.slice(0, separator);
-  return (catalogSources as string[]).includes(catalogSource);
+  if (!(catalogSources as string[]).includes(catalogSource)) {
+    return null;
+  }
+  return {
+    catalogSource: catalogSource as CatalogSource,
+    sourceId: subjectId.slice(separator + 1),
+  };
 }
 
 /**
