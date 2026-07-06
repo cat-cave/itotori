@@ -1678,6 +1678,511 @@ export type BenchmarkReportV02 = {
   knownBlindSpots: string[];
 };
 
+// ---------------------------------------------------------------------------
+// Benchmark quality rubric (`benchmark-quality-rubric` node)
+//
+// The machine-consumable form of the translation-benchmark quality rubric
+// documented in `docs/itotori-translation-benchmark-methodology.md` §2. This
+// is the human-scored VIEW of the `itotori-lqa-1` taxonomy, NOT a rival
+// vocabulary: every rubric dimension maps onto an itotori-lqa-1 category and
+// every rubric score maps onto an MQM severity, so blind-judge-panel scores,
+// deterministic findings, and QA-agent findings share one vocabulary.
+//
+// Conformance rule (§2): this artifact MIRRORS §2 exactly — dimensions (§2.2),
+// the 0–4 anchored scale (§2.1), and the scale→MQM-severity mapping (§2.1). It
+// adds no dimension and invents no scale. Two dimensions that §2.2 lists but
+// does NOT tag to a taxonomy category (`wordplay_puns_songs`,
+// `speaker_attribution`) carry a `taxonomyMappingSource: "reasoned_default"`
+// marker so the fill-in is auditable and never mistaken for a §2 directive.
+// ---------------------------------------------------------------------------
+
+export const BENCHMARK_QUALITY_RUBRIC_ID = "itotori-benchmark-quality-rubric-1" as const;
+export const BENCHMARK_QUALITY_RUBRIC_VERSION = "itotori.benchmark-quality-rubric.v1" as const;
+
+/** §2.1 — the 0–4 anchored scale. Every dimension is scored on this scale. */
+export const BENCHMARK_RUBRIC_SCORES = [0, 1, 2, 3, 4] as const;
+export type BenchmarkRubricScore = (typeof BENCHMARK_RUBRIC_SCORES)[number];
+
+/** §2.1 — "score below 4 requires cited reasoning or it is unscorable". */
+export const BENCHMARK_RUBRIC_CITATION_REQUIRED_BELOW_SCORE = 4 as const;
+
+/**
+ * §2.1 "Rough MQM-severity correspondence" as a machine-usable band. Four of
+ * the five scores correspond to a single MQM severity (or to no defect); score
+ * 1 is deliberately a BAND ("between major and critical") in §2, represented
+ * faithfully here as a `between` band rather than being forced to a single
+ * value. A discrete severity for finding emission is derived separately by
+ * {@link benchmarkRubricQualitySeverityForScore}.
+ */
+export type BenchmarkRubricMqmBand =
+  | { kind: "no_defect" }
+  | { kind: "severity"; severity: LocalizationQualitySeverityV02 }
+  | {
+      kind: "between";
+      lower: LocalizationQualitySeverityV02;
+      upper: LocalizationQualitySeverityV02;
+    };
+
+export type BenchmarkRubricScaleAnchor = {
+  score: BenchmarkRubricScore;
+  /** §2.1 anchor prose (verbatim). */
+  anchor: string;
+  /** §2.1 "Rough MQM-severity correspondence" cell (verbatim). */
+  mqmCorrespondence: string;
+  /** Machine-usable form of `mqmCorrespondence`. */
+  mqmBand: BenchmarkRubricMqmBand;
+};
+
+/** §2.2 dimension groupings. */
+export const BENCHMARK_RUBRIC_DIMENSION_GROUPS = [
+  "adequacy_accuracy",
+  "fluency",
+  "localization_craft",
+  "technical",
+] as const;
+export type BenchmarkRubricDimensionGroup = (typeof BENCHMARK_RUBRIC_DIMENSION_GROUPS)[number];
+
+/** §2.2 dimensions — the complete, closed set. Order mirrors §2.2. */
+export const BENCHMARK_RUBRIC_DIMENSION_IDS = [
+  "adequacy",
+  "callbacks_foreshadowing",
+  "fluency",
+  "register_politeness",
+  "character_voice_consistency",
+  "honorifics",
+  "wordplay_puns_songs",
+  "cultural_adaptation",
+  "textbox_fit_wordwrap",
+  "speaker_attribution",
+  "choice_branch_correctness",
+] as const;
+export type BenchmarkRubricDimensionId = (typeof BENCHMARK_RUBRIC_DIMENSION_IDS)[number];
+
+/**
+ * Whether a dimension's taxonomy mapping is stated by §2.2 (`section_2`) or is
+ * a reasoned fill-in for a dimension §2.2 lists but does not tag
+ * (`reasoned_default`). Only two dimensions use `reasoned_default`.
+ */
+export const BENCHMARK_RUBRIC_MAPPING_SOURCES = ["section_2", "reasoned_default"] as const;
+export type BenchmarkRubricMappingSource = (typeof BENCHMARK_RUBRIC_MAPPING_SOURCES)[number];
+
+export type BenchmarkRubricDimension = {
+  id: BenchmarkRubricDimensionId;
+  title: string;
+  group: BenchmarkRubricDimensionGroup;
+  /** §2.2 criterion — what the dimension evaluates and what it penalizes. */
+  criterion: string;
+  /** itotori-lqa-1 category a score below 4 converts into. */
+  taxonomyCategory: LocalizationQualityCategoryV02;
+  /** itotori-lqa-1 subcategory when §2.2 names one. */
+  taxonomySubcategory?: string;
+  /** §2.2 ACROSS-the-work dimension (character voice, callbacks). */
+  longRange: boolean;
+  /** §2.2 "scored only when ..." guard, when the dimension is conditional. */
+  conditionalScoring?: string;
+  /** §2.2 technical group ∩ §3 deterministic metric suite. */
+  alsoDeterministic: boolean;
+  taxonomyMappingSource: BenchmarkRubricMappingSource;
+  notes?: string;
+};
+
+export type BenchmarkQualityRubric = {
+  rubricId: typeof BENCHMARK_QUALITY_RUBRIC_ID;
+  rubricVersion: typeof BENCHMARK_QUALITY_RUBRIC_VERSION;
+  taxonomyId: typeof LOCALIZATION_QUALITY_TAXONOMY_ID;
+  taxonomyVersion: typeof LOCALIZATION_QUALITY_TAXONOMY_VERSION;
+  methodologyRef: string;
+  /** §2.1 — judges must cite any score below this or it is dropped. */
+  citationRequiredBelowScore: typeof BENCHMARK_RUBRIC_CITATION_REQUIRED_BELOW_SCORE;
+  scale: BenchmarkRubricScaleAnchor[];
+  dimensions: BenchmarkRubricDimension[];
+  /**
+   * §2.3 — dimension weighting is an OPEN DECISION (§12). Until decided the
+   * rubric reports per-dimension vectors ONLY, never a single weighted total.
+   */
+  weighting: {
+    policy: "per_dimension_vector_only";
+    singleWeightedTotalReported: false;
+    openDecisionRef: string;
+  };
+};
+
+/**
+ * THE benchmark quality rubric artifact. Consumed by the blind judge panel
+ * (§4, a downstream node) to score candidates and by the report
+ * (`BenchmarkReportV02`) to convert scores into `itotori-lqa-1` findings.
+ * Frozen and validated by {@link assertBenchmarkQualityRubric}.
+ */
+export const BENCHMARK_QUALITY_RUBRIC: BenchmarkQualityRubric = {
+  rubricId: BENCHMARK_QUALITY_RUBRIC_ID,
+  rubricVersion: BENCHMARK_QUALITY_RUBRIC_VERSION,
+  taxonomyId: LOCALIZATION_QUALITY_TAXONOMY_ID,
+  taxonomyVersion: LOCALIZATION_QUALITY_TAXONOMY_VERSION,
+  methodologyRef: "docs/itotori-translation-benchmark-methodology.md#2-the-quality-rubric",
+  citationRequiredBelowScore: BENCHMARK_RUBRIC_CITATION_REQUIRED_BELOW_SCORE,
+  scale: [
+    {
+      score: 4,
+      anchor: "Ideal for this dimension in context; a careful pro would sign off.",
+      mqmCorrespondence: "no defect",
+      mqmBand: { kind: "no_defect" },
+    },
+    {
+      score: 3,
+      anchor: "Minor issue a target-language player might notice; core intent intact.",
+      mqmCorrespondence: "minor",
+      mqmBand: { kind: "severity", severity: "minor" },
+    },
+    {
+      score: 2,
+      anchor: "Material defect a player would notice; should be repaired before a quality claim.",
+      mqmCorrespondence: "major",
+      mqmBand: { kind: "severity", severity: "major" },
+    },
+    {
+      score: 1,
+      anchor: "Serious defect; meaning, voice, or usability substantially harmed.",
+      mqmCorrespondence: "between major and critical",
+      mqmBand: { kind: "between", lower: "major", upper: "critical" },
+    },
+    {
+      score: 0,
+      anchor:
+        "Broken/unusable for this dimension: meaning inversion, unreadable, protected-content loss.",
+      mqmCorrespondence: "critical",
+      mqmBand: { kind: "severity", severity: "critical" },
+    },
+  ],
+  dimensions: [
+    {
+      id: "adequacy",
+      title: "Adequacy (in-context meaning)",
+      group: "adequacy_accuracy",
+      criterion:
+        "Does the target preserve the source proposition GIVEN the decoded scene/speaker/branch context? Penalize mistranslation, omission, addition, over/under-specification, context misread.",
+      taxonomyCategory: "accuracy",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "callbacks_foreshadowing",
+      title: "Callbacks / foreshadowing consistency",
+      group: "adequacy_accuracy",
+      criterion:
+        "Are setups, running gags, foreshadowed lines, and later payoffs rendered consistently ACROSS the work? A long-range accuracy dimension.",
+      taxonomyCategory: "accuracy",
+      longRange: true,
+      conditionalScoring: "Scored only when the corpus alignment links a callback to its origin.",
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "fluency",
+      title: "Fluency / naturalness",
+      group: "fluency",
+      criterion:
+        "Grammatical, idiomatic, readable target-language prose that fits the genre and narrative mode.",
+      taxonomyCategory: "style",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "register_politeness",
+      title: "Register + politeness (keigo → English)",
+      group: "localization_craft",
+      criterion:
+        "Is Japanese formality/politeness (keigo, plain form, rough speech) rendered with an appropriate English register for the relationship and scene?",
+      taxonomyCategory: "tone_register",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "character_voice_consistency",
+      title: "Character-voice consistency (long-range)",
+      group: "localization_craft",
+      criterion:
+        "Does a character keep a coherent, distinct English voice ACROSS the whole work, not just within a line? The marquee dimension; scored against multiple sampled lines for the same speaker drawn from different scenes/routes.",
+      taxonomyCategory: "tone_register",
+      taxonomySubcategory: "speaker_voice_drift",
+      longRange: true,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "honorifics",
+      title: "Honorifics handling",
+      group: "localization_craft",
+      criterion:
+        "Are -san/-chan/-senpai/... and address forms handled per a declared, CONSISTENT policy (kept, dropped, or mapped), and applied uniformly? The policy choice is not scored; consistency and appropriateness to it are.",
+      taxonomyCategory: "tone_register",
+      taxonomySubcategory: "honorific_misuse",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "wordplay_puns_songs",
+      title: "Wordplay / puns / songs",
+      group: "localization_craft",
+      criterion:
+        "Are puns, rhymes, acrostics, dialect jokes, and song lyrics adapted so the EFFECT survives, rather than flattened or footnoted away? Highest-difficulty, lowest-frequency dimension.",
+      taxonomyCategory: "style",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "reasoned_default",
+      notes:
+        "§2.2 does not tag this dimension to an itotori-lqa-1 category. Mapped to `style` (target-language creative rendering; nearest MQM category via genre_voice_mismatch/unidiomatic) as a reasoned default — NOT a §2 directive. Flag for Trevor.",
+    },
+    {
+      id: "cultural_adaptation",
+      title: "Cultural adaptation",
+      group: "localization_craft",
+      criterion:
+        "Are culture-bound references handled so a target player gets the intended intent without confusion or lost meaning?",
+      taxonomyCategory: "locale_convention",
+      longRange: false,
+      alsoDeterministic: false,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "textbox_fit_wordwrap",
+      title: "Text-box fit / word-wrap",
+      group: "technical",
+      criterion:
+        "Does the line fit its presentation slot without overflow/truncation, and wrap readably? The rubric scores the judgment call; §3 scores the mechanical fact.",
+      taxonomyCategory: "layout",
+      longRange: false,
+      alsoDeterministic: true,
+      taxonomyMappingSource: "section_2",
+    },
+    {
+      id: "speaker_attribution",
+      title: "Speaker attribution",
+      group: "technical",
+      criterion:
+        "Is the line attributed to the correct speaker per decoded ground truth? The rubric scores the judgment call; §3 scores the mechanical fact.",
+      taxonomyCategory: "technical_integrity",
+      taxonomySubcategory: "asset_binding_broken",
+      longRange: false,
+      alsoDeterministic: true,
+      taxonomyMappingSource: "reasoned_default",
+      notes:
+        "§2.2 does not tag this dimension to an itotori-lqa-1 category. Mapped to `technical_integrity.asset_binding_broken` ('Localized text is attached to the wrong asset, speaker, event, or UI element') — the exact taxonomy match — as a reasoned default. Flag for Trevor.",
+    },
+    {
+      id: "choice_branch_correctness",
+      title: "Choice / branch correctness",
+      group: "technical",
+      criterion:
+        "Does a menu choice or branch option preserve the player's intended action and route? The rubric scores the judgment call; §3 scores the mechanical fact.",
+      taxonomyCategory: "accuracy",
+      taxonomySubcategory: "choice_semantics_shift",
+      longRange: false,
+      alsoDeterministic: true,
+      taxonomyMappingSource: "section_2",
+    },
+  ],
+  weighting: {
+    policy: "per_dimension_vector_only",
+    singleWeightedTotalReported: false,
+    openDecisionRef: "docs/itotori-translation-benchmark-methodology.md#23-weighting",
+  },
+};
+
+/** The §2.1 MQM-severity band for a rubric score. */
+export function benchmarkRubricMqmBandForScore(
+  score: BenchmarkRubricScore,
+): BenchmarkRubricMqmBand {
+  const anchor = BENCHMARK_QUALITY_RUBRIC.scale.find((entry) => entry.score === score);
+  if (anchor === undefined) {
+    throw new Error(`benchmarkRubricMqmBandForScore: ${String(score)} is not a rubric score`);
+  }
+  return anchor.mqmBand;
+}
+
+/**
+ * Discrete `itotori-lqa-1` severity a rubric score converts into for finding
+ * emission (`BenchmarkFindingRecordV02.qualitySeverity`). Returns `null` for a
+ * score of 4 (no defect → no finding). Score 1 ("between major and critical",
+ * §2.1) is emitted as `major`: the taxonomy reserves `critical` for the
+ * unusable/inversion/blocker case that the rubric assigns to score 0, so
+ * score 1 sits at the severe end of `major` rather than at `critical`. This is
+ * the one reasoned call where §2.1 gives a band, not a single value; the full
+ * band is preserved by {@link benchmarkRubricMqmBandForScore}.
+ */
+export function benchmarkRubricQualitySeverityForScore(
+  score: BenchmarkRubricScore,
+): LocalizationQualitySeverityV02 | null {
+  const band = benchmarkRubricMqmBandForScore(score);
+  switch (band.kind) {
+    case "no_defect":
+      return null;
+    case "severity":
+      return band.severity;
+    case "between":
+      return band.lower;
+  }
+}
+
+export type BenchmarkRubricTaxonomyTarget = {
+  category: LocalizationQualityCategoryV02;
+  subcategory?: string;
+};
+
+/** The `itotori-lqa-1` category (+ subcategory) a dimension's findings carry. */
+export function benchmarkRubricTaxonomyTargetForDimension(
+  dimensionId: BenchmarkRubricDimensionId,
+): BenchmarkRubricTaxonomyTarget {
+  const dimension = BENCHMARK_QUALITY_RUBRIC.dimensions.find((entry) => entry.id === dimensionId);
+  if (dimension === undefined) {
+    throw new Error(
+      `benchmarkRubricTaxonomyTargetForDimension: unknown dimension ${String(dimensionId)}`,
+    );
+  }
+  return dimension.taxonomySubcategory === undefined
+    ? { category: dimension.taxonomyCategory }
+    : { category: dimension.taxonomyCategory, subcategory: dimension.taxonomySubcategory };
+}
+
+/**
+ * Strict validation of a benchmark quality rubric. Throws on any divergence
+ * from the §2 shape: the exact {0,1,2,3,4} scale, all §2.2 dimensions present
+ * exactly once, every taxonomy mapping landing in the `itotori-lqa-1`
+ * vocabulary, and the per-dimension-vector-only weighting policy.
+ */
+export function assertBenchmarkQualityRubric(
+  value: unknown,
+): asserts value is BenchmarkQualityRubric {
+  const rubric = asRecord(value, "BenchmarkQualityRubric");
+  assertEqual(rubric.rubricId, BENCHMARK_QUALITY_RUBRIC_ID, "BenchmarkQualityRubric.rubricId");
+  assertEqual(
+    rubric.rubricVersion,
+    BENCHMARK_QUALITY_RUBRIC_VERSION,
+    "BenchmarkQualityRubric.rubricVersion",
+  );
+  assertEqual(
+    rubric.taxonomyId,
+    LOCALIZATION_QUALITY_TAXONOMY_ID,
+    "BenchmarkQualityRubric.taxonomyId",
+  );
+  assertEqual(
+    rubric.taxonomyVersion,
+    LOCALIZATION_QUALITY_TAXONOMY_VERSION,
+    "BenchmarkQualityRubric.taxonomyVersion",
+  );
+  assertString(rubric.methodologyRef, "BenchmarkQualityRubric.methodologyRef");
+  if (rubric.citationRequiredBelowScore !== BENCHMARK_RUBRIC_CITATION_REQUIRED_BELOW_SCORE) {
+    throw new Error(
+      `BenchmarkQualityRubric.citationRequiredBelowScore must be ${String(
+        BENCHMARK_RUBRIC_CITATION_REQUIRED_BELOW_SCORE,
+      )}`,
+    );
+  }
+
+  const scale = asArray(rubric.scale, "BenchmarkQualityRubric.scale");
+  if (scale.length !== BENCHMARK_RUBRIC_SCORES.length) {
+    throw new Error(
+      `BenchmarkQualityRubric.scale must have exactly ${BENCHMARK_RUBRIC_SCORES.length} anchors`,
+    );
+  }
+  const seenScores = new Set<number>();
+  for (const [index, entry] of scale.entries()) {
+    const label = `BenchmarkQualityRubric.scale[${index}]`;
+    const anchor = asRecord(entry, label);
+    const score = anchor.score;
+    if (
+      typeof score !== "number" ||
+      !(BENCHMARK_RUBRIC_SCORES as readonly number[]).includes(score)
+    ) {
+      throw new Error(`${label}.score must be one of: ${BENCHMARK_RUBRIC_SCORES.join(", ")}`);
+    }
+    if (seenScores.has(score)) {
+      throw new Error(`${label}.score ${String(score)} is duplicated`);
+    }
+    seenScores.add(score);
+    assertString(anchor.anchor, `${label}.anchor`);
+    assertString(anchor.mqmCorrespondence, `${label}.mqmCorrespondence`);
+    assertBenchmarkRubricMqmBand(anchor.mqmBand, `${label}.mqmBand`);
+  }
+
+  const dimensions = asArray(rubric.dimensions, "BenchmarkQualityRubric.dimensions");
+  if (dimensions.length !== BENCHMARK_RUBRIC_DIMENSION_IDS.length) {
+    throw new Error(
+      `BenchmarkQualityRubric.dimensions must have exactly ${BENCHMARK_RUBRIC_DIMENSION_IDS.length} dimensions`,
+    );
+  }
+  const seenDimensionIds = new Set<string>();
+  for (const [index, entry] of dimensions.entries()) {
+    const label = `BenchmarkQualityRubric.dimensions[${index}]`;
+    const dimension = asRecord(entry, label);
+    assertEnum(dimension.id, BENCHMARK_RUBRIC_DIMENSION_IDS, `${label}.id`);
+    if (seenDimensionIds.has(dimension.id as string)) {
+      throw new Error(`${label}.id ${String(dimension.id)} is duplicated`);
+    }
+    seenDimensionIds.add(dimension.id as string);
+    assertString(dimension.title, `${label}.title`);
+    assertEnum(dimension.group, BENCHMARK_RUBRIC_DIMENSION_GROUPS, `${label}.group`);
+    assertString(dimension.criterion, `${label}.criterion`);
+    assertEnum(
+      dimension.taxonomyCategory,
+      LOCALIZATION_QUALITY_CATEGORIES,
+      `${label}.taxonomyCategory`,
+    );
+    assertOptionalString(dimension.taxonomySubcategory, `${label}.taxonomySubcategory`);
+    assertBoolean(dimension.longRange, `${label}.longRange`);
+    assertOptionalString(dimension.conditionalScoring, `${label}.conditionalScoring`);
+    assertBoolean(dimension.alsoDeterministic, `${label}.alsoDeterministic`);
+    assertEnum(
+      dimension.taxonomyMappingSource,
+      BENCHMARK_RUBRIC_MAPPING_SOURCES,
+      `${label}.taxonomyMappingSource`,
+    );
+    assertOptionalString(dimension.notes, `${label}.notes`);
+  }
+  for (const id of BENCHMARK_RUBRIC_DIMENSION_IDS) {
+    if (!seenDimensionIds.has(id)) {
+      throw new Error(`BenchmarkQualityRubric.dimensions is missing §2.2 dimension '${id}'`);
+    }
+  }
+
+  const weighting = asRecord(rubric.weighting, "BenchmarkQualityRubric.weighting");
+  assertEqual(
+    weighting.policy,
+    "per_dimension_vector_only",
+    "BenchmarkQualityRubric.weighting.policy",
+  );
+  if (weighting.singleWeightedTotalReported !== false) {
+    throw new Error(
+      "BenchmarkQualityRubric.weighting.singleWeightedTotalReported must be false (per-dimension vectors only until §12 weighting is decided)",
+    );
+  }
+  assertString(weighting.openDecisionRef, "BenchmarkQualityRubric.weighting.openDecisionRef");
+}
+
+function assertBenchmarkRubricMqmBand(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkRubricMqmBand {
+  const band = asRecord(value, label);
+  const kind = band.kind;
+  if (kind === "no_defect") {
+    return;
+  }
+  if (kind === "severity") {
+    assertEnum(band.severity, LOCALIZATION_QUALITY_SEVERITIES, `${label}.severity`);
+    return;
+  }
+  if (kind === "between") {
+    assertEnum(band.lower, LOCALIZATION_QUALITY_SEVERITIES, `${label}.lower`);
+    assertEnum(band.upper, LOCALIZATION_QUALITY_SEVERITIES, `${label}.upper`);
+    return;
+  }
+  throw new Error(`${label}.kind must be one of: no_defect, severity, between`);
+}
+
 export type BridgeBundleV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   bridgeId: Uuid7;
