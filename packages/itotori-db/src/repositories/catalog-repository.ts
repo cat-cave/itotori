@@ -132,6 +132,14 @@ export const catalogArtifactMappingErrorCodes = [
   "conflict_evidence_subject_unknown",
   /** A conflict-evidence row references a subject owned by a different work than the conflict. */
   "conflict_evidence_subject_belongs_to_other_work",
+  /**
+   * A child-kind (externalId/release/languageStatus) conflict-evidence row carries a
+   * `<catalogSource>:<sourceId>` cross-source identity. Child kinds are PARENT-SCOPED by
+   * contract (CATALOG-079): they may only name a local row of the parent work. Cross-source
+   * disagreement evidence must route through the `sourceProvenance` kind, which accepts the
+   * well-formed cross-source identity. This is a caller error, not a dangling reference.
+   */
+  "conflict_evidence_child_subject_cross_source",
 ] as const;
 
 export type CatalogArtifactMappingErrorCode = (typeof catalogArtifactMappingErrorCodes)[number];
@@ -4971,6 +4979,17 @@ async function assertConflictEvidenceSubjectReferences(
     }
   }
 
+  // CHILD kinds (externalId/release/languageStatus) are PARENT-SCOPED BY CONTRACT
+  // (CATALOG-079). A child subject names a LOCAL row of the parent work — either created
+  // in this same upsert or already persisted under `input.workId`. Unlike `sourceProvenance`
+  // (below), a child kind NEVER accepts a `<catalogSource>:<sourceId>` cross-source identity:
+  // cross-source disagreement evidence must route through the `sourceProvenance` kind. The
+  // sole cross-source emitter enforces exactly this — `catalog-platform-language-conflicts`
+  // emits the `languageStatus` child kind only when it holds a real local `languageStatusId`,
+  // and falls back to the `sourceProvenance` kind (carrying the cross-source identity) when it
+  // does not. `assertWorkScopedConflictSubjects` PINS this asymmetry: a child subject bearing a
+  // cross-source identity is rejected as a CALLER ERROR with a clear message, not silently
+  // over-rejected as a dangling id.
   await assertWorkScopedConflictSubjects(
     externalIdSubjects,
     new Set(input.externalIds.map((externalId) => externalId.externalIdId)),
@@ -5099,6 +5118,13 @@ function isCatalogSourceRecordIdentity(subjectId: string): boolean {
  * (either created in this upsert or already persisted) and belong to the parent
  * work. Subjects present in `inputIds` are created in the same transaction and
  * therefore belong to `workId` by construction.
+ *
+ * Child kinds are PARENT-SCOPED BY CONTRACT (CATALOG-079): a subject bearing a
+ * `<catalogSource>:<sourceId>` cross-source identity is a CALLER ERROR — such
+ * cross-source evidence must route through the `sourceProvenance` kind, which
+ * accepts the well-formed identity. This is reported distinctly (with a message
+ * pointing the caller to `sourceProvenance`) rather than being conflated with a
+ * dangling/unknown local id.
  */
 async function assertWorkScopedConflictSubjects(
   subjectIds: Set<string>,
@@ -5112,6 +5138,14 @@ async function assertWorkScopedConflictSubjects(
   for (const subjectId of subjectIds) {
     if (inputIds.has(subjectId)) {
       continue;
+    }
+    if (isCatalogSourceRecordIdentity(subjectId)) {
+      throw new CatalogArtifactMappingError(
+        "conflict_evidence_child_subject_cross_source",
+        `conflict.evidence ${subjectLabel} subjectId is parent-scoped by contract and cannot be a ` +
+          `<catalogSource>:<sourceId> cross-source identity (${subjectId}); route cross-source ` +
+          `disagreement evidence through the sourceProvenance subject kind`,
+      );
     }
     const ownerWorkId = existingWorkIds.get(subjectId);
     if (ownerWorkId === undefined) {

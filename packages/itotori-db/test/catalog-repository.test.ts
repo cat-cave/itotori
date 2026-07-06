@@ -1122,6 +1122,50 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("rejects a child-kind subject bearing a cross-source identity as a caller error (parent-scoped by contract)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const workId = uuid(1350);
+      const releaseId = uuid(1351);
+      await recordWorkWithRelease(repo, workId, releaseId, "Child cross-source fixture");
+
+      // CATALOG-079: child kinds (externalId/release/languageStatus) are PARENT-SCOPED
+      // by contract. A child subject carrying a `<catalogSource>:<sourceId>` cross-source
+      // identity is a CALLER ERROR (the identity belongs on the `sourceProvenance` kind),
+      // NOT a silently over-rejected dangling id. This PINS the explicit policy: the same
+      // `vndb:...` identity that `sourceProvenance` accepts (above) is rejected here with a
+      // distinct code + a message pointing the caller to `sourceProvenance`.
+      const childCrossSourceError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId,
+          canonicalTitle: "Child cross-source fixture",
+          conflicts: [
+            {
+              conflictId: uuid(1352),
+              conflictKind: catalogConflictKindValues.languageStatus,
+              summary: "Evidence mis-routes a cross-source identity onto a child kind.",
+              detectedAt: fetchedAt,
+              evidence: [
+                {
+                  conflictEvidenceId: uuid(1353),
+                  subjectKind: catalogConflictSubjectKindValues.languageStatus,
+                  subjectId: "vndb:v9999",
+                },
+              ],
+            },
+          ],
+        }),
+        "conflict_evidence_child_subject_cross_source",
+      );
+      expect(childCrossSourceError.message).toContain("parent-scoped by contract");
+      expect(childCrossSourceError.message).toContain("sourceProvenance");
+      expect(childCrossSourceError.message).toContain("vndb:v9999");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects sourceProvenance evidence that is neither a known provenance nor a source identity", async () => {
     const context = await isolatedMigratedContext();
     try {
