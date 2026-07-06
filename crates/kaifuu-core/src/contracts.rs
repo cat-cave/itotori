@@ -80,6 +80,36 @@ pub const PATCH_FAILURE_CATEGORIES_V02: &[&str] = &[
 pub const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02: &[&str] =
     &["rolled_back", "cleaned_up", "retained_partial"];
 
+/// UNIV-011 — property-test thresholds for `crates/kaifuu-core/tests/property.rs`.
+///
+/// The proptest suite for patch compatibility and protected-span preservation
+/// is pinned to these PUBLIC, reproducible ChaCha seeds and BOUNDED case
+/// counts. Fixing the seed makes each property run deterministic in CI (and any
+/// counterexample reproduces from a committed seed rather than a random one);
+/// the case counts bound wall-clock cost while still exercising a wide sample
+/// of generated inputs. The seed bytes are arbitrary public constants, not
+/// secrets. Keep these in sync with the documentation in the property test
+/// module; changing a value is a deliberate, reviewable adjustment of the bar.
+pub mod proptest_thresholds {
+    /// Fixed public ChaCha seed for the protected-span-preservation property.
+    pub const PROTECTED_SPAN_PRESERVATION_SEED: [u8; 32] = [
+        0x55, 0x4e, 0x49, 0x56, 0x2d, 0x30, 0x31, 0x31, 0x50, 0x53, 0x50, 0x52, 0x45, 0x53, 0x45,
+        0x52, 0x56, 0x45, 0x53, 0x50, 0x41, 0x4e, 0x53, 0x45, 0x45, 0x44, 0x00, 0x01, 0x02, 0x03,
+        0x04, 0x05,
+    ];
+    /// Bounded case count for the protected-span-preservation property.
+    pub const PROTECTED_SPAN_PRESERVATION_CASES: u32 = 512;
+
+    /// Fixed public ChaCha seed for the patch-compatibility property.
+    pub const PATCH_COMPATIBILITY_SEED: [u8; 32] = [
+        0x55, 0x4e, 0x49, 0x56, 0x2d, 0x30, 0x31, 0x31, 0x50, 0x41, 0x54, 0x43, 0x48, 0x43, 0x4f,
+        0x4d, 0x50, 0x41, 0x54, 0x53, 0x45, 0x45, 0x44, 0x00, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x0c, 0x0d,
+    ];
+    /// Bounded case count for the patch-compatibility property.
+    pub const PATCH_COMPATIBILITY_CASES: u32 = 512;
+}
+
 const TRIAGE_SEVERITIES: &[&str] = &["P0", "P1", "P2", "P3"];
 const RUNTIME_EVIDENCE_TIERS: &[&str] = &["E0", "E1", "E2", "E3", "E4"];
 const RUNTIME_FIDELITY_TIERS: &[&str] = &[

@@ -90,6 +90,16 @@ test:
 localize-project-test:
     node --test suite/scripts/localize-project/*.test.mjs
 
+# UNIV-011: targeted mutation/property coverage for the highest-risk packages.
+# The TS mutation-survivor guard (localization-bridge-schema) rejects a
+# committed invalid fixture per schema/delta/protected-span/permission
+# invariant; the Rust proptest suite (kaifuu-core) exercises patch
+# compatibility + protected-span preservation on fixed public seeds. Both are
+# also covered transitively by the full `test` lane; this recipe runs just them.
+mutation-property-test:
+    pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts
+    cargo test -p kaifuu-core property
+
 # ALPHA-007: public fixture vertical (suite/scripts/alpha-public-fixture).
 # Deterministic; offline (injects a committed ITOTORI-026 harness output).
 alpha-public-fixture-test:

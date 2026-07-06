@@ -15,6 +15,7 @@ sha2.workspace = true
 
 [dev-dependencies]
 kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
+proptest.workspace = true
 tempfile.workspace = true
 
 [lints]
