@@ -21,6 +21,7 @@ import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-reposit
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
+import { ItotoriLocalizationPassLedgerRepository } from "../src/repositories/localization-pass-ledger-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
@@ -961,6 +962,24 @@ const repositoryPermissionGateMatrix = [
     "workspace-correction-repository.test.ts load corrections by branch coverage",
     (repo) => repo.loadCorrectionEditsByBranch(deniedActor, "branch-x"),
   ),
+  localizationPassLedgerGate(
+    "recordPass",
+    "draftWrite",
+    "localization-pass-ledger-repository.test.ts record pass coverage",
+    (repo) => repo.recordPass(deniedActor, undefined as never),
+  ),
+  localizationPassLedgerGate(
+    "loadLatestPass",
+    "draftWrite",
+    "localization-pass-ledger-repository.test.ts latest pass coverage",
+    (repo) => repo.loadLatestPass(deniedActor, "locale-branch-x"),
+  ),
+  localizationPassLedgerGate(
+    "loadPassesForBranch",
+    "draftWrite",
+    "localization-pass-ledger-repository.test.ts branch passes coverage",
+    (repo) => repo.loadPassesForBranch(deniedActor, "locale-branch-x"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1864,6 +1883,24 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "queue.read",
           "successFixture": "workspace-correction-repository.test.ts load corrections by branch coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationPassLedgerRepository.recordPass",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-pass-ledger-repository.test.ts record pass coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationPassLedgerRepository.loadLatestPass",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-pass-ledger-repository.test.ts latest pass coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationPassLedgerRepository.loadPassesForBranch",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-pass-ledger-repository.test.ts branch passes coverage",
+        },
       ]
     `);
   });
@@ -2295,6 +2332,22 @@ function workspaceCorrectionGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriWorkspaceCorrectionRepository(db)),
+  });
+}
+
+function localizationPassLedgerGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriLocalizationPassLedgerRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriLocalizationPassLedgerRepository",
+    sourceFile: "localization-pass-ledger-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriLocalizationPassLedgerRepository(db)),
   });
 }
 
