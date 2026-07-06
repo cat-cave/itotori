@@ -60,6 +60,7 @@ import {
 } from "../agents/structure-informed-context/index.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
+  type PriorPassFeedback,
   type TranslationBridgeUnit,
   type TranslationGlossaryEntry,
   type TranslationInvocationInput,
@@ -338,6 +339,15 @@ export type AgenticLoopUnitInput = {
    * without the repository check, exactly as before this seam.
    */
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
+  /**
+   * itotori-pass-ledger — prior localization pass's feedback for THIS unit,
+   * threaded from the pass ledger so a pass N+1 run consumes pass N's accepted
+   * state + flagged-unit feedback as drafting context. When present the
+   * translation prompt renders a strictly-additive "Prior pass feedback" block
+   * (the draft iterates on the prior result); when absent the loop is
+   * byte-identical to a blank first pass. Generic — no game-specific fields.
+   */
+  priorPassFeedback?: PriorPassFeedback;
 };
 
 // ---------------------------------------------------------------------------
@@ -497,6 +507,10 @@ export async function runAgenticLoopForUnit(
     agentLabel: "translation-primary",
     structuredContext: contextResult.structuredContext,
     contextArtifactRefs: contextResult.contextArtifactRefs,
+    // itotori-pass-ledger — thread the prior pass's feedback for this unit so
+    // the primary draft iterates on the prior result when present (undefined
+    // on a blank first pass → byte-identical prompt).
+    priorPassFeedback: input.priorPassFeedback,
   });
   pushInvocation(
     translationStage,
@@ -711,6 +725,9 @@ export async function runAgenticLoopForUnit(
         // the retry is still branch/scene/speaker aware, not context-stripped.
         structuredContext: contextResult.structuredContext,
         contextArtifactRefs: contextResult.contextArtifactRefs,
+        // itotori-pass-ledger — keep the prior-pass feedback on every repair
+        // attempt so the retry keeps addressing the flagged issue.
+        priorPassFeedback: input.priorPassFeedback,
       });
       pushInvocation(
         repairStage,
@@ -1471,6 +1488,12 @@ async function invokeTranslationStage(args: {
   structuredContext?: StructuredContextInjection | undefined;
   /** Citable artifact refs (the slice's refs + the semantic agents' refs). */
   contextArtifactRefs?: ReadonlyArray<string>;
+  /**
+   * itotori-pass-ledger — prior-pass feedback for this unit, rendered into the
+   * translation prompt so a repair / pass N+1 draft iterates on the prior
+   * result. Undefined on a blank first pass (byte-identical prompt).
+   */
+  priorPassFeedback?: PriorPassFeedback | undefined;
 }): Promise<TranslationInvocationResult> {
   const agent = new TranslationAgent({ provider: args.provider });
 
@@ -1532,6 +1555,7 @@ async function invokeTranslationStage(args: {
     // agents' enrichment).
     contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
     ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
+    ...(args.priorPassFeedback !== undefined ? { priorPassFeedback: args.priorPassFeedback } : {}),
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),
       modelId: args.pair.pair.modelId,

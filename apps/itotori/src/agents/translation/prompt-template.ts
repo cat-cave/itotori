@@ -12,6 +12,7 @@ import {
   TRANSLATION_DRAFT_CONFIDENCE_FLOORS,
 } from "@itotori/localization-bridge-schema";
 import type {
+  PriorPassFeedback,
   TranslationBridgeUnit,
   TranslationGlossaryEntry,
   TranslationInvocationInput,
@@ -106,6 +107,17 @@ export function buildTranslationPrompt(
     );
   }
 
+  // itotori-pass-ledger — inject the prior localization pass's feedback for
+  // this unit so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
+  // units instead of re-running from scratch. STRICTLY ADDITIVE: when
+  // `priorPassFeedback` is undefined nothing is emitted, so the no-prior-pass
+  // baseline prompt (and every recorded fixture keyed by its hash) is
+  // byte-identical to the pre-feature template.
+  if (input.priorPassFeedback !== undefined) {
+    lines.push("");
+    lines.push(...renderPriorPassFeedback(input.priorPassFeedback));
+  }
+
   lines.push("");
   lines.push("Units (canonical order):");
   const units = canonicalizeUnits(input.sourceBridgeUnits);
@@ -181,4 +193,35 @@ function canonicalizeSpans(
   spans: ReadonlyArray<TranslationProtectedSpanInput>,
 ): ReadonlyArray<TranslationProtectedSpanInput> {
   return [...spans].sort((a, b) => a.refId.localeCompare(b.refId));
+}
+
+/**
+ * itotori-pass-ledger — render the prior-pass feedback block for the
+ * translation prompt. Deterministic (fixed key order, no free-text sorting) so
+ * two pass N+1 runs over the same prior-pass state emit byte-equal prompts.
+ * The block tells the model (a) what the prior pass produced, (b) why it was
+ * flagged, and (c) the feedback note to address — so the draft iterates rather
+ * than re-deriving from a blank slate.
+ */
+function renderPriorPassFeedback(feedback: PriorPassFeedback): string[] {
+  const out: string[] = [];
+  out.push(
+    `Prior pass feedback (from localization pass ${feedback.passNumber} — ` +
+      "iterate on this unit's prior result, do NOT restart from scratch):",
+  );
+  out.push(`- Prior outcome: ${feedback.priorOutcome}`);
+  if (feedback.priorDraftText !== undefined) {
+    out.push(`- Prior draft: ${JSON.stringify(feedback.priorDraftText)}`);
+  }
+  if (feedback.deferredReason !== undefined) {
+    out.push(`- Prior defer reason: ${feedback.deferredReason}`);
+  }
+  if (feedback.feedbackNote !== undefined) {
+    out.push(`- Feedback to address: ${feedback.feedbackNote}`);
+  }
+  out.push(
+    "Produce a NEW draft that addresses the flagged issue and preserves what " +
+      "the prior draft got right.",
+  );
+  return out;
 }

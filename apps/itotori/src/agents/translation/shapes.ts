@@ -72,6 +72,42 @@ export type TranslationStyleGuideRule = {
 };
 
 /**
+ * itotori-pass-ledger — prior-pass feedback threaded into the translation
+ * prompt so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
+ * units instead of re-running from scratch. Strictly project-agnostic: the
+ * ledger records whatever the prior localization pass surfaced for this unit
+ * (the routing outcome, the accepted or rejected draft, the defer reason, and
+ * any free-form feedback note a reviewer / QA finding emitted); the prompt
+ * template renders it verbatim into a dedicated "Prior pass feedback" block.
+ *
+ * The shape carries no game / engine / title fields — the multi-pass loop is
+ * generic over any project whose units flow through the agentic loop.
+ */
+export type PriorPassFeedback = {
+  /** 1-based number of the prior localization pass this feedback came from. */
+  passNumber: number;
+  /** The prior pass's routing outcome for this unit (accepted / deferred / …). */
+  priorOutcome: string;
+  /**
+   * The draft text the prior pass produced for this unit — the ACCEPTED draft
+   * when the prior pass accepted, or the REJECTED primary draft when it
+   * deferred. Absent only when the prior pass never produced a draft (e.g. a
+   * deterministic short-circuit before translation). Pass N+1 treats this as
+   * the baseline to improve on, not a blank slate.
+   */
+  priorDraftText?: string;
+  /** Why the prior pass deferred this unit, when it deferred. */
+  deferredReason?: string;
+  /**
+   * Free-form feedback note carried from the prior pass — a reviewer
+   * correction, a QA-finding recommendation, or any project-agnostic hint the
+   * ledger recorded. Rendered verbatim into the prompt so pass N+1 addresses
+   * the SAME flagged issue rather than rediscovering it.
+   */
+  feedbackNote?: string;
+};
+
+/**
  * A protected span the agent MUST preserve byte-equal in the draft.
  * The agent's response references each span by its `refId`; the
  * invocation service then validates the (refId, startInDraft,
@@ -131,6 +167,16 @@ export type TranslationInvocationInput = {
    * agent may cite them.
    */
   structuredContext?: StructuredContextInjection | undefined;
+  /**
+   * itotori-pass-ledger — prior-pass feedback for this unit, threaded from the
+   * localization pass ledger so a pass N+1 draft consumes pass N's accepted
+   * state + flagged-unit feedback as drafting context. When present the prompt
+   * template renders a strictly-additive "Prior pass feedback" block; when
+   * ABSENT the prompt is byte-identical to the pre-feature template (the
+   * no-prior-pass baseline), so recorded fixtures keyed by prompt hash stay
+   * stable. Generic over any project — the field carries no game-specific data.
+   */
+  priorPassFeedback?: PriorPassFeedback | undefined;
   modelProfile: TranslationModelProfile;
   promptTemplateVersion: string;
   now?: (() => Date) | undefined;

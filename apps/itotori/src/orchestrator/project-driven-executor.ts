@@ -51,6 +51,7 @@ import type {
   LocalizationUnitV02,
   StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
+import type { PriorPassFeedback } from "../agents/translation/shapes.js";
 import { planBatches } from "../batch-planner/planner.js";
 import { resolveModelProfile } from "../batch-planner/model-profiles.js";
 import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
@@ -149,6 +150,28 @@ export type DrivenUnitContextResolver = (args: {
   /** The planner's (string) scene id for this unit's batch, when grouped. */
   plannerSceneId: string | undefined;
 }) => DrivenUnitContext | undefined;
+
+// ---------------------------------------------------------------------------
+// itotori-pass-ledger — prior-pass context threaded into a pass N+1 run
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-unit feedback the prior localization pass surfaced, keyed by
+ * `bridgeUnitId`. A pass N+1 driven run consumes this as drafting context so
+ * the translation prompt for each unit iterates on the prior pass's accepted
+ * state / flagged-unit feedback rather than re-running from scratch.
+ *
+ * Strictly project-agnostic: the feedback carries only the prior routing
+ * outcome, the prior draft, the defer reason, and an optional feedback note.
+ * No game / engine / title fields anywhere — the multi-pass loop is generic
+ * over any project whose units flow through the agentic loop. The pass ledger
+ * (`pass-ledger.ts`) is the canonical source of this map.
+ */
+export type PriorPassContext = {
+  /** 1-based number of the prior localization pass this context came from. */
+  passNumber: number;
+  feedbackByUnit: ReadonlyMap<string, PriorPassFeedback>;
+};
 
 // ---------------------------------------------------------------------------
 // Persistence sinks (narrow ports — DB-backed live, in-memory in tests)
@@ -282,6 +305,16 @@ export type ProjectDrivenExecutorInput = {
   translationScope?: TranslationScope;
   /** Engine profile controlling the translated-bundle synthesis. */
   engineProfile?: DrivenEngineProfile;
+  /**
+   * itotori-pass-ledger — prior localization pass's context, threaded so a pass
+   * N+1 driven run consumes pass N's accepted state + flagged-unit feedback as
+   * drafting context. When present each unit's translation prompt receives a
+   * strictly-additive "Prior pass feedback" block (the draft iterates on the
+   * prior result); when absent the run is a blank first pass. The pass ledger
+   * is the canonical source — `runLocalizationPass` (pass-ledger.ts) loads the
+   * latest pass and builds this map automatically. Project-agnostic.
+   */
+  priorPass?: PriorPassContext;
   sinks: {
     draft: DrivenDraftSink;
     providerRun: DrivenProviderRunSink;
@@ -338,6 +371,15 @@ export type ProjectDrivenExecutorResult = {
   reviewerQueueItemCount: number;
   patchExportCount: number;
   failures: DrivenUnitFailure[];
+  /**
+   * itotori-pass-ledger — per-unit outcome breakdown (one entry per
+   * successfully-run unit, in canonical order). The pass ledger consumes this
+   * to record each unit's accepted/deferred state + draft text + defer reason
+   * so a pass N+1 run can build on the prior pass. Failures are surfaced
+   * separately via {@link failures}. Absent only when no driven run has
+   * populated it; the pass-ledger driver always reads it.
+   */
+  unitOutcomes: DrivenDraftRecord[];
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
@@ -388,6 +430,9 @@ export async function runProjectDrivenExecutor(
   const failures: DrivenUnitFailure[] = [];
   const acceptedBodies = new Map<string, string>();
   const acceptedUnits: DrivenPatchReport["acceptedUnits"] = [];
+  // itotori-pass-ledger — per-unit outcome accumulator (canonical order), read
+  // by the pass-ledger driver to record each unit's accepted/deferred state.
+  const unitOutcomes: DrivenDraftRecord[] = [];
   let unitsRun = 0;
   let draftsPersisted = 0;
   let acceptedDraftCount = 0;
@@ -488,6 +533,9 @@ export async function runProjectDrivenExecutor(
     // bridgeUnitId).
     await input.sinks.draft.persistDraft(slot.draftRecord);
     draftsPersisted += 1;
+    // itotori-pass-ledger — capture this unit's outcome for the pass-ledger
+    // driver (canonical order — the persist loop already walks slots in order).
+    unitOutcomes.push(slot.draftRecord);
 
     // PERSIST — provider-run summary (real usage.cost + ZDR).
     totalUsageCostUsd += slot.telemetry.totalCostUsd;
@@ -567,6 +615,7 @@ export async function runProjectDrivenExecutor(
     reviewerQueueItemCount,
     patchExportCount: 1,
     failures,
+    unitOutcomes,
     totalUsageCostUsd,
     zdrConfirmed,
     budgetStopped,
@@ -635,6 +684,14 @@ async function runSingleDrivenUnit(args: {
         ? makeBufferingReviewerQueueSink(input.reviewerQueue, queueCaptures)
         : undefined;
 
+    // itotori-pass-ledger — thread THIS unit's prior-pass feedback (if the
+    // run is a pass N+1 driven run with a prior context) so the translation
+    // prompt iterates on the prior accepted state / flagged-unit feedback.
+    const priorPassFeedback =
+      input.priorPass !== undefined
+        ? input.priorPass.feedbackByUnit.get(unit.bridgeUnitId)
+        : undefined;
+
     const unitInput: AgenticLoopUnitInput = {
       unit,
       sceneUnits: [],
@@ -654,6 +711,10 @@ async function runSingleDrivenUnit(args: {
       ...(input.terminologyCandidateRepository !== undefined
         ? { terminologyCandidateRepository: input.terminologyCandidateRepository }
         : {}),
+      // itotori-pass-ledger — thread THIS unit's prior-pass feedback (if the
+      // run is a pass N+1 driven run with a prior context) so the translation
+      // prompt iterates on the prior accepted state / flagged-unit feedback.
+      ...(priorPassFeedback !== undefined ? { priorPassFeedback } : {}),
     };
 
     const bundle = await runAgenticLoopForUnit(

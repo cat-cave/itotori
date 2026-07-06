@@ -38,6 +38,7 @@ export {
   TranslationUnknownBridgeUnitError,
   TranslationUnknownCitationError,
   type ProtectedSpanRef,
+  type PriorPassFeedback,
   type TranslationBridgeUnit,
   type TranslationDraft,
   type TranslationDraftConfidenceFloor,
