@@ -425,6 +425,12 @@ const SIGLUS_LIB_SRC: &str = include_str!("../src/lib.rs");
 /// fails the audit with a precise diff.
 const SIGLUS_SCAFFOLD_FACADE_LEAVES: &[&str] = &[
     "AssetPackage",
+    // Cross-engine capability parity contract + gate. Every engine port
+    // publishes a `PARITY_PROFILE` built from these three types, so they are
+    // part of the shared scaffold baseline both engines hold.
+    "CapabilityDeclaration",
+    "CapabilityStance",
+    "EngineParityProfile",
     "EnginePort",
     "EnginePortError",
     "EvidenceTier",

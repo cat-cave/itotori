@@ -20,6 +20,7 @@ pub mod conformance;
 pub mod diagnostics;
 pub mod impl_map;
 pub mod manifest;
+pub mod parity;
 pub mod runner;
 pub mod trait_;
 
@@ -40,6 +41,10 @@ pub use impl_map::{
 pub use manifest::{
     EnvFieldSchema, EnvFieldShape, LifecycleStage, OPTIONAL_LIFECYCLE_STAGES, PortCapability,
     PortManifest, REQUIRED_LIFECYCLE_STAGES,
+};
+pub use parity::{
+    CAPABILITY_CONTRACT, CapabilityDeclaration, CapabilityStance, EngineParityProfile, ParityError,
+    ParityFailure, ParityGap, ParityGapKind, ParityPending, ParityReport, evaluate_parity,
 };
 pub use runner::{Runner, RunnerCancellation, RunnerObservation, RunnerOutcome};
 pub use trait_::{CaptureOutcome, EnginePort, MomentId, PortEnv, PortRequest};

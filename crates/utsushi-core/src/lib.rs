@@ -88,11 +88,12 @@ pub use input::{
     REPLAY_REDACTION_VIOLATION_CODE, REPLAY_UNSUPPORTED_SCHEMA_VERSION_CODE, RawInputCode,
 };
 pub use port::{
-    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortAdapter, EnginePortError,
-    EnvFieldSchema, EnvFieldShape, LifecycleStage, ManifestError, MomentId,
-    OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
-    PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner, RunnerCancellation,
-    RunnerObservation, RunnerOutcome,
+    CAPABILITY_CONTRACT, CapabilityDeclaration, CapabilityReason, CapabilityStance, CaptureOutcome,
+    DriftKind, EngineParityProfile, EnginePort, EnginePortAdapter, EnginePortError, EnvFieldSchema,
+    EnvFieldShape, LifecycleStage, ManifestError, MomentId, OPTIONAL_LIFECYCLE_STAGES, ParityError,
+    ParityFailure, ParityGap, ParityGapKind, ParityPending, ParityReport, PortCapability, PortEnv,
+    PortManifest, PortRequest, PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES,
+    Runner, RunnerCancellation, RunnerObservation, RunnerOutcome, evaluate_parity,
 };
 pub use recorder::{
     InMemoryReferenceRecorder, REFERENCE_TRACE_SCHEMA_VERSION, RecordingTextSink,

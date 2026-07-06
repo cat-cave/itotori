@@ -25,11 +25,12 @@
 use std::sync::{Arc, Mutex};
 
 use utsushi_core::substrate::{
-    AssetId, AudioEvent, AudioEventSink, EnginePort, EnginePortError, EvidenceTier, FidelityTier,
-    FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage, ObservationBridgeRef,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
-    SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, SnapshotError, StatePath, StateTree,
-    StateValue, TextLine, TextSurfaceSink,
+    AssetId, AudioEvent, AudioEventSink, CapabilityDeclaration, CapabilityStance,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
+    FrameArtifactSink, Inspectable, LifecycleStage, ObservationBridgeRef, PortCapability,
+    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkCapability,
+    SinkError, SinkKind, SinkResult, SinkSet, SnapshotError, StatePath, StateTree, StateValue,
+    TextLine, TextSurfaceSink,
 };
 // Forced reach-arounds: the substrate facade does not re-export the
 // capture-artifact-store surface. `CaptureOutcome` is the typed return of
@@ -221,6 +222,31 @@ impl UtsushiRpgmakerMvPort {
             "Script (355/655) and Plugin (356/357) command text is not extracted; a plugin registry is a deferred follow-up.",
             "Inspect-only: the port implements Inspectable but not Restorable (no controlled-playback restore).",
             "Clean-room: no RPG Maker engine source is vendored or linked; command-code numbers are public MV/MZ engine constants.",
+        ],
+    };
+
+    /// Cross-engine capability parity profile (UTSUSHI parity gate). This
+    /// static event-stream port wires the four required lifecycle
+    /// capabilities and declares the port-driven `Snapshot` /
+    /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) as
+    /// dev-`Pending`: the port is inspect-only (implements `Inspectable` but
+    /// not `Restorable`) and drives no live JS runtime, so full snapshot
+    /// round-trip and deterministic replay are not yet built. They are NOT
+    /// `NotApplicable` — the MV/MZ runtime can support them — so the parity
+    /// gate keeps them visible as a dev gap, never a permanent hole.
+    pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
+        manifest: Self::MANIFEST,
+        declarations: &[
+            CapabilityDeclaration {
+                capability: PortCapability::Snapshot,
+                stance: CapabilityStance::Pending,
+                note: "dev: the static event-stream port is inspect-only (Inspectable, not Restorable); full snapshot round-trip is not yet wired.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::DeterministicReplay,
+                stance: CapabilityStance::Pending,
+                note: "dev: deterministic replay awaits a live playback loop; the static walk drives no clock/input replay yet.",
+            },
         ],
     };
 

@@ -213,6 +213,18 @@ const REQUIRED_SYMBOLS: &[&str] = &[
     "RunnerCancellation",
     "RunnerObservation",
     "RunnerOutcome",
+    // Cross-engine capability parity contract + gate
+    "CAPABILITY_CONTRACT",
+    "CapabilityDeclaration",
+    "CapabilityStance",
+    "EngineParityProfile",
+    "ParityError",
+    "ParityFailure",
+    "ParityGap",
+    "ParityGapKind",
+    "ParityPending",
+    "ParityReport",
+    "evaluate_parity",
     // Tier + payload-shape root types
     "EvidenceTier",
     "FidelityTier",

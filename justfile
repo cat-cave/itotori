@@ -239,6 +239,11 @@ ci-utsushi:
     pnpm --filter @itotori/runtime-web-review typecheck
     pnpm --filter @itotori/runtime-web-review test
     pnpm --filter @itotori/runtime-web-review build
+    # The cargo run below covers the engine-port capability PARITY GATE:
+    # `utsushi-core`'s parity contract unit tests + the cross-engine
+    # conformance gate `utsushi-cli/tests/engine_parity_gate.rs` (the CLI is
+    # the crate that sees every registered engine port). The gate is RED if
+    # any engine silently lacks a capability another engine wires.
     cargo test -p utsushi-core -p utsushi-fixture -p utsushi-reallive -p utsushi-rpgmaker-mv -p utsushi-rpgmaker-mv-mz -p utsushi-siglus -p utsushi-kirikiri -p utsushi-kirikiri-xp3 -p utsushi-cli
 
 schema:

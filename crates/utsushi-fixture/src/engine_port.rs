@@ -21,11 +21,12 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use utsushi_core::{
-    AssetId, AudioEventSink, CaptureOutcome, EnginePort, EnginePortError, EvidenceTier,
-    FidelityTier, FrameArtifact, FrameArtifactSink, LifecycleStage, ObservationArtifactRef,
-    ObservationBridgeRef, PortCapability, PortManifest, PortRequest, PortShutdownOutcome,
-    REQUIRED_LIFECYCLE_STAGES, RUNTIME_ARTIFACT_URI_ROOT, RuntimeArtifactKind, RuntimeArtifactRoot,
-    SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
+    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, CaptureOutcome,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
+    FrameArtifactSink, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef,
+    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
+    RUNTIME_ARTIFACT_URI_ROOT, RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError,
+    SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy
@@ -221,6 +222,29 @@ impl FixtureEnginePort {
         fidelity_tier_max: FidelityTier::LayoutProbe,
         evidence_tier_max: EvidenceTier::E2,
         limitations: &["Synthetic fixture engine port; emits deterministic sink payloads only."],
+    };
+
+    /// Cross-engine capability parity profile (UTSUSHI parity gate). The
+    /// fixture wires the four required lifecycle capabilities; the
+    /// port-driven `Snapshot` / `DeterministicReplay` capabilities (which
+    /// `utsushi-reallive` wires) are declared dev-`Pending` — the synthetic
+    /// fixture does not yet exercise the substrate snapshot/replay
+    /// primitives, but nothing precludes it, so this is a dev gap, never a
+    /// permanent one-engine hole.
+    pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
+        manifest: Self::MANIFEST,
+        declarations: &[
+            CapabilityDeclaration {
+                capability: PortCapability::Snapshot,
+                stance: CapabilityStance::Pending,
+                note: "dev: the synthetic fixture does not yet drive the substrate snapshot primitives; no engine-specific reason it cannot.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::DeterministicReplay,
+                stance: CapabilityStance::Pending,
+                note: "dev: the synthetic fixture does not yet drive the substrate deterministic-replay primitives.",
+            },
+        ],
     };
 
     pub fn new() -> Self {

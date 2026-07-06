@@ -43,10 +43,11 @@
 use std::sync::{Arc, Mutex};
 
 use utsushi_core::substrate::{
-    AssetPackage, AudioEvent, AudioEventSink, EnginePort, EnginePortError, EvidenceTier,
-    FidelityTier, FrameArtifact, FrameArtifactSink, LifecycleStage, PortCapability, PortManifest,
-    PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkCapability, SinkResult,
-    SinkSet, TextLine, TextSurfaceSink,
+    AssetPackage, AudioEvent, AudioEventSink, CapabilityDeclaration, CapabilityStance,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
+    FrameArtifactSink, LifecycleStage, PortCapability, PortManifest, PortRequest,
+    PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkCapability, SinkResult, SinkSet, TextLine,
+    TextSurfaceSink,
 };
 // `CaptureOutcome`, `RuntimeArtifactRoot`, `RuntimeArtifactKind`, and
 // `runtime_artifact_uri` are not (yet) re-exported through the substrate
@@ -325,6 +326,24 @@ impl UtsushiReallivePort {
             "Encrypted titles (use_xor_2, e.g. Sweetie HD) require the dev-only kaifuu-reallive segment-cipher recovery staged by the caller before constructing the port; no key material lives in this crate.",
             "rlvm is referenced as a research anchor only; no rlvm source is vendored, linked, or mechanically translated.",
         ],
+    };
+
+    /// Cross-engine capability parity profile (UTSUSHI parity gate). The
+    /// RealLive port is the interpreter-backed reference: it OWNS the VM and
+    /// wires every REQUIRED capability plus the port-driven `Snapshot` /
+    /// `DeterministicReplay` capabilities. The one contract capability it does
+    /// not wire is `Jump` (jump-to-moment): the `EnginePort::jump` optional
+    /// lifecycle method is on the reference VM's roadmap but not yet driven
+    /// here, so it is declared dev-`Pending`. No engine wires `Jump` today, so
+    /// it also stays a uniform framework limitation — the declaration records
+    /// intent, never a permanent one-engine gap.
+    pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
+        manifest: Self::MANIFEST,
+        declarations: &[CapabilityDeclaration {
+            capability: PortCapability::Jump,
+            stance: CapabilityStance::Pending,
+            note: "dev: jump-to-moment (EnginePort::jump) is on the reference-VM roadmap but not yet wired; no engine wires it yet.",
+        }],
     };
 
     /// Construct the port over a pre-decoded [`ReplayEngine`], the g00

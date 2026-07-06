@@ -53,8 +53,9 @@
 pub mod conformance;
 
 use utsushi_core::substrate::{
-    EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage, PortCapability,
-    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
+    CapabilityDeclaration, CapabilityStance, EngineParityProfile, EnginePort, EnginePortError,
+    EvidenceTier, FidelityTier, LifecycleStage, PortCapability, PortManifest, PortRequest,
+    PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
 };
 // The single non-facade `utsushi_core::*` import, forced by the
 // `EnginePort::capture` return type. `CaptureOutcome` is currently reachable
@@ -187,6 +188,30 @@ impl KirikiriXp3EnginePort {
             "Not an interpreter: KAG tag dispatch (@text, @ruby, [l], [p], *label jumps, TJS [iscript]) happens in the native/browser KiriKiri TJS runtime, never in this crate.",
             "Scope is the substrate-facade conformance manifest + a from-scratch clean-room attestation for the KAG plaintext (.ks) path; runtime evidence is produced by the native/browser KiriKiri runtime adapter, not here.",
             "Clean-room: no KiriKiri/KirikiriZ/TJS engine source is vendored, linked, or mechanically translated; no decompiled/copyrighted engine code, no game bytes, no XP3 container bytes are embedded. This port never parses the XP3 container and never touches a key.",
+        ],
+    };
+
+    /// Cross-engine capability parity profile (UTSUSHI parity gate). This
+    /// delegation scaffold wires the four required lifecycle capabilities and
+    /// declares the port-driven `Snapshot` / `DeterministicReplay`
+    /// capabilities (wired by `utsushi-reallive`) as dev-`Pending`: they are
+    /// driven by the native/browser KiriKiri TJS runtime the delegation
+    /// adapter targets, which is not yet wired here. They are NOT
+    /// `NotApplicable` — the delegated runtime can snapshot/replay — so the
+    /// parity gate keeps them visible as a dev gap, never a permanent hole.
+    pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
+        manifest: Self::MANIFEST,
+        declarations: &[
+            CapabilityDeclaration {
+                capability: PortCapability::Snapshot,
+                stance: CapabilityStance::Pending,
+                note: "dev: snapshot/restore is driven by the delegated native/browser KiriKiri runtime, not yet wired through this scaffold.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::DeterministicReplay,
+                stance: CapabilityStance::Pending,
+                note: "dev: deterministic replay is driven by the delegated native/browser KiriKiri runtime, not yet wired through this scaffold.",
+            },
         ],
     };
 

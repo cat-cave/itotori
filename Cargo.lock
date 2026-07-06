@@ -1336,8 +1336,11 @@ dependencies = [
  "utsushi-core",
  "utsushi-fixture",
  "utsushi-kirikiri",
+ "utsushi-kirikiri-xp3",
  "utsushi-reallive",
  "utsushi-rpgmaker-mv",
+ "utsushi-rpgmaker-mv-mz",
+ "utsushi-siglus",
 ]
 
 [[package]]

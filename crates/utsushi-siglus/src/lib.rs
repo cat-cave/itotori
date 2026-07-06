@@ -96,9 +96,9 @@ pub mod vm_impl_map;
 use std::sync::Arc;
 
 use utsushi_core::substrate::{
-    AssetPackage, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
-    SinkSet,
+    AssetPackage, CapabilityDeclaration, CapabilityStance, EngineParityProfile, EnginePort,
+    EnginePortError, EvidenceTier, FidelityTier, LifecycleStage, PortCapability, PortManifest,
+    PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
 };
 // `CaptureOutcome` is the typed return value of `EnginePort::capture` and
 // is therefore load-bearing for any implementor. It is currently reachable
@@ -240,6 +240,30 @@ impl UtsushiSiglusPort {
             "UTSUSHI-147 cross-engine substrate-alignment scaffold only: every lifecycle method returns a typed Lifecycle error.",
             "siglus_rs is referenced as a research anchor only; no siglus_rs source is vendored, linked, or mechanically translated.",
             "Real Siglus VM behaviour is out of alpha scope; this scaffold pins the substrate-facade contract a future behavioural Siglus port must reproduce.",
+        ],
+    };
+
+    /// Cross-engine capability parity profile (UTSUSHI parity gate). This
+    /// substrate-alignment scaffold wires the four required lifecycle
+    /// capabilities and declares the port-driven `Snapshot` /
+    /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) as
+    /// dev-`Pending`: the future behavioural Siglus VM will drive them, but
+    /// they are not built here yet. They are NOT `NotApplicable` — a Siglus
+    /// interpreter can snapshot/replay exactly as RealLive does — so the
+    /// parity gate keeps them visible as a dev gap, never a permanent hole.
+    pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
+        manifest: Self::MANIFEST,
+        declarations: &[
+            CapabilityDeclaration {
+                capability: PortCapability::Snapshot,
+                stance: CapabilityStance::Pending,
+                note: "dev: the behavioural Siglus VM (which would drive substrate snapshot/restore) is not built in this scaffold yet.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::DeterministicReplay,
+                stance: CapabilityStance::Pending,
+                note: "dev: byte-deterministic Siglus replay awaits the behavioural VM; the scaffold drives no runtime yet.",
+            },
         ],
     };
 

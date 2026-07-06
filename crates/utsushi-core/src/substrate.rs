@@ -79,6 +79,19 @@ pub use crate::port::{
     RunnerObservation, RunnerOutcome,
 };
 
+// --- Cross-engine capability parity contract + gate --------------------
+//
+// The parity contract enumerates the uniform engine-port capability surface
+// and the conformance gate makes feature-parity across all engines a
+// CI-enforced invariant. Each engine adapter publishes an
+// `EngineParityProfile` (its manifest + Pending/NotApplicable declarations);
+// `evaluate_parity` is RED when any engine silently lacks a capability a peer
+// wires.
+pub use crate::port::{
+    CAPABILITY_CONTRACT, CapabilityDeclaration, CapabilityStance, EngineParityProfile, ParityError,
+    ParityFailure, ParityGap, ParityGapKind, ParityPending, ParityReport, evaluate_parity,
+};
+
 // --- Evidence / fidelity tiers (crate root) ---------------------------
 // `EvidenceTier` and `FidelityTier` live at the crate root because they
 // are the universal axes every substrate slice uses. Re-exported here
