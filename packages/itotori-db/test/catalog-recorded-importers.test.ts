@@ -444,9 +444,13 @@ describe("catalog recorded source importers", () => {
         context.db,
         required(sourceExternalId?.sourceProvenanceId, "source provenance id"),
       );
+      // A recorded-fixture REPLAY (this import runs the crawler in
+      // `recorded_fixture` mode) must persist its source provenance as
+      // `recorded_fixture`, NOT `raw_cache`: fixture-replay evidence must never
+      // masquerade as a live raw-cache crawl on the public explanation surface.
       expect(provenance).toMatchObject({
         catalogSource: "vndb",
-        sourceRecordKind: catalogSourceRecordKindValues.rawCache,
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
         sourceId: "v1001",
         sourceVersion: "vndb-dump-synthetic-2026-06-18",
         requestId: "dump://vndb/vn+releases/v1001",
@@ -1205,6 +1209,19 @@ describe("catalog recorded source importers", () => {
         ]),
       );
 
+      // Public explanation surface: the conflict-review provenance carries the
+      // source RECORD KIND. Because both facts were imported by replaying a
+      // recorded fixture (not a live crawl), every provenance entry must be
+      // labelled `recorded_fixture` and NOT `raw_cache` — so a reviewer reading
+      // the public explanation can tell replayed fixture evidence apart from
+      // live raw-cache evidence.
+      const conflictProvenanceKinds = conflictRows.rows.flatMap((row) =>
+        row.provenance.map((entry) => entry.sourceRecordKind),
+      );
+      expect(conflictProvenanceKinds.length).toBeGreaterThan(0);
+      expect(conflictProvenanceKinds).toContain(catalogSourceRecordKindValues.recordedFixture);
+      expect(conflictProvenanceKinds).not.toContain(catalogSourceRecordKindValues.rawCache);
+
       const pools = await services.catalogRepository.catalogCompletenessBenchmarkPools(actor, {
         targetLanguage: "en-US",
       });
@@ -1214,6 +1231,40 @@ describe("catalog recorded source importers", () => {
       expect(
         pools.pools[catalogCompletenessPoolValues.conflict].map((work) => work.workId),
       ).toEqual(expect.arrayContaining([required(moon?.workId, "Wikidata work id")]));
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("labels a live crawl as raw_cache and a recorded-fixture replay as recorded_fixture", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+
+      // A LIVE crawl (default/live mode) persists its fetched cache as
+      // `raw_cache` — genuine live raw-cache evidence.
+      await services.runner.run(liveLikeCrawlAdapter("900001"), {
+        repository: services.crawlerRepository,
+        actor,
+        workerId: "worker-live-crawl",
+        mode: "live",
+      });
+      // The SAME adapter run in `recorded_fixture` mode is a fixture replay and
+      // must be marked `recorded_fixture`, not raw_cache.
+      await services.runner.run(liveLikeCrawlAdapter("900002"), {
+        repository: services.crawlerRepository,
+        actor,
+        workerId: "worker-fixture-replay",
+        mode: "recorded_fixture",
+      });
+
+      const live = await provenanceBySourceId(context.db, "900001");
+      const replay = await provenanceBySourceId(context.db, "900002");
+      // Same public `sourceProvenanceFromRow` projection reads both rows; the
+      // live crawl is NOT mislabeled and the fixture replay is clearly distinct.
+      expect(live.sourceRecordKind).toBe(catalogSourceRecordKindValues.rawCache);
+      expect(replay.sourceRecordKind).toBe(catalogSourceRecordKindValues.recordedFixture);
+      expect(live.sourceRecordKind).not.toBe(replay.sourceRecordKind);
     } finally {
       await context.close();
     }
@@ -1780,6 +1831,45 @@ async function sourceProvenanceById(
     .where(eq(catalogSourceProvenance.sourceProvenanceId, id))
     .limit(1);
   return required(rows[0], `source provenance ${id}`);
+}
+
+async function provenanceBySourceId(
+  db: Parameters<typeof ItotoriCatalogRepository>[0],
+  sourceId: string,
+) {
+  const rows = await db
+    .select()
+    .from(catalogSourceProvenance)
+    .where(eq(catalogSourceProvenance.sourceId, sourceId))
+    .limit(1);
+  return required(rows[0], `source provenance for sourceId ${sourceId}`);
+}
+
+// A minimal LIVE-style crawler adapter: unlike the recorded-fixture adapter it
+// yields regardless of run mode, so the same adapter can be driven in `live`
+// (raw_cache) and `recorded_fixture` (recorded_fixture) mode to prove the runner
+// stamps the correct source provenance record kind for each.
+function liveLikeCrawlAdapter(
+  sourceId: string,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  return {
+    catalogSource: "igdb",
+    adapterName: `live-demo-${sourceId}`,
+    adapterVersion: "v0.1",
+    sourceVersion: "live-demo-source-2026-07-06",
+    parserVersion: "live-demo-parser-2026-07-06",
+    *steps() {
+      yield {
+        stepKey: `step-${sourceId}`,
+        sourceId,
+        requestIdentity: `https://api.igdb.com/v4/games/${sourceId}`,
+        fetchedAt: "2026-07-06T00:00:00.000Z",
+        checkpointCursor: null,
+        payload: { id: sourceId, name: `Live demo ${sourceId}` },
+        facts: [],
+      };
+    },
+  };
 }
 
 async function catalogCounts(pool: {

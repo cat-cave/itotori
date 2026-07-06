@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
-import type { CatalogSource } from "../schema.js";
+import { catalogSourceRecordKindValues, type CatalogSource } from "../schema.js";
 import {
   type CatalogCrawlerCheckpointRecord,
   type CatalogCrawlerCursor,
@@ -224,9 +224,18 @@ export class ItotoriCatalogCrawlerRunner {
     let lastCursor: CatalogCrawlerCursor = startingCursor;
 
     try {
+      const runMode = options.mode ?? "live";
+      // A recorded-fixture replay must persist its source provenance as
+      // `recorded_fixture`, NOT `raw_cache`: otherwise replayed fixture facts
+      // are indistinguishable from live raw-cache evidence on every public
+      // explanation surface that reads the provenance record kind.
+      const sourceRecordKind =
+        runMode === "recorded_fixture"
+          ? catalogSourceRecordKindValues.recordedFixture
+          : catalogSourceRecordKindValues.rawCache;
       for await (const adapterStep of adapter.steps({
         checkpointCursor: startingCursor,
-        mode: options.mode ?? "live",
+        mode: runMode,
       })) {
         fetchedSteps += 1;
         const stepInput = {
@@ -244,6 +253,7 @@ export class ItotoriCatalogCrawlerRunner {
           checkpointCursor: adapterStep.checkpointCursor,
           fetchedAt: adapterStep.fetchedAt,
           payload: adapterStep.payload,
+          sourceRecordKind,
         };
         const recorded = await options.repository.recordFetchedStep(options.actor, {
           ...stepInput,

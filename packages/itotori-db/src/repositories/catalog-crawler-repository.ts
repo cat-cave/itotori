@@ -14,6 +14,7 @@ import {
   type CatalogCrawlerJobStatus,
   type CatalogCrawlerStepStatus,
   type CatalogSource,
+  type CatalogSourceRecordKind,
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
 
@@ -116,6 +117,14 @@ export type CatalogCrawlerStepInput = {
   payload: CatalogCrawlerJsonRecord;
   payloadHash?: string;
   metadata?: CatalogCrawlerJsonRecord;
+  /**
+   * Provenance kind for the persisted source record. Defaults to `raw_cache`
+   * (a live crawl's raw fetched cache). A recorded-fixture REPLAY must pass
+   * `recorded_fixture` so the persisted provenance — and every public
+   * explanation that reads it — can distinguish replayed fixture evidence from
+   * live raw-cache evidence instead of silently masquerading as a live fetch.
+   */
+  sourceRecordKind?: CatalogSourceRecordKind;
 };
 
 export type CatalogCrawlerStepRecord = {
@@ -324,7 +333,7 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         .values({
           sourceProvenanceId,
           catalogSource: normalized.catalogSource,
-          sourceRecordKind: catalogSourceRecordKindValues.rawCache,
+          sourceRecordKind: normalized.sourceRecordKind,
           sourceId: normalized.sourceId,
           sourceVersion: normalized.sourceVersion,
           requestId: normalized.requestIdentity,
@@ -348,6 +357,7 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         .onConflictDoUpdate({
           target: catalogSourceProvenance.sourceProvenanceId,
           set: {
+            sourceRecordKind: normalized.sourceRecordKind,
             sourceVersion: normalized.sourceVersion,
             requestId: normalized.requestIdentity,
             httpStatus: normalized.httpStatus,
@@ -742,6 +752,7 @@ type NormalizedCrawlerStepInput = {
   payload: CatalogCrawlerJsonRecord;
   payloadHash: string;
   metadata: CatalogCrawlerJsonRecord;
+  sourceRecordKind: CatalogSourceRecordKind;
 };
 
 function normalizeCrawlerKey(input: CatalogCrawlerKey): Required<CatalogCrawlerKey> {
@@ -822,6 +833,15 @@ function normalizeCrawlerStepInput(input: CatalogCrawlerStepInput): NormalizedCr
   }
   const stepKey = requiredString(input.stepKey, "stepKey");
   const crawlerJobId = requiredString(input.crawlerJobId, "crawlerJobId");
+  const sourceRecordKind = input.sourceRecordKind ?? catalogSourceRecordKindValues.rawCache;
+  if (
+    sourceRecordKind !== catalogSourceRecordKindValues.rawCache &&
+    sourceRecordKind !== catalogSourceRecordKindValues.recordedFixture
+  ) {
+    throw new Error(
+      `crawler step sourceRecordKind must be ${catalogSourceRecordKindValues.rawCache} (live crawl) or ${catalogSourceRecordKindValues.recordedFixture} (fixture replay)`,
+    );
+  }
   return {
     crawlerJobId,
     crawlerJobStepId:
@@ -842,6 +862,7 @@ function normalizeCrawlerStepInput(input: CatalogCrawlerStepInput): NormalizedCr
     payload,
     payloadHash,
     metadata: jsonRecord(input.metadata ?? {}, "metadata"),
+    sourceRecordKind,
   };
 }
 
