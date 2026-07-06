@@ -302,11 +302,26 @@ function renderCostReport(report: BenchmarkReportV02): RenderedCostReport {
 }
 
 function renderQualityReport(report: BenchmarkReportV02): RenderedQualityReport {
+  // ITOTORI-092 followup — each `rawMtlBaseline` row reports THAT system's own
+  // scored-unit count, not the whole-corpus total. In a multi-system report the
+  // systems can cover different unit subsets, so assigning the corpus-wide sum
+  // to every row is wrong. Deterministic QA scores every compared system on
+  // exactly the units it produced (`ruleCount === that system's unit count`, per
+  // deterministic-qa.ts), so a system's own unit count is the ruleCount of its
+  // deterministic-QA results (`max` across its checks, in case a future check
+  // scores a subset). The corpus-wide total is still legitimately reported
+  // elsewhere — it drives `penaltySummary.penaltyPerHundredSourceUnits`, a
+  // corpus-wide rate computed in `assembleBenchmarkReport`.
+  const unitCountBySystem = new Map<string, number>();
+  for (const result of report.deterministicQaResults) {
+    const prior = unitCountBySystem.get(result.evaluatedSystemId) ?? 0;
+    unitCountBySystem.set(result.evaluatedSystemId, Math.max(prior, result.ruleCount));
+  }
   return {
     rawMtlBaseline: report.systemsCompared.map((system) => ({
       systemId: system.systemId,
       systemKind: system.systemKind,
-      unitCount: report.fixtureOrCorpusRefs.reduce((sum, ref) => sum + ref.sourceUnitCount, 0),
+      unitCount: unitCountBySystem.get(system.systemId) ?? 0,
     })),
     deterministicQa: report.deterministicQaResults.map((result) => ({
       evaluatedSystemId: result.evaluatedSystemId,

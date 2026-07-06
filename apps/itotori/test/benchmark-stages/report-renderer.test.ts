@@ -97,6 +97,69 @@ describe("cost-quality report renderer", () => {
     expect(rendered.qaAccuracy.agents[0].seededRecall).toBe(1);
   });
 
+  // ITOTORI-092 followup — each quality-report row must carry THAT system's own
+  // scored-unit count, not the whole-corpus total. Build an asymmetric report:
+  // the corpus declares 4 source units, system A (raw-mtl-baseline) is scored on
+  // 3, system B (itotori-draft) on 2. The corpus total (4) differs from BOTH, so
+  // a row showing 4 would be the old whole-corpus bug.
+  it("reports each system's own unit count, not the whole-corpus total", () => {
+    const fixture = structuredClone(loadFixture());
+
+    // Grow the corpus to 4 units: unit 3 is scored by system A only, unit 4 is
+    // uncovered by either system (a real corpus need not be fully translated).
+    fixture.corpus.push(
+      {
+        unitId: "019ed010-0000-7000-8000-000000000003",
+        label: "script/prologue#line-003",
+        sourceText: "おはよう。",
+      },
+      {
+        unitId: "019ed010-0000-7000-8000-000000000004",
+        label: "script/prologue#line-004",
+        sourceText: "こんばんは。",
+      },
+    );
+    // The declared corpus size (the OLD per-row value) is now 4 — distinct from
+    // both systems' own scored-unit counts (3 and 2).
+    fixture.fixtureOrCorpusRefs[0].sourceUnitCount = 4;
+
+    const systemA = fixture.recordedSystems.find((s) => s.systemId === "raw-mtl-baseline");
+    const systemB = fixture.recordedSystems.find((s) => s.systemId === "itotori-draft");
+    if (systemA === undefined || systemB === undefined) {
+      throw new Error("fixture must carry raw-mtl-baseline + itotori-draft systems");
+    }
+    // System A additionally translates unit 3 → scored on 3 units. Clean output
+    // (no placeholder, non-empty) so it produces no new deterministic finding.
+    systemA.translatedUnits.push({
+      unitId: "019ed010-0000-7000-8000-000000000003",
+      targetText: "Good morning.",
+    });
+    // System B stays at its original 2 units.
+    expect(systemA.translatedUnits.length).toBe(3);
+    expect(systemB.translatedUnits.length).toBe(2);
+
+    const input = renderInputFrom(fixture);
+    const report = assembleBenchmarkReport(input);
+    const rendered = renderBenchmarkReports(report, input.qaAgent.calibration);
+
+    const rowA = rendered.quality.rawMtlBaseline.find((r) => r.systemId === "raw-mtl-baseline");
+    const rowB = rendered.quality.rawMtlBaseline.find((r) => r.systemId === "itotori-draft");
+    // Each row shows its OWN scored-unit count …
+    expect(rowA?.unitCount).toBe(3);
+    expect(rowB?.unitCount).toBe(2);
+    // … which differ from each other and from the whole-corpus total (4).
+    expect(rowA?.unitCount).not.toBe(rowB?.unitCount);
+    const corpusTotal = report.fixtureOrCorpusRefs.reduce((s, r) => s + r.sourceUnitCount, 0);
+    expect(corpusTotal).toBe(4);
+    expect(rowA?.unitCount).not.toBe(corpusTotal);
+    expect(rowB?.unitCount).not.toBe(corpusTotal);
+
+    // No other quality field regressed: the corpus-wide penalty rate still uses
+    // the whole-corpus total, and provider/QA sections are intact.
+    expect(rendered.quality.penaltySummary.penaltyTotal).toBeGreaterThanOrEqual(0);
+    expect(rendered.providers.providers.length).toBe(report.providerModelCostRecords.length);
+  });
+
   it("throws when a provider cost record is malformed (cost cannot be faked)", () => {
     const fixture = structuredClone(loadFixture());
     fixture.recordedSystems[1].providerRun.cost.amountMicrosUsd = -5;
