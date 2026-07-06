@@ -16,11 +16,21 @@ An adapter can be marked `alpha_ready` or `production_ready` only when it declar
   replay can skip or reconcile already-imported facts before `commitStepImport`. The marker key
   must be the runner-provided `stableImportKey`, not a crawler job id or crawler job step id.
 
-The crawler records fetches, source provenance, imported-step markers, checkpoints, and rate-limit
-state. Source-specific importers remain responsible for their own fact identity and for using
-upserts or durable markers. This keeps DLsite, Steam, IGDB, Wikidata, VNDB, and EGS
-(ErogameScape / エロゲー批評空間) parsing outside the generic crawler while still making crash
-replay safe.
+The generic crawler records fetches, source provenance, imported-step markers, checkpoints, and
+rate-limit state, and it orders `commitStepImport` (the call that advances the checkpoint) strictly
+after the importer's persisted evidence has been verified. That ordering is necessary but **not
+sufficient**: the generic crawler does not make crash replay safe on its own. It has no knowledge of a
+source's fact identity, so if an importer writes facts without actually implementing its declared
+persistence strategy, a replay inside the crash window duplicates those facts regardless of the
+crawler's bookkeeping.
+
+Crash-replay safety holds **only** when each source-specific importer both **implements and verifies**
+its declared strategy (`upsert` or `durable_import_marker`), keyed by a stable source fact identity,
+before the step is committed. Source-specific importers remain responsible for their own fact identity
+and for the durable writes their strategy requires. This keeps DLsite, Steam, IGDB, Wikidata, VNDB,
+and EGS (ErogameScape / エロゲー批評空間) parsing outside the generic crawler, while placing the
+replay-safety obligation squarely on each importer's strategy implementation — the crawler only
+enforces that a declared contract has an importer and a verifier and refuses to commit otherwise.
 
 For any adapter declaring `factImportContract.contractId = "CATALOG-065"`, each non-skipped step
 must have an `ingestStep` importer and a `verifyFactImport` verifier. The importer receives
@@ -35,6 +45,43 @@ For `upsert`, that evidence is the persisted fact rows for the step. For `durabl
 that evidence is a persisted marker row keyed by `stableImportKey` plus the deterministic fact
 identities it covers. If the importer, proof, verifier, fact rows, or marker evidence are missing or
 mismatched, the runner marks the step failed and does not call `commitStepImport`.
+
+## Persistence strategies: the evidence that must be durable before the checkpoint advances
+
+The generic crawler cannot infer what "already imported" means for a source, so each strategy defines
+exactly what the importer must have **durably written** before `commitStepImport` runs and advances the
+checkpoint. `verifyFactImport` reads that durable evidence back and the runner validates it against the
+step (`validatePersistedFactImportEvidence` in
+`packages/itotori-db/src/services/catalog-crawler-runner.ts`); a crawler that merely recorded the step
+proves none of this.
+
+### `upsert`
+
+- **Implement**: write every emitted catalog fact through its stable source fact identity
+  (`factImportContract.factIdentity`), so a replay updates or no-ops the same rows instead of inserting
+  duplicates.
+- **Persisted evidence required before the checkpoint advances**: the **persisted catalog fact rows for
+  the step**, addressed by the step's deterministic fact identities. `verifyFactImport` must read those
+  rows back from durable storage and return evidence with `persisted: true`, `strategy: "upsert"`,
+  `stableImportKey` equal to the runner-provided key, `factCount` equal to the step's fact count, and
+  `factIdentities` equal to the step's deterministic identities. Only then does the runner call
+  `commitStepImport`.
+
+### `durable_import_marker`
+
+- **Implement**: write a durable marker row keyed by the runner-provided `stableImportKey` before or
+  with the fact writes, recording the deterministic fact identities it covers, so a replay can detect
+  the already-imported step and skip or reconcile it.
+- **Persisted evidence required before the checkpoint advances**: the **persisted marker row keyed by
+  `stableImportKey`** plus the deterministic fact identities it covers. `verifyFactImport` must read
+  that marker back and return evidence with `persisted: true`, `strategy: "durable_import_marker"`,
+  `durableMarkerId` equal to `stableImportKey`, and matching `factCount` and `factIdentities`. Only then
+  does the runner call `commitStepImport`.
+
+In both strategies the checkpoint advances **after** the durable evidence is read back and matched — not
+because the crawler recorded a fetch or a step. An importer that returns a proof but has not durably
+written the fact rows (upsert) or the marker (durable) fails verification, and the step is not
+committed.
 
 `stableImportKey` is deterministic across crash replay jobs. It is derived from catalog source,
 adapter name, partition, source version, parser version, step key, source id, request identity, and
