@@ -14,7 +14,6 @@ export {
 } from "./types.js";
 export {
   CHANNEL_PII_KINDS,
-  isLikelyPiiValue,
   redactChannelPii,
   type ChannelPiiKind,
   type ChannelRedaction,

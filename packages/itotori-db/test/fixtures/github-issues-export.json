@@ -4,7 +4,7 @@
     {
       "number": 41,
       "title": "Protagonist sounds too formal in the cafe scene",
-      "body": "In the first cafe conversation the protagonist's tone reads as stiff and overly polite. It doesn't match how casual the original Japanese is.",
+      "body": "In the first cafe conversation the protagonist's tone reads as stiff and overly polite. It doesn't match how casual the original Japanese is. For reference this is issue #12345, first reported in 2026 against build 1.2.3, and it still costs us $1,499 of goodwill.",
       "html_url": "https://github.com/example-org/example-localization/issues/41",
       "state": "open",
       "user": { "login": "casual-reader" },
@@ -14,7 +14,7 @@
     {
       "number": 42,
       "title": "Typo in the menu confirmation line",
-      "body": "There's a spelling error in the save-confirmation text. Ping me at reporter@example.com or +1 (415) 555-0198 if you need a screenshot.",
+      "body": "There's a spelling error in the save-confirmation text. Ping me at reporter@example.com, +1 (415) 555-0198, or 090-1234-5678 if you need a screenshot.",
       "html_url": "https://github.com/example-org/example-localization/issues/42",
       "state": "open",
       "user": { "login": "eagle-eye" },

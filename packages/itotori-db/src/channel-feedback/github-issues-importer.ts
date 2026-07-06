@@ -14,8 +14,10 @@
 //   - dedup: `dedupeKey = "github_issues:owner/repo#N"`, so re-importing the
 //     same issue aggregates under one canonical report (mirrors manual dedup).
 //   - privacy: title + body are run through `redactChannelPii`; the author
-//     login is a public handle (kept), but any email in the body is redacted and
-//     `redactionState` is stamped accordingly. Raw PII never reaches the input.
+//     login is a public handle (kept), but any email or phone number (both
+//     `+`-prefixed international and domestic forms like `090-1234-5678` or
+//     `(415) 555-0198`) in the body is redacted and `redactionState` is stamped
+//     accordingly. Raw PII never reaches the input.
 
 import {
   feedbackSourceKindValues,

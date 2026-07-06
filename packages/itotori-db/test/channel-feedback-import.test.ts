@@ -13,7 +13,11 @@ import {
   feedbackSourceKindValues,
   ItotoriFeedbackRepository,
 } from "../src/repositories/feedback-repository.js";
-import { GitHubIssuesImporter, type GitHubIssuesExport } from "../src/channel-feedback/index.js";
+import {
+  GitHubIssuesImporter,
+  redactChannelPii,
+  type GitHubIssuesExport,
+} from "../src/channel-feedback/index.js";
 import { feedbackReportEvidence, feedbackReports, feedbackSources } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -102,7 +106,11 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
 
     const withPii = items.find((item) => item.externalRef.externalId === ISSUE_42_EXTERNAL_ID)!;
     expect(withPii.input.reporterNote).not.toContain("reporter@example.com");
+    // International (`+1 (415) 555-0198`) AND domestic (`090-1234-5678`) numbers
+    // are both scrubbed — no raw digits of either survive.
     expect(withPii.input.reporterNote).not.toContain("555-0198");
+    expect(withPii.input.reporterNote).not.toContain("090-1234-5678");
+    expect(withPii.input.reporterNote).not.toContain("1234-5678");
     expect(withPii.input.reporterNote).toContain("[redacted-email]");
     expect(withPii.input.reporterNote).toContain("[redacted-phone]");
     expect(withPii.input.redactionState).toBe("redacted");
@@ -110,10 +118,19 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
       "email",
       "phone",
     ]);
+    // Two phone numbers, one `phone` kind, count === 2.
+    expect(withPii.redactions.find((redaction) => redaction.kind === "phone")?.count).toBe(2);
 
+    // False-positive guard: issue 41's body carries an issue id, a year, a
+    // semver build, and a price — none of which are phone numbers, so nothing is
+    // redacted and the report stays raw.
     const withoutPii = items.find((item) => item.externalRef.externalId === ISSUE_41_EXTERNAL_ID)!;
     expect(withoutPii.input.redactionState).toBe("raw");
     expect(withoutPii.redactions).toHaveLength(0);
+    expect(withoutPii.input.reporterNote).toContain("#12345");
+    expect(withoutPii.input.reporterNote).toContain("2026");
+    expect(withoutPii.input.reporterNote).toContain("1.2.3");
+    expect(withoutPii.input.reporterNote).toContain("$1,499");
   });
 
   it("rejects a malformed export", () => {
@@ -121,6 +138,53 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
     expect(() => importer.mapExport({ repository: "x" }, importOptions)).toThrow(
       /export\.issues must be an array/,
     );
+  });
+});
+
+describe("redactChannelPii (phone coverage)", () => {
+  it("redacts domestic-format phone numbers without a country code", () => {
+    for (const raw of [
+      "call 090-1234-5678 today", // JP mobile, 11 digits
+      "reach me on 03-1234-5678", // JP landline, 9 digits
+      "dial (415) 555-0198 anytime", // US, parenthesized area code, 10 digits
+      "my line is 415 555 0198 ok", // US, space-separated, 10 digits
+    ]) {
+      const result = redactChannelPii(raw);
+      expect(result.redacted).toBe(true);
+      expect(result.text).toContain("[redacted-phone]");
+      expect(result.text).not.toMatch(/\d{3,}/);
+      expect(result.redactions).toEqual([
+        { kind: "phone", count: 1, placeholder: "[redacted-phone]" },
+      ]);
+    }
+  });
+
+  it("keeps the international `+`-prefixed phone case", () => {
+    const result = redactChannelPii("ping +1 (415) 555-0198 please");
+    expect(result.text).toContain("[redacted-phone]");
+    expect(result.text).not.toContain("555-0198");
+    expect(result.redactions).toEqual([
+      { kind: "phone", count: 1, placeholder: "[redacted-phone]" },
+    ]);
+  });
+
+  it("does NOT over-redact non-phone numerics (issue ids, years, versions, prices, dates, ips)", () => {
+    for (const raw of [
+      "see issue #12345 for details",
+      "reported in 2026",
+      "regressed on build 1.2.3.4",
+      "it costs $1,499.00 in goodwill",
+      "landed on 2026-06-21", // ISO date, 8 digits
+      "server 192.168.1.100 is fine", // dotted IP
+      "zip is 12345-6789 here", // ZIP+4, only two groups
+      "hash abcdef1234567890 stays", // alnum token
+      "order 1234567890123 pending", // 13-digit run, no separators
+    ]) {
+      const result = redactChannelPii(raw);
+      expect(result.redacted).toBe(false);
+      expect(result.text).toBe(raw);
+      expect(result.redactions).toHaveLength(0);
+    }
   });
 });
 
@@ -253,6 +317,7 @@ describe("GitHub channel feedback import (real Postgres)", () => {
       const persistedNote = report[0]?.reporterNote ?? "";
       expect(persistedNote).not.toContain("reporter@example.com");
       expect(persistedNote).not.toContain("555-0198");
+      expect(persistedNote).not.toContain("090-1234-5678");
       expect(persistedNote).toContain("[redacted-email]");
       expect(persistedNote).toContain("[redacted-phone]");
       expect(report[0]?.redactionState).toBe("redacted");

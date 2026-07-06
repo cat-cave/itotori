@@ -219,7 +219,6 @@ export {
   ChannelImportError,
   GITHUB_ISSUES_CHANNEL,
   GitHubIssuesImporter,
-  isLikelyPiiValue,
   redactChannelPii,
 } from "./channel-feedback/index.js";
 export type {
