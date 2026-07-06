@@ -179,7 +179,7 @@ module_sys,...}.rs`); the core crates have not.
   passes `cargo check`, `cargo fmt`, and clippy `-D warnings`, so it
   is genuinely a maintainability concern, not a correctness one.
 - **Suggested fix.** Mint a decomposition node similar to
-  `scripts/apply-utsushi-146-decomposition.mjs` (the precedent that
+  `scripts/history/apply-utsushi-146-decomposition.mjs` (the precedent that
   split the giant utsushi-reallive blob). The natural cut points are
   the `SEMANTIC_*` constants (move to `semantic_codes.rs`), the
   `HelperRegistry*` types (move to `helper_registry/`), the

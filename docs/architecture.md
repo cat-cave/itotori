@@ -3,15 +3,16 @@
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`alpha-localization-project-readiness.md`](project-readiness.md).
 > References below to "alpha proof" describe the SHARED-025 manifest contract
-> and the post-alpha dogfood vertical (Sukara/RealLive), not the alpha gate.
-> Alpha-ready means the architecture-proven dogfood point — substrate
-> M.1–M.3, a non-synthetic engine port crate, real-bytes Sweetie HD smoke,
-> recorded-LLM bundle, dashboard reachable, repo hygiene.
+> and the post-alpha dogfood vertical (the configured alpha corpus on
+> RealLive), not the alpha gate. Alpha-ready means the architecture-proven
+> dogfood point — substrate M.1–M.3, a non-synthetic engine port crate,
+> real-bytes alpha-corpus smoke, recorded-LLM bundle, dashboard reachable,
+> repo hygiene.
 
 Itotori is a monorepo because the shared contracts are the hard part. The three
 subprojects remain independent at runtime, but they evolve against the same
 catalog, bridge, patch, delta, readiness, and runtime evidence schemas. Itotori
-reads owned-game bytes from `/archive/vault/` — managed by the sibling
+reads owned-game bytes from the configured corpus vault — managed by the sibling
 vault-curation project — strictly read-only through the contract in
 [itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
 
@@ -98,8 +99,8 @@ SHARED-025 manifest, all sharing one fixture id, source revision, locale branch,
 and content hashes — rather than a placeholder success line. `ALPHA-007`
 implemented the vertical command and `ALPHA-009` promoted it into CI and retired
 the literal "Hello World" workflow. The first real-engine vertical is `ALPHA-006`
-(Sukara's _Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced
-from `/archive/vault/` per the vault-source adapter contract). There is no second,
+(the configured alpha target corpus on RealLive, sourced from the corpus vault
+per the vault-source adapter contract). There is no second,
 weaker Hello World source of truth: `just hello` survives only as a compatibility
 alias that delegates to `just alpha-proof` and cannot diverge. See
 [alpha-proof.md](alpha-proof.md).

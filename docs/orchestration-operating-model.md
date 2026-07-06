@@ -25,11 +25,13 @@ Authoritative tier definitions and per-tier acceptance criteria live in
 external timeline**; eng-month/week/year cost framing is off-shape and must not
 appear in orchestrator outputs.
 
-The one itotori fact the orchestrator must hold: **alpha = Oshioki Sweetie HD
-localized end-to-end on this Linux machine** — real-bytes extraction, a live LLM
-call via OpenRouter with an explicit (model, provider) pair, the FULL agentic
-loop, real patchback, `utsushi-reallive` Linux replay, and verifiable patch
-evidence. Single-game by definition; beta requires ≥2 games per engine.
+The one itotori fact the orchestrator must hold: **alpha = the configured
+alpha target corpus localized end-to-end on this Linux machine** — real-bytes
+extraction, a live LLM call via OpenRouter with an explicit (model, provider)
+pair, the FULL agentic loop, real patchback, `utsushi-reallive` Linux replay,
+and verifiable patch evidence. The alpha target is one configured real RealLive
+corpus (a specific game is config/input, never a built-in rule). Single-game by
+definition; beta requires ≥2 games per engine.
 
 ## Provider And Model Policy
 
@@ -114,10 +116,10 @@ If a planning subagent or audit worker encounters a single node whose
 ### Acceptance criteria that name no observable artifact
 
 A criterion like "the adapter inventories text surfaces" is unverifiable. A
-criterion like "running `cargo run -p kaifuu-cli detect <path>` against
-`/scratch/itotori-research/sweetie-hd/extracted/.../REALLIVEDATA/` returns
-`detected: true` with `engine_family = reallive` and `confidence != null`" is
-verifiable.
+criterion like "running `cargo run -p kaifuu-cli detect <path>` against the
+configured target corpus root's `REALLIVEDATA/` (the alpha corpus's extracted
+game tree) returns `detected: true` with `engine_family = reallive` and
+`confidence != null`" is verifiable.
 
 Every alpha-target acceptance criterion must name at least one of:
 
@@ -134,15 +136,15 @@ unfalsifiable.
 A "smoke" test that runs the code only against a fixture the same worker
 authored does not prove generality. The
 `crates/kaifuu-reallive/tests/fixtures/smoke-scene-001/SEEN.TXT` is 47 bytes;
-the real RealLive `Seen.txt` for Oshioki Sweetie HD is 3,876,496 bytes with a
-10,000-slot fixed directory the synthetic fixture does not exercise.
+the real RealLive `Seen.txt` for the configured alpha corpus is multiple
+megabytes (~3.87 MB) with a 10,000-slot fixed directory the synthetic fixture
+does not exercise.
 
 When a spec claims generality across an engine family or asset class, the
 acceptance criteria must include at least one test against bytes the spec
-author did not generate: real owned-game bytes (read-only from
-`/scratch/itotori-research/...` or `/archive/vault/...`), a third-party
-public fixture, or a corpus-sampled fixture documented as
-"author-independent."
+author did not generate: real owned-game bytes (read-only from the configured
+target corpus root / corpus vault), a third-party public fixture, or a
+corpus-sampled fixture documented as "author-independent."
 
 ### Tests that mirror implementation instead of contracts
 
@@ -285,8 +287,8 @@ versioning policy applies.
 A parser, decoder, or runtime port that works on game X but breaks on game
 Y is fixture-shaped against game X. The 2026-06-24 audit batch made this
 concrete: `kaifuu-reallive::parse_archive` parses synthetic 47-byte
-fixtures it authored, returns silent zero-state on the real 3.87 MB
-Sweetie HD `Seen.txt`.
+fixtures it authored, returns silent zero-state on the real ~3.87 MB
+alpha corpus `Seen.txt`.
 
 When a spec claims support for an **engine family** (RealLive, RPG Maker
 MV/MZ, KiriKiri KAG, etc.), acceptance criteria must include validation
@@ -294,7 +296,7 @@ against **at least two real-world games of that engine**, not just one.
 Single-game validation may produce a confident-looking pass that is in
 fact specific to that one title's compiler version, key, or asset layout.
 
-Where the second real-world game is not yet sourced (e.g. only Sweetie HD
+Where the second real-world game is not yet sourced (e.g. only one corpus
 is staged for RealLive), the node's status remains `planned` with a
 sourcing-required note in the summary; the orchestrator does not claim
 the node ready until the second corpus is available. Audit workers must
@@ -309,8 +311,8 @@ titles of the same engine.
 ### Investigation as a DAG node (2026-06-24)
 
 Research and investigation happen **interactively** between the user and
-the orchestrator/subagents — probing real bytes at
-`/scratch/itotori-research/`, reading source, consulting docs, running
+the orchestrator/subagents — probing real bytes at the configured target
+corpus root, reading source, consulting docs, running
 one-shot probes. Concrete implementation nodes are written **from** the
 research output, not as scaffolding for it. A node whose deliverable is
 "figure out whether X" instead of "ship X" is not a DAG node; it is a
@@ -319,7 +321,7 @@ conversation that has not happened yet.
 The footgun is precise: UTSUSHI-146's original "rlvm as research anchor"
 framing collapsed an unknown-scope research effort into a single DAG node
 that never bottomed out and was only made visible by the 2026-06-23 audit
-batch. UTSUSHI-219 ("Sukara title XOR-2 key resolution (research-only)")
+batch. UTSUSHI-219 ("alpha-corpus XOR-2 key resolution (research-only)")
 is the same shape — a research bench whose outcome ("either key off, or
 key recovered, or follow-up path") cannot be committed to up front — and
 is cancelled in this change. Resolution of the XOR-2 question happens

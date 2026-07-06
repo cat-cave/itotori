@@ -28,7 +28,8 @@ live in [docs/alpha-readiness.md](docs/alpha-readiness.md). Tier definitions
 The alpha proof (the `ALPHA-007` public-fixture vertical, gated by `ALPHA-009`)
 is the deterministic guardrail that exercises the end-to-end contract across all
 three projects without copyrighted bytes; the first real-engine vertical is the
-explicit alpha proof target `ALPHA-006`, sourced read-only from `/archive/vault/`.
+explicit alpha proof target `ALPHA-006`, sourced read-only from the configured
+target corpus root (the corpus vault).
 
 ## Quickstart (fresh clone — no secrets, no real bytes)
 

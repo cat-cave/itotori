@@ -113,10 +113,11 @@ pub enum BinarySmokeOutcome {
 /// `compiler_version_uses_xor2` triggers on `110002`/`1110002`, and stamping
 /// one of those would (correctly) make the patchback try to recover an
 /// `xor_2` key from unencrypted bytes and abort. This smoke fixture exercises
-/// the patch-pipeline mechanics on a plaintext game; the real `xor_2`
-/// encrypt/decrypt round-trip is covered by the real Sweetie HD (110002)
-/// `patch_real_sweetie_hd` test. A synthetic *encrypted* fixture is future
-/// work under `publishable-synthetic-corpora-differential-validated`.
+/// the patch-pipeline mechanics on a plaintext archive; the real `xor_2`
+/// encrypt/decrypt round-trip is covered by the real-byte patch test in
+/// `tests/` (which runs against a real encrypted corpus). A synthetic
+/// *encrypted* fixture is future work under
+/// `publishable-synthetic-corpora-differential-validated`.
 const SYNTHETIC_COMPILER_VERSION: u32 = 110_001;
 
 /// Canonical v0.2 sourceUnitKey for the synthetic dialogue unit
@@ -135,6 +136,16 @@ const SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY: &str = "reallive:scene-0001#0000";
 /// The leading `0x82` is a Shift-JIS lead byte, so the patched bytes still
 /// re-parse as a Textout run.
 const SYNTHETIC_TARGET_TEXT: &str = "うえ";
+
+/// Neutral-synthetic engine-format identifier stamped into the smoke
+/// bundle's `sourceGame` metadata (`gameId`, `sourceProfileId`, and the
+/// seed for the source-profile content hash). The smoke authors a
+/// synthetic RealLive envelope from scratch — it is NOT a specific retail
+/// game — so the bundle carries a synthetic engine-format id rather than a
+/// real game name. A retail game is INPUT to the `kaifuu patch`/`extract`
+/// commands (caller-supplied `--game-id`), never baked into this shipped
+/// smoke fixture.
+const SYNTHETIC_GAME_ID: &str = "kaifuu-reallive-synthetic";
 
 /// Build the synthetic scene's **decompressed** bytecode: the real
 /// post-KAIFUU-191 opener-byte shape decoded by
@@ -241,8 +252,8 @@ fn synthetic_scene_blob() -> Vec<u8> {
 /// 0. One scene is populated at slot 1 (`reallive:scene-0001`); its blob
 /// (a real 0x1d0-byte scene header + AVG32-compressed bytecode) sits at
 /// file offset `0x0001_3880` (= 80,000, immediately after the directory),
-/// mirroring Sweetie HD's first-scene layout. Slot 0 stays zeroed
-/// (reserved) so the envelope parser exercises its skip path.
+/// mirroring a real RealLive archive's first-scene layout. Slot 0 stays
+/// zeroed (reserved) so the envelope parser exercises its skip path.
 pub fn build_synthetic_seen_txt() -> Vec<u8> {
     let blob = synthetic_scene_blob();
     let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
@@ -275,7 +286,7 @@ pub(crate) fn build_synthetic_translated_bundle_json(
 
     let scene_blob_hash = sha256_hash_bytes(b"synthetic-scene-1-placeholder-content");
     let source_hash = sha256_hash_bytes("Synthetic source text".as_bytes());
-    let source_profile_hash = sha256_hash_bytes(b"kaifuu-reallive-sweetie-hd");
+    let source_profile_hash = sha256_hash_bytes(SYNTHETIC_GAME_ID.as_bytes());
 
     // The dialogue body sits at decompressed offset 17 (after the 9-byte
     // Meta prologue + the 8-byte SetSpeaker header) and is 4 bytes wide.
@@ -288,9 +299,9 @@ pub(crate) fn build_synthetic_translated_bundle_json(
         "schemaVersion": "0.2.0",
         "bridgeId": bridge_id,
         "sourceGame": {
-            "gameId": "sweetie-hd",
+            "gameId": SYNTHETIC_GAME_ID,
             "gameVersion": "1.0.0",
-            "sourceProfileId": "kaifuu-reallive-sweetie-hd",
+            "sourceProfileId": SYNTHETIC_GAME_ID,
             "sourceProfileRevision": {
                 "revisionId": source_profile_revision_id,
                 "revisionKind": "content_hash",

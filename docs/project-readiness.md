@@ -9,7 +9,8 @@
 > been removed. What used to be called "alpha" is now
 > **real-game-testing-ready**; alpha now names a stricter milestone that
 > requires real LLM calls, the full agentic loop, real patchback, and Linux
-> replay on Sweetie HD. Cross-reference: `docs/audits/alpha-scope-honesty.md`
+> replay on the configured alpha corpus (a single real RealLive target).
+> Cross-reference: `docs/audits/alpha-scope-honesty.md`
 > §D is the historical record of the redefinition that led to the rename;
 > the DAG re-tier follow-up lives at
 > [`docs/proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md).
@@ -21,15 +22,16 @@
    providers and fixture data, Rust port crate scaffolded, dashboard
    reachable. Safe to attempt real runs in find-bugs mode. Output here is
    throwaway.
-2. **alpha** — Oshioki Sweetie HD can be localized end-to-end on this Linux
-   machine. Real-bytes extraction (kaifuu reads real scene bytecode and
-   produces v0.2 bridge units); live LLM call via OpenRouter with an explicit
-   (model, provider) pair; the FULL agentic loop fires (context building +
-   pre-translation + translation + QA agents + deterministic checks +
-   editing/review cycles, all minimally functional even if output is worse
-   than MTL); real patchback; `utsushi-reallive` runtime runs the patched
-   game locally on Linux; verifiable patch landed via trace + frame capture.
-   Single-game by definition.
+2. **alpha** — the configured alpha target (a single real RealLive corpus)
+   can be localized end-to-end on this Linux machine. Real-bytes extraction
+   (kaifuu reads real scene bytecode and produces v0.2 bridge units); live LLM
+   call via OpenRouter with an explicit (model, provider) pair; the FULL
+   agentic loop fires (context building + pre-translation + translation + QA
+   agents + deterministic checks + editing/review cycles, all minimally
+   functional even if output is worse than MTL); real patchback;
+   `utsushi-reallive` runtime runs the patched game locally on Linux;
+   verifiable patch landed via trace + frame capture. Single-game by
+   definition.
 3. **beta** — ≥2 games per intended engine localized e2e, including
    encrypted variants. Multi-game-validation rule fully applies. Edge cases
    and instability expected.
@@ -59,7 +61,7 @@ fire and pieces can be swapped."
    conformance against the substrate with the smallest credible opcode
    subset (call/return/text-display/wait); does not depend on author-fixture
    envelopes.
-3. **Real-bytes Sweetie HD smoke.** `kaifuu-cli detect` returns true,
+3. **Real-bytes alpha-corpus smoke.** `kaifuu-cli detect` returns true,
    `parse_archive` returns a non-empty entry list (no silent zero-state),
    the Gameexe parser classifies the dominant key families. Closed by
    `KAIFUU-188` (10000-slot envelope), `KAIFUU-189` (depth-N detector),
@@ -89,28 +91,30 @@ Stricter than real-game-testing-ready. All six criteria above PLUS:
    `utsushi-reallive` runtime decomposition (`UTSUSHI-200..221`,
    `docs/research/reallive-engine-dag-proposal.md`) has shipped enough of
    the opcode VM, variable system, asset pipeline, and system-call dispatch
-   to run a patched Sweetie HD scene on Linux.
+   to run a patched scene of the configured alpha corpus on Linux.
 3. **Full agentic loop fires end-to-end.** Context building +
    pre-translation + translation + QA agents + deterministic checks +
    editing/review cycles all minimally functional. Each piece is swappable.
    Output quality is NOT the bar (worse-than-MTL is acceptable); the bar is
    that "swap this QA strategy for that one" is a tractable change rather
    than a rewrite.
-4. **Real patchback on Sweetie HD scene bytecode.** Not length-preserving
-   only — offset-table rewriting works, JA→EN expansions land, the patched
+4. **Real patchback on the configured alpha corpus scene bytecode.** Not
+   length-preserving only — offset-table rewriting works, JA→EN expansions land, the patched
    `Seen.txt` is byte-stable enough to load.
 5. **Linux replay via `utsushi-reallive` runtime.** The patched game runs
    locally on Linux to the point where the localized scene renders.
 6. **Verifiable patch evidence.** Utsushi trace + frame capture (E2 or
    better) demonstrates that the patched scene rendered with the new text.
-   Single-game (Sweetie HD) by definition — multi-game claims are beta.
+   Single-game (the configured alpha corpus) by definition — multi-game
+   claims are beta.
 
 ### 2.3 beta
 
 The multi-game-validation rule is the gate. Specifically:
 
-1. **≥2 real-world games per claimed engine family**, end-to-end. Single
-   engine-family claim with only Sweetie HD is alpha, not beta.
+1. **≥2 real-world games per claimed engine family**, end-to-end. A single
+   engine-family claim with only the configured alpha corpus is alpha, not
+   beta.
 2. **Encrypted variants land.** Encrypted XP3 + TJS-heavy KiriKiri,
    encrypted RPG Maker MV/MZ archives, etc. — at least one encrypted
    variant per family the project claims.
@@ -146,7 +150,8 @@ gate.
 
 Multi-engine claims belong to **beta**, not alpha. Specifically:
 
-- SiglusEngine end-to-end is beta (alpha is RealLive/Sweetie HD only).
+- SiglusEngine end-to-end is beta (alpha is the single configured RealLive
+  corpus only).
 - RPG Maker MV/MZ end-to-end on a real game is beta.
 - Plain KiriKiri/XP3 + KAG end-to-end on a real game is beta.
 - Encrypted XP3, encrypted RPG Maker archives, TJS-heavy KiriKiri, and
@@ -154,8 +159,8 @@ Multi-engine claims belong to **beta**, not alpha. Specifically:
 - Cross-engine breadth claims ("Itotori supports family X") are beta, not
   alpha.
 
-Alpha is single-game (Sweetie HD on RealLive) by definition. The other
-engines may have substrate-level coverage at alpha (substrate extensions
+Alpha is single-game (one configured RealLive corpus) by definition. The
+other engines may have substrate-level coverage at alpha (substrate extensions
 M.1–M.3 require multi-engine validation against ≥2 real-bytes corpora),
 but their **end-to-end** localization claims are beta work.
 

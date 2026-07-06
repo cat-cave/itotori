@@ -163,26 +163,16 @@ export const historicalResearchSurfaces = [
     reason: "operator real-bytes/localize harness recipes name the primary corpus by design",
   },
 
-  // One-off DAG migration / node / catalogue scripts. These embed historical
-  // node specifications, corpus catalogues, and per-node audit trails as string
-  // payloads (research/planning records), not generalized operator logic.
+  // Archived one-off DAG migration / node / evidence scripts. These embed
+  // historical node specifications, corpus catalogues, and per-node audit
+  // trails as string payloads (research/planning records), not generalized
+  // operator logic. They have been retired to scripts/history/ so no
+  // game-hardcoded source remains in the active top-level scripts/ tree.
   {
-    id: "apply-scripts",
+    id: "scripts-history",
     kind: "prefix",
-    value: "scripts/apply-",
-    reason: "one-off DAG apply/migration scripts (embed node specs)",
-  },
-  {
-    id: "itotori-226-rekey",
-    kind: "exact",
-    value: "scripts/itotori-226-rekey-recorded-bundles.mjs",
-    reason: "one-off node audit-trail/rekey script",
-  },
-  {
-    id: "itotori-239-alts",
-    kind: "exact",
-    value: "scripts/itotori-239-broader-alts-evidence.mjs",
-    reason: "one-off node evidence-capture script",
+    value: "scripts/history/",
+    reason: "archived historical one-off migration/audit/evidence scripts",
   },
   {
     id: "synthetic-coverage-manifest",

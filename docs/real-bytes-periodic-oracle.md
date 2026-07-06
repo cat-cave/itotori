@@ -23,8 +23,9 @@ Two stages, run by `scripts/real-bytes-oracle.mjs`. Either failing fails the
 whole run (nonzero exit):
 
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
-ci-real-bytes`) against the real corpora (Sweetie HD + Kanon RealLive,
-  LustMemory RPG Maker MV/MZ, and the vault-materialized Siglus installs),
+ci-real-bytes`) against the configured real corpora (currently Sweetie HD +
+  Kanon RealLive, LustMemory RPG Maker MV/MZ, and the vault-materialized Siglus
+  installs),
   read-only, never copying copyrighted bytes. Passing proves the
   source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`, `classify()`, the
   g00 type matrix, the cipher cases, the decoder-parity counts, …) still match
@@ -64,8 +65,8 @@ and the run goes red.
   - `drift-check` job runs on a hosted runner (repo-only, no corpora) so drift
     is caught every night regardless of where the real bytes are staged.
   - `ground-truth` job runs on a `[self-hosted, itotori-corpora]` runner that
-    has the real corpora staged (the corpora live under `/scratch` +
-    `/archive/vault` and are never committed). On a runner without the corpora,
+    has the real corpora staged (the corpora live under the configured corpus
+    roots and are never committed). On a runner without the corpora,
     `just ci-real-bytes` pre-checks the roots and fails loud rather than passing
     with zero real bytes — a red run, never a false green.
   - `workflow_dispatch` takes a `stage` input: `full`, `drift-only`, or
@@ -96,7 +97,6 @@ The failure message on every red path prints this same re-derive hint.
 
 ## Corpora are read-only; nothing copyrighted is committed
 
-Stage (A) reads the corpora in place under `/scratch/itotori-research` +
-`/archive/vault`, read-only, exactly like `just ci-real-bytes`. No copyrighted
-bytes are copied or committed; only the derived, non-copyrighted coverage
-manifest is tracked.
+Stage (A) reads the corpora in place under the configured corpus roots,
+read-only, exactly like `just ci-real-bytes`. No copyrighted bytes are copied or
+committed; only the derived, non-copyrighted coverage manifest is tracked.
