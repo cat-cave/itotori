@@ -154,6 +154,31 @@ export type ApiErrorResponse = {
   code: "bad_request" | "forbidden" | "not_found" | "method_not_allowed" | "internal_error";
 };
 
+export const API_ERROR_RESPONSE_CODES = [
+  "bad_request",
+  "forbidden",
+  "not_found",
+  "method_not_allowed",
+  "internal_error",
+] as const satisfies readonly ApiErrorResponse["code"][];
+
+/**
+ * ITOTORI-051 — assert an {@link ApiErrorResponse} body. Error responses are
+ * not tied to a single route id (every route may emit one), so they are
+ * validated independently of {@link assertItotoriApiResponse}. The MSW
+ * mutation contract handlers + tests use this so a typed error-shape change
+ * (a renamed `code` enum value, a missing `error` string, an extra leaked
+ * field) fails a dashboard contract test instead of silently diverging.
+ */
+export function assertItotoriApiErrorResponse(
+  value: unknown,
+  label = "ApiErrorResponse",
+): asserts value is ApiErrorResponse {
+  const response = asStrictRecord(value, label, ["error", "code"]);
+  assertString(response.error, `${label}.error`);
+  assertEnum(response.code, API_ERROR_RESPONSE_CODES, `${label}.code`);
+}
+
 export type ApiProjectsResponse = {
   projects: ProjectDashboardStatus[];
 };

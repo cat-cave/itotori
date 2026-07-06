@@ -4,9 +4,17 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { renderDashboard, type DashboardEndpoints } from "../src/dashboard.js";
 import {
+  apiMutationContract,
   benchmarkReportsFixture,
+  bridgeImportResponseFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
+  draftBranchResponseFixture,
+  recordBenchmarkResponseFixture,
+  recordDecisionResponseFixture,
+  recordFindingResponseFixture,
+  runtimeEvidenceIngestResponseFixture,
+  type ApiMutationContractEntry,
 } from "./api-fixtures.js";
 import { apiJson, itotoriApiMswHandlers } from "./msw-handlers.js";
 
@@ -352,4 +360,71 @@ describe("Itotori dashboard", () => {
       ).toThrow("localeBranchFindingDecisionCount");
     });
   });
+
+  // ITOTORI-051 — the dashboard MSW server now also installs the project
+  // mutation handlers (POST routes). The dashboard itself only reads on the
+  // initial render, so the mutation handlers are inert for the render flow
+  // above (acceptance: existing read-route + import MSW coverage stays
+  // UNCHANGED). This block pins the literal acceptance criterion: a
+  // mutation API shape change FAILS this dashboard contract test instead of
+  // silently diverging. The exhaustive per-route SUCCESS / validation-
+  // failure / denial / drift coverage lives in `msw-mutation-handlers.test.ts`;
+  // this block is the dashboard-level smoke check that the mutation
+  // handlers are registered + contract-anchored alongside the read handlers
+  // the dashboard test already asserts against.
+  describe("ITOTORI-051 dashboard MSW mutation contract (drift smoke)", () => {
+    it.each(apiMutationContract)(
+      "a $routeId mutation response shape change fails this dashboard contract test",
+      (entry: ApiMutationContractEntry) => {
+        // The mutation handlers are part of the SAME `itotoriApiMswHandlers`
+        // array the dashboard server spreads in (line 13). Each mutation
+        // response fixture MUST stay contract-valid; a drifted shape (a
+        // dropped required field) is rejected by the route asserter, so a
+        // backend rename / drop / widening surfaces here instead of silently
+        // passing the dashboard suite.
+        const fixture = mutationResponseFixtureFor(entry.routeId);
+        expect(() => apiJson(entry.routeId, fixture)).not.toThrow();
+        const drifted: Record<string, unknown> = { ...(fixture as Record<string, unknown>) };
+        delete drifted[entry.requiredResponseField];
+        expect(() => apiJson(entry.routeId, drifted as never)).toThrow(entry.requiredResponseField);
+      },
+    );
+
+    // Explicit, easy-to-point-at proof on `findings.record` + `decisions.record`
+    // (the two routes the reviewer queue dashboard wires up to): a deliberate
+    // enum widening on the response is caught, and the original passes once
+    // the drift is reverted.
+    it("rejects a widened status enum on findings.record and decisions.record", () => {
+      const widenedFinding: Record<string, unknown> = {
+        ...recordFindingResponseFixture,
+        status: "drafted",
+      };
+      expect(() => apiJson("findings.record", widenedFinding as never)).toThrow("status");
+      expect(() => apiJson("findings.record", recordFindingResponseFixture)).not.toThrow();
+
+      const widenedDecision: Record<string, unknown> = {
+        ...recordDecisionResponseFixture,
+        eventKind: "triage_invented_kind",
+      };
+      expect(() => apiJson("decisions.record", widenedDecision as never)).toThrow("eventKind");
+      expect(() => apiJson("decisions.record", recordDecisionResponseFixture)).not.toThrow();
+    });
+  });
 });
+
+function mutationResponseFixtureFor(routeId: ApiMutationContractEntry["routeId"]): unknown {
+  switch (routeId) {
+    case "imports.bridge":
+      return bridgeImportResponseFixture;
+    case "branches.draft":
+      return draftBranchResponseFixture;
+    case "findings.record":
+      return recordFindingResponseFixture;
+    case "decisions.record":
+      return recordDecisionResponseFixture;
+    case "benchmarks.record":
+      return recordBenchmarkResponseFixture;
+    case "runtimeEvidence.ingest":
+      return runtimeEvidenceIngestResponseFixture;
+  }
+}
