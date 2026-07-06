@@ -1120,10 +1120,20 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   ): Promise<CatalogWorkSnapshot> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const normalized = assertCatalogWorkInput(input);
-    await assertWorkScopedArtifactReferences(this.db, normalized);
-    await assertConflictEvidenceSubjectReferences(this.db, normalized);
 
     await this.db.transaction(async (tx) => {
+      // Run the existence/same-work guards on the TRANSACTION handle (not
+      // this.db) so the committed-state checks and the writes below are atomic.
+      // Querying this.db before the transaction opened a TOCTOU window: for an
+      // FK-less conflict-evidence subject, a concurrent delete/reassign between
+      // check and commit could persist a dangling evidence row. The
+      // artifact-references guard shares the same check-then-write TOCTOU, so it
+      // moves inside too. Both read committed state and MUST run before the
+      // inserts below, whose onConflictDoUpdate writes reassign ownership and
+      // would otherwise defeat the cross-work checks.
+      await assertWorkScopedArtifactReferences(tx as ItotoriDatabase, normalized);
+      await assertConflictEvidenceSubjectReferences(tx as ItotoriDatabase, normalized);
+
       await tx
         .insert(catalogWorks)
         .values({
