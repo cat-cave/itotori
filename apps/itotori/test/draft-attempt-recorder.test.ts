@@ -23,7 +23,7 @@ import {
   fallbackChainFixture,
   recordedProviderFixture,
   successfulAttemptFixture,
-} from "../src/draft/draft-attempt-fixtures.js";
+} from "./draft-attempt-fixtures.js";
 
 const FIXED_ACTOR: AuthorizationActor = { userId: "local-user" };
 

@@ -20,16 +20,16 @@ import type {
   DraftAttemptProviderLedgerContextRef,
   DraftAttemptProviderLedgerPolicyVersions,
 } from "@itotori/db";
-import type { ProviderRunRecord, TokenUsage } from "../providers/types.js";
-import { ZERO_COST } from "../providers/cost.js";
-import { assertReportedTokenUsage } from "../providers/token-accounting.js";
+import type { ProviderRunRecord, TokenUsage } from "../src/providers/types.js";
+import { ZERO_COST } from "../src/providers/cost.js";
+import { assertReportedTokenUsage } from "../src/providers/token-accounting.js";
 import type {
   TranslationInvocationModelMetadata,
   TranslationInvocationResult,
   TranslationModelProfile,
-} from "../agents/translation/shapes.js";
+} from "../src/agents/translation/shapes.js";
 import type { TranslationDraft } from "@itotori/localization-bridge-schema";
-import type { DraftAttemptRecorderArgs } from "./draft-attempt-recorder.js";
+import type { DraftAttemptRecorderArgs } from "../src/draft/draft-attempt-recorder.js";
 
 const FIXTURE_DRAFT_JOB_ATTEMPT_ID = "draft-job-attempt-fixture-01";
 const FIXTURE_PROMPT_HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

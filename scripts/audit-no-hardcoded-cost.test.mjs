@@ -248,10 +248,13 @@ test("enumerated benchmark fixtures skip BOTH the cost-literal and legacy-enum p
 
 test("fires cost-literal patterns inside scanned src/ even for fixture modules", () => {
   // PROJECT LAW: no fabricated cost literal in scanned production source,
-  // even in a "test fixture". draft-attempt-fixtures.ts lives under src/ and
-  // is NO LONGER cost-literal-exempt; a revived invented amount must fire.
+  // even in a "test fixture" that happens to live under src/. There is no
+  // per-tree cost-literal exemption for any src/ module; a revived invented
+  // amount must fire. (The former in-src draft-attempt-fixtures.ts was
+  // relocated under test/, so any future src-tree fixture module is held to
+  // exactly this bar.)
   assert.deepEqual(
-    labels("apps/itotori/src/draft/draft-attempt-fixtures.ts", "    amountMicrosUsd: 12_500,"),
+    labels("apps/itotori/src/draft/some-fixture-module.ts", "    amountMicrosUsd: 12_500,"),
     ["hardcoded non-zero amountMicrosUsd literal"],
   );
 });
