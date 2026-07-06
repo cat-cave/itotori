@@ -1,5 +1,7 @@
 import type {
   BenchmarkReportSummary,
+  CostDrilldownPage,
+  CostDrilldownRow,
   DashboardDecisionReadModel,
   DashboardPendingDecision,
   ProjectCostReport,
@@ -9,6 +11,7 @@ import type {
 import {
   assertDashboardDecisionReadModel,
   assertItotoriApiResponse,
+  assertProjectCostDrilldownResponse,
   assertProjectDashboardStatus,
   assertReviewerQueueDashboardReadModel,
   type ApiProjectsResponse,
@@ -32,6 +35,7 @@ export type DashboardEndpoints = {
   decisions: string;
   reviewerQueue: string;
   cost: string;
+  costDrilldown: string;
   benchmarks: string;
   runtime: string;
 };
@@ -50,6 +54,7 @@ type DashboardReadRouteId =
   | "projects.decisions"
   | "reviewer.queue"
   | "projects.cost"
+  | "projects.costDrilldown"
   | "projects.benchmarks"
   | "runtime.status";
 
@@ -61,6 +66,7 @@ type DashboardReadResponses = {
   "projects.decisions": DashboardDecisionReadModel;
   "reviewer.queue": ReviewerQueueDashboardReadModel;
   "projects.cost": ProjectCostReport;
+  "projects.costDrilldown": CostDrilldownPage;
   "projects.benchmarks": BenchmarkReportsResponse;
   "runtime.status": RuntimeDashboardStatus;
 };
@@ -73,6 +79,7 @@ type DashboardData =
       decisions: DashboardDecisionReadModel;
       reviewerQueue: ReviewerQueueDashboardReadModel;
       cost: ProjectCostReport;
+      costDrilldown: CostDrilldownPage;
       benchmarks: BenchmarkReportSummary[];
       runtime: RuntimeDashboardStatus;
       styleGuide: StyleGuideBuilderContext;
@@ -88,6 +95,7 @@ const defaultDashboardEndpoints: DashboardEndpoints = {
   decisions: "/api/projects/decisions",
   reviewerQueue: "/api/reviewer/queue",
   cost: "/api/projects/cost",
+  costDrilldown: "/api/projects/cost/drilldown",
   benchmarks: "/api/projects/benchmarks",
   runtime: "/api/runtime/v0.2/status",
 };
@@ -118,10 +126,11 @@ export async function fetchDashboardData(
     return { state: "empty", projects: [] };
   }
 
-  const [status, decisions, cost, benchmarksResponse, runtime] = await Promise.all([
+  const [status, decisions, cost, costDrilldown, benchmarksResponse, runtime] = await Promise.all([
     fetchApi("projects.status", endpoints.status),
     fetchApi("projects.decisions", endpoints.decisions),
     fetchApi("projects.cost", endpoints.cost),
+    fetchApi("projects.costDrilldown", endpoints.costDrilldown),
     fetchApi("projects.benchmarks", endpoints.benchmarks),
     fetchApi("runtime.status", endpoints.runtime),
   ]);
@@ -145,10 +154,39 @@ export async function fetchDashboardData(
     decisions,
     reviewerQueue,
     cost,
+    costDrilldown,
     benchmarks: benchmarksResponse.reports,
     runtime,
     styleGuide,
   };
+}
+
+/**
+ * ITOTORI-053 — fetch a single filtered/paginated cost-drilldown page. The
+ * dashboard's initial render consumes the first page via `fetchDashboardData`;
+ * a paging/filtering client re-fetches with `filter` (project/system/time +
+ * limit/offset) to walk the deterministic pages.
+ */
+export async function fetchCostDrilldown(
+  endpoint: string,
+  filter: {
+    projectId?: string;
+    systemId?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<CostDrilldownPage> {
+  let target = endpoint;
+  for (const [key, value] of Object.entries(filter)) {
+    if (value !== undefined) {
+      target = withQueryParam(target, key, String(value));
+    }
+  }
+  const page = await fetchApi("projects.costDrilldown", target);
+  assertProjectCostDrilldownResponse(page);
+  return page;
 }
 
 export async function renderDashboard(
@@ -241,7 +279,7 @@ function renderWorkbench(
   root: HTMLElement,
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
-  const { status, cost, runtime, projects, benchmarks } = data;
+  const { status, cost, costDrilldown, runtime, projects, benchmarks } = data;
   const { decisions, reviewerQueue, styleGuide } = data;
   root.innerHTML = `
     ${dashboardStyles()}
@@ -274,6 +312,7 @@ function renderWorkbench(
         ${navLink("Pending decisions", "pending-decisions")}
         ${navLink("Runtime evidence", "runtime-evidence")}
         ${navLink("Cost target", "cost")}
+        ${navLink("Cost drilldown", "cost-drilldown")}
         ${navLink("Benchmarks", "benchmarks")}
         ${navLink("QA agent metrics", "qa-agent-metrics")}
         ${navLink("Benchmark reports", "benchmark-reports")}
@@ -298,6 +337,7 @@ function renderWorkbench(
         ${renderReviewerQueue(reviewerQueue)}
         ${renderRuntimeEvidence(runtime)}
         ${renderCost(cost)}
+        ${renderCostDrilldown(costDrilldown)}
         ${renderBenchmarks(benchmarks, cost, status)}
         ${renderQaAgentMetrics(benchmarks)}
         ${renderBenchmarkReports(benchmarks)}
@@ -873,6 +913,119 @@ function renderCost(cost: ProjectCostReport): string {
   );
 }
 
+// ITOTORI-053 — the paginated cost drilldown table. It CONSUMES the filtered
+// `/api/projects/cost/drilldown` API (project/system/time filters +
+// deterministic pagination), renders each ledger row's cost as one of three
+// DISTINCT states (billed / zero / unknown — a $0.00 record renders
+// differently from an unrecorded one), and exposes the row's provider adapter
+// metadata via a per-row `<details>` drilldown WITHOUT any raw provider
+// payload (stripped server-side by sanitizeAdapterMetadata).
+function renderCostDrilldown(page: CostDrilldownPage): string {
+  const { pagination, filter } = page;
+  const rows = page.rows.map(renderCostDrilldownRow).join("");
+  const table =
+    page.rows.length === 0
+      ? emptyText("No provider runs matched the drilldown filters.")
+      : `
+      <table>
+        <thead>
+          <tr>
+            <th>Started</th>
+            <th>System</th>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Cost</th>
+            <th>Adapter metadata</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  return panel(
+    "cost-drilldown",
+    "Cost drilldown",
+    `
+      <dl class="metric-list metric-list-compact" aria-label="Cost drilldown filters">
+        <div><dt>Project</dt><dd>${escapeHtml(filter.projectId)}</dd></div>
+        <div><dt>System</dt><dd>${escapeHtml(filter.systemId ?? "all")}</dd></div>
+        <div><dt>From</dt><dd>${escapeHtml(filter.from ?? "any")}</dd></div>
+        <div><dt>To</dt><dd>${escapeHtml(filter.to ?? "any")}</dd></div>
+      </dl>
+      <dl class="metric-list metric-list-compact" aria-label="Cost drilldown pagination">
+        <div><dt>Total</dt><dd>${pagination.total}</dd></div>
+        <div><dt>Page</dt><dd>${pagination.page} / ${Math.max(pagination.pageCount, 1)}</dd></div>
+        <div><dt>Page size</dt><dd>${pagination.limit}</dd></div>
+        <div><dt>Offset</dt><dd>${pagination.offset}</dd></div>
+        <div>
+          <dt>Next offset</dt>
+          <dd>${pagination.nextOffset === null ? "none" : pagination.nextOffset}</dd>
+        </div>
+      </dl>
+      ${table}
+    `,
+  );
+}
+
+function renderCostDrilldownRow(row: CostDrilldownRow): string {
+  return `
+    <tr data-cost-state="${escapeHtml(row.cost.state)}">
+      <td>${escapeHtml(row.startedAt)}</td>
+      <td>${escapeHtml(row.systemId ?? "none")}</td>
+      <td>${escapeHtml(row.taskKind)}</td>
+      <td>${statusBadge(row.status)}</td>
+      <td>${escapeHtml(row.provider.providerFamily)} / ${escapeHtml(row.provider.providerName)}</td>
+      <td>${escapeHtml(row.provider.actualModelId)}</td>
+      <td>${renderCostDrilldownCost(row.cost)}</td>
+      <td>${renderProviderAdapterMetadata(row)}</td>
+    </tr>
+  `;
+}
+
+// ITOTORI-053 — zero vs unknown are rendered as DISTINCT cells: a $0.00 billed
+// record shows an explicit "$0.000000 (zero)" while an unrecorded cost shows
+// "unknown". They are never collapsed to the same display.
+function renderCostDrilldownCost(cost: CostDrilldownRow["cost"]): string {
+  if (cost.state === "unknown") {
+    return `<span class="cost-state cost-state-unknown" data-cost-state="unknown">unknown</span>`;
+  }
+  if (cost.state === "zero") {
+    return `<span class="cost-state cost-state-zero" data-cost-state="zero">$0.000000 (zero)</span>`;
+  }
+  return `<span class="cost-state cost-state-billed" data-cost-state="billed">${formatMicrosUsd(
+    cost.amountMicrosUsd,
+  )}</span>`;
+}
+
+// ITOTORI-053 — per-row provider adapter metadata drilldown. Exposes the
+// (model, provider) identity + the CURATED adapter metadata. The raw provider
+// payload is already stripped at the repository boundary
+// (sanitizeAdapterMetadata), so the JSON rendered here can never contain a raw
+// request/response body.
+function renderProviderAdapterMetadata(row: CostDrilldownRow): string {
+  const provider = row.provider;
+  return `
+    <details class="adapter-metadata-drilldown">
+      <summary>Adapter metadata</summary>
+      <dl class="metric-list metric-list-compact">
+        <div><dt>Provider id</dt><dd>${escapeHtml(provider.providerId)}</dd></div>
+        <div><dt>Endpoint</dt><dd>${escapeHtml(provider.endpointFamily)}</dd></div>
+        <div><dt>Requested model</dt><dd>${escapeHtml(provider.requestedModelId)}</dd></div>
+        <div><dt>Actual model</dt><dd>${escapeHtml(provider.actualModelId)}</dd></div>
+        <div><dt>Upstream</dt><dd>${escapeHtml(provider.upstreamProvider ?? "none")}</dd></div>
+        <div>
+          <dt>Route settings</dt>
+          <dd>${escapeHtml(provider.routeSettingsHash ?? "none")}</dd>
+        </div>
+      </dl>
+      <pre class="adapter-metadata-json">${escapeHtml(
+        JSON.stringify(provider.adapterMetadata, null, 2),
+      )}</pre>
+    </details>
+  `;
+}
+
 // ITOTORI-027 — track the $25 indie-localization target EMPIRICALLY:
 // the spent figure is the real recorded billed cost
 // (ProjectCostReport.billedMicrosUsd, sourced from OpenRouter usage.cost),
@@ -1083,6 +1236,7 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
       decisions: `${origin}/api/projects/decisions`,
       reviewerQueue: `${origin}/api/reviewer/queue`,
       cost: `${origin}/api/projects/cost`,
+      costDrilldown: `${origin}/api/projects/cost/drilldown`,
       benchmarks: `${origin}/api/projects/benchmarks`,
       runtime: `${origin}/api/runtime/v0.2/status`,
     };

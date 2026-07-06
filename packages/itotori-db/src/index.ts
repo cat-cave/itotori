@@ -171,8 +171,20 @@ export type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "./repositories/project-repository.js";
-export { ItotoriModelLedgerRepository } from "./repositories/model-ledger-repository.js";
+export {
+  ItotoriModelLedgerRepository,
+  sanitizeAdapterMetadata,
+  COST_DRILLDOWN_DEFAULT_LIMIT,
+  COST_DRILLDOWN_MAX_LIMIT,
+} from "./repositories/model-ledger-repository.js";
 export type {
+  CostDrilldownAppliedFilter,
+  CostDrilldownFilter,
+  CostDrilldownPage,
+  CostDrilldownPagination,
+  CostDrilldownProviderMetadata,
+  CostDrilldownRow,
+  CostDrilldownRowCost,
   CostKindBreakdown,
   ItotoriModelLedgerRepositoryPort,
   LedgerJsonRecord,

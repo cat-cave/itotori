@@ -10,6 +10,7 @@ import {
   translationMemoryMatchKindValues,
   translationMemoryReuseStatusValues,
   type AuthorizationActor,
+  type CostDrilldownPage,
   type DashboardDecisionReadModel,
   type ItotoriModelLedgerRepositoryPort,
   type ItotoriProjectRecord,
@@ -134,6 +135,7 @@ describe("ItotoriProjectWorkflowService", () => {
         }
         return costReportFixture;
       }),
+      getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
     };
 
     const authorizedService = new ItotoriProjectWorkflowService(
@@ -1142,10 +1144,27 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
   };
 }
 
+function emptyDrilldownPageFixture(): CostDrilldownPage {
+  return {
+    filter: { projectId: "project-test", systemId: null, from: null, to: null },
+    pagination: {
+      total: 0,
+      limit: 20,
+      offset: 0,
+      page: 1,
+      pageCount: 0,
+      hasMore: false,
+      nextOffset: null,
+    },
+    rows: [],
+  };
+}
+
 function ledgerFixture(): ItotoriModelLedgerRepositoryPort {
   return {
     recordProviderRun: vi.fn(async () => costReportFixture.recentRuns[0]!),
     getProjectCostReport: vi.fn(async () => costReportFixture),
+    getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
   };
 }
 
@@ -1186,6 +1205,7 @@ function driftDetectingLedgerFixture(): ItotoriModelLedgerRepositoryPort {
       };
     }),
     getProjectCostReport: vi.fn(async () => costReportFixture),
+    getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
   };
 }
 

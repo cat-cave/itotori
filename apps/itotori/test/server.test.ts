@@ -11,6 +11,7 @@ import {
   benchmarkReportsFixture,
   bridgeFixture,
   costReportFixture,
+  costDrilldownFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   decisionEventFixture,
@@ -24,6 +25,7 @@ const requirePermission = vi.fn<[Permission], Promise<void>>(async () => {});
 const getDashboardStatus = vi.fn(async () => dashboardStatusFixture);
 const getRuntimeStatus = vi.fn(async () => runtimeStatusFixture);
 const getCostReport = vi.fn(async () => costReportFixture);
+const getCostDrilldown = vi.fn(async () => costDrilldownFixture);
 const getBenchmarkReports = vi.fn(async () => benchmarkReportsFixture);
 const getDashboardDecisions = vi.fn(async () => dashboardDecisionsFixture);
 const importBridge = vi.fn(async () => projectFixture);
@@ -406,6 +408,7 @@ async function serviceFactory<T>(
       getRuntimeStatus,
       getDashboardDecisions,
       getCostReport,
+      getCostDrilldown,
       getBenchmarkReports,
       importBridge,
       draftProject: vi.fn(async () => projectFixture),

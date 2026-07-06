@@ -18,6 +18,7 @@ const dashboardEndpoints: DashboardEndpoints = {
   decisions: "http://itotori.test/api/projects/decisions",
   reviewerQueue: "http://itotori.test/api/reviewer/queue",
   cost: "http://itotori.test/api/projects/cost",
+  costDrilldown: "http://itotori.test/api/projects/cost/drilldown",
   benchmarks: "http://itotori.test/api/projects/benchmarks",
   runtime: "http://itotori.test/api/runtime/v0.2/status",
 };
@@ -142,6 +143,33 @@ describe("Itotori dashboard", () => {
     expect(qaMetrics?.textContent).toContain(qaAgent!.qaAgentId);
     expect(qaMetrics?.querySelector(".qa-fp")).not.toBeNull();
     expect(qaMetrics?.querySelector(".qa-fn")).not.toBeNull();
+
+    // ITOTORI-053 — the paginated cost drilldown table renders zero-vs-unknown
+    // as DISTINCT states and exposes the per-row provider adapter metadata
+    // WITHOUT any raw provider payload.
+    const drilldownPanel = root.querySelector('[aria-label="Cost drilldown"]');
+    expect(drilldownPanel).not.toBeNull();
+    // Pagination metadata is surfaced.
+    expect(drilldownPanel?.textContent).toContain("Total");
+    expect(drilldownPanel?.textContent).toContain("Page");
+    // Zero vs unknown render distinctly.
+    const billedCell = drilldownPanel?.querySelector('[data-cost-state="billed"]');
+    const zeroCell = drilldownPanel?.querySelector('td [data-cost-state="zero"]');
+    const unknownCell = drilldownPanel?.querySelector('td [data-cost-state="unknown"]');
+    expect(zeroCell).not.toBeNull();
+    expect(unknownCell).not.toBeNull();
+    expect(billedCell).not.toBeNull();
+    expect(zeroCell?.textContent).toContain("$0.000000 (zero)");
+    expect(unknownCell?.textContent?.trim()).toBe("unknown");
+    expect(zeroCell?.textContent).not.toBe(unknownCell?.textContent);
+    // A per-row adapter-metadata drilldown exists and shows curated metadata…
+    const adapterDrilldown = drilldownPanel?.querySelector(".adapter-metadata-drilldown");
+    expect(adapterDrilldown).not.toBeNull();
+    expect(adapterDrilldown?.textContent).toContain("Adapter metadata");
+    expect(drilldownPanel?.textContent).toContain("providerRouting");
+    // …but no raw provider payload key ever appears.
+    expect(drilldownPanel?.textContent).not.toContain("rawResponse");
+    expect(drilldownPanel?.textContent).not.toContain("leaked body");
   });
 
   it("renders a loading state before API reads settle", async () => {

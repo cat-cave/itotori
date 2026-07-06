@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
   BenchmarkReportSummary,
+  CostDrilldownFilter,
+  CostDrilldownPage,
   DashboardDecisionReadModel,
   ItotoriConformanceRepositoryPort,
   ItotoriModelLedgerRepositoryPort,
@@ -177,6 +179,7 @@ export interface ItotoriProjectWorkflowPort {
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
+  getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
@@ -272,6 +275,18 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     // depth). The HTTP handler additionally redacts for unprivileged
     // callers, but the actor check lives where the data is read.
     return await this.modelLedger.getProjectCostReport(this.actor, projectId);
+  }
+
+  async getCostDrilldown(filter: CostDrilldownFilter = {}): Promise<CostDrilldownPage> {
+    if (!this.modelLedger) {
+      return emptyCostDrilldown(filter);
+    }
+    // gate-project-status-and-cost-reads — thread the workflow actor into the
+    // ledger read so the repository-layer permission gate enforces the
+    // privileged drilldown (provider/adapter metadata + run ledger) even for
+    // this internal caller. The HTTP handler additionally redacts for
+    // unprivileged callers.
+    return await this.modelLedger.getCostLedgerDrilldown(this.actor, filter);
   }
 
   async getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]> {
@@ -1134,6 +1149,35 @@ function emptyCostReport(projectId: string): ProjectCostReport {
     })),
     recentRuns: [],
     translationMemoryReuse: emptyTranslationMemoryReuseCostReport(),
+  };
+}
+
+function emptyCostDrilldown(filter: CostDrilldownFilter): CostDrilldownPage {
+  const limit =
+    filter.limit === undefined || !Number.isInteger(filter.limit) || filter.limit < 1
+      ? 20
+      : Math.min(filter.limit, 100);
+  const offset =
+    filter.offset === undefined || !Number.isInteger(filter.offset) || filter.offset < 0
+      ? 0
+      : filter.offset;
+  return {
+    filter: {
+      projectId: filter.projectId ?? "unknown",
+      systemId: filter.systemId ?? null,
+      from: filter.from ? filter.from.toISOString() : null,
+      to: filter.to ? filter.to.toISOString() : null,
+    },
+    pagination: {
+      total: 0,
+      limit,
+      offset,
+      page: Math.floor(offset / limit) + 1,
+      pageCount: 0,
+      hasMore: false,
+      nextOffset: null,
+    },
+    rows: [],
   };
 }
 

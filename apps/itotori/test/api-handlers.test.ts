@@ -66,6 +66,7 @@ import {
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
   catalogOpportunitiesFixture,
+  costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -101,6 +102,7 @@ type MutatingProjectWorkflowService = Exclude<
   | "getDashboardDecisions"
   | "getRuntimeStatus"
   | "getCostReport"
+  | "getCostDrilldown"
   | "getBenchmarkReports"
 >;
 
@@ -127,6 +129,7 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
   "getDashboardDecisions",
   "getRuntimeStatus",
   "getCostReport",
+  "getCostDrilldown",
   "getBenchmarkReports",
 ]);
 
@@ -398,6 +401,75 @@ describe("Itotori API handlers", () => {
     // Non-sensitive dashboard identity/counts remain visible.
     expect(status.body.projectId).toBe(dashboardStatusFixture.projectId);
     expect(status.body.unitCount).toBe(dashboardStatusFixture.unitCount);
+  });
+
+  it("serves the cost drilldown with parsed project/system/time filters + pagination", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/cost/drilldown",
+        search:
+          "?projectId=project-1&systemId=system-reallive&from=2026-06-17T00:00:00.000Z&to=2026-06-17T23:59:59.000Z&limit=2&offset=0",
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(services.projectWorkflow.getCostDrilldown).toHaveBeenCalledWith({
+      projectId: "project-1",
+      systemId: "system-reallive",
+      from: new Date("2026-06-17T00:00:00.000Z"),
+      to: new Date("2026-06-17T23:59:59.000Z"),
+      limit: 2,
+      offset: 0,
+    });
+    const body = response.body as typeof costDrilldownFixture;
+    // Distinct cost states are carried through the API verbatim.
+    const states = body.rows.map((row) => row.cost.state);
+    expect(states).toEqual(["billed", "zero", "unknown"]);
+    // Provider adapter metadata is exposed, but no raw provider payload key.
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("providerRouting");
+    expect(serialized).not.toContain("rawResponse");
+  });
+
+  it("rejects a malformed cost drilldown filter with a bad request", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost/drilldown", search: "?limit=0" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(services.projectWorkflow.getCostDrilldown).not.toHaveBeenCalled();
+  });
+
+  it("redacts cost drilldown rows without catalog.read but keeps pagination totals", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.catalogRead) {
+        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+      }
+    });
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost/drilldown" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    const body = response.body as typeof costDrilldownFixture;
+    // Privileged row detail (provider/adapter metadata) is stripped…
+    expect(body.rows).toEqual([]);
+    // …but the safe pagination aggregates survive.
+    expect(body.pagination.total).toBe(costDrilldownFixture.pagination.total);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("providerRouting");
+    expect(serialized).not.toContain("provider-run-billed");
   });
 
   it("returns the full runtime evidence report to a caller holding catalog.read", async () => {
@@ -3362,6 +3434,7 @@ function serviceFixture(): ItotoriApiServices {
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
+      getCostDrilldown: vi.fn(async () => costDrilldownFixture),
       getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
       importBridge: vi.fn(async () => projectFixture),
       draftProject: vi.fn(async () => projectFixture),

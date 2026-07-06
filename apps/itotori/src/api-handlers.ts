@@ -28,6 +28,8 @@ import {
   type CatalogConflictReviewStatus,
   type CatalogLanguageStatus,
   type CatalogSource,
+  type CostDrilldownFilter,
+  type CostDrilldownPage,
   type DashboardDecisionReadModel,
   type Permission,
   type ProjectCostReport,
@@ -181,6 +183,7 @@ export type ItotoriReadOnlyApiServices = {
     | "getDashboardDecisions"
     | "getRuntimeStatus"
     | "getCostReport"
+    | "getCostDrilldown"
     | "getBenchmarkReports"
   >;
 };
@@ -203,6 +206,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "getDashboardDecisions"
     | "getRuntimeStatus"
     | "getCostReport"
+    | "getCostDrilldown"
     | "getBenchmarkReports"
     | "importBridge"
     | "draftProject"
@@ -260,6 +264,7 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
         services.projectWorkflow.getDashboardDecisions(projectId),
       getRuntimeStatus: (runtimeRunId) => services.projectWorkflow.getRuntimeStatus(runtimeRunId),
       getCostReport: (projectId) => services.projectWorkflow.getCostReport(projectId),
+      getCostDrilldown: (filter) => services.projectWorkflow.getCostDrilldown(filter),
       getBenchmarkReports: (projectId) => services.projectWorkflow.getBenchmarkReports(projectId),
     },
   };
@@ -514,6 +519,18 @@ async function routeReadOnlyItotoriApiRequest(
     return ok("projects.cost", canRead ? cost : redactProjectCostReport(cost));
   }
 
+  if (request.method === "GET" && request.pathname === "/api/projects/cost/drilldown") {
+    // gate-project-status-and-cost-reads — the drilldown rows carry the run
+    // ledger + provider/adapter metadata, so an unprivileged caller receives a
+    // rows-stripped view (pagination aggregates only), mirroring the cost
+    // report's `recentRuns` redaction.
+    const canRead = await resolveProjectReadPermission(services);
+    const page = await services.projectWorkflow.getCostDrilldown(
+      parseCostDrilldownFilter(request.search),
+    );
+    return ok("projects.costDrilldown", canRead ? page : redactCostDrilldownPage(page));
+  }
+
   if (request.method === "GET" && request.pathname === "/api/projects/benchmarks") {
     return ok("projects.benchmarks", {
       reports: await services.projectWorkflow.getBenchmarkReports(),
@@ -741,6 +758,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
+    request.pathname === "/api/projects/cost/drilldown" ||
     request.pathname === "/api/projects/benchmarks" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
@@ -841,6 +859,20 @@ function redactProjectCostReport(cost: ProjectCostReport): ProjectCostReport {
 }
 
 /**
+ * gate-project-status-and-cost-reads — the redacted PUBLIC cost-drilldown
+ * view. The rows carry the run ledger + provider/adapter metadata (privileged
+ * detail), so they are stripped for unprivileged callers; the filter echo and
+ * pagination aggregates are safe to keep. `hasMore`/`nextOffset` still reflect
+ * the true total so a paging client behaves consistently.
+ */
+function redactCostDrilldownPage(page: CostDrilldownPage): CostDrilldownPage {
+  return {
+    ...page,
+    rows: [],
+  };
+}
+
+/**
  * gate-project-status-and-cost-reads — the redacted PUBLIC dashboard
  * summary. Every top-level field is a safe aggregate (project identity,
  * counts, locale-branch rollups); the only sensitive nested payload is the
@@ -909,6 +941,74 @@ function deniedReviewerDetailApiResponse(
       },
     ],
   };
+}
+
+function parseCostDrilldownFilter(search = ""): CostDrilldownFilter {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["projectId", "systemId", "from", "to", "limit", "offset"],
+    "cost drilldown",
+  );
+  const filter: CostDrilldownFilter = {};
+  const projectId = params.get("projectId");
+  if (projectId !== null) {
+    if (projectId.trim().length === 0) {
+      throw new ApiValidationError("projectId must be non-empty");
+    }
+    filter.projectId = projectId;
+  }
+  const systemId = params.get("systemId");
+  if (systemId !== null) {
+    if (systemId.trim().length === 0) {
+      throw new ApiValidationError("systemId must be non-empty");
+    }
+    filter.systemId = systemId;
+  }
+  const from = parseIsoDateParam(params.get("from"), "from");
+  if (from !== undefined) {
+    filter.from = from;
+  }
+  const to = parseIsoDateParam(params.get("to"), "to");
+  if (to !== undefined) {
+    filter.to = to;
+  }
+  if (filter.from && filter.to && filter.from.getTime() > filter.to.getTime()) {
+    throw new ApiValidationError("from must not be after to");
+  }
+  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
+  if (limit !== undefined) {
+    if (limit < 1) {
+      throw new ApiValidationError("limit must be a positive integer");
+    }
+    filter.limit = limit;
+  }
+  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
+  if (offset !== undefined) {
+    filter.offset = offset;
+  }
+  return filter;
+}
+
+function parseIsoDateParam(raw: string | null, label: string): Date | undefined {
+  if (raw === null) {
+    return undefined;
+  }
+  const millis = Date.parse(raw);
+  if (Number.isNaN(millis)) {
+    throw new ApiValidationError(`${label} must be an ISO-8601 date-time`);
+  }
+  return new Date(millis);
+}
+
+function parseNonNegativeIntParam(raw: string | null, label: string): number | undefined {
+  if (raw === null) {
+    return undefined;
+  }
+  if (!/^\d+$/u.test(raw.trim())) {
+    throw new ApiValidationError(`${label} must be a non-negative integer`);
+  }
+  return Number.parseInt(raw.trim(), 10);
 }
 
 function parseActorUserIdQuery(search = ""): string | undefined {
@@ -1531,6 +1631,7 @@ function ok(
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
+function ok(routeId: "projects.costDrilldown", body: CostDrilldownPage): ApiJsonResponse;
 function ok(routeId: "projects.benchmarks", body: ApiBenchmarkReportsResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;

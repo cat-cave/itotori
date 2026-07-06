@@ -23,6 +23,7 @@ import type {
   CatalogSourceRecordKind,
   BenchmarkQaAgentSummary,
   BenchmarkReportSummary,
+  CostDrilldownPage,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -138,6 +139,7 @@ export type ItotoriApiRouteId =
   | "projects.status"
   | "projects.decisions"
   | "projects.cost"
+  | "projects.costDrilldown"
   | "projects.benchmarks"
   | "runtime.status"
   | "imports.bridge"
@@ -157,6 +159,8 @@ export type ApiProjectsResponse = {
 };
 
 export type ApiProjectCostResponse = ProjectCostReport;
+
+export type ApiProjectCostDrilldownResponse = CostDrilldownPage;
 
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
@@ -289,6 +293,7 @@ export type ItotoriApiResponseBody =
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
   | ApiProjectCostResponse
+  | ApiProjectCostDrilldownResponse
   | ApiBenchmarkReportsResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
@@ -590,6 +595,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.cost":
       assertProjectCostReport(value);
+      return;
+    case "projects.costDrilldown":
+      assertProjectCostDrilldownResponse(value);
       return;
     case "projects.benchmarks":
       assertApiBenchmarkReportsResponse(value);
@@ -3037,6 +3045,122 @@ export function assertProjectCostReport(
   }
 }
 
+export function assertProjectCostDrilldownResponse(
+  value: unknown,
+  label = "ApiProjectCostDrilldownResponse",
+): asserts value is ApiProjectCostDrilldownResponse {
+  const page = asStrictRecord(value, label, ["filter", "pagination", "rows"]);
+
+  const filter = asStrictRecord(page.filter, `${label}.filter`, [
+    "projectId",
+    "systemId",
+    "from",
+    "to",
+  ]);
+  assertString(filter.projectId, `${label}.filter.projectId`);
+  assertNullableString(filter.systemId, `${label}.filter.systemId`);
+  assertNullableString(filter.from, `${label}.filter.from`);
+  assertNullableString(filter.to, `${label}.filter.to`);
+
+  const pagination = asStrictRecord(page.pagination, `${label}.pagination`, [
+    "total",
+    "limit",
+    "offset",
+    "page",
+    "pageCount",
+    "hasMore",
+    "nextOffset",
+  ]);
+  assertNonNegativeInteger(pagination.total, `${label}.pagination.total`);
+  assertPositiveInteger(pagination.limit, `${label}.pagination.limit`);
+  assertNonNegativeInteger(pagination.offset, `${label}.pagination.offset`);
+  assertPositiveInteger(pagination.page, `${label}.pagination.page`);
+  assertNonNegativeInteger(pagination.pageCount, `${label}.pagination.pageCount`);
+  assertBoolean(pagination.hasMore, `${label}.pagination.hasMore`);
+  if (pagination.nextOffset !== null) {
+    assertNonNegativeInteger(pagination.nextOffset, `${label}.pagination.nextOffset`);
+  }
+  // Determinism/consistency invariant: hasMore and nextOffset must agree.
+  if (pagination.hasMore === (pagination.nextOffset === null)) {
+    throw new Error(`${label}.pagination.hasMore must agree with nextOffset`);
+  }
+
+  const rows = asArray(page.rows, `${label}.rows`);
+  if (rows.length > Number(pagination.limit)) {
+    throw new Error(`${label}.rows must not exceed pagination.limit`);
+  }
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
+      "providerRunId",
+      "projectId",
+      "systemId",
+      "taskKind",
+      "status",
+      "startedAt",
+      "cost",
+      "provider",
+    ]);
+    assertString(row.providerRunId, `${label}.rows[${index}].providerRunId`);
+    assertString(row.projectId, `${label}.rows[${index}].projectId`);
+    assertNullableString(row.systemId, `${label}.rows[${index}].systemId`);
+    assertString(row.taskKind, `${label}.rows[${index}].taskKind`);
+    assertString(row.status, `${label}.rows[${index}].status`);
+    assertString(row.startedAt, `${label}.rows[${index}].startedAt`);
+    assertCostDrilldownRowCost(row.cost, `${label}.rows[${index}].cost`);
+    assertCostDrilldownProviderMetadata(row.provider, `${label}.rows[${index}].provider`);
+  }
+}
+
+function assertCostDrilldownRowCost(value: unknown, label: string): void {
+  // ITOTORI-053 — zero and unknown are DISTINCT states, never collapsed. The
+  // `state` discriminator carries the distinction (there is intentionally no
+  // `costKind: "unknown"` — that is the deleted, audit-forbidden ledger enum).
+  const record = asRecord(value, label);
+  assertEnum(record.state, ["billed", "zero", "unknown"] as const, `${label}.state`);
+  if (record.state === "unknown") {
+    // An unrecorded cost carries NO amount fields — it must not masquerade as
+    // a $0.00 billed record.
+    for (const key of Object.keys(record)) {
+      if (key !== "state") {
+        throw new Error(`${label}.${key} is not permitted on an unknown-cost row`);
+      }
+    }
+    return;
+  }
+  asStrictRecord(record, label, ["state", "amountMicrosUsd", "amountUsd"]);
+  assertNonNegativeInteger(record.amountMicrosUsd, `${label}.amountMicrosUsd`);
+  assertString(record.amountUsd, `${label}.amountUsd`);
+  if (record.state === "zero" && (record.amountMicrosUsd !== 0 || record.amountUsd !== "0")) {
+    throw new Error(`${label} zero-cost row must carry amountMicrosUsd 0 and amountUsd "0"`);
+  }
+}
+
+function assertCostDrilldownProviderMetadata(value: unknown, label: string): void {
+  const provider = asStrictRecord(value, label, [
+    "providerId",
+    "providerFamily",
+    "endpointFamily",
+    "providerName",
+    "requestedModelId",
+    "actualModelId",
+    "upstreamProvider",
+    "routeSettingsHash",
+    "adapterMetadata",
+  ]);
+  assertString(provider.providerId, `${label}.providerId`);
+  assertString(provider.providerFamily, `${label}.providerFamily`);
+  assertString(provider.endpointFamily, `${label}.endpointFamily`);
+  assertString(provider.providerName, `${label}.providerName`);
+  assertString(provider.requestedModelId, `${label}.requestedModelId`);
+  assertString(provider.actualModelId, `${label}.actualModelId`);
+  assertNullableString(provider.upstreamProvider, `${label}.upstreamProvider`);
+  assertNullableString(provider.routeSettingsHash, `${label}.routeSettingsHash`);
+  // Curated adapter metadata (jsonb object). Raw provider payloads are
+  // stripped at the repository boundary (sanitizeAdapterMetadata); the API
+  // schema only asserts the surviving value is an object.
+  asRecord(provider.adapterMetadata, `${label}.adapterMetadata`);
+}
+
 export function assertDashboardDecisionReadModel(
   value: unknown,
   label = "DashboardDecisionReadModel",
@@ -3657,6 +3781,12 @@ function assertNullableDateLike(value: unknown, label: string): void {
 function assertNonNegativeInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
+function assertPositiveInteger(value: unknown, label: string): asserts value is number {
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new Error(`${label} must be a positive integer`);
   }
 }
 

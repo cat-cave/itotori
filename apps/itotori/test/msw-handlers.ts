@@ -6,6 +6,7 @@ import {
 } from "../src/api-schema.js";
 import {
   benchmarkReportsFixture,
+  costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -26,6 +27,9 @@ export const itotoriApiMswHandlers = [
   ),
   http.get("http://itotori.test/api/projects/cost", () =>
     apiJson("projects.cost", costReportFixture),
+  ),
+  http.get("http://itotori.test/api/projects/cost/drilldown", () =>
+    apiJson("projects.costDrilldown", costDrilldownFixture),
   ),
   http.get("http://itotori.test/api/projects/benchmarks", () =>
     apiJson("projects.benchmarks", { reports: benchmarkReportsFixture }),

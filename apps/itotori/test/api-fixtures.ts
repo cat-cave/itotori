@@ -5,6 +5,7 @@ import type {
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
   CatalogOpportunityRankingReadModel,
+  CostDrilldownPage,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -163,6 +164,98 @@ export const costReportFixture: ProjectCostReport = {
       },
     ],
   },
+};
+
+// ITOTORI-053 — cost drilldown fixture. Carries all three DISTINCT cost
+// states (billed / zero / unknown) so the dashboard render + API-schema
+// assertion exercise the zero-vs-unknown distinction, and adapter metadata
+// that is CURATED (no raw provider payload — the repository strips those
+// server-side, so a well-formed API response never contains one).
+export const costDrilldownFixture: CostDrilldownPage = {
+  filter: {
+    projectId: "project-1",
+    systemId: null,
+    from: null,
+    to: null,
+  },
+  pagination: {
+    total: 3,
+    limit: 20,
+    offset: 0,
+    page: 1,
+    pageCount: 1,
+    hasMore: false,
+    nextOffset: null,
+  },
+  rows: [
+    {
+      providerRunId: "provider-run-billed",
+      projectId: "project-1",
+      systemId: "system-reallive",
+      taskKind: "draft_translation",
+      status: "succeeded",
+      startedAt: "2026-06-17T00:02:00.000Z",
+      cost: {
+        state: "billed",
+        amountMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+        amountUsd: "0.0012", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+      },
+      provider: {
+        providerId: "provider-abc",
+        providerFamily: "openrouter",
+        endpointFamily: "chat-completions",
+        providerName: "openrouter",
+        requestedModelId: "itotori-fake-draft-v0",
+        actualModelId: "itotori-fake-draft-v0",
+        upstreamProvider: "fixture-upstream",
+        routeSettingsHash:
+          "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        adapterMetadata: {
+          providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+        },
+      },
+    },
+    {
+      providerRunId: "provider-run-zero",
+      projectId: "project-1",
+      systemId: "system-reallive",
+      taskKind: "draft_translation",
+      status: "failed",
+      startedAt: "2026-06-17T00:01:00.000Z",
+      cost: { state: "zero", amountMicrosUsd: 0, amountUsd: "0" },
+      provider: {
+        providerId: "provider-abc",
+        providerFamily: "fake",
+        endpointFamily: "chat-completions",
+        providerName: "itotori-fixture",
+        requestedModelId: "itotori-fake-draft-v0",
+        actualModelId: "itotori-fake-draft-v0",
+        upstreamProvider: null,
+        routeSettingsHash: null,
+        adapterMetadata: {},
+      },
+    },
+    {
+      providerRunId: "provider-run-unknown",
+      projectId: "project-1",
+      systemId: "system-softpal",
+      taskKind: "draft_translation",
+      status: "succeeded",
+      startedAt: "2026-06-17T00:00:00.000Z",
+      cost: { state: "unknown" },
+      provider: {
+        providerId: "provider-def",
+        providerFamily: "fake",
+        endpointFamily: "chat-completions",
+        providerName: "itotori-fixture",
+        requestedModelId: "itotori-fake-draft-v0",
+        actualModelId: "itotori-fake-draft-v0",
+        upstreamProvider: null,
+        routeSettingsHash: null,
+        adapterMetadata: { providerRouting: { order: ["itotori-fixture"] } },
+      },
+    },
+  ],
 };
 
 export const terminologySearchFixture: TerminologySearchReadModel = {

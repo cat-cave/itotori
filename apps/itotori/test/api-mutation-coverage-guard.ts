@@ -36,6 +36,7 @@ export const READ_ONLY_PROJECT_WORKFLOW_METHODS: ReadonlySet<string> = new Set([
   "getDashboardDecisions",
   "getRuntimeStatus",
   "getCostReport",
+  "getCostDrilldown",
   "getBenchmarkReports",
 ]);
 

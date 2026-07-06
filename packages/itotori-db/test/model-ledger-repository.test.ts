@@ -603,6 +603,233 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
+  // ITOTORI-053 — cost drilldown: project/system/time filters, deterministic
+  // pagination, zero-vs-unknown distinction, and adapter-metadata sanitization.
+  async function seedDrilldownRuns(
+    context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  ): Promise<void> {
+    const ledger = new ItotoriModelLedgerRepository(context.db);
+    // Earliest → latest so `started_at desc` orders [a, b, c, d].
+    await ledger.recordProviderRun(
+      localActor,
+      runInput("run-d-unknown", "billed", 300, {
+        systemId: "system-a",
+        startedAt: "2026-06-17T00:00:00.000Z",
+        completedAt: "2026-06-17T00:00:10.000Z",
+      }),
+    );
+    await ledger.recordProviderRun(
+      localActor,
+      runInput("run-c-billed", "billed", 500, {
+        systemId: "system-b",
+        startedAt: "2026-06-17T00:01:00.000Z",
+        completedAt: "2026-06-17T00:01:10.000Z",
+      }),
+    );
+    await ledger.recordProviderRun(
+      localActor,
+      runInput("run-b-zero", "zero", 0, {
+        systemId: "system-a",
+        startedAt: "2026-06-17T00:02:00.000Z",
+        completedAt: "2026-06-17T00:02:10.000Z",
+      }),
+    );
+    await ledger.recordProviderRun(
+      localActor,
+      runInput("run-a-billed", "billed", 1200, {
+        systemId: "system-a",
+        startedAt: "2026-06-17T00:03:00.000Z",
+        completedAt: "2026-06-17T00:03:10.000Z",
+        adapterMetadata: {
+          providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+          // A raw provider payload that MUST be stripped from the drilldown.
+          rawResponse: { choices: [{ message: { content: "leaked body" } }] },
+        },
+      }),
+    );
+    // Turn run-d into an UNRECORDED-cost row by removing its cost ledger entry
+    // (no cost row => unknown; distinct from an explicit zero-billed record).
+    await context.db.execute(
+      sql`delete from ${costLedgerEntries} where provider_run_id = 'run-d-unknown'`,
+    );
+  }
+
+  it("filters the cost drilldown by project with deterministic ordering + pagination metadata", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await seedDrilldownRuns(context);
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, { projectId: "project-test" });
+
+      expect(page.filter).toEqual({
+        projectId: "project-test",
+        systemId: null,
+        from: null,
+        to: null,
+      });
+      expect(page.pagination).toMatchObject({
+        total: 4,
+        limit: 20,
+        offset: 0,
+        page: 1,
+        pageCount: 1,
+        hasMore: false,
+        nextOffset: null,
+      });
+      expect(page.rows.map((row) => row.providerRunId)).toEqual([
+        "run-a-billed",
+        "run-b-zero",
+        "run-c-billed",
+        "run-d-unknown",
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("renders zero-cost and unknown-cost drilldown rows as DISTINCT states", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await seedDrilldownRuns(context);
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, { projectId: "project-test" });
+      const byId = new Map(page.rows.map((row) => [row.providerRunId, row]));
+
+      const billed = byId.get("run-a-billed")!;
+      expect(billed.cost.state).toBe("billed");
+      if (billed.cost.state !== "billed") throw new Error("expected billed");
+      expect(billed.cost.amountMicrosUsd).toBe(1200);
+      // Full-precision decimal re-expression of the ledger-stored micros.
+      expect(billed.cost.amountUsd).toBe("0.0012");
+
+      const zero = byId.get("run-b-zero")!;
+      expect(zero.cost.state).toBe("zero");
+      if (zero.cost.state !== "zero") throw new Error("expected zero");
+      expect(zero.cost.amountMicrosUsd).toBe(0);
+      expect(zero.cost.amountUsd).toBe("0");
+
+      const unknown = byId.get("run-d-unknown")!;
+      // UNRECORDED cost — a distinct state carrying NO amount fields, never
+      // collapsed to a $0.00 billed record.
+      expect(unknown.cost).toEqual({ state: "unknown" });
+      expect(unknown.cost).not.toEqual(zero.cost);
+      expect(Object.prototype.hasOwnProperty.call(unknown.cost, "amountMicrosUsd")).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("exposes provider adapter metadata WITHOUT surfacing raw provider payloads", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await seedDrilldownRuns(context);
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, { projectId: "project-test" });
+      const billed = page.rows.find((row) => row.providerRunId === "run-a-billed")!;
+
+      expect(billed.provider).toMatchObject({
+        providerFamily: "fake",
+        endpointFamily: "chat-completions",
+        providerName: "itotori-fixture",
+        requestedModelId: "itotori-fake-draft-v0",
+        actualModelId: "itotori-fake-draft-v0",
+      });
+      // The curated adapter metadata is exposed…
+      expect(billed.provider.adapterMetadata).toMatchObject({
+        providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+      });
+      // …but the raw provider payload keys are stripped at every depth.
+      const serialized = JSON.stringify(billed.provider.adapterMetadata);
+      expect(billed.provider.adapterMetadata).not.toHaveProperty("rawResponse");
+      expect(serialized).not.toContain("leaked body");
+      expect(serialized).not.toContain("choices");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("filters by system and time and preserves totals + pagination across pages", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await seedDrilldownRuns(context);
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      // System filter: only the three system-a runs (a, b, d).
+      const bySystem = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+      });
+      expect(bySystem.filter.systemId).toBe("system-a");
+      expect(bySystem.pagination.total).toBe(3);
+      expect(bySystem.rows.map((row) => row.providerRunId)).toEqual([
+        "run-a-billed",
+        "run-b-zero",
+        "run-d-unknown",
+      ]);
+
+      // Time filter: window bounding only run-b and run-c.
+      const byTime = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        from: new Date("2026-06-17T00:01:00.000Z"),
+        to: new Date("2026-06-17T00:02:00.000Z"),
+      });
+      expect(byTime.pagination.total).toBe(2);
+      expect(byTime.rows.map((row) => row.providerRunId)).toEqual(["run-b-zero", "run-c-billed"]);
+
+      // Deterministic offset pagination over the system-a set: total is stable
+      // across pages, pages are disjoint, and together they cover the set.
+      const pageSize = 2;
+      const first = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+        limit: pageSize,
+        offset: 0,
+      });
+      const second = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+        limit: pageSize,
+        offset: pageSize,
+      });
+      expect(first.pagination).toMatchObject({
+        total: 3,
+        limit: 2,
+        offset: 0,
+        page: 1,
+        pageCount: 2,
+        hasMore: true,
+        nextOffset: 2,
+      });
+      expect(second.pagination).toMatchObject({
+        total: 3,
+        limit: 2,
+        offset: 2,
+        page: 2,
+        pageCount: 2,
+        hasMore: false,
+        nextOffset: null,
+      });
+      const firstIds = first.rows.map((row) => row.providerRunId);
+      const secondIds = second.rows.map((row) => row.providerRunId);
+      expect(firstIds).toEqual(["run-a-billed", "run-b-zero"]);
+      expect(secondIds).toEqual(["run-d-unknown"]);
+      expect(new Set([...firstIds, ...secondIds]).size).toBe(3);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects prompt preset drift for an existing preset id and version", async () => {
     const context = await isolatedMigratedContext();
     try {

@@ -17,6 +17,7 @@ import {
   ItotoriCatalogFuzzyCandidateGeneratorService,
   feedbackContextStatusValues,
   feedbackTriageLabelValues,
+  type CostDrilldownPage,
   type DashboardDecisionReadModel,
   feedbackTypeValues,
   type ManualFeedbackImportInput,
@@ -883,6 +884,7 @@ function servicesFixture(): ItotoriCliServices {
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
+      getCostDrilldown: vi.fn(async () => costDrilldownFixture),
       getBenchmarkReports: vi.fn(async () => []),
       getRuntimeStatus: vi.fn(async () => ({
         finalStatus: "hello_world_passed",
@@ -1042,6 +1044,20 @@ const costReportFixture: ProjectCostReport = {
     estimatedCostUsdSaved: null,
     recentEvents: [],
   },
+};
+
+const costDrilldownFixture: CostDrilldownPage = {
+  filter: { projectId: "project-1", systemId: null, from: null, to: null },
+  pagination: {
+    total: 0,
+    limit: 20,
+    offset: 0,
+    page: 1,
+    pageCount: 0,
+    hasMore: false,
+    nextOffset: null,
+  },
+  rows: [],
 };
 
 const dashboardStatusFixture: ProjectDashboardStatus = {

@@ -212,6 +212,111 @@ export type ProviderRunCostKindCountWindow = {
   readonly to: Date;
 };
 
+/**
+ * ITOTORI-053 — cost-drilldown query filters. Every axis is optional and
+ * ANDed together. `projectId` defaults to the latest project when omitted
+ * (same posture as the project cost report). `systemId` scopes to a single
+ * engine/system id (`provider_runs.system_id`). `from`/`to` bound the
+ * `started_at` window (inclusive). `limit`/`offset` drive DETERMINISTIC
+ * offset pagination; the row order is a stable `(started_at desc,
+ * provider_run_id desc)` so a given (filter, limit, offset) always returns
+ * the same page.
+ */
+export type CostDrilldownFilter = {
+  projectId?: string;
+  systemId?: string;
+  from?: Date;
+  to?: Date;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * ITOTORI-053 — the DISTINCT cost display states for a drilldown row. This
+ * deliberately does NOT reuse a `costKind` field with an `"unknown"` value:
+ * `"unknown"` is the deleted legacy ledger enum (ITOTORI-225,
+ * audit-no-hardcoded-cost.mjs forbids reviving it). Here `state` is a
+ * SEPARATE display axis:
+ *   - `billed` — a real cost ledger entry tagged `billed`; `amountMicrosUsd`
+ *     is the ledger-stored micros and `amountUsd` its lossless canonical
+ *     decimal re-expression.
+ *   - `zero` — a real cost ledger entry tagged `zero` (an explicit $0.00
+ *     billed record: `amountMicrosUsd === 0`, `amountUsd === "0"`).
+ *   - `unknown` — the provider run has NO recorded cost (no cost ledger
+ *     entry, or an entry whose amount is NULL): the cost is UNRECORDED.
+ *     This is structurally distinct from `zero` and is NEVER collapsed to 0.
+ *
+ * NB the provider-run cost ledger (`itotori_cost_ledger_entries`) persists
+ * integer micros only; the full-precision `ProviderCost.amountUsd` decimal
+ * lives on the recording path. `amountUsd` here is the faithful canonical
+ * re-expression of the ledger-stored micros (never fabricated precision),
+ * consistent with the existing dashboard which renders this ledger via
+ * micros.
+ */
+export type CostDrilldownRowCost =
+  | { state: "billed"; amountMicrosUsd: number; amountUsd: string }
+  | { state: "zero"; amountMicrosUsd: 0; amountUsd: "0" }
+  | { state: "unknown" };
+
+/**
+ * ITOTORI-053 — the provider/adapter identity + adapter metadata exposed for
+ * a drilldown row. This surfaces the (model, provider) pair and the curated
+ * adapter metadata, but the raw adapter metadata is run through
+ * {@link sanitizeAdapterMetadata} first so a raw provider request/response
+ * payload can never leak through the drilldown (privacy).
+ */
+export type CostDrilldownProviderMetadata = {
+  providerId: string;
+  providerFamily: string;
+  endpointFamily: string;
+  providerName: string;
+  requestedModelId: string;
+  actualModelId: string;
+  upstreamProvider: string | null;
+  routeSettingsHash: string | null;
+  adapterMetadata: LedgerJsonRecord;
+};
+
+export type CostDrilldownRow = {
+  providerRunId: string;
+  projectId: string;
+  systemId: string | null;
+  taskKind: string;
+  status: string;
+  startedAt: string;
+  cost: CostDrilldownRowCost;
+  provider: CostDrilldownProviderMetadata;
+};
+
+export type CostDrilldownPagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  /** 1-based page index derived from offset/limit. */
+  page: number;
+  /** total number of pages for `total` at `limit`. */
+  pageCount: number;
+  hasMore: boolean;
+  /** the offset of the next page, or null when there is no next page. */
+  nextOffset: number | null;
+};
+
+export type CostDrilldownAppliedFilter = {
+  projectId: string;
+  systemId: string | null;
+  from: string | null;
+  to: string | null;
+};
+
+export type CostDrilldownPage = {
+  filter: CostDrilldownAppliedFilter;
+  pagination: CostDrilldownPagination;
+  rows: CostDrilldownRow[];
+};
+
+export const COST_DRILLDOWN_DEFAULT_LIMIT = 20;
+export const COST_DRILLDOWN_MAX_LIMIT = 100;
+
 export interface ItotoriModelLedgerRepositoryPort {
   recordProviderRun(
     actor: AuthorizationActor,
@@ -226,6 +331,19 @@ export interface ItotoriModelLedgerRepositoryPort {
    * an unprivileged caller.
    */
   getProjectCostReport(actor: AuthorizationActor, projectId?: string): Promise<ProjectCostReport>;
+  /**
+   * ITOTORI-053 — the paginated cost-drilldown read. Same privilege gate as
+   * {@link getProjectCostReport} (`catalog.read`): the rows expose the run
+   * ledger + provider/adapter metadata. Filters by project, system, and time
+   * with DETERMINISTIC offset pagination (stable ordering + total/page
+   * metadata). Provider-run rows with no recorded cost surface as
+   * `cost.state === "unknown"` (never collapsed to zero), and each row's
+   * adapter metadata is sanitized so no raw provider payload leaks.
+   */
+  getCostLedgerDrilldown(
+    actor: AuthorizationActor,
+    filter?: CostDrilldownFilter,
+  ): Promise<CostDrilldownPage>;
   /**
    * ITOTORI-230 — count provider runs per (modelId, providerId) over
    * the window, split by whether the captured routing posture has
@@ -385,6 +503,92 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
       ),
       recentRuns,
       translationMemoryReuse,
+    };
+  }
+
+  async getCostLedgerDrilldown(
+    actor: AuthorizationActor,
+    filter: CostDrilldownFilter = {},
+  ): Promise<CostDrilldownPage> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    if (filter.from && filter.to && filter.from.getTime() > filter.to.getTime()) {
+      throw new Error("getCostLedgerDrilldown filter.from must not be after filter.to");
+    }
+    const limit = clampDrilldownLimit(filter.limit);
+    const offset = clampDrilldownOffset(filter.offset);
+    const targetProjectId = filter.projectId ?? (await this.latestProjectId());
+    const systemId = filter.systemId ?? null;
+    const from = filter.from ?? null;
+    const to = filter.to ?? null;
+
+    const conditions = [sql`pr.project_id = ${targetProjectId}`];
+    if (systemId !== null) {
+      conditions.push(sql`pr.system_id = ${systemId}`);
+    }
+    if (from !== null) {
+      conditions.push(sql`pr.started_at >= ${from}`);
+    }
+    if (to !== null) {
+      conditions.push(sql`pr.started_at <= ${to}`);
+    }
+    const whereClause = sql.join(conditions, sql` and `);
+
+    const totalResult = await this.db.execute(sql`
+      select count(*)::int as total
+      from ${providerRuns} pr
+      where ${whereClause}
+    `);
+    const total = Number((totalResult.rows[0] as Record<string, unknown> | undefined)?.total ?? 0);
+
+    const rowsResult = await this.db.execute(sql`
+      select
+        pr.provider_run_id,
+        pr.project_id,
+        pr.system_id,
+        pr.task_kind,
+        pr.status,
+        pr.started_at,
+        pr.provider_id,
+        pr.requested_model_id,
+        pr.actual_model_id,
+        pr.upstream_provider,
+        pr.route_settings_hash,
+        pr.adapter_metadata,
+        mp.provider_family,
+        mp.endpoint_family,
+        mp.provider_name,
+        cle.cost_ledger_entry_id,
+        cle.cost_kind,
+        cle.amount_micros_usd::text as amount_micros_usd
+      from ${providerRuns} pr
+      join ${modelProviders} mp on mp.provider_id = pr.provider_id
+      left join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
+      where ${whereClause}
+      order by pr.started_at desc, pr.provider_run_id desc
+      limit ${limit}
+      offset ${offset}
+    `);
+
+    const rows = (rowsResult.rows as Array<Record<string, unknown>>).map(drilldownRowFromRow);
+    const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+    const hasMore = offset + rows.length < total;
+    return {
+      filter: {
+        projectId: targetProjectId,
+        systemId,
+        from: from === null ? null : from.toISOString(),
+        to: to === null ? null : to.toISOString(),
+      },
+      pagination: {
+        total,
+        limit,
+        offset,
+        page: Math.floor(offset / limit) + 1,
+        pageCount,
+        hasMore,
+        nextOffset: hasMore ? offset + limit : null,
+      },
+      rows,
     };
   }
 
@@ -918,6 +1122,145 @@ function assertEnumValue<T extends string>(
   if (typeof value !== "string" || !allowed.includes(value as T)) {
     throw new Error(`${label} must be one of ${allowed.join(", ")}`);
   }
+}
+
+function clampDrilldownLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return COST_DRILLDOWN_DEFAULT_LIMIT;
+  }
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error("getCostLedgerDrilldown limit must be a positive integer");
+  }
+  return Math.min(limit, COST_DRILLDOWN_MAX_LIMIT);
+}
+
+function clampDrilldownOffset(offset: number | undefined): number {
+  if (offset === undefined) {
+    return 0;
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error("getCostLedgerDrilldown offset must be a non-negative integer");
+  }
+  return offset;
+}
+
+/**
+ * ITOTORI-053 — losslessly re-express integer micros-USD as a canonical
+ * decimal-USD string (trailing-zero-trimmed): `2180 -> "0.00218"`,
+ * `1500000 -> "1.5"`, `0 -> "0"`. This is the FAITHFUL decimal form of the
+ * value the cost ledger actually stores (integer micros); it never adds
+ * precision beyond the stored micros. Not a hardcoded literal — it is
+ * computed from the ledger row.
+ */
+function microsToDecimalUsd(micros: number): string {
+  const whole = Math.trunc(micros / 1_000_000);
+  const fractional = String(Math.abs(micros % 1_000_000))
+    .padStart(6, "0")
+    .replace(/0+$/u, "");
+  return fractional.length > 0 ? `${whole}.${fractional}` : `${whole}`;
+}
+
+/**
+ * ITOTORI-053 — the (case-insensitive) adapter-metadata keys that would carry
+ * a RAW provider request/response payload. The drilldown exposes the curated
+ * adapter/(model,provider) metadata but must never surface a raw payload
+ * (privacy), so any key matching this denylist is stripped recursively from
+ * the persisted `adapter_metadata` jsonb before it leaves the repository.
+ */
+const RAW_PROVIDER_PAYLOAD_KEYS = new Set(
+  [
+    "rawResponse",
+    "rawRequest",
+    "responseBody",
+    "requestBody",
+    "responseJson",
+    "requestJson",
+    "usageResponseJson",
+    "httpResponse",
+    "httpRequest",
+    "raw",
+    "payload",
+    "body",
+    "response",
+    "request",
+    "choices",
+    "messages",
+    "message",
+    "completion",
+    "prompt",
+    "content",
+  ].map((key) => key.toLowerCase()),
+);
+
+/**
+ * ITOTORI-053 — recursively strip any raw-provider-payload-shaped key from an
+ * adapter-metadata value so the drilldown exposes only curated adapter
+ * metadata, never a raw provider payload. Non-object values pass through; the
+ * denylist is matched case-insensitively at every nesting depth.
+ */
+export function sanitizeAdapterMetadata(value: unknown): LedgerJsonRecord {
+  return sanitizeAdapterMetadataValue(recordOrEmpty(value)) as LedgerJsonRecord;
+}
+
+function sanitizeAdapterMetadataValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeAdapterMetadataValue);
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (RAW_PROVIDER_PAYLOAD_KEYS.has(key.toLowerCase())) {
+        continue;
+      }
+      out[key] = sanitizeAdapterMetadataValue(entry);
+    }
+    return out;
+  }
+  return value;
+}
+
+function drilldownCostFromRow(row: Record<string, unknown>): CostDrilldownRowCost {
+  const hasEntry = row.cost_ledger_entry_id !== null && row.cost_ledger_entry_id !== undefined;
+  const amountRaw = row.amount_micros_usd;
+  if (!hasEntry || amountRaw === null || amountRaw === undefined) {
+    // No cost ledger entry / NULL amount — the cost is UNRECORDED. NEVER
+    // collapse this to zero: it is a distinct display state.
+    return { state: "unknown" };
+  }
+  const costKind = asCostKind(row.cost_kind);
+  if (costKind === providerCostKindValues.zero) {
+    return { state: "zero", amountMicrosUsd: 0, amountUsd: "0" };
+  }
+  const amountMicrosUsd = Number(amountRaw);
+  return {
+    state: "billed",
+    amountMicrosUsd,
+    amountUsd: microsToDecimalUsd(amountMicrosUsd),
+  };
+}
+
+function drilldownRowFromRow(row: Record<string, unknown>): CostDrilldownRow {
+  return {
+    providerRunId: String(row.provider_run_id),
+    projectId: String(row.project_id),
+    systemId: nullableString(row.system_id),
+    taskKind: String(row.task_kind),
+    status: String(row.status),
+    startedAt:
+      row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+    cost: drilldownCostFromRow(row),
+    provider: {
+      providerId: String(row.provider_id),
+      providerFamily: String(row.provider_family),
+      endpointFamily: String(row.endpoint_family),
+      providerName: String(row.provider_name),
+      requestedModelId: String(row.requested_model_id),
+      actualModelId: String(row.actual_model_id),
+      upstreamProvider: nullableString(row.upstream_provider),
+      routeSettingsHash: nullableString(row.route_settings_hash),
+      adapterMetadata: sanitizeAdapterMetadata(row.adapter_metadata),
+    },
+  };
 }
 
 function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
