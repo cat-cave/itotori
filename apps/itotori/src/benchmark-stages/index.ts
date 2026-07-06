@@ -188,6 +188,18 @@ export {
 } from "./blind-judge-fixture.js";
 
 export {
+  BenchmarkFacilityError,
+  aggregateScoring,
+  reconstructMetaValidityScenario,
+  runBenchmarkFacility,
+  type AggregatedScoring,
+  type BenchmarkFacilityInput,
+  type BenchmarkFacilityMetaValidity,
+  type BenchmarkFacilityResult,
+  type ScoringAggregationInput,
+} from "./benchmark-facility.js";
+
+export {
   ZdrJudgeError,
   ZdrModelJudge,
   parseJudgeScoringJson,
