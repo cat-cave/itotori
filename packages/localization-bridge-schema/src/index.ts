@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import { assertFormatVersion, BRIDGE_FORMAT_STABILITY } from "./format-stability.js";
 
 export * from "./product-version.js";
+export * from "./format-stability.js";
 export * from "./style-guide-conversation.js";
 export * from "./conformance.js";
 export * from "./qa-finding.js";
@@ -2681,7 +2683,16 @@ function assertProtectedSpan(
 
 export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBundleV02 {
   const bundle = asRecord(value, "BridgeBundleV02");
-  assertEqual(bundle.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "BridgeBundleV02.schemaVersion");
+  // Version-negotiation on load (beta-schema-stability-policy): a version
+  // mismatch is a typed FormatVersionMismatchError carrying a migration path,
+  // raised before any structural work. Replaces the bare assertEqual while
+  // preserving the `schemaVersion must be 0.2.0` substring existing regex
+  // tests pin. See docs/format-stability-and-compatibility-policy.md.
+  assertFormatVersion(
+    BRIDGE_FORMAT_STABILITY,
+    bundle.schemaVersion,
+    "BridgeBundleV02.schemaVersion",
+  );
   assertUuid7(bundle.bridgeId, "BridgeBundleV02.bridgeId");
   assertSourceGameRevisionV02(bundle.sourceGame, "BridgeBundleV02.sourceGame");
   assertHashStringV02(bundle.sourceBundleHash, "BridgeBundleV02.sourceBundleHash");
@@ -3498,9 +3509,12 @@ export function assertDeltaPackageMetadataV02(
   value: unknown,
 ): asserts value is DeltaPackageMetadataV02 {
   const metadata = asRecord(value, "DeltaPackageMetadataV02");
-  assertEqual(
+  // Version-negotiation on load (beta-schema-stability-policy): see the note
+  // in assertBridgeBundleV02 above. The delta-metadata record rides the same
+  // bridge v0.2 schemaVersion axis.
+  assertFormatVersion(
+    BRIDGE_FORMAT_STABILITY,
     metadata.schemaVersion,
-    BRIDGE_SCHEMA_VERSION_V02,
     "DeltaPackageMetadataV02.schemaVersion",
   );
   assertUuid7(metadata.deltaPackageId, "DeltaPackageMetadataV02.deltaPackageId");
