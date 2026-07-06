@@ -238,32 +238,39 @@ export type CostDrilldownFilter = {
  * audit-no-hardcoded-cost.mjs forbids reviving it). Here `state` is a
  * SEPARATE display axis:
  *   - `billed` — a real cost ledger entry tagged `billed`; `amountMicrosUsd`
- *     is the ledger-stored micros and `amountUsd` its lossless canonical
- *     decimal re-expression.
+ *     is the ledger-stored micros (the SOURCE OF TRUTH for this row) and
+ *     `displayAmountUsd` a micros-DERIVED decimal display string.
  *   - `zero` — a real cost ledger entry tagged `zero` (an explicit $0.00
- *     billed record: `amountMicrosUsd === 0`, `amountUsd === "0"`).
+ *     billed record: `amountMicrosUsd === 0`, `displayAmountUsd === "0"`).
  *   - `unknown` — the provider run has NO recorded cost (no cost ledger
  *     entry, or an entry whose amount is NULL): the cost is UNRECORDED.
  *     This is structurally distinct from `zero` and is NEVER collapsed to 0.
  *
- * NB the provider-run cost ledger (`itotori_cost_ledger_entries`) persists
- * integer micros only; the full-precision `ProviderCost.amountUsd` decimal
- * lives on the recording path. `amountUsd` here is the faithful canonical
- * re-expression of the ledger-stored micros (never fabricated precision),
- * consistent with the existing dashboard which renders this ledger via
- * micros.
+ * COST-FIDELITY NOTE (codex-audit-fix): the provider-run cost ledger
+ * (`itotori_cost_ledger_entries`) persists INTEGER MICROS ONLY; the
+ * full-precision `ProviderCost.amountUsd` decimal lives on the recording
+ * path (`itotori_draft_attempt_provider_ledger.cost_amount`), NOT on the
+ * rows this drilldown reads. `displayAmountUsd` here is therefore NOT the
+ * canonical `amountUsd` — it is a LOSSY micros-derived display field
+ * (`microsToDecimalUsd(amountMicrosUsd)`). It MUST NOT be named `amountUsd`
+ * (which the rest of the codebase reserves for the authoritative
+ * full-precision decimal): presenting a micros-rounded value under the
+ * canonical name would imply a fidelity the ledger does not have (e.g. a
+ * true `0.00000602` cost shows `0.000006` here — micros-rounded). The
+ * integer `amountMicrosUsd` is the honest source of truth for this row.
  */
 export type CostDrilldownRowCost =
-  | { state: "billed"; amountMicrosUsd: number; amountUsd: string }
-  | { state: "zero"; amountMicrosUsd: 0; amountUsd: "0" }
+  | { state: "billed"; amountMicrosUsd: number; displayAmountUsd: string }
+  | { state: "zero"; amountMicrosUsd: 0; displayAmountUsd: "0" }
   | { state: "unknown" };
 
 /**
  * ITOTORI-053 — the provider/adapter identity + adapter metadata exposed for
  * a drilldown row. This surfaces the (model, provider) pair and the curated
  * adapter metadata, but the raw adapter metadata is run through
- * {@link sanitizeAdapterMetadata} first so a raw provider request/response
- * payload can never leak through the drilldown (privacy).
+ * {@link sanitizeAdapterMetadata} first (an ALLOWLIST, not a denylist) so only
+ * known-safe adapter fields surface — a raw provider request/response payload
+ * or any unknown key can never leak through the drilldown (privacy).
  */
 export type CostDrilldownProviderMetadata = {
   providerId: string;
@@ -1150,7 +1157,9 @@ function clampDrilldownOffset(offset: number | undefined): number {
  * `1500000 -> "1.5"`, `0 -> "0"`. This is the FAITHFUL decimal form of the
  * value the cost ledger actually stores (integer micros); it never adds
  * precision beyond the stored micros. Not a hardcoded literal — it is
- * computed from the ledger row.
+ * computed from the ledger row. Surfaced as `displayAmountUsd` (NOT
+ * `amountUsd`) on the drilldown row so it does not masquerade as the
+ * authoritative full-precision `ProviderCost.amountUsd`.
  */
 function microsToDecimalUsd(micros: number): string {
   const whole = Math.trunc(micros / 1_000_000);
@@ -1161,42 +1170,55 @@ function microsToDecimalUsd(micros: number): string {
 }
 
 /**
- * ITOTORI-053 — the (case-insensitive) adapter-metadata keys that would carry
- * a RAW provider request/response payload. The drilldown exposes the curated
- * adapter/(model,provider) metadata but must never surface a raw payload
- * (privacy), so any key matching this denylist is stripped recursively from
- * the persisted `adapter_metadata` jsonb before it leaves the repository.
+ * ITOTORI-053 (codex-audit-fix) — the ALLOWLIST of adapter-metadata keys that
+ * may surface in the cost drilldown. Arbitrary adapter metadata is stored
+ * (project-workflow.ts persists whatever the provider adapter captures), so a
+ * DENYLIST of raw-payload keys is the wrong default for a privacy boundary:
+ * any raw-payload key NOT in the denylist (`raw_response`, `responseText`,
+ * `providerOutput`, `output`, `result`, future wrappers) would leak through.
+ * The correct default is an ALLOWLIST: only known-safe adapter/(model,provider)
+ * metadata fields surface; everything else is dropped. The allowlist is matched
+ * case-insensitively at every nesting depth so a raw body nested inside an
+ * otherwise-safe wrapper is still excluded.
+ *
+ * Curated safe set (populated by the OR adapter + benchmark ingest):
+ *   - Top-level adapter metadata: `providerRouting`, `generationId`,
+ *     `openrouterMetadata`, `openrouterRouting`, `source`, `routeSettingsHash`.
+ *   - Known-safe nested routing keys (providerRouting / openrouterRouting /
+ *     routing posture): `order`, `allowFallbacks`, `allow_fallbacks`, `only`,
+ *     `data_collection`, `zdr`, `require_parameters`.
+ *   - Known-safe openrouterRouting keys: `summary`, `attempt`, `attempts`,
+ *     `strategy`.
  */
-const RAW_PROVIDER_PAYLOAD_KEYS = new Set(
+const ALLOWED_ADAPTER_METADATA_KEYS = new Set(
   [
-    "rawResponse",
-    "rawRequest",
-    "responseBody",
-    "requestBody",
-    "responseJson",
-    "requestJson",
-    "usageResponseJson",
-    "httpResponse",
-    "httpRequest",
-    "raw",
-    "payload",
-    "body",
-    "response",
-    "request",
-    "choices",
-    "messages",
-    "message",
-    "completion",
-    "prompt",
-    "content",
+    "providerRouting",
+    "generationId",
+    "openrouterMetadata",
+    "openrouterRouting",
+    "source",
+    "routeSettingsHash",
+    "order",
+    "allowFallbacks",
+    "allow_fallbacks",
+    "only",
+    "data_collection",
+    "zdr",
+    "require_parameters",
+    "summary",
+    "attempt",
+    "attempts",
+    "strategy",
   ].map((key) => key.toLowerCase()),
 );
 
 /**
- * ITOTORI-053 — recursively strip any raw-provider-payload-shaped key from an
- * adapter-metadata value so the drilldown exposes only curated adapter
- * metadata, never a raw provider payload. Non-object values pass through; the
- * denylist is matched case-insensitively at every nesting depth.
+ * ITOTORI-053 (codex-audit-fix) — recursively KEEP only allowlisted
+ * adapter-metadata keys so the drilldown exposes ONLY the curated safe set,
+ * never an arbitrary or raw-provider-payload field. Non-object values pass
+ * through; the allowlist is matched case-insensitively at every nesting
+ * depth. This is an ALLOWLIST (default-deny), NOT a denylist: a new or
+ * unknown key is dropped unless explicitly listed above.
  */
 export function sanitizeAdapterMetadata(value: unknown): LedgerJsonRecord {
   return sanitizeAdapterMetadataValue(recordOrEmpty(value)) as LedgerJsonRecord;
@@ -1209,7 +1231,7 @@ function sanitizeAdapterMetadataValue(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (RAW_PROVIDER_PAYLOAD_KEYS.has(key.toLowerCase())) {
+      if (!ALLOWED_ADAPTER_METADATA_KEYS.has(key.toLowerCase())) {
         continue;
       }
       out[key] = sanitizeAdapterMetadataValue(entry);
@@ -1229,13 +1251,15 @@ function drilldownCostFromRow(row: Record<string, unknown>): CostDrilldownRowCos
   }
   const costKind = asCostKind(row.cost_kind);
   if (costKind === providerCostKindValues.zero) {
-    return { state: "zero", amountMicrosUsd: 0, amountUsd: "0" };
+    return { state: "zero", amountMicrosUsd: 0, displayAmountUsd: "0" };
   }
   const amountMicrosUsd = Number(amountRaw);
   return {
     state: "billed",
     amountMicrosUsd,
-    amountUsd: microsToDecimalUsd(amountMicrosUsd),
+    // codex-audit-fix: micros-DERIVED display string, NOT the canonical
+    // `ProviderCost.amountUsd` (the ledger row stores integer micros only).
+    displayAmountUsd: microsToDecimalUsd(amountMicrosUsd),
   };
 }
 

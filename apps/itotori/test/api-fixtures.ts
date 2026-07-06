@@ -198,7 +198,7 @@ export const costDrilldownFixture: CostDrilldownPage = {
       cost: {
         state: "billed",
         amountMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
-        amountUsd: "0.0012", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+        displayAmountUsd: "0.0012", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       },
       provider: {
         providerId: "provider-abc",
@@ -222,7 +222,7 @@ export const costDrilldownFixture: CostDrilldownPage = {
       taskKind: "draft_translation",
       status: "failed",
       startedAt: "2026-06-17T00:01:00.000Z",
-      cost: { state: "zero", amountMicrosUsd: 0, amountUsd: "0" },
+      cost: { state: "zero", amountMicrosUsd: 0, displayAmountUsd: "0" },
       provider: {
         providerId: "provider-abc",
         providerFamily: "fake",

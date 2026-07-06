@@ -3127,11 +3127,14 @@ function assertCostDrilldownRowCost(value: unknown, label: string): void {
     }
     return;
   }
-  asStrictRecord(record, label, ["state", "amountMicrosUsd", "amountUsd"]);
+  asStrictRecord(record, label, ["state", "amountMicrosUsd", "displayAmountUsd"]);
   assertNonNegativeInteger(record.amountMicrosUsd, `${label}.amountMicrosUsd`);
-  assertString(record.amountUsd, `${label}.amountUsd`);
-  if (record.state === "zero" && (record.amountMicrosUsd !== 0 || record.amountUsd !== "0")) {
-    throw new Error(`${label} zero-cost row must carry amountMicrosUsd 0 and amountUsd "0"`);
+  assertString(record.displayAmountUsd, `${label}.displayAmountUsd`);
+  if (
+    record.state === "zero" &&
+    (record.amountMicrosUsd !== 0 || record.displayAmountUsd !== "0")
+  ) {
+    throw new Error(`${label} zero-cost row must carry amountMicrosUsd 0 and displayAmountUsd "0"`);
   }
 }
 
@@ -3155,9 +3158,9 @@ function assertCostDrilldownProviderMetadata(value: unknown, label: string): voi
   assertString(provider.actualModelId, `${label}.actualModelId`);
   assertNullableString(provider.upstreamProvider, `${label}.upstreamProvider`);
   assertNullableString(provider.routeSettingsHash, `${label}.routeSettingsHash`);
-  // Curated adapter metadata (jsonb object). Raw provider payloads are
-  // stripped at the repository boundary (sanitizeAdapterMetadata); the API
-  // schema only asserts the surviving value is an object.
+  // Curated adapter metadata (jsonb object). Only allowlisted keys surface
+  // (sanitizeAdapterMetadata is default-deny); the API schema only asserts
+  // the surviving value is an object.
   asRecord(provider.adapterMetadata, `${label}.adapterMetadata`);
 }
 

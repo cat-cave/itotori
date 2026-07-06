@@ -705,14 +705,16 @@ describe("ItotoriModelLedgerRepository", () => {
       expect(billed.cost.state).toBe("billed");
       if (billed.cost.state !== "billed") throw new Error("expected billed");
       expect(billed.cost.amountMicrosUsd).toBe(1200);
-      // Full-precision decimal re-expression of the ledger-stored micros.
-      expect(billed.cost.amountUsd).toBe("0.0012");
+      // codex-audit-fix: displayAmountUsd is the micros-DERIVED display
+      // string (NOT the canonical ProviderCost.amountUsd — the ledger row
+      // stores integer micros only).
+      expect(billed.cost.displayAmountUsd).toBe("0.0012");
 
       const zero = byId.get("run-b-zero")!;
       expect(zero.cost.state).toBe("zero");
       if (zero.cost.state !== "zero") throw new Error("expected zero");
       expect(zero.cost.amountMicrosUsd).toBe(0);
-      expect(zero.cost.amountUsd).toBe("0");
+      expect(zero.cost.displayAmountUsd).toBe("0");
 
       const unknown = byId.get("run-d-unknown")!;
       // UNRECORDED cost — a distinct state carrying NO amount fields, never
@@ -752,6 +754,230 @@ describe("ItotoriModelLedgerRepository", () => {
       expect(billed.provider.adapterMetadata).not.toHaveProperty("rawResponse");
       expect(serialized).not.toContain("leaked body");
       expect(serialized).not.toContain("choices");
+    } finally {
+      await context.close();
+    }
+  });
+
+  // codex-audit-fix FIX 1 (P1) — the drilldown reads rows whose cost ledger
+  // stores INTEGER MICROS only (no full-precision decimal column). A row whose
+  // true upstream cost was sub-micro (e.g. 0.00000602) is rounded to micros
+  // (6 → 0.000006) at storage time. The drilldown MUST present that
+  // micros-derived value under an HONEST name (displayAmountUsd), NOT under
+  // the canonical `amountUsd` name (which the rest of the codebase reserves
+  // for the authoritative full-precision decimal). This test proves the
+  // drilldown does not fabricate canonical fidelity it does not have.
+  it("does not fabricate canonical cost fidelity: displayAmountUsd is micros-derived, NOT amountUsd", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      // A sub-micro cost: the true upstream decimal was 0.00000602, but the
+      // ledger can only store integer micros (6). The drilldown reads 6 micros
+      // and derives displayAmountUsd "0.000006" — NOT "0.00000602".
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-sub-micro", "billed", 6, {
+          systemId: "system-a",
+          startedAt: "2026-06-17T00:04:00.000Z",
+          completedAt: "2026-06-17T00:04:10.000Z",
+        }),
+      );
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+      });
+      const row = page.rows.find((r) => r.providerRunId === "run-sub-micro")!;
+      expect(row).toBeDefined();
+      expect(row.cost.state).toBe("billed");
+      if (row.cost.state !== "billed") throw new Error("expected billed");
+
+      // The integer micros are the SOURCE OF TRUTH for this row.
+      expect(row.cost.amountMicrosUsd).toBe(6);
+      // displayAmountUsd is the micros-DERIVED decimal (6 micros → 0.000006),
+      // NOT the true upstream 0.00000602. This is honest about its precision.
+      expect(row.cost.displayAmountUsd).toBe("0.000006");
+      expect(row.cost.displayAmountUsd).not.toBe("0.00000602");
+
+      // The canonical `amountUsd` field MUST NOT exist on the drilldown row:
+      // presenting a micros-rounded value under the canonical name would
+      // imply a fidelity the ledger row does not have.
+      expect(Object.prototype.hasOwnProperty.call(row.cost, "amountUsd")).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+
+  // codex-audit-fix FIX 2 (P1, privacy) — sanitizeAdapterMetadata is now an
+  // ALLOWLIST (default-deny), not a denylist. Arbitrary adapter metadata is
+  // stored, so raw-payload keys NOT in the old denylist (`raw_response`,
+  // `responseText`, `providerOutput`, `output`, `result`, future wrappers)
+  // would have leaked through. These negative tests prove the allowlist
+  // excludes ALL of those — and that a raw body nested inside an array or a
+  // non-allowlisted wrapper object is also excluded at every depth.
+  it("sanitizeAdapterMetadata allowlist excludes raw-payload synonyms AND nested raw bodies (default-deny)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      // Adapter metadata carrying a CURATED safe field PLUS every raw-payload
+      // synonym the old denylist missed, AND a nested raw body inside an
+      // array and a non-allowlisted wrapper.
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-allowlist", "billed", 1200, {
+          systemId: "system-a",
+          startedAt: "2026-06-17T00:05:00.000Z",
+          completedAt: "2026-06-17T00:05:10.000Z",
+          adapterMetadata: {
+            // The ONLY key that should survive (plus its nested allowlisted
+            // routing keys).
+            providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+            generationId: "gen-test-allowlist",
+            // snake_case / raw synonyms the old denylist did NOT cover — all
+            // must be dropped by the allowlist.
+            raw_response: { choices: [{ message: { content: "leaked snake" } }] },
+            responseText: "leaked responseText body",
+            providerOutput: { leaked: "providerOutput body" },
+            output: { leaked: "output body" },
+            result: { leaked: "result body" },
+            // A future-unknown wrapper key (not in any list) — dropped.
+            futureWrapper: { secret: "leaked future wrapper" },
+            // A nested array containing a raw body — the array element's
+            // non-allowlisted keys must be dropped at depth.
+            nestedArray: [{ order: ["safe-inside-array"], rawResponse: "leaked array body" }],
+            // A non-allowlisted wrapper carrying a safe-nested key — the
+            // wrapper is dropped, so its child is gone too (default-deny at
+            // every depth).
+            unknownWrapper: { providerRouting: { order: ["hidden-inside"] } },
+          },
+        }),
+      );
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+      });
+      const row = page.rows.find((r) => r.providerRunId === "run-allowlist")!;
+      const meta = row.provider.adapterMetadata;
+      const serialized = JSON.stringify(meta);
+
+      // The curated safe fields survive.
+      expect(meta).toMatchObject({
+        providerRouting: { order: ["fixture-upstream"], allowFallbacks: false },
+        generationId: "gen-test-allowlist",
+      });
+
+      // Every raw-payload synonym the old denylist missed is excluded.
+      expect(meta).not.toHaveProperty("raw_response");
+      expect(meta).not.toHaveProperty("responseText");
+      expect(meta).not.toHaveProperty("providerOutput");
+      expect(meta).not.toHaveProperty("output");
+      expect(meta).not.toHaveProperty("result");
+      expect(serialized).not.toContain("leaked snake");
+      expect(serialized).not.toContain("leaked responseText body");
+      expect(serialized).not.toContain("leaked providerOutput body");
+      expect(serialized).not.toContain("leaked output body");
+      expect(serialized).not.toContain("leaked result body");
+
+      // The future-unknown wrapper is excluded (default-deny).
+      expect(meta).not.toHaveProperty("futureWrapper");
+      expect(serialized).not.toContain("leaked future wrapper");
+
+      // The nested array's non-allowlisted keys are excluded at depth; the
+      // array itself is dropped (nestedArray is not allowlisted), so neither
+      // its safe nor its raw contents surface.
+      expect(meta).not.toHaveProperty("nestedArray");
+      expect(serialized).not.toContain("leaked array body");
+
+      // The non-allowlisted wrapper is dropped wholesale; its child does not
+      // surface even though the child key would have been allowlisted on its
+      // own (the allowlist is applied recursively at every depth, but the
+      // parent key gates whether the child is visited at all).
+      expect(meta).not.toHaveProperty("unknownWrapper");
+      expect(serialized).not.toContain("hidden-inside");
+    } finally {
+      await context.close();
+    }
+  });
+
+  // codex-audit-fix FIX 3 (P3) — the drilldown orders by
+  // (started_at desc, provider_run_id desc). The tie-break on provider_run_id
+  // is in the code but was previously untested. This test seeds multiple
+  // EQUAL-started_at rows and asserts the tie-break produces a stable,
+  // non-overlapping page boundary ordered by provider_run_id.
+  it("breaks started_at ties by provider_run_id desc with stable non-overlapping pages", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      // Five rows with the SAME started_at. The tie-break must order them by
+      // provider_run_id DESC. Ids are chosen so descending lexical order is
+      // unambiguous and different from insertion order.
+      const tieStartedAt = "2026-06-17T00:06:00.000Z";
+      const tieIds = ["tie-run-1", "tie-run-2", "tie-run-3", "tie-run-4", "tie-run-5"];
+      for (const id of tieIds) {
+        await ledger.recordProviderRun(
+          localActor,
+          runInput(id, "billed", 100, {
+            systemId: "system-a",
+            startedAt: tieStartedAt,
+            completedAt: "2026-06-17T00:06:10.000Z",
+          }),
+        );
+      }
+
+      const expectedDesc = [...tieIds].sort().reverse();
+
+      // Page 1 (limit 2): the two highest provider_run_ids.
+      const first = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+        limit: 2,
+        offset: 0,
+      });
+      // Page 2 (limit 2): the next two.
+      const second = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+        limit: 2,
+        offset: 2,
+      });
+      // Page 3 (limit 2): the last one.
+      const third = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+        systemId: "system-a",
+        limit: 2,
+        offset: 4,
+      });
+
+      // Stable total across all pages.
+      expect(first.pagination.total).toBe(5);
+      expect(second.pagination.total).toBe(5);
+      expect(third.pagination.total).toBe(5);
+
+      // Each page is ordered by provider_run_id desc (the tie-break).
+      const firstIds = first.rows.map((r) => r.providerRunId);
+      const secondIds = second.rows.map((r) => r.providerRunId);
+      const thirdIds = third.rows.map((r) => r.providerRunId);
+      expect(firstIds).toEqual(expectedDesc.slice(0, 2));
+      expect(secondIds).toEqual(expectedDesc.slice(2, 4));
+      expect(thirdIds).toEqual(expectedDesc.slice(4, 5));
+
+      // Pages are disjoint and together cover the full set.
+      const allIds = [...firstIds, ...secondIds, ...thirdIds];
+      expect(new Set(allIds).size).toBe(5);
+      expect(allIds).toEqual(expectedDesc);
+
+      // hasMore / nextOffset agree at each boundary.
+      expect(first.pagination.hasMore).toBe(true);
+      expect(first.pagination.nextOffset).toBe(2);
+      expect(second.pagination.hasMore).toBe(true);
+      expect(second.pagination.nextOffset).toBe(4);
+      expect(third.pagination.hasMore).toBe(false);
+      expect(third.pagination.nextOffset).toBe(null);
     } finally {
       await context.close();
     }

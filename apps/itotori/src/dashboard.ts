@@ -919,7 +919,7 @@ function renderCost(cost: ProjectCostReport): string {
 // DISTINCT states (billed / zero / unknown — a $0.00 record renders
 // differently from an unrecorded one), and exposes the row's provider adapter
 // metadata via a per-row `<details>` drilldown WITHOUT any raw provider
-// payload (stripped server-side by sanitizeAdapterMetadata).
+// payload (stripped server-side by sanitizeAdapterMetadata's ALLOWLIST).
 function renderCostDrilldown(page: CostDrilldownPage): string {
   const { pagination, filter } = page;
   const rows = page.rows.map(renderCostDrilldownRow).join("");
@@ -985,7 +985,9 @@ function renderCostDrilldownRow(row: CostDrilldownRow): string {
 
 // ITOTORI-053 — zero vs unknown are rendered as DISTINCT cells: a $0.00 billed
 // record shows an explicit "$0.000000 (zero)" while an unrecorded cost shows
-// "unknown". They are never collapsed to the same display.
+// "unknown". They are never collapsed to the same display. The billed cell
+// renders the ledger-stored micros (formatMicrosUsd), NOT the canonical
+// ProviderCost.amountUsd — the drilldown row only has integer micros.
 function renderCostDrilldownCost(cost: CostDrilldownRow["cost"]): string {
   if (cost.state === "unknown") {
     return `<span class="cost-state cost-state-unknown" data-cost-state="unknown">unknown</span>`;
@@ -1001,8 +1003,8 @@ function renderCostDrilldownCost(cost: CostDrilldownRow["cost"]): string {
 // ITOTORI-053 — per-row provider adapter metadata drilldown. Exposes the
 // (model, provider) identity + the CURATED adapter metadata. The raw provider
 // payload is already stripped at the repository boundary
-// (sanitizeAdapterMetadata), so the JSON rendered here can never contain a raw
-// request/response body.
+// (sanitizeAdapterMetadata — an ALLOWLIST, so unknown keys never surface),
+// so the JSON rendered here can never contain a raw request/response body.
 function renderProviderAdapterMetadata(row: CostDrilldownRow): string {
   const provider = row.provider;
   return `
