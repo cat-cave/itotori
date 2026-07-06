@@ -17,6 +17,18 @@ export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default('ITOTORI_DB_COMPOSE_ENV
 install:
     pnpm install
 
+# Provision a FRESH worktree so `vp check`, `fixtures-validate`, and public-manifest
+# regen work. Run this ONCE right after `cd`-ing into a new worktree. It installs
+# node_modules OFFLINE from the shared pnpm content-addressed store (already
+# populated by the main checkout), so it needs NO network (~1.5s). `--frozen-lockfile`
+# keeps it deterministic against the committed pnpm-lock.yaml; `--offline` fails
+# loudly rather than silently hitting the network. A node_modules SYMLINK from the
+# main checkout is deliberately NOT used: pnpm's node_modules links workspace
+# packages (apps/*, packages/*) back to the main checkout, so a symlinked tree would
+# hide this worktree's own edits — a real per-worktree install is required.
+worktree-setup:
+    pnpm install --frozen-lockfile --offline
+
 dev:
     pnpm --filter @itotori/app dev
 

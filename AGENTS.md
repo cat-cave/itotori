@@ -1,5 +1,18 @@
 # Agent Conventions
 
+## Fresh Worktree Setup (`node_modules`)
+
+A fresh worktree has no `node_modules`, so `vp check`, `just fixtures-validate`,
+and public-manifest regen fail until you provision it. Run ONCE after `cd`-ing in:
+
+```sh
+direnv exec . just worktree-setup
+```
+
+This is an OFFLINE `pnpm install --frozen-lockfile --offline` from the shared
+pnpm store (no network, ~1.5s). See
+[`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md) for details.
+
 ## Rust Build Artifacts
 
 `nix develop` sets `CARGO_TARGET_DIR` to a per-worktree scratch path:

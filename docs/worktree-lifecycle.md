@@ -28,6 +28,35 @@ slug format `[a-z0-9]+(-[a-z0-9]+)*`):
 Do not add random suffixes to resolve collisions. If the canonical branch or
 worktree already exists, inspect and reuse or prune it.
 
+## Provisioning `node_modules` (`just worktree-setup`)
+
+A fresh worktree has **no `node_modules`**, so `pnpm exec vp check`, `just
+fixtures-validate`, and public-manifest regeneration cannot run until it is
+provisioned. Do this ONCE, right after `cd`-ing into the new worktree:
+
+```sh
+direnv exec . just worktree-setup    # or, inside `nix develop`: just worktree-setup
+```
+
+`worktree-setup` runs `pnpm install --frozen-lockfile --offline`. It is:
+
+- **Offline / no network.** It installs from the shared pnpm content-addressed
+  store (`~/.local/share/pnpm`), already populated by the main checkout, so it
+  never touches the network (`--offline` fails loudly if a package is missing
+  from the store rather than reaching out). Corepack's pnpm binary is likewise
+  already cached, so no `corepack` download is needed.
+- **Fast + deterministic.** ~1.5s; `--frozen-lockfile` pins to the committed
+  `pnpm-lock.yaml`.
+
+After it runs, `direnv exec . pnpm exec vp check` and `direnv exec . node
+fixtures/validate-public-manifests.mjs` (a.k.a. `just fixtures-validate`) work.
+
+**Why not symlink `node_modules` from the main checkout?** pnpm's `node_modules`
+is a symlink farm whose workspace entries (`apps/*`, `packages/*`) point back at
+the checkout that created it. A symlinked tree would resolve this worktree's
+workspace packages to the _main_ checkout, masking the worktree's own edits. A
+real per-worktree offline install is the reliable approach.
+
 ## Per-Worktree CARGO_TARGET_DIR
 
 `nix develop` sets a per-worktree `CARGO_TARGET_DIR` under
