@@ -8,13 +8,11 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 // that cannot be expressed in the mutually-recursive drizzle table types, so we
 // introspect pg_constraint directly (mirrors audit-finding-migration-drift).
 
-describe(
-  "style guide version reference integrity migration drift",
-  () => {
-    it("registers the scoped latest / approved / previous / guide composite FKs", async () => {
-      const context = await isolatedMigratedContext();
-      try {
-        const rows = await context.db.execute(sql`
+describe("style guide version reference integrity migration drift", () => {
+  it("registers the scoped latest / approved / previous / guide composite FKs", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const rows = await context.db.execute(sql`
           select
             c.relname as table_name,
             con.conname as constraint_name,
@@ -28,35 +26,35 @@ describe(
           order by con.conname
         `);
 
-        const byName = new Map(
-          rows.rows.map((row) => [String(row.constraint_name), String(row.constraint_definition)]),
-        );
+      const byName = new Map(
+        rows.rows.map((row) => [String(row.constraint_name), String(row.constraint_definition)]),
+      );
 
-        // latest_version_id -> versions (id + full scope).
-        expect(byName.get("itotori_style_guides_latest_version_scope_fkey")).toMatch(
-          /FOREIGN KEY \(latest_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
-        );
-        // approved_version_id -> versions (id + full scope).
-        expect(byName.get("itotori_style_guides_approved_version_scope_fkey")).toMatch(
-          /FOREIGN KEY \(approved_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
-        );
-        // previous_version_id -> versions (self, id + full scope).
-        expect(byName.get("itotori_style_guide_versions_previous_version_scope_fkey")).toMatch(
-          /FOREIGN KEY \(previous_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
-        );
-        // version scope -> its guide's scope.
-        expect(byName.get("itotori_style_guide_versions_guide_scope_fkey")).toMatch(
-          /FOREIGN KEY \(style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guides\(style_guide_id, project_id, locale_branch_id\)/i,
-        );
-      } finally {
-        await context.close();
-      }
-    });
+      // latest_version_id -> versions (id + full scope).
+      expect(byName.get("itotori_style_guides_latest_version_scope_fkey")).toMatch(
+        /FOREIGN KEY \(latest_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
+      );
+      // approved_version_id -> versions (id + full scope).
+      expect(byName.get("itotori_style_guides_approved_version_scope_fkey")).toMatch(
+        /FOREIGN KEY \(approved_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
+      );
+      // previous_version_id -> versions (self, id + full scope).
+      expect(byName.get("itotori_style_guide_versions_previous_version_scope_fkey")).toMatch(
+        /FOREIGN KEY \(previous_version_id, style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guide_versions\(style_guide_version_id, style_guide_id, project_id, locale_branch_id\)/i,
+      );
+      // version scope -> its guide's scope.
+      expect(byName.get("itotori_style_guide_versions_guide_scope_fkey")).toMatch(
+        /FOREIGN KEY \(style_guide_id, project_id, locale_branch_id\) REFERENCES itotori_style_guides\(style_guide_id, project_id, locale_branch_id\)/i,
+      );
+    } finally {
+      await context.close();
+    }
+  });
 
-    it("registers the composite unique keys targeted by the pointer FKs", async () => {
-      const context = await isolatedMigratedContext();
-      try {
-        const rows = await context.db.execute(sql`
+  it("registers the composite unique keys targeted by the pointer FKs", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const rows = await context.db.execute(sql`
           select con.conname as constraint_name
           from pg_constraint con
           join pg_class c on c.oid = con.conrelid
@@ -68,12 +66,11 @@ describe(
               'itotori_style_guide_versions_scope_key'
             )
         `);
-        const names = new Set(rows.rows.map((row) => String(row.constraint_name)));
-        expect(names.has("itotori_style_guides_scope_key")).toBe(true);
-        expect(names.has("itotori_style_guide_versions_scope_key")).toBe(true);
-      } finally {
-        await context.close();
-      }
-    });
-  },
-);
+      const names = new Set(rows.rows.map((row) => String(row.constraint_name)));
+      expect(names.has("itotori_style_guides_scope_key")).toBe(true);
+      expect(names.has("itotori_style_guide_versions_scope_key")).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+});
