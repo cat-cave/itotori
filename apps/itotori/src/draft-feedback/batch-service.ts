@@ -12,6 +12,7 @@
 import { createHash } from "node:crypto";
 import { type FeedbackTriageLabel, feedbackTriageLabelValues } from "@itotori/db";
 import type { ManualFeedbackImportPort } from "../manual-feedback.js";
+import { BRIDGE_UNIT_METADATA_KEYS, readBridgeUnitMetadata } from "./bridge-unit-metadata.js";
 import type {
   DraftFeedbackBatchInput,
   DraftFeedbackBatchItem,
@@ -134,13 +135,15 @@ function bridgeUnitIdsForSubmission(submission: {
   if (typeof fromLine === "string" && fromLine.length > 0) {
     ids.push(fromLine);
   }
-  for (const key of ["affectedUnitIds", "affectedBridgeUnitIds", "bridgeUnitIds", "unitIds"]) {
-    const value = submission.metadata?.[key];
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        if (typeof entry === "string" && entry.length > 0) {
-          ids.push(entry);
-        }
+  // Read the bridge-unit ids through the typed contract rather than scanning
+  // raw string-indexed metadata keys: a rename/reshape of the recognized keys
+  // is now a compile error, and a malformed value is thrown (never silently
+  // dropped). See `bridge-unit-metadata.ts`.
+  const bridgeUnitMetadata = readBridgeUnitMetadata(submission.metadata);
+  for (const key of BRIDGE_UNIT_METADATA_KEYS) {
+    for (const entry of bridgeUnitMetadata[key] ?? []) {
+      if (entry.length > 0) {
+        ids.push(entry);
       }
     }
   }

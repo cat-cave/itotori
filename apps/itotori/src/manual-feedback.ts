@@ -12,6 +12,7 @@ import {
   reviewerQueueItemKindValues,
 } from "@itotori/db";
 import { localUserActor } from "./auth.js";
+import type { BridgeUnitMetadata } from "./draft-feedback/bridge-unit-metadata.js";
 
 export interface ManualFeedbackImportPort {
   importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult>;
@@ -59,7 +60,10 @@ export class ManualFeedbackImportService {
     const isStyleDispute = context.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate;
     const styleDisputeKey = isStyleDispute ? context.feedbackReportId : undefined;
     const affectedBridgeUnitIds = bridgeUnitIdsFromContext(queueContext);
-    const affectedUnitMetadata =
+    // Typed against the SAME contract the batch service reads back
+    // (`BridgeUnitMetadata`), so a rename/reshape of these keys is a compile
+    // error on the producer as well as the consumer.
+    const affectedUnitMetadata: BridgeUnitMetadata =
       affectedBridgeUnitIds.length === 0
         ? {}
         : { affectedUnitIds: affectedBridgeUnitIds, bridgeUnitIds: affectedBridgeUnitIds };

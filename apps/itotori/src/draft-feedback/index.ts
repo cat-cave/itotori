@@ -11,6 +11,12 @@ export {
   type DraftFeedbackBatchPort,
   dispositionFor,
 } from "./batch-service.js";
+export {
+  BRIDGE_UNIT_METADATA_KEYS,
+  BridgeUnitMetadataError,
+  type BridgeUnitMetadata,
+  readBridgeUnitMetadata,
+} from "./bridge-unit-metadata.js";
 export { buildDraftFeedbackRepairPlan } from "./repair-plan.js";
 export {
   buildDraftFeedbackLoopEvidence,
