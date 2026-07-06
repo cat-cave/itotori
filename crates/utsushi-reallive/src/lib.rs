@@ -219,9 +219,9 @@ pub use render_pipeline::{
 };
 
 pub use save::{
-    AVG_SAVE_PREAMBLE_BYTE_LEN, AvgSavePreamble, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags,
-    SAVE_FORMAT_AVG_DERIVED, SAVE_STATE_INSPECTABLE_ID, SWEETIE_HD_COMPILER_VERSION,
-    SYSTEM_SAVE_MAGIC, SaveDecodeError, SaveRoundTrip, SaveState, SystemSave,
+    AVG_DERIVED_COMPILER_VERSION, AVG_SAVE_PREAMBLE_BYTE_LEN, AvgSavePreamble, GLOBAL_SAVE_MAGIC,
+    GlobalSave, ReadFlags, SAVE_FORMAT_AVG_DERIVED, SAVE_STATE_INSPECTABLE_ID, SYSTEM_SAVE_MAGIC,
+    SaveDecodeError, SaveRoundTrip, SaveState, SystemSave,
 };
 
 pub use g00::{
@@ -285,13 +285,13 @@ pub use rlop::{
     OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE,
     OPCODE_NAME_OPEN, OPCODE_OBJBTN_INIT, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_W,
-    OPCODE_SELECT_W_SWEETIE_HD_ALIAS, OPCODE_TEXT_WINDOW, ObjbtnInitOp, PAUSE_PRIVATE_STATE_MAGIC,
-    PauseLongOp, PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID,
-    SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime,
-    SelRuntimeWarning, SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnOp,
-    SelectOp, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
-    SelectionControlSignal, dispatch_textout, register_sel_rlops, register_text_rlops,
-    select_modality, selection_control_signal, text_module_msg_keys,
+    OPCODE_TEXT_WINDOW, ObjbtnInitOp, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
+    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
+    SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnOp, SelectOp, SelectSOp,
+    SelectVariant, SelectWOp, SelectionChoiceCountScheduler, SelectionControlSignal,
+    dispatch_textout, register_sel_rlops, register_text_rlops, select_modality,
+    selection_control_signal, text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{
@@ -373,7 +373,7 @@ pub const RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
     "utsushi-reallive does not depend on rlvm, does not include rlvm headers, ",
     "does not copy rlvm's structure layouts, and does not mechanically translate ",
     "rlvm code into Rust. Format hypotheses are re-derived and re-tested against ",
-    "publicly-archived RLDEV documentation and Sweetie HD bytes before being encoded.",
+    "publicly-archived RLDEV documentation and owned RealLive corpora before being encoded.",
 );
 
 /// Compile-time assertion that the boundary statement is non-empty.

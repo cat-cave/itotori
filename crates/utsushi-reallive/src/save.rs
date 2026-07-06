@@ -89,10 +89,12 @@ pub const GLOBAL_SAVE_MAGIC: &str = "AVG_GLOBAL_SAVE";
 /// schema bump can be detected at parse time.
 pub const SAVE_FORMAT_AVG_DERIVED: u32 = 3;
 
-/// Compiler-version stamp every Sweetie HD save preamble carries at
-/// offset `0x04` (`0x00002712 = 10002`). Pinned so the round-trip test
-/// can assert against it without re-reading the bytes.
-pub const SWEETIE_HD_COMPILER_VERSION: u32 = 10_002;
+/// Default compiler-version stamp carried at preamble offset `0x04`
+/// (`0x00002712 = 10002`) for the AVG-derived save format. This is the
+/// engine-format default the synthetic save builders stamp when a caller
+/// does not supply an explicit `compiler_version`; the real per-title
+/// value is read from (and asserted against) the game's own save bytes.
+pub const AVG_DERIVED_COMPILER_VERSION: u32 = 10_002;
 
 /// Stable Utsushi save semantic codes. Used by the audit grep so a
 /// `Display`-rendered error can be matched without parsing the variant
@@ -210,8 +212,10 @@ pub struct AvgSavePreamble {
     /// File size in bytes (for `REALLIVE.sav`) or a per-format
     /// constant (for `save999.sav` / `read.sav`). At offset `0x00..0x04`.
     pub leading_u32: u32,
-    /// Compiler-version stamp (`SWEETIE_HD_COMPILER_VERSION = 10 002`
-    /// for Sweetie HD). At offset `0x04..0x08`.
+    /// Compiler-version stamp (default
+    /// [`AVG_DERIVED_COMPILER_VERSION`] = 10 002). At offset
+    /// `0x04..0x08`; the real per-title value is read from the game's
+    /// own save bytes.
     pub compiler_version: u32,
     /// Engine timestamp (year, month, day, hour, minute, second) as
     /// six little-endian u16s. At offset `0x08..0x14`.
@@ -746,14 +750,24 @@ impl SaveRoundTrip {
     /// cross-check passes; the rest of the preamble is filled with
     /// stable, non-zero pinned values.
     pub fn synthetic_system_save(total_byte_len: usize) -> Vec<u8> {
-        Self::synthetic_with_magic(total_byte_len, SYSTEM_SAVE_MAGIC.as_bytes(), 0x02DC)
+        Self::synthetic_with_magic(
+            total_byte_len,
+            SYSTEM_SAVE_MAGIC.as_bytes(),
+            0x02DC,
+            AVG_DERIVED_COMPILER_VERSION,
+        )
     }
 
     /// Build a synthetic `save999.sav` byte stream. The leading u32 is
     /// the per-format constant `0x000000A4`.
     pub fn synthetic_global_save(payload_byte_len: usize) -> Vec<u8> {
         let total = AVG_SAVE_PREAMBLE_BYTE_LEN + GLOBAL_SAVE_MAGIC.len() + 1 + payload_byte_len;
-        let mut bytes = Self::synthetic_with_magic(total, GLOBAL_SAVE_MAGIC.as_bytes(), 0x02E0);
+        let mut bytes = Self::synthetic_with_magic(
+            total,
+            GLOBAL_SAVE_MAGIC.as_bytes(),
+            0x02E0,
+            AVG_DERIVED_COMPILER_VERSION,
+        );
         // Global save's leading u32 is a per-format constant (`0xA4`),
         // not the file size; rewrite it after the helper has filled in
         // the rest of the preamble.
@@ -765,15 +779,21 @@ impl SaveRoundTrip {
     /// Shift-JIS title bytes.
     pub fn synthetic_read_flags(title_bytes: &[u8], payload_byte_len: usize) -> Vec<u8> {
         let total = AVG_SAVE_PREAMBLE_BYTE_LEN + title_bytes.len() + 1 + payload_byte_len;
-        let mut bytes = Self::synthetic_with_magic(total, title_bytes, 0x02E7);
+        let mut bytes =
+            Self::synthetic_with_magic(total, title_bytes, 0x02E7, AVG_DERIVED_COMPILER_VERSION);
         bytes[0x00..0x04].copy_from_slice(&0x0000_0098u32.to_le_bytes());
         bytes
     }
 
-    fn synthetic_with_magic(total: usize, magic: &[u8], tail: u16) -> Vec<u8> {
+    fn synthetic_with_magic(
+        total: usize,
+        magic: &[u8],
+        tail: u16,
+        compiler_version: u32,
+    ) -> Vec<u8> {
         let preamble = AvgSavePreamble {
             leading_u32: total as u32,
-            compiler_version: SWEETIE_HD_COMPILER_VERSION,
+            compiler_version,
             timestamp: [0x07E9, 0x0003, 0x0002, 0x000B, 0x0012, 0x0027],
             padding_a: 0,
             tail,
@@ -837,7 +857,7 @@ mod tests {
     fn preamble_round_trips_byte_identically() {
         let preamble = AvgSavePreamble {
             leading_u32: 24_876,
-            compiler_version: SWEETIE_HD_COMPILER_VERSION,
+            compiler_version: AVG_DERIVED_COMPILER_VERSION,
             timestamp: [0x07E9, 0x0003, 0x0002, 0x000B, 0x0012, 0x0027],
             padding_a: 0,
             tail: 0x02DC,

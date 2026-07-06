@@ -132,7 +132,7 @@ export function fixtureExportConsequence(reviewItemId: string): ReviewerBatchCon
   return {
     kind: "export_artifact",
     exportArtifactId: `export-artifact-${reviewItemId}`,
-    artifactLabel: "Patch bundle for Sweetie HD",
+    artifactLabel: "Patch bundle for demo corpus",
   };
 }
 

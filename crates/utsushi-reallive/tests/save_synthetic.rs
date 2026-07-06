@@ -27,8 +27,8 @@ use utsushi_core::substrate::{
     SnapshotStore, restore_snapshot, take_snapshot,
 };
 use utsushi_reallive::{
-    AvgSavePreamble, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SAVE_STATE_INSPECTABLE_ID,
-    SWEETIE_HD_COMPILER_VERSION, SYSTEM_SAVE_MAGIC, SaveDecodeError, SaveRoundTrip, SaveState,
+    AVG_DERIVED_COMPILER_VERSION, AvgSavePreamble, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags,
+    SAVE_STATE_INSPECTABLE_ID, SYSTEM_SAVE_MAGIC, SaveDecodeError, SaveRoundTrip, SaveState,
     SystemSave,
 };
 
@@ -67,7 +67,7 @@ fn save_reads_avg_system_save_synthetic_round_trips_byte_identically() {
         save.preamble.leading_u32 as usize, SWEETIE_HD_SYSTEM_SAVE_BYTES,
         "preamble file-size cross-check must hold"
     );
-    assert_eq!(save.preamble.compiler_version, SWEETIE_HD_COMPILER_VERSION);
+    assert_eq!(save.preamble.compiler_version, AVG_DERIVED_COMPILER_VERSION);
     let re_encoded = save.encode();
     assert_eq!(
         re_encoded, bytes,
@@ -197,7 +197,7 @@ fn save_read_flags_decodes_title_accepts_ascii_title() {
 fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
     let preamble = AvgSavePreamble {
         leading_u32: SWEETIE_HD_SYSTEM_SAVE_BYTES as u32,
-        compiler_version: SWEETIE_HD_COMPILER_VERSION,
+        compiler_version: AVG_DERIVED_COMPILER_VERSION,
         timestamp: [0x07E9, 0x0003, 0x0002, 0x000B, 0x0012, 0x0027],
         padding_a: 0,
         tail: 0x02DC,

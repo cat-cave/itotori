@@ -305,7 +305,7 @@ export function policyFixture(overrides: Partial<ReviewerDetailPolicy> = {}): Re
   return {
     styleGuidePolicyVersionId: "style-guide-version-itotori-082",
     styleGuidePolicyStatus: "approved",
-    policyLabel: "Sweetie HD — informal honorifics",
+    policyLabel: "Demo corpus — informal honorifics",
     approvedAt: fixtureCreatedAt,
     approverUserId: "local-user",
     ...overrides,

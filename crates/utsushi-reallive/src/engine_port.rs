@@ -323,7 +323,7 @@ impl UtsushiReallivePort {
         fidelity_tier_max: FidelityTier::LayoutProbe,
         evidence_tier_max: EvidenceTier::E2,
         limitations: &[
-            "Encrypted titles (use_xor_2, e.g. Sweetie HD) require the dev-only kaifuu-reallive segment-cipher recovery staged by the caller before constructing the port; no key material lives in this crate.",
+            "Encrypted RealLive titles (use_xor_2) require the dev-only kaifuu-reallive segment-cipher recovery staged by the caller before constructing the port; no key material lives in this crate.",
             "rlvm is referenced as a research anchor only; no rlvm source is vendored, linked, or mechanically translated.",
         ],
     };

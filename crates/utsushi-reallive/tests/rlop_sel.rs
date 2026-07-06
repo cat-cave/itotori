@@ -19,9 +19,9 @@
 //! - `selbtn_styling_surfaces_on_emitted_choice_lines`: when the
 //!   Gameexe carries `#SELBTN.000.000 = "value"`, the choice line for
 //!   index 0 includes the SELBTN suffix in its `text_surface` tag.
-//! - `register_sel_rlops_covers_every_variant_and_reallive_real_bytes_alias`:
+//! - `register_sel_rlops_covers_every_variant`:
 //!   the helper populates every canonical variant plus the
-//!   Sweetie-HD-observed `select_w` opcode alias.
+//!   `objbtn_init` button-object group-setup op.
 
 use std::sync::{Arc, Mutex};
 
@@ -29,10 +29,10 @@ use utsushi_core::EvidenceTier;
 use utsushi_core::substrate::{ChoiceIndex, SinkCapability, SinkResult, TextLine, TextSurfaceSink};
 use utsushi_reallive::{
     BytecodeElement, ChoiceInputScheduler, DispatchOutcome, ExprValue, Gameexe, InMemorySceneStore,
-    LongOpId, NeverReadyScheduler, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_S, OPCODE_SELECT_W,
-    OPCODE_SELECT_W_SWEETIE_HD_ALIAS, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
-    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, Scene, SelRuntime, SelectLongOp, SelectVariant, StepOutcome,
-    Vm, VmEvent, register_sel_rlops,
+    LongOpId, NeverReadyScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_S,
+    OPCODE_SELECT_W, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT,
+    SEL_RLOP_COUNT, Scene, SelRuntime, SelectLongOp, SelectVariant, StepOutcome, Vm, VmEvent,
+    register_sel_rlops,
 };
 
 #[derive(Default)]
@@ -315,11 +315,11 @@ fn selbtn_styling_surfaces_on_emitted_choice_lines() {
 }
 
 // ---------------------------------------------------------------------
-// Registry shape — every variant and the Sweetie-HD alias resolve
+// Registry shape — every canonical variant + the objbtn_init setup op
 // ---------------------------------------------------------------------
 
 #[test]
-fn register_sel_rlops_covers_every_variant_and_reallive_real_bytes_alias() {
+fn register_sel_rlops_covers_every_variant() {
     let (_sink, runtime) = build_runtime(None);
     let mut registry = RlopRegistry::new();
     let count = register_sel_rlops(&mut registry, runtime);
@@ -331,14 +331,14 @@ fn register_sel_rlops_covers_every_variant_and_reallive_real_bytes_alias() {
             "missing variant {variant:?}",
         );
     }
-    let alias_key = RlopKey::new(
-        SEL_MODULE_TYPE,
-        SEL_MODULE_ID,
-        OPCODE_SELECT_W_SWEETIE_HD_ALIAS,
-    );
+    // The `objbtn_init` (0,2,20) button-object group-setup op rounds out
+    // the registered Sel surface. There is no synthetic opcode-120 alias:
+    // rlvm's `RLModule("Sel", 0, 2)` registers no such opcode, and no real
+    // corpus tuple lands on `(0, 2, 120)`.
+    let objbtn_init_key = RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_OBJBTN_INIT);
     assert!(
-        registry.get(alias_key).is_some(),
-        "Sweetie HD select_w alias missing"
+        registry.get(objbtn_init_key).is_some(),
+        "objbtn_init setup op missing"
     );
 }
 

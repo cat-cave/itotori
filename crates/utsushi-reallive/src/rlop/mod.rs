@@ -79,10 +79,9 @@ pub use module_msg::{
 pub use module_sel::{
     ChoiceInputScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT as SEL_OPCODE_SELECT,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_W,
-    OPCODE_SELECT_W_SWEETIE_HD_ALIAS, ObjbtnInitOp, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_RLOP_COUNT,
-    SelRuntime, SelRuntimeWarning, SelectModality, SelectObjbtnOp, SelectOp, SelectSOp,
-    SelectVariant, SelectWOp, SelectionControlSignal, register_sel_rlops, select_modality,
-    selection_control_signal,
+    ObjbtnInitOp, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning,
+    SelectModality, SelectObjbtnOp, SelectOp, SelectSOp, SelectVariant, SelectWOp,
+    SelectionControlSignal, register_sel_rlops, select_modality, selection_control_signal,
 };
 
 /// Engine-neutral dispatch argument. The UTSUSHI-205 evaluator returns

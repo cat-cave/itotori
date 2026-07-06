@@ -37,8 +37,9 @@
 //! machinery DORMANT on real bytes (recognized 0-unknown, but never
 //! presented, never driving a branch). Corrected to `module_type=0`.
 //! The four canonical opcodes are pinned at the small-block layout
-//! `0x0000..=0x0003`. The historical `0x0078 = 120` byte is additionally
-//! registered as a defensive `select_w` alias.
+//! `0x0000..=0x0003`, matching the RealLive `Sel` module opcode set
+//! (`select_w`, `select`, `select_s`, `select_objbtn`, plus the
+//! `objbtn_init` / `select_objbtn_cancel` SelectionControl setup ops).
 //!
 //! # Opcode coverage
 //!
@@ -48,7 +49,6 @@
 //! | `0x0001` (`select_s`)| stringy   | Choice with explicit string-table args.  |
 //! | `0x0002` (`select_w`)| windowed  | Choice rendered into a window slot.      |
 //! | `0x0004` (`select_objbtn`) | objbtn | Choice driven by object-button sprites. |
-//! | `0x0078` (alias)     | alias     | Sweetie HD's observed `select_w` byte.   |
 //!
 //! # Choice MODALITY — the graphical / text split (real-bytes-derived)
 //!
@@ -162,15 +162,6 @@ pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// "select_objbtn_cancel")`), observed 3× on real Sweetie HD bytes. A second
 /// button-object SelectionControl setup op.
 pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
-
-/// Retained `select_w` alias at opcode `120`. Historically justified by
-/// the Sweetie HD scene 1 offset `0x001e` byte `(type=1, id=5,
-/// opcode=120)`; that raw byte is now understood as a `SYS2` (`id=5`)
-/// op and is catalogued in [`crate::rlop::module_catalog`], so this
-/// alias — registered under the corrected `sel` addressing at
-/// `(0, 2, 120)` — is a defensive mapping only (no real-bytes tuple
-/// currently lands on it; the real selects are all `(0, 2, 2)`).
-pub const OPCODE_SELECT_W_SWEETIE_HD_ALIAS: u16 = 120;
 
 /// Stable enum naming the four choice variants. Used by the typed
 /// dispatch path (and by audit tooling) to pin which opcode produced a
@@ -357,11 +348,10 @@ pub fn select_modality(signal: SelectionControlSignal, option_count: usize) -> S
 }
 
 /// Number of `(module_sel)` rlops [`register_sel_rlops`] populates.
-/// Four canonical variants, one Sweetie-HD-observed alias for `select_w`
-/// (opcode `120`), plus the `objbtn_init` (`0x0014` = 20) button-object
-/// group-setup op. Pinned so audit tooling can assert "registry covers
-/// exactly the UTSUSHI-211 surface".
-pub const SEL_RLOP_COUNT: usize = SelectVariant::ALL.len() + 2;
+/// Four canonical variants plus the `objbtn_init` (`0x0014` = 20)
+/// button-object group-setup op. Pinned so audit tooling can assert
+/// "registry covers exactly the UTSUSHI-211 surface".
+pub const SEL_RLOP_COUNT: usize = SelectVariant::ALL.len() + 1;
 
 /// Runtime carrier the per-op [`RLOperation`] impls thread through to
 /// the [`TextSurfaceSink`], the [`Gameexe`] (for `SELBTN.NNN.*`
@@ -801,9 +791,8 @@ impl RLOperation for ObjbtnInitOp {
 /// Mount every choice op this module ships into `registry`. Returns
 /// the number of entries registered (matches [`SEL_RLOP_COUNT`]).
 ///
-/// The four canonical variants are registered at `0x0000..=0x0003`;
-/// the Sweetie-HD-observed `select_w` alias (`0x0078 = 120`) is
-/// registered as a duplicate pointing at [`SelectWOp`].
+/// The four canonical variants are registered at `0x0000..=0x0003`,
+/// plus the `objbtn_init` button-object group-setup op at `0x0014`.
 pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>) -> usize {
     registry.register(
         SelectVariant::Select.rlop_key(),
@@ -820,14 +809,6 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
     registry.register(
         SelectVariant::SelectObjbtn.rlop_key(),
         Arc::new(SelectObjbtnOp::new(Arc::clone(&runtime))),
-    );
-    registry.register(
-        RlopKey::new(
-            SEL_MODULE_TYPE,
-            SEL_MODULE_ID,
-            OPCODE_SELECT_W_SWEETIE_HD_ALIAS,
-        ),
-        Arc::new(SelectWOp::new(Arc::clone(&runtime))),
     );
     // `objbtn_init` — the button-object group-setup boundary. Registered
     // with its real reset semantics (clears the pending button group) so a
@@ -982,7 +963,7 @@ mod tests {
     }
 
     #[test]
-    fn register_sel_rlops_covers_every_variant_and_alias() {
+    fn register_sel_rlops_covers_every_variant() {
         let sink = Arc::new(CollectingSink::new());
         let runtime = Arc::new(SelRuntime::with_sink(sink));
         let mut registry = RlopRegistry::new();
@@ -993,12 +974,17 @@ mod tests {
                 "missing variant: {variant:?}"
             );
         }
-        let alias_key = RlopKey::new(
-            SEL_MODULE_TYPE,
-            SEL_MODULE_ID,
-            OPCODE_SELECT_W_SWEETIE_HD_ALIAS,
+        // The `objbtn_init` button-object setup op is also registered.
+        assert!(
+            registry
+                .get(RlopKey::new(
+                    SEL_MODULE_TYPE,
+                    SEL_MODULE_ID,
+                    OPCODE_OBJBTN_INIT
+                ))
+                .is_some(),
+            "objbtn_init setup op missing"
         );
-        assert!(registry.get(alias_key).is_some());
     }
 
     #[test]

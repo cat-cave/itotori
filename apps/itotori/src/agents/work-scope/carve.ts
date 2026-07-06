@@ -205,7 +205,7 @@ export function carveArchiveIntoWorks(
         namingSignal: "unknown",
         notes:
           `A button-object game-select (scene ${gameSelectScene}) marks this archive as multi-work, but the select scene carries ` +
-          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): the select is a title MENU whose branches dispatch (goto_case on $store) to menu/config scenes and/or a store-relative New-Game routine, NOT to enumerable per-work story roots. The works cannot be rooted from the decode alone; rooting them needs upstream/operator context (a per-work entry-scene list) — which for Sweetie HD the decode does not provide (see the module doc: the New-Game routine does not decode and the split is runtime menu state).`,
+          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): the select is a title MENU whose branches dispatch (goto_case on $store) to menu/config scenes and/or a store-relative New-Game routine, NOT to enumerable per-work story roots. The works cannot be rooted from the decode alone; rooting them needs upstream/operator context (a per-work entry-scene list) — which the decode does not provide (the New-Game routine does not decode and the split is runtime menu state).`,
       },
     };
   }

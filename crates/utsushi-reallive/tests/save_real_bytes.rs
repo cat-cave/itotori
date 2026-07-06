@@ -52,7 +52,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{
-    GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SWEETIE_HD_COMPILER_VERSION, SYSTEM_SAVE_MAGIC,
+    AVG_DERIVED_COMPILER_VERSION, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SYSTEM_SAVE_MAGIC,
     SystemSave,
 };
 
@@ -135,7 +135,7 @@ fn verify_system_save() {
         save.preamble.leading_u32 as usize,
         SWEETIE_HD_SYSTEM_SAVE_BYTES
     );
-    assert_eq!(save.preamble.compiler_version, SWEETIE_HD_COMPILER_VERSION);
+    assert_eq!(save.preamble.compiler_version, AVG_DERIVED_COMPILER_VERSION);
     // Engine timestamp documented: 2025-03-02 11:18:39.
     assert_eq!(
         save.preamble.timestamp,
@@ -194,7 +194,7 @@ fn verify_global_save() {
         save.preamble.leading_u32, 0x0000_00A4,
         "save999.sav leading u32 is a per-format constant (0xA4), not the file size"
     );
-    assert_eq!(save.preamble.compiler_version, SWEETIE_HD_COMPILER_VERSION);
+    assert_eq!(save.preamble.compiler_version, AVG_DERIVED_COMPILER_VERSION);
 
     let re_encoded = save.encode();
     assert_eq!(
@@ -232,7 +232,10 @@ fn verify_read_flags() {
     assert_eq!(bytes.len(), SWEETIE_HD_READ_FLAGS_BYTES);
 
     let flags = ReadFlags::decode(&bytes).expect("read.sav must decode");
-    assert_eq!(flags.preamble.compiler_version, SWEETIE_HD_COMPILER_VERSION);
+    assert_eq!(
+        flags.preamble.compiler_version,
+        AVG_DERIVED_COMPILER_VERSION
+    );
     // Acceptance criterion: title decodes to the documented UTF-8
     // string (Shift-JIS `81 40` round-trips through `encoding_rs` as
     // U+3000 IDEOGRAPHIC SPACE).
