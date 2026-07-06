@@ -53,3 +53,20 @@ export {
   type BenchmarkStagesPublicFixture,
   type BenchmarkStagesReportMeta,
 } from "./public-fixture-input.js";
+
+export {
+  DecodedContextFeedError,
+  buildDecodedContextFeed,
+  assertJudgeFeedGroundTruthOnly,
+  contestantJudgeContexts,
+  INTERPRETIVE_ARTIFACT_MARKERS,
+  type ContestantCandidate,
+  type DecodedBranchPosition,
+  type DecodedContextFeedInput,
+  type DecodedContextUnitRef,
+  type DecodedGroundTruthContext,
+  type DecodedScenePosition,
+  type InterpretiveContextKey,
+  type JudgeUnitInput,
+  type _JudgeFeedIsGroundTruthOnly,
+} from "./decoded-context-feed.js";
