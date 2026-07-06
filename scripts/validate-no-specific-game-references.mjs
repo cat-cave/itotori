@@ -7,9 +7,10 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 
-// Advisory-only guardrail. The configured terms represent concrete title
-// names/slugs and title-derived environment variables that should not spread
-// into new implementation surfaces.
+// Enforceable generalization-purge gate. The configured terms represent
+// concrete title names/slugs, vendor slugs, and title-derived environment
+// variables that MUST NOT appear as active code on generalized product or
+// operator surfaces (where a specific title is a real generalization bug).
 export const defaultForbiddenTokens = [
   {
     id: "concrete-title-token",
@@ -29,25 +30,185 @@ export const defaultForbiddenTokens = [
   },
 ];
 
-// Explicit exemptions are intentionally narrow: roadmap/planning records,
-// committed audit records, a root generalization audit artifact if present, and
-// this advisory scanner/test pair because they must document the configured
-// guardrail.
-export const defaultAllowlist = [
-  { path: "roadmap/", reason: "roadmap/planning records" },
-  { path: ".plan/", reason: "worker planning records" },
-  { path: "docs/audits/", reason: "audit records" },
-  { path: "GENERALIZATION_AUDIT.md", reason: "temporary root audit artifact" },
-  { path: "scripts/validate-no-specific-game-references.mjs", reason: "scanner self-exemption" },
+// Classified allowlist.
+//
+// These are the ONLY surfaces whose PURPOSE is to hold real-game references:
+// test corpora catalogues, real-bytes harnesses, fixtures, diagnostic
+// examples, the RealLive decode/render research substrate ("own the bytes /
+// memory of real games"), planning/audit records, and the real-bytes CI /
+// operator harness that names the primary corpus by design. A specific-title
+// reference is EXPECTED (historical/research) on these surfaces.
+//
+// Everything NOT matched here is an ACTIVE product/operator surface: a title
+// token appearing there in active code (i.e. not inside a comment) is a real
+// generalization leak and FAILS the enforceable gate.
+//
+// `kind`:
+//   "prefix"   path starts with `value`
+//   "segment"  a "/"-delimited path segment equals `value`
+//   "suffix"   path ends with `value`
+//   "exact"    path equals `value`
+export const historicalResearchSurfaces = [
+  // Planning / audit / research records and documentation.
+  { id: "roadmap", kind: "prefix", value: "roadmap/", reason: "roadmap/planning records" },
+  { id: "plan", kind: "prefix", value: ".plan/", reason: "worker planning records" },
+  { id: "docs", kind: "prefix", value: "docs/", reason: "research & audit documentation" },
+
+  // Real-bytes test corpora and harnesses.
   {
-    path: "scripts/validate-no-specific-game-references.test.mjs",
-    reason: "scanner test self-exemption",
+    id: "tests-dir",
+    kind: "segment",
+    value: "tests",
+    reason: "real-bytes test corpora & harnesses",
+  },
+  { id: "test-dir", kind: "segment", value: "test", reason: "test directories" },
+  { id: "ts-test", kind: "suffix", value: ".test.ts", reason: "colocated TypeScript tests" },
+  { id: "mjs-test", kind: "suffix", value: ".test.mjs", reason: "colocated ESM tests" },
+  { id: "js-test", kind: "suffix", value: ".test.js", reason: "colocated JS tests" },
+  { id: "rs-test", kind: "suffix", value: "_test.rs", reason: "colocated Rust tests" },
+
+  // Fixtures (synthetic + real-corpus catalogues).
+  { id: "fixtures-dir", kind: "segment", value: "fixtures", reason: "fixture/corpus catalogues" },
+  { id: "ts-fixtures", kind: "suffix", value: "fixtures.ts", reason: "TypeScript fixture modules" },
+  { id: "rs-fixtures", kind: "suffix", value: "fixtures.rs", reason: "Rust fixture modules" },
+  {
+    id: "fixture-crate",
+    kind: "prefix",
+    value: "crates/kaifuu-engine-fixture/",
+    reason: "engine-fixture crate",
+  },
+
+  // Alpha-target / pilot config data records. Presets encode the alpha target
+  // (Sweetie HD) preserved AS DATA — a named target record + its pinned
+  // pair-policy — not generalized runtime defaults.
+  {
+    id: "presets",
+    kind: "prefix",
+    value: "presets/",
+    reason: "alpha-target/pilot config data records",
+  },
+
+  // Diagnostic / example binaries.
+  { id: "examples-dir", kind: "segment", value: "examples", reason: "example/diagnostic binaries" },
+
+  // RealLive decode/render research substrate. These crates own the real bytes
+  // and encode real-corpus observations (compiler versions, opcode aliases,
+  // scene layouts) as their reason for existing; they reference the real
+  // corpora by design ("memory of real games").
+  {
+    id: "kaifuu-reallive",
+    kind: "prefix",
+    value: "crates/kaifuu-reallive/",
+    reason: "RealLive decode research substrate",
+  },
+  {
+    id: "utsushi-reallive",
+    kind: "prefix",
+    value: "crates/utsushi-reallive/",
+    reason: "RealLive render research substrate",
+  },
+  {
+    id: "kaifuu-cli",
+    kind: "prefix",
+    value: "crates/kaifuu-cli/",
+    reason: "RealLive decode CLI substrate",
+  },
+  {
+    id: "utsushi-cli",
+    kind: "prefix",
+    value: "crates/utsushi-cli/",
+    reason: "RealLive render CLI substrate",
+  },
+  {
+    id: "utsushi-core",
+    kind: "prefix",
+    value: "crates/utsushi-core/",
+    reason: "runtime substrate ground-truth scope",
+  },
+  {
+    id: "kaifuu-vault-source",
+    kind: "prefix",
+    value: "crates/kaifuu-vault-source/",
+    reason: "vault-source substrate keyed by real canonical ids",
+  },
+
+  // Structure-decode-informed context agents. These CONSUME the decoded
+  // RealLive structure and reference the primary validation corpus in their
+  // decode diagnostics by design.
+  {
+    id: "structure-informed-context",
+    kind: "prefix",
+    value: "apps/itotori/src/agents/structure-informed-context/",
+    reason: "structure-decode context agent (consumes the RealLive proof)",
+  },
+  {
+    id: "work-scope",
+    kind: "prefix",
+    value: "apps/itotori/src/agents/work-scope/",
+    reason: "game-select carve agent hardened on the real validation corpus",
+  },
+
+  // Real-bytes CI / operator harness recipes that name the primary corpus by
+  // design (the alpha target preserved as data), consistent with each other.
+  {
+    id: "real-bytes-oracle",
+    kind: "exact",
+    value: ".github/workflows/real-bytes-oracle.yml",
+    reason: "real-bytes CI oracle corpora config",
+  },
+  {
+    id: "justfile",
+    kind: "exact",
+    value: "justfile",
+    reason: "operator real-bytes/localize harness recipes name the primary corpus by design",
+  },
+
+  // One-off DAG migration / node / catalogue scripts. These embed historical
+  // node specifications, corpus catalogues, and per-node audit trails as string
+  // payloads (research/planning records), not generalized operator logic.
+  {
+    id: "apply-scripts",
+    kind: "prefix",
+    value: "scripts/apply-",
+    reason: "one-off DAG apply/migration scripts (embed node specs)",
+  },
+  {
+    id: "itotori-226-rekey",
+    kind: "exact",
+    value: "scripts/itotori-226-rekey-recorded-bundles.mjs",
+    reason: "one-off node audit-trail/rekey script",
+  },
+  {
+    id: "itotori-239-alts",
+    kind: "exact",
+    value: "scripts/itotori-239-broader-alts-evidence.mjs",
+    reason: "one-off node evidence-capture script",
+  },
+  {
+    id: "synthetic-coverage-manifest",
+    kind: "exact",
+    value: "scripts/synthetic-coverage-manifest.mjs",
+    reason: "synthetic corpus coverage catalogue derivation",
+  },
+
+  // This scanner and its test document the guardrail and must name the terms.
+  {
+    id: "scanner",
+    kind: "exact",
+    value: "scripts/validate-no-specific-game-references.mjs",
+    reason: "scanner self-reference",
+  },
+  {
+    id: "scanner-test",
+    kind: "exact",
+    value: "scripts/validate-no-specific-game-references.test.mjs",
+    reason: "scanner test self-reference",
   },
 ];
 
 export function parseArgs(argv) {
   const options = {
-    mode: "report",
+    mode: "check",
     root: repoRoot,
   };
 
@@ -102,13 +263,101 @@ export function isEnvPath(path) {
   return path.split("/").some((part) => part === ".env" || part.startsWith(".env."));
 }
 
-export function isAllowlisted(path, allowlist = defaultAllowlist) {
-  return allowlist.some((entry) => {
-    if (entry.path.endsWith("/")) {
-      return path.startsWith(entry.path);
+// Returns the matching historical/research surface entry, or null when the
+// path is an ACTIVE product/operator surface.
+export function classifySurface(path, surfaces = historicalResearchSurfaces) {
+  for (const entry of surfaces) {
+    if (entry.kind === "prefix" && path.startsWith(entry.value)) {
+      return entry;
     }
-    return path === entry.path;
-  });
+    if (entry.kind === "exact" && path === entry.value) {
+      return entry;
+    }
+    if (entry.kind === "suffix" && path.endsWith(entry.value)) {
+      return entry;
+    }
+    if (entry.kind === "segment" && path.split("/").includes(entry.value)) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+const SLASH_COMMENT_EXTENSIONS = new Set(["rs", "ts", "tsx", "js", "mjs", "cjs", "jsonc"]);
+
+function supportsSlashComments(path) {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) {
+    return false;
+  }
+  return SLASH_COMMENT_EXTENSIONS.has(path.slice(dot + 1));
+}
+
+// Blanks the comment portions of a line (preserving column positions) so a
+// token match can be classified as code vs comment. Carries block-comment
+// state across lines. Comments are historical/research "memory of real games"
+// documentation and are allowed on any surface.
+export function stripComments(line, inBlock) {
+  const out = line.split("");
+  const length = line.length;
+  let index = 0;
+  let stringDelimiter = null;
+  let block = inBlock;
+
+  while (index < length) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (block) {
+      if (char === "*" && next === "/") {
+        out[index] = " ";
+        out[index + 1] = " ";
+        block = false;
+        index += 2;
+        continue;
+      }
+      out[index] = " ";
+      index += 1;
+      continue;
+    }
+
+    if (stringDelimiter) {
+      if (char === "\\") {
+        index += 2;
+        continue;
+      }
+      if (char === stringDelimiter) {
+        stringDelimiter = null;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      stringDelimiter = char;
+      index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      for (let blank = index; blank < length; blank += 1) {
+        out[blank] = " ";
+      }
+      break;
+    }
+
+    if (char === "/" && next === "*") {
+      out[index] = " ";
+      out[index + 1] = " ";
+      block = true;
+      index += 2;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return { code: out.join(""), inBlockNext: block };
 }
 
 export function buildMatchers(groups = defaultForbiddenTokens) {
@@ -126,34 +375,53 @@ export function scanFiles({
   root,
   files,
   readFile = (path) => readFileSync(resolve(root, path), "utf8"),
-  allowlist = defaultAllowlist,
+  surfaces = historicalResearchSurfaces,
   forbiddenTokens = defaultForbiddenTokens,
 }) {
   const matchers = buildMatchers(forbiddenTokens);
-  const violations = [];
+  const active = [];
+  const historical = [];
   let scannedFileCount = 0;
   let skippedEnvFileCount = 0;
-  let skippedAllowlistedFileCount = 0;
+  let historicalSurfaceFileCount = 0;
 
   for (const file of files) {
     if (isEnvPath(file)) {
       skippedEnvFileCount += 1;
       continue;
     }
-    if (isAllowlisted(file, allowlist)) {
-      skippedAllowlistedFileCount += 1;
-      continue;
-    }
 
-    const filenameMatches = matchesForText(file, matchers);
-    for (const match of filenameMatches) {
-      violations.push({
+    const surface = classifySurface(file, surfaces);
+    if (surface) {
+      historicalSurfaceFileCount += 1;
+    }
+    const record = (violation) => {
+      if (surface) {
+        historical.push({
+          ...violation,
+          classification: "historical-surface",
+          reason: surface.reason,
+        });
+      } else if (violation.comment) {
+        historical.push({
+          ...violation,
+          classification: "historical-comment",
+          reason: "in-source comment",
+        });
+      } else {
+        active.push({ ...violation, classification: "active-surface" });
+      }
+    };
+
+    for (const match of matchesForText(file, matchers)) {
+      record({
         path: file,
         location: "filename",
         line: null,
         label: match.label,
         token: match.token,
         excerpt: file,
+        comment: false,
       });
     }
 
@@ -165,45 +433,70 @@ export function scanFiles({
     }
 
     scannedFileCount += 1;
+    const slashComments = supportsSlashComments(file);
     const lines = contents.split(/\r?\n/u);
+    let inBlock = false;
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const line = lines[lineIndex];
+      let codeLine = line;
+      if (slashComments) {
+        const stripped = stripComments(line, inBlock);
+        codeLine = stripped.code;
+        inBlock = stripped.inBlockNext;
+      }
       for (const match of matchesForText(line, matchers)) {
-        violations.push({
+        // A match is a comment when the same span in the comment-stripped line
+        // no longer contains the token (only classifiable when we can strip).
+        const isComment =
+          slashComments &&
+          codeLine.slice(match.start, match.end).trim() !==
+            line.slice(match.start, match.end).trim();
+        record({
           path: file,
           location: "content",
           line: lineIndex + 1,
           label: match.label,
           token: match.token,
           excerpt: line.trim().slice(0, 220),
+          comment: isComment,
         });
       }
     }
   }
 
   return {
-    violations,
+    active,
+    historical,
     scannedFileCount,
-    skippedAllowlistedFileCount,
+    historicalSurfaceFileCount,
     skippedEnvFileCount,
   };
 }
 
-export function renderReport(result) {
+export function renderReport(result, { mode = "check" } = {}) {
   const lines = [];
-  const count = result.violations.length;
-  lines.push(`specific-game-reference advisory: ${count} violation${count === 1 ? "" : "s"} found`);
+  const activeCount = result.active.length;
+  const historicalCount = result.historical.length;
+
   lines.push(
-    `scanned ${result.scannedFileCount} tracked file${result.scannedFileCount === 1 ? "" : "s"}; skipped ${result.skippedAllowlistedFileCount} allowlisted and ${result.skippedEnvFileCount} env file${result.skippedEnvFileCount === 1 ? "" : "s"}`,
+    `generalization-purge gate: ${activeCount} active-surface leak${activeCount === 1 ? "" : "s"} found`,
+  );
+  lines.push(
+    `scanned ${result.scannedFileCount} tracked file${result.scannedFileCount === 1 ? "" : "s"}; classified ${historicalCount} historical/research reference${historicalCount === 1 ? "" : "s"} across ${result.historicalSurfaceFileCount} allowlisted surface file${result.historicalSurfaceFileCount === 1 ? "" : "s"}; skipped ${result.skippedEnvFileCount} env file${result.skippedEnvFileCount === 1 ? "" : "s"}`,
   );
 
-  if (count === 0) {
-    lines.push("no forbidden title/vendor references found");
+  if (activeCount === 0) {
+    lines.push("no active-surface title/vendor leaks found");
     return `${lines.join("\n")}\n`;
   }
 
+  lines.push("");
+  lines.push(
+    "active-surface title references are generalization leaks: move the reference to a classified historical/research surface or remove it.",
+  );
+
   const byPath = new Map();
-  for (const violation of result.violations) {
+  for (const violation of result.active) {
     const current = byPath.get(violation.path) ?? [];
     current.push(violation);
     byPath.set(violation.path, current);
@@ -221,6 +514,11 @@ export function renderReport(result) {
         lines.push(`    ${violation.excerpt}`);
       }
     }
+  }
+
+  if (mode === "check") {
+    lines.push("");
+    lines.push("gate FAILED: active-surface generalization leaks must be resolved");
   }
 
   return `${lines.join("\n")}\n`;
@@ -265,11 +563,16 @@ function rangesOverlap(left, right) {
 
 function printHelp() {
   process.stdout
-    .write(`usage: node scripts/validate-no-specific-game-references.mjs [--mode report|check] [--root PATH] [--token TOKEN...]
+    .write(`usage: node scripts/validate-no-specific-game-references.mjs [--mode check|report] [--root PATH] [--token TOKEN...]
+
+Enforceable generalization-purge gate. Title/vendor references are classified
+against historicalResearchSurfaces (allowed) vs active product/operator
+surfaces (forbidden). Comments on active surfaces are historical "memory of
+real games" and are allowed.
 
 Modes:
-  report  Print grouped violations and exit 0. Default; advisory-only.
-  check   Print grouped violations and exit 1 when violations exist.
+  check   Print active-surface leaks and exit 1 when any exist. Default.
+  report  Print active-surface leaks and exit 0 (advisory audit).
 
 Options:
   --token TOKEN  Override the default configured token set. Repeatable; intended for tests.
@@ -296,8 +599,8 @@ if (isMainModule()) {
           ? defaultForbiddenTokens
           : [{ id: "cli-token", label: "configured token", tokens: options.tokens }],
     });
-    process.stdout.write(renderReport(result));
-    process.exit(options.mode === "check" && result.violations.length > 0 ? 1 : 0);
+    process.stdout.write(renderReport(result, { mode: options.mode }));
+    process.exit(options.mode === "check" && result.active.length > 0 ? 1 : 0);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(2);
