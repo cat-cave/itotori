@@ -45,6 +45,12 @@ export default defineConfig({
       // rewrite them out from under the byte-compare.
       "crates/utsushi-core/tests/fixtures/conformance/branch_coverage/export.golden.json",
       "crates/utsushi-core/tests/fixtures/conformance/branch_coverage/export.golden.md",
+      // KAIFUU-102 XP3 private-local summary fixtures are byte-compared against
+      // the renderer's `serde_json::to_string_pretty` output by
+      // `public_summary_reproduces_from_synthetic_inputs` /
+      // `json_fixtures_match_synthetic_builders`; the formatter must not rewrite
+      // them out from under the byte-compare.
+      "fixtures/kaifuu/kirikiri/xp3-private-local/**",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",

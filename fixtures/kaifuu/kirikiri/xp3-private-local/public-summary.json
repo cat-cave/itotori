@@ -41,9 +41,7 @@
       "claimedLevel": "extract",
       "patchBackMode": "repack_archive",
       "secretRequirementIds": ["kirikiri-xp3-key-profile"],
-      "evidenceProofHashes": [
-        "sha256:3131313131313131313131313131313131313131313131313131313131313131"
-      ],
+      "evidenceProofHashes": ["sha256:3131313131313131313131313131313131313131313131313131313131313131"],
       "honest": true,
       "status": "passed",
       "diagnosticCount": 1
@@ -55,11 +53,7 @@
       "claimedLevel": "patch",
       "patchBackMode": "repack_archive",
       "secretRequirementIds": ["kaifuu-k100-xp3-crypt-key"],
-      "evidenceProofHashes": [
-        "sha256:4141414141414141414141414141414141414141414141414141414141414141",
-        "sha256:4242424242424242424242424242424242424242424242424242424242424242",
-        "sha256:4343434343434343434343434343434343434343434343434343434343434343"
-      ],
+      "evidenceProofHashes": ["sha256:4141414141414141414141414141414141414141414141414141414141414141", "sha256:4242424242424242424242424242424242424242424242424242424242424242", "sha256:4343434343434343434343434343434343434343434343434343434343434343"],
       "honest": true,
       "status": "passed",
       "diagnosticCount": 0
@@ -91,3 +85,4 @@
   },
   "diagnostics": []
 }
+
