@@ -261,6 +261,58 @@ describe("ingestFrameArtifact", () => {
     );
   });
 
+  it("ingest_frame_artifact_rejects_traversal_shaped_managed_uri()", () => {
+    // Matches the authoritative Rust validator `validate_runtime_artifact_uri`
+    // (crates/utsushi-core/src/lib.rs): a managed URI that carries a `..`, `.`,
+    // empty, or backslash traversal segment, or is too shallow, must be rejected
+    // BEFORE it is stored on the capture row (path-traversal privacy boundary).
+    const rejected: Array<[string, string]> = [
+      // `..` escapes the managed root.
+      [`${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}../secret/render.png`, "traversal_artifact_uri"],
+      // interior `..` segment.
+      [`${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}${RUN_ID}/../render.png`, "traversal_artifact_uri"],
+      // leading `.` segment.
+      [
+        `${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}./${RUN_ID}/screenshots/render.png`,
+        "traversal_artifact_uri",
+      ],
+      // empty segment (`//`).
+      [`${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}${RUN_ID}//render.png`, "traversal_artifact_uri"],
+      // backslash (non-portable / Windows-path shaped).
+      [
+        `${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}${RUN_ID}\\screenshots\\render.png`,
+        "traversal_artifact_uri",
+      ],
+      // too few segments below the root (missing run/kind/filename depth).
+      [`${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}${RUN_ID}/render.png`, "traversal_artifact_uri"],
+    ];
+
+    for (const [uri, expectedCode] of rejected) {
+      const artifact = frameArtifactFixture({
+        artifactRef: { artifactId: ARTIFACT_ID, artifactKind: "screenshot", uri },
+      });
+      let caught: unknown;
+      try {
+        ingestFrameArtifact(artifact, projectContext());
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught, `expected ${uri} to be rejected`).toBeInstanceOf(FrameCaptureIngestError);
+      expect((caught as FrameCaptureIngestError).code).toBe(expectedCode);
+    }
+  });
+
+  it("ingest_frame_artifact_accepts_valid_managed_uri_at_the_boundary()", () => {
+    // The managed root with exactly run/kind/filename is the accepted shape,
+    // matching Rust's `>= 3` component requirement.
+    const uri = `${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}${RUN_ID}/screenshots/${ARTIFACT_ID}.png`;
+    const artifact = frameArtifactFixture({
+      artifactRef: { artifactId: ARTIFACT_ID, artifactKind: "screenshot", uri },
+    });
+    const { row } = ingestFrameArtifact(artifact, projectContext());
+    expect(row.artifactRef.uri).toBe(uri);
+  });
+
   it("tryIngest_frame_artifact_returns_row_on_success_and_error_on_rejection()", async () => {
     const [row, error] = await tryIngestFrameArtifact(frameArtifactFixture(), projectContext());
     expect(row).not.toBeNull();

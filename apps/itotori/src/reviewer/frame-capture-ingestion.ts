@@ -275,6 +275,7 @@ export const FRAME_CAPTURE_INGEST_REJECTION_CODES = [
   "evidence_tier_below_floor",
   "artifact_kind_not_allowed",
   "unmanaged_artifact_uri",
+  "traversal_artifact_uri",
   "missing_project_id",
   "negative_frame_index",
 ] as const;
@@ -630,10 +631,71 @@ function enforcePolicy(params: {
       `artifactKind ${params.artifactKind} is not in the headless-runtime allow-list: ${FRAME_ARTIFACT_KIND_ALLOW_LIST.join(", ")}`,
     );
   }
-  if (!params.artifactUri.startsWith(MANAGED_RUNTIME_ARTIFACT_URI_ROOT)) {
+  validateManagedRuntimeArtifactUri(params.artifactUri);
+}
+
+/**
+ * Validate a managed runtime-artifact URI against the SAME accept/reject
+ * boundary as the authoritative Rust validator `validate_runtime_artifact_uri`
+ * (crates/utsushi-core/src/lib.rs:649). The Rust validator enforces, and this
+ * TS port matches, each of these rules:
+ *
+ *   1. Managed root: the URI must live under
+ *      `artifacts/utsushi/runtime/` (Rust strips `{RUNTIME_ARTIFACT_URI_ROOT}/`
+ *      or errors). This single prefix check also subsumes Rust's earlier
+ *      rejections of absolute paths (`starts_with('/')`), `data:`/`blob:`/
+ *      `file:` URIs, and any other URI scheme (`has_uri_scheme`): none of those
+ *      shapes can start with the root prefix, so a URI that passes the prefix
+ *      check can never be absolute or scheme-bearing.
+ *   2. No backslash: Rust rejects `uri.contains('\\')`. Checked here, because a
+ *      backslash CAN appear inside an otherwise root-prefixed URI.
+ *   3. No traversal / empty segment: Rust splits the relative remainder on '/'
+ *      and rejects any segment that is empty, `.`, or `..`. This is the
+ *      traversal defense — a `../` (or leading `/`, `//`, `./`) segment that
+ *      would escape the managed store is rejected here. (Rust additionally
+ *      walks `Path::components()` requiring every one to be `Component::Normal`;
+ *      on a POSIX relative path with no empty/`.`/`..` segment and no backslash,
+ *      every component is already Normal, so that walk is subsumed.)
+ *   4. Minimum depth: Rust requires `>= 3` path components below the root
+ *      (run / kind / filename). After the empty-segment check, the split count
+ *      equals Rust's component count, so we require `>= 3` segments.
+ *
+ * Enforcing this BEFORE `artifactRef.uri` is stored on the capture row closes a
+ * path-traversal privacy gap: the redaction boundary assumes every stored URI
+ * points inside the managed runtime store, so a `../`-shaped URI must never be
+ * persisted. This is the single reusable authority for managed artifact URIs.
+ */
+export function validateManagedRuntimeArtifactUri(uri: string): void {
+  // Rule 1: managed root (subsumes absolute / data: / blob: / file: / scheme).
+  if (!uri.startsWith(MANAGED_RUNTIME_ARTIFACT_URI_ROOT)) {
     throw new FrameCaptureIngestError(
       "unmanaged_artifact_uri",
-      `artifact uri ${params.artifactUri} is not under the managed runtime root ${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}`,
+      `artifact uri ${uri} is not under the managed runtime root ${MANAGED_RUNTIME_ARTIFACT_URI_ROOT}`,
+    );
+  }
+  // Rule 2: no backslash (portable, non-Windows-path).
+  if (uri.includes("\\")) {
+    throw new FrameCaptureIngestError(
+      "traversal_artifact_uri",
+      `artifact uri ${uri} must be a portable managed uri and must not contain a backslash`,
+    );
+  }
+  // Rule 3: no traversal / empty path segment in the remainder below the root.
+  const relative = uri.slice(MANAGED_RUNTIME_ARTIFACT_URI_ROOT.length);
+  const segments = relative.split("/");
+  for (const segment of segments) {
+    if (segment === "" || segment === "." || segment === "..") {
+      throw new FrameCaptureIngestError(
+        "traversal_artifact_uri",
+        `artifact uri ${uri} must not contain a traversal or empty path segment`,
+      );
+    }
+  }
+  // Rule 4: at least run / kind / filename below the managed root.
+  if (segments.length < 3) {
+    throw new FrameCaptureIngestError(
+      "traversal_artifact_uri",
+      `artifact uri ${uri} is missing a run, kind, or filename segment below the managed runtime root`,
     );
   }
 }
