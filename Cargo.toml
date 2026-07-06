@@ -10,6 +10,7 @@ members = [
   "crates/kaifuu-kirikiri",
   "crates/kaifuu-tyrano",
   "crates/kaifuu-softpal",
+  "crates/kaifuu-nexas",
   "crates/kaifuu-cli",
   "crates/kaifuu-vault-source",
   "crates/utsushi-core",

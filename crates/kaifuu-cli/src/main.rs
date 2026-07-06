@@ -6966,7 +6966,7 @@ mod tests {
             capabilities_path.to_str().unwrap(),
         ]);
         let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
-        assert_eq!(capabilities.len(), 5);
+        assert_eq!(capabilities.len(), 6);
         let fixture_capabilities = capabilities
             .iter()
             .find(|capabilities| {
@@ -8648,7 +8648,7 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 5);
+        assert_eq!(detection_report.detections.len(), 6);
         let softpal_detection = detection_report
             .detections
             .iter()

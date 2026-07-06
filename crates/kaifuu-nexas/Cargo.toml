@@ -1,0 +1,19 @@
+[package]
+name = "kaifuu-nexas"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust NeXAS engine reader: deterministic enumerate + extract of the `PAC\\0` archive (magic `50 41 43 00` + u32 count @0x04 + u32 pack_type @0x08, tail Huffman-packed or inline plaintext index), decompressing entries per pack_type (stored / LZSS / Huffman / zlib-Deflate). Format ported clean-room from GARbro (MIT). Discriminates NeXAS `PAC\\0` from Softpal `PAC `. No shell-outs."
+
+[dependencies]
+encoding_rs.workspace = true
+serde = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true

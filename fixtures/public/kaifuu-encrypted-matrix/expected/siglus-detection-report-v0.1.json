@@ -229,6 +229,102 @@
       ]
     },
     {
+      "adapterId": "kaifuu.nexas",
+      "detected": false,
+      "evidence": [
+        {
+          "path": "*.pac",
+          "kind": "nexas_category_archives",
+          "status": "missing",
+          "detail": "no NeXAS category-archive names (Bgm/Face/Script/System/Voice*.pac) present"
+        },
+        {
+          "path": "*.pac",
+          "kind": "nexas_pac_magic",
+          "status": "missing",
+          "detail": "no .pac with the NeXAS \"PAC\\0\" magic (Softpal \"PAC \" is a different engine)"
+        }
+      ],
+      "requirements": [],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "unsupported",
+          "limitation": "NeXAS asset inventory is outside the detector"
+        },
+        {
+          "capability": "asset_listing",
+          "status": "unsupported",
+          "limitation": "NeXAS PAC entry listing is provided by the kaifuu-nexas crate, not the detector"
+        },
+        {
+          "capability": "asset_text_patching",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "codec_access",
+          "status": "unsupported",
+          "limitation": "per-entry decompression is provided by the kaifuu-nexas crate"
+        },
+        {
+          "capability": "container_access",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "crypto_access",
+          "status": "unsupported",
+          "limitation": "NeXAS archives are unencrypted; no crypto access is claimed by the detector"
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages do not apply to the detector-only NeXAS profile"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "NeXAS PAC payloads are compressed, not encrypted"
+        },
+        {
+          "capability": "extraction",
+          "status": "unsupported",
+          "limitation": "the NeXAS detector does not extract PAC archives (use kaifuu-nexas)"
+        },
+        {
+          "capability": "non_text_surface_extraction",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "patch_back",
+          "status": "unsupported",
+          "limitation": "NeXAS patch-back/repack support is outside the detector"
+        },
+        {
+          "capability": "patching",
+          "status": "unsupported",
+          "limitation": "the NeXAS detector does not patch or rebuild NeXAS assets"
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "runtime support belongs to future Utsushi/NeXAS work, not this detector"
+        }
+      ]
+    },
+    {
       "adapterId": "kaifuu.reallive",
       "detected": false,
       "evidence": [
