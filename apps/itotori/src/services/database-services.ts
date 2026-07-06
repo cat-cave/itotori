@@ -93,6 +93,7 @@ import {
 } from "./project-workflow.js";
 import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
 import type { TelemetryQuery } from "../telemetry/queries.js";
+import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { AuthorizationActor } from "@itotori/db";
 
 export type ItotoriApplicationServices = {
@@ -174,6 +175,46 @@ export type ItotoriApplicationServices = {
 export type ItotoriServiceFactory = <T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ) => Promise<T>;
+
+/**
+ * ITOTORI-043 — the least-privilege factory for the read-only (query) API
+ * handlers. A callback wired through this factory receives ONLY the read/query
+ * dependency surface ({@link ItotoriReadOnlyApiServices}); it is structurally
+ * unable to reach a mutation service (`draftProject`, `recordFinding`,
+ * `executeBatch`, `submitCorrections`, …). The narrowed services are PROJECTED
+ * from the same shared {@link ItotoriApplicationServices} the full factory
+ * builds (`readOnlyApiServices` copies only the read methods, delegating to the
+ * shared instances), so no repository is re-wired and no shared service is
+ * bypassed.
+ */
+export type ItotoriReadOnlyServiceFactory = <T>(
+  callback: (services: ItotoriReadOnlyApiServices) => Promise<T>,
+) => Promise<T>;
+
+/**
+ * ITOTORI-043 — derive a read-only service factory from a full one. Every read
+ * callback runs against the read-only projection of the shared services the
+ * full factory produced (reused instances, no duplicated wiring).
+ */
+export function toReadOnlyServiceFactory(
+  factory: ItotoriServiceFactory,
+): ItotoriReadOnlyServiceFactory {
+  return (callback) => factory((services) => callback(readOnlyApiServices(services)));
+}
+
+/**
+ * ITOTORI-043 — the DB-backed read-only API service factory. Opens the shared
+ * database-backed services exactly once (same construction the full factory
+ * uses) and hands the callback ONLY their read-only projection.
+ */
+export function withDatabaseReadOnlyApiServices<T>(
+  options: DatabaseServiceOptions,
+  callback: (services: ItotoriReadOnlyApiServices) => Promise<T>,
+): Promise<T> {
+  return withDatabaseItotoriServices(options, (services) =>
+    callback(readOnlyApiServices(services)),
+  );
+}
 
 export type DatabaseServiceOptions = {
   databaseUrl?: string;

@@ -127,7 +127,20 @@ export type ItotoriApiRequest = {
   body?: unknown;
 };
 
-export type ItotoriApiServices = {
+/**
+ * ITOTORI-043 — the read/query dependencies exposed to the READ-ONLY (query)
+ * API handlers. This is a least-privilege surface: it deliberately picks ONLY
+ * the read methods of each shared service, so a query handler that receives an
+ * {@link ItotoriReadOnlyApiServices} is *structurally* (type-level) unable to
+ * reach a mutation — `reviewerQueue.executeBatch`,
+ * `workspaceCorrections.submitCorrections`, `projectWorkflow.draftProject`,
+ * etc. are not on the type. The default read-only factory
+ * (`readOnlyApiServices` / `withDatabaseReadOnlyApiServices` in
+ * `services/database-services.ts`) additionally narrows at RUNTIME (the
+ * produced object carries no mutation methods), reusing the same shared
+ * service instances rather than re-wiring repositories.
+ */
+export type ItotoriReadOnlyApiServices = {
   authorization: Pick<ItotoriAuthorizationPort, "requirePermission">;
   catalogRepository: {
     catalogConflictReview(
@@ -146,9 +159,9 @@ export type ItotoriApiServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
-  reviewerQueue: ReviewerQueueApiServicePort;
+  reviewerQueue: Pick<ReviewerQueueApiServicePort, "loadDashboard" | "loadDetailContext">;
   workspace: LocalizationWorkspaceApiServicePort;
-  workspaceCorrections: WorkspaceCorrectionServicePort;
+  workspaceCorrections: Pick<WorkspaceCorrectionServicePort, "loadPreview">;
   assetDecisions: {
     loadActiveDecisions(
       projectId: string,
@@ -169,6 +182,28 @@ export type ItotoriApiServices = {
     | "getRuntimeStatus"
     | "getCostReport"
     | "getBenchmarkReports"
+  >;
+};
+
+/**
+ * The full dependency surface for the API handler entrypoint. It is the
+ * read-only surface {@link ItotoriReadOnlyApiServices} INTERSECTED with the
+ * mutation methods the write (POST) handlers need. The intersection keeps the
+ * read picks and adds the mutation picks, so `reviewerQueue` /
+ * `workspaceCorrections` resolve to their full ports and `projectWorkflow`
+ * gains the record/draft/ingest writes.
+ */
+export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
+  reviewerQueue: ReviewerQueueApiServicePort;
+  workspaceCorrections: WorkspaceCorrectionServicePort;
+  projectWorkflow: Pick<
+    ItotoriProjectWorkflowPort,
+    | "listLocaleBranchIdentities"
+    | "getDashboardStatus"
+    | "getDashboardDecisions"
+    | "getRuntimeStatus"
+    | "getCostReport"
+    | "getBenchmarkReports"
     | "importBridge"
     | "draftProject"
     | "recordFinding"
@@ -176,6 +211,67 @@ export type ItotoriApiServices = {
     | "recordBenchmarkReport"
     | "ingestRuntimeReport"
   >;
+};
+
+/**
+ * ITOTORI-043 — project the full API service surface down to the read-only
+ * surface, copying ONLY the read methods. The result reuses the same
+ * underlying shared service instances (each method delegates to
+ * `services.*`); it never re-wires a repository. Because the returned object
+ * literally has no mutation methods, a read handler holding it is unable to
+ * reach a mutation at runtime as well as at the type level.
+ */
+export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOnlyApiServices {
+  return {
+    // The authorization port already exposes only `requirePermission` on the
+    // API surface (no mutation methods to strip), so it is reused as-is.
+    authorization: services.authorization,
+    catalogRepository: {
+      catalogConflictReview: (filter) => services.catalogRepository.catalogConflictReview(filter),
+      catalogCompletenessBenchmarkPools: (filter) =>
+        services.catalogRepository.catalogCompletenessBenchmarkPools(filter),
+      catalogBenchmarkSeedFinder: (filter) =>
+        services.catalogRepository.catalogBenchmarkSeedFinder(filter),
+      catalogOpportunityRanking: (filter) =>
+        services.catalogRepository.catalogOpportunityRanking(filter),
+    },
+    terminologyRepository: {
+      searchTerms: (input) => services.terminologyRepository.searchTerms(input),
+    },
+    reviewerQueue: {
+      loadDashboard: (input) => services.reviewerQueue.loadDashboard(input),
+      loadDetailContext: (input) => services.reviewerQueue.loadDetailContext(input),
+    },
+    workspace: services.workspace,
+    workspaceCorrections: {
+      loadPreview: (input) => services.workspaceCorrections.loadPreview(input),
+    },
+    assetDecisions: {
+      loadActiveDecisions: (projectId, localeBranchId, opts) =>
+        services.assetDecisions.loadActiveDecisions(projectId, localeBranchId, opts),
+      loadCandidateAssets: (projectId, localeBranchId, opts) =>
+        services.assetDecisions.loadCandidateAssets(projectId, localeBranchId, opts),
+    },
+    projectWorkflow: {
+      listLocaleBranchIdentities: (projectId) =>
+        services.projectWorkflow.listLocaleBranchIdentities(projectId),
+      getDashboardStatus: () => services.projectWorkflow.getDashboardStatus(),
+      getDashboardDecisions: (projectId) =>
+        services.projectWorkflow.getDashboardDecisions(projectId),
+      getRuntimeStatus: (runtimeRunId) => services.projectWorkflow.getRuntimeStatus(runtimeRunId),
+      getCostReport: (projectId) => services.projectWorkflow.getCostReport(projectId),
+      getBenchmarkReports: (projectId) => services.projectWorkflow.getBenchmarkReports(projectId),
+    },
+  };
+}
+
+/**
+ * ITOTORI-043 — the dependency shared by every permission helper: only the
+ * authorization port is needed to gate a route, so both the read-only and the
+ * full service surfaces satisfy it.
+ */
+type ApiAuthorizationDependency = {
+  authorization: Pick<ItotoriAuthorizationPort, "requirePermission">;
 };
 
 export function isItotoriApiPath(pathname: string): boolean {
@@ -197,6 +293,204 @@ async function routeItotoriApiRequest(
   request: ItotoriApiRequest,
   services: ItotoriApiServices,
 ): Promise<ApiJsonResponse> {
+  // ITOTORI-043 — read (query) routes are served by a handler that receives
+  // ONLY the read-only dependency surface, so it is structurally unable to
+  // reach a mutation service. It returns null when the request is not a read
+  // route it owns, deferring to the mutation routing below.
+  const readOnlyResponse = await routeReadOnlyItotoriApiRequest(
+    request,
+    readOnlyApiServices(services),
+  );
+  if (readOnlyResponse !== null) {
+    return readOnlyResponse;
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-preview") {
+    const body = parseReviewerBatchPreviewRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "reviewer.batchPreview",
+      await services.reviewerQueue.previewBatch({ request: body, permission }),
+    );
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-confirm") {
+    const body = parseReviewerBatchExecuteRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "reviewer.batchExecute",
+      await services.reviewerQueue.executeBatch({
+        actor: { userId: body.actorUserId },
+        request: body,
+        permission,
+      }),
+    );
+  }
+
+  const reviewerSingleActionRoute = parseReviewerSingleActionApiRoute(request.pathname);
+  if (request.method === "POST" && reviewerSingleActionRoute !== null) {
+    // ITOTORI-082 — single-item reviewer action. Reuses the batch route's
+    // actor-gating (the SAME permission view), validation, and
+    // consequence disclosure via `actionSingleItem` (a batch-of-one over
+    // ReviewerQueueActionService). No new auth path, service, or
+    // migration. A refused outcome (unknown item / invalid transition /
+    // already-actioned / stale / permission) becomes a typed HTTP error
+    // rather than an in-band 200 or a 500.
+    const body = parseReviewerSingleActionRequest(
+      request.body,
+      reviewerSingleActionRoute.reviewItemId,
+    );
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    const result = await services.reviewerQueue.actionSingleItem({
+      actor: { userId: body.actorUserId },
+      request: body,
+      permission,
+    });
+    if (result.outcome.kind === "refused") {
+      return reviewerSingleActionRefusal(result.outcome.status, result.outcome.message);
+    }
+    return ok("reviewer.itemAction", result);
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
+    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "workspace.correctionSubmit",
+      await services.workspaceCorrections.submitCorrections({ ...body, permission }),
+    );
+  }
+
+  if (
+    request.pathname === "/api/workspace/corrections" &&
+    request.method !== "GET" &&
+    request.method !== "POST"
+  ) {
+    return methodNotAllowed(["GET", "POST"]);
+  }
+
+  if (
+    request.pathname === "/api/reviewer/queue/batch-preview" ||
+    request.pathname === "/api/reviewer/queue/batch-confirm" ||
+    reviewerSingleActionRoute !== null
+  ) {
+    return methodNotAllowed(["POST"]);
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    const body = parseProjectImportRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.bridgeImport);
+    const project = await services.projectWorkflow.importBridge(body.bridge);
+    const status = await services.projectWorkflow.getDashboardStatus();
+    return ok("imports.bridge", { project, status });
+  }
+
+  const projectRoute = parseProjectRoute(request.pathname);
+  if (!projectRoute) {
+    return notFound(request.pathname);
+  }
+
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  switch (projectRoute.resource) {
+    case "branches": {
+      const body = parseDraftBranchRequest(request.body);
+      assertPathProject(projectRoute.projectId, body.project.projectId);
+      await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
+      // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
+      // lookup and write with the authoritative branch id; a client-supplied
+      // ProjectState carrying a foreign/forged localeBranchId is refused here
+      // before draftProject touches the repository.
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: body.project.localeBranchId,
+      });
+      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
+      const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
+      const status = await services.projectWorkflow.getDashboardStatus();
+      return ok("branches.draft", { project, status });
+    }
+    case "findings": {
+      const body = parseRecordFindingRequest(request.body);
+      await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
+      // ITOTORI-050 — verify the project (and, when supplied, the branch)
+      // server-side before recording; a foreign/forged branch id is refused.
+      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
+      });
+      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
+      const result = await services.projectWorkflow.recordFinding(scope.projectId, scopedBody);
+      return ok("findings.record", result);
+    }
+    case "decisions": {
+      const body = parseRecordDecisionRequest(request.body);
+      await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
+      // ITOTORI-050 — verify the project (and, when supplied, the branch)
+      // server-side before recording; a foreign/forged branch id is refused.
+      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
+      });
+      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
+      const result = await services.projectWorkflow.recordDecision(scope.projectId, scopedBody);
+      return ok("decisions.record", result);
+    }
+    case "benchmarks": {
+      const body = parseRecordBenchmarkRequest(request.body);
+      await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
+      // ITOTORI-050 — the benchmark self-identifies its branch (the parser
+      // already rejects a report without one); verify that branch is
+      // server-side owned by the project before recording.
+      const benchmarkLocaleBranchId = body.benchmarkReport.localeBranchId;
+      if (benchmarkLocaleBranchId === undefined) {
+        throw new ApiValidationError(
+          "ApiRecordBenchmarkRequest.benchmarkReport.localeBranchId is required",
+        );
+      }
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: benchmarkLocaleBranchId,
+      });
+      const result = await services.projectWorkflow.recordBenchmarkReport(scope.projectId, body);
+      return ok("benchmarks.record", result);
+    }
+    case "runtime-evidence": {
+      const body = parseRuntimeEvidenceRequest(request.body);
+      assertPathProject(projectRoute.projectId, body.project.projectId);
+      await requireApiPermission(services, apiMutationPermissionGates.runtimeEvidenceIngest);
+      // ITOTORI-050 — verify the client-supplied ProjectState's branch is
+      // server-side owned by the project; write with the authoritative branch
+      // id so a forged ProjectState cannot ingest evidence into a foreign
+      // branch.
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: body.project.localeBranchId,
+      });
+      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
+      const result = await services.projectWorkflow.ingestRuntimeReport(
+        scopedProject,
+        body.runtimeReport,
+      );
+      return ok("runtimeEvidence.ingest", result.result);
+    }
+  }
+}
+
+/**
+ * ITOTORI-043 — the READ-ONLY (query) route handler. It receives ONLY the
+ * read-only dependency surface, so it is structurally unable to reach a
+ * mutation service. It returns an {@link ApiJsonResponse} for every read route
+ * it owns (including the `method not allowed` responses for the pure-GET read
+ * paths), and `null` when the request should be handled by the mutation
+ * routing in {@link routeItotoriApiRequest}.
+ */
+async function routeReadOnlyItotoriApiRequest(
+  request: ItotoriApiRequest,
+  services: ItotoriReadOnlyApiServices,
+): Promise<ApiJsonResponse | null> {
   if (request.method === "GET" && request.pathname === "/api/projects") {
     const canRead = await resolveProjectReadPermission(services);
     const status = await services.projectWorkflow.getDashboardStatus();
@@ -365,15 +659,6 @@ async function routeItotoriApiRequest(
     );
   }
 
-  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
-    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "workspace.correctionSubmit",
-      await services.workspaceCorrections.submitCorrections({ ...body, permission }),
-    );
-  }
-
   if (
     request.method !== "GET" &&
     (request.pathname === "/api/workspace/projects" ||
@@ -383,14 +668,6 @@ async function routeItotoriApiRequest(
       request.pathname === "/api/workspace/search")
   ) {
     return methodNotAllowed(["GET"]);
-  }
-
-  if (
-    request.pathname === "/api/workspace/corrections" &&
-    request.method !== "GET" &&
-    request.method !== "POST"
-  ) {
-    return methodNotAllowed(["GET", "POST"]);
   }
 
   const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
@@ -457,53 +734,9 @@ async function routeItotoriApiRequest(
     );
   }
 
-  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-preview") {
-    const body = parseReviewerBatchPreviewRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "reviewer.batchPreview",
-      await services.reviewerQueue.previewBatch({ request: body, permission }),
-    );
-  }
-
-  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-confirm") {
-    const body = parseReviewerBatchExecuteRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "reviewer.batchExecute",
-      await services.reviewerQueue.executeBatch({
-        actor: { userId: body.actorUserId },
-        request: body,
-        permission,
-      }),
-    );
-  }
-
-  const reviewerSingleActionRoute = parseReviewerSingleActionApiRoute(request.pathname);
-  if (request.method === "POST" && reviewerSingleActionRoute !== null) {
-    // ITOTORI-082 — single-item reviewer action. Reuses the batch route's
-    // actor-gating (the SAME permission view), validation, and
-    // consequence disclosure via `actionSingleItem` (a batch-of-one over
-    // ReviewerQueueActionService). No new auth path, service, or
-    // migration. A refused outcome (unknown item / invalid transition /
-    // already-actioned / stale / permission) becomes a typed HTTP error
-    // rather than an in-band 200 or a 500.
-    const body = parseReviewerSingleActionRequest(
-      request.body,
-      reviewerSingleActionRoute.reviewItemId,
-    );
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    const result = await services.reviewerQueue.actionSingleItem({
-      actor: { userId: body.actorUserId },
-      request: body,
-      permission,
-    });
-    if (result.outcome.kind === "refused") {
-      return reviewerSingleActionRefusal(result.outcome.status, result.outcome.message);
-    }
-    return ok("reviewer.itemAction", result);
-  }
-
+  // The pure-GET read paths reject a non-GET request with 405 here (the POST
+  // routes that share the `/api/reviewer/queue/...` prefix are dispatched by
+  // the mutation router, which owns their own method-not-allowed handling).
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
@@ -517,129 +750,24 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/terminology/search" ||
     assetDecisionRoute !== null ||
     request.pathname === "/api/reviewer/queue" ||
-    request.pathname === "/api/reviewer/queue/batch-preview" ||
-    request.pathname === "/api/reviewer/queue/batch-confirm" ||
-    reviewerSingleActionRoute !== null ||
     reviewerDetailRoute !== null
   ) {
-    return request.pathname === "/api/reviewer/queue/batch-preview" ||
-      request.pathname === "/api/reviewer/queue/batch-confirm" ||
-      reviewerSingleActionRoute !== null
-      ? methodNotAllowed(["POST"])
-      : methodNotAllowed(["GET"]);
+    return methodNotAllowed(["GET"]);
   }
 
-  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
-    const body = parseProjectImportRequest(request.body);
-    await requireApiPermission(services, apiMutationPermissionGates.bridgeImport);
-    const project = await services.projectWorkflow.importBridge(body.bridge);
-    const status = await services.projectWorkflow.getDashboardStatus();
-    return ok("imports.bridge", { project, status });
-  }
-
-  const projectRoute = parseProjectRoute(request.pathname);
-  if (!projectRoute) {
-    return notFound(request.pathname);
-  }
-
-  if (request.method !== "POST") {
-    return methodNotAllowed(["POST"]);
-  }
-
-  switch (projectRoute.resource) {
-    case "branches": {
-      const body = parseDraftBranchRequest(request.body);
-      assertPathProject(projectRoute.projectId, body.project.projectId);
-      await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
-      // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
-      // lookup and write with the authoritative branch id; a client-supplied
-      // ProjectState carrying a foreign/forged localeBranchId is refused here
-      // before draftProject touches the repository.
-      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        localeBranchId: body.project.localeBranchId,
-      });
-      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
-      const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
-      const status = await services.projectWorkflow.getDashboardStatus();
-      return ok("branches.draft", { project, status });
-    }
-    case "findings": {
-      const body = parseRecordFindingRequest(request.body);
-      await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
-      // ITOTORI-050 — verify the project (and, when supplied, the branch)
-      // server-side before recording; a foreign/forged branch id is refused.
-      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
-      });
-      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
-      const result = await services.projectWorkflow.recordFinding(scope.projectId, scopedBody);
-      return ok("findings.record", result);
-    }
-    case "decisions": {
-      const body = parseRecordDecisionRequest(request.body);
-      await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
-      // ITOTORI-050 — verify the project (and, when supplied, the branch)
-      // server-side before recording; a foreign/forged branch id is refused.
-      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
-      });
-      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
-      const result = await services.projectWorkflow.recordDecision(scope.projectId, scopedBody);
-      return ok("decisions.record", result);
-    }
-    case "benchmarks": {
-      const body = parseRecordBenchmarkRequest(request.body);
-      await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
-      // ITOTORI-050 — the benchmark self-identifies its branch (the parser
-      // already rejects a report without one); verify that branch is
-      // server-side owned by the project before recording.
-      const benchmarkLocaleBranchId = body.benchmarkReport.localeBranchId;
-      if (benchmarkLocaleBranchId === undefined) {
-        throw new ApiValidationError(
-          "ApiRecordBenchmarkRequest.benchmarkReport.localeBranchId is required",
-        );
-      }
-      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        localeBranchId: benchmarkLocaleBranchId,
-      });
-      const result = await services.projectWorkflow.recordBenchmarkReport(scope.projectId, body);
-      return ok("benchmarks.record", result);
-    }
-    case "runtime-evidence": {
-      const body = parseRuntimeEvidenceRequest(request.body);
-      assertPathProject(projectRoute.projectId, body.project.projectId);
-      await requireApiPermission(services, apiMutationPermissionGates.runtimeEvidenceIngest);
-      // ITOTORI-050 — verify the client-supplied ProjectState's branch is
-      // server-side owned by the project; write with the authoritative branch
-      // id so a forged ProjectState cannot ingest evidence into a foreign
-      // branch.
-      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        localeBranchId: body.project.localeBranchId,
-      });
-      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
-      const result = await services.projectWorkflow.ingestRuntimeReport(
-        scopedProject,
-        body.runtimeReport,
-      );
-      return ok("runtimeEvidence.ingest", result.result);
-    }
-  }
+  // Not a read route this handler owns — defer to the mutation router.
+  return null;
 }
 
 async function requireApiPermission(
-  services: ItotoriApiServices,
+  services: ApiAuthorizationDependency,
   gate: ApiMutationPermissionGate,
 ): Promise<void> {
   await services.authorization.requirePermission(gate.permission);
 }
 
 async function resolveApiReviewerQueuePermissionView(
-  services: ItotoriApiServices,
+  services: ApiAuthorizationDependency,
   actorUserId = "local-user",
 ): Promise<ReviewerQueuePermissionView> {
   const [canReadQueue, readDenial] = await tryApiPermission(services, permissionValues.queueRead);
@@ -663,7 +791,7 @@ async function resolveApiReviewerQueuePermissionView(
 }
 
 async function tryApiPermission(
-  services: ItotoriApiServices,
+  services: ApiAuthorizationDependency,
   permission: Permission,
 ): Promise<[boolean, string | null]> {
   try {
@@ -687,7 +815,9 @@ async function tryApiPermission(
  * and the cost report repository read enforce, so the HTTP boundary and
  * the repository defense-in-depth check agree on the required permission.
  */
-async function resolveProjectReadPermission(services: ItotoriApiServices): Promise<boolean> {
+async function resolveProjectReadPermission(
+  services: ApiAuthorizationDependency,
+): Promise<boolean> {
   const [canRead] = await tryApiPermission(services, permissionValues.catalogRead);
   return canRead;
 }

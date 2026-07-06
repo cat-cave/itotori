@@ -27,10 +27,12 @@ import {
   apiMutationPermissionGates,
   handleItotoriApiRequest,
   isItotoriApiPath,
+  readOnlyApiServices,
   type ApiMutationPermissionGate,
   type ItotoriApiRequest,
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
+import { withDatabaseReadOnlyApiServices } from "../src/services/database-services.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -3890,4 +3892,117 @@ describe("Itotori API handlers — workspace manual corrections (ITOTORI-118)", 
     );
     expect(response.statusCode).toBe(405);
   });
+});
+
+describe("ITOTORI-043 read-only API service factory (least-privilege query surface)", () => {
+  const permissionFixture = {
+    actorUserId: "reader-1",
+    canReadQueue: true,
+    canManageQueue: true,
+    denialReasons: [] as string[],
+  };
+
+  // Every mutation method that MUST NOT be reachable through the read-only
+  // surface, keyed by the shared service that owns it.
+  const excludedMutations: Array<{ service: string; methods: string[] }> = [
+    {
+      service: "projectWorkflow",
+      methods: [
+        "importBridge",
+        "draftProject",
+        "recordFinding",
+        "recordDecision",
+        "recordBenchmarkReport",
+        "ingestRuntimeReport",
+      ],
+    },
+    { service: "reviewerQueue", methods: ["previewBatch", "executeBatch", "actionSingleItem"] },
+    { service: "workspaceCorrections", methods: ["submitCorrections"] },
+  ];
+
+  it("projects the full services onto a surface carrying NO mutation methods at runtime", () => {
+    const readOnly = readOnlyApiServices(serviceFixture()) as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    for (const { service, methods } of excludedMutations) {
+      for (const method of methods) {
+        expect(readOnly[service]?.[method], `${service}.${method} must be unreachable`).toBe(
+          undefined,
+        );
+      }
+    }
+  });
+
+  it("keeps the read (query) methods a handler needs, delegating to the shared services", async () => {
+    const full = serviceFixture();
+    const readOnly = readOnlyApiServices(full);
+
+    expect(await readOnly.projectWorkflow.getDashboardStatus()).toBe(dashboardStatusFixture);
+    expect(full.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(1);
+
+    await readOnly.reviewerQueue.loadDetailContext({
+      reviewItemId: "review-1",
+      permission: permissionFixture,
+    });
+    expect(full.reviewerQueue.loadDetailContext).toHaveBeenCalledTimes(1);
+
+    await readOnly.workspaceCorrections.loadPreview({
+      localeBranchId: "branch-1",
+      reviewItemIds: [],
+      permission: permissionFixture,
+    });
+    expect(full.workspaceCorrections.loadPreview).toHaveBeenCalledTimes(1);
+
+    await readOnly.catalogRepository.catalogConflictReview();
+    expect(full.catalogRepository.catalogConflictReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves a representative read handler with only the reduced dependency surface", async () => {
+    // The narrowed object literally has no mutation methods, yet a GET read
+    // route resolves — proving the read handler needs only the read surface.
+    const readOnly = readOnlyApiServices(serviceFixture());
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/status" },
+      readOnly as unknown as ItotoriApiServices,
+    );
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("excludes mutation methods from the read-only surface at the TYPE level", () => {
+    const readOnly = readOnlyApiServices(serviceFixture());
+    // @ts-expect-error draftProject is a mutation excluded from the read-only surface
+    void readOnly.projectWorkflow.draftProject;
+    // @ts-expect-error executeBatch is a mutation excluded from the read-only surface
+    void readOnly.reviewerQueue.executeBatch;
+    // @ts-expect-error submitCorrections is a mutation excluded from the read-only surface
+    void readOnly.workspaceCorrections.submitCorrections;
+    expect(readOnly.workspace).toBeDefined();
+  });
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "the DB-backed read-only factory hands a query callback the narrowed surface over real Postgres",
+    async () => {
+      await withDatabaseReadOnlyApiServices(
+        { databaseUrl: process.env.DATABASE_URL, bootstrapLocalUser: true },
+        async (services) => {
+          // A representative read works against the real DB-backed services
+          // (the server-side ownership lookup every read path relies on).
+          const identities =
+            await services.projectWorkflow.listLocaleBranchIdentities("itotori-043-absent");
+          expect(Array.isArray(identities)).toBe(true);
+
+          // Mutation services are structurally absent from what the factory hands over.
+          const surface = services as unknown as Record<string, Record<string, unknown>>;
+          for (const { service, methods } of excludedMutations) {
+            for (const method of methods) {
+              expect(surface[service]?.[method], `${service}.${method} must be unreachable`).toBe(
+                undefined,
+              );
+            }
+          }
+        },
+      );
+    },
+  );
 });
