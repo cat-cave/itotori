@@ -6,6 +6,7 @@ import {
   assertPatchResultV02,
   assertRuntimeReport,
   assertStyleGuideConversationTranscript,
+  ITOTORI_PRODUCT_VERSION,
   type ConformanceManifestV01,
   type ConformanceResultV01,
   type StyleGuideConversationTranscript,
@@ -208,6 +209,10 @@ export async function runItotoriCliCommand(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  if (args.includes("--version") || args.includes("-v")) {
+    process.stdout.write(`itotori ${ITOTORI_PRODUCT_VERSION}\n`);
+    return;
+  }
   const command = args[0];
   switch (command) {
     case "db-migrate":

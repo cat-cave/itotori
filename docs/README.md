@@ -34,6 +34,9 @@ The current spec dashboard is documented in
 and the current runtime evidence dashboard is documented in
 [`apps/runtime-web-review/README.md`](../apps/runtime-web-review/README.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
+The product SEMVER, the publishable surface, and the relation between the
+product version and the format-level `schemaVersion` markers are documented in
+[versioning-and-release-policy.md](versioning-and-release-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
 Itotori permission gates and the alpha/local bootstrap actor model are documented in
 [permissions.md](permissions.md).
