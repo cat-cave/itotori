@@ -80,6 +80,37 @@ export {
 } from "./public-fixture-input.js";
 
 export {
+  BLIND_METRIC_SYSTEM_KIND,
+  CONTESTANT_KINDS,
+  CORPUS_INPUT_CONTESTANT_KINDS,
+  ContestantBlindingError,
+  ContestantHarnessError,
+  GENERATIVE_CONTESTANT_KINDS,
+  ITOTORI_ABLATION_KINDS,
+  RAW_MTL_BASELINE_MAX_PRICE_USD,
+  assertContestantBundleBlind,
+  deanonymizeCandidate,
+  deanonymizeSystem,
+  makeRawMtlBaselineRunner,
+  runContestantHarness,
+  type AnonymizedContestantBundle,
+  type AssertContestantBundleBlindOptions,
+  type ContestantCandidateProvenance,
+  type ContestantCorpusUnit,
+  type ContestantDeanonymizationKey,
+  type ContestantHarnessInput,
+  type ContestantHarnessResult,
+  type ContestantKind,
+  type ContestantSystemProvenance,
+  type CorpusContestantUnitOutput,
+  type CorpusInputContestantKind,
+  type GeneratedContestantOutput,
+  type GenerativeContestantKind,
+  type GenerativeContestantRunner,
+  type RawMtlBaselineRunnerOptions,
+} from "./contestant-harness.js";
+
+export {
   DecodedContextFeedError,
   buildDecodedContextFeed,
   assertJudgeFeedGroundTruthOnly,
