@@ -227,6 +227,26 @@ const FORBIDDEN_PATTERNS = [
     costLiteral: true,
   },
   {
+    // `amountUsd: "0.00000602"` / `amountUsd: 0.00157` — the AUTHORITATIVE
+    // full-precision decimal-USD ledger cost (ProviderCost.amountUsd). This is
+    // the field `assertBilledCostDecimal` returns VERBATIM and that migration
+    // 0041 persists as `cost_amount` under the 1e-9 CHECK basis — the value the
+    // codebase made the authoritative billed cost. A hardcoded amountUsd is
+    // therefore exactly as forbidden as a hardcoded amountMicrosUsd, and this
+    // pattern mirrors that rule. The value may be a quoted decimal STRING (the
+    // canonical shape) or a bare NUMERIC literal, so an optional value-quote is
+    // consumed before the non-zero lookahead. Non-zero only: `: "0"` /
+    // `: "0.00000000"` / `: 0` is the ZERO_COST shape and is left alone (same
+    // zero-lookahead posture as amountMicrosUsd). Key may be optionally quoted
+    // so the JSON form (`"amountUsd": "0.0125"`) is caught too. `amountUsd`
+    // used as a variable / shorthand / type / expression (no numeric literal
+    // after the colon) never matches; `costAmountUsd` (capital A) is not this
+    // field and is not matched.
+    label: "hardcoded non-zero amountUsd literal",
+    regex: /\b["'`]?amountUsd["'`]?\s*:\s*["'`]?(?=[\d._]*[1-9])[\d._]/u,
+    costLiteral: true,
+  },
+  {
     // Bare `cost: 0.0125` — the upstream `usage.cost` shape mirrored into a
     // usageResponseJson literal. Non-zero only; `cost: { ... }` object
     // forms and `cost: 0` are not matched (no digit / a zero number).

@@ -253,7 +253,7 @@ describe("OpenRouterProvider", () => {
     expect(result.providerRun.cost).toEqual({
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.000019",
+      amountUsd: "0.000019", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 19, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.

@@ -853,7 +853,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       expect(error.providerRun?.cost).toEqual({
         costKind: "billed",
         currency: "USD",
-        amountUsd: "0.000003",
+        amountUsd: "0.000003", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         amountMicrosUsd: 3, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         cacheDiscountMicrosUsd: 0,
       });
@@ -868,7 +868,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
     expect(recorder.artifacts[0]?.run.cost).toEqual({
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.000003",
+      amountUsd: "0.000003", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 3, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       cacheDiscountMicrosUsd: 0,
     });
@@ -1221,7 +1221,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
     const billedWithNoAmount = {
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.5",
+      amountUsd: "0.5", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       // amountMicrosUsd deliberately absent — the exact shape a future
       // regression could produce.
     } as unknown as Parameters<typeof assertBilledCost>[0];
@@ -1247,7 +1247,7 @@ describe("full-precision billed-cost rendering (assertBilledCostDecimal + addDec
     const decimal = assertBilledCostDecimal({
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.00000602",
+      amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic micros mirror (6.02→6) proving the decimal accessor returns amountUsd verbatim, never this rounded value
     });
     expect(decimal).toBe("0.00000602");

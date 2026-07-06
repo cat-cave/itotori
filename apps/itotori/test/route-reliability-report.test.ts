@@ -172,7 +172,7 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
       cost: {
         costKind: "billed",
         currency: "USD",
-        amountUsd: "0.00000602",
+        amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       } as ProviderCost,
     });
@@ -240,7 +240,7 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
       cost: {
         costKind: "billed",
         currency: "USD",
-        amountUsd: "0.0000005",
+        amountUsd: "0.0000005", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         amountMicrosUsd: 1, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       } as ProviderCost,
     });

@@ -134,7 +134,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
       // rounds this sub-micro value to 6 (= 0.000006), a 2e-8 error that the
       // ledger CHECK rejects; `amountUsd` carries the exact upstream decimal
       // so the replayed-and-persisted row holds within 1e-9.
-      amountUsd: "0.00000602",
+      amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: capturedAmountMicrosUsd,
     };
     const request = baseRequest();
@@ -176,7 +176,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     const capturedCost: ProviderCost = {
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.012345",
+      amountUsd: "0.012345", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 12_345, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     };
     const request = baseRequest();
@@ -583,7 +583,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     const cost: ProviderCost = {
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.000007",
+      amountUsd: "0.000007", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 7, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     };
     const left = bundleWith(request, cost, { bundleId: "left-bundle" });

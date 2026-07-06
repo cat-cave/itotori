@@ -36,6 +36,85 @@ test("catches a hardcoded non-zero amountMicrosUsd literal", () => {
   assert.deepEqual(hits, ["hardcoded non-zero amountMicrosUsd literal"]);
 });
 
+test("catches a hardcoded non-zero amountUsd string literal (the authoritative ledger cost)", () => {
+  // amountUsd is the full-precision decimal the ledger persists as cost_amount
+  // (assertBilledCostDecimal returns it verbatim; migration 0041 1e-9 CHECK).
+  // A hardcoded amountUsd is as forbidden as a hardcoded amountMicrosUsd.
+  const hits = labels(PROD_PATH, '    amountUsd: "0.05",');
+  assert.deepEqual(hits, ["hardcoded non-zero amountUsd literal"]);
+});
+
+test("catches a hardcoded non-zero amountUsd NUMERIC literal", () => {
+  const hits = labels(PROD_PATH, "    amountUsd: 0.00157,");
+  assert.deepEqual(hits, ["hardcoded non-zero amountUsd literal"]);
+});
+
+test("catches a JSON-quoted amountUsd string literal", () => {
+  const hits = labels(PROD_PATH, '        "amountUsd": "0.0125",');
+  assert.deepEqual(hits, ["hardcoded non-zero amountUsd literal"]);
+});
+
+test("leaves the ZERO_COST amountUsd shapes alone", () => {
+  assert.deepEqual(labels(PROD_PATH, '    amountUsd: "0",'), []);
+  assert.deepEqual(labels(PROD_PATH, '    amountUsd: "0.00000000",'), []);
+  assert.deepEqual(labels(PROD_PATH, "    amountUsd: 0,"), []);
+});
+
+test("does not flag amountUsd variable / shorthand / type / expression forms", () => {
+  // A variable reference, object shorthand, type annotation, and property
+  // access are all honest non-literals: the value after the colon is not a
+  // number, so nothing fires. `costAmountUsd` (capital A) is a different key.
+  assert.deepEqual(labels(PROD_PATH, "    amountUsd: overrides.amountUsd,"), []);
+  assert.deepEqual(
+    labels(PROD_PATH, "    return { costKind, currency, amountUsd, amountMicrosUsd };"),
+    [],
+  );
+  assert.deepEqual(labels(PROD_PATH, "    amountUsd: string;"), []);
+  assert.deepEqual(labels(PROD_PATH, "    amountUsd: usageCostToDecimalString(decimalUsd),"), []);
+  assert.deepEqual(labels(PROD_PATH, "    costAmountUsd: run.cost.amountUsd,"), []);
+  assert.deepEqual(
+    labels(PROD_PATH, "    expect(row.amountUsd).toBe(row.amountMicrosUsd / 1e6);"),
+    [],
+  );
+});
+
+test("a marked synthetic amountUsd literal is exempt; without a marker it fires", () => {
+  const marked =
+    '        amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount';
+  assert.deepEqual(labels("apps/itotori/test/some.test.ts", marked), []);
+  assert.deepEqual(labels("apps/itotori/test/some.test.ts", '        amountUsd: "0.00000602",'), [
+    "hardcoded non-zero amountUsd literal",
+  ]);
+});
+
+test("enumerated JSON fixtures skip the amountUsd cost-literal pattern", () => {
+  // amountUsd is a cost-literal pattern, so the enumerated comment-incapable
+  // JSON fixtures (COST_LITERAL_ALLOW) skip it like the other cost literals.
+  const listed = "fixtures/itotori-style-guide/provider-smoke-suggestion.json";
+  assert.deepEqual(labels(listed, '    "amountUsd": "0.000123",'), []);
+});
+
+test("CLI exits 1 on a crafted file with a hardcoded amountUsd literal", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
+  const probe = join(dir, "probe-amountusd.ts");
+  writeFileSync(probe, 'export const run = {\n  amountUsd: "0.05",\n};\n');
+  let code = 0;
+  try {
+    execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
+  } catch (err) {
+    code = err.status;
+  }
+  assert.equal(code, 1);
+});
+
+test("CLI exits 0 on a crafted file with only ZERO_COST amountUsd shapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
+  const probe = join(dir, "probe-amountusd-zero.ts");
+  writeFileSync(probe, 'export const run = {\n  amountUsd: "0",\n  amountMicrosUsd: 0,\n};\n');
+  const out = execFileSync("node", [scriptPath, probe], { encoding: "utf8" });
+  assert.match(out, /audit passed/u);
+});
+
 test("catches an object-form costUsd amount literal", () => {
   const hits = labels(PROD_PATH, '    costUsd: { unit: "usd", amount: "0.01250000" },');
   assert.deepEqual(hits, ["hardcoded non-zero costUsd object amount literal"]);

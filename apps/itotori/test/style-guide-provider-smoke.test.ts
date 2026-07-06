@@ -196,7 +196,7 @@ describe("style-guide provider smoke", () => {
     expect(result.providerRun.cost).toEqual({
       costKind: "billed",
       currency: "USD",
-      amountUsd: "0.000123",
+      amountUsd: "0.000123", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       amountMicrosUsd: 123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.
@@ -208,7 +208,7 @@ describe("style-guide provider smoke", () => {
           cost: {
             costKind: "billed",
             currency: "USD",
-            amountUsd: "0.000123",
+            amountUsd: "0.000123", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
             amountMicrosUsd: 123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
             cacheDiscountMicrosUsd: 0,
           },

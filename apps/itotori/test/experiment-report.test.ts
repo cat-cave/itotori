@@ -301,7 +301,7 @@ const PROMPT_HASH = "sha256:3333333333333333333333333333333333333333333333333333
 const BILLED_COST: ProviderCost = {
   costKind: "billed",
   currency: "USD",
-  amountUsd: "0.00000602",
+  amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
   amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
 };
 
