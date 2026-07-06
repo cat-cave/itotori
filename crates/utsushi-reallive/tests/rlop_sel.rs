@@ -29,10 +29,10 @@ use utsushi_core::EvidenceTier;
 use utsushi_core::substrate::{ChoiceIndex, SinkCapability, SinkResult, TextLine, TextSurfaceSink};
 use utsushi_reallive::{
     BytecodeElement, ChoiceInputScheduler, DispatchOutcome, ExprValue, Gameexe, InMemorySceneStore,
-    LongOpId, NeverReadyScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_S,
-    OPCODE_SELECT_W, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT,
-    SEL_RLOP_COUNT, Scene, SelRuntime, SelectLongOp, SelectVariant, StepOutcome, Vm, VmEvent,
-    register_sel_rlops,
+    LongOpId, NeverReadyScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT_OBJBTN,
+    OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3, OPCODE_SELECT_W, RlopKey,
+    RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT, Scene,
+    SelRuntime, SelectLongOp, SelectVariant, StepOutcome, Vm, VmEvent, register_sel_rlops,
 };
 
 #[derive(Default)]
@@ -339,6 +339,49 @@ fn register_sel_rlops_covers_every_variant() {
     assert!(
         registry.get(objbtn_init_key).is_some(),
         "objbtn_init setup op missing"
+    );
+}
+
+/// EXACT rlvm `Sel`-oracle coverage: `register_sel_rlops` registers precisely
+/// the `module_sel.cc` opcode set `{0,1,2,3,4,14,20}` — no more, no less. In
+/// particular opcodes `3` (`select_s`) and `14` (`select_objbtn_cancel`) are
+/// REAL Sel ops (not catalog `Advance` fallbacks), and the retired synthetic
+/// opcode `120` is absent.
+#[test]
+fn register_sel_rlops_covers_exact_rlvm_oracle_opcode_set() {
+    // rlvm SelModule: 0 select_w, 1 select, 2 select_s2, 3 select_s,
+    // 4 select_objbtn, 14 select_objbtn_cancel, 20 objbtn_init.
+    const ORACLE_OPCODES: [u16; 7] = [
+        SEL_OPCODE_SELECT,
+        OPCODE_SELECT_S,
+        OPCODE_SELECT_W,
+        OPCODE_SELECT_S3,
+        OPCODE_SELECT_OBJBTN,
+        OPCODE_SELECT_OBJBTN_CANCEL,
+        OPCODE_OBJBTN_INIT,
+    ];
+    let (_sink, runtime) = build_runtime(None);
+    let mut registry = RlopRegistry::new();
+    register_sel_rlops(&mut registry, runtime);
+
+    for opcode in ORACLE_OPCODES {
+        assert!(
+            registry
+                .get(RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, opcode))
+                .is_some(),
+            "rlvm Sel opcode {opcode} not registered",
+        );
+    }
+    // Registry holds exactly the oracle set (all seven present + len == 7 and
+    // register_sel_rlops touches only Sel keys ⇒ no extras).
+    assert_eq!(ORACLE_OPCODES.len(), SEL_RLOP_COUNT);
+    assert_eq!(registry.len(), SEL_RLOP_COUNT);
+    // The retired synthetic opcode 120 must NOT be registered.
+    assert!(
+        registry
+            .get(RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, 120))
+            .is_none(),
+        "synthetic opcode 120 must be absent",
     );
 }
 

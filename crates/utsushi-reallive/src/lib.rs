@@ -284,14 +284,14 @@ pub use rlop::{
     MsgRuntime, MsgTextWindowOp, NeverReadyScheduler, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE,
     OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE,
     OPCODE_NAME_OPEN, OPCODE_OBJBTN_INIT, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE,
-    OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_W,
-    OPCODE_TEXT_WINDOW, ObjbtnInitOp, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3,
+    OPCODE_SELECT_W, OPCODE_TEXT_WINDOW, ObjbtnInitOp, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
     PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
     SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
-    SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnOp, SelectOp, SelectSOp,
-    SelectVariant, SelectWOp, SelectionChoiceCountScheduler, SelectionControlSignal,
-    dispatch_textout, register_sel_rlops, register_text_rlops, select_modality,
-    selection_control_signal, text_module_msg_keys,
+    SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp,
+    SelectOp, SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
+    SelectionControlSignal, dispatch_textout, register_sel_rlops, register_text_rlops,
+    select_modality, selection_control_signal, text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{

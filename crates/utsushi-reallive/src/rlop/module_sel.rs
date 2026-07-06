@@ -1,8 +1,10 @@
 //! UTSUSHI-211 — RealLive `module_sel` (choice / selection) RLOperation
 //! family.
 //!
-//! Implements the four choice opcodes RealLive's `module_sel` exposes:
-//! `select`, `select_s`, `select_w`, `select_objbtn`. Each opcode yields a
+//! Implements the EXACT rlvm `Sel`-module opcode set `{0,1,2,3,4,14,20}`:
+//! the SELECT ops `select`, `select_s`, `select_w`, `select_s` (opcode `3`),
+//! `select_objbtn`, `select_objbtn_cancel` plus the `objbtn_init` setup op.
+//! Each SELECT opcode yields a
 //! [`crate::rlop::longops::SelectLongOp`] carrier whose private state
 //! holds the choice byte strings and a pending chosen-index sentinel.
 //! The substrate's [`crate::rlop::LongOpScheduler`] decides when the
@@ -36,19 +38,33 @@
 //! [`crate::rlop::module_catalog`] as `Advance` no-ops, leaving the choice
 //! machinery DORMANT on real bytes (recognized 0-unknown, but never
 //! presented, never driving a branch). Corrected to `module_type=0`.
-//! The four canonical opcodes are pinned at the small-block layout
-//! `0x0000..=0x0003`, matching the RealLive `Sel` module opcode set
-//! (`select_w`, `select`, `select_s`, `select_objbtn`, plus the
-//! `objbtn_init` / `select_objbtn_cancel` SelectionControl setup ops).
 //!
-//! # Opcode coverage
+//! The registered opcode set is EXACTLY rlvm's `Sel` module `{0,1,2,3,4,14,20}`
+//! (verified against `rlvm/src/src/modules/module_sel.cc` — see below); there
+//! is no synthetic opcode `120` (rlvm registers no such opcode and no real
+//! corpus tuple lands on `(0,2,120)`).
 //!
-//! | Opcode               | Variant   | Semantics                                |
-//! | -------------------- | --------- | ---------------------------------------- |
-//! | `0x0000` (`select`)  | basic     | Plain choice prompt.                     |
-//! | `0x0001` (`select_s`)| stringy   | Choice with explicit string-table args.  |
-//! | `0x0002` (`select_w`)| windowed  | Choice rendered into a window slot.      |
-//! | `0x0004` (`select_objbtn`) | objbtn | Choice driven by object-button sprites. |
+//! NOTE (pre-existing `0/1/2` naming, out of this node's scope): the port's
+//! variant NAMES for opcodes `0/1/2` (`select` / `select_s` / `select_w`) do
+//! NOT line up with rlvm's `module_sel.cc` labels (`0`=`select_w`, `1`=`select`,
+//! `2`=`select_s2`, `3`=`select_s`). The opcode NUMBERS registered are what
+//! matters for dispatch; every port SELECT opcode funnels through the same
+//! [`SelectLongOp`] carrier, so the label mismatch is cosmetic. This node
+//! adds opcodes `3` + `14` to reach exact rlvm coverage and does not re-label
+//! `0/1/2` (that would churn the real-bytes-anchored `select_w`=`(0,2,2)`
+//! documentation and is tracked separately).
+//!
+//! # Opcode coverage (rlvm `SelModule` — `module_sel.cc`)
+//!
+//! | Opcode | rlvm name              | Port variant                       |
+//! | ------ | ---------------------- | ---------------------------------- |
+//! | `0`    | `select_w`             | [`SelectVariant::Select`]          |
+//! | `1`    | `select`               | [`SelectVariant::SelectS`]         |
+//! | `2`    | `select_s2`            | [`SelectVariant::SelectW`]         |
+//! | `3`    | `select_s`             | [`SelectVariant::SelectS3`]        |
+//! | `4`    | `select_objbtn`        | [`SelectVariant::SelectObjbtn`]    |
+//! | `14`   | `select_objbtn_cancel` | [`SelectVariant::SelectObjbtnCancel`] |
+//! | `20`   | `objbtn_init`          | [`ObjbtnInitOp`] (setup, not a select) |
 //!
 //! # Choice MODALITY — the graphical / text split (real-bytes-derived)
 //!
@@ -141,6 +157,20 @@ pub const OPCODE_SELECT: u16 = 0x0000;
 pub const OPCODE_SELECT_S: u16 = 0x0001;
 /// `module_sel` `select_w` opcode (windowed choice).
 pub const OPCODE_SELECT_W: u16 = 0x0002;
+/// `module_sel` `select_s` opcode (string-table choice, rlvm opcode `3`).
+///
+/// REAL RealLive value `3` — rlvm `module_sel.cc` `AddOpcode(3, 0, "select_s",
+/// new Sel_select_s)`, which pushes the same `ButtonSelectLongOperation` as the
+/// `select_s2` opcode (`2`). In this port that is the ordinary text-choice
+/// [`dispatch_select`] carrier: `select_s` reads its option labels from the
+/// scene's string table and yields a [`SelectLongOp`] like every other text
+/// select. Registering it closes the oracle-coverage gap — rlvm's `Sel` module
+/// registers `{0,1,2,3,4,14,20}` and this opcode `3` was previously unhandled
+/// (no variant at all). It does NOT appear in the two proven corpora (Sweetie
+/// HD 0×, Kanon 0×), so it is an oracle-faithfulness registration, not a
+/// real-bytes-driven one. Distinct from the port's opcode-`1`
+/// [`OPCODE_SELECT_S`]; see the module note on the pre-existing `0/1/2` naming.
+pub const OPCODE_SELECT_S3: u16 = 0x0003;
 /// `module_sel` `select_objbtn` opcode (object-button choice). REAL RealLive
 /// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`),
 /// VALIDATED against real Sweetie HD bytes: `(0, 2, 4)` occurs 33× across the
@@ -158,35 +188,54 @@ pub const OPCODE_SELECT_OBJBTN: u16 = 0x0004;
 /// button-object select rather than a plain text-window select.
 pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// `module_sel` `select_objbtn_cancel` opcode (cancelable button-object
-/// select). REAL RealLive value `14` (rlvm `AddOpcode(14, *,
-/// "select_objbtn_cancel")`), observed 3× on real Sweetie HD bytes. A second
-/// button-object SelectionControl setup op.
+/// select). REAL RealLive value `14` — rlvm `module_sel.cc` `AddOpcode(14, 0,
+/// "select_objbtn_cancel", new Sel_select_objbtn_cancel_0)` (and its
+/// two-arg `_1` overload): it pushes the SAME `ButtonObjectSelectLongOperation`
+/// as `select_objbtn` (`4`) but calls `set_cancelable()` so the user may escape
+/// the prompt. Observed 3× on real Sweetie HD bytes — ALL at `module_type=0`
+/// (0× at types 1/2; 0× in Kanon), so registering `(0,2,14)` fully covers every
+/// real occurrence. Handled by [`SelectObjbtnCancelOp`], which dispatches
+/// through the same recovered-button-group path as `select_objbtn` (see
+/// [`dispatch_select_objbtn`]); the cancelable AFFORDANCE (escape-to-cancel) is
+/// a render/input-layer concern the port does not yet model on
+/// [`SelectLongOp`], exactly as button-object PRESENTATION is already a
+/// render-layer concern here. Previously this opcode was a catalog `Advance`
+/// no-op (`module_catalog` `(2,14)`); it is now a real Sel op.
 pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
 
-/// Stable enum naming the four choice variants. Used by the typed
+/// Stable enum naming the select-family variants. Used by the typed
 /// dispatch path (and by audit tooling) to pin which opcode produced a
-/// queued longop.
+/// queued longop. Covers the rlvm `Sel`-module SELECT opcodes that yield a
+/// choice/longop (`{0,1,2,3,4,14}`); the `objbtn_init` (`20`) setup boundary
+/// is not a select and is handled by [`ObjbtnInitOp`] instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SelectVariant {
-    /// `select`.
+    /// `select` (opcode `0`).
     Select,
-    /// `select_s`.
+    /// `select_s` (opcode `1`).
     SelectS,
-    /// `select_w`.
+    /// `select_w` (opcode `2`).
     SelectW,
-    /// `select_objbtn`.
+    /// `select_s` string-table select at rlvm opcode `3` ([`OPCODE_SELECT_S3`]).
+    SelectS3,
+    /// `select_objbtn` (opcode `4`).
     SelectObjbtn,
+    /// `select_objbtn_cancel` (opcode `14`) — the cancelable button-object
+    /// select ([`OPCODE_SELECT_OBJBTN_CANCEL`]).
+    SelectObjbtnCancel,
 }
 
 impl SelectVariant {
-    /// All four variants. Pinned so audit tooling can assert the
+    /// All select variants. Pinned so audit tooling can assert the
     /// registry covers every variant without re-walking the
     /// registration helper.
     pub const ALL: &'static [SelectVariant] = &[
         Self::Select,
         Self::SelectS,
         Self::SelectW,
+        Self::SelectS3,
         Self::SelectObjbtn,
+        Self::SelectObjbtnCancel,
     ];
 
     /// Canonical opcode byte for this variant.
@@ -195,7 +244,9 @@ impl SelectVariant {
             Self::Select => OPCODE_SELECT,
             Self::SelectS => OPCODE_SELECT_S,
             Self::SelectW => OPCODE_SELECT_W,
+            Self::SelectS3 => OPCODE_SELECT_S3,
             Self::SelectObjbtn => OPCODE_SELECT_OBJBTN,
+            Self::SelectObjbtnCancel => OPCODE_SELECT_OBJBTN_CANCEL,
         }
     }
 
@@ -210,7 +261,9 @@ impl SelectVariant {
             Self::Select => "sel.select",
             Self::SelectS => "sel.select_s",
             Self::SelectW => "sel.select_w",
+            Self::SelectS3 => "sel.select_s3",
             Self::SelectObjbtn => "sel.select_objbtn",
+            Self::SelectObjbtnCancel => "sel.select_objbtn_cancel",
         }
     }
 
@@ -347,10 +400,12 @@ pub fn select_modality(signal: SelectionControlSignal, option_count: usize) -> S
     }
 }
 
-/// Number of `(module_sel)` rlops [`register_sel_rlops`] populates.
-/// Four canonical variants plus the `objbtn_init` (`0x0014` = 20)
-/// button-object group-setup op. Pinned so audit tooling can assert
-/// "registry covers exactly the UTSUSHI-211 surface".
+/// Number of `(module_sel)` rlops [`register_sel_rlops`] populates. The
+/// six [`SelectVariant::ALL`] SELECT variants (opcodes `{0,1,2,3,4,14}`)
+/// plus the `objbtn_init` (`20`) button-object group-setup op — the EXACT
+/// rlvm `Sel`-module opcode set `{0,1,2,3,4,14,20}` and nothing else (no
+/// synthetic opcode `120`). Pinned so audit tooling can assert "registry
+/// covers exactly the rlvm `Sel` oracle surface".
 pub const SEL_RLOP_COUNT: usize = SelectVariant::ALL.len() + 1;
 
 /// Runtime carrier the per-op [`RLOperation`] impls thread through to
@@ -729,20 +784,27 @@ fn objbtn_option_label(number: i32) -> Vec<u8> {
 /// reached the select without them) the op falls back to the shared
 /// [`dispatch_select`] over its inline args — which, for a real objbtn (no
 /// option block), fail-soft `Advance`s exactly as before.
+///
+/// `variant` selects the audit tag: [`SelectVariant::SelectObjbtn`] (`4`) or the
+/// cancelable [`SelectVariant::SelectObjbtnCancel`] (`14`). Both push the same
+/// `ButtonObjectSelectLongOperation` in rlvm and drive the identical recovered-
+/// button-group path here; the cancelable form's escape-to-cancel affordance is
+/// a render/input-layer concern (see [`OPCODE_SELECT_OBJBTN_CANCEL`]).
 fn dispatch_select_objbtn(
+    variant: SelectVariant,
     runtime: &SelRuntime,
     vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
     let buttons = vm.objbtn_take();
     if buttons.is_empty() {
-        return dispatch_select(SelectVariant::SelectObjbtn, runtime, vm, args);
+        return dispatch_select(variant, runtime, vm, args);
     }
     let synth: Vec<ExprValue> = buttons
         .iter()
         .map(|button| ExprValue::Bytes(objbtn_option_label(button.number)))
         .collect();
-    dispatch_select(SelectVariant::SelectObjbtn, runtime, vm, &synth)
+    dispatch_select(variant, runtime, vm, &synth)
 }
 
 /// `select_objbtn` — object-button (graphical) choice. Unlike the other
@@ -761,7 +823,58 @@ impl SelectObjbtnOp {
 
 impl RLOperation for SelectObjbtnOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select_objbtn(&self.runtime, vm, args)
+        dispatch_select_objbtn(SelectVariant::SelectObjbtn, &self.runtime, vm, args)
+    }
+}
+
+/// `select_s` at rlvm opcode `3` — string-table text choice. Same carrier as
+/// [`SelectSOp`] / [`SelectOp`] (yields a [`SelectLongOp`] over its recovered
+/// option labels); the distinct [`SelectVariant::SelectS3`] tag pins which
+/// opcode produced the queued longop. Registered for exact rlvm `Sel`-oracle
+/// coverage — the opcode is absent from both proven corpora, so it is an
+/// oracle-faithfulness op, not a real-bytes-driven one.
+#[derive(Debug)]
+pub struct SelectS3Op {
+    runtime: Arc<SelRuntime>,
+}
+
+impl SelectS3Op {
+    /// Build the op against a shared [`SelRuntime`].
+    pub fn new(runtime: Arc<SelRuntime>) -> Self {
+        Self { runtime }
+    }
+}
+
+impl RLOperation for SelectS3Op {
+    fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        dispatch_select(SelectVariant::SelectS3, &self.runtime, vm, args)
+    }
+}
+
+/// `select_objbtn_cancel` (`sel (0,2,14)`) — the CANCELABLE button-object
+/// select. Mirrors rlvm's `Sel_select_objbtn_cancel`, which pushes the same
+/// `ButtonObjectSelectLongOperation` as `select_objbtn` (`4`) but marks it
+/// `set_cancelable()`. This port dispatches through the identical recovered-
+/// button-group path ([`dispatch_select_objbtn`]) tagged
+/// [`SelectVariant::SelectObjbtnCancel`]; the escape-to-cancel affordance is a
+/// render/input-layer concern not yet modeled on [`SelectLongOp`] (see
+/// [`OPCODE_SELECT_OBJBTN_CANCEL`]). Previously a catalog `Advance` no-op; now a
+/// real Sel op driving the same `goto_on($store)` branch machinery.
+#[derive(Debug)]
+pub struct SelectObjbtnCancelOp {
+    runtime: Arc<SelRuntime>,
+}
+
+impl SelectObjbtnCancelOp {
+    /// Build the op against a shared [`SelRuntime`].
+    pub fn new(runtime: Arc<SelRuntime>) -> Self {
+        Self { runtime }
+    }
+}
+
+impl RLOperation for SelectObjbtnCancelOp {
+    fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        dispatch_select_objbtn(SelectVariant::SelectObjbtnCancel, &self.runtime, vm, args)
     }
 }
 
@@ -791,8 +904,12 @@ impl RLOperation for ObjbtnInitOp {
 /// Mount every choice op this module ships into `registry`. Returns
 /// the number of entries registered (matches [`SEL_RLOP_COUNT`]).
 ///
-/// The four canonical variants are registered at `0x0000..=0x0003`,
-/// plus the `objbtn_init` button-object group-setup op at `0x0014`.
+/// Registers the EXACT rlvm `Sel`-module opcode set `{0,1,2,3,4,14,20}`: the
+/// six [`SelectVariant`] SELECT ops (`select` `0`, `select_s` `1`, `select_w`
+/// `2`, `select_s` `3`, `select_objbtn` `4`, `select_objbtn_cancel` `14`) plus
+/// the `objbtn_init` (`20`) button-object group-setup op — no more, no less
+/// (there is no synthetic opcode `120`; rlvm's `RLModule("Sel", 0, 2)` has no
+/// such opcode).
 pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>) -> usize {
     registry.register(
         SelectVariant::Select.rlop_key(),
@@ -807,8 +924,16 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
         Arc::new(SelectWOp::new(Arc::clone(&runtime))),
     );
     registry.register(
+        SelectVariant::SelectS3.rlop_key(),
+        Arc::new(SelectS3Op::new(Arc::clone(&runtime))),
+    );
+    registry.register(
         SelectVariant::SelectObjbtn.rlop_key(),
         Arc::new(SelectObjbtnOp::new(Arc::clone(&runtime))),
+    );
+    registry.register(
+        SelectVariant::SelectObjbtnCancel.rlop_key(),
+        Arc::new(SelectObjbtnCancelOp::new(Arc::clone(&runtime))),
     );
     // `objbtn_init` — the button-object group-setup boundary. Registered
     // with its real reset semantics (clears the pending button group) so a
@@ -948,8 +1073,17 @@ mod tests {
     }
 
     #[test]
-    fn select_variant_all_covers_four_variants() {
-        assert_eq!(SelectVariant::ALL.len(), 4);
+    fn select_variant_all_covers_every_select_opcode() {
+        // The six SELECT variants cover rlvm `Sel` opcodes {0,1,2,3,4,14}
+        // (the setup-only `objbtn_init` = 20 is not a select).
+        assert_eq!(SelectVariant::ALL.len(), 6);
+        let opcodes: std::collections::BTreeSet<u16> =
+            SelectVariant::ALL.iter().map(|v| v.opcode()).collect();
+        assert_eq!(
+            opcodes,
+            [0u16, 1, 2, 3, 4, 14].into_iter().collect(),
+            "SELECT variants must map to the rlvm Sel select opcodes"
+        );
     }
 
     #[test]
@@ -988,11 +1122,73 @@ mod tests {
     }
 
     #[test]
+    fn register_sel_rlops_covers_exact_rlvm_oracle_opcode_set() {
+        // rlvm `SelModule` (`module_sel.cc`) registers EXACTLY these opcodes:
+        //   0 select_w, 1 select, 2 select_s2, 3 select_s,
+        //   4 select_objbtn, 14 select_objbtn_cancel, 20 objbtn_init.
+        // The port must register that set — no more, no less. In particular
+        // opcode 120 (a retired synthetic alias) must be ABSENT.
+        const ORACLE_OPCODES: &[u16] = &[0, 1, 2, 3, 4, 14, 20];
+        let sink = Arc::new(CollectingSink::new());
+        let runtime = Arc::new(SelRuntime::with_sink(sink));
+        let mut registry = RlopRegistry::new();
+        register_sel_rlops(&mut registry, runtime);
+
+        // Every oracle opcode is registered at (0, 2, opcode).
+        for &opcode in ORACLE_OPCODES {
+            assert!(
+                registry
+                    .get(RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, opcode))
+                    .is_some(),
+                "rlvm Sel opcode {opcode} not registered"
+            );
+        }
+        // The count equals the oracle set size — combined with all seven keys
+        // present and `register_sel_rlops` touching only Sel keys, this proves
+        // EXACTLY {0,1,2,3,4,14,20} is registered (no extras).
+        assert_eq!(ORACLE_OPCODES.len(), SEL_RLOP_COUNT);
+        assert_eq!(registry.len(), SEL_RLOP_COUNT);
+        // The retired synthetic opcode 120 is absent (rlvm has no such opcode).
+        assert!(
+            registry
+                .get(RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, 120))
+                .is_none(),
+            "synthetic opcode 120 must not be registered"
+        );
+        // Opcodes 3 and 14 are REAL Sel ops now (not catalog fallbacks).
+        assert!(
+            registry
+                .get(RlopKey::new(
+                    SEL_MODULE_TYPE,
+                    SEL_MODULE_ID,
+                    OPCODE_SELECT_S3
+                ))
+                .is_some(),
+            "select_s (opcode 3) must be a real Sel op"
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(
+                    SEL_MODULE_TYPE,
+                    SEL_MODULE_ID,
+                    OPCODE_SELECT_OBJBTN_CANCEL
+                ))
+                .is_some(),
+            "select_objbtn_cancel (opcode 14) must be a real Sel op"
+        );
+    }
+
+    #[test]
     fn variant_str_pin() {
         assert_eq!(SelectVariant::Select.as_str(), "sel.select");
         assert_eq!(SelectVariant::SelectS.as_str(), "sel.select_s");
         assert_eq!(SelectVariant::SelectW.as_str(), "sel.select_w");
+        assert_eq!(SelectVariant::SelectS3.as_str(), "sel.select_s3");
         assert_eq!(SelectVariant::SelectObjbtn.as_str(), "sel.select_objbtn");
+        assert_eq!(
+            SelectVariant::SelectObjbtnCancel.as_str(),
+            "sel.select_objbtn_cancel"
+        );
     }
 
     #[test]

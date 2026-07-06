@@ -296,7 +296,13 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     // speculative opcodes). Grouped under their semantic `module_id` family
     // exactly like the block above.
     (2, 1),
-    (2, 14),
+    // NOTE: the sel-family `select_objbtn_cancel` entry (module_id 2, opcode 14)
+    // was removed — it is now a REAL `module_sel` op (`SelectObjbtnCancelOp`,
+    // registered at module_type 0 / module_id 2 / opcode 14), not a catalog
+    // `Advance` fallback. On real bytes that opcode occurs ONLY at module_type 0
+    // (Sweetie HD 3×; 0× at types 1/2; 0× in Kanon), which the sel registry now
+    // fully claims, so dropping the defensive lattice-type-1/2 catalog coverage
+    // leaves no unknown-opcode gap (whole-store 0-unknown replay still passes).
     (2, 30),
     (2, 31),
     (2, 32),
