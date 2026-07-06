@@ -1605,13 +1605,29 @@ describe("Itotori API handlers", () => {
       filter: { adapterIds: ["kaifuu.rpg-maker-mv-mz", "kaifuu.reallive"] },
     },
     {
+      query: "?requiredCapabilities=extract&requiredCapabilities=patch",
+      filter: { requiredCapabilities: ["extract", "patch"] },
+    },
+    {
+      query: "?requiredCapabilities=extract,patch",
+      filter: { requiredCapabilities: ["extract", "patch"] },
+    },
+    {
+      query: "?minCapabilityLevel=inventory&requiredCapabilities=extract,patch",
+      filter: {
+        minCapabilityLevel: "inventory",
+        requiredCapabilities: ["extract", "patch"],
+      },
+    },
+    {
       query:
-        "?targetLanguage=en-US&pools=conflict&pools=unknown&adapterIds=kaifuu.rpg-maker-mv-mz&adapterIds=kaifuu.reallive&minCapabilityLevel=extract&demandBucket=very_high&translationCompleteness=none,mtl&translationCompleteness=unknown&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
+        "?targetLanguage=en-US&pools=conflict&pools=unknown&adapterIds=kaifuu.rpg-maker-mv-mz&adapterIds=kaifuu.reallive&minCapabilityLevel=extract&requiredCapabilities=identify&requiredCapabilities=patch&demandBucket=very_high&translationCompleteness=none,mtl&translationCompleteness=unknown&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
       filter: {
         targetLanguage: "en-US",
         pools: ["conflict", "unknown"],
         adapterIds: ["kaifuu.rpg-maker-mv-mz", "kaifuu.reallive"],
         minCapabilityLevel: "extract",
+        requiredCapabilities: ["identify", "patch"],
         demandBucket: "very_high",
         translationCompleteness: ["none", "mtl", "unknown"],
         provenanceRequired: true,
@@ -1826,6 +1842,14 @@ describe("Itotori API handlers", () => {
     {
       query: "?minCapabilityLevel=runtime",
       error: /minCapabilityLevel/u,
+    },
+    {
+      query: "?requiredCapabilities=runtime",
+      error: /requiredCapabilities/u,
+    },
+    {
+      query: "?requiredCapabilities=extract,runtime",
+      error: /requiredCapabilities/u,
     },
     {
       query: "?provenanceRequired=yes",

@@ -1117,6 +1117,7 @@ function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSee
       "pools",
       "adapterIds",
       "minCapabilityLevel",
+      "requiredCapabilities",
       "demandBucket",
       "translationCompleteness",
       "provenanceRequired",
@@ -1154,6 +1155,16 @@ function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSee
       minCapabilityLevel,
       Object.values(capabilityLevelValues) as CapabilityLevel[],
       "minCapabilityLevel",
+    );
+  }
+  const requiredCapabilities = listParam(params, "requiredCapabilities");
+  if (requiredCapabilities.length > 0) {
+    filter.requiredCapabilities = requiredCapabilities.map((capability) =>
+      enumParam(
+        capability,
+        Object.values(capabilityLevelValues) as CapabilityLevel[],
+        "requiredCapabilities",
+      ),
     );
   }
   const demandBucket = params.get("demandBucket");
