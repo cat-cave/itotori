@@ -460,10 +460,13 @@ export {
   catalogArtifactMappingErrorCodes,
   CatalogArtifactMappingError,
   catalogCompletenessPoolValues,
+  catalogConflictOriginMetadataDropDiagnostic,
+  catalogConflictOriginMetadataDropDiagnosticCode,
   ItotoriCatalogRepository,
 } from "./repositories/catalog-repository.js";
 export type {
   CatalogArtifactMappingErrorCode,
+  CatalogConflictOriginMetadataDropDiagnostic,
   CatalogCompletenessBenchmarkPools,
   CatalogCompletenessConflictSummary,
   CatalogCompletenessPool,
