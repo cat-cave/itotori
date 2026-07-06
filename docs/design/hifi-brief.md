@@ -8,13 +8,16 @@ voice, art direction; (2) this repo (product truth, current partial surfaces).
 the design project's `readme.md` + per-component `.prompt.md`, and `docs/localization-surfaces.md`.
 
 ## What Itotori is (one breath)
+
 An agentic **games-localization studio** — the "brain" of a trio (Kaifuu = the bytes,
 Utsushi = the proof, Itotori = the localization graph). A human **director** drives an
-agent to localize a whole visual novel to *strong-caliber*: extracted faithfully, drafted
-+ QA'd by LLMs under human steering, patched reproducibly, and **proven by running the
-patched game**. The dashboards are the cockpit the director steers from.
+agent to localize a whole visual novel to _strong-caliber_: extracted faithfully, drafted
+
+- QA'd by LLMs under human steering, patched reproducibly, and **proven by running the
+  patched game**. The dashboards are the cockpit the director steers from.
 
 ## Your job — and what it is NOT
+
 Design the **hi-fi layouts, workflows, cross-surface interaction, and cohesive feel** of
 the studio. Compose the design system's existing components/tokens/voice into real,
 opinionated screens and flows.
@@ -24,18 +27,20 @@ opinionated screens and flows.
   layouts.** Treat them only as "here's a component rendered." The layouts are yours to
   design.
 - **DO** decide information hierarchy, screen composition, navigation, and how the director
-  moves *between* surfaces as one coherent instrument — where a DAW/film-suite would put
+  moves _between_ surfaces as one coherent instrument — where a DAW/film-suite would put
   density, focus, and transport.
 - Honor the design language exactly (Dusk Observatory, evidence-first voice, VN-menu
   window chrome, sentence case, mono machine-tokens, the closed status vocabulary, icon-light,
   no emoji, `prefers-reduced-motion`). Cohesion is the deliverable.
 
 ## Design principle: game-agnostic
-Itotori localizes *any* supported game; a specific title is input/config, never baked in.
+
+Itotori localizes _any_ supported game; a specific title is input/config, never baked in.
 Layouts must be **project-parameterized** — a project/target picker, not Sweetie-specific
 chrome. Use neutral/placeholder content (a "configured target corpus"), not a hardcoded game.
 
 ## The surfaces & workflows to design (the director's journey)
+
 Design these as a cohesive whole, not isolated pages. Emphasis on layout + how they connect.
 
 1. **Overview / cockpit.** The director's home: project + source→branch, the first-class
@@ -50,7 +55,7 @@ Design these as a cohesive whole, not isolated pages. Emphasis on layout + how t
    in-scene (background + sprites + composited localized textbox) with VN **transport**
    (restart scene, prev/next choice, auto, end-of-scene), a **route/arc scene picker**
    (`RouteMap`), bilingual dialogue, and in-the-moment **AnnotationComposer** (note → QA
-   finding). One player, two intents — *play* and *review*.
+   finding). One player, two intents — _play_ and _review_.
 4. **Benchmark / confidence.** Blind-judged quality vs raw-MTL / fan / official / Itotori
    (with & without context); the actionable backlog; and the **"strong-caliber vs keep
    iterating"** confidence verdict anchored to the director's own ratings.
@@ -60,6 +65,7 @@ Design these as a cohesive whole, not isolated pages. Emphasis on layout + how t
    `CrossRef`; the glossary + style guide + character-arc context that back the translation.
 
 ## Cross-surface interaction (the "one instrument" feel)
+
 - **⌘K command palette** jumps to any scene / character / term / run / action across
   surfaces — the primary connective tissue.
 - **Persistent status bar**: ZDR posture (`zdr=true; data_collection=none`) + source→branch,
@@ -70,21 +76,24 @@ Design these as a cohesive whole, not isolated pages. Emphasis on layout + how t
   the affected scope → benchmark re-scores → confidence updates. Make the loop legible.
 
 ## Constraints & inputs
+
 - **Imagery = the game itself** (real VN screenshots, drop-in scene render slot) — no stock/illustration.
 - **Redaction is first-class**: frames/screenshots have a redacted (shareable) vs
   full-fidelity (private) state — design the toggle + how redacted evidence reads.
-- **Evidence density**: exact numbers, mono tokens, hairline grids; but keep the *reading*
+- **Evidence density**: exact numbers, mono tokens, hairline grids; but keep the _reading_
   surfaces (the actual translation prose/dialogue) comfortable. Balance instrument-density
   with reading-comfort.
 - **Responsive**: usable on a wide studio monitor; degrade gracefully.
 
 ## Flag back to us
+
 - Any **missing token** you need (see the candidates in `docs/design/itotori-design-system.md`
   §"Missing / to-spec tokens" — extend that list).
 - Any **new component** the layouts require that the system lacks.
 - Any surface where product intent is ambiguous — ask; don't invent workflow.
 
 ## Deliverable
+
 Hi-fi mockups of the surfaces above **as designed layouts + the flows between them**,
 in the design system's language, delivered back into the Claude Design project (so we can
 import + break them into implementation nodes here). Prioritize the **director's core loop**
