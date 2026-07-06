@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
 import type {
+  CatalogConflictEvidenceInput,
   CatalogConflictInput,
   CatalogDemandFactInput,
   CatalogExternalIdInput,
@@ -438,6 +439,15 @@ export type CatalogRecordedConflictEvidenceFact = {
   subjectKind?: CatalogConflictSubjectKind;
   subjectId?: string;
   evidencePosition?: number;
+  /**
+   * Per-evidence source provenance. When set, the importer threads this through to
+   * the stored conflict-evidence row instead of collapsing every row to the
+   * importer-payload provenance, so review/demotion output can name the ORIGINAL
+   * evidence source (IGDB/Wikidata/VNDB/EGS/DLsite/local). When omitted, the
+   * importer attributes the evidence to the original source's stored provenance for
+   * cross-source evidence, and otherwise defaults to the importer-payload provenance.
+   */
+  sourceProvenanceId?: string;
   metadata?: CatalogJsonRecord;
 };
 
@@ -2066,6 +2076,7 @@ function platformLanguageConflictFactFromRecord(
               subjectKind: evidence.subjectKind,
               subjectId: evidence.subjectId,
               evidencePosition: evidence.evidencePosition,
+              sourceProvenanceId: evidence.sourceProvenanceId,
               metadata: evidence.metadata,
             }) as CatalogRecordedConflictEvidenceFact,
         ),
@@ -2440,7 +2451,9 @@ async function importRecordedCatalogFact(
       releaseIdsBySourceId,
     ),
     demandFacts: demandFactInputs(context, fact, importMetadata, sourceProvenanceId),
-    conflicts: conflictInputs(
+    conflicts: await conflictInputs(
+      catalogRepository,
+      actor,
       context,
       {
         ...fact,
@@ -2728,14 +2741,20 @@ function demandFactInputs(
   });
 }
 
-function conflictInputs(
+async function conflictInputs(
+  catalogRepository: ItotoriCatalogRepositoryPort,
+  actor: AuthorizationActor,
   context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
   fact: CatalogRecordedImporterFact,
   importMetadata: CatalogJsonRecord,
   sourceProvenanceId: string,
   workId: string,
-): CatalogConflictInput[] {
-  return (fact.conflicts ?? []).map((conflict, index) => {
+): Promise<CatalogConflictInput[]> {
+  // Cache of resolved cross-source provenance by `${catalogSource}:${sourceId}`,
+  // so multiple evidence rows that cite the same original source share one lookup.
+  const resolvedProvenanceBySourceKey = new Map<string, string | null>();
+  const inputs: CatalogConflictInput[] = [];
+  for (const [index, conflict] of (fact.conflicts ?? []).entries()) {
     const conflictId =
       conflict.conflictId ??
       stableCatalogId("catalog-conflict", [
@@ -2745,31 +2764,45 @@ function conflictInputs(
         conflict.summary,
         String(index),
       ]);
-    return {
-      conflictId,
-      conflictKind: conflict.conflictKind ?? catalogConflictKindValues.unknown,
-      status: conflict.status ?? catalogConflictStatusValues.open,
-      summary: conflict.summary,
-      detectedAt: conflict.detectedAt ?? context.step.fetchedAt,
-      metadata: compactJson({
-        reasonCode: conflict.reasonCode ?? "source_disagreement",
-        severity: conflict.severity ?? "warning",
-        ...conflict.metadata,
-        ...importMetadata,
-      }),
-      evidence: conflict.evidence?.map((evidence, evidenceIndex) => ({
-        conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
-          conflictId,
-          String(evidenceIndex),
-          evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-          evidence.subjectId ?? sourceProvenanceId,
-        ]),
-        subjectKind: evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-        subjectId: evidence.subjectId ?? sourceProvenanceId,
-        sourceProvenanceId,
-        evidencePosition: evidence.evidencePosition ?? evidenceIndex,
-        metadata: compactJson({ ...evidence.metadata, ...importMetadata }),
-      })) ?? [
+    let evidence: CatalogConflictEvidenceInput[];
+    if (conflict.evidence !== undefined) {
+      evidence = [];
+      for (const [evidenceIndex, evidenceFact] of conflict.evidence.entries()) {
+        // Per-evidence provenance pass-through: an explicit sourceProvenanceId on the
+        // evidence fact wins. Otherwise, for evidence that cites a DIFFERENT source
+        // than the importer's own payload, attribute the row to that original source's
+        // stored provenance (so demotion output names IGDB/Wikidata/VNDB/EGS/DLsite/
+        // local instead of collapsing every row to the importer-payload provenance).
+        // Only when no explicit provenance is carried AND no original source can be
+        // resolved does the row fall back to the current importer-payload provenance.
+        const explicitOrResolved =
+          evidenceFact.sourceProvenanceId ??
+          (await resolveCrossSourceEvidenceProvenance(
+            catalogRepository,
+            actor,
+            context.adapter.catalogSource,
+            fact.sourceId,
+            evidenceFact.metadata,
+            resolvedProvenanceBySourceKey,
+          ));
+        const evidenceProvenanceId = explicitOrResolved ?? sourceProvenanceId;
+        evidence.push({
+          conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+            conflictId,
+            String(evidenceIndex),
+            evidenceFact.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+            evidenceFact.subjectId ?? evidenceProvenanceId,
+          ]),
+          subjectKind:
+            evidenceFact.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+          subjectId: evidenceFact.subjectId ?? evidenceProvenanceId,
+          sourceProvenanceId: evidenceProvenanceId,
+          evidencePosition: evidenceFact.evidencePosition ?? evidenceIndex,
+          metadata: compactJson({ ...evidenceFact.metadata, ...importMetadata }),
+        });
+      }
+    } else {
+      evidence = [
         {
           conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
             conflictId,
@@ -2796,9 +2829,72 @@ function conflictInputs(
           evidencePosition: 1,
           metadata: compactJson({ role: "imported_work", ...importMetadata }),
         },
-      ],
-    };
-  });
+      ];
+    }
+    inputs.push({
+      conflictId,
+      conflictKind: conflict.conflictKind ?? catalogConflictKindValues.unknown,
+      status: conflict.status ?? catalogConflictStatusValues.open,
+      summary: conflict.summary,
+      detectedAt: conflict.detectedAt ?? context.step.fetchedAt,
+      metadata: compactJson({
+        reasonCode: conflict.reasonCode ?? "source_disagreement",
+        severity: conflict.severity ?? "warning",
+        ...conflict.metadata,
+        ...importMetadata,
+      }),
+      evidence,
+    });
+  }
+  return inputs;
+}
+
+// Resolve the original-source provenance for a cross-source conflict-evidence row.
+// Platform-language conflict evidence (and any future cross-source conflict) carries
+// the original evidence's `catalogSource`/`sourceId` in its metadata; when those cite
+// a source OTHER than the importer's own payload, the row is attributed to that
+// source's stored external-id provenance — the same provenance attribution the
+// repository-derived conflict service uses — so demotion output names the original
+// evidence source. Returns null when the evidence is own-source, carries no source
+// identity, or no stored row exists (callers then default to importer provenance).
+async function resolveCrossSourceEvidenceProvenance(
+  catalogRepository: ItotoriCatalogRepositoryPort,
+  actor: AuthorizationActor,
+  importerCatalogSource: CatalogSource,
+  importerSourceId: string,
+  evidenceMetadata: CatalogJsonRecord | undefined,
+  cache: Map<string, string | null>,
+): Promise<string | null> {
+  if (evidenceMetadata === undefined) {
+    return null;
+  }
+  const catalogSourceValue = optionalString(evidenceMetadata, "catalogSource");
+  const sourceId = optionalString(evidenceMetadata, "sourceId");
+  if (sourceId === undefined) {
+    return null;
+  }
+  if (
+    catalogSourceValue === undefined ||
+    !(Object.values(catalogSourceValues) as string[]).includes(catalogSourceValue)
+  ) {
+    return null;
+  }
+  const catalogSource = catalogSourceValue as CatalogSource;
+  if (catalogSource === importerCatalogSource && sourceId === importerSourceId) {
+    return null;
+  }
+  const cacheKey = `${catalogSource}:${sourceId}`;
+  const cached = cache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const snapshot = await catalogRepository.getWorkByExternalId(actor, catalogSource, sourceId);
+  const externalId = snapshot?.externalIds.find(
+    (row) => row.catalogSource === catalogSource && row.sourceId === sourceId,
+  );
+  const resolved = externalId?.sourceProvenanceId ?? null;
+  cache.set(cacheKey, resolved);
+  return resolved;
 }
 
 function seedTargetInput(
