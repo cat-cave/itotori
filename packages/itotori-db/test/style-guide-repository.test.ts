@@ -474,6 +474,162 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
+  // ITOTORI-130: pre-provenance draft rows (non-null target text, NULL
+  // style_guide_version_id, written before migration 0018) must not be silently
+  // missed by approval invalidation. Migration 0057 attributes them to the
+  // approved version in force at migration time so the next approval flags them.
+  it("migration 0057 attributes pre-provenance drafts to the approved version so the next approval flags them", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideService(repository);
+
+      const priorVersionId = "sgv-preprov-v1";
+      const nextVersionId = "sgv-preprov-v2";
+
+      // V1 approved: this is the version "in force" when the pre-provenance
+      // drafts were produced -- exactly what the backfill must attribute to.
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: priorVersionId,
+        status: styleGuideVersionStatusValues.approved,
+        policy: { tone: "formal" },
+      });
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: nextVersionId,
+        expectedPreviousVersionId: priorVersionId,
+        policy: { tone: "casual" },
+      });
+
+      // Pre-provenance state: seedProject imported both en-US drafts with target
+      // text and NULL provenance. Assert that is the starting condition -- these
+      // are exactly the rows the first approval would silently miss.
+      const preRows = await context.db.execute(sql`
+        select bridge_unit_id, style_guide_version_id
+        from ${localeBranchUnits}
+        where locale_branch_id = 'locale-en-us' and target_text is not null
+        order by bridge_unit_id
+      `);
+      expect(preRows.rows).toEqual([
+        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: null },
+        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: null },
+      ]);
+
+      // Apply the REAL migration SQL against the seeded pre-provenance rows.
+      await context.db.execute(
+        sql.raw(readMigrationSql("0057_style_guide_draft_provenance_backfill.sql")),
+      );
+
+      // Backfill is deterministic: both drafts now carry the approved version.
+      const backfilled = await context.db.execute(sql`
+        select bridge_unit_id, style_guide_version_id
+        from ${localeBranchUnits}
+        where locale_branch_id = 'locale-en-us' and target_text is not null
+        order by bridge_unit_id
+      `);
+      expect(backfilled.rows).toEqual([
+        { bridge_unit_id: "bridge-unit-current-policy", style_guide_version_id: priorVersionId },
+        { bridge_unit_id: "bridge-unit-test", style_guide_version_id: priorVersionId },
+      ]);
+
+      // The first approval after migration flags the once-pre-provenance drafts
+      // instead of silently missing them.
+      const approved = await service.approveStyleGuideVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: nextVersionId,
+        expectedLatestVersionId: nextVersionId,
+      });
+
+      const draftRefs = affectedReferences(
+        approved.invalidationOutboxEvents.map((event) => event.payload as Record<string, unknown>),
+        "drafts",
+      );
+      expect(draftRefs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+        ]),
+      );
+      expect(draftRefs).toHaveLength(2);
+    } finally {
+      await context.close();
+    }
+  });
+
+  // ITOTORI-130: residual unknown-provenance drafts (target text, NULL
+  // provenance the backfill could not attribute) must still be flagged on any
+  // approval-with-prior -- never silently skipped.
+  it("flags unknown-provenance (NULL) drafts on approval instead of silently missing them", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideService(repository);
+
+      const priorVersionId = "sgv-unknown-v1";
+      const nextVersionId = "sgv-unknown-v2";
+
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: priorVersionId,
+        status: styleGuideVersionStatusValues.approved,
+        policy: { tone: "formal" },
+      });
+      await repository.createVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: nextVersionId,
+        expectedPreviousVersionId: priorVersionId,
+        policy: { tone: "casual" },
+      });
+
+      // One draft has known prior provenance; the other has UNKNOWN provenance
+      // (NULL) that no deterministic backfill reached.
+      await context.db
+        .update(localeBranchUnits)
+        .set({ styleGuideVersionId: priorVersionId })
+        .where(
+          sql`${localeBranchUnits.localeBranchId} = 'locale-en-us'
+            and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-test'`,
+        );
+      await context.db
+        .update(localeBranchUnits)
+        .set({ styleGuideVersionId: null })
+        .where(
+          sql`${localeBranchUnits.localeBranchId} = 'locale-en-us'
+            and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-current-policy'`,
+        );
+
+      const approved = await service.approveStyleGuideVersion(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: nextVersionId,
+        expectedLatestVersionId: nextVersionId,
+      });
+
+      const draftRefs = affectedReferences(
+        approved.invalidationOutboxEvents.map((event) => event.payload as Record<string, unknown>),
+        "drafts",
+      );
+      // Both the known-prior draft AND the unknown-provenance draft are flagged.
+      expect(draftRefs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-test" }),
+          expect.objectContaining({ bridgeUnitId: "bridge-unit-current-policy" }),
+        ]),
+      );
+      expect(draftRefs).toHaveLength(2);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects unauthorized, stale, missing-branch, and rejected approvals before writing events", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1066,6 +1222,13 @@ function styleGuideFixture(): StyleGuideFixture {
       "utf8",
     ),
   ) as StyleGuideFixture;
+}
+
+function readMigrationSql(file: string): string {
+  return readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "migrations", file),
+    "utf8",
+  );
 }
 
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {

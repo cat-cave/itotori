@@ -284,6 +284,10 @@ export const migrations = [
     id: "0056_style_guide_approve_permission",
     file: "0056_style_guide_approve_permission.sql",
   },
+  {
+    id: "0057_style_guide_draft_provenance_backfill",
+    file: "0057_style_guide_draft_provenance_backfill.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

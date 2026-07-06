@@ -852,13 +852,28 @@ async function listAffectedWorkByPriorStyleGuideVersionInTx(
     priorStyleGuideVersionId: string;
   },
 ): Promise<AffectedWorkBySurface> {
+  // Unknown-provenance invalidation policy (ITOTORI-130)
+  // ----------------------------------------------------
+  // A draft is affected when its provenance names the prior approved version
+  // (`style_guide_version_id = prior`). But a draft can also carry non-null
+  // target text with a NULL provenance -- a pre-provenance row (written before
+  // migration 0018) that migration 0057 could not attribute deterministically
+  // (its locale branch had no approved version to attribute to). Such a draft
+  // has UNKNOWN provenance: we cannot prove it is unaffected by this style-guide
+  // change. The safe default is to FLAG it on any approval-with-prior rather
+  // than silently skip a draft that should be reviewed -- over-flagging costs a
+  // human a second look; silently missing loses the review entirely. So a
+  // NULL-provenance draft with target text is treated as affected here.
   const drafts = await db
     .select({ bridgeUnitId: localeBranchUnits.bridgeUnitId })
     .from(localeBranchUnits)
     .where(
       sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
         and ${localeBranchUnits.targetText} is not null
-        and ${localeBranchUnits.styleGuideVersionId} = ${input.priorStyleGuideVersionId}`,
+        and (
+          ${localeBranchUnits.styleGuideVersionId} = ${input.priorStyleGuideVersionId}
+          or ${localeBranchUnits.styleGuideVersionId} is null
+        )`,
     )
     .orderBy(asc(localeBranchUnits.bridgeUnitId));
 
