@@ -44,6 +44,8 @@ import {
   type PlannedProjectFile,
 } from "./batch-planner/cli.js";
 import type { ProviderFamily } from "./providers/types.js";
+import { assertOpenRouterZdrAccount } from "./providers/account-zdr.js";
+import { runReconcileLedgerCostCommand } from "./providers/openrouter-cost-reconciler.js";
 import {
   resolveSceneSummaryProvider,
   runCheckSceneSummariesCli,
@@ -301,6 +303,9 @@ export async function runItotoriCliCommand(
     case "vision-inspect":
       await runVisionInspectHandler(args, dependencies);
       break;
+    case "reconcile-ledger-cost":
+      await runReconcileLedgerCostHandler(args, dependencies);
+      break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
@@ -370,6 +375,47 @@ async function runTelemetrySummaryHandler(
       },
       deps,
     );
+  });
+}
+
+/**
+ * ITOTORI-235 — reconcile persisted ledger rows against OpenRouter's canonical
+ * settled cost (`GET /api/v1/generation?id=`) and exit NON-ZERO if any row's
+ * `cost_amount` drifts from the re-fetched `total_cost` beyond 1e-9 USD.
+ *
+ * `--ledger-rows` is a JSON array of `{ generationId, costAmount|costAmountUsd,
+ * rowRef? }` (the generation id is captured at `adapter_metadata.generationId`
+ * on the recorded provider-run). Uses the live OPENROUTER_API_KEY and asserts
+ * the account-wide ZDR posture before any live byte, mirroring the live suite.
+ */
+async function runReconcileLedgerCostHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const ledgerRowsPath = requiredFlag(args, "--ledger-rows");
+  const outputPath = requiredFlag(args, "--output");
+  const baseUrl = optionalFlag(args, "--base-url");
+  const env = process.env;
+  // Privacy gate BEFORE any live byte (mirrors the live OR test suite).
+  assertOpenRouterZdrAccount(env);
+  const apiKey = env.OPENROUTER_API_KEY;
+  if (apiKey === undefined || apiKey.length === 0) {
+    throw new Error(
+      "reconcile-ledger-cost requires OPENROUTER_API_KEY to re-fetch canonical cost from /generation",
+    );
+  }
+  const ledgerRowsInput = dependencies.io.readJson(ledgerRowsPath);
+  await runReconcileLedgerCostCommand({
+    ledgerRowsInput,
+    deps: {
+      apiKey,
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+    },
+    writeReport: (report) => dependencies.io.writeJson(outputPath, report),
+    log: (message) => process.stdout.write(`${message}\n`),
+    exit: (code) => {
+      process.exitCode = code;
+    },
   });
 }
 

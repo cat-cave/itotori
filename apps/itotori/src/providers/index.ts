@@ -62,6 +62,23 @@ export {
   type OpenRouterModelProviderOptions,
 } from "./openrouter.js";
 export {
+  COST_RECONCILE_TOLERANCE_USD,
+  OpenRouterCostReconciliationError,
+  fetchCanonicalGenerationCost,
+  generationIdFromAdapterMetadata,
+  parseReconcilableLedgerRows,
+  reconcileLedgerRow,
+  reconcileLedgerRows,
+  runReconcileLedgerCostCommand,
+  type CanonicalGenerationCost,
+  type ReconcileLedgerCostCommandInput,
+  type LedgerCostReconciliation,
+  type LedgerCostReconciliationReport,
+  type OpenRouterGenerationReconcilerDeps,
+  type ReconcilableLedgerRow,
+  type ReconcileRetryOptions,
+} from "./openrouter-cost-reconciler.js";
+export {
   assertStructuredOutputModeSupported,
   selectStructuredOutputMode,
   selectStructuredOutputRequest,

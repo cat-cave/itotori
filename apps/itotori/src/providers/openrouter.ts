@@ -1280,6 +1280,18 @@ function adapterMetadata(body: unknown, providerRouting: JsonObject): JsonObject
   const metadata: Record<string, JsonValue> = {
     providerRouting,
   };
+  // ITOTORI-235 — capture the generation id (the chat-completions response's
+  // top-level `id`, e.g. `gen-1782395748-…`) so a later cost reconciliation
+  // can re-fetch the canonical settled cost from
+  // `GET /api/v1/generation?id=` and compare it to the ledger's cost_amount
+  // (see providers/openrouter-cost-reconciler.ts). This is the ONLY place the
+  // generation id is surfaced onto the recorded artifact / invocation result:
+  // the `usage` block mirrored into the ledger's usage_response_json does not
+  // carry it. Absent / non-string id (offline / local / fake providers) → not
+  // recorded.
+  if (isRecord(body) && typeof body.id === "string" && body.id.length > 0) {
+    metadata.generationId = body.id;
+  }
   if (isRecord(body) && isJsonValue(body.openrouter_metadata)) {
     metadata.openrouterMetadata = body.openrouter_metadata;
     // ITOTORI-241 — surface the router-metadata fallback-observability
