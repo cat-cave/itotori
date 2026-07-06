@@ -1079,6 +1079,87 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("accepts sourceProvenance evidence naming an uncatalogued cross-source identity", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const workId = uuid(1320);
+      const releaseId = uuid(1321);
+      await recordWorkWithRelease(repo, workId, releaseId, "Cross-source evidence fixture");
+
+      // A platform-language / source-disagreement conflict names the disagreeing
+      // source by its `<catalogSource>:<sourceId>` identity. That source may not
+      // be catalogued locally, so the guard accepts the well-formed identity
+      // without requiring a persisted provenance row.
+      const snapshot = await repo.upsertWork(localActor, {
+        workId,
+        canonicalTitle: "Cross-source evidence fixture",
+        conflicts: [
+          {
+            conflictId: uuid(1322),
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: "Evidence cites a VNDB source we have not ingested.",
+            detectedAt: fetchedAt,
+            evidence: [
+              {
+                conflictEvidenceId: uuid(1323),
+                subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
+                subjectId: "vndb:v9999",
+              },
+            ],
+          },
+        ],
+      });
+
+      const conflict = requiredTestRow(snapshot.conflicts, "persisted cross-source conflict");
+      expect(conflict.evidence).toHaveLength(1);
+      expect(conflict.evidence[0]).toMatchObject({
+        subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
+        subjectId: "vndb:v9999",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects sourceProvenance evidence that is neither a known provenance nor a source identity", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const workId = uuid(1330);
+      const releaseId = uuid(1331);
+      await recordWorkWithRelease(repo, workId, releaseId, "Dangling provenance fixture");
+
+      const danglingError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId,
+          canonicalTitle: "Dangling provenance fixture",
+          conflicts: [
+            {
+              conflictId: uuid(1332),
+              conflictKind: catalogConflictKindValues.languageStatus,
+              summary: "Evidence points at a provenance row that does not exist.",
+              detectedAt: fetchedAt,
+              evidence: [
+                {
+                  conflictEvidenceId: uuid(1333),
+                  subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
+                  subjectId: uuid(1334),
+                },
+              ],
+            },
+          ],
+        }),
+        "conflict_evidence_subject_unknown",
+      );
+      expect(danglingError.message).toContain(
+        "conflict.evidence subjectId must reference a known source provenance",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects conflict evidence whose subject belongs to another work", async () => {
     const context = await isolatedMigratedContext();
     try {

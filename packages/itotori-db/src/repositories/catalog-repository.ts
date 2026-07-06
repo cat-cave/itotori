@@ -5026,7 +5026,20 @@ async function assertConflictEvidenceSubjectReferences(
     }
   }
 
-  // `sourceProvenance` records are global (work-agnostic): existence only.
+  // `sourceProvenance` subjects are global (work-agnostic). They arrive in two
+  // legitimate shapes:
+  //   1. A real `sourceProvenanceId` (a crawler/source provenance row's primary
+  //      key), which is recorded before this upsert (e.g. `recordFetchedStep`
+  //      commits the crawl provenance ahead of the work upsert). These MUST
+  //      exist in committed state.
+  //   2. A free-text `<catalogSource>:<sourceId>` source-record identity emitted
+  //      by cross-source disagreement evidence (platform-language conflicts name
+  //      the disagreeing source directly, e.g. `igdb:252001` / `vndb:v1002`).
+  //      The named source may not be catalogued locally (the conflict can cite a
+  //      source we have not ingested), so existence is NOT required for it — only
+  //      that it is a well-formed identity of a known catalog source.
+  // Anything that is neither a known provenance id nor a well-formed source
+  // identity is a dangling reference and is rejected (CATALOG-079).
   if (sourceProvenanceSubjects.size > 0) {
     const rows = await db
       .select({ id: catalogSourceProvenance.sourceProvenanceId })
@@ -5034,14 +5047,32 @@ async function assertConflictEvidenceSubjectReferences(
       .where(inArray(catalogSourceProvenance.sourceProvenanceId, [...sourceProvenanceSubjects]));
     const knownProvenanceIds = new Set(rows.map((row) => row.id));
     for (const subjectId of sourceProvenanceSubjects) {
-      if (!knownProvenanceIds.has(subjectId)) {
-        throw new CatalogArtifactMappingError(
-          "conflict_evidence_subject_unknown",
-          `conflict.evidence subjectId must reference a known source provenance (${subjectId})`,
-        );
+      if (knownProvenanceIds.has(subjectId) || isCatalogSourceRecordIdentity(subjectId)) {
+        continue;
       }
+      throw new CatalogArtifactMappingError(
+        "conflict_evidence_subject_unknown",
+        `conflict.evidence subjectId must reference a known source provenance (${subjectId})`,
+      );
     }
   }
+}
+
+/**
+ * True when `subjectId` is a well-formed `<catalogSource>:<sourceId>` source
+ * record identity for a known catalog source. Cross-source disagreement evidence
+ * names the disagreeing source by this identity (e.g. `igdb:252001`,
+ * `vndb:v1002`) rather than by a provenance row primary key; the named source
+ * may not be catalogued locally, so this identity is accepted without requiring
+ * a persisted provenance row.
+ */
+function isCatalogSourceRecordIdentity(subjectId: string): boolean {
+  const separator = subjectId.indexOf(":");
+  if (separator <= 0 || separator === subjectId.length - 1) {
+    return false;
+  }
+  const catalogSource = subjectId.slice(0, separator);
+  return (catalogSources as string[]).includes(catalogSource);
 }
 
 /**
