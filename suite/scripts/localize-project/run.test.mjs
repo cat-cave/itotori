@@ -41,6 +41,7 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = resolve(
 const {
   verifyProviderRunArtifactsAfterStage,
   summarizeProviderBilledCost,
+  buildRerunLoopSummary,
   classifyChainFailure,
   assertZeroUnknownOpcodes,
   CHAIN_OUTCOMES,
@@ -691,6 +692,161 @@ test("summarizeProviderBilledCost ignores non-billed cost artifacts and reports 
     assert.equal(summary.zdrEnforcedCount, 1);
   } finally {
     rmSync(providerRunArtifactsDir, { recursive: true, force: true });
+  }
+});
+
+// Build a per-iteration artifact set rooted at `iterationDir`, mirroring the
+// driver's `rpgMakerIterationPaths`. When `billedMicrosUsd` is provided, the
+// full real second-slice artifact set is written to disk (a real provider-run
+// artifact with that billed cost + the other iteration outputs), so
+// `buildRerunLoopSummary` can READ cost + DERIVE completion from real files.
+// When it is omitted, only the path shape is returned (nothing on disk) — the
+// "rerun never ran" case.
+function seedIterationArtifacts(iterationDir, { billedMicrosUsd } = {}) {
+  const paths = {
+    agenticLoopBundlePath: join(iterationDir, "agentic-loop-bundle.v0.json"),
+    translatedBundlePath: join(iterationDir, "translated-bridge.json"),
+    patchReportPath: join(iterationDir, "patch-report.json"),
+    deltaPath: join(iterationDir, "patch.kaifuu"),
+    patchedDataDir: join(iterationDir, "patched-data"),
+    appliedDataDir: join(iterationDir, "delta-applied", "data"),
+    applyReportPath: join(iterationDir, "apply-report.json"),
+    runtimeInputDir: join(iterationDir, "runtime-input"),
+    runtimeArtifactsDir: join(iterationDir, "runtime-artifacts"),
+    runtimeEvidencePath: join(iterationDir, "runtime-evidence.json"),
+    providerRunArtifactsDir: join(iterationDir, "provider-runs"),
+  };
+  if (billedMicrosUsd === undefined) return paths;
+
+  const runId = `slice-${billedMicrosUsd}`;
+  const providerRunDir = join(paths.providerRunArtifactsDir, runId);
+  mkdirSync(providerRunDir, { recursive: true });
+  writeJson(join(providerRunDir, "provider-run.json"), {
+    schemaVersion: "itotori.provider-run.v0",
+    run: {
+      runId,
+      status: "succeeded",
+      provider: { requestedModelId: MODEL_ID, requestedProviderId: PROVIDER_ID },
+      cost: { costKind: "billed", amountMicrosUsd: billedMicrosUsd },
+      routingPosture: { order: [PROVIDER_ID], zdr: true },
+    },
+  });
+  // The rest of the real second-slice artifact set `buildRerunLoopSummary`
+  // requires to exist before it records `rerunCompleted: true`.
+  for (const artifact of [
+    paths.agenticLoopBundlePath,
+    paths.patchReportPath,
+    paths.deltaPath,
+    paths.applyReportPath,
+    paths.runtimeEvidencePath,
+  ]) {
+    writeFileSync(artifact, "seed\n", "utf8");
+  }
+  return paths;
+}
+
+test("buildRerunLoopSummary bills a REAL second bounded slice from the rerun's own artifacts", () => {
+  const root = mkdtempSync(join(tmpdir(), "itotori-rerun-loop-"));
+  try {
+    // Two DISTINCT provider-run directories with DISTINCT billed costs. If the
+    // rerun ever copied / double-counted the initial slice's cost, the rerun's
+    // billed value would equal the initial's (2_070_000) — the assertions
+    // below reject that and demand the rerun's own value (930_000).
+    const initialPaths = seedIterationArtifacts(join(root, "initial"), {
+      billedMicrosUsd: 2_070_000,
+    });
+    const rerunPaths = seedIterationArtifacts(join(root, "rerun"), {
+      billedMicrosUsd: 930_000,
+    });
+
+    const loop = buildRerunLoopSummary({
+      providerKind: undefined,
+      initialPaths,
+      rerunPaths,
+      initialVerdict: "iterate",
+      rerunVerdict: "pass",
+    });
+
+    // 1. The rerun wrote a FRESH provider-run dir, distinct from the initial's,
+    //    that actually exists on disk.
+    assert.notEqual(rerunPaths.providerRunArtifactsDir, initialPaths.providerRunArtifactsDir);
+    assert.ok(existsSync(rerunPaths.providerRunArtifactsDir));
+
+    // 2 + 3. The rerun re-read cost from the NEW artifacts: its billed value is
+    //    the rerun dir's own fixture (930_000), NOT a copy of the initial
+    //    (2_070_000), and the total is the independent sum of both real slices.
+    const [initialIter, rerunIter] = loop.iterations;
+    assert.equal(initialIter.cost.billedMicrosUsd, 2_070_000);
+    assert.equal(rerunIter.cost.billedMicrosUsd, 930_000);
+    assert.notEqual(rerunIter.cost.billedMicrosUsd, initialIter.cost.billedMicrosUsd);
+    assert.equal(rerunIter.cost.available, true);
+    assert.equal(loop.totalBilledMicrosUsd, 3_000_000);
+    assert.equal(loop.totalBilledUsd, "3.00000000");
+
+    // 4. rerunCompleted is DERIVED from the rerun's real artifact set existing.
+    assert.equal(loop.rerunCompleted, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("buildRerunLoopSummary derives rerunCompleted=false + zero rerun billing when the rerun artifacts are absent", () => {
+  const root = mkdtempSync(join(tmpdir(), "itotori-rerun-loop-absent-"));
+  try {
+    const initialPaths = seedIterationArtifacts(join(root, "initial"), {
+      billedMicrosUsd: 2_070_000,
+    });
+    // Path shape only — the rerun's real second-slice artifact set was never
+    // written, so no real second slice ran.
+    const rerunPaths = seedIterationArtifacts(join(root, "rerun-missing"));
+
+    const loop = buildRerunLoopSummary({
+      providerKind: undefined,
+      initialPaths,
+      rerunPaths,
+      initialVerdict: "iterate",
+      rerunVerdict: "iterate",
+    });
+
+    // rerunCompleted requires the rerun artifact set to exist.
+    assert.equal(loop.rerunCompleted, false);
+    // With no real second slice, the rerun contributes zero billed cost and the
+    // total is exactly the initial slice's — no aliased/copied second charge.
+    assert.equal(loop.iterations[1].cost.billedMicrosUsd, 0);
+    assert.equal(loop.iterations[1].cost.available, false);
+    assert.equal(loop.totalBilledMicrosUsd, 2_070_000);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("buildRerunLoopSummary rejects aliasing the rerun onto the initial provider-run dir", () => {
+  const root = mkdtempSync(join(tmpdir(), "itotori-rerun-loop-alias-"));
+  try {
+    const initialPaths = seedIterationArtifacts(join(root, "initial"), {
+      billedMicrosUsd: 2_070_000,
+    });
+    const rerunPaths = seedIterationArtifacts(join(root, "rerun"), {
+      billedMicrosUsd: 930_000,
+    });
+    // The copy/double-count regression: the rerun points at the INITIAL
+    // iteration's provider-run dir instead of billing its own second slice.
+    assert.throws(
+      () =>
+        buildRerunLoopSummary({
+          providerKind: undefined,
+          initialPaths,
+          rerunPaths: {
+            ...rerunPaths,
+            providerRunArtifactsDir: initialPaths.providerRunArtifactsDir,
+          },
+          initialVerdict: "iterate",
+          rerunVerdict: "pass",
+        }),
+      /must differ from the initial/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

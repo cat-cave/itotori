@@ -1268,6 +1268,84 @@ export function summarizeProviderBilledCost(providerRunArtifactsDir) {
   };
 }
 
+const ZEROED_COST_SUMMARY = Object.freeze({
+  available: false,
+  invocationCount: 0,
+  billedMicrosUsd: 0,
+  billedUsd: "0.00000000",
+  zdrEnforcedCount: 0,
+});
+
+/**
+ * Compose the feedback-driven loop summary from the initial + rerun
+ * iterations.
+ *
+ * This is the single place the rerun's re-billing is proven, not merely
+ * asserted:
+ *
+ *   1. DISTINCT ARTIFACTS — the rerun's provider-run directory MUST differ
+ *      from the initial iteration's. A shared directory would alias the
+ *      initial slice's artifacts, so the "second" billed amount would be a
+ *      copy / double-count rather than a real second slice. We hard-fail.
+ *   2. INDEPENDENT COST SOURCE — cost is re-read independently from EACH
+ *      iteration's own provider-run artifacts. The rerun's billed cost is
+ *      therefore a pure function of the rerun's real second-slice artifacts.
+ *   3. rerunCompleted IS DERIVED — it is true only when the rerun's real
+ *      second-slice artifact set actually exists on disk, never assumed.
+ *      Absent rerun artifacts -> `rerunCompleted: false` and no rerun cost.
+ *
+ * `fake` provider skips real billing entirely (zeroed), matching the slice
+ * iterations' own cost handling.
+ */
+export function buildRerunLoopSummary({
+  providerKind,
+  initialPaths,
+  rerunPaths,
+  initialVerdict,
+  rerunVerdict,
+}) {
+  if (rerunPaths.providerRunArtifactsDir === initialPaths.providerRunArtifactsDir) {
+    throw new Error(
+      `rerun re-billing invariant: the rerun's provider-run dir must differ from the initial iteration's, else the second slice's cost is a copy of the first (both '${rerunPaths.providerRunArtifactsDir}')`,
+    );
+  }
+
+  // The rerun's real second-slice artifact set. `rerunCompleted` is proof a
+  // real second bounded slice ran, so it is derived from these existing.
+  const rerunArtifactSet = [
+    rerunPaths.agenticLoopBundlePath,
+    rerunPaths.patchReportPath,
+    rerunPaths.deltaPath,
+    rerunPaths.applyReportPath,
+    rerunPaths.runtimeEvidencePath,
+    rerunPaths.providerRunArtifactsDir,
+  ];
+  const rerunCompleted = rerunArtifactSet.every((artifact) => existsSync(artifact));
+
+  const initialCost =
+    providerKind === "fake"
+      ? { ...ZEROED_COST_SUMMARY }
+      : summarizeProviderBilledCost(initialPaths.providerRunArtifactsDir);
+  // The rerun cost is sourced ONLY from the rerun's own artifacts, and only
+  // once the rerun actually completed — never inherited from `initialCost`.
+  const rerunCost =
+    providerKind === "fake" || !rerunCompleted
+      ? { ...ZEROED_COST_SUMMARY }
+      : summarizeProviderBilledCost(rerunPaths.providerRunArtifactsDir);
+
+  const totalBilledMicrosUsd = initialCost.billedMicrosUsd + rerunCost.billedMicrosUsd;
+  return {
+    identityFirst: true,
+    iterations: [
+      { iteration: "initial", verdict: initialVerdict, cost: initialCost },
+      { iteration: "rerun", verdict: rerunVerdict, cost: rerunCost },
+    ],
+    rerunCompleted,
+    totalBilledMicrosUsd,
+    totalBilledUsd: (totalBilledMicrosUsd / 1_000_000).toFixed(8),
+  };
+}
+
 /**
  * Build the localized-bundle artifact for the alpha capstone: the primary
  * (model, provider) pair + localized English line from patch-report.json,
@@ -1875,8 +1953,18 @@ async function runRpgMakerMvMzPipeline(ctx) {
     }
   }
 
-  const totalBilledMicrosUsd =
-    initial.costSummary.billedMicrosUsd + rerun.costSummary.billedMicrosUsd;
+  // The loop summary re-derives cost INDEPENDENTLY from each iteration's
+  // own provider-run artifacts and records `rerunCompleted` only when the
+  // rerun's real second-slice artifact set exists on disk — so the rerun's
+  // billed cost is a fresh second bounded slice, never a copy of the
+  // initial. See `buildRerunLoopSummary`.
+  const loop = buildRerunLoopSummary({
+    providerKind: args.providerKind,
+    initialPaths,
+    rerunPaths,
+    initialVerdict: feedback.verdict,
+    rerunVerdict: rerunFeedback.verdict,
+  });
   const summary = {
     runDir: repoRelativePath(runDir),
     project: args.project,
@@ -1892,16 +1980,7 @@ async function runRpgMakerMvMzPipeline(ctx) {
     sourceDataTreeSha256: sourceTreeSha256Before,
     localCorpusIdentity: inventoryReadiness.localCorpus,
     readinessVerdict: inventoryReadiness.readinessVerdict,
-    loop: {
-      identityFirst: true,
-      iterations: [
-        { iteration: "initial", verdict: feedback.verdict, cost: initial.costSummary },
-        { iteration: "rerun", verdict: rerunFeedback.verdict, cost: rerun.costSummary },
-      ],
-      rerunCompleted: true,
-      totalBilledMicrosUsd,
-      totalBilledUsd: (totalBilledMicrosUsd / 1_000_000).toFixed(8),
-    },
+    loop,
     artifacts: {
       detectionReport: portableRelativePath(runDir, detectionReportPath),
       inventoryReadiness: portableRelativePath(runDir, inventoryReadinessPath),
