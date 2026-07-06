@@ -43,20 +43,20 @@ after the database has been migrated.
 
 ## Permission Matrix
 
-| Permission        | Current gate                                      |
-| ----------------- | ------------------------------------------------- |
-| `project.import`  | Import a bridge bundle into Itotori project state |
-| `draft.write`     | Persist draft translations                        |
-| `patch.export`    | Persist patch export metadata                     |
-| `runtime.ingest`  | Persist runtime verification evidence and status  |
-| `feedback.import` | Import manual feedback and playtest notes         |
-| `queue.manage`    | Append, claim, retry, and complete durable jobs   |
-| `queue.read`      | Read durable queue event and job internals        |
-| `catalog.read`    | Read catalog work identity and provenance records |
-| `catalog.write`   | Persist catalog work identity and provenance      |
-| `audit.write`     | Record and resolve audit findings                 |
+| Permission            | Current gate                                                                    |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `project.import`      | Import a bridge bundle into Itotori project state                               |
+| `draft.write`         | Persist draft translations                                                      |
+| `patch.export`        | Persist patch export metadata                                                   |
+| `runtime.ingest`      | Persist runtime verification evidence and status                                |
+| `feedback.import`     | Import manual feedback and playtest notes                                       |
+| `queue.manage`        | Append, claim, retry, and complete durable jobs                                 |
+| `queue.read`          | Read durable queue event and job internals                                      |
+| `catalog.read`        | Read catalog work identity and provenance records                               |
+| `catalog.write`       | Persist catalog work identity and provenance                                    |
+| `audit.write`         | Record and resolve audit findings                                               |
 | `style_guide.approve` | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
-| `system.reset`    | Reset local hello-world persisted state           |
+| `system.reset`        | Reset local hello-world persisted state                                         |
 
 Project dashboard reads do not currently require a permission gate. Catalog
 reads are gated because local corpus scan entries can carry private-library
