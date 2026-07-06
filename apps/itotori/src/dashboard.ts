@@ -919,7 +919,8 @@ function renderCost(cost: ProjectCostReport): string {
 // DISTINCT states (billed / zero / unknown — a $0.00 record renders
 // differently from an unrecorded one), and exposes the row's provider adapter
 // metadata via a per-row `<details>` drilldown WITHOUT any raw provider
-// payload (stripped server-side by sanitizeAdapterMetadata's ALLOWLIST).
+// payload (projected server-side by sanitizeAdapterMetadata — a default-deny
+// projection of known-safe fields, so no raw payload can surface).
 function renderCostDrilldown(page: CostDrilldownPage): string {
   const { pagination, filter } = page;
   const rows = page.rows.map(renderCostDrilldownRow).join("");
@@ -1003,8 +1004,9 @@ function renderCostDrilldownCost(cost: CostDrilldownRow["cost"]): string {
 // ITOTORI-053 — per-row provider adapter metadata drilldown. Exposes the
 // (model, provider) identity + the CURATED adapter metadata. The raw provider
 // payload is already stripped at the repository boundary
-// (sanitizeAdapterMetadata — an ALLOWLIST, so unknown keys never surface),
-// so the JSON rendered here can never contain a raw request/response body.
+// (sanitizeAdapterMetadata — a default-deny projection, so only known-safe
+// fields surface), so the JSON rendered here can never contain a raw
+// request/response body.
 function renderProviderAdapterMetadata(row: CostDrilldownRow): string {
   const provider = row.provider;
   return `

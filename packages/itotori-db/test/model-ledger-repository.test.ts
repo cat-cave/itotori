@@ -809,14 +809,15 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  // codex-audit-fix FIX 2 (P1, privacy) — sanitizeAdapterMetadata is now an
-  // ALLOWLIST (default-deny), not a denylist. Arbitrary adapter metadata is
-  // stored, so raw-payload keys NOT in the old denylist (`raw_response`,
-  // `responseText`, `providerOutput`, `output`, `result`, future wrappers)
-  // would have leaked through. These negative tests prove the allowlist
-  // excludes ALL of those — and that a raw body nested inside an array or a
-  // non-allowlisted wrapper object is also excluded at every depth.
-  it("sanitizeAdapterMetadata allowlist excludes raw-payload synonyms AND nested raw bodies (default-deny)", async () => {
+  // codex-audit-followup (P1, privacy hard boundary) — sanitizeAdapterMetadata
+  // is now a default-deny PROJECTION of known-safe fields into a new object,
+  // NOT a key filter over the untrusted object. Arbitrary adapter metadata is
+  // stored, so raw-payload keys (`raw_response`, `responseText`,
+  // `providerOutput`, `output`, `result`, future wrappers) are never projected
+  // and can never appear. These negative tests prove that a raw body nested
+  // inside an array or a non-safe wrapper object is also excluded at every
+  // depth (it is simply never visited by the projectors).
+  it("sanitizeAdapterMetadata projects only known-safe fields; raw-payload synonyms AND nested raw bodies never surface (default-deny)", async () => {
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(context.db);
@@ -897,6 +898,149 @@ describe("ItotoriModelLedgerRepository", () => {
       // parent key gates whether the child is visited at all).
       expect(meta).not.toHaveProperty("unknownWrapper");
       expect(serialized).not.toContain("hidden-inside");
+    } finally {
+      await context.close();
+    }
+  });
+
+  // codex-audit-followup (P1, privacy hard boundary) — the OpenRouter adapter
+  // mirrors the raw `openrouter_metadata` response fragment VERBATIM into
+  // `adapterMetadata.openrouterMetadata`, and that fragment can carry a raw
+  // provider request/response body (`choices`, `messages`, `endpoints`,
+  // `response`). The projection must NOT mirror openrouterMetadata wholesale:
+  // only its known-safe scalar observability fields (+ the selected endpoint's
+  // scalar provider/model) may surface. It must also be context-aware: a
+  // generic `source` / `summary` key carrying a payload OBJECT is not passed
+  // through — `source` is a top-level scalar tag only, `summary` is an
+  // openrouterRouting scalar only.
+  it("projects openrouterMetadata to safe scalars only (no wholesale mirror) and is context-aware for source/summary", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-orm-boundary", "billed", 1400, {
+          systemId: "system-a",
+          startedAt: "2026-06-17T00:06:00.000Z",
+          completedAt: "2026-06-17T00:06:10.000Z",
+          adapterMetadata: {
+            // (a) openrouterMetadata mirrored verbatim, carrying a RAW body.
+            openrouterMetadata: {
+              // safe scalar observability fields — projected.
+              requested: "deepseek/deepseek-v4",
+              strategy: "fallback",
+              attempt: 2,
+              summary: "fireworks 429; served by deepinfra",
+              // the SELECTED endpoint's scalar provider/model is the served
+              // route identity — projected as `servedRoute`.
+              endpoints: {
+                available: [
+                  {
+                    provider: "DeepInfra",
+                    model: "deepseek/deepseek-v4",
+                    selected: true,
+                    // a raw pricing/body blob hanging off the endpoint — dropped.
+                    raw: { pricing: { prompt: "secret" } },
+                  },
+                ],
+              },
+              // RAW provider request/response fragments — must NEVER surface.
+              choices: [{ message: { content: "leaked ORM choices body" } }],
+              messages: [{ role: "user", content: "leaked ORM prompt" }],
+              response: { body: "leaked ORM response body" },
+            },
+            openrouterRouting: {
+              // safe scalar — projected.
+              summary: "served by deepinfra",
+              // a raw object smuggled under summary at depth — dropped (summary
+              // is projected as a scalar only).
+              attempts: [{ provider: "Fireworks", status: "429", raw: "leaked attempt body" }],
+            },
+            // (b) generic top-level `source` carrying a payload OBJECT — dropped
+            // (source is projected as a scalar tag only). A scalar source WOULD
+            // survive, but an object must not.
+            source: { leaked: "leaked source payload object" },
+            generationId: "gen-orm-boundary",
+          },
+        }),
+      );
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+      });
+      const row = page.rows.find((r) => r.providerRunId === "run-orm-boundary")!;
+      const meta = row.provider.adapterMetadata;
+      const serialized = JSON.stringify(meta);
+
+      // openrouterMetadata is projected to safe scalars + the served route.
+      expect(meta).toMatchObject({
+        openrouterMetadata: {
+          requested: "deepseek/deepseek-v4",
+          strategy: "fallback",
+          attempt: 2,
+          summary: "fireworks 429; served by deepinfra",
+          servedRoute: { provider: "DeepInfra", model: "deepseek/deepseek-v4" },
+        },
+        openrouterRouting: { summary: "served by deepinfra" },
+        generationId: "gen-orm-boundary",
+      });
+
+      // (a) the raw body fragments under openrouterMetadata NEVER surface.
+      const orm = (meta as Record<string, unknown>).openrouterMetadata as Record<string, unknown>;
+      expect(orm).not.toHaveProperty("choices");
+      expect(orm).not.toHaveProperty("messages");
+      expect(orm).not.toHaveProperty("response");
+      expect(orm).not.toHaveProperty("endpoints");
+      expect(serialized).not.toContain("leaked ORM choices body");
+      expect(serialized).not.toContain("leaked ORM prompt");
+      expect(serialized).not.toContain("leaked ORM response body");
+      // the raw blob hanging off the selected endpoint is dropped too.
+      expect(serialized).not.toContain("secret");
+      // the raw per-attempt blob under openrouterRouting.attempts is dropped
+      // (only known-safe scalar attempt fields are projected).
+      expect(serialized).not.toContain("leaked attempt body");
+
+      // (b) the generic top-level `source` OBJECT is not passed through.
+      expect(meta).not.toHaveProperty("source");
+      expect(serialized).not.toContain("leaked source payload object");
+    } finally {
+      await context.close();
+    }
+  });
+
+  // codex-audit-followup (P1, privacy hard boundary) — the projection is
+  // context-aware: a benchmark-ingest run carries a top-level scalar
+  // `source: "benchmark_report"` tag that MUST survive (it is a known top-level
+  // field), proving default-deny does not over-strip the curated safe set.
+  it("surfaces the top-level scalar `source` tag (benchmark ingest) while dropping non-scalar source", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-benchmark-source", "billed", 1500, {
+          systemId: "system-a",
+          startedAt: "2026-06-17T00:07:00.000Z",
+          completedAt: "2026-06-17T00:07:10.000Z",
+          adapterMetadata: {
+            source: "benchmark_report",
+            routeSettingsHash: "sha256:abc123",
+          },
+        }),
+      );
+
+      const page = await ledger.getCostLedgerDrilldown(localActor, {
+        projectId: "project-test",
+      });
+      const row = page.rows.find((r) => r.providerRunId === "run-benchmark-source")!;
+      expect(row.provider.adapterMetadata).toEqual({
+        source: "benchmark_report",
+        routeSettingsHash: "sha256:abc123",
+      });
     } finally {
       await context.close();
     }

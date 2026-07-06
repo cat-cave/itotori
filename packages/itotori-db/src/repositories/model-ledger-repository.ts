@@ -268,9 +268,10 @@ export type CostDrilldownRowCost =
  * ITOTORI-053 — the provider/adapter identity + adapter metadata exposed for
  * a drilldown row. This surfaces the (model, provider) pair and the curated
  * adapter metadata, but the raw adapter metadata is run through
- * {@link sanitizeAdapterMetadata} first (an ALLOWLIST, not a denylist) so only
- * known-safe adapter fields surface — a raw provider request/response payload
- * or any unknown key can never leak through the drilldown (privacy).
+ * {@link sanitizeAdapterMetadata} first (a default-deny PROJECTION of known-safe
+ * fields into a new object, context-aware by parent) so only known-safe adapter
+ * fields surface — a raw provider request/response payload or any unknown key
+ * can never leak through the drilldown (privacy).
  */
 export type CostDrilldownProviderMetadata = {
   providerId: string;
@@ -1170,75 +1171,201 @@ function microsToDecimalUsd(micros: number): string {
 }
 
 /**
- * ITOTORI-053 (codex-audit-fix) — the ALLOWLIST of adapter-metadata keys that
- * may surface in the cost drilldown. Arbitrary adapter metadata is stored
- * (project-workflow.ts persists whatever the provider adapter captures), so a
- * DENYLIST of raw-payload keys is the wrong default for a privacy boundary:
- * any raw-payload key NOT in the denylist (`raw_response`, `responseText`,
- * `providerOutput`, `output`, `result`, future wrappers) would leak through.
- * The correct default is an ALLOWLIST: only known-safe adapter/(model,provider)
- * metadata fields surface; everything else is dropped. The allowlist is matched
- * case-insensitively at every nesting depth so a raw body nested inside an
- * otherwise-safe wrapper is still excluded.
+ * ITOTORI-053 (codex-audit-followup, privacy HARD boundary) — the cost
+ * drilldown surfaces adapter metadata that was recorded VERBATIM from the
+ * provider adapter: project-workflow.ts persists whatever the adapter captured,
+ * and the OpenRouter adapter mirrors the raw `openrouter_metadata` response
+ * fragment into `adapterMetadata.openrouterMetadata`. A KEY-ALLOWLIST — even
+ * case-insensitive and applied at every depth — is NOT a privacy boundary: it
+ * FILTERS an untrusted object, so (a) any raw scalar sitting under a generic
+ * allowlisted key (`source`, `summary`) at ANY depth leaks, and (b) any raw
+ * body reachable through an allowlisted wrapper leaks.
  *
- * Curated safe set (populated by the OR adapter + benchmark ingest):
- *   - Top-level adapter metadata: `providerRouting`, `generationId`,
- *     `openrouterMetadata`, `openrouterRouting`, `source`, `routeSettingsHash`.
- *   - Known-safe nested routing keys (providerRouting / openrouterRouting /
- *     routing posture): `order`, `allowFallbacks`, `allow_fallbacks`, `only`,
- *     `data_collection`, `zdr`, `require_parameters`.
- *   - Known-safe openrouterRouting keys: `summary`, `attempt`, `attempts`,
- *     `strategy`.
+ * This sanitizer is default-deny BY CONSTRUCTION: it never filters the
+ * untrusted object — it PROJECTS a fixed set of known-safe fields into a NEW
+ * object, CONTEXT-AWARE by parent. A field is only surfaced under the parent it
+ * genuinely belongs to: `source` / `routeSettingsHash` / `generationId` are
+ * top-level only; the routing-posture fields only under `providerRouting`;
+ * `summary` only under `openrouterRouting`. There is no global key allowlist,
+ * so a raw-payload key (`choices`, `messages`, `response`, `body`, a renamed
+ * wrapper) can never surface at any depth — it is simply never projected.
+ *
+ * `openrouterMetadata` is NEVER mirrored wholesale: only its known-safe scalar
+ * observability fields are projected (requested model, strategy, attempt(s),
+ * summary, cost, and the SELECTED endpoint's scalar provider/model). The raw
+ * `endpoints.available[]` / `choices` / `messages` / body fragments are dropped
+ * by construction.
  */
-const ALLOWED_ADAPTER_METADATA_KEYS = new Set(
-  [
-    "providerRouting",
-    "generationId",
-    "openrouterMetadata",
-    "openrouterRouting",
-    "source",
-    "routeSettingsHash",
-    "order",
-    "allowFallbacks",
-    "allow_fallbacks",
-    "only",
-    "data_collection",
-    "zdr",
-    "require_parameters",
-    "summary",
-    "attempt",
-    "attempts",
-    "strategy",
-  ].map((key) => key.toLowerCase()),
-);
+type SafeScalar = string | number | boolean;
 
-/**
- * ITOTORI-053 (codex-audit-fix) — recursively KEEP only allowlisted
- * adapter-metadata keys so the drilldown exposes ONLY the curated safe set,
- * never an arbitrary or raw-provider-payload field. Non-object values pass
- * through; the allowlist is matched case-insensitively at every nesting
- * depth. This is an ALLOWLIST (default-deny), NOT a denylist: a new or
- * unknown key is dropped unless explicitly listed above.
- */
-export function sanitizeAdapterMetadata(value: unknown): LedgerJsonRecord {
-  return sanitizeAdapterMetadataValue(recordOrEmpty(value)) as LedgerJsonRecord;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function sanitizeAdapterMetadataValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeAdapterMetadataValue);
+function safeScalar(value: unknown): SafeScalar | undefined {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ? value
+    : undefined;
+}
+
+function safeScalarArray(value: unknown): SafeScalar[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
   }
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (!ALLOWED_ADAPTER_METADATA_KEYS.has(key.toLowerCase())) {
-        continue;
+  const out = value.map(safeScalar).filter((entry): entry is SafeScalar => entry !== undefined);
+  return out.length > 0 ? out : undefined;
+}
+
+function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
+function undefinedIfEmpty(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  return Object.keys(record).length > 0 ? record : undefined;
+}
+
+// Known-safe OpenRouter provider-routing posture fields (the wire routing
+// preferences captured on the ledger). All are routing posture — never a
+// provider payload — so each is projected as a scalar or an array of scalars.
+const SAFE_ROUTING_SCALAR_KEYS = [
+  "allowFallbacks",
+  "allow_fallbacks",
+  "data_collection",
+  "zdr",
+  "require_parameters",
+  "sort",
+  "enforce_distillable_text",
+] as const;
+const SAFE_ROUTING_ARRAY_KEYS = ["order", "only", "ignore", "quantizations"] as const;
+const SAFE_MAX_PRICE_KEYS = ["prompt", "completion", "request", "image"] as const;
+// Known-safe per-attempt fallback-observability fields (openrouter_metadata
+// `attempts[]`). Scalar only — never a nested body.
+const SAFE_ATTEMPT_KEYS = [
+  "provider",
+  "model",
+  "endpoint",
+  "status",
+  "reason",
+  "attempt",
+  "cost",
+] as const;
+
+function projectMaxPrice(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of SAFE_MAX_PRICE_KEYS) {
+    assignDefined(out, key, safeScalar(value[key]));
+  }
+  return undefinedIfEmpty(out);
+}
+
+function projectProviderRouting(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of SAFE_ROUTING_SCALAR_KEYS) {
+    assignDefined(out, key, safeScalar(value[key]));
+  }
+  for (const key of SAFE_ROUTING_ARRAY_KEYS) {
+    assignDefined(out, key, safeScalarArray(value[key]));
+  }
+  assignDefined(out, "max_price", projectMaxPrice(value.max_price));
+  return undefinedIfEmpty(out);
+}
+
+function projectAttempts(value: unknown): unknown[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out = value
+    .map((entry): unknown => {
+      const scalar = safeScalar(entry);
+      if (scalar !== undefined) {
+        return scalar;
       }
-      out[key] = sanitizeAdapterMetadataValue(entry);
-    }
-    return out;
+      if (isPlainObject(entry)) {
+        const projected: Record<string, unknown> = {};
+        for (const key of SAFE_ATTEMPT_KEYS) {
+          assignDefined(projected, key, safeScalar(entry[key]));
+        }
+        return undefinedIfEmpty(projected);
+      }
+      return undefined;
+    })
+    .filter((entry): entry is unknown => entry !== undefined);
+  return out.length > 0 ? out : undefined;
+}
+
+function projectOpenrouterRouting(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
   }
-  return value;
+  const out: Record<string, unknown> = {};
+  assignDefined(out, "summary", safeScalar(value.summary));
+  assignDefined(out, "strategy", safeScalar(value.strategy));
+  assignDefined(out, "attempt", safeScalar(value.attempt));
+  assignDefined(out, "attempts", projectAttempts(value.attempts));
+  return undefinedIfEmpty(out);
+}
+
+function projectSelectedEndpoint(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(value) || !Array.isArray(value.available)) {
+    return undefined;
+  }
+  const selected = value.available.find(
+    (endpoint) => isPlainObject(endpoint) && endpoint.selected === true,
+  );
+  if (!isPlainObject(selected)) {
+    return undefined;
+  }
+  const out: Record<string, unknown> = {};
+  assignDefined(out, "provider", safeScalar(selected.provider));
+  assignDefined(out, "model", safeScalar(selected.model));
+  return undefinedIfEmpty(out);
+}
+
+function projectOpenrouterMetadata(value: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const out: Record<string, unknown> = {};
+  assignDefined(out, "requested", safeScalar(value.requested));
+  assignDefined(out, "strategy", safeScalar(value.strategy));
+  assignDefined(out, "attempt", safeScalar(value.attempt));
+  assignDefined(out, "summary", safeScalar(value.summary));
+  assignDefined(out, "cost", safeScalar(value.cost));
+  assignDefined(out, "id", safeScalar(value.id));
+  assignDefined(out, "attempts", projectAttempts(value.attempts));
+  // Served route identity — ONLY the selected endpoint's scalar provider/model,
+  // never the raw `endpoints.available[]` structure.
+  assignDefined(out, "servedRoute", projectSelectedEndpoint(value.endpoints));
+  return undefinedIfEmpty(out);
+}
+
+/**
+ * ITOTORI-053 (codex-audit-followup) — build the drilldown adapter-metadata
+ * view by PROJECTING known-safe fields into a NEW object (default-deny),
+ * context-aware by parent. Nothing from the untrusted stored metadata is
+ * passed through by key match: only the fields enumerated by the projectors
+ * above can appear, so a raw provider body — under `openrouterMetadata`, under
+ * a generic `source`/`summary`, or under any nested/renamed wrapper — can never
+ * reach the drilldown surface.
+ */
+export function sanitizeAdapterMetadata(value: unknown): LedgerJsonRecord {
+  const raw = recordOrEmpty(value);
+  const out: Record<string, unknown> = {};
+  assignDefined(out, "providerRouting", projectProviderRouting(raw.providerRouting));
+  assignDefined(out, "openrouterRouting", projectOpenrouterRouting(raw.openrouterRouting));
+  assignDefined(out, "openrouterMetadata", projectOpenrouterMetadata(raw.openrouterMetadata));
+  assignDefined(out, "generationId", safeScalar(raw.generationId));
+  assignDefined(out, "source", safeScalar(raw.source));
+  assignDefined(out, "routeSettingsHash", safeScalar(raw.routeSettingsHash));
+  return out as LedgerJsonRecord;
 }
 
 function drilldownCostFromRow(row: Record<string, unknown>): CostDrilldownRowCost {
