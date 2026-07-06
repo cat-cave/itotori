@@ -95,3 +95,53 @@ export {
   type JudgeUnitInput,
   type _JudgeFeedIsGroundTruthOnly,
 } from "./decoded-context-feed.js";
+
+export {
+  BLIND_JUDGE_MIN_MODEL_FAMILIES,
+  BlindJudgePanelError,
+  assertBlindJudgeInputHasNoProvenance,
+  blindLabelForIndex,
+  blindUnitForJudge,
+  interJudgeAgreementByDimension,
+  runBlindJudgePanel,
+  seededOrderPermutation,
+  type BlindCandidate,
+  type BlindJudgeAdapter,
+  type BlindJudgePanelInput,
+  type BlindJudgePanelResult,
+  type BlindJudgeUnitInput,
+  type BlindedUnitForJudge,
+  type ContestantDimensionScore,
+  type DimensionAgreement,
+  type JudgeCandidateScoring,
+  type JudgeCitation,
+  type JudgeCostRecord,
+  type JudgeDimensionScore,
+  type JudgeUnitScoring,
+  type UnscorableDrop,
+} from "./blind-judge-panel.js";
+
+export {
+  FixtureJudge,
+  fixtureJudgeProviderRun,
+  type FixtureJudgeOptions,
+  type FixtureJudgeScoreFn,
+} from "./blind-judge-fixture.js";
+
+export {
+  ZdrJudgeError,
+  ZdrModelJudge,
+  parseJudgeScoringJson,
+  type ZdrModelJudgeOptions,
+} from "./blind-judge-zdr-adapter.js";
+
+export {
+  BLIND_JUDGE_LIVE_FLAG,
+  BLIND_JUDGE_LIVE_MAX_PRICE_USD,
+  BLIND_JUDGE_PANEL_ENV,
+  parseBlindJudgePanelConfig,
+  runBlindJudgePanelLiveSmoke,
+  type BlindJudgeLiveConfig,
+  type BlindJudgeLiveOptions,
+  type BlindJudgeLiveResult,
+} from "./blind-judge-live.js";
