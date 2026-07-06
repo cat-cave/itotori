@@ -237,12 +237,42 @@ const exactIntegrationSurfaceCandidatePatterns = [
     "giu",
   ),
 ];
-const explicitIntegrationSurfacePatterns = [
-  /\b(?:apps|crates|docs|fixtures|packages|roadmap|scripts|src|tests|tools)\/[a-z0-9._/-]+\b/iu,
-  /(?:^|\s)@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
-  /\b[a-z0-9][a-z0-9._-]*(?:\.json|\.mjs|\.ts|\.tsx|\.rs|\.md)\b/iu,
-  /^command:\s*(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(?:env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+)?)*(?:cargo|node|pnpm|just|npm|npx|uv|python|bash|test|make)\s+[^\n]+$/imu,
-  /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
+// Each explicit integration-surface matcher is labelled with the token TYPE it
+// recognizes so that failure diagnostics can tell spec authors which exact token
+// types satisfy the integration-surface requirement (file path, package name,
+// command, artifact token). The recognition is by token SHAPE, not on-disk
+// existence, because a forward-looking roadmap legitimately references surfaces a
+// node is about to create; command tokens are separately existence-checked
+// against real just recipes and vp tasks in validateAlphaCommandReferences.
+const explicitIntegrationSurfaceMatchers = [
+  {
+    tokenType: "file path",
+    example: "scripts/spec-dag.mjs",
+    pattern:
+      /\b(?:apps|crates|docs|fixtures|packages|roadmap|scripts|src|tests|tools)\/[a-z0-9._/-]+\b/iu,
+  },
+  {
+    tokenType: "package name",
+    example: "@itotori/db",
+    pattern: /(?:^|\s)@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
+  },
+  {
+    tokenType: "file path",
+    example: "provider-proof.json",
+    pattern: /\b[a-z0-9][a-z0-9._-]*(?:\.json|\.mjs|\.ts|\.tsx|\.rs|\.md)\b/iu,
+  },
+  {
+    tokenType: "command",
+    example: "command: pnpm exec vp run alpha:public-fixture",
+    pattern:
+      /^command:\s*(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(?:env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+)?)*(?:cargo|node|pnpm|just|npm|npx|uv|python|bash|test|make)\s+[^\n]+$/imu,
+  },
+  {
+    tokenType: "artifact token",
+    example: "artifacts/alpha/public-fixture/provider-proof.json",
+    pattern:
+      /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
+  },
 ];
 
 if (isMainModule()) {
@@ -1471,11 +1501,40 @@ function validateIntegrationNodeSurfaces(node, errors) {
     .filter((value) => typeof value === "string")
     .join("\n");
 
-  if (!hasExactIntegrationSurface(text)) {
+  const classification = classifyIntegrationSurface(text);
+  if (!classification.ok) {
     errors.push(
-      `${node.id} integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: ${node.parallelGroup}`,
+      `${node.id} integration/readiness node must name an exact file path, package name, command, or artifact token${describeIntegrationSurfaceFailure(node, classification)}`,
     );
   }
+}
+
+// Turns a failed integration-surface classification into an actionable, author
+// facing diagnostic: it names the four exact token types (with examples), the
+// parallel group under review, and every generic candidate that was rejected
+// together with WHY it was rejected.
+function describeIntegrationSurfaceFailure(node, classification) {
+  const seenTokenTypes = new Set();
+  const examples = explicitIntegrationSurfaceMatchers
+    .filter((matcher) => {
+      if (seenTokenTypes.has(matcher.tokenType)) {
+        return false;
+      }
+      seenTokenTypes.add(matcher.tokenType);
+      return true;
+    })
+    .map((matcher) => `${matcher.tokenType} (e.g. ${matcher.example})`)
+    .join(", ");
+  let message = ` (parallelGroup ${node.parallelGroup}); expected one of: ${examples}`;
+  if (classification.rejected.length > 0) {
+    const rejected = classification.rejected
+      .map((value) => `"${value}" uses only generic surface terms`)
+      .join("; ");
+    message += `. Rejected generic candidate(s): ${rejected}`;
+  } else {
+    message += ". No path, package, command, or artifact-shaped token was found in the node text.";
+  }
+  return message;
 }
 
 function validateAlphaPriorityCommandVerification(node, errors) {
@@ -1859,24 +1918,37 @@ function validateNoTimeEstimateText(node, errors) {
   }
 }
 
-function hasExactIntegrationSurface(text) {
-  if (explicitIntegrationSurfacePatterns.some((pattern) => pattern.test(text))) {
-    return true;
+// Classifies whether the composed node text names an exact integration surface.
+// Returns { ok: true, tokenType, value } naming the recognized token TYPE on
+// success, or { ok: false, rejected } listing the generic candidates that were
+// shaped like a surface but rejected as too generic, so the caller can build an
+// actionable diagnostic.
+function classifyIntegrationSurface(text) {
+  for (const matcher of explicitIntegrationSurfaceMatchers) {
+    const match = matcher.pattern.exec(text);
+    if (match) {
+      return { ok: true, tokenType: matcher.tokenType, value: match[0].trim(), rejected: [] };
+    }
   }
 
+  const rejected = [];
   for (const line of text.split(/\n+/u)) {
     for (const pattern of exactIntegrationSurfaceCandidatePatterns) {
       pattern.lastIndex = 0;
       let match;
       while ((match = pattern.exec(line)) !== null) {
         if (isExactIntegrationSurfaceCandidate(match[0])) {
-          return true;
+          return { ok: true, tokenType: "composed surface", value: match[0].trim(), rejected: [] };
+        }
+        const value = match[0].trim();
+        if (!rejected.includes(value)) {
+          rejected.push(value);
         }
       }
     }
   }
 
-  return false;
+  return { ok: false, rejected };
 }
 
 function isConcreteCommandVerification(value) {
