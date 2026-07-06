@@ -492,7 +492,7 @@ export async function runLocalizeProjectStageCommand(
   return bundle;
 }
 
-function liveOpenRouterFactory(opts: {
+export function liveOpenRouterFactory(opts: {
   costCapUsd: number;
   artifactRecorder: ProviderRunArtifactRecorder | undefined;
 }): AgenticLoopProviderFactory {

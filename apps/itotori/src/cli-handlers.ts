@@ -79,6 +79,7 @@ import {
   runLocalizeProjectStageCommand,
   type LocalizeProjectStageArgs,
 } from "./orchestrator/localize-project-stage-command.js";
+import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
   parseTelemetrySummaryCliFlags,
@@ -235,6 +236,9 @@ export async function runItotoriCliCommand(
       break;
     case "localize-project-stage":
       await runLocalizeProjectStage(args, dependencies);
+      break;
+    case "localize":
+      await runLocalizeFullProject(args, dependencies);
       break;
     case "provider-proof":
       await runProviderProof(args, dependencies);
@@ -772,6 +776,72 @@ async function runLocalizeProjectStage(
     callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
   await runLocalizeProjectStageCommand(callArgs);
+}
+
+/**
+ * itotori-localize-fullproject-cli — the general `itotori localize <project>`
+ * whole-game driver. Runs the FULL configured project (every in-scope unit)
+ * through the multi-pass ledger against LIVE OpenRouter + real Postgres:
+ * persists drafts + reviewer-queue items, exports a patch, and records the
+ * pass (real usage.cost + ZDR). GAME-AGNOSTIC — the only inputs are the config
+ * path + a run directory; the project/branch/revision ids + the pinned pair
+ * arrive through the config + its pair-policy.
+ *
+ * Required flags (no defaulting):
+ *   --config <PATH>       localize-fullproject config JSON
+ *   --run-dir <PATH>      directory for the patch export + provider-run
+ *                         artifacts + run summary
+ * Optional:
+ *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
+ */
+async function runLocalizeFullProject(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const configPath = requiredFlag(args, "--config");
+  const runDir = requiredFlag(args, "--run-dir");
+  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+  let costCapUsd: number | undefined;
+  if (costCapUsdRaw !== undefined) {
+    const parsed = Number.parseFloat(costCapUsdRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `localize refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
+      );
+    }
+    costCapUsd = parsed;
+  }
+  const { result, record } = await runLocalizeFullProjectLive({
+    configPath,
+    runDir,
+    io: {
+      readJson: (path) => dependencies.io.readJson(path),
+      writeJson: (path, value) => dependencies.io.writeJson(path, value),
+    },
+    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        passNumber: record.passNumber,
+        priorPassNumber: record.priorPassNumber ?? null,
+        unitsRun: result.unitsRun,
+        acceptedDraftCount: result.acceptedDraftCount,
+        deferredCount: result.deferredCount,
+        failureCount: result.failures.length,
+        reviewerQueueItemCount: result.reviewerQueueItemCount,
+        acceptedDeltaCount: record.acceptedDeltas.length,
+        totalUsageCostUsd: result.totalUsageCostUsd,
+        zdrConfirmed: result.zdrConfirmed,
+        budgetStopped: result.budgetStopped,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 async function runExportPatch(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {

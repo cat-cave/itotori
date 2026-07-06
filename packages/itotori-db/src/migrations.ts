@@ -288,6 +288,10 @@ export const migrations = [
     id: "0057_style_guide_draft_provenance_backfill",
     file: "0057_style_guide_draft_provenance_backfill.sql",
   },
+  {
+    id: "0058_localization_pass_ledger",
+    file: "0058_localization_pass_ledger.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

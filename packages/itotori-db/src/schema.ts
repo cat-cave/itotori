@@ -4570,3 +4570,54 @@ export const workspaceCorrectionEdits = pgTable(
     index("itotori_workspace_correction_edits_batch_idx").on(table.batchId),
   ],
 );
+
+// itotori-multipass-pass-ledger — DB-backed localization pass ledger.
+//
+// One append-only row per localization pass on a locale branch. The generic
+// (game-agnostic) record body — inputs / outputs / accepted deltas / consumed
+// feedback notes — is stored verbatim as jsonb; the fields the port + queries
+// key on (pass lineage, real usage.cost, ZDR posture) are promoted to typed
+// columns. Migration: 0058_localization_pass_ledger.sql.
+export const localizationPassLedger = pgTable(
+  "itotori_localization_pass_ledger",
+  {
+    passLedgerId: text("pass_ledger_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    passNumber: integer("pass_number").notNull(),
+    priorPassNumber: integer("prior_pass_number"),
+    // PROJECT LAW: the REAL usage.cost the executor summed verbatim from
+    // per-invocation provider telemetry — never fabricated (a zero-cost fake
+    // provider records the real zero). `numeric` round-trips as a string.
+    totalUsageCostUsd: numeric("total_usage_cost_usd").notNull(),
+    zdrConfirmed: boolean("zdr_confirmed").notNull(),
+    recordBody: jsonb("record_body")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_localization_pass_ledger_branch_pass_unique").on(
+      table.localeBranchId,
+      table.passNumber,
+    ),
+    index("itotori_localization_pass_ledger_branch_pass_idx").on(
+      table.localeBranchId,
+      table.passNumber,
+    ),
+    index("itotori_localization_pass_ledger_project_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.passNumber,
+    ),
+  ],
+);

@@ -109,7 +109,12 @@ export class DrivenDbPersistenceAdapter implements DrivenDraftSink, DrivenProvid
     const costAmount = record.totalCostUsd.toFixed(8);
     await this.ledger.recordLedgerEntry(this.opts.actor, {
       draftJobAttemptId: attemptId,
-      providerProofId: `driven-executor:${record.bridgeUnitId}`,
+      // The provider-proof id carries a UNIQUE index. A MULTI-PASS run
+      // (pass-ledger) re-drafts the same unit across passes — each pass is a
+      // distinct provider run on a fresh draft attempt — so key the synthetic
+      // proof id by the per-attempt id (unique per draft attempt) rather than
+      // by the bridge unit alone, or pass N+1's ledger row collides with pass N.
+      providerProofId: `driven-executor:${record.bridgeUnitId}:${attemptId}`,
       providerId: record.pair.providerId,
       modelId: record.pair.modelId,
       modelProviderFamily: "openrouter",

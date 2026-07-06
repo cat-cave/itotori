@@ -844,6 +844,15 @@ export {
   reviewerQueueRepositoryErrorCodes,
   validateReviewerQueueTransition,
 } from "./repositories/reviewer-queue-repository.js";
+export {
+  ItotoriLocalizationPassLedgerRepository,
+  LocalizationPassLedgerRepositoryError,
+} from "./repositories/localization-pass-ledger-repository.js";
+export type {
+  ItotoriLocalizationPassLedgerRepositoryPort,
+  LocalizationPassLedgerRecord,
+  RecordLocalizationPassInput,
+} from "./repositories/localization-pass-ledger-repository.js";
 export type {
   CreateReviewerQueueItemInput,
   ItotoriReviewerQueueRepositoryPort,
