@@ -4915,15 +4915,19 @@ async function assertWorkScopedArtifactReferences(
  * being written for a work. Conflict evidence stores a free-text
  * `(subjectKind, subjectId)` with no foreign key (subjects span several tables),
  * so without this guard an evidence row can DANGLE (reference a subject id that
- * does not exist for its declared kind) or point ACROSS normalized works (its
- * subject belongs to a different work than the conflict).
+ * does not exist for its declared kind).
  *
- * For every referenced subject the id must EXIST for its declared kind and,
- * for work-scoped kinds, belong to the SAME work as the conflict. Subjects
+ * For every referenced subject the id must EXIST for its declared kind. The
+ * work-SCOPED kinds (`externalId`, `release`, `languageStatus`) must additionally
+ * belong to the SAME work as the conflict, because those subjects are children
+ * of a work and citing another work's child would be a mis-attribution. Subjects
  * created in this same upsert are treated as belonging to the parent work (they
  * are inserted earlier in the write transaction than the evidence rows).
- * `sourceProvenance` is a global (work-agnostic) record, so only existence is
- * enforced for it.
+ * The `work` and `sourceProvenance` kinds are NOT same-work-scoped: a
+ * competing/duplicate-work conflict legitimately references another known work,
+ * and `sourceProvenance` is a global (work-agnostic) record, so only existence
+ * (or, for `sourceProvenance`, a well-formed cross-source identity) is enforced
+ * for them.
  */
 async function assertConflictEvidenceSubjectReferences(
   db: ItotoriDatabase,
@@ -5002,9 +5006,17 @@ async function assertConflictEvidenceSubjectReferences(
     },
   );
 
-  // `work`-kind subjects name a work directly: the parent work is valid (it is
-  // inserted in this same transaction); any other id is cross-work if it exists
-  // and dangling otherwise.
+  // `work`-kind subjects name a work directly. Two identities are legitimate:
+  //   1. The parent work being upserted (inserted in this same transaction).
+  //   2. A DIFFERENT known work — competing/duplicate-work conflicts inherently
+  //      reference the OTHER work they compete with (e.g. a duplicate-detection
+  //      conflict on work A cites the competing work B). Cross-work references
+  //      are therefore accepted as long as the referenced work EXISTS. This
+  //      mirrors the `sourceProvenance` fix (commit b8d3fd0e): conflict evidence
+  //      legitimately references entities other than the parent, so the guard
+  //      only rejects DANGLING/UNKNOWN ids, never known cross-references.
+  // Anything that names neither the parent nor a persisted work is dangling and
+  // is rejected (CATALOG-079 dangling protection).
   const otherWorkSubjects = [...workSubjects].filter((id) => id !== input.workId);
   if (otherWorkSubjects.length > 0) {
     const rows = await db
@@ -5014,10 +5026,7 @@ async function assertConflictEvidenceSubjectReferences(
     const knownWorkIds = new Set(rows.map((row) => row.id));
     for (const subjectId of otherWorkSubjects) {
       if (knownWorkIds.has(subjectId)) {
-        throw new CatalogArtifactMappingError(
-          "conflict_evidence_subject_belongs_to_other_work",
-          `conflict.evidence subjectId must reference a work in the parent work (${subjectId})`,
-        );
+        continue;
       }
       throw new CatalogArtifactMappingError(
         "conflict_evidence_subject_unknown",

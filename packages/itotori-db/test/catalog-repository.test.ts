@@ -1251,6 +1251,104 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("persists conflict evidence whose work subject references a known competing work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1340);
+      const parentReleaseId = uuid(1341);
+      const competingWorkId = uuid(1342);
+      const competingReleaseId = uuid(1343);
+      // A duplicate/competing-work conflict inherently references the OTHER work
+      // it competes with. Both works are persisted before the upsert, so the
+      // guard resolves the cross-work `work` subject via the committed-state
+      // lookup and accepts it (known cross-work reference, not dangling).
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Competing parent fixture");
+      await recordWorkWithRelease(
+        repo,
+        competingWorkId,
+        competingReleaseId,
+        "Competing rival fixture",
+      );
+
+      const snapshot = await repo.upsertWork(localActor, {
+        workId: parentWorkId,
+        canonicalTitle: "Competing parent fixture",
+        conflicts: [
+          {
+            conflictId: uuid(1344),
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: "Evidence cites a competing duplicate work.",
+            detectedAt: fetchedAt,
+            evidence: [
+              {
+                conflictEvidenceId: uuid(1345),
+                subjectKind: catalogConflictSubjectKindValues.work,
+                subjectId: competingWorkId,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(snapshot.conflicts).toHaveLength(1);
+      const conflict = requiredTestRow(snapshot.conflicts, "persisted competing-work conflict");
+      expect(conflict.evidence).toHaveLength(1);
+      expect(conflict.evidence[0]).toMatchObject({
+        conflictEvidenceId: uuid(1345),
+        subjectKind: catalogConflictSubjectKindValues.work,
+        subjectId: competingWorkId,
+      });
+
+      const persisted = await context.db.execute(sql`
+        select count(*)::int as evidence_count
+        from itotori_catalog_conflict_evidence
+        where subject_id = ${competingWorkId}
+      `);
+      expect(persisted.rows[0]).toMatchObject({ evidence_count: 1 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects conflict evidence whose work subject references an unknown work (dangling)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const workId = uuid(1350);
+      const releaseId = uuid(1351);
+      await recordWorkWithRelease(repo, workId, releaseId, "Dangling work-subject fixture");
+
+      const danglingError = await expectArtifactMappingError(
+        repo.upsertWork(localActor, {
+          workId,
+          canonicalTitle: "Dangling work-subject fixture",
+          conflicts: [
+            {
+              conflictId: uuid(1352),
+              conflictKind: catalogConflictKindValues.languageStatus,
+              summary: "Evidence cites a work that does not exist.",
+              detectedAt: fetchedAt,
+              evidence: [
+                {
+                  conflictEvidenceId: uuid(1353),
+                  subjectKind: catalogConflictSubjectKindValues.work,
+                  subjectId: uuid(1354),
+                },
+              ],
+            },
+          ],
+        }),
+        "conflict_evidence_subject_unknown",
+      );
+      expect(danglingError.message).toContain(
+        "conflict.evidence subjectId must reference a known work",
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   it("maps valid cross-work release mappings and install states without error", async () => {
     const context = await isolatedMigratedContext();
     try {
