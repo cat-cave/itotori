@@ -135,28 +135,62 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerCommitStepInput,
   ): Promise<CatalogCrawlerCommitStepResult> {
+    // CATALOG-066: Mirrors the DB repository's single-transaction semantics.
+    // Step-import, rate-limit upsert, and checkpoint advance are validated and
+    // built together, then applied atomically. A failure in any one (invalid
+    // rate-limit input, missing step, stale lease) leaves all three untouched —
+    // exactly like a Postgres transaction rollback. The previous sequential
+    // mutation (step → rateLimit → checkpoint) would partially commit when a
+    // later sub-step threw, allowing in-memory tests to falsely pass where the
+    // DB transaction would have rolled back.
     this.assertActiveJob(input.crawlerJobId, input.workerId);
-    const step = this.updateStep(
-      input.crawlerJobStepId,
-      catalogCrawlerStepStatusValues.imported,
-      null,
-      input.crawlerJobId,
-      input.workerId,
+
+    const stepEntry = [...this.steps.entries()].find(
+      ([, step]) => step.crawlerJobStepId === input.crawlerJobStepId,
     );
+    if (stepEntry === undefined) {
+      throw new Error(`missing crawler step ${input.crawlerJobStepId}`);
+    }
+    const [stepMapKey, stepRecord] = stepEntry;
+    if (stepRecord.crawlerJobId !== input.crawlerJobId) {
+      throw new Error(
+        `crawler step ${input.crawlerJobStepId} does not belong to job ${input.crawlerJobId}`,
+      );
+    }
+    const now = new Date();
+    const committedStep: CatalogCrawlerStepRecord = {
+      ...stepRecord,
+      status: catalogCrawlerStepStatusValues.imported,
+      importedAt: stepRecord.importedAt ?? now,
+      error: null,
+      updatedAt: now,
+    };
+
+    const rateLimitKey = input.rateLimit === undefined ? null : normalizeKey(input.rateLimit);
     const rateLimit =
       input.rateLimit === undefined
         ? null
-        : await this.saveRateLimit(_actor, {
+        : this.buildRateLimitRecord({
             ...input.rateLimit,
             crawlerJobId: input.crawlerJobId,
             workerId: input.workerId,
           });
-    const checkpoint = await this.saveCheckpoint(_actor, {
+    const checkpointKey = normalizeKey(input.checkpoint);
+    const checkpoint = this.buildCheckpointRecord({
       ...input.checkpoint,
       lastCrawlerJobId: input.crawlerJobId,
       workerId: input.workerId,
     });
-    return { step, checkpoint, rateLimit };
+
+    // Atomic commit: all three maps are written only after every validation
+    // passed, matching the DB transaction's all-or-nothing semantics.
+    this.steps.set(stepMapKey, committedStep);
+    if (rateLimit !== null && rateLimitKey !== null) {
+      this.rateLimits.set(keyString(rateLimitKey), rateLimit);
+    }
+    this.checkpoints.set(keyString(checkpointKey), checkpoint);
+
+    return { step: committedStep, checkpoint, rateLimit };
   }
 
   async markStepImported(
@@ -196,20 +230,8 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
       requiredString(input.lastCrawlerJobId, "lastCrawlerJobId"),
       requiredString(input.workerId, "workerId"),
     );
-    const key = normalizeKey(input);
-    const checkpoint: CatalogCrawlerCheckpointRecord = {
-      catalogSource: key.catalogSource,
-      adapterName: key.adapterName,
-      partitionKey: key.partitionKey,
-      checkpointCursor: input.checkpointCursor ?? null,
-      sourceVersion: requiredString(input.sourceVersion, "sourceVersion"),
-      parserVersion: requiredString(input.parserVersion, "parserVersion"),
-      lastCrawlerJobId: input.lastCrawlerJobId ?? null,
-      lastStepKey: input.lastStepKey ?? null,
-      updatedAt: new Date(),
-      metadata: jsonRecord(input.metadata ?? {}, "metadata"),
-    };
-    this.checkpoints.set(keyString(key), checkpoint);
+    const checkpoint = this.buildCheckpointRecord(input);
+    this.checkpoints.set(keyString(normalizeKey(input)), checkpoint);
     return checkpoint;
   }
 
@@ -221,22 +243,8 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
       requiredString(input.crawlerJobId, "crawlerJobId"),
       requiredString(input.workerId, "workerId"),
     );
-    const key = normalizeKey(input);
-    const rateLimit: CatalogCrawlerRateLimitRecord = {
-      catalogSource: key.catalogSource,
-      adapterName: key.adapterName,
-      partitionKey: key.partitionKey,
-      nextAvailableAt:
-        input.nextAvailableAt === undefined ? null : dateInput(input.nextAvailableAt),
-      resetAt: input.resetAt === undefined ? null : dateInput(input.resetAt),
-      remaining: input.remaining ?? null,
-      limit: input.limit ?? null,
-      retryAfterSeconds: input.retryAfterSeconds ?? null,
-      requestIdentity: input.requestIdentity ?? null,
-      metadata: jsonRecord(input.metadata ?? {}, "metadata"),
-      updatedAt: new Date(),
-    };
-    this.rateLimits.set(keyString(key), rateLimit);
+    const rateLimit = this.buildRateLimitRecord(input);
+    this.rateLimits.set(keyString(normalizeKey(input)), rateLimit);
     return rateLimit;
   }
 
@@ -343,6 +351,51 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     }
   }
 
+  // CATALOG-066: Pure record builders extracted so commitStepImport can
+  // validate every sub-record BEFORE mutating any map (atomic compute-then-
+  // commit). These replicate the DB repository's normalize*Input validation
+  // (nonnegative-integer guards on rate-limit fields) so the in-memory double
+  // rejects the same invalid inputs the DB CHECK constraints / normalization
+  // would reject — preventing in-memory tests from falsely passing.
+  private buildRateLimitRecord(input: CatalogCrawlerRateLimitInput): CatalogCrawlerRateLimitRecord {
+    const key = normalizeKey(input);
+    return {
+      catalogSource: key.catalogSource,
+      adapterName: key.adapterName,
+      partitionKey: key.partitionKey,
+      nextAvailableAt:
+        input.nextAvailableAt === undefined ? null : dateInput(input.nextAvailableAt),
+      resetAt: input.resetAt === undefined ? null : dateInput(input.resetAt),
+      remaining: optionalNonnegativeInteger(input.remaining, "remaining"),
+      limit: optionalNonnegativeInteger(input.limit, "limit"),
+      retryAfterSeconds: optionalNonnegativeInteger(input.retryAfterSeconds, "retryAfterSeconds"),
+      requestIdentity:
+        input.requestIdentity === undefined
+          ? null
+          : requiredString(input.requestIdentity, "requestIdentity"),
+      metadata: jsonRecord(input.metadata ?? {}, "metadata"),
+      updatedAt: new Date(),
+    };
+  }
+
+  private buildCheckpointRecord(
+    input: CatalogCrawlerCheckpointInput,
+  ): CatalogCrawlerCheckpointRecord {
+    const key = normalizeKey(input);
+    return {
+      catalogSource: key.catalogSource,
+      adapterName: key.adapterName,
+      partitionKey: key.partitionKey,
+      checkpointCursor: input.checkpointCursor ?? null,
+      sourceVersion: requiredString(input.sourceVersion, "sourceVersion"),
+      parserVersion: requiredString(input.parserVersion, "parserVersion"),
+      lastCrawlerJobId: input.lastCrawlerJobId ?? null,
+      lastStepKey: input.lastStepKey ?? null,
+      updatedAt: new Date(),
+      metadata: jsonRecord(input.metadata ?? {}, "metadata"),
+    };
+  }
+
   private nextId(prefix: string): string {
     this.sequence += 1;
     return `${prefix}-${this.sequence}`;
@@ -407,4 +460,17 @@ function stableJsonStringify(input: unknown): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// CATALOG-066: Mirrors the DB repository's optionalNonnegativeInteger guard
+// so the in-memory double rejects the same invalid rate-limit inputs the DB
+// normalization would reject.
+function optionalNonnegativeInteger(input: number | undefined, name: string): number | null {
+  if (input === undefined) {
+    return null;
+  }
+  if (!Number.isInteger(input) || input < 0) {
+    throw new Error(`${name} must be a nonnegative integer`);
+  }
+  return input;
 }
