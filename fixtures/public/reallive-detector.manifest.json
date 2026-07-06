@@ -71,8 +71,8 @@
       "path": "fixtures/public/reallive-detector/positive-synthetic-triple/expected/detection-report.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "fc781358bec4b99d3c1af3e435fc1194c34750222cd5dc5f4af057a626e31462",
-      "bytes": 32563,
+      "sha256": "ffec87b307358cff499b5a4d5184e4802c4afed721a0415b04c7ef0340f4298b",
+      "bytes": 35763,
       "redistributable": true
     },
     {

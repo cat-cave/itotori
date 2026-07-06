@@ -109,6 +109,18 @@ export default defineConfig({
       // fail on any drift, so the formatter must not rewrite either.
       "fixtures/public/kaifuu-kag-synthetic-corpus/**",
       "fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json",
+      // The `kaifuu detect` detection-report goldens (and their sibling
+      // hand-authored fixture bytes) are byte-hashed in their manifests and
+      // verified by `fixtures/validate-public-manifests.mjs`. The reports are
+      // emitted by the detect CLI's serializer; letting the formatter reflow
+      // them (e.g. when a new detector row like `kaifuu.nexas` grows the block)
+      // would rewrite the committed bytes out from under the recorded
+      // sha256/bytes. Pin the trees + manifests so the detect CLI stays the
+      // single source of truth.
+      "fixtures/public/reallive-detector/**",
+      "fixtures/public/reallive-detector.manifest.json",
+      "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/**",
+      "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes.manifest.json",
     ],
   },
   resolve: {
