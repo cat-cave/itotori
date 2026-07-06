@@ -865,7 +865,7 @@ async function enumerateInScopeUnits(args: {
 // Provider telemetry summary — real usage.cost + ZDR, from the bundle
 // ---------------------------------------------------------------------------
 
-function summariseProviderTelemetry(
+export function summariseProviderTelemetry(
   bundle: AgenticLoopBundle,
   pair: { modelId: string; providerId: string },
 ): {

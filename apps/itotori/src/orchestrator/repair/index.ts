@@ -39,3 +39,12 @@ export {
   type RepairJobServiceClock,
   type RepairJobServiceOptions,
 } from "./repair-job-service.js";
+
+export {
+  executeRepairJob,
+  runRepairQueue,
+  type RepairJobExecutionResult,
+  type RepairJobExecutorDeps,
+  type RepairQueueRunResult,
+  type RepairRerunUnitResolver,
+} from "./repair-job-executor.js";
