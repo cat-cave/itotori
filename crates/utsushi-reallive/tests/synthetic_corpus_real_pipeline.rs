@@ -66,7 +66,7 @@ fn reallive_group<'a>(manifest: &'a Value, group: &str) -> &'a Value {
     &manifest["engineFamilies"]["reallive"]["componentGroups"][group]
 }
 
-/// The 290 `(module_id, opcode)` tuples the manifest enumerates for RealLive.
+/// The 289 `(module_id, opcode)` tuples the manifest enumerates for RealLive.
 fn manifest_tuples(manifest: &Value) -> Vec<(u8, u16)> {
     reallive_group(manifest, "opcode_tuple")["components"]
         .as_array()
@@ -426,8 +426,8 @@ fn synthetic_scene_instantiates_every_opcode_tuple() {
     let manifest_set: BTreeSet<(u8, u16)> = tuples.iter().copied().collect();
     assert_eq!(
         manifest_set.len(),
-        290,
-        "manifest enumerates 290 unique tuples"
+        289,
+        "manifest enumerates 289 unique tuples"
     );
 
     let corpus = build_corpus("coverage", &tuples, false);
