@@ -124,6 +124,7 @@ function makeStubRepo(): {
   applyActionAndEnqueueJobs: ReturnType<typeof vi.fn>;
   applyActionsAndEnqueueJobs: ReturnType<typeof vi.fn>;
   getItem: ReturnType<typeof vi.fn>;
+  getItemForManage: ReturnType<typeof vi.fn>;
   plannedJobs: JobQueueInput[];
 } {
   const applyAction = vi.fn<
@@ -187,12 +188,24 @@ function makeStubRepo(): {
   getItem.mockImplementation(async (_actor, reviewItemId) =>
     itemFixture({ reviewItemId, itemKind: reviewerQueueItemKindValues.feedback }),
   );
+  // importRuntimeFeedback reads the item it is about to manage under the
+  // MANAGE scope (`getItemForManage`, gated on queue.manage), never the
+  // public queue.read `getItem`. Runtime-evidence enforcement tests drive
+  // this mock, not `getItem`.
+  const getItemForManage = vi.fn<
+    [AuthorizationActor, string],
+    Promise<ReviewerQueueItemRecord | null>
+  >();
+  getItemForManage.mockImplementation(async (_actor, reviewItemId) =>
+    itemFixture({ reviewItemId, itemKind: reviewerQueueItemKindValues.feedback }),
+  );
   const repo: ItotoriReviewerQueueRepositoryPort = {
     createItem: vi.fn(),
     applyAction,
     applyActionAndEnqueueJobs,
     applyActionsAndEnqueueJobs,
     getItem,
+    getItemForManage,
     loadItemsByBranch: vi.fn(),
     loadTransitionsByItem: vi.fn(),
   };
@@ -202,6 +215,7 @@ function makeStubRepo(): {
     applyActionAndEnqueueJobs,
     applyActionsAndEnqueueJobs,
     getItem,
+    getItemForManage,
     plannedJobs,
   };
 }
@@ -564,8 +578,8 @@ describe("ReviewerQueueActionService", () => {
   });
 
   it("importRuntimeFeedback asserts the supplied evidence tier matches the persisted runtime-evidence item", async () => {
-    const { repo, getItem, applyActionAndEnqueueJobs } = makeStubRepo();
-    getItem.mockResolvedValue(
+    const { repo, getItemForManage, applyActionAndEnqueueJobs } = makeStubRepo();
+    getItemForManage.mockResolvedValue(
       itemFixture({
         reviewItemId: "reviewer-queue-runtime-mismatch",
         itemKind: reviewerQueueItemKindValues.runtimeEvidence,
@@ -598,8 +612,8 @@ describe("ReviewerQueueActionService", () => {
   });
 
   it("importRuntimeFeedback rejects observation/artifact refs that drift from the persisted runtime-evidence item", async () => {
-    const { repo, getItem, applyActionAndEnqueueJobs } = makeStubRepo();
-    getItem.mockResolvedValue(
+    const { repo, getItemForManage, applyActionAndEnqueueJobs } = makeStubRepo();
+    getItemForManage.mockResolvedValue(
       itemFixture({
         reviewItemId: "reviewer-queue-runtime-refs",
         itemKind: reviewerQueueItemKindValues.runtimeEvidence,
@@ -629,8 +643,8 @@ describe("ReviewerQueueActionService", () => {
   });
 
   it("importRuntimeFeedback accepts a runtime-evidence import whose values match the persisted item", async () => {
-    const { repo, getItem, applyAction } = makeStubRepo();
-    getItem.mockResolvedValue(
+    const { repo, getItemForManage, applyAction } = makeStubRepo();
+    getItemForManage.mockResolvedValue(
       itemFixture({
         reviewItemId: "reviewer-queue-runtime-match",
         itemKind: reviewerQueueItemKindValues.runtimeEvidence,
@@ -659,9 +673,9 @@ describe("ReviewerQueueActionService", () => {
   });
 
   it("importRuntimeFeedback records a feedback-item tier verbatim without a persisted comparison", async () => {
-    const { repo, getItem, applyAction } = makeStubRepo();
+    const { repo, getItemForManage, applyAction } = makeStubRepo();
     // Feedback items carry no persisted evidence tier (null on the row).
-    getItem.mockResolvedValue(
+    getItemForManage.mockResolvedValue(
       itemFixture({
         reviewItemId: "reviewer-queue-feedback-import",
         itemKind: reviewerQueueItemKindValues.feedback,

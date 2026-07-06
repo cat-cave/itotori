@@ -50,8 +50,8 @@ after the database has been migrated.
 | `patch.export`        | Persist patch export metadata                                                   |
 | `runtime.ingest`      | Persist runtime verification evidence and status                                |
 | `feedback.import`     | Import manual feedback and playtest notes                                       |
-| `queue.manage`        | Append, claim, retry, and complete durable jobs                                 |
-| `queue.read`          | Read durable queue event and job internals                                      |
+| `queue.manage`        | Append, claim, retry, complete durable jobs; mutate reviewer-queue items        |
+| `queue.read`          | Read durable queue event / job internals and browse reviewer-queue items        |
 | `catalog.read`        | Read catalog work identity and provenance records                               |
 | `catalog.write`       | Persist catalog work identity and provenance                                    |
 | `audit.write`         | Record and resolve audit findings                                               |
@@ -61,6 +61,19 @@ after the database has been migrated.
 Project dashboard reads do not currently require a permission gate. Catalog
 reads are gated because local corpus scan entries can carry private-library
 ownership and redacted-path provenance.
+
+Permissions are **non-hierarchical exact-match grants** (see
+`requirePermission` in `packages/itotori-db/src/authorization.ts`): holding
+`queue.manage` does **not** imply `queue.read`. Because of this, a `queue.manage`
+action that must read the very item it mutates reads it under the **manage
+scope**, not `queue.read`. The reviewer-queue repository exposes
+`getItemForManage` (gated on `queue.manage`) for exactly this: the reviewer
+`importRuntimeFeedback` action fetches the persisted runtime-evidence tier /
+observation refs to assert the supplied evidence matches before recording the
+transition. Routing that read through the public `getItem` (`queue.read`) would
+couple every runtime-evidence import to a separate `queue.read` grant and
+silently block a future read-restricted manage role. Public reviewer-queue
+browsing still goes through `getItem` / `loadItemsByBranch` under `queue.read`.
 
 ## Changing Permissions
 

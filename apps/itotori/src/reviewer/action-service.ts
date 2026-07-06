@@ -283,7 +283,17 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     // is the SAME enforcement the batch surface applies via
     // `assertImportRuntimeFeedbackMatchesPersisted` — single enforcement
     // point, no divergence.
-    const item = await this.repository.getItem(actor, input.reviewItemId);
+    //
+    // The read runs under MANAGE scope (`getItemForManage`, gated on
+    // `queue.manage`), NOT `getItem` (`queue.read`). importRuntimeFeedback is
+    // a manage action and this is its read of the very item it is about to
+    // manage — an integrity check, not public queue browsing. Permissions
+    // are non-hierarchical exact-match grants (`queue.manage` does NOT imply
+    // `queue.read`), so reading through `getItem` would require BOTH grants
+    // and silently block a future read-restricted manage role from importing
+    // runtime evidence. Reading under manage scope keeps this action gated on
+    // exactly the one capability it needs: `queue.manage`.
+    const item = await this.repository.getItemForManage(actor, input.reviewItemId);
     assertImportRuntimeFeedbackMatchesPersisted(item, input);
     // Persist the evidence tier + observation event ids + artifact
     // hashes verbatim onto the transition's metadata so the audit trail

@@ -620,6 +620,8 @@ function captureEnqueuedJobsRepository(
       return result;
     },
     getItem: (actorArg, reviewItemId) => repository.getItem(actorArg, reviewItemId),
+    getItemForManage: (actorArg, reviewItemId) =>
+      repository.getItemForManage(actorArg, reviewItemId),
     loadItemsByBranch: (actorArg, branchId, opts) =>
       repository.loadItemsByBranch(actorArg, branchId, opts),
     loadTransitionsByItem: (actorArg, reviewItemId) =>

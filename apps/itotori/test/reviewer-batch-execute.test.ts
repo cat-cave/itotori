@@ -891,6 +891,7 @@ function makeAtomicActionRepo(plannedJobs: JobQueueInput[]): ItotoriReviewerQueu
       },
     ),
     getItem: vi.fn(),
+    getItemForManage: vi.fn(),
     loadItemsByBranch: vi.fn(),
     loadTransitionsByItem: vi.fn(),
   };

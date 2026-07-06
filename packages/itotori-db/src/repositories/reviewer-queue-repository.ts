@@ -192,6 +192,22 @@ export interface ItotoriReviewerQueueRepositoryPort {
     planJobs: ReviewerQueueActionJobPlanner,
   ): Promise<ReviewerQueueBatchActionAndJobsResult>;
   getItem(actor: AuthorizationActor, reviewItemId: string): Promise<ReviewerQueueItemRecord | null>;
+  /**
+   * Manage-scoped single-item read, gated on `queue.manage` (NOT
+   * `queue.read`). Use this when a MANAGE action must read the very item
+   * it is about to mutate — e.g. `importRuntimeFeedback` fetches the
+   * persisted runtime-evidence tier / observation refs to assert the
+   * supplied evidence matches before recording the transition. Permissions
+   * are non-hierarchical exact-match grants (see `authorization.ts`), so
+   * `queue.manage` does NOT imply `queue.read`; routing a manage action's
+   * own item read through `getItem` (`queue.read`) would silently block a
+   * future read-restricted manage role from importing runtime evidence.
+   * Public queue browsing still goes through `getItem` under `queue.read`.
+   */
+  getItemForManage(
+    actor: AuthorizationActor,
+    reviewItemId: string,
+  ): Promise<ReviewerQueueItemRecord | null>;
   loadItemsByBranch(
     actor: AuthorizationActor,
     localeBranchId: string,
@@ -540,6 +556,33 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
     reviewItemId: string,
   ): Promise<ReviewerQueueItemRecord | null> {
     await requirePermission(this.db, actor, permissionValues.queueRead);
+    return this.readItem(reviewItemId);
+  }
+
+  /**
+   * Manage-scoped single-item read. Gated on `queue.manage` because it is
+   * the read a MANAGE action performs on its own item before mutating it,
+   * NOT public queue browsing (that stays on `getItem` under `queue.read`).
+   * The only caller today is the reviewer service's `importRuntimeFeedback`,
+   * which reads the persisted runtime-evidence tier / observation refs to
+   * assert the supplied evidence matches before recording the transition.
+   * Permissions are non-hierarchical exact-match grants (see
+   * `authorization.ts`): `queue.manage` does NOT imply `queue.read`. Reusing
+   * `getItem` here would couple every runtime-evidence import to a separate
+   * `queue.read` grant and silently block a future read-restricted manage
+   * role, so the manage action reads under its own scope instead. Mirrors
+   * how `applyActionInTransaction` re-reads the item under the manage-gated
+   * `applyAction` without a second permission check.
+   */
+  async getItemForManage(
+    actor: AuthorizationActor,
+    reviewItemId: string,
+  ): Promise<ReviewerQueueItemRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.queueManage);
+    return this.readItem(reviewItemId);
+  }
+
+  private async readItem(reviewItemId: string): Promise<ReviewerQueueItemRecord | null> {
     const rows = await this.db
       .select()
       .from(reviewerQueueItems)

@@ -923,6 +923,15 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.getItem(deniedActor, "reviewer-queue-x"),
   ),
   reviewerQueueGate(
+    // Manage-scoped read: importRuntimeFeedback reads the item it is about
+    // to manage under queue.manage, NOT queue.read, so a read-restricted
+    // manage role is not silently blocked from importing runtime evidence.
+    "getItemForManage",
+    "queueManage",
+    "reviewer-queue-repository.test.ts get item for manage coverage",
+    (repo) => repo.getItemForManage(deniedActor, "reviewer-queue-x"),
+  ),
+  reviewerQueueGate(
     "loadItemsByBranch",
     "queueRead",
     "reviewer-queue-repository.test.ts load items by branch coverage",
@@ -1812,6 +1821,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriReviewerQueueRepository.getItem",
           "requiredPermission": "queue.read",
           "successFixture": "reviewer-queue-repository.test.ts get item coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.getItemForManage",
+          "requiredPermission": "queue.manage",
+          "successFixture": "reviewer-queue-repository.test.ts get item for manage coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

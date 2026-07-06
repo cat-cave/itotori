@@ -9,7 +9,7 @@
 
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 import type { JobQueueInput } from "../src/repositories/event-queue-repository.js";
 import {
   applyActionInTransaction,
@@ -25,6 +25,8 @@ import {
   jobQueue,
   jobTaskTypeValues,
   reviewerQueueItems,
+  userPermissionGrants,
+  users,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -626,6 +628,67 @@ describe("ItotoriReviewerQueueRepository", () => {
       await expect(
         repo.loadTransitionsByItem(deniedActor, "reviewer-queue-x"),
       ).rejects.toMatchObject({ name: "AuthorizationError", permission: "queue.read" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("getItemForManage lets a read-restricted manage role read the item it manages", async () => {
+    // The crux of the queue.read latent-coupling fix: importRuntimeFeedback
+    // (a queue.manage action) reads the item it is about to manage via
+    // getItemForManage, which is gated on queue.manage — NOT queue.read.
+    // Permissions are non-hierarchical exact-match grants, so an actor
+    // holding queue.manage WITHOUT queue.read must still be able to import
+    // runtime evidence. This pins that a manage-only role is not silently
+    // blocked: getItemForManage succeeds while the public queue.read getItem
+    // is (correctly) denied for the same actor.
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const runtime = await repo.createItem(localActor, {
+        ...baseCreate("runtimeEvidence"),
+        sourceItemRef: "runtime-evidence-manage-only",
+        evidenceTier: "tier-2-screenshot-and-event",
+        observationEventIds: ["event-1"],
+        artifactHashes: ["sha256:abc"],
+      });
+
+      const manageOnlyActor: AuthorizationActor = { userId: "user-manage-without-read" };
+      await context.db
+        .insert(users)
+        .values({ userId: manageOnlyActor.userId, displayName: "Manage-only role" })
+        .onConflictDoNothing();
+      await context.db
+        .insert(userPermissionGrants)
+        .values({ userId: manageOnlyActor.userId, permission: permissionValues.queueManage })
+        .onConflictDoNothing();
+
+      // Manage scope reads its own item...
+      const managed = await repo.getItemForManage(manageOnlyActor, runtime.reviewItemId);
+      expect(managed?.reviewItemId).toBe(runtime.reviewItemId);
+      expect(managed?.evidenceTier).toBe("tier-2-screenshot-and-event");
+
+      // ...while the public queue.read path stays denied for the same actor,
+      // confirming the grant is genuinely manage-without-read.
+      await expect(repo.getItem(manageOnlyActor, runtime.reviewItemId)).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: "queue.read",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("getItemForManage denies an actor missing queue.manage", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await expect(repo.getItemForManage(deniedActor, "reviewer-queue-x")).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: "queue.manage",
+      });
     } finally {
       await context.close();
     }
