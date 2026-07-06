@@ -3734,14 +3734,27 @@ function publicCompletenessReport(
   targetLanguage: string,
   pools: Record<CatalogCompletenessPool, CatalogCompletenessPoolWork[]>,
 ): CatalogCompletenessPublicReport {
+  // Aggregate counts must dedupe by identity: a single work can appear in
+  // multiple overlapping pools (e.g. fan_partial AND conflict), so summing the
+  // per-pool statuses/conflicts here would double-count. We count each
+  // language-status once by its languageStatusId and each conflict once by its
+  // conflictId. Pool-local work counts (workCount below) intentionally stay
+  // per-pool — a work legitimately belongs to each of its pools locally.
   const workIds = new Set<string>();
+  const seenStatusIds = new Set<string>();
+  const conflictIds = new Set<string>();
   const statusReports = new Map<CatalogLanguageStatus, CatalogCompletenessPublicStatusReport>();
-  let conflictCount = 0;
   for (const works of Object.values(pools)) {
     for (const work of works) {
       workIds.add(work.workId);
-      conflictCount += work.conflicts.length;
+      for (const conflict of work.conflicts) {
+        conflictIds.add(conflict.conflictId);
+      }
       for (const status of work.statuses) {
+        if (seenStatusIds.has(status.languageStatusId)) {
+          continue;
+        }
+        seenStatusIds.add(status.languageStatusId);
         const existing = statusReports.get(status.status) ?? {
           status: status.status,
           factCount: 0,
@@ -3763,7 +3776,7 @@ function publicCompletenessReport(
     targetLanguage,
     generatedAt: new Date(),
     totalWorkCount: workIds.size,
-    conflictCount,
+    conflictCount: conflictIds.size,
     pools: catalogCompletenessPools.map((pool) => ({
       pool,
       workCount: pools[pool].length,

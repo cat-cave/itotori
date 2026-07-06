@@ -1764,6 +1764,81 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("dedupes public aggregate counts across overlapping pools while preserving pool-local counts", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const vndb = await provenance(repo, 952, catalogSourceValues.vndb, "v-overlap-001");
+
+      // Work A: fan_partial only -> belongs solely to the fan_partial pool.
+      await repo.upsertWork(localActor, {
+        workId: uuid(961),
+        canonicalTitle: "Overlap fan partial only",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(971, catalogLanguageStatusValues.fanPartial, vndb.sourceProvenanceId),
+        ],
+      });
+
+      // Work B: a fan_partial status AND a conflict -> lands in BOTH the
+      // fan_partial and conflict pools. This overlap is what the aggregate must
+      // dedupe: its single fan_partial status + single conflict must each be
+      // counted once in the aggregate, even though the work appears in two pools.
+      const overlapStatusId = uuid(972);
+      await repo.upsertWork(localActor, {
+        workId: uuid(962),
+        canonicalTitle: "Overlap fan partial with conflict",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(972, catalogLanguageStatusValues.fanPartial, vndb.sourceProvenanceId),
+        ],
+        conflicts: [
+          {
+            conflictId: uuid(981),
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: "Sources disagree on fan-translation completeness.",
+            metadata: { reasonCode: "source_disagreement", severity: "warning" },
+            evidence: [
+              {
+                conflictEvidenceId: uuid(991),
+                subjectKind: catalogConflictSubjectKindValues.languageStatus,
+                subjectId: overlapStatusId,
+                sourceProvenanceId: vndb.sourceProvenanceId,
+              },
+            ],
+          },
+        ],
+      });
+
+      const pools = await repo.catalogCompletenessBenchmarkPools(localActor, {
+        targetLanguage: "en-US",
+      });
+
+      // Pool-local counts are preserved: work B legitimately appears in BOTH pools.
+      expect(pools.pools.fan_partial.map((work) => work.workId)).toEqual([uuid(961), uuid(962)]);
+      expect(pools.pools.conflict.map((work) => work.workId)).toEqual([uuid(962)]);
+      const poolWorkCounts = new Map(
+        pools.publicReport.pools.map((pool) => [pool.pool, pool.workCount]),
+      );
+      expect(poolWorkCounts.get("fan_partial")).toBe(2);
+      expect(poolWorkCounts.get("conflict")).toBe(1);
+
+      // Aggregate counts dedupe by identity across the overlapping pools.
+      // totalWorkCount: work B counted once even though it is in two pools.
+      expect(pools.publicReport.totalWorkCount).toBe(2);
+      // conflictCount: work B's single conflict counted ONCE (not once per pool).
+      expect(pools.publicReport.conflictCount).toBe(1);
+      // Status facts: work A + work B each contribute their fan_partial status
+      // once; work B's status is not double-counted for its second pool.
+      const fanPartialStatus = pools.publicReport.statuses.find(
+        (status) => status.status === catalogLanguageStatusValues.fanPartial,
+      );
+      expect(fanPartialStatus?.factCount).toBe(2);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("bootstraps catalog permissions and creates catalog lookup indexes", async () => {
     const context = await isolatedMigratedContext();
     try {
