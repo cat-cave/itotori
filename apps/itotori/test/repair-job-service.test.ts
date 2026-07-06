@@ -227,6 +227,7 @@ describe("ITOTORI-038 closed enums", () => {
   it("REPAIR_JOB_OUTCOMES enumerates every terminal outcome", () => {
     const expected: ReadonlyArray<RepairJobOutcome> = [
       "succeeded",
+      "partial_failure",
       "deferred_to_human",
       "cap_exhausted",
       "no_change",

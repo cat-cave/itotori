@@ -21,7 +21,15 @@ import {
   type LocalizationUnitV02,
   type QaFinding,
 } from "@itotori/localization-bridge-schema";
-import type { AuthorizationActor } from "@itotori/db";
+import {
+  ReviewerQueueRepositoryError,
+  reviewerQueueItemKindValues,
+  reviewerQueueItemStateValues,
+  type AuthorizationActor,
+  type CreateReviewerQueueItemInput,
+  type ItotoriReviewerQueueRepositoryPort,
+  type ReviewerQueueItemRecord,
+} from "@itotori/db";
 import {
   DEV_POLICY,
   fakeSemanticContextContent,
@@ -29,6 +37,7 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
 } from "../src/orchestrator/agentic-loop.js";
+import type { AgenticLoopReviewerQueueSink } from "../src/orchestrator/reviewer-queue-bridge.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import { usageCostToDecimalString, usageCostToMicros } from "../src/providers/cost.js";
@@ -92,6 +101,77 @@ class InMemorySinks {
       this.providerRuns.push(record);
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// In-memory reviewer-queue sink — mirrors the bridge test's fake so a rerun
+// that DEFERS a unit lands a reviewer_queue_items row exactly as a driven run.
+// Enforces the SAME unique key as the real table so the idempotency backstop
+// (`reviewer_queue_item_duplicate`) is exercised.
+// ---------------------------------------------------------------------------
+
+class InMemoryReviewerQueue implements Pick<
+  ItotoriReviewerQueueRepositoryPort,
+  "createItem" | "loadItemsByBranch"
+> {
+  readonly items: ReviewerQueueItemRecord[] = [];
+  private seq = 0;
+
+  async createItem(
+    _actor: AuthorizationActor,
+    input: CreateReviewerQueueItemInput,
+  ): Promise<ReviewerQueueItemRecord> {
+    const clash = this.items.some(
+      (item) =>
+        item.localeBranchId === input.localeBranchId &&
+        item.sourceRevisionId === input.sourceRevisionId &&
+        item.itemKind === input.itemKind &&
+        item.sourceItemRef === input.sourceItemRef,
+    );
+    if (clash) {
+      throw new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_duplicate",
+        `reviewer queue already has an item for locale_branch=${input.localeBranchId} kind=${input.itemKind} ref=${input.sourceItemRef}`,
+      );
+    }
+    this.seq += 1;
+    const createdAt = input.createdAt ?? new Date();
+    const record: ReviewerQueueItemRecord = {
+      reviewItemId: `repair-executor-queue-inmem-${this.seq}`,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      itemKind: input.itemKind,
+      sourceItemRef: input.sourceItemRef,
+      state: reviewerQueueItemStateValues.pending,
+      priority: input.priority ?? 0,
+      summary: input.summary,
+      affectedArtifactIds: input.affectedArtifactIds ?? [],
+      evidenceTier: input.evidenceTier ?? null,
+      observationEventIds: input.observationEventIds ?? null,
+      artifactHashes: input.artifactHashes ?? null,
+      payload: input.payload ?? {},
+      metadata: input.metadata ?? {},
+      createdByUserId: input.createdByUserId ?? null,
+      assignedToUserId: input.assignedToUserId ?? null,
+      createdAt,
+      updatedAt: createdAt,
+      resolvedAt: null,
+    };
+    this.items.push(record);
+    return record;
+  }
+
+  async loadItemsByBranch(
+    _actor: AuthorizationActor,
+    localeBranchId: string,
+  ): Promise<ReviewerQueueItemRecord[]> {
+    return this.items.filter((item) => item.localeBranchId === localeBranchId);
+  }
+}
+
+function reviewerQueueSink(queue: InMemoryReviewerQueue): AgenticLoopReviewerQueueSink {
+  return { repository: queue };
 }
 
 // ---------------------------------------------------------------------------
@@ -612,7 +692,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(second.totalCostUsd).toBe(first.totalCostUsd);
   });
 
-  it("per-unit isolation: a unit whose loop throws is recorded as a failure but does not abort the rerun", async () => {
+  it("per-unit isolation + partial_failure: a mixed accept+fail rerun records a NON-success outcome with the failed-unit details (never succeeded)", async () => {
     const sinks = new InMemorySinks();
     const goodUnit = loopInputFor(makeUnit(UNIT_A, "おはよう。", 1));
     // A "poison" unit whose translation pack is malformed so the loop throws.
@@ -645,10 +725,92 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         },
       });
 
-    service.enqueue({
+    const job = service.enqueue({
       trigger: {
         trigger: "human_decision",
         decisionId: "correction-mixed",
+        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
+        scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A, UNIT_B] },
+        severity: "p1",
+        targetStage: "translation",
+        rationale: "correction touching a good + a poison unit",
+      },
+      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    });
+
+    // Drive the claimed job directly so the full execution result (incl. the
+    // failed-unit details) is observable — the crux of FIX 1.
+    const claimed = service.claimNext();
+    if (claimed === undefined) {
+      throw new Error("expected the enqueued repair job to be claimable");
+    }
+    const result = await executeRepairJob(
+      claimed,
+      makeDeps(resolver, sinks, { providerFactory: throwingFactory }),
+    );
+
+    // CRUX (FIX 1): a rerun where ANY unit failed is terminally NON-successful.
+    // UNIT_A was accepted but UNIT_B threw, so the outcome is `partial_failure`
+    // — NEVER `succeeded` (the pre-fix bug hid the failure behind a success).
+    expect(result.outcome).toBe("partial_failure");
+    expect(result.outcome).not.toBe("succeeded");
+    expect(result.acceptedDraftCount).toBe(1);
+    expect(result.failureCount).toBe(1);
+    expect(result.deferredCount).toBe(0);
+
+    // The failed-unit details ride along so the failure is never hidden.
+    expect(result.failures).toHaveLength(1);
+    const failure = result.failures[0]!;
+    expect(failure.bridgeUnitId).toBe(UNIT_B);
+    expect(failure.sourceUnitKey).toBe(poisonUnit.unit.sourceUnitKey);
+    expect(failure.message.length).toBeGreaterThan(0);
+
+    // Per-unit isolation held: UNIT_A's accepted draft was still persisted (the
+    // poison unit did not abort the rerun), and UNIT_B's draft stayed untouched.
+    expect(sinks.drafts).toHaveLength(1);
+    expect(sinks.drafts[0]!.bridgeUnitId).toBe(UNIT_A);
+    expect(sinks.drafts[0]!.draftText).toBe(CORRECTED_DRAFT_A);
+
+    // The terminal outcome is what the caller records on the service history.
+    service.recordOutcome(job.jobId, result.outcome);
+    expect(service.outcomeOf(job.jobId)).toBe("partial_failure");
+  });
+
+  it("runRepairQueue tallies a partial_failure job separately from succeeded", async () => {
+    const sinks = new InMemorySinks();
+    const goodUnit = loopInputFor(makeUnit(UNIT_A, "おはよう。", 1));
+    const poisonUnit = loopInputFor(makeUnit(UNIT_B, "poison", 2));
+    const resolver = new InMemoryUnitResolver([goodUnit, poisonUnit]);
+    const service = makeService();
+
+    const throwingFactory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
+      new FakeModelProvider({
+        providerName: `repair-fake-throw-${stage}-${agentLabel}`,
+        generate: (request: ModelInvocationRequest): string => {
+          if (request.taskKind === "experiment" && agentLabel !== "speaker-label") {
+            return fakeSemanticContextContent(agentLabel);
+          }
+          if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+            return speakerLabelContent(bridgeUnitIdOf(request));
+          }
+          if (request.taskKind === "draft_translation") {
+            const bridgeUnitId = bridgeUnitIdOf(request);
+            if (bridgeUnitId === UNIT_B) {
+              return JSON.stringify({ schemaVersion: "totally.wrong.v0", drafts: [] });
+            }
+            return translationContent(bridgeUnitId, CORRECTED_DRAFT_A);
+          }
+          if (request.taskKind === "llm_qa") {
+            return cleanQaContent();
+          }
+          return "";
+        },
+      });
+
+    service.enqueue({
+      trigger: {
+        trigger: "human_decision",
+        decisionId: "correction-mixed-queue",
         decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
         scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A, UNIT_B] },
         severity: "p1",
@@ -663,11 +825,78 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
       makeDeps(resolver, sinks, { providerFactory: throwingFactory }),
     );
 
-    // The job ran; UNIT_A was accepted, UNIT_B was isolated (no abort).
+    // The mixed accept+fail job drained as partial_failure, NOT succeeded.
     expect(result.jobsRun).toBe(1);
-    expect(result.succeeded).toBe(1);
-    expect(sinks.drafts).toHaveLength(1);
-    expect(sinks.drafts[0]!.bridgeUnitId).toBe(UNIT_A);
-    expect(sinks.drafts[0]!.draftText).toBe(CORRECTED_DRAFT_A);
+    expect(result.partialFailure).toBe(1);
+    expect(result.succeeded).toBe(0);
+    expect(result.deferredToHuman).toBe(0);
+  });
+
+  it("reviewerQueue threading (FIX 2): a unit deferred during a rerun bridges a reviewer_queue_items row", async () => {
+    const sinks = new InMemorySinks();
+    const queue = new InMemoryReviewerQueue();
+    // The resolver's unit input carries NO reviewerQueue of its own — the
+    // executor must thread `deps.reviewerQueue` into it (the pre-fix bug left
+    // the input unchanged so the loop's bridge never fired).
+    const resolver = new InMemoryUnitResolver([
+      loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
+    ]);
+    const service = makeService();
+
+    const job = service.enqueue({
+      trigger: {
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff03",
+        bridgeUnitId: UNIT_C,
+        severity: "p0",
+        targetStage: "translation",
+        rationale: "rerun of a unit that cannot be auto-resolved -> bridges the queue",
+      },
+      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    });
+
+    const result = await runRepairQueue(
+      service,
+      // Wire the reviewer-queue sink through deps — exactly how a driven run does.
+      makeDeps(resolver, sinks, {
+        policy: makePolicy({ maxRepairAttempts: 0 }),
+        reviewerQueue: reviewerQueueSink(queue),
+      }),
+    );
+
+    // The rerun deferred the unit (the loop could not auto-resolve it).
+    expect(result.jobsRun).toBe(1);
+    expect(result.deferredToHuman).toBe(1);
+    expect(service.outcomeOf(job.jobId)).toBe("deferred_to_human");
+
+    // CRUX (FIX 2): because deps.reviewerQueue was threaded into the unit input,
+    // the loop's bridge landed ONE context-rich reviewer_queue_items row for the
+    // deferred unit — pre-fix this list was empty (the bridge never fired).
+    expect(queue.items).toHaveLength(1);
+    const item = queue.items[0]!;
+    expect(item.itemKind).toBe(reviewerQueueItemKindValues.qa);
+    expect(item.sourceItemRef).toBe(`agentic-loop:${UNIT_C}`);
+    expect(item.localeBranchId).toBe(LOCALE_BRANCH_ID);
+    expect(item.sourceRevisionId).toBe(REVISION_ID);
+    expect(item.state).toBe(reviewerQueueItemStateValues.pending);
+    expect(item.createdByUserId).toBe(ACTOR.userId);
+  });
+
+  it("reviewerQueue threading (FIX 2): absent dep -> no queue item is written (the sink stays unwired)", async () => {
+    const sinks = new InMemorySinks();
+    const queue = new InMemoryReviewerQueue();
+    const resolver = new InMemoryUnitResolver([
+      loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
+    ]);
+    const service = makeService();
+
+    // No reviewerQueue on deps — the executor has nothing to thread, so the
+    // loop's bridge is a no-op (the synthetic smoke path).
+    await runRepairQueue(
+      service,
+      makeDeps(resolver, sinks, { policy: makePolicy({ maxRepairAttempts: 0 }) }),
+    );
+
+    expect(queue.items).toHaveLength(0);
   });
 });

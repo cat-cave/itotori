@@ -226,9 +226,17 @@ export type RepairEvent =
  * Closed enum of terminal outcomes. The service only records the
  * outcome; it does not execute the rerun. Mirrors the orchestrator's
  * routing-summary outcomes so the dashboard can join on a single key.
+ *
+ * `partial_failure` is the ONLY non-success outcome the executor derives from
+ * the loop's per-unit isolation: a rerun where at least one unit's loop THREW
+ * (isolated) never records `succeeded`, even when other units were accepted —
+ * otherwise a mixed accept+fail rerun would read as a clean success and the
+ * failed units' details would be hidden. The failed-unit details ride along
+ * on `RepairJobExecutionResult.failures`.
  */
 export const REPAIR_JOB_OUTCOMES = [
   "succeeded",
+  "partial_failure",
   "deferred_to_human",
   "cap_exhausted",
   "no_change",

@@ -47,4 +47,5 @@ export {
   type RepairJobExecutorDeps,
   type RepairQueueRunResult,
   type RepairRerunUnitResolver,
+  type RepairUnitFailure,
 } from "./repair-job-executor.js";

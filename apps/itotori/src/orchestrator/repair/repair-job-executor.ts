@@ -125,6 +125,19 @@ export type RepairJobExecutorDeps = {
 };
 
 /**
+ * Details of ONE unit whose loop threw during a rerun (per-unit isolation).
+ * Captured so a `partial_failure` outcome never hides which unit failed or why
+ * — the executor surfaces this list on {@link RepairJobExecutionResult.failures}
+ * rather than swallowing the error after counting it.
+ */
+export type RepairUnitFailure = {
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  /** Isolated error message (the thrown error's `.message`, or stringified). */
+  message: string;
+};
+
+/**
  * Result of executing ONE claimed `RepairJob`. The terminal `outcome` is what
  * the caller passes back to `RepairJobService.recordOutcome` so the append-only
  * history reflects the real run, not just the enqueue.
@@ -139,6 +152,13 @@ export type RepairJobExecutionResult = {
   deferredCount: number;
   /** Units whose loop threw (isolated); their draft stays untouched. */
   failureCount: number;
+  /**
+   * Details of each unit whose loop threw (isolated), in the resolver's
+   * declared run order. Non-empty iff `failureCount > 0` (i.e. the outcome is
+   * `partial_failure`); carries the sourceUnitKey + error message so the
+   * failure that downgraded the outcome from `succeeded` is never hidden.
+   */
+  failures: RepairUnitFailure[];
   /**
    * Real billed cost summed verbatim from every invocation the rerun fired
    * (PROJECT LAW). Zero for a synthetic fake provider; never fabricated.
@@ -185,6 +205,7 @@ export async function executeRepairJob(
       acceptedDraftCount: 0,
       deferredCount: 0,
       failureCount: 0,
+      failures: [],
       totalCostUsd: 0,
       zdrConfirmed: true,
     };
@@ -197,12 +218,25 @@ export async function executeRepairJob(
   let totalCostUsd = 0;
   let zdrConfirmed = true;
   let sawInvocation = false;
+  const failures: RepairUnitFailure[] = [];
 
-  for (const unitInput of unitInputs) {
+  // itotori-repair-outcome — thread the rerun's reviewer-queue sink into EACH
+  // unit input the resolver produced (when the resolver didn't already wire
+  // one), mirroring the project-driven executor. Without this, a unit the loop
+  // DEFERS during a rerun would never bridge a reviewer_queue_items row — the
+  // reviewerQueue dep was documented but never reached `runAgenticLoopForUnit`.
+  const reviewerQueue = deps.reviewerQueue;
+
+  for (const resolvedInput of unitInputs) {
+    const unitInput: AgenticLoopUnitInput =
+      reviewerQueue !== undefined && resolvedInput.reviewerQueue === undefined
+        ? { ...resolvedInput, reviewerQueue }
+        : resolvedInput;
     const result = await runRepairUnit(unitInput, job, deps, log);
-    if (result === undefined) {
+    if (result.status === "failed") {
       // Per-unit isolation: the loop threw; the unit's draft stays untouched.
       failureCount += 1;
+      failures.push(result.failure);
       continue;
     }
     unitsRun += 1;
@@ -218,14 +252,25 @@ export async function executeRepairJob(
     }
   }
 
-  // Derive the terminal RepairJobOutcome from the loop's per-unit outcomes:
-  // a job whose every resolved unit produced an accepted (or repaired-then-
-  // accepted) draft SUCCEEDED; a job where any unit deferred (the loop could
-  // not auto-resolve it) hands the affected scope back to human triage. The
-  // `cap_exhausted` outcome is owned by the loop's own bounded-repair cap
-  // (recorded as a per-unit defer); it surfaces here as deferred_to_human.
+  // Derive the terminal RepairJobOutcome from the loop's per-unit outcomes.
+  // A rerun where ANY unit's loop THREW (isolated) is terminally NON-successful
+  // — recorded as `partial_failure` with the failed-unit details on
+  // `result.failures` — so a mixed accept+fail rerun never reads as a clean
+  // success and the failures are never hidden. The deferred + no_change +
+  // fully-succeeded paths are unchanged when no unit failed: a job whose every
+  // resolved unit produced an accepted (or repaired-then-accepted) draft
+  // SUCCEEDED; a job where any unit deferred (the loop could not auto-resolve
+  // it) hands the affected scope back to human triage. The `cap_exhausted`
+  // outcome is owned by the loop's own bounded-repair cap (recorded as a
+  // per-unit defer); it surfaces here as deferred_to_human.
   const outcome: RepairJobOutcome =
-    deferredCount > 0 ? "deferred_to_human" : acceptedDraftCount > 0 ? "succeeded" : "no_change";
+    failureCount > 0
+      ? "partial_failure"
+      : deferredCount > 0
+        ? "deferred_to_human"
+        : acceptedDraftCount > 0
+          ? "succeeded"
+          : "no_change";
 
   log(
     `repair-job-executor: job ${job.jobId} (${job.affectedScope}) ran ${unitsRun} unit(s); ` +
@@ -239,6 +284,7 @@ export async function executeRepairJob(
     acceptedDraftCount,
     deferredCount,
     failureCount,
+    failures,
     totalCostUsd,
     // A job that fired zero invocations cannot assert a ZDR posture.
     zdrConfirmed: sawInvocation ? zdrConfirmed : true,
@@ -255,19 +301,34 @@ type RepairUnitRunResult = {
 };
 
 /**
+ * Per-unit run outcome. PER-UNIT ISOLATION surfaces a thrown error (incl. a
+ * malformed provider pack) as `failed` — carrying the failed unit's identity +
+ * error message — so the caller can record a `partial_failure` outcome WITH the
+ * failed-unit details rather than swallowing the error after counting it. The
+ * failing unit's draft stays byte-untouched either way; the other units still
+ * run.
+ */
+type RepairUnitRunOutcome =
+  | ({ status: "ran" } & RepairUnitRunResult)
+  | { status: "failed"; failure: RepairUnitFailure };
+
+/**
  * Drive ONE affected unit through the real agentic loop (`runAgenticLoopForUnit`)
  * and persist its updated draft + real billed provider-run cost. PER-UNIT
  * ISOLATION: a thrown error (incl. a malformed provider pack) is caught and
- * surfaced as `undefined` so the job's other units still run — the failing
- * unit's draft stays byte-untouched. Returns whether the unit's draft was
- * accepted (re-drafted / repaired-then-accepted) or deferred.
+ * surfaced as a `failed` outcome (carrying the failed unit's identity + error
+ * message) so the job's other units still run — the failing unit's draft stays
+ * byte-untouched — AND the caller can record a `partial_failure` outcome with
+ * the failed-unit details rather than swallowing the error after counting it.
+ * Returns whether the unit's draft was accepted (re-drafted /
+ * repaired-then-accepted) or deferred.
  */
 async function runRepairUnit(
   unitInput: AgenticLoopUnitInput,
   job: RepairJob,
   deps: RepairJobExecutorDeps,
   log: (message: string) => void,
-): Promise<RepairUnitRunResult | undefined> {
+): Promise<RepairUnitRunOutcome> {
   const unit = unitInput.unit;
   try {
     const bundle = await runAgenticLoopForUnit(
@@ -304,14 +365,20 @@ async function runRepairUnit(
     };
     await deps.sinks.providerRun.persistProviderRun(providerRunRecord);
 
-    return { accepted, telemetry };
+    return { status: "ran", accepted, telemetry };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     log(
-      `repair-job-executor: unit ${unit.sourceUnitKey} in job ${job.jobId} FAILED (isolated, rerun continues): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `repair-job-executor: unit ${unit.sourceUnitKey} in job ${job.jobId} FAILED (isolated, rerun continues): ${message}`,
     );
-    return undefined;
+    return {
+      status: "failed",
+      failure: {
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        message,
+      },
+    };
   }
 }
 
@@ -322,6 +389,8 @@ async function runRepairUnit(
 export type RepairQueueRunResult = {
   jobsRun: number;
   succeeded: number;
+  /** Jobs that ended `partial_failure` (at least one unit's loop threw). */
+  partialFailure: number;
   deferredToHuman: number;
   noChange: number;
   /** Real billed cost summed across every job the run drained. */
@@ -347,6 +416,7 @@ export async function runRepairQueue(
 ): Promise<RepairQueueRunResult> {
   let jobsRun = 0;
   let succeeded = 0;
+  let partialFailure = 0;
   let deferredToHuman = 0;
   let noChange = 0;
   let totalCostUsd = 0;
@@ -363,6 +433,9 @@ export async function runRepairQueue(
     switch (result.outcome) {
       case "succeeded":
         succeeded += 1;
+        break;
+      case "partial_failure":
+        partialFailure += 1;
         break;
       case "deferred_to_human":
         deferredToHuman += 1;
@@ -383,5 +456,5 @@ export async function runRepairQueue(
     }
   }
 
-  return { jobsRun, succeeded, deferredToHuman, noChange, totalCostUsd };
+  return { jobsRun, succeeded, partialFailure, deferredToHuman, noChange, totalCostUsd };
 }
