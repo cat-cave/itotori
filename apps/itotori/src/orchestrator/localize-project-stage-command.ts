@@ -2,8 +2,10 @@
 //
 // Thin LIVE-LLM wrapper around `runAgenticLoopForUnit` used by the
 // suite/scripts/localize-project/run.mjs driver. Distinct from
-// `agentic-loop-smoke` because that command HARD-REFUSES live providers
-// (it is a synthetic CI smoke). This command does the opposite: it
+// `agentic-loop-smoke` because that command runs a synthetic CI smoke
+// whose FakeModelProvider is gated behind the explicit
+// `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` opt-in (never live, never a
+// silent fake default). This command does the opposite: it
 // hard-requires the live OpenRouter provider via OPENROUTER_API_KEY,
 // loads the pair-policy from a JSON file (NO defaulting), and patches
 // the REAL translated draft the LLM emits into the target bundle. The

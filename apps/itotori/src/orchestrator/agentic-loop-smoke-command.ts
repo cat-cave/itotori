@@ -9,11 +9,15 @@
 //       --pair-policy <policy>.json \
 //       --output <out>.json
 //
-// The command refuses to invoke a live provider — every smoke run
-// uses a synthetic FakeModelProvider that emits structurally-correct
-// content per stage. This keeps the smoke command useful in CI
-// without a network dependency. Live runs are wired separately at
-// the orchestrator entry point.
+// The smoke run uses a synthetic FakeModelProvider that emits
+// structurally-correct content per stage, so it exercises the loop in
+// CI without a network dependency. Consistent with every other
+// fake-permitting surface (the semantic-agent CLIs / scene-summary
+// wiring), that fake is NOT the default: it is reachable ONLY behind
+// the EXPLICIT `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` opt-in. Without
+// the opt-in the command refuses LOUDLY with a typed diagnostic rather
+// than silently defaulting to a fake. Live runs are wired separately
+// at the orchestrator entry point.
 
 import type { AuthorizationActor } from "@itotori/db";
 import {
@@ -30,7 +34,7 @@ import {
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
 } from "@itotori/localization-bridge-schema";
 import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
-import { FakeModelProvider } from "../providers/fake.js";
+import { ALLOW_FAKE_SEMANTIC_AGENT_ENV, FakeModelProvider } from "../providers/fake.js";
 import type { ModelInvocationRequest } from "../providers/types.js";
 import {
   fakeSemanticContextContent,
@@ -71,10 +75,24 @@ export type AgenticLoopSmokeArgs = {
   draftArtifactOutputPath?: string;
 };
 
-export class AgenticLoopSmokeLiveProviderRefusalError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgenticLoopSmokeLiveProviderRefusalError";
+/**
+ * Thrown when the smoke command is invoked without the explicit
+ * `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` opt-in. The smoke command's
+ * FakeModelProvider is test/dev-only; a run that has not opted in must
+ * never silently receive one. Mirrors the message shape of
+ * `SemanticAgentFakeProviderNotAllowedError` so the whole codebase
+ * shares ONE allow-fake convention (same env var, same refuse shape),
+ * rather than the prior inverted deny-when-live gate that made the fake
+ * the default.
+ */
+export class AgenticLoopSmokeFakeProviderNotAllowedError extends Error {
+  constructor() {
+    super(
+      `agentic-loop-smoke refused to construct a FakeModelProvider: ` +
+        `the fake provider is test/dev-only and must never be the default. ` +
+        `Set ${ALLOW_FAKE_SEMANTIC_AGENT_ENV}=1 to opt in for tests/dev, or run a real provider path.`,
+    );
+    this.name = "AgenticLoopSmokeFakeProviderNotAllowedError";
   }
 }
 
@@ -93,10 +111,12 @@ export class AgenticLoopSmokeUnitIndexError extends Error {
 export async function runAgenticLoopSmokeCommand(
   args: AgenticLoopSmokeArgs,
 ): Promise<AgenticLoopBundle> {
-  if (process.env.ITOTORI_LIVE_PROVIDER === "1") {
-    throw new AgenticLoopSmokeLiveProviderRefusalError(
-      "agentic-loop-smoke refused: ITOTORI_LIVE_PROVIDER=1; the smoke command never invokes a live provider",
-    );
+  // Explicit allow-fake opt-in, EXACTLY mirroring the semantic-agent
+  // CLIs (`resolveSemanticAgentProvider`): the fake is reachable ONLY
+  // when `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`. Without it the command
+  // refuses loudly rather than defaulting to a fake.
+  if (process.env[ALLOW_FAKE_SEMANTIC_AGENT_ENV] !== "1") {
+    throw new AgenticLoopSmokeFakeProviderNotAllowedError();
   }
   const log = args.log ?? (() => {});
 

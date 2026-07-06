@@ -767,7 +767,7 @@ describe("Itotori CLI handlers", () => {
     }
   });
 
-  it("agentic-loop-smoke writes an AgenticLoopBundle and pins every invocation's pair", async () => {
+  async function loadAgenticLoopSmokeFixtures() {
     const { readFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");
     const { dirname, resolve } = await import("node:path");
@@ -789,26 +789,65 @@ describe("Itotori CLI handlers", () => {
       ["fixtures/agentic-loop-smoke-bridge.json", bridgeJson],
       ["fixtures/agentic-loop-smoke-pair-policy.json", pairPolicyJson],
     ]);
+    return reads;
+  }
+
+  const AGENTIC_LOOP_SMOKE_ARGS = [
+    "agentic-loop-smoke",
+    "--bridge",
+    "fixtures/agentic-loop-smoke-bridge.json",
+    "--unit-index",
+    "0",
+    "--pair-policy",
+    "fixtures/agentic-loop-smoke-pair-policy.json",
+    "--output",
+    "out/agentic-loop-bundle.json",
+  ];
+
+  it("agentic-loop-smoke refuses without the explicit ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT opt-in", async () => {
+    const reads = await loadAgenticLoopSmokeFixtures();
     const writes = new Map<string, unknown>();
     const services = servicesFixture();
-    await runItotoriCliCommand(
-      [
-        "agentic-loop-smoke",
-        "--bridge",
-        "fixtures/agentic-loop-smoke-bridge.json",
-        "--unit-index",
-        "0",
-        "--pair-policy",
-        "fixtures/agentic-loop-smoke-pair-policy.json",
-        "--output",
-        "out/agentic-loop-bundle.json",
-      ],
-      {
+    const prior = process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT;
+    delete process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT;
+    try {
+      await expect(
+        runItotoriCliCommand(AGENTIC_LOOP_SMOKE_ARGS, {
+          io: jsonStoreFixture(reads, writes),
+          migrateDatabase: vi.fn(async () => {}),
+          withServices: async (callback) => await callback(services),
+        }),
+      ).rejects.toThrow("ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1");
+      // No fake-default: nothing is written when the opt-in is absent.
+      expect(writes.has("out/agentic-loop-bundle.json")).toBe(false);
+    } finally {
+      if (prior === undefined) {
+        delete process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT;
+      } else {
+        process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT = prior;
+      }
+    }
+  });
+
+  it("agentic-loop-smoke uses the fake and writes an AgenticLoopBundle under the opt-in", async () => {
+    const reads = await loadAgenticLoopSmokeFixtures();
+    const writes = new Map<string, unknown>();
+    const services = servicesFixture();
+    const prior = process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT;
+    process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT = "1";
+    try {
+      await runItotoriCliCommand(AGENTIC_LOOP_SMOKE_ARGS, {
         io: jsonStoreFixture(reads, writes),
         migrateDatabase: vi.fn(async () => {}),
         withServices: async (callback) => await callback(services),
-      },
-    );
+      });
+    } finally {
+      if (prior === undefined) {
+        delete process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT;
+      } else {
+        process.env.ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT = prior;
+      }
+    }
     const written = writes.get("out/agentic-loop-bundle.json") as
       | { schemaVersion: string; stages: Array<{ stageName: string }> }
       | undefined;
