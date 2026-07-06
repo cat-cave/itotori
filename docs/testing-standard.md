@@ -234,6 +234,51 @@ CI runs the required-validation path (`just ci-itotori` brings up Postgres and
 runs `test:db` + the no-skip assertion), so CI DB coverage is never weakened by
 the local fast-skip affordance.
 
+### Scoped DB-backed proof gates (per-suite honesty)
+
+Some individual DB-classified suites are important enough to have their own
+scoped proof gate that PROVES the suite ran against a database rather than
+relying only on the aggregate `test-db-strict` lane. Each mirrors the same
+skip-visibility contract: no `DATABASE_URL` → a machine-readable skipped
+artifact plus a hard failure (never green-on-skip); with a reachable Postgres →
+run ONLY that suite and assert it executed persistence tests (per-suite count
+
+> 0, zero skipped, zero failed) into a deterministic proof artifact. They are
+> public-fixture-only (no private providers, no real bytes) and each ships a
+> regression test wired into `just check`.
+
+- **Catalog replay/idempotency (CATALOG-072)** —
+  `just catalog-replay-db-strict` (`scripts/catalog-replay-db-gate.mjs`).
+  Skip artifact `.tmp/itotori-db/catalog-replay-skipped.json`; marker
+  `CATALOG_REPLAY_DB_SKIP`; regression `scripts/catalog-replay-db-gate.test.mjs`.
+- **Style-guide fixture-flow persistence (ITOTORI-135, for the ITOTORI-007
+  suite)** — `just style-guide-fixture-flow-db-strict`
+  (`scripts/style-guide-fixture-flow-db-gate.mjs`). This drives the recorded
+  conversational style-guide flow
+  (`fixtures/itotori-style-guide/conversations/accepted.json`) through the real
+  `@itotori/db` repositories against a migrated Postgres, so it is DB-classified
+  and a fast-local run SKIPS it — and a skipped suite is NOT persistence
+  coverage. The gate reuses the `--require-database` runner path, then asserts
+  `packages/itotori-db/test/style-guide-fixture-flow.test.ts` actually executed
+  (count > 0, 0 skipped). Skip artifact
+  `.tmp/itotori-db/style-guide-fixture-flow-skipped.json`; proof artifact
+  `.tmp/itotori-db/style-guide-fixture-flow-proof.json`; one-line marker
+  `STYLE_GUIDE_FIXTURE_FLOW_DB_SKIP`; regression
+  `scripts/style-guide-fixture-flow-db-gate.test.mjs` (wired into `just check`).
+  Bring up a disposable Postgres first (`just db-up && just db-migrate`); the
+  recipe does not itself manage docker. The full up/migrate/run/down flow:
+
+  ```sh
+  just db-up
+  just db-migrate
+  DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori \
+    just style-guide-fixture-flow-db-strict
+  just db-down
+  ```
+
+  Run `DATABASE_URL= just style-guide-fixture-flow-db-strict` to see the
+  missing-`DATABASE_URL` hard failure.
+
 ## Rust Adapter Tests
 
 Rust tests run through Cargo and should use normal `#[test]` functions unless a
