@@ -130,7 +130,7 @@ async function insertEdit(
   `);
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("workspace correction migration drift", () => {
+describe("workspace correction migration drift", () => {
   it("rejects an empty reason", async () => {
     const context = await isolatedMigratedContext();
     try {

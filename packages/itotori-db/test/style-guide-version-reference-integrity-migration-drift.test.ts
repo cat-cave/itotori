@@ -8,7 +8,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 // that cannot be expressed in the mutually-recursive drizzle table types, so we
 // introspect pg_constraint directly (mirrors audit-finding-migration-drift).
 
-describe.skipIf(!process.env.DATABASE_URL)(
+describe(
   "style guide version reference integrity migration drift",
   () => {
     it("registers the scoped latest / approved / previous / guide composite FKs", async () => {

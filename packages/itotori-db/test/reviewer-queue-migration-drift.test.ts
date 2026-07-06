@@ -75,7 +75,7 @@ async function seedProjectScope(context: Awaited<ReturnType<typeof isolatedMigra
   `);
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("reviewer queue migration drift", () => {
+describe("reviewer queue migration drift", () => {
   it("item_kind check constraint rejects unknown kinds", async () => {
     const context = await isolatedMigratedContext();
     try {

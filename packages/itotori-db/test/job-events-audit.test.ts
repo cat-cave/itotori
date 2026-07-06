@@ -103,7 +103,7 @@ async function seedProject(db: ItotoriDatabase): Promise<void> {
   await repo.importSourceBundle(localActor, projectFixture());
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("job lifecycle audit trail (itotori_job_events)", () => {
+describe("job lifecycle audit trail (itotori_job_events)", () => {
   it("appends an immutable event for every lifecycle transition (queued -> running -> succeeded)", async () => {
     const context = await isolatedMigratedContext();
     try {

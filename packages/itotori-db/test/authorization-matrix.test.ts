@@ -1848,7 +1848,7 @@ describe("repository permission gate matrix", () => {
   });
 });
 
-describe.skipIf(!process.env.DATABASE_URL)("repository permission denial fixtures", () => {
+describe("repository permission denial fixtures", () => {
   let context: DatabaseContext | undefined;
 
   beforeAll(async () => {

@@ -285,7 +285,7 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
   });
 });
 
-describe.skipIf(!process.env.DATABASE_URL)("EngineCapabilityReportRepository", () => {
+describe("EngineCapabilityReportRepository", () => {
   it("upserts a full matrix and round-trips through readMatrix", async () => {
     const context = await isolatedMigratedContext();
     try {

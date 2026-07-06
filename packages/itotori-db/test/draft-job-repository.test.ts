@@ -40,7 +40,7 @@ function pgErrorCodeOf(error: unknown): string | undefined {
   return undefined;
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftJobRepository", () => {
+describe("ItotoriDraftJobRepository", () => {
   it("createDraftJob persists a queued job carrying policy versions, style/glossary versions, and context refs", async () => {
     const context = await isolatedMigratedContext();
     try {

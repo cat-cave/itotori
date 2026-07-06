@@ -35,7 +35,7 @@ const baseInput = {
   summary: "non-synthetic engine port crate must not depend on author fixtures",
 } as const;
 
-describe.skipIf(!process.env.DATABASE_URL)("audit finding migration drift", () => {
+describe("audit finding migration drift", () => {
   it("registers the self-referencing supersede foreign key on itotori_audit_findings", async () => {
     const context = await isolatedMigratedContext();
     try {

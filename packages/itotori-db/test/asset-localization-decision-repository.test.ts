@@ -27,7 +27,7 @@ function baseInput(overrides: Partial<RecordAssetDecisionInput> = {}): RecordAss
   };
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriAssetLocalizationDecisionRepository", () => {
+describe("ItotoriAssetLocalizationDecisionRepository", () => {
   it("recordDecision persists a new decision and loadActiveDecisions returns it", async () => {
     const context = await isolatedMigratedContext();
     try {

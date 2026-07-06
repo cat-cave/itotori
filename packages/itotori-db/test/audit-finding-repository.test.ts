@@ -21,7 +21,7 @@ const baseInput = {
   proposedDagNode: "UTSUSHI-200",
 } as const;
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriAuditFindingRepository", () => {
+describe("ItotoriAuditFindingRepository", () => {
   it("recordFinding persists a new open finding with the carried metadata", async () => {
     const context = await isolatedMigratedContext();
     try {

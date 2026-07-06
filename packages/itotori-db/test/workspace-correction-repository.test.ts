@@ -113,7 +113,7 @@ function baseInput() {
   } as const;
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriWorkspaceCorrectionRepository", () => {
+describe("ItotoriWorkspaceCorrectionRepository", () => {
   it("records a durable edit tied to project/branch/revision/unit/actor/reason + a durable event", async () => {
     const context = await isolatedMigratedContext();
     try {

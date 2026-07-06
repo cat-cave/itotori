@@ -115,7 +115,7 @@ function rerunJobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
   };
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () => {
+describe("ItotoriReviewerQueueRepository", () => {
   it("createItem persists a pending item with the per-kind discriminant", async () => {
     const context = await isolatedMigratedContext();
     try {

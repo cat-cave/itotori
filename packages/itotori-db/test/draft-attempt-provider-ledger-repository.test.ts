@@ -89,7 +89,7 @@ function baseLedgerInput(draftJobAttemptId: string): RecordLedgerEntryInput {
   };
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRepository", () => {
+describe("ItotoriDraftAttemptProviderLedgerRepository", () => {
   it("recordLedgerEntry persists every column and round-trips JSON shapes", async () => {
     const context = await isolatedMigratedContext();
     try {

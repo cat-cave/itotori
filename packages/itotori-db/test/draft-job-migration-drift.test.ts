@@ -34,7 +34,7 @@ function pgErrorCodeOf(error: unknown): string | undefined {
   return undefined;
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("draft job migration drift", () => {
+describe("draft job migration drift", () => {
   it("registers expected foreign keys to projects, locale branches, and draft jobs", async () => {
     const context = await isolatedMigratedContext();
     try {
