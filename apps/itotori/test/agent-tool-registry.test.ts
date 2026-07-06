@@ -45,9 +45,13 @@ import {
   glossaryContextRegistryToolName,
   glossaryContextTool,
   glossaryContextToolImplementationHash,
+  glossaryContextToolOutput,
+  glossaryContextToolOutputSchema,
   semanticGlossarySearchRegistryToolName,
   semanticGlossarySearchTool,
   semanticGlossarySearchToolImplementationHash,
+  semanticGlossarySearchToolOutput,
+  semanticGlossarySearchToolOutputSchema,
   translationQualityJudgeInputSchema,
   translationQualityJudgeJobFixture,
   translationQualityJudgeOutputFixture,
@@ -553,6 +557,205 @@ describe("agent and deterministic tool registries", () => {
         outputHash: contextResult.metadata.outputHash,
       }),
     ]);
+  });
+
+  it("keeps valid recorded semantic search output passing and rejects malformed nested objects at the tool boundary", async () => {
+    // The recorded valid semantic and exact-fallback outputs continue to validate.
+    expect(() =>
+      assertRegistrySchemaValue(
+        semanticGlossarySearchToolOutputSchema,
+        semanticGlossarySearchToolOutput(semanticGlossarySearchServiceResult()),
+        "search.glossary output",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertRegistrySchemaValue(
+        semanticGlossarySearchToolOutputSchema,
+        semanticGlossarySearchToolOutput(semanticGlossarySearchExactFallbackServiceResult()),
+        "search.glossary output",
+      ),
+    ).not.toThrow();
+
+    const cases: Array<{
+      label: string;
+      base: () => SemanticGlossarySearchReadModel;
+      mutate: (result: SemanticGlossarySearchReadModel) => void;
+      message: RegExp;
+    }> = [
+      {
+        label: "readiness",
+        base: semanticGlossarySearchServiceResult,
+        mutate: (result) => {
+          delete (result.readiness as unknown as Record<string, unknown>).pgvector;
+        },
+        message: /readiness\.pgvector is required/,
+      },
+      {
+        label: "readiness.exactFallback.reason",
+        base: semanticGlossarySearchServiceResult,
+        mutate: (result) => {
+          (result.readiness.exactFallback as unknown as Record<string, unknown>).reason =
+            "bogus_reason";
+        },
+        message: /readiness\.exactFallback\.reason must be one of/,
+      },
+      {
+        label: "term",
+        base: semanticGlossarySearchServiceResult,
+        mutate: (result) => {
+          delete (firstSemanticGlossaryMatch(result).term as Record<string, unknown>).termId;
+        },
+        message: /matches\[0\]\.term\.termId is required/,
+      },
+      {
+        label: "provenance",
+        base: semanticGlossarySearchServiceResult,
+        mutate: (result) => {
+          (
+            firstSemanticGlossaryMatch(result).provenance as Record<string, unknown>
+          ).provenanceKind = "bogus_kind";
+        },
+        message: /matches\[0\]\.provenance\.provenanceKind must be one of/,
+      },
+      {
+        label: "provenance.citations",
+        base: semanticGlossarySearchServiceResult,
+        mutate: (result) => {
+          const citations = (
+            firstSemanticGlossaryMatch(result).provenance as Record<string, unknown>
+          ).citations as Array<Record<string, unknown>>;
+          delete citations[0]?.citation;
+        },
+        message: /matches\[0\]\.provenance\.citations\[0\]\.citation is required/,
+      },
+      {
+        label: "diagnostics",
+        base: semanticGlossarySearchExactFallbackServiceResult,
+        mutate: (result) => {
+          (result.diagnostics[0] as unknown as Record<string, unknown>).severity = "critical";
+        },
+        message: /diagnostics\[0\]\.severity must be one of/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const result = testCase.base();
+      testCase.mutate(result);
+      await expect(
+        semanticGlossarySearchRuntimeFor(result).runDeterministicToolJob<
+          SemanticGlossarySearchToolInput,
+          SemanticGlossarySearchToolOutput
+        >(semanticGlossarySearchToolJobFixture()),
+      ).rejects.toThrow(testCase.message);
+    }
+  });
+
+  it("keeps valid recorded glossary context output passing and rejects malformed nested objects at the tool boundary", async () => {
+    const input = glossaryContextToolJobFixture().input;
+    // Found and not-found (null context) recorded outputs both continue to validate.
+    expect(() =>
+      assertRegistrySchemaValue(
+        glossaryContextToolOutputSchema,
+        glossaryContextToolOutput(input, glossaryContextServiceResult()),
+        "tool.glossary-context output",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertRegistrySchemaValue(
+        glossaryContextToolOutputSchema,
+        glossaryContextToolOutput(input, null),
+        "tool.glossary-context output",
+      ),
+    ).not.toThrow();
+
+    // The `context` read model is passed through from the service, so malformed nested
+    // context/term/termProvenance is caught at the runtime tool boundary.
+    const contextCases: Array<{
+      label: string;
+      mutate: (context: GlossaryContextReadModel) => void;
+      message: RegExp;
+    }> = [
+      {
+        label: "context.term",
+        mutate: (context) => {
+          delete (context.term as unknown as Record<string, unknown>).termId;
+        },
+        message: /context\.term\.termId is required/,
+      },
+      {
+        label: "context.term.status",
+        mutate: (context) => {
+          (context.term as unknown as Record<string, unknown>).status = "bogus_status";
+        },
+        message: /context\.term\.status must be one of/,
+      },
+      {
+        label: "context.term.semanticIndex.status",
+        mutate: (context) => {
+          (context.term.semanticIndex as unknown as Record<string, unknown>).status =
+            "bogus_status";
+        },
+        message: /context\.term\.semanticIndex\.status must be one of/,
+      },
+      {
+        label: "context.termProvenance",
+        mutate: (context) => {
+          (context.termProvenance[0] as unknown as Record<string, unknown>).referenceKind =
+            "bogus_kind";
+        },
+        message: /context\.termProvenance\[0\]\.referenceKind must be one of/,
+      },
+    ];
+
+    for (const testCase of contextCases) {
+      const context = glossaryContextServiceResult();
+      testCase.mutate(context);
+      await expect(
+        glossaryContextRuntimeFor(context).runDeterministicToolJob<
+          GlossaryContextToolInput,
+          GlossaryContextToolOutput
+        >(glossaryContextToolJobFixture()),
+      ).rejects.toThrow(testCase.message);
+    }
+
+    // The tool constructs its own provenance and diagnostics, so assert the output schema
+    // rejects those nested shapes directly.
+    const provenanceOutput = glossaryContextToolOutput(input, glossaryContextServiceResult());
+    (provenanceOutput.provenance as Record<string, unknown>).provenanceKind = "bogus_kind";
+    expect(() =>
+      assertRegistrySchemaValue(
+        glossaryContextToolOutputSchema,
+        provenanceOutput,
+        "tool.glossary-context output",
+      ),
+    ).toThrow(/provenance\.provenanceKind must equal/);
+
+    const provenanceCitationsOutput = glossaryContextToolOutput(
+      input,
+      glossaryContextServiceResult(),
+    );
+    delete (
+      (provenanceCitationsOutput.provenance as Record<string, unknown>).citations as Array<
+        Record<string, unknown>
+      >
+    )[0]?.citation;
+    expect(() =>
+      assertRegistrySchemaValue(
+        glossaryContextToolOutputSchema,
+        provenanceCitationsOutput,
+        "tool.glossary-context output",
+      ),
+    ).toThrow(/provenance\.citations\[0\]\.citation is required/);
+
+    const diagnosticsOutput = glossaryContextToolOutput(input, null);
+    (diagnosticsOutput.diagnostics[0] as Record<string, unknown>).severity = "critical";
+    expect(() =>
+      assertRegistrySchemaValue(
+        glossaryContextToolOutputSchema,
+        diagnosticsOutput,
+        "tool.glossary-context output",
+      ),
+    ).toThrow(/diagnostics\[0\]\.severity must be one of/);
   });
 
   it("registers context artifact retrieval as a typed cited deterministic tool", async () => {
@@ -1652,6 +1855,150 @@ function glossaryContextServiceResult(): GlossaryContextReadModel {
     protectedSpanReferences: [],
     reviewItems: [],
   };
+}
+
+function semanticGlossarySearchExactFallbackServiceResult(): SemanticGlossarySearchReadModel {
+  return {
+    outputKind: "semantic_glossary_search",
+    status: "completed",
+    toolName: "search.glossary",
+    toolVersion: "1.0.0",
+    projectId: "project-terminology",
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-terminology:bundle-revision",
+    query: "chosen champion",
+    normalizedQuery: "chosen champion",
+    readiness: {
+      embeddingMode: "recorded_fixture",
+      liveProviderRequired: false,
+      fixtureId: "unresolved-recorded-fixture",
+      embeddingProvider: "recorded-fixture",
+      embeddingModel: "recorded-fixture",
+      embeddingDimension: 0,
+      queryEmbeddingHash: null,
+      pgvector: {
+        required: false,
+        available: false,
+        reason: "public_ci_uses_recorded_json_vectors",
+      },
+      exactFallback: {
+        triggered: true,
+        reason: "no_semantic_results",
+        toolName: "search.exact",
+        toolVersion: "1.0.0",
+      },
+    },
+    matches: [
+      {
+        term: {
+          termId: "term-semantic-hero",
+          sourceTerm: "勇者",
+          preferredTranslation: "Hero",
+          termKind: "character_name",
+          status: "active",
+          sourceLocale: "ja-JP",
+          targetLocale: "en-US",
+        },
+        score: 1,
+        matchKinds: ["exact_fallback"],
+        exactMatchKinds: ["exact_source"],
+        provenance: {
+          provenanceKind: "semantic_glossary_exact_fallback_result",
+          toolName: "search.glossary",
+          toolVersion: "1.0.0",
+          fallbackToolName: "search.exact",
+          fallbackToolVersion: "1.0.0",
+          termId: "term-semantic-hero",
+          exactMatchKinds: ["exact_source"],
+          citations: [
+            {
+              sourceRefId: "source-ref-hero",
+              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+              bridgeUnitId: "bridge-unit-term",
+              referenceKind: "source_unit",
+              citation: "terminology.scene.001.line.001",
+              context: "Opening narration names the hero.",
+            },
+          ],
+        },
+      },
+    ],
+    diagnostics: [
+      {
+        code: "no_semantic_results",
+        reasonCode: "no_semantic_results",
+        severity: "info",
+        message: "recorded semantic ranking produced no candidates; exact fallback was used",
+        metadata: { fallbackReason: "no_semantic_results" },
+      },
+      {
+        code: "exact_fallback_used",
+        reasonCode: "exact_fallback_used",
+        severity: "info",
+        message: "semantic glossary search used deterministic exact fallback",
+        metadata: {
+          reason: "no_semantic_results",
+          matchCount: 1,
+          toolName: "search.exact",
+          toolVersion: "1.0.0",
+        },
+      },
+    ],
+  };
+}
+
+function glossaryContextToolJobFixture(): DeterministicToolJobInput<GlossaryContextToolInput> {
+  return {
+    jobKind: "deterministic_tool_job",
+    toolName: glossaryContextRegistryToolName,
+    toolVersion: "1.0.0",
+    context: fixtureInvocationContext,
+    input: {
+      localeBranchId: "locale-en-us",
+      termId: "term-semantic-hero",
+      sourceRevisionId: "bridge-terminology:bundle-revision",
+    },
+  };
+}
+
+function semanticGlossarySearchRuntimeFor(
+  result: SemanticGlossarySearchReadModel,
+): AgentToolRuntime {
+  const agents = new AgentRegistry();
+  const tools = new DeterministicToolRegistry();
+  tools.register(semanticGlossarySearchTool({ searchGlossary: async () => result }));
+  return new AgentToolRuntime(agents, tools);
+}
+
+function semanticGlossarySearchToolJobFixture(): DeterministicToolJobInput<SemanticGlossarySearchToolInput> {
+  return {
+    jobKind: "deterministic_tool_job",
+    toolName: semanticGlossarySearchRegistryToolName,
+    toolVersion: "1.0.0",
+    context: fixtureInvocationContext,
+    input: {
+      projectId: "project-terminology",
+      localeBranchId: "locale-en-us",
+      query: "chosen champion",
+    },
+  };
+}
+
+function glossaryContextRuntimeFor(context: GlossaryContextReadModel | null): AgentToolRuntime {
+  const agents = new AgentRegistry();
+  const tools = new DeterministicToolRegistry();
+  tools.register(glossaryContextTool({ getGlossaryContext: async () => context }));
+  return new AgentToolRuntime(agents, tools);
+}
+
+function firstSemanticGlossaryMatch(
+  result: SemanticGlossarySearchReadModel,
+): Record<string, unknown> {
+  const match = result.matches[0];
+  if (match === undefined) {
+    throw new Error("semantic glossary fixture must include at least one match");
+  }
+  return match as unknown as Record<string, unknown>;
 }
 
 function eventPersistenceFixture(): {

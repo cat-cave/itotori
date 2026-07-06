@@ -701,6 +701,12 @@ function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: strin
     }
   }
 
+  // A null value that satisfies a nullable union type (e.g. `["object", "null"]`) needs no
+  // further object/array/string/number shape checks — those would incorrectly reject null.
+  if (value === null && Array.isArray(schemaType) && schemaType.includes("null")) {
+    return;
+  }
+
   if (
     schemaType === "object" ||
     schema["properties"] !== undefined ||
