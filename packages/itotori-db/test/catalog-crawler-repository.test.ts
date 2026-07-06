@@ -35,6 +35,28 @@ const fixture = JSON.parse(
   ),
 ) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
+// CATALOG-073: a single crawler step carrying MULTIPLE facts (three distinct
+// source-fact identities). The base `replay.json` only ever has one fact per
+// step, so deterministic multi-fact counts, per-fact identities, and exactly-
+// once persistence are otherwise untested.
+const multiFactFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../fixtures/catalog-crawler-vndb/replay-multi-fact.json", import.meta.url),
+    "utf8",
+  ),
+) as RecordedCatalogCrawlerFixture<FixtureFact>;
+
+// CATALOG-073: two multi-fact steps whose fact sets OVERLAP (pagination re-
+// surfaces the same source-fact identity `v201` in step-002). The idempotent
+// import must dedupe by fact identity (source_id primary key) so the shared
+// fact is not double-persisted and its first-import provenance is preserved.
+const duplicateFactsFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../fixtures/catalog-crawler-vndb/replay-duplicate-facts.json", import.meta.url),
+    "utf8",
+  ),
+) as RecordedCatalogCrawlerFixture<FixtureFact>;
+
 describe("ItotoriCatalogCrawlerRepository", () => {
   it("rejects stale worker checkpoint, rate-limit, imported-marker, failure, and completion writes", async () => {
     const context = await isolatedMigratedContext();
@@ -875,6 +897,252 @@ describe("ItotoriCatalogCrawlerRepository", () => {
       await context.close();
     }
   });
+
+  it("persists every expected fact identity from a multi-fact step exactly once, even across a crash replay (CATALOG-073)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogFactImportsTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+      const step = multiFactFixture.steps[0];
+      if (step === undefined || step.facts.length < 2) {
+        throw new Error("multi-fact fixture must contain a step with multiple facts");
+      }
+      const expectedIdentities = step.facts.map(
+        (fact) => `catalogSource=vndb|sourceId=${fact.sourceId}`,
+      );
+
+      // First run: ingest all three facts, then crash in the CATALOG-074 window
+      // (facts written + proof verified, but BEFORE commitStepImport marks the
+      // step imported / advances the checkpoint). Models a process crash exactly
+      // after a multi-fact step's facts land but before the step is committed.
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(multiFactFixture), {
+          repository,
+          actor,
+          workerId: "worker-multi-fact-crash",
+          mode: "recorded_fixture",
+          ingestStep: upsertFactImports(context, multiFactFixture.fixtureId),
+          verifyFactImport: verifyPersistedFactImports(context),
+          beforeCommitStepImport: () => {
+            throw new Error("forced crash before commitStepImport");
+          },
+        }),
+      ).rejects.toThrow(/forced crash before commitStepImport/u);
+
+      // All three facts landed (one row per identity), but the step never reached
+      // the imported marker and the checkpoint never advanced.
+      const afterCrash = await context.pool.query<{
+        source_id: string;
+        first_import_transaction_id: string;
+        deterministic_fact_count: number;
+      }>(
+        "select source_id, first_import_transaction_id, deterministic_fact_count from catalog_fact_imports order by source_id",
+      );
+      expect(afterCrash.rows.map((row) => row.source_id)).toEqual(
+        step.facts.map((fact) => fact.sourceId),
+      );
+      expect(
+        afterCrash.rows.every((row) => row.deterministic_fact_count === step.facts.length),
+      ).toBe(true);
+      const firstImportTransactionIds = new Map(
+        afterCrash.rows.map((row) => [row.source_id, row.first_import_transaction_id]),
+      );
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-multi-fact-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+
+      // Replay WITHOUT the crash hook: the still-`fetched` step re-ingests the
+      // same three facts idempotently (upsert by primary key) — each identity is
+      // updated in place, never doubled.
+      const resumed = await runner.run(createRecordedCatalogCrawlerAdapter(multiFactFixture), {
+        repository,
+        actor,
+        workerId: "worker-multi-fact-resumed",
+        mode: "recorded_fixture",
+        ingestStep: upsertFactImports(context, multiFactFixture.fixtureId),
+        verifyFactImport: verifyPersistedFactImports(context),
+      });
+
+      expect(resumed).toMatchObject({ fetchedSteps: 1, importedSteps: 1, skippedSteps: 0 });
+      // Deterministic fact count: the single step reports exactly three facts and
+      // all three per-fact identities, in fixture order.
+      expect(resumed.replayValidation).toHaveLength(1);
+      expect(resumed.replayValidation[0]).toMatchObject({
+        stepKey: "step-001",
+        factCount: step.facts.length,
+        factIdentities: expectedIdentities,
+        alreadyImported: false,
+      });
+      expect(resumed.checkpoint).toMatchObject({ lastStepKey: "step-001" });
+
+      // Exactly one persisted row per expected fact identity — never doubled by
+      // the replay.
+      const factCount = await context.pool.query<{ count: string }>(
+        "select count(*)::text as count from catalog_fact_imports",
+      );
+      expect(factCount.rows[0]?.count).toBe(String(step.facts.length));
+      const factRows = await context.pool.query<{
+        source_id: string;
+        fact_identity: string;
+        deterministic_fact_count: number;
+        first_import_transaction_id: string;
+      }>(
+        "select source_id, fact_identity, deterministic_fact_count, first_import_transaction_id from catalog_fact_imports order by source_id",
+      );
+      expect(factRows.rows).toEqual(
+        step.facts.map((fact) => ({
+          source_id: fact.sourceId,
+          fact_identity: `catalogSource=vndb|sourceId=${fact.sourceId}`,
+          deterministic_fact_count: step.facts.length,
+          // Provenance preserved: the resumed upsert kept each row's original
+          // pre-crash import transaction id (replay updated, never re-inserted).
+          first_import_transaction_id: firstImportTransactionIds.get(fact.sourceId),
+        })),
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("dedupes duplicate source-fact identities across steps without double-persisting (CATALOG-073)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogFactImportsTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+
+      const result = await runner.run(createRecordedCatalogCrawlerAdapter(duplicateFactsFixture), {
+        repository,
+        actor,
+        workerId: "worker-duplicate-facts",
+        mode: "recorded_fixture",
+        ingestStep: upsertFactImportsRebindingStep(context, duplicateFactsFixture.fixtureId),
+        verifyFactImport: verifyPersistedFactImports(context),
+      });
+
+      expect(result).toMatchObject({ fetchedSteps: 2, importedSteps: 2, skippedSteps: 0 });
+      const step1Key = result.replayValidation[0]?.stableImportKey;
+      expect(result.replayValidation.map((record) => record.factIdentities)).toEqual([
+        ["catalogSource=vndb|sourceId=v200", "catalogSource=vndb|sourceId=v201"],
+        ["catalogSource=vndb|sourceId=v201", "catalogSource=vndb|sourceId=v202"],
+      ]);
+
+      // The shared identity v201 is re-surfaced by step-002 but the source_id
+      // primary key dedupes it: THREE distinct rows persist, not four.
+      const factCount = await context.pool.query<{ count: string }>(
+        "select count(*)::text as count from catalog_fact_imports",
+      );
+      expect(factCount.rows[0]?.count).toBe("3");
+
+      const factRows = await context.pool.query<{
+        source_id: string;
+        fact_identity: string;
+        first_import_transaction_id: string;
+      }>(
+        "select source_id, fact_identity, first_import_transaction_id from catalog_fact_imports order by source_id",
+      );
+      expect(factRows.rows.map((row) => row.source_id)).toEqual(["v200", "v201", "v202"]);
+      expect(factRows.rows.map((row) => row.fact_identity)).toEqual([
+        "catalogSource=vndb|sourceId=v200",
+        "catalogSource=vndb|sourceId=v201",
+        "catalogSource=vndb|sourceId=v202",
+      ]);
+      // v201's first-import provenance is preserved: it belongs to step-001, the
+      // step that first imported it, even though step-002 re-encountered it.
+      const v201 = factRows.rows.find((row) => row.source_id === "v201");
+      expect(v201?.first_import_transaction_id).toBe(step1Key);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps per-fact identities stable across re-imports and catches per-fact identity drift (CATALOG-073)", async () => {
+    // A re-import of the SAME fixture must derive byte-identical per-fact
+    // identities (the identity model is a stable pure function of the fields),
+    // and a proof whose per-fact identity has DRIFTED from that model must be
+    // rejected before the step is committed.
+    const expectedIdentities = [
+      "catalogSource=vndb|sourceId=v100",
+      "catalogSource=vndb|sourceId=v101",
+      "catalogSource=vndb|sourceId=v102",
+    ];
+
+    const identitiesFor = async (workerId: string): Promise<readonly string[]> => {
+      const context = await isolatedMigratedContext();
+      try {
+        await createCatalogFactImportsTable(context);
+        const runner = new ItotoriCatalogCrawlerRunner();
+        const result = await runner.run(createRecordedCatalogCrawlerAdapter(multiFactFixture), {
+          repository: new ItotoriCatalogCrawlerRepository(context.db),
+          actor,
+          workerId,
+          mode: "recorded_fixture",
+          ingestStep: upsertFactImports(context, multiFactFixture.fixtureId),
+          verifyFactImport: verifyPersistedFactImports(context),
+        });
+        return result.replayValidation[0]?.factIdentities ?? [];
+      } finally {
+        await context.close();
+      }
+    };
+
+    // Stability: two independent imports of the same fixture derive identical
+    // per-fact identities.
+    const first = await identitiesFor("worker-identity-import-a");
+    const second = await identitiesFor("worker-identity-import-b");
+    expect(first).toEqual(expectedIdentities);
+    expect(second).toEqual(first);
+
+    // Drift is caught: an importer whose returned proof drifts ONE fact identity
+    // away from the stable model is rejected before commit, the step is failed,
+    // and the checkpoint never advances.
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogFactImportsTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(multiFactFixture), {
+          repository,
+          actor,
+          workerId: "worker-identity-drift",
+          mode: "recorded_fixture",
+          ingestStep: async (ingestContext) => {
+            await upsertFactImports(context, multiFactFixture.fixtureId)(ingestContext);
+            const drifted = [...ingestContext.expectedFactIdentities];
+            drifted[1] = `${drifted[1]}-drifted`;
+            return {
+              stableImportKey: ingestContext.stableImportKey,
+              strategy: catalogCrawlerFactImportStrategyValues.upsert,
+              factCount: ingestContext.facts.length,
+              factIdentities: drifted,
+            };
+          },
+          verifyFactImport: verifyPersistedFactImports(context),
+        }),
+      ).rejects.toThrow(/fact import proof factIdentities mismatch/u);
+
+      const stepRows = await context.db
+        .select({ status: catalogCrawlerJobSteps.status })
+        .from(catalogCrawlerJobSteps);
+      expect(stepRows).toEqual([{ status: catalogCrawlerStepStatusValues.failed }]);
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-multi-fact-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 async function createCatalogFactImportsTable(
@@ -934,6 +1202,7 @@ function durableMarkerAdapter(): CatalogCrawlerSourceAdapter<FixtureFact> {
 
 function upsertFactImports(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  fixtureId: string = fixture.fixtureId,
 ): (
   ingestContext: CatalogCrawlerIngestContext<FixtureFact>,
 ) => Promise<ReturnType<typeof importProof>> {
@@ -955,7 +1224,51 @@ function upsertFactImports(
           normalized_title = excluded.normalized_title`,
         [
           fact.sourceId,
-          fixture.fixtureId,
+          fixtureId,
+          ingestContext.stableImportKey,
+          ingestContext.importTransactionId,
+          ingestContext.expectedFactIdentities[index],
+          ingestContext.facts.length,
+          fact.normalizedTitle,
+        ],
+      );
+    }
+    return importProof(ingestContext);
+  };
+}
+
+// CATALOG-073: a dedupe-on-conflict importer for cross-step duplicate fact
+// identities. The `source_id` primary key means a fact re-surfaced by a later
+// step conflicts, so we REBIND the row to the current step's stable import key
+// (letting that step's verifier find its facts) while deliberately NOT touching
+// `first_import_transaction_id` — the first importer's provenance is preserved
+// and the shared fact is never double-persisted.
+function upsertFactImportsRebindingStep(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  fixtureId: string,
+): (
+  ingestContext: CatalogCrawlerIngestContext<FixtureFact>,
+) => Promise<ReturnType<typeof importProof>> {
+  return async (ingestContext) => {
+    for (const [index, fact] of ingestContext.facts.entries()) {
+      await context.pool.query(
+        `insert into catalog_fact_imports (
+          source_id,
+          fixture_id,
+          stable_import_key,
+          first_import_transaction_id,
+          fact_identity,
+          deterministic_fact_count,
+          normalized_title
+        ) values ($1, $2, $3, $4, $5, $6, $7)
+        on conflict (source_id) do update set
+          stable_import_key = excluded.stable_import_key,
+          deterministic_fact_count = excluded.deterministic_fact_count,
+          fact_identity = excluded.fact_identity,
+          normalized_title = excluded.normalized_title`,
+        [
+          fact.sourceId,
+          fixtureId,
           ingestContext.stableImportKey,
           ingestContext.importTransactionId,
           ingestContext.expectedFactIdentities[index],

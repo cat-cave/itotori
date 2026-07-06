@@ -1,0 +1,66 @@
+{
+  "fixtureId": "catalog-crawler-vndb-duplicate-facts-v0.1",
+  "fixtureName": "catalog-crawler-public-vndb-duplicate-facts-replay",
+  "catalogSource": "vndb",
+  "adapterName": "vndb-recorded-duplicate-facts-fixture",
+  "adapterVersion": "adapter-fixture-v1",
+  "sourceVersion": "vndb-public-snapshot-2026-06-18",
+  "parserVersion": "parser-contract-v1",
+  "readiness": "alpha_ready",
+  "factImportContract": {
+    "contractId": "CATALOG-065",
+    "strategy": "upsert",
+    "factIdentity": ["catalogSource", "sourceId"],
+    "replayValidation": [
+      "sourceId",
+      "fixtureId",
+      "stableImportKey",
+      "importTransactionId",
+      "factCount",
+      "factIdentities"
+    ]
+  },
+  "partitionKey": "public-fixture",
+  "steps": [
+    {
+      "stepKey": "step-001",
+      "sourceId": "v200",
+      "requestIdentity": "GET /kana/page-1",
+      "fetchedAt": "2026-06-18T12:00:00.000Z",
+      "checkpointCursor": { "afterStepKey": "step-001", "cursor": "page-1" },
+      "httpStatus": 200,
+      "payload": {
+        "page": 1,
+        "results": [
+          { "id": "v200", "title": "Duplicate Facts VN 200" },
+          { "id": "v201", "title": "Duplicate Facts VN 201" }
+        ]
+      },
+      "facts": [
+        { "sourceId": "v200", "normalizedTitle": "Duplicate Facts VN 200" },
+        { "sourceId": "v201", "normalizedTitle": "Duplicate Facts VN 201" }
+      ],
+      "metadata": { "fixturePath": "fixtures/catalog-crawler-vndb/replay-duplicate-facts.json" }
+    },
+    {
+      "stepKey": "step-002",
+      "sourceId": "v201",
+      "requestIdentity": "GET /kana/page-2",
+      "fetchedAt": "2026-06-18T12:00:05.000Z",
+      "checkpointCursor": { "afterStepKey": "step-002", "cursor": "page-2" },
+      "httpStatus": 200,
+      "payload": {
+        "page": 2,
+        "results": [
+          { "id": "v201", "title": "Duplicate Facts VN 201" },
+          { "id": "v202", "title": "Duplicate Facts VN 202" }
+        ]
+      },
+      "facts": [
+        { "sourceId": "v201", "normalizedTitle": "Duplicate Facts VN 201" },
+        { "sourceId": "v202", "normalizedTitle": "Duplicate Facts VN 202" }
+      ],
+      "metadata": { "fixturePath": "fixtures/catalog-crawler-vndb/replay-duplicate-facts.json" }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "fixtureId": "catalog-crawler-vndb-multi-fact-v0.1",
+  "fixtureName": "catalog-crawler-public-vndb-multi-fact-replay",
+  "catalogSource": "vndb",
+  "adapterName": "vndb-recorded-multi-fact-fixture",
+  "adapterVersion": "adapter-fixture-v1",
+  "sourceVersion": "vndb-public-snapshot-2026-06-18",
+  "parserVersion": "parser-contract-v1",
+  "readiness": "alpha_ready",
+  "factImportContract": {
+    "contractId": "CATALOG-065",
+    "strategy": "upsert",
+    "factIdentity": ["catalogSource", "sourceId"],
+    "replayValidation": [
+      "sourceId",
+      "fixtureId",
+      "stableImportKey",
+      "importTransactionId",
+      "factCount",
+      "factIdentities"
+    ]
+  },
+  "partitionKey": "public-fixture",
+  "steps": [
+    {
+      "stepKey": "step-001",
+      "sourceId": "v100",
+      "requestIdentity": "GET /kana/page-1",
+      "fetchedAt": "2026-06-18T12:00:00.000Z",
+      "checkpointCursor": { "afterStepKey": "step-001", "cursor": "page-1" },
+      "httpStatus": 200,
+      "payload": {
+        "page": 1,
+        "results": [
+          { "id": "v100", "title": "Multi Fact VN 100" },
+          { "id": "v101", "title": "Multi Fact VN 101" },
+          { "id": "v102", "title": "Multi Fact VN 102" }
+        ]
+      },
+      "facts": [
+        { "sourceId": "v100", "normalizedTitle": "Multi Fact VN 100" },
+        { "sourceId": "v101", "normalizedTitle": "Multi Fact VN 101" },
+        { "sourceId": "v102", "normalizedTitle": "Multi Fact VN 102" }
+      ],
+      "metadata": { "fixturePath": "fixtures/catalog-crawler-vndb/replay-multi-fact.json" },
+      "rateLimit": {
+        "remaining": 41,
+        "limit": 60,
+        "resetAt": "2026-06-18T12:01:00.000Z",
+        "metadata": { "policy": "recorded" }
+      }
+    }
+  ]
+}
