@@ -437,6 +437,8 @@ export type {
 } from "./services/style-guide-service.js";
 export {
   ItotoriStyleGuideFixtureFlowService,
+  StyleGuideFixtureFlowRerunError,
+  styleGuideFixtureFlowRerunRejectedCode,
   styleGuideFixtureFlowSchemaVersion,
   styleGuideSuggestionArtifactSchemaVersion,
 } from "./services/style-guide-fixture-flow.js";

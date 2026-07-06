@@ -26,6 +26,7 @@ import {
   type ReviewerQueueItemRecord,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
+  StyleGuideFixtureFlowRerunError,
   styleGuideFixtureFlowSchemaVersion,
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -725,6 +726,45 @@ describe("Itotori CLI handlers", () => {
     expect(writes.get("artifacts/itotori/style-guide-fixture-flow.json")).toEqual(
       styleGuideFixtureFlowResult,
     );
+  });
+
+  it("emits a typed diagnostic and writes nothing when a fixture-flow rerun is rejected", async () => {
+    const services = servicesFixture();
+    const rerunError = new StyleGuideFixtureFlowRerunError({
+      projectId: "019ed063-0000-7000-8000-000000000001",
+      localeBranchId: "019ed063-0000-7000-8000-000000000010",
+      fixtureId: "style-guide-conversation-accepted",
+      existingLatestVersionId: "019ed063-0000-7000-8000-000000000030",
+    });
+    services.styleGuideFixtureFlow.run = vi.fn(async () => {
+      throw rerunError;
+    });
+    const fixture = styleGuideConversationFixture();
+    const reads = new Map<string, unknown>([
+      ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
+    ]);
+    const writes = new Map<string, unknown>();
+
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const priorExitCode = process.exitCode;
+    try {
+      await runItotoriCliCommand(["style-guide-fixture-flow"], {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      });
+
+      expect(process.exitCode).toBe(1);
+      const emitted = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(emitted).toContain("rerun rejected");
+      expect(emitted).toContain(rerunError.code);
+      expect(emitted).toContain("019ed063-0000-7000-8000-000000000030");
+      // No artifact is written when the rerun is rejected.
+      expect(writes.has("artifacts/itotori/style-guide-fixture-flow.json")).toBe(false);
+    } finally {
+      stderr.mockRestore();
+      process.exitCode = priorExitCode;
+    }
   });
 
   it("agentic-loop-smoke writes an AgenticLoopBundle and pins every invocation's pair", async () => {

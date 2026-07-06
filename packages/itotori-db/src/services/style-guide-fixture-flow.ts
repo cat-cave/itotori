@@ -20,6 +20,47 @@ export const styleGuideFixtureFlowSchemaVersion = "itotori.style-guide-fixture-f
 export const styleGuideSuggestionArtifactSchemaVersion =
   "itotori.style-guide-suggestion-artifact.v0";
 
+/**
+ * Typed diagnostic code raised when the recorded style-guide fixture flow is
+ * re-run against a locale branch it has already seeded. The flow is a
+ * SEED-ONCE flow: it materialises a deterministic, append-only style-guide
+ * version chain (base -> projected) keyed on fixed IDs drawn from the recorded
+ * transcript. A second run cannot recreate that immutable chain without either
+ * colliding on the fixed version IDs or forking a divergent chain, so the flow
+ * rejects the rerun BEFORE mutating any state rather than leaving
+ * partially-duplicated rows.
+ */
+export const styleGuideFixtureFlowRerunRejectedCode =
+  "style_guide.fixture_flow.already_seeded" as const;
+
+/**
+ * Raised when the style-guide fixture flow is re-run against a locale branch it
+ * has already seeded. Thrown from a fail-fast preflight BEFORE any write, so a
+ * rejected rerun performs no mutation and cannot leave partial-duplicated
+ * state. Carries a typed {@link code} and the offending identifiers so callers
+ * (the CLI) can surface an actionable message.
+ */
+export class StyleGuideFixtureFlowRerunError extends Error {
+  readonly code = styleGuideFixtureFlowRerunRejectedCode;
+
+  constructor(
+    readonly detail: {
+      projectId: string;
+      localeBranchId: string;
+      fixtureId: string;
+      existingLatestVersionId: string;
+    },
+  ) {
+    super(
+      `style-guide fixture flow already seeded: locale branch ${detail.localeBranchId} ` +
+        `(project ${detail.projectId}, fixture ${detail.fixtureId}) already has style-guide ` +
+        `version ${detail.existingLatestVersionId}. The fixture flow is seed-once and cannot be ` +
+        `re-run in place; run it against a fresh/reset database to reseed.`,
+    );
+    this.name = "StyleGuideFixtureFlowRerunError";
+  }
+}
+
 export type StyleGuideFixtureFlowInput = {
   transcript: unknown;
   fixtureId?: string;
@@ -54,7 +95,7 @@ export class ItotoriStyleGuideFixtureFlowService {
 
   constructor(
     private readonly projectRepository: ItotoriProjectRepositoryPort,
-    styleGuideRepository: ItotoriStyleGuideRepositoryPort,
+    private readonly styleGuideRepository: ItotoriStyleGuideRepositoryPort,
     private readonly actor: AuthorizationActor,
   ) {
     this.styleGuideService = new ItotoriStyleGuideService(styleGuideRepository);
@@ -66,6 +107,23 @@ export class ItotoriStyleGuideFixtureFlowService {
     const projected = projectStyleGuideConversationToPolicyDraft(transcript);
     const fixtureId = input.fixtureId ?? transcript.transcriptId;
     const project = projectFromTranscript(transcript);
+
+    // Fail-fast rerun guard. This flow is seed-once: it materialises a fixed,
+    // append-only style-guide version chain for this locale branch. If ANY
+    // style-guide version already exists for the branch (a prior full or
+    // partial run), reject the rerun HERE -- before the first write -- so the
+    // rejected run mutates nothing and cannot leave partial-duplicated state.
+    const existingLatest = await this.styleGuideRepository.getLatestVersionByLocaleBranchId(
+      transcript.localeBranchId,
+    );
+    if (existingLatest !== null) {
+      throw new StyleGuideFixtureFlowRerunError({
+        projectId: transcript.projectId,
+        localeBranchId: transcript.localeBranchId,
+        fixtureId,
+        existingLatestVersionId: existingLatest.styleGuideVersionId,
+      });
+    }
 
     await this.projectRepository.importSourceBundle(this.actor, project);
 

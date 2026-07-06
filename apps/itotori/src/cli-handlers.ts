@@ -10,7 +10,11 @@ import {
   type ConformanceResultV01,
   type StyleGuideConversationTranscript,
 } from "@itotori/localization-bridge-schema";
-import { capabilityLevelValues, createCatalogResolverFixtureArtifact } from "@itotori/db";
+import {
+  capabilityLevelValues,
+  createCatalogResolverFixtureArtifact,
+  StyleGuideFixtureFlowRerunError,
+} from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
   AuthorizationActor,
@@ -968,12 +972,30 @@ async function runStyleGuideFixtureFlow(
   const fixture = dependencies.io.readJson(fixturePath);
   assertStyleGuideConversationTranscript(fixture);
   const fixtureId = optionalFlag(args, "--fixture-id");
-  const result = await dependencies.withServices((services) =>
-    services.styleGuideFixtureFlow.run({
-      transcript: fixture satisfies StyleGuideConversationTranscript,
-      ...(fixtureId === undefined ? {} : { fixtureId }),
-    }),
-  );
+  let result: StyleGuideFixtureFlowResult;
+  try {
+    result = await dependencies.withServices((services) =>
+      services.styleGuideFixtureFlow.run({
+        transcript: fixture satisfies StyleGuideConversationTranscript,
+        ...(fixtureId === undefined ? {} : { fixtureId }),
+      }),
+    );
+  } catch (error) {
+    if (error instanceof StyleGuideFixtureFlowRerunError) {
+      // Seed-once flow: a rerun is rejected before any write. Surface the typed,
+      // actionable diagnostic (no stack trace) and exit non-zero so the rerun is
+      // an explicit expected failure rather than a partial-duplicated mutation.
+      process.stderr.write(
+        `style-guide-fixture-flow: rerun rejected [${error.code}]\n` +
+          `  ${error.message}\n` +
+          `  This flow seeds a deterministic style-guide version chain exactly once. ` +
+          `Reset the database (or point --fixture at a fresh locale branch) before re-running.\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  }
   dependencies.io.writeJson(outputPath, result);
 }
 

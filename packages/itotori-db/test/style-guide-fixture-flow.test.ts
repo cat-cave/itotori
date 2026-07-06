@@ -8,6 +8,8 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import {
   ItotoriStyleGuideFixtureFlowService,
+  StyleGuideFixtureFlowRerunError,
+  styleGuideFixtureFlowRerunRejectedCode,
   styleGuideFixtureFlowSchemaVersion,
   styleGuideSuggestionArtifactSchemaVersion,
 } from "../src/services/style-guide-fixture-flow.js";
@@ -119,6 +121,88 @@ describe("ItotoriStyleGuideFixtureFlowService", () => {
         },
       });
 
+      const invalidationRows = await context.db.execute(sql`
+        select payload
+        from ${eventOutbox}
+        where event_type = 'affected_work_invalidated'
+        order by payload->'affectedWork'->>'surface'
+      `);
+      expect(invalidationRows.rows).toHaveLength(4);
+      expect(
+        invalidationRows.rows.map((row) =>
+          affectedSurface((row as { payload: Record<string, unknown> }).payload),
+        ),
+      ).toEqual(["benchmarks", "drafts", "exports", "qa_findings"]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a rerun with a typed diagnostic and leaves no partial-duplicated state", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await bootstrapLocalUser(context.db);
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideFixtureFlowService(
+        projectRepository,
+        styleGuideRepository,
+        localActor,
+      );
+      const transcript = styleGuideConversationFixture();
+
+      // First run seeds the deterministic version chain.
+      await service.run({ transcript });
+
+      // Snapshot every table the flow mutates so we can prove the rejected
+      // rerun performs NO write (no duplicate versions/artifacts/outbox events).
+      const snapshot = async () => ({
+        versions: (
+          await context.db
+            .select()
+            .from(styleGuideVersions)
+            .orderBy(styleGuideVersions.versionSequence)
+        ).map((version) => ({
+          styleGuideVersionId: version.styleGuideVersionId,
+          status: version.status,
+          versionSequence: version.versionSequence,
+        })),
+        artifactCount: (await context.db.select().from(artifacts)).length,
+        outboxCount: (await context.db.select().from(eventOutbox)).length,
+      });
+      const before = await snapshot();
+
+      // Second run: seed-once flow must reject BEFORE mutating anything.
+      await expect(service.run({ transcript })).rejects.toBeInstanceOf(
+        StyleGuideFixtureFlowRerunError,
+      );
+      let rerunError: StyleGuideFixtureFlowRerunError | undefined;
+      try {
+        await service.run({ transcript });
+      } catch (error) {
+        rerunError = error as StyleGuideFixtureFlowRerunError;
+      }
+      expect(rerunError).toBeInstanceOf(StyleGuideFixtureFlowRerunError);
+      expect(rerunError?.code).toBe(styleGuideFixtureFlowRerunRejectedCode);
+      expect(rerunError?.detail).toMatchObject({
+        projectId: "019ed063-0000-7000-8000-000000000001",
+        localeBranchId: "019ed063-0000-7000-8000-000000000010",
+        fixtureId: "style-guide-conversation-accepted",
+        existingLatestVersionId: "019ed063-0000-7000-8000-000000000030",
+      });
+
+      // No partial-duplicated state: every mutated table is byte-for-byte
+      // unchanged after the two rejected reruns.
+      const after = await snapshot();
+      expect(after).toEqual(before);
+      expect(after.versions.map((version) => version.styleGuideVersionId)).toEqual([
+        "019ed063-0000-7000-8000-000000000020",
+        "019ed063-0000-7000-8000-000000000030",
+      ]);
+
+      // Invalidation outbox stays coherent + auditable: exactly the four
+      // affected-work events from the single successful seed, none orphaned or
+      // duplicated by the rejected reruns.
       const invalidationRows = await context.db.execute(sql`
         select payload
         from ${eventOutbox}
