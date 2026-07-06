@@ -17,6 +17,7 @@ export const feedbackSourceKindValues = {
   importedFile: "imported_file",
   runtimeReview: "runtime_review",
   internalNote: "internal_note",
+  communityChannel: "community_channel",
 } as const;
 
 export type FeedbackSourceKind =

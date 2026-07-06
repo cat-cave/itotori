@@ -1,0 +1,35 @@
+{
+  "repository": "example-org/example-localization",
+  "issues": [
+    {
+      "number": 41,
+      "title": "Protagonist sounds too formal in the cafe scene",
+      "body": "In the first cafe conversation the protagonist's tone reads as stiff and overly polite. It doesn't match how casual the original Japanese is.",
+      "html_url": "https://github.com/example-org/example-localization/issues/41",
+      "state": "open",
+      "user": { "login": "casual-reader" },
+      "labels": [{ "name": "style" }, { "name": "tone" }],
+      "created_at": "2026-06-20T10:00:00.000Z"
+    },
+    {
+      "number": 42,
+      "title": "Typo in the menu confirmation line",
+      "body": "There's a spelling error in the save-confirmation text. Ping me at reporter@example.com or +1 (415) 555-0198 if you need a screenshot.",
+      "html_url": "https://github.com/example-org/example-localization/issues/42",
+      "state": "open",
+      "user": { "login": "eagle-eye" },
+      "labels": [{ "name": "bug" }, "typo"],
+      "created_at": "2026-06-21T12:30:00.000Z"
+    },
+    {
+      "number": 43,
+      "title": "Heroine's name is spelled inconsistently",
+      "body": "The heroine is 'Rin' in chapter 1 but 'Lin' in chapter 3. Please pick one canonical spelling.",
+      "html_url": "https://github.com/example-org/example-localization/issues/43",
+      "state": "open",
+      "user": { "login": "lore-keeper" },
+      "labels": [{ "name": "glossary" }],
+      "created_at": "2026-06-22T09:15:00.000Z"
+    }
+  ]
+}

@@ -215,6 +215,26 @@ export type {
   ManualFeedbackSourceInput,
 } from "./repositories/feedback-repository.js";
 export {
+  CHANNEL_PII_KINDS,
+  ChannelImportError,
+  GITHUB_ISSUES_CHANNEL,
+  GitHubIssuesImporter,
+  isLikelyPiiValue,
+  redactChannelPii,
+} from "./channel-feedback/index.js";
+export type {
+  ChannelExternalRef,
+  ChannelFeedbackImporter,
+  ChannelFeedbackImportItem,
+  ChannelImportOptions,
+  ChannelPiiKind,
+  ChannelRedaction,
+  ChannelRedactionResult,
+  GitHubIssueLabel,
+  GitHubIssueRecord,
+  GitHubIssuesExport,
+} from "./channel-feedback/index.js";
+export {
   createUuid7,
   DEFAULT_JOB_EVENT_RETENTION_DAYS,
   ItotoriEventQueueRepository,
