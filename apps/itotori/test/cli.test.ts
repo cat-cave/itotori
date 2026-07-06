@@ -614,7 +614,7 @@ describe("Itotori CLI handlers", () => {
   it("writes the combined catalog resolver fixture artifact without database services", async () => {
     const services = servicesFixture();
     const reads = new Map<string, unknown>([
-      ["fixtures/catalog-resolver/fixture.json", resolverFixture],
+      ["fixtures/catalog-resolver/fixture.json", catalogResolverFixture()],
     ]);
     const writes = new Map<string, unknown>();
 
@@ -630,10 +630,17 @@ describe("Itotori CLI handlers", () => {
       schemaVersion: "catalog.resolver_fixture.v0.1",
       artifactId: "catalog-resolver-integration-001",
       review: {
-        exactLinkIds: ["exact-link:dlsite:RJ349517", "exact-link:dlsite:rj-no-match"],
-        exactLinkedWorkIds: ["work-dlsite"],
+        exactLinkIds: [
+          "exact-link:dlsite:RJ349517",
+          "exact-link:dlsite:rj-no-match",
+          "exact-link:manual-conflict",
+        ],
+        exactLinkedWorkIds: ["work-dlsite-rj349517"],
         fuzzyCandidateIds: ["candidate:egs-moonlight-001:work-moonlight-hd"],
-        conflictIds: ["catalog-conflict:manual-duplicate-external-id"],
+        conflictIds: [
+          "catalog-conflict:manual-duplicate-external-id",
+          "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd",
+        ],
       },
       diagnostics: [
         expect.objectContaining({
@@ -1258,87 +1265,14 @@ const fuzzyCandidateResultFixture: CatalogFuzzyCandidateResult = {
   diagnostics: [],
 };
 
-const resolverFixture: CatalogResolverFixtureInput = {
-  schemaVersion: "catalog.resolver_fixture.v0.1",
-  artifactId: "catalog-resolver-integration-001",
-  generatedAt: "2026-06-18T18:00:00.000Z",
-  sourceRegistry: [
-    {
-      sourceRegistryId: "source-registry:dlsite:RJ349517",
-      catalogSource: "dlsite",
-      sourceId: "RJ349517",
-      sourceRecordKind: "recorded_fixture",
-      payloadHash: "sha256:payload",
-      provenanceHash: "sha256:provenance",
-      payloadSchemaVersion: "catalog-source-fixture.v0.1",
-      payloadShape: "catalog_source_record",
-    },
-    {
-      sourceRegistryId: "source-registry:unsupported:legacy-payload",
-      catalogSource: "steam",
-      sourceId: "legacy-payload",
-      sourceRecordKind: "recorded_fixture",
-      payloadHash: "sha256:unsupported",
-      provenanceHash: "sha256:unsupported-provenance",
-      payloadSchemaVersion: "legacy-source.v0",
-      payloadShape: "legacy_unstructured_dump",
-    },
-  ],
-  exactLinks: [
-    {
-      exactLinkId: "exact-link:dlsite:RJ349517",
-      result: exactLinkResultFixture,
-    },
-    {
-      exactLinkId: "exact-link:dlsite:rj-no-match",
-      result: {
-        schemaVersion: catalogExactExternalIdLinkSchemaVersion,
-        status: "no_match",
-        subject: { kind: "fixture", id: "catalog-resolver-no-match" },
-        workId: null,
-        matches: [],
-        diagnostics: [
-          {
-            code: "catalog.exact_external_id.no_match",
-            severity: "info",
-            message: "No catalog work has an exact external-id match.",
-          },
-        ],
-      },
-    },
-  ],
-  fuzzyCandidates: {
-    ...fuzzyCandidateResultFixture,
-    candidates: [
-      {
-        ...fuzzyCandidateResultFixture.candidates[0],
-        candidateId: "candidate:egs-moonlight-001:work-moonlight-hd",
-      },
-    ],
-  },
-  conflicts: {
-    rows: [
-      {
-        reviewId: "catalog-conflict:manual-duplicate-external-id",
-        catalogRecordId: "work-conflict-a",
-        conflictId: "manual-duplicate-external-id",
-        candidateIds: [],
-        candidateCatalogIds: ["work-conflict-a", "work-conflict-b"],
-        exactLinkRefs: [],
-        fuzzyScores: [],
-        sourceIds: [{ catalogSource: "dlsite", sourceId: "RJCAT010" }],
-        provenance: [],
-        severity: "error",
-        status: "open",
-        reasonCode: "duplicate_external_id",
-        reasonDetail: "Manual review required.",
-        conflictKind: "external_id",
-        detectedAt: new Date("2026-06-18T18:00:00.000Z"),
-        resolution: null,
-      },
-    ],
-  },
-};
+function catalogResolverFixture(): CatalogResolverFixtureInput {
+  return JSON.parse(
+    readFileSync(
+      new URL("../../../fixtures/catalog-resolver/fixture.json", import.meta.url),
+      "utf8",
+    ),
+  ) as CatalogResolverFixtureInput;
+}
 
 function styleGuideConversationFixture(): unknown {
   return JSON.parse(
