@@ -100,6 +100,18 @@ mutation-property-test:
     pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts
     cargo test -p kaifuu-core property
 
+# CATALOG-087: targeted DLsite demand app verification. Runs ONLY the recorded
+# DLsite demand fact-mapper suite (apps/itotori/test/dlsite-demand.test.ts) —
+# NOT the whole @itotori/app Vitest suite. The old broad filter
+# (`pnpm --filter @itotori/app test -- dlsite-demand`) does NOT scope Vitest:
+# the trailing `dlsite-demand` arg is dropped, so it runs all ~130 app suites
+# including the Postgres/API repository tests that FAIL without a live database.
+# The `--exclude` guard drops the local `.direnv` nix flake-source snapshot so
+# the exact same single file runs in both the local sandbox and public CI.
+# Fixture-only: no DATABASE_URL, no network, no providers.
+dlsite-demand-app-test:
+    pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts --exclude '**/.direnv/**'
+
 # ALPHA-007: public fixture vertical (suite/scripts/alpha-public-fixture).
 # Deterministic; offline (injects a committed ITOTORI-026 harness output).
 alpha-public-fixture-test:

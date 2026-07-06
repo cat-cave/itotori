@@ -156,6 +156,28 @@ TypeScript app tests should:
   payloads.
 - Keep provider/model behavior behind fake providers, recorded fixtures, or MSW.
 
+### Targeted single-file app verification (CATALOG-087)
+
+To verify one app suite in isolation — for a roadmap `verification` command or a
+tight local loop — name the exact test file, not a substring filter:
+
+```sh
+just dlsite-demand-app-test
+# or, equivalently, the concrete command it wraps:
+pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts --exclude '**/.direnv/**'
+```
+
+Do NOT use `pnpm --filter @itotori/app test -- <name>` to scope a run. The
+trailing `-- <name>` is dropped rather than forwarded as a Vitest file filter,
+so it runs the ENTIRE `@itotori/app` suite (~130 files, incl. Postgres/API
+repository tests that fail without a live database) instead of the intended
+file. Pass the file path directly to `vitest run`. The `--exclude '**/.direnv/**'`
+guard drops the local `.direnv` nix flake-source snapshot (a duplicate of the
+repo tree that would otherwise match the path substring twice); it is a harmless
+no-op in public CI, where `.direnv` does not exist. The command is fixture-only:
+no `DATABASE_URL`, no network, no providers, so it runs identically in the local
+sandbox and public CI.
+
 Example app behavior:
 
 ```ts
