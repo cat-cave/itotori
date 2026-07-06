@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   approveStyleGuideProposal,
   loadStyleGuideContext,
+  parseStyleGuideBuilderRouteInput,
   renderStyleGuideBuilder,
+  renderStyleGuideBuilderRoute,
   styleGuideBuilderFixtureStateValues,
 } from "../src/style-guide-builder.js";
 import { dashboardStatusFixture } from "./api-fixtures.js";
@@ -149,6 +151,104 @@ describe("StyleGuideBuilder dashboard", () => {
       "approved",
       "stale",
     ]);
+  });
+
+  it("rejects a standalone route missing locale-branch + policy context instead of falling back", () => {
+    const result = parseStyleGuideBuilderRouteInput(
+      new URL("http://itotori.test/style-guide-builder"),
+    );
+
+    expect(result.status).toBe("missing_context");
+    if (result.status !== "missing_context") {
+      throw new Error("expected missing_context result");
+    }
+    expect(result.diagnostics.map((diagnostic) => diagnostic.field)).toEqual([
+      "$.localeBranchId",
+      "$.policyVersionId",
+    ]);
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic.code).toBe("style_guide.route.missing_context");
+      expect(diagnostic.severity).toBe("error");
+      expect(diagnostic.source).toBe("route");
+    }
+  });
+
+  it("rejects a standalone route missing only the policy-version context", () => {
+    const result = parseStyleGuideBuilderRouteInput(
+      new URL(`http://itotori.test/style-guide-builder?localeBranchId=${localeBranchId}`),
+    );
+
+    expect(result.status).toBe("missing_context");
+    if (result.status !== "missing_context") {
+      throw new Error("expected missing_context result");
+    }
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.field).toBe("$.policyVersionId");
+    expect(result.diagnostics[0]?.code).toBe("style_guide.route.missing_context");
+  });
+
+  it("rejects a standalone route with malformed (non-UUIDv7) context", () => {
+    const result = parseStyleGuideBuilderRouteInput(
+      new URL(
+        `http://itotori.test/style-guide-builder?localeBranchId=not-a-uuid&policyVersionId=${policyVersionId}`,
+      ),
+    );
+
+    expect(result.status).toBe("missing_context");
+    if (result.status !== "missing_context") {
+      throw new Error("expected missing_context result");
+    }
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.field).toBe("$.localeBranchId");
+    expect(result.diagnostics[0]?.code).toBe("style_guide.route.malformed_context");
+  });
+
+  it("accepts a standalone route with complete, well-formed context", () => {
+    const result = parseStyleGuideBuilderRouteInput(
+      new URL(
+        `http://itotori.test/style-guide-builder?localeBranchId=${localeBranchId}&policyVersionId=${policyVersionId}`,
+      ),
+    );
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready result");
+    }
+    expect(result.input.localeBranchId).toBe(localeBranchId);
+    expect(result.input.policyVersionId).toBe(policyVersionId);
+  });
+
+  it("renders a missing-context diagnostic panel (no fallback) for a bare standalone route", async () => {
+    const root = document.createElement("div");
+
+    await renderStyleGuideBuilderRoute(root, new URL("http://itotori.test/style-guide-builder"));
+
+    const main = root.querySelector("main");
+    expect(main?.getAttribute("data-state")).toBe("style-guide-missing-context");
+    expect(root.querySelector("[data-missing-context]")).not.toBeNull();
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain("will not fall back");
+    expect(root.textContent).toContain("$.localeBranchId");
+    expect(root.textContent).toContain("$.policyVersionId");
+    // It did NOT silently build against a contextual default.
+    expect(root.textContent).not.toContain("Policy proposal review");
+  });
+
+  it("renders the builder normally for a complete standalone route", async () => {
+    const root = document.createElement("div");
+
+    await renderStyleGuideBuilderRoute(
+      root,
+      new URL(
+        `http://itotori.test/style-guide-builder?localeBranchId=${localeBranchId}&policyVersionId=${policyVersionId}`,
+      ),
+    );
+
+    const main = root.querySelector("main");
+    expect(main?.getAttribute("data-state")).toBe("style-guide-valid");
+    expect(root.textContent).toContain("Policy proposal review");
+    expect(root.textContent).toContain(localeBranchId);
+    expect(root.textContent).toContain(policyVersionId);
+    expect(root.querySelector("[data-missing-context]")).toBeNull();
   });
 
   it("snapshots consequence preview for drafts, glossary entries, and exports", async () => {

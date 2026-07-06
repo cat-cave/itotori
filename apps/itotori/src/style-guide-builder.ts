@@ -57,8 +57,12 @@ export type StyleGuideBuilderDiagnostic = {
   severity: "error" | "warning" | "info";
   message: string;
   field: string;
-  source: "conversation" | "policy" | "permission" | "version";
+  source: "conversation" | "policy" | "permission" | "version" | "route";
 };
+
+export type StyleGuideBuilderRouteInput =
+  | { status: "ready"; input: Required<LoadStyleGuideContextInput> }
+  | { status: "missing_context"; diagnostics: StyleGuideBuilderDiagnostic[] };
 
 export type StyleGuideConsequencePreview = {
   affectedDrafts: ConsequencePreviewItem[];
@@ -117,10 +121,9 @@ export type StyleGuideApprovalResult =
 
 const styleGuideMutationPermissions = [permissionValues.draftWrite] as const;
 const fixtureProjectId = "019ed065-0000-7000-8000-000000000001";
-const fallbackContractLocaleBranchId = "019ed065-0000-7000-8000-000000000010";
-const fallbackContractPolicyVersionId = "019ed065-0000-7000-8000-000000000020";
+const fixtureBasePolicyVersionId = "019ed065-0000-7000-8000-000000000020";
 const fixtureUuidByName = {
-  base: fallbackContractPolicyVersionId,
+  base: fixtureBasePolicyVersionId,
   detached: "019ed065-0000-7000-8000-000000000021",
   latest: "019ed065-0000-7000-8000-000000000022",
   proposal: "019ed065-0000-7000-8000-000000000030",
@@ -210,8 +213,13 @@ export async function renderStyleGuideBuilderRoute(
   url = currentUrl(),
 ): Promise<void> {
   renderStyleGuideBuilderLoading(root);
+  const routeInput = parseStyleGuideBuilderRouteInput(url);
+  if (routeInput.status === "missing_context") {
+    renderStyleGuideBuilderMissingContext(root, routeInput.diagnostics);
+    return;
+  }
   try {
-    const context = await loadStyleGuideContext(loadInputFromUrl(url));
+    const context = await loadStyleGuideContext(routeInput.input);
     renderStyleGuideBuilder(root, context);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -875,13 +883,95 @@ function versionId(suffix: keyof typeof fixtureUuidByName): string {
   return fixtureUuidByName[suffix];
 }
 
-function loadInputFromUrl(url: URL): Required<LoadStyleGuideContextInput> {
-  const localeBranchId = url.searchParams.get("localeBranchId") ?? fallbackContractLocaleBranchId;
-  const policyVersionId =
-    url.searchParams.get("policyVersionId") ?? fallbackContractPolicyVersionId;
-  const fixtureState = parseFixtureState(url.searchParams.get("fixtureState"));
-  const permissionProfile = parsePermissionProfile(url.searchParams.get("permissions"));
-  return { localeBranchId, policyVersionId, fixtureState, permissionProfile };
+// Standalone style-guide builder route: locale-branch id + policy-version id are
+// REQUIRED explicit context. A request that omits (or malforms) either one is
+// rejected with a structured missing-context diagnostic — the route MUST NOT fall
+// back to an implicit/contextual default, because that would risk building a
+// style guide against the wrong locale-branch/policy.
+export function parseStyleGuideBuilderRouteInput(url: URL): StyleGuideBuilderRouteInput {
+  const localeBranchId = url.searchParams.get("localeBranchId");
+  const policyVersionId = url.searchParams.get("policyVersionId");
+  const diagnostics = [
+    ...requiredRouteContextDiagnostics("localeBranchId", "locale-branch id", localeBranchId),
+    ...requiredRouteContextDiagnostics("policyVersionId", "policy-version id", policyVersionId),
+  ];
+  if (diagnostics.length > 0) {
+    return { status: "missing_context", diagnostics };
+  }
+  return {
+    status: "ready",
+    input: {
+      // Non-null: an absent value produces a diagnostic above and returns early.
+      localeBranchId: localeBranchId as string,
+      policyVersionId: policyVersionId as string,
+      fixtureState: parseFixtureState(url.searchParams.get("fixtureState")),
+      permissionProfile: parsePermissionProfile(url.searchParams.get("permissions")),
+    },
+  };
+}
+
+function requiredRouteContextDiagnostics(
+  param: string,
+  label: string,
+  value: string | null,
+): StyleGuideBuilderDiagnostic[] {
+  if (value === null || value.length === 0) {
+    return [
+      {
+        code: "style_guide.route.missing_context",
+        severity: "error",
+        message: `standalone style-guide builder route requires an explicit ${label}; provide the "${param}" query parameter (no contextual default is applied)`,
+        field: `$.${param}`,
+        source: "route",
+      },
+    ];
+  }
+  if (!isUuid7(value)) {
+    return [
+      {
+        code: "style_guide.route.malformed_context",
+        severity: "error",
+        message: `standalone style-guide builder route ${label} "${value}" is malformed; expected a UUIDv7 "${param}"`,
+        field: `$.${param}`,
+        source: "route",
+      },
+    ];
+  }
+  return [];
+}
+
+function renderStyleGuideBuilderMissingContext(
+  root: HTMLElement,
+  diagnostics: StyleGuideBuilderDiagnostic[],
+): void {
+  const rows = diagnostics
+    .map(
+      (diagnostic) => `
+        <li>
+          <code>${escapeHtml(diagnostic.field)}</code>
+          <span class="diagnostic-code">${escapeHtml(diagnostic.code)}</span>
+          <span>${escapeHtml(diagnostic.message)}</span>
+        </li>
+      `,
+    )
+    .join("");
+  root.innerHTML = `
+    ${styleGuideBuilderStyles()}
+    <main class="itotori-shell" data-state="style-guide-missing-context">
+      <section
+        class="state-panel state-panel-error"
+        aria-label="Style guide builder missing context"
+        data-missing-context="style_guide.route.missing_context"
+      >
+        <h1>Style-guide builder context required</h1>
+        <p role="alert">
+          This standalone style-guide builder route requires explicit locale-branch and
+          policy-version context. It will not fall back to a default. Provide the missing context:
+        </p>
+        <ul class="missing-context-list">${rows}</ul>
+      </section>
+    </main>
+  `;
 }
 
 function parseFixtureState(value: string | null): StyleGuideBuilderFixtureState {
