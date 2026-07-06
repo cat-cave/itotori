@@ -191,6 +191,81 @@ export type QueueSqlExecutor = {
   execute: (query: SQL) => Promise<{ rows: unknown[] }>;
 };
 
+/**
+ * Why a job-lease revalidation rejected a completion / failure attempt. See
+ * {@link JobLeaseRevalidationError}. Ordering of detection is deliberate:
+ * `not_found` (row gone) → `not_running` (already terminal / recovered, e.g. a
+ * duplicate completion) → `owner_mismatch` (a different worker took the lease
+ * over) → `lease_expired` (this worker still names itself owner but its lease
+ * elapsed before it revalidated).
+ */
+export const jobLeaseRevalidationReasons = {
+  notFound: "not_found",
+  notRunning: "not_running",
+  ownerMismatch: "owner_mismatch",
+  leaseExpired: "lease_expired",
+} as const;
+
+export type JobLeaseRevalidationReason =
+  (typeof jobLeaseRevalidationReasons)[keyof typeof jobLeaseRevalidationReasons];
+
+export type JobLeaseOperation = "complete" | "fail";
+
+export type JobLeaseRevalidationDetails = {
+  jobId: string;
+  operation: JobLeaseOperation;
+  reason: JobLeaseRevalidationReason;
+  /** The worker that attempted the write (the lease owner it believed it held). */
+  expectedOwner: string;
+  /** The lease owner recorded in the row right now (null once released/recovered). */
+  actualOwner: string | null;
+  /** The job's current status (null when the row no longer exists). */
+  jobStatus: JobStatus | null;
+  /** The lease expiry recorded in the row right now (null when released/recovered). */
+  leaseExpiresAt: Date | null;
+};
+
+/**
+ * Raised when a worker tries to complete (or fail) a job whose lease no longer
+ * belongs to it — the lease expired, was recovered, or was taken over by another
+ * worker. The offending write is a no-op (0 rows matched) so job state is NOT
+ * mutated; this error is the clear, structured diagnostic naming expected vs
+ * actual owner plus the current status/expiry. See ITOTORI-046.
+ */
+export class JobLeaseRevalidationError extends Error {
+  readonly jobId: string;
+  readonly operation: JobLeaseOperation;
+  readonly reason: JobLeaseRevalidationReason;
+  readonly expectedOwner: string;
+  readonly actualOwner: string | null;
+  readonly jobStatus: JobStatus | null;
+  readonly leaseExpiresAt: Date | null;
+
+  constructor(details: JobLeaseRevalidationDetails) {
+    super(formatLeaseRevalidationMessage(details));
+    this.name = "JobLeaseRevalidationError";
+    this.jobId = details.jobId;
+    this.operation = details.operation;
+    this.reason = details.reason;
+    this.expectedOwner = details.expectedOwner;
+    this.actualOwner = details.actualOwner;
+    this.jobStatus = details.jobStatus;
+    this.leaseExpiresAt = details.leaseExpiresAt;
+  }
+}
+
+function formatLeaseRevalidationMessage(details: JobLeaseRevalidationDetails): string {
+  const actualOwner = details.actualOwner === null ? "<none>" : details.actualOwner;
+  const status = details.jobStatus === null ? "<absent>" : details.jobStatus;
+  const expiry = details.leaseExpiresAt === null ? "<none>" : details.leaseExpiresAt.toISOString();
+  return (
+    `worker "${details.expectedOwner}" cannot ${details.operation} job ${details.jobId}: ` +
+    `lease ownership revalidation failed (reason=${details.reason}, ` +
+    `expectedOwner="${details.expectedOwner}", actualOwner="${actualOwner}", ` +
+    `status=${status}, leaseExpiresAt=${expiry})`
+  );
+}
+
 type InsertOutboxEventResult = {
   outboxEvent: OutboxEventRecord;
   inserted: boolean;
@@ -511,8 +586,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     result: QueueJsonRecord = {},
   ): Promise<JobQueueRecord> {
     await requirePermission(this.db, actor, permissionValues.queueManage);
+    const executor = this.db as unknown as QueueSqlExecutor;
     const rows = await executeRows(
-      this.db as unknown as QueueSqlExecutor,
+      executor,
       sql`
         update ${jobQueue}
         set
@@ -527,10 +603,15 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
         where job_id = ${jobId}
           and status = ${jobStatusValues.running}
           and locked_by = ${workerId}
+          and lease_expires_at is not null
+          and lease_expires_at > now()
         returning *
       `,
     );
-    return singleJobRow(rows, jobId);
+    if (rows[0] === undefined) {
+      await throwJobLeaseRevalidationError(executor, jobId, workerId, "complete");
+    }
+    return jobFromRow(rows[0] as Record<string, unknown>);
   }
 
   async failJob(
@@ -542,8 +623,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     await requirePermission(this.db, actor, permissionValues.queueManage);
     const error = errorMessage(input.error);
     const retryAfterSeconds = normalizeRetryAfterSeconds(input.retryAfterSeconds);
+    const executor = this.db as unknown as QueueSqlExecutor;
     const rows = await executeRows(
-      this.db as unknown as QueueSqlExecutor,
+      executor,
       sql`
         update ${jobQueue} j
         set
@@ -572,10 +654,15 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
         where j.job_id = ${jobId}
           and j.status = ${jobStatusValues.running}
           and j.locked_by = ${workerId}
+          and j.lease_expires_at is not null
+          and j.lease_expires_at > now()
         returning j.*
       `,
     );
-    return singleJobRow(rows, jobId);
+    if (rows[0] === undefined) {
+      await throwJobLeaseRevalidationError(executor, jobId, workerId, "fail");
+    }
+    return jobFromRow(rows[0] as Record<string, unknown>);
   }
 
   async recoverExpiredJobLeases(actor: AuthorizationActor): Promise<JobQueueRecord[]> {
@@ -844,6 +931,76 @@ function singleJobRow(rows: Array<Record<string, unknown>>, jobId: string): JobQ
     throw new Error(`job ${jobId} is not leased by this worker`);
   }
   return jobFromRow(row);
+}
+
+/**
+ * A guarded job write (completeJob/failJob) matched 0 rows: the worker's lease
+ * is no longer valid. Read the current row (read-only — no mutation occurs) to
+ * classify why and raise a {@link JobLeaseRevalidationError} naming expected vs
+ * actual owner, status, and expiry. Because the guarded UPDATE already required
+ * `status = running AND locked_by = worker AND lease not expired`, a match of
+ * running + matching owner leaves lease expiry as the only remaining cause, so
+ * no wall-clock re-comparison is needed here.
+ */
+async function throwJobLeaseRevalidationError(
+  executor: QueueSqlExecutor,
+  jobId: string,
+  workerId: string,
+  operation: JobLeaseOperation,
+): Promise<never> {
+  const rows = await executeRows(
+    executor,
+    sql`
+      select status, locked_by, lease_expires_at
+      from ${jobQueue}
+      where job_id = ${jobId}
+      limit 1
+    `,
+  );
+  const row = rows[0];
+  if (row === undefined) {
+    throw new JobLeaseRevalidationError({
+      jobId,
+      operation,
+      reason: jobLeaseRevalidationReasons.notFound,
+      expectedOwner: workerId,
+      actualOwner: null,
+      jobStatus: null,
+      leaseExpiresAt: null,
+    });
+  }
+  const jobStatus = rowString(row, "status") as JobStatus;
+  const actualOwner = nullableRowString(row, "locked_by");
+  const leaseExpiresAt = nullableRowDate(row, "lease_expires_at");
+  const reason = classifyLeaseRevalidationReason(jobStatus, actualOwner, workerId);
+  throw new JobLeaseRevalidationError({
+    jobId,
+    operation,
+    reason,
+    expectedOwner: workerId,
+    actualOwner,
+    jobStatus,
+    leaseExpiresAt,
+  });
+}
+
+function classifyLeaseRevalidationReason(
+  jobStatus: JobStatus,
+  actualOwner: string | null,
+  workerId: string,
+): JobLeaseRevalidationReason {
+  if (jobStatus !== jobStatusValues.running) {
+    // Already terminal or recovered back to a claimable state (covers a
+    // duplicate completion of an already-succeeded job).
+    return jobLeaseRevalidationReasons.notRunning;
+  }
+  if (actualOwner !== workerId) {
+    // Still running, but another worker holds the lease now.
+    return jobLeaseRevalidationReasons.ownerMismatch;
+  }
+  // Running and owned by this worker, yet the guarded write matched no row: the
+  // lease elapsed before revalidation.
+  return jobLeaseRevalidationReasons.leaseExpired;
 }
 
 function outboxEventFromRow(row: Record<string, unknown>): OutboxEventRecord {

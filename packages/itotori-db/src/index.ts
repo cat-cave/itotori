@@ -237,6 +237,8 @@ export {
   createUuid7,
   DEFAULT_JOB_EVENT_RETENTION_DAYS,
   ItotoriEventQueueRepository,
+  JobLeaseRevalidationError,
+  jobLeaseRevalidationReasons,
 } from "./repositories/event-queue-repository.js";
 export type {
   ClaimJobsOptions,
@@ -244,6 +246,9 @@ export type {
   ItotoriEventQueueRepositoryPort,
   JobEventRecord,
   JobIdempotencyInput,
+  JobLeaseOperation,
+  JobLeaseRevalidationDetails,
+  JobLeaseRevalidationReason,
   JobQueueInput,
   JobQueueRecord,
   OutboxEventInput,

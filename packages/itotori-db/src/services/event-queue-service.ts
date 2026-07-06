@@ -1,13 +1,14 @@
 import type { AuthorizationActor } from "../authorization.js";
 import type { JobTaskType } from "../schema.js";
-import type {
-  ClaimJobsOptions,
-  ClaimOutboxEventsOptions,
-  ItotoriEventQueueRepositoryPort,
-  JobQueueRecord,
-  OutboxEventRecord,
-  QueueFailureInput,
-  QueueJsonRecord,
+import {
+  type ClaimJobsOptions,
+  type ClaimOutboxEventsOptions,
+  type ItotoriEventQueueRepositoryPort,
+  JobLeaseRevalidationError,
+  type JobQueueRecord,
+  type OutboxEventRecord,
+  type QueueFailureInput,
+  type QueueJsonRecord,
 } from "../repositories/event-queue-repository.js";
 
 export type OutboxPublishHandler = (event: OutboxEventRecord) => Promise<void>;
@@ -29,6 +30,14 @@ export type JobWorkerResult = {
   claimed: number;
   succeeded: number;
   failed: number;
+  /**
+   * Jobs this worker processed but could NOT record an outcome for because its
+   * lease was no longer valid (expired, recovered, or taken over) when it went
+   * to complete/fail them. The completion/failure was rejected as a no-op and
+   * the job stays under the recovery path's authority, so it is counted here
+   * rather than as succeeded/failed. See ITOTORI-046.
+   */
+  leaseLost: number;
 };
 
 export type QueueServiceRunOptions = {
@@ -88,25 +97,64 @@ export class ItotoriJobWorkerService {
     const jobs = await this.repository.claimJobs(this.actor, this.workerId, options);
     let succeeded = 0;
     let failed = 0;
+    let leaseLost = 0;
 
     for (const job of jobs) {
+      let handlerResult: QueueJsonRecord | void;
       try {
         const handler = this.handlerFor(job);
-        const result = await handler(job);
-        await this.repository.completeJob(this.actor, job.jobId, this.workerId, result ?? {});
-        succeeded += 1;
+        handlerResult = await handler(job);
       } catch (error) {
-        await this.repository.failJob(
-          this.actor,
-          job.jobId,
-          this.workerId,
-          failureInput(error, options.retryAfterSeconds),
-        );
-        failed += 1;
+        // The handler threw: record a failure (drives retry/dead-letter). If the
+        // lease is gone, the recovery path owns the transition, so the rejected
+        // failJob is a no-op and must not be counted as a failure/retry.
+        if (
+          await this.recordOutcome(() =>
+            this.repository.failJob(
+              this.actor,
+              job.jobId,
+              this.workerId,
+              failureInput(error, options.retryAfterSeconds),
+            ),
+          )
+        ) {
+          failed += 1;
+        } else {
+          leaseLost += 1;
+        }
+        continue;
+      }
+
+      if (
+        await this.recordOutcome(() =>
+          this.repository.completeJob(this.actor, job.jobId, this.workerId, handlerResult ?? {}),
+        )
+      ) {
+        succeeded += 1;
+      } else {
+        leaseLost += 1;
       }
     }
 
-    return { claimed: jobs.length, succeeded, failed };
+    return { claimed: jobs.length, succeeded, failed, leaseLost };
+  }
+
+  /**
+   * Run a lease-guarded write (completeJob/failJob). Returns true when the write
+   * landed, false when it was rejected because this worker's lease was no longer
+   * valid — in which case the rejection is a no-op and the recovery path retains
+   * authority over the job, keeping retry/dead-letter transitions deterministic.
+   */
+  private async recordOutcome(write: () => Promise<JobQueueRecord>): Promise<boolean> {
+    try {
+      await write();
+      return true;
+    } catch (error) {
+      if (error instanceof JobLeaseRevalidationError) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private handlerFor(job: JobQueueRecord): JobHandler {

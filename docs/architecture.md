@@ -38,6 +38,49 @@ Search and indexing infrastructure is governed by
 indexes are the required baseline; semantic retrieval is an optional capability
 with deterministic exact fallback when pgvector or embeddings are unavailable.
 
+## Job queue: leases, retries, and late-completion safety
+
+The event outbox and job queue (`packages/itotori-db/src/repositories/event-queue-repository.ts`)
+are lease-based work queues. A worker `claimJobs`/`claimOutboxEvents` call atomically flips a
+ready row to `running`/`publishing`, stamps `locked_by = <workerId>`, and sets
+`lease_expires_at = now() + leaseSeconds`. Only rows whose lease is unset or already elapsed are
+claimable, so a live lease grants exclusive ownership for its window.
+
+**Stale-lease / late-completion policy (ITOTORI-046).** A worker may lose ownership of a job it is
+still processing — its lease can expire before it finishes, a reaper can recover the lease, or a
+second worker can take the lease over after recovery. Completing or failing a job on a lost lease
+would corrupt final state (overwrite a newer owner's result, resurrect a dead-lettered job, or
+double-count a retry). To prevent this, `completeJob` and `failJob` **revalidate ownership inside
+the same guarded write**: the `UPDATE` matches a row only when
+
+- `status = running`, **and**
+- `locked_by = <workerId>` (the lease still belongs to this worker), **and**
+- `lease_expires_at IS NOT NULL AND lease_expires_at > now()` (the lease has not expired).
+
+Because the guard lives in the `WHERE` clause, a stale attempt matches **zero rows and mutates
+nothing** — job state cannot be corrupted by a late completion. When the guarded write matches no
+row, the repository reads the current row (read-only) and raises a typed
+`JobLeaseRevalidationError` naming the expected vs actual owner, the current status, and the lease
+expiry, with a `reason` classified in this order:
+
+- `not_found` — the row no longer exists;
+- `not_running` — already terminal or recovered (this is what a **duplicate completion** of an
+  already-succeeded job reports; the first result is left untouched);
+- `owner_mismatch` — still running, but **another worker owns the lease now** (ownership transfer);
+- `lease_expired` — this worker still names itself owner, but its **lease elapsed** before it
+  revalidated.
+
+**Determinism of retries and dead-letter.** Because a rejected stale write is a no-op, the recovery
+path (`recoverExpiredJobLeases`) remains the **single authority** over an expired lease: it moves
+`running` rows past their lease back to `retry_waiting`, or to `dead_letter` once
+`attempt_count >= max_attempts`, appending one `lease expired` history entry. A stale worker can
+neither skip a retry nor prematurely dead-letter a job, so retry counting and dead-letter
+transitions stay deterministic regardless of how late a stale worker calls in.
+
+`ItotoriJobWorkerService.runAvailable` surfaces this at the worker loop: a `completeJob`/`failJob`
+rejected by `JobLeaseRevalidationError` is counted as `leaseLost` (neither `succeeded` nor
+`failed`) and the loop continues to the next claimed job, leaving the lost job to the recovery path.
+
 ## Tooling
 
 Vite+ and Vite Task provide the TypeScript/web workspace command surface and cached task orchestration. Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.

@@ -1438,6 +1438,7 @@ describe("agent and deterministic tool registries", () => {
       claimed: 1,
       succeeded: 1,
       failed: 0,
+      leaseLost: 0,
     });
 
     expect(queue.completeJob).toHaveBeenCalledWith(
