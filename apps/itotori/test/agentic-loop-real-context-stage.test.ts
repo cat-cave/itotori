@@ -24,7 +24,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AuthorizationActor } from "@itotori/db";
+import type {
+  AuthorizationActor,
+  ExistsTerminologyTermBySurfaceFormInput,
+  ItotoriTerminologyCandidateRepositoryPort,
+} from "@itotori/db";
 import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
@@ -305,6 +309,122 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     // unit's decoded speaker).
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
     expect(contextStage?.invocations.length).toBe(4);
+  });
+
+  it("ITOTORI-150 (prod path): the loop forwards the terminology-candidate repository so the repository-side conflict check FIRES", async () => {
+    // A repository spy whose only meaningful method records + answers
+    // `existsTerminologyTermBySurfaceForm`. If the loop wiring forwards it
+    // (with `input.actor`), the terminology-candidate agent's pre-persist check
+    // queries it in production — closing the TOCTOU window. Every other port
+    // method throws (unused on this path) to keep the fixture honest.
+    const repoCalls: ExistsTerminologyTermBySurfaceFormInput[] = [];
+    const repository: ItotoriTerminologyCandidateRepositoryPort = {
+      async existsTerminologyTermBySurfaceForm(
+        actor: AuthorizationActor,
+        queryInput: ExistsTerminologyTermBySurfaceFormInput,
+      ): Promise<string | null> {
+        expect(actor).toBe(ACTOR); // the loop forwarded `input.actor`, not some default
+        repoCalls.push(queryInput);
+        return queryInput.surfaceForm === "ハル" ? "019ed079-1000-7000-8000-00000000t001" : null;
+      },
+      saveCandidate: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+      loadCandidatesByProject: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+      markCandidateStale: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+      markCandidateRejected: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+      markCandidatePromoted: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+      currentSourceHashesForBridgeUnits: () => {
+        throw new Error("unused on the loop's terminology-candidate path");
+      },
+    } as unknown as ItotoriTerminologyCandidateRepositoryPort;
+
+    const unit = makeUnit("おはよう。");
+    // A factory whose terminology-candidate agent emits a candidate whose
+    // surfaceForm ("ハル") matches the curator-inserted repository term. The
+    // repository check runs BEFORE citation validation, so a non-empty
+    // citedUnitIds is all that is needed to reach it.
+    const factory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
+      new FakeModelProvider({
+        providerName: `i150-loop-fake:${stage}:${agentLabel}`,
+        generate: (request: ModelInvocationRequest) => {
+          if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+            return makeSpeakerLabel(unit);
+          }
+          if (request.taskKind === "experiment") {
+            switch (agentLabel) {
+              case "scene-summary":
+                return "Synthetic scene summary.";
+              case "character-relationship":
+                return JSON.stringify({ bios: [], relationships: [] });
+              case "terminology-candidate":
+                return JSON.stringify({
+                  candidates: [
+                    {
+                      kind: "ProperNoun",
+                      surfaceForm: "ハル",
+                      rationale: "主人公の固有名。",
+                      citedUnitIds: [unit.bridgeUnitId],
+                    },
+                  ],
+                });
+              case "route-choice-map":
+                return JSON.stringify({ routes: [], choices: [] });
+              default:
+                return "";
+            }
+          }
+          if (request.taskKind === "draft_translation") {
+            return makeTranslation(unit);
+          }
+          if (request.taskKind === "llm_qa") {
+            return JSON.stringify({
+              schemaVersion: "itotori.structured-qa-finding-output.v1",
+              findings: [],
+            });
+          }
+          return "";
+        },
+      });
+
+    const input: AgenticLoopUnitInput = {
+      unit,
+      sceneUnits: [],
+      glossary: [],
+      protectedSpans: [],
+      knownCharacters: [],
+      actor: ACTOR,
+      terminologyCandidateRepository: repository,
+    };
+
+    const bundle = await runAgenticLoopForUnit(input, DEV_POLICY, makePolicy(), factory);
+
+    // (1) PROOF the wiring fired: the repository-side check was queried in prod
+    //     with the emitted surfaceForm + the run's real projectId.
+    expect(repoCalls).toContainEqual({
+      projectId: makePolicy().projectId,
+      surfaceForm: "ハル",
+    });
+
+    // (2) The conflict surfaced SYNCHRONOUSLY as a dropped enrichment (the
+    //     best-effort loop catches the ExistingGlossaryConflictError) — not
+    //     asynchronously at the next staleness scan.
+    const contextStage = bundle.stages.find((s) => s.stageName === "context");
+    const dropped = contextStage?.droppedEnrichments ?? [];
+    const terminologyDrop = dropped.find((d) => d.agentLabel === "terminology-candidate");
+    expect(terminologyDrop).toBeDefined();
+    expect(terminologyDrop?.reason).toContain("ExistingGlossaryConflictError");
+
+    // The loop still completes end-to-end (per-agent best-effort isolation).
+    expect(bundle.finalDraft.draftText).toBe("Good morning.");
   });
 });
 

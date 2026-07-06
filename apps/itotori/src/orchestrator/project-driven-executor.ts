@@ -41,6 +41,7 @@
 import type {
   AuthorizationActor,
   CreateReviewerQueueItemInput,
+  ItotoriTerminologyCandidateRepositoryPort,
   ReviewerQueueItemRecord,
 } from "@itotori/db";
 import { ReviewerQueueRepositoryError, reviewerQueueItemStateValues } from "@itotori/db";
@@ -250,6 +251,14 @@ export type ProjectDrivenExecutorInput = {
   providerFactory: AgenticLoopProviderFactory;
   /** The reviewer-queue DB sink (per P0#2). When absent, nothing is bridged. */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
+  /**
+   * ITOTORI-150 — the terminology-candidate repository the loop's context stage
+   * queries for the repository-side pre-persist conflict check
+   * (`existsTerminologyTermBySurfaceForm`). Threaded verbatim into every unit's
+   * `runAgenticLoopForUnit` call so the TOCTOU check RUNS in production. When
+   * absent the loop's terminology enrichment runs without the repository check.
+   */
+  terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   /** Per-unit real-context resolver (per P0#1). */
   resolveUnitContext?: DrivenUnitContextResolver;
   /**
@@ -640,6 +649,11 @@ async function runSingleDrivenUnit(args: {
         : {}),
       actor: input.actor,
       ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
+      // ITOTORI-150 — hand the terminology-candidate repository to every unit's
+      // loop so the repository-side pre-persist conflict check runs in prod.
+      ...(input.terminologyCandidateRepository !== undefined
+        ? { terminologyCandidateRepository: input.terminologyCandidateRepository }
+        : {}),
     };
 
     const bundle = await runAgenticLoopForUnit(

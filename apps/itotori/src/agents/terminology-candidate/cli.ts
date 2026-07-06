@@ -123,7 +123,15 @@ export async function runGenerateTerminologyCandidatesCli(
     modelProfile: input.modelProfile,
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   };
-  const options: GenerateTerminologyCandidatesOptions = { provider: deps.provider };
+  // ITOTORI-150 — forward the repository + actor (already in scope, used just
+  // below for persist/load) so the repository-side `existsTerminologyTermBySurfaceForm`
+  // pre-persist check actually RUNS on this production path, closing the TOCTOU
+  // window between `loadInputContext` above and `persistTerminologyCandidate` below.
+  const options: GenerateTerminologyCandidatesOptions = {
+    provider: deps.provider,
+    repository: deps.repository,
+    actor: deps.actor,
+  };
   const output = await generateTerminologyCandidates(agentInput, options);
 
   const finalCandidates: TerminologyCandidate[] = [];

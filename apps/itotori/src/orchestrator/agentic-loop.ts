@@ -24,7 +24,7 @@
 //     in the same change; this orchestrator is the only entry point.
 
 import { createHash } from "node:crypto";
-import type { AuthorizationActor } from "@itotori/db";
+import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
 import {
   AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
   STYLE_GUIDE_POLICY_SECTIONS,
@@ -50,6 +50,7 @@ import { TranslationAgent } from "../agents/translation/agent.js";
 import { generateSceneSummary } from "../agents/scene-summary/agent.js";
 import { generateCharacterRelationships } from "../agents/character-relationship/agent.js";
 import { generateTerminologyCandidates } from "../agents/terminology-candidate/agent.js";
+import type { ExistingGlossaryEntry } from "../agents/terminology-candidate/shapes.js";
 import { generateRouteChoiceMap } from "../agents/route-choice-map/agent.js";
 import {
   buildSliceStructuredContext,
@@ -325,6 +326,18 @@ export type AgenticLoopUnitInput = {
    * bundle but persists nothing.
    */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
+  /**
+   * ITOTORI-150 — the terminology-candidate repository the context stage's
+   * terminology-candidate agent queries for a repository-side pre-persist
+   * conflict check (`existsTerminologyTermBySurfaceForm`). When present, the
+   * agent runs the check with `actor` above, closing the TOCTOU window between
+   * input-context load and the candidate landing (a glossary term a curator
+   * inserted mid-run surfaces SYNCHRONOUSLY as an `ExistingGlossaryConflictError`
+   * dropped-enrichment rather than asynchronously at the next staleness scan).
+   * When absent (the synthetic smoke path, which has no DB) the enrichment runs
+   * without the repository check, exactly as before this seam.
+   */
+  terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
 };
 
 // ---------------------------------------------------------------------------
@@ -958,6 +971,24 @@ async function runBestEffortEnrichment(
   }
 }
 
+/**
+ * Adapt the run's ACTIVE translation glossary into the terminology-candidate
+ * agent's `ExistingGlossaryEntry` shape for the pre-persist in-memory conflict
+ * index. The translation glossary carries no aliases, so only the
+ * `preferredSourceForm` is indexed here; the repository-side
+ * `existsTerminologyTermBySurfaceForm` check (ITOTORI-150) is the authoritative
+ * TOCTOU closer for anything this partial in-memory view misses.
+ */
+function toExistingGlossaryEntries(
+  glossary: ReadonlyArray<TranslationGlossaryEntry>,
+): ExistingGlossaryEntry[] {
+  return glossary.map((entry) => ({
+    terminologyTermId: entry.termId,
+    preferredSourceForm: entry.preferredSourceForm,
+    aliases: [],
+  }));
+}
+
 async function invokeSemanticContextStage(args: {
   input: AgenticLoopUnitInput;
   policy: AgenticLoopPolicy;
@@ -1078,11 +1109,24 @@ async function invokeSemanticContextStage(args: {
         sourceRevisionId: input.unit.sourceRevision.revisionId,
         sourceLocale: policy.sourceLocale,
         units,
-        existingGlossary: [],
+        // The run's ACTIVE glossary (caller-resolved, already threaded in as
+        // `input.glossary` for translation + QA) IS the existing-glossary the
+        // pre-persist in-memory conflict index must consult — reachable here, so
+        // forward it instead of the former inert `[]`.
+        existingGlossary: toExistingGlossaryEntries(input.glossary),
         modelProfile: semanticModelProfile(provider, pair),
         now,
       },
-      { provider },
+      {
+        provider,
+        // ITOTORI-150 — forward the repository + actor so the repository-side
+        // `existsTerminologyTermBySurfaceForm` pre-persist check RUNS in
+        // production, closing the TOCTOU window even when the in-memory glossary
+        // above missed a term a curator inserted mid-run.
+        ...(input.terminologyCandidateRepository !== undefined
+          ? { repository: input.terminologyCandidateRepository, actor: input.actor }
+          : {}),
+      },
     );
     return {
       telemetry: providerTelemetryFromSemanticRun(

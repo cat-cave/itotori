@@ -13,6 +13,8 @@ import {
   generateTerminologyCandidatesBatch,
   PROMPT_TEMPLATE_VERSION_V1,
   promptHash,
+  runGenerateTerminologyCandidatesCli,
+  type TerminologyCandidateCliDependencies,
   TERMINOLOGY_CANDIDATE_KINDS,
   TerminologyCandidateEmptyInputError,
   TerminologyCandidateInvalidKindError,
@@ -333,6 +335,52 @@ describe("generateTerminologyCandidates", () => {
     repository.glossary.set("ハル", "019ed018-0000-7000-8000-000000000t01");
     await expect(
       generateTerminologyCandidates(input, { provider, repository, actor: i150Actor }),
+    ).rejects.toBeInstanceOf(ExistingGlossaryConflictError);
+  });
+
+  it("ITOTORI-150 (prod path): runGenerateTerminologyCandidatesCli forwards repository+actor so the repository-side conflict check FIRES", async () => {
+    // Drive the PRODUCTION cli caller (which BUILDS the options internally) —
+    // NOT the direct-options path above. Empty input glossary + a curator-inserted
+    // repository term proves the wiring in cli.ts forwards `deps.repository` +
+    // `deps.actor` into the agent options, so `existsTerminologyTermBySurfaceForm`
+    // runs on the real caller path and closes the TOCTOU window in prod.
+    const pack = JSON.stringify({
+      candidates: [
+        {
+          kind: "ProperNoun",
+          surfaceForm: "ハル", // appears in unit a01; NOT in the input glossary
+          rationale: "主人公の固有名。",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+      ],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: fakeModelProfile().modelId,
+      generate: () => pack,
+    });
+    const repository = new SurfaceFormConflictRepository();
+    repository.glossary.set("ハル", "019ed018-0000-7000-8000-000000000t01");
+    const deps: TerminologyCandidateCliDependencies = {
+      actor: i150Actor,
+      repository,
+      provider,
+      // Empty existing glossary: only the repository-side check can catch the
+      // conflict — so a throw here PROVES the repository wiring fired in prod.
+      loadInputContext: async () => ({ units: unitsFixture(), existingGlossary: [] }),
+    };
+    await expect(
+      runGenerateTerminologyCandidatesCli(
+        {
+          projectId: "019ed018-0000-7000-8000-000000000001",
+          localeBranchId: "019ed018-0000-7000-8000-000000000002",
+          sourceLocale: "ja-JP",
+          sourceRevisionId: "019ed018-0000-7000-8000-000000000003",
+          modelProfile: fakeModelProfile(),
+          includeStale: true, // skip the skip-fresh load; the conflict throws before persist
+        },
+        deps,
+      ),
     ).rejects.toBeInstanceOf(ExistingGlossaryConflictError);
   });
 
