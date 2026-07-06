@@ -97,7 +97,7 @@
         "opcode_tuple": {
           "source": "crates/utsushi-reallive/src/rlop/module_catalog.rs#REAL_CATALOG+family_for",
           "derivation": "extracted",
-          "count": 290,
+          "count": 289,
           "components": [
             {
               "moduleId": 2,
@@ -862,11 +862,6 @@
             {
               "moduleId": 2,
               "opcode": 1,
-              "family": "sel"
-            },
-            {
-              "moduleId": 2,
-              "opcode": 14,
               "family": "sel"
             },
             {
