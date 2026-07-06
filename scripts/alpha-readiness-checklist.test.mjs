@@ -6,15 +6,20 @@ import test from "node:test";
 import {
   ALPHA_PROOF_MANIFEST_PATH,
   CAPABILITY_MATRIX_PATH,
+  DEMO_RECIPE,
+  JUSTFILE_PATH,
   READINESS_DOC_PATH,
   REQUIRED_NODE_REFS,
+  collectReachableRecipes,
   deriveCapabilityClaims,
   deriveExclusionClaims,
   normalizeBlock,
+  parseJustfileRecipes,
   renderCapabilityBlock,
   renderExclusionBlock,
   repoRoot,
   runChecklist,
+  scanDemoRecipeChain,
 } from "./alpha-readiness-checklist.mjs";
 
 const matrix = JSON.parse(readFileSync(resolve(repoRoot, CAPABILITY_MATRIX_PATH), "utf8"));
@@ -70,6 +75,109 @@ test("the SHARED-025 manifest links a PatchResult and a runtime report", () => {
   assert.ok(manifest.proofManifestId);
   assert.equal(manifest.artifactRefs.patchResult.artifactKind, "patch_result");
   assert.equal(manifest.artifactRefs.runtimeReport.artifactKind, "runtime_report");
+});
+
+// --- Check D: transitive demo-recipe forbidden-token scan (not vacuous) ---
+
+test("Check D walks the transitive demo dependency chain, not just the (empty) demo body", () => {
+  const justfile = readFileSync(resolve(repoRoot, JUSTFILE_PATH), "utf8");
+  const recipes = parseJustfileRecipes(justfile);
+  // The real `alpha-demo` recipe delegates and has an EMPTY inline body...
+  assert.equal(recipes.get(DEMO_RECIPE).body.trim(), "");
+  // ...but it declares `alpha-proof` as a dependency, which carries the real body.
+  assert.ok(recipes.get(DEMO_RECIPE).deps.includes("alpha-proof"));
+  const scan = scanDemoRecipeChain(justfile, DEMO_RECIPE);
+  assert.equal(scan.missing, false);
+  // The scan reaches beyond the empty demo body into alpha-proof (and any deeper
+  // deps) — proving it is not vacuous.
+  assert.ok(scan.scanned.includes(DEMO_RECIPE));
+  assert.ok(
+    scan.scanned.includes("alpha-proof"),
+    `expected the transitive chain to include alpha-proof, got ${scan.scanned.join(", ")}`,
+  );
+  assert.ok(scan.scanned.length >= 2);
+  // The real chain is clean.
+  assert.deepEqual(scan.offenders, []);
+});
+
+test("Check D CATCHES a forbidden token planted in a transitively-reached recipe (not vacuous)", () => {
+  // Demo delegates to alpha-proof, whose body is where a real secret would hide.
+  // Prior (vacuous) scan read only the empty `alpha-demo` body and would MISS this.
+  const justfile = [
+    "alpha-demo: alpha-proof",
+    "",
+    "alpha-proof: inner-step",
+    "    pnpm exec vp run alpha:public-fixture",
+    "",
+    "inner-step:",
+    "    OPENROUTER_API_KEY=$SECRET node run.mjs --live",
+    "",
+  ].join("\n");
+
+  // Sanity: the demo body itself is empty — a body-only scan would pass vacuously.
+  assert.equal(parseJustfileRecipes(justfile).get("alpha-demo").body.trim(), "");
+
+  const scan = scanDemoRecipeChain(justfile, "alpha-demo");
+  assert.equal(scan.missing, false);
+  assert.ok(
+    scan.scanned.includes("inner-step"),
+    "the transitive walk must reach the delegated-to recipe",
+  );
+  const offenders = scan.offenders.map((o) => `${o.recipe}:${o.token}`);
+  assert.ok(
+    offenders.includes("inner-step:OPENROUTER_API_KEY"),
+    `expected OPENROUTER_API_KEY caught in inner-step, got ${offenders.join(", ")}`,
+  );
+  assert.ok(
+    offenders.includes("inner-step:--live"),
+    `expected --live caught in inner-step, got ${offenders.join(", ")}`,
+  );
+});
+
+test("Check D passes a clean transitive chain and reports a missing root", () => {
+  const clean = [
+    "alpha-demo: alpha-proof",
+    "",
+    "alpha-proof:",
+    "    pnpm exec vp run alpha:public-fixture",
+    "    pnpm exec vp run alpha:public-fixture-validate",
+    "",
+  ].join("\n");
+  const scan = scanDemoRecipeChain(clean, "alpha-demo");
+  assert.equal(scan.missing, false);
+  assert.deepEqual(scan.offenders, []);
+  assert.deepEqual(scan.scanned, ["alpha-demo", "alpha-proof"]);
+
+  const missing = scanDemoRecipeChain("some-other:\n    echo hi\n", "alpha-demo");
+  assert.equal(missing.missing, true);
+});
+
+test("collectReachableRecipes is the transitive closure and does not loop on cycles", () => {
+  const cyclic = ["a: b", "", "b: a c", "    echo b", "", "c:", "    echo c"].join("\n");
+  const order = collectReachableRecipes(cyclic, "a");
+  const names = order.map((r) => r.name).sort();
+  assert.deepEqual(names, ["a", "b", "c"]);
+});
+
+test("parseJustfileRecipes ignores `:=` assignments and comments", () => {
+  const jf = ['export FOO := "bar"', "# a comment: not a recipe", "real:", "    echo hi"].join(
+    "\n",
+  );
+  const recipes = parseJustfileRecipes(jf);
+  assert.ok(recipes.has("real"));
+  assert.equal(recipes.has("FOO"), false);
+  assert.equal(recipes.has("export"), false);
+});
+
+test("the real repo demo chain passes Check D (no real forbidden tokens)", () => {
+  const { findings } = runChecklist();
+  const d = findings.filter((f) => f.check === "demo-command");
+  assert.ok(d.length > 0, "expected a demo-command finding");
+  assert.equal(
+    d.some((f) => f.severity === "blocking"),
+    false,
+    `Check D unexpectedly failed:\n${d.map((f) => f.message).join("\n")}`,
+  );
 });
 
 test("a drifted capability claim block fails the gate", () => {

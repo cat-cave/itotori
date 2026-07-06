@@ -101,6 +101,130 @@ function sha256OfFile(relPath) {
     .digest("hex")}`;
 }
 
+// Forbidden tokens for the fresh-clone public-fixture demo chain: live creds,
+// live/real-bytes toggles, and DB plumbing. The demo must be public-fixture-only,
+// so NONE of these may appear in ANY recipe transitively reachable from the demo.
+export const FORBIDDEN_DEMO_TOKENS = [
+  "OPENROUTER_API_KEY",
+  "ITOTORI_LIVE",
+  "--live",
+  "ITOTORI_REAL_GAME_ROOT",
+  "DATABASE_URL",
+  "db-up",
+];
+
+/**
+ * Parse a justfile into a recipe map. Each recipe records its declared
+ * dependencies (the names after the `:` in the header) and its indented body.
+ *
+ * A recipe header is a non-indented line of the form
+ *   `name [params...] : [dep | (dep args...)]...`
+ * Variable assignments (`name := expr`, `export name := expr`) and comments are
+ * ignored. The body is the run of indented (or blank) lines beneath the header,
+ * up to the next non-indented, non-blank line.
+ */
+export function parseJustfileRecipes(justfileText) {
+  const recipes = new Map();
+  const lines = justfileText.split("\n");
+  // name, optional params, `:`, then dependencies. Reject `:=` assignments by
+  // disallowing `=` in the pre-colon segment and requiring the char after `:`
+  // is not `=`.
+  const headerRe = /^([A-Za-z0-9_-]+)(?:\s+[^:=]*?)?:(?!=)\s*(.*)$/u;
+  let current = null;
+  for (const line of lines) {
+    if (line.startsWith("    ") || line.startsWith("\t")) {
+      if (current) current.bodyLines.push(line);
+      continue;
+    }
+    if (line.trim() === "") {
+      // Blank line: does not terminate the current recipe (recipe bodies may
+      // contain blank lines); the next non-indented content will terminate it.
+      continue;
+    }
+    if (line.startsWith("#")) {
+      current = null;
+      continue;
+    }
+    const m = line.match(headerRe);
+    if (m) {
+      const deps = parseRecipeDeps(m[2]);
+      current = { deps, bodyLines: [] };
+      recipes.set(m[1], current);
+    } else {
+      current = null;
+    }
+  }
+  const out = new Map();
+  for (const [name, rec] of recipes) {
+    out.set(name, { deps: rec.deps, body: rec.bodyLines.join("\n") });
+  }
+  return out;
+}
+
+/**
+ * Parse the dependency segment of a recipe header. Dependencies are either a
+ * bare recipe name or a parenthesized invocation `(name args...)`; in the
+ * parenthesized form only the leading token is the recipe name.
+ */
+export function parseRecipeDeps(depStr) {
+  const deps = [];
+  const re = /\(([^)]*)\)|([A-Za-z0-9_-]+)/gu;
+  let m;
+  while ((m = re.exec(depStr)) !== null) {
+    if (m[1] !== undefined) {
+      const inner = m[1].trim().split(/\s+/u)[0];
+      if (inner) deps.push(inner);
+    } else if (m[2] !== undefined) {
+      deps.push(m[2]);
+    }
+  }
+  return deps;
+}
+
+/**
+ * Walk the transitive declared-dependency closure of `rootRecipe` (inclusive)
+ * and return the reachable recipes in deterministic discovery order. Returns
+ * `null` if the root recipe is not defined.
+ */
+export function collectReachableRecipes(justfileText, rootRecipe) {
+  const recipes = parseJustfileRecipes(justfileText);
+  if (!recipes.has(rootRecipe)) return null;
+  const order = [];
+  const seen = new Set();
+  const queue = [rootRecipe];
+  while (queue.length) {
+    const name = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const rec = recipes.get(name);
+    // A dependency may name a recipe that is a phony/alias or defined elsewhere;
+    // only recurse into ones we can resolve, but still record the visited node.
+    order.push({ name, body: rec ? rec.body : "", resolved: Boolean(rec) });
+    if (rec) {
+      for (const dep of rec.deps) queue.push(dep);
+    }
+  }
+  return order;
+}
+
+/**
+ * Scan the transitive dependency chain rooted at `rootRecipe` for forbidden
+ * (live-cred / real-bytes / DB) tokens. Returns the list of reachable recipe
+ * names and every offending (recipe, token) pair; `missing` is true when the
+ * root recipe is not defined in the justfile.
+ */
+export function scanDemoRecipeChain(justfileText, rootRecipe = DEMO_RECIPE) {
+  const reachable = collectReachableRecipes(justfileText, rootRecipe);
+  if (reachable === null) return { missing: true, scanned: [], offenders: [] };
+  const offenders = [];
+  for (const { name, body } of reachable) {
+    for (const token of FORBIDDEN_DEMO_TOKENS) {
+      if (body.includes(token)) offenders.push({ recipe: name, token });
+    }
+  }
+  return { missing: false, scanned: reachable.map((r) => r.name), offenders };
+}
+
 /**
  * Derive the per-family capability posture from the generated matrix. A family
  * is `positive_adapter` if ANY of its rows carries that posture, else
@@ -326,35 +450,31 @@ export function runChecklist() {
   }
 
   // Check D — fresh-clone public-fixture demo command exists and is public-only.
+  //
+  // `alpha-demo` DELEGATES (`alpha-demo: alpha-proof`) and has no inline body, so
+  // scanning only its (empty) body is vacuous. Instead walk the TRANSITIVE recipe
+  // dependency chain (alpha-demo -> alpha-proof -> ...) and scan EVERY reachable
+  // recipe body: a forbidden token anywhere in the chain that actually runs must
+  // be caught.
   const justfile = readFileSync(resolve(repoRoot, JUSTFILE_PATH), "utf8");
-  const recipeRe = new RegExp(`^${DEMO_RECIPE}(?:\\s+\\S+)?:.*$`, "mu");
-  const recipeMatch = justfile.match(recipeRe);
-  if (!recipeMatch) {
+  const scan = scanDemoRecipeChain(justfile, DEMO_RECIPE);
+  if (scan.missing) {
     fail(
       "demo-command",
       `justfile has no \`${DEMO_RECIPE}\` recipe (fresh-clone public-fixture demo)`,
     );
-  } else {
-    // Grab the recipe body (indented lines following the header).
-    const bodyStart = justfile.indexOf(recipeMatch[0]) + recipeMatch[0].length;
-    const rest = justfile.slice(bodyStart).split("\n");
-    const body = [];
-    for (const line of rest) {
-      if (line.startsWith("    ") || line.trim() === "") {
-        if (line.trim() !== "") body.push(line);
-      } else break;
-    }
-    const bodyText = body.join("\n");
-    const forbidden =
-      /OPENROUTER_API_KEY|ITOTORI_LIVE|--live|ITOTORI_REAL_GAME_ROOT|DATABASE_URL|db-up/u;
-    if (forbidden.test(bodyText)) {
+  } else if (scan.offenders.length > 0) {
+    for (const { recipe, token } of scan.offenders) {
       fail(
         "demo-command",
-        `\`${DEMO_RECIPE}\` recipe references live creds / real bytes / DB; the fresh-clone demo must be public-fixture-only`,
+        `\`${DEMO_RECIPE}\` reaches recipe \`${recipe}\` (transitively) which references \`${token}\` (live creds / real bytes / DB); the fresh-clone demo chain must be public-fixture-only`,
       );
-    } else {
-      pass("demo-command", `\`just ${DEMO_RECIPE}\` is a public-fixture-only fresh-clone demo`);
     }
+  } else {
+    pass(
+      "demo-command",
+      `\`just ${DEMO_RECIPE}\` is a public-fixture-only fresh-clone demo (scanned transitive chain: ${scan.scanned.join(" -> ")})`,
+    );
   }
 
   const ok = !findings.some((f) => f.severity === "blocking");
