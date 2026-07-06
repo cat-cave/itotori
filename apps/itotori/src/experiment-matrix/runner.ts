@@ -507,7 +507,28 @@ function microsToUsdDecimalString(micros: number): string {
 }
 
 function canonicalConfigHash(config: ExperimentMatrixConfig): string {
-  return `sha256:${sha256Hex(JSON.stringify(config))}`;
+  return `sha256:${sha256Hex(stableStringify(config))}`;
+}
+
+/**
+ * Canonical JSON serialization with RECURSIVELY sorted object keys. Unlike
+ * `JSON.stringify` (which preserves key INSERTION order), this yields a
+ * stable string for any two semantically-identical values regardless of how
+ * their keys were ordered when the object was built — so `configHash` pins
+ * config IDENTITY, not incidental construction order.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
 }
 
 function sha256Hex(value: string): string {

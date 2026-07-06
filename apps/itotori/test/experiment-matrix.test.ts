@@ -384,6 +384,58 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
     expect(first.configHash).toBe(second.configHash);
   });
 
+  it("configHash is CANONICAL — key insertion order does not change it, but a value change does", async () => {
+    // Rebuild an object with its keys in REVERSED insertion order,
+    // recursively. Runtime key order differs while the value is otherwise
+    // identical — a non-canonical (JSON.stringify) hash would diverge here.
+    const reverseKeysDeep = (value: unknown): unknown => {
+      if (value === null || typeof value !== "object") {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((item) => reverseKeysDeep(item));
+      }
+      const record = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(record).reverse()) {
+        out[key] = reverseKeysDeep(record[key]);
+      }
+      return out;
+    };
+
+    const baseCfg = config({
+      cells: [cell({ cellId: "cell-a", fixtureCorpusIds: ["corpus-a1"] })],
+    });
+    const reorderedCfg = reverseKeysDeep(baseCfg) as ExperimentMatrixConfig;
+    // Guard the premise: the reordered clone is a genuinely different object
+    // with different runtime key order but identical semantic content.
+    expect(JSON.stringify(reorderedCfg)).not.toBe(JSON.stringify(baseCfg));
+
+    const run = (cfg: ExperimentMatrixConfig) =>
+      runExperimentMatrix({
+        config: cfg,
+        guard: devPairGuard(),
+        resolveProvider: (c) => recordedProviderForCell(cfg.experimentId, c, BILLED_COST),
+        resolveFixture: publicFixtureResolver,
+        generatedAt: "2026-06-28T00:00:00.000Z",
+        mode: "recorded",
+      });
+
+    const base = await run(baseCfg);
+    const reordered = await run(reorderedCfg);
+    // Reordered keys → SAME canonical hash.
+    expect(reordered.configHash).toBe(base.configHash);
+
+    // A genuine value change → DIFFERENT hash (canonicalization does not
+    // collapse distinct configs).
+    const changedCfg = config({
+      experimentId: "itotori-099-experiment-CHANGED",
+      cells: [cell({ cellId: "cell-a", fixtureCorpusIds: ["corpus-a1"] })],
+    });
+    const changed = await run(changedCfg);
+    expect(changed.configHash).not.toBe(base.configHash);
+  });
+
   it("redacts non-public corpora — the artifact carries no raw corpus text", async () => {
     const SECRET = "PRIVATE_CORPUS_SECRET_PHRASE_2099";
     const cfg = config({
