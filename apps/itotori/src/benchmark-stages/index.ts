@@ -139,6 +139,7 @@ export {
   BLIND_JUDGE_MIN_MODEL_FAMILIES,
   BlindJudgePanelError,
   assertBlindJudgeInputHasNoProvenance,
+  blindJudgeFindingId,
   blindLabelForIndex,
   blindUnitForJudge,
   interJudgeAgreementByDimension,
@@ -159,6 +160,25 @@ export {
   type JudgeUnitScoring,
   type UnscorableDrop,
 } from "./blind-judge-panel.js";
+
+export {
+  ActionableBacklogError,
+  BACKLOG_RANK_TIERS,
+  buildActionableBacklog,
+  type ActionableBacklogInput,
+  type BacklogDagEmission,
+  type BacklogEvidenceCitation,
+  type BacklogItem,
+  type BacklogLadderComparison,
+  type BacklogRankTier,
+  type BacklogRegressionRef,
+  type BacklogScope,
+  type BacklogSignalScore,
+  type BacklogSignalSource,
+  type BacklogUnitScope,
+  type BenchmarkImprovementBacklog,
+  type RegressionDirection,
+} from "./actionable-backlog.js";
 
 export {
   FixtureJudge,

@@ -7,6 +7,7 @@ import {
   evaluateQaAgents,
   loadBenchmarkStagesFixture,
   renderBenchmarkReports,
+  runDeterministicMetricSuite,
   runDeterministicQaStage,
   runRawMtlBaselineStage,
   type BenchmarkReportRenderInput,
@@ -106,5 +107,56 @@ describe("cost-quality report renderer", () => {
     expect(assembleBenchmarkReport(renderInputFrom(loadFixture()))).toEqual(
       assembleBenchmarkReport(renderInputFrom(loadFixture())),
     );
+  });
+
+  // §10 composition — the actionable-backlog node folds the adjudicated §3/§4
+  // findings into the top-level report WITHOUT disturbing the single-source cost
+  // ledger (findings never feed cost).
+  it("composes §10 backlog findings into findingRecords, cost ledger untouched", () => {
+    // A real, already-adjudicated deterministic-metric finding (glossary miss).
+    const suite = runDeterministicMetricSuite({
+      systems: [
+        {
+          // Must be a system present in `systemsCompared` — the report cross-
+          // checks every finding's systemId against the compared systems.
+          systemId: "itotori-draft",
+          systemKind: "deterministic_fixture",
+          units: [
+            {
+              unitId: "019ed030-0000-7000-8000-000000000001",
+              label: "casual/line-001",
+              sourceText: "剣を持つ。",
+              targetText: "He holds the sword.",
+            },
+          ],
+        },
+      ],
+      glossary: [{ sourceTerm: "剣", targetForm: "Longblade" }],
+      canonNames: [],
+      startedAt: "2026-07-05T00:00:00.000Z",
+      completedAt: "2026-07-05T00:00:01.000Z",
+    });
+    expect(suite.findings.length).toBeGreaterThan(0);
+
+    const base = renderInputFrom(loadFixture());
+    const composed = assembleBenchmarkReport({ ...base, backlogFindings: suite.findings });
+    const plain = assembleBenchmarkReport(base);
+
+    // Backlog findings are ADDED to the report's finding records.
+    expect(composed.findingRecords.length).toBe(
+      plain.findingRecords.length + suite.findings.length,
+    );
+    const rootCauses = composed.countsByRootCause.map((b) => b.bucket);
+    expect(rootCauses).toContain("glossary_policy_gap");
+
+    // Cost is single-source: composing findings never moves the ledger.
+    expect(composed.costLedger.reportTotalMicrosUsd).toBe(plain.costLedger.reportTotalMicrosUsd);
+
+    // Deduped by findingId: re-passing the same findings does not double-count.
+    const twice = assembleBenchmarkReport({
+      ...base,
+      backlogFindings: [...suite.findings, ...suite.findings],
+    });
+    expect(twice.findingRecords.length).toBe(composed.findingRecords.length);
   });
 });

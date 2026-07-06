@@ -374,6 +374,22 @@ export type ContestantDimensionScore = {
   citation: JudgeCitation | null;
 };
 
+/**
+ * The deterministic id of the `llm_qa` finding a sub-4 cited (judge, unit,
+ * contestant, dimension) score composes into. Exported so the §10 actionable-
+ * backlog node can join a retained {@link ContestantDimensionScore} back to its
+ * finding record WITHOUT re-deriving the seed by hand (single source of truth
+ * for the id scheme).
+ */
+export function blindJudgeFindingId(
+  judgeId: string,
+  contestantId: string,
+  unitId: string,
+  dimensionId: BenchmarkRubricDimensionId,
+): string {
+  return deterministicUuid7("blind-judge-finding", judgeId, contestantId, unitId, dimensionId);
+}
+
 /** A score dropped as unscorable (sub-4 without a complete citation, §4.3). */
 export type UnscorableDrop = {
   unitId: string;
@@ -641,8 +657,7 @@ function buildJudgeFinding(args: {
     );
   }
   const target = benchmarkRubricTaxonomyTargetForDimension(args.dimensionId);
-  const findingId = deterministicUuid7(
-    "blind-judge-finding",
+  const findingId = blindJudgeFindingId(
     args.judge.judgeId,
     args.contestantId,
     args.unitId,

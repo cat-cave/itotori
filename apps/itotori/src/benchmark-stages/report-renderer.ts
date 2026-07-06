@@ -68,6 +68,18 @@ export type BenchmarkReportRenderInput = {
   qaAgent: QaAgentEvaluationResult;
   humanEvaluationResults: HumanEvaluationResultV02[];
   knownBlindSpots: string[];
+  /**
+   * §10 composition. The blind-judge-panel (§4) and deterministic-metric-suite
+   * (§3) findings are not produced by the ITOTORI-090 deterministic-qa / QA-agent
+   * stages; the judge-panel node deferred composing them into the top-level
+   * report to §10. The actionable-backlog node adjudicates the judge findings
+   * (unknown_unadjudicated → a real rootCause) and hands the full adjudicated set
+   * back here (`BenchmarkImprovementBacklog.adjudicatedFindings`). They are folded
+   * into `findingRecords` (deduped by findingId) so the report's counts + penalty
+   * cover them. Cost is untouched — findings never feed the ledger, which stays
+   * single-source in `computeBenchmarkCostLedgerV02`.
+   */
+  backlogFindings?: BenchmarkFindingRecordV02[];
 };
 
 /**
@@ -80,10 +92,14 @@ export function assembleBenchmarkReport(input: BenchmarkReportRenderInput): Benc
     ...input.rawMtl.providerRuns,
     ...input.qaAgent.providerRuns,
   ];
-  const findingRecords: BenchmarkFindingRecordV02[] = [
+  // §10 composition: the ITOTORI-090/091 stage findings PLUS the adjudicated
+  // §3/§4 backlog findings, deduped by findingId (a finding could be reported by
+  // more than one path; the id is content-addressed so dedup is safe).
+  const findingRecords: BenchmarkFindingRecordV02[] = dedupeFindingsById([
     ...input.deterministicQa.findings,
     ...input.qaAgent.findings,
-  ];
+    ...(input.backlogFindings ?? []),
+  ]);
 
   // The cost ledger is built by the schema's single authoritative recompute —
   // the same function `assertBenchmarkReportV02` uses to validate it below, so
@@ -365,6 +381,20 @@ function computePenalty(
     penaltyPerHundredSourceUnits:
       totalSourceUnitCount === 0 ? 0 : (penaltyTotal / totalSourceUnitCount) * 100,
   };
+}
+
+/** Dedupe findings by their content-addressed id, preserving first-seen order. */
+function dedupeFindingsById(findings: BenchmarkFindingRecordV02[]): BenchmarkFindingRecordV02[] {
+  const seen = new Set<string>();
+  const out: BenchmarkFindingRecordV02[] = [];
+  for (const finding of findings) {
+    if (seen.has(finding.findingId)) {
+      continue;
+    }
+    seen.add(finding.findingId);
+    out.push(finding);
+  }
+  return out;
 }
 
 function tally<T extends string>(values: readonly T[]): Array<BenchmarkCountBucketV02<T>> {
