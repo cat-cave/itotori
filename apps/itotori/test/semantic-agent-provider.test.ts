@@ -6,10 +6,19 @@ import { resolveTerminologyCandidateProvider } from "../src/agents/terminology-c
 import {
   ALLOW_FAKE_SEMANTIC_AGENT_ENV,
   SemanticAgentFakeProviderNotAllowedError,
+  SemanticAgentMissingProviderRunRecorderError,
   SemanticAgentUnsupportedLiveFamilyError,
+  type SemanticAgentLiveProviderOptions,
 } from "../src/providers/fake.js";
 import { AccountZdrAssertionError } from "../src/providers/account-zdr.js";
-import type { ModelProvider, ProviderFamily } from "../src/providers/types.js";
+import type { ModelProvider, ProviderFamily, ProviderRunArtifact } from "../src/providers/types.js";
+
+// A no-op run-scoped recorder stand-in: the resolution seam only needs SOME
+// recorder present to prove it no longer defaults to the global scratch dir;
+// the recorded-into-the-run-scoped-dir proof lives in the reconciliation test.
+function noopRecorder(): { recordProviderRun(a: ProviderRunArtifact): Promise<void> } {
+  return { recordProviderRun: async (_a: ProviderRunArtifact) => {} };
+}
 
 // itotori-semantic-agents-live-provider-wiring — proves the four semantic-agent
 // CLIs (a) NEVER silently produce fake context on a real path, and (b) route
@@ -19,7 +28,7 @@ import type { ModelProvider, ProviderFamily } from "../src/providers/types.js";
 // in semantic-agent-live.test.ts, gated on ITOTORI_LIVE_PROVIDER=1.
 const RESOLVERS: ReadonlyArray<{
   name: string;
-  resolve: (family: ProviderFamily) => ModelProvider;
+  resolve: (family: ProviderFamily, live?: SemanticAgentLiveProviderOptions) => ModelProvider;
 }> = [
   { name: "scene-summary", resolve: resolveSceneSummaryProvider },
   { name: "route-choice-map", resolve: resolveRouteChoiceMapProvider },
@@ -65,13 +74,23 @@ describe("semantic-agent provider resolution (no fake context on a real path)", 
   });
 
   for (const { name, resolve } of RESOLVERS) {
-    it(`${name}: 'openrouter' builds the REAL ZDR-gated live provider (fails closed on ZDR, never a fake)`, () => {
-      // No fake fallback: the live path constructs a real
+    it(`${name}: 'openrouter' without a run-scoped provider-run recorder fails closed (no global scratch default)`, () => {
+      // semantic-agent-cli-provider-run-not-reconciled — the live path REQUIRES
+      // a run-scoped provider-run recorder so the run lands in the reconciled
+      // telemetry surface. It no longer silently defaults to a global
+      // `.tmp/provider-runs` directory the reconciler never reads.
+      expect(() => resolve("openrouter")).toThrow(SemanticAgentMissingProviderRunRecorderError);
+    });
+
+    it(`${name}: 'openrouter' WITH a run-scoped recorder builds the REAL ZDR-gated live provider (fails closed on ZDR, never a fake)`, () => {
+      // With the recorder present, the live path constructs a real
       // OpenRouterModelProvider, whose constructor asserts the account-wide
-      // ZDR posture BEFORE anything else. Without the assertion env var it
-      // throws AccountZdrAssertionError — proving the resolver reaches the
-      // real live wiring (fail-closed) rather than fabricating context.
-      expect(() => resolve("openrouter")).toThrow(AccountZdrAssertionError);
+      // ZDR posture. Without the assertion env var it throws
+      // AccountZdrAssertionError — proving the resolver reaches the real live
+      // wiring (fail-closed) rather than fabricating context.
+      expect(() => resolve("openrouter", { artifactRecorder: noopRecorder() })).toThrow(
+        AccountZdrAssertionError,
+      );
     });
 
     for (const family of UNSUPPORTED_LIVE_FAMILIES) {

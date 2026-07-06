@@ -59,6 +59,7 @@ import {
   type SceneSummaryCliDependencies,
 } from "../agents/scene-summary/index.js";
 import type { ProviderFamily } from "../providers/types.js";
+import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import type {
   PlanBatchesContextLoader,
   PlanBatchesPersister,
@@ -137,7 +138,10 @@ export type ItotoriApplicationServices = {
     persist: PlanBatchesPersister;
   };
   sceneSummary: {
-    cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
+    cliDependencies(
+      provider: ProviderFamily,
+      providerRunsDir?: string,
+    ): Promise<SceneSummaryCliDependencies>;
     defaultModelId: string;
     /** ITOTORI-220 — default providerId for the scene-summary model. */
     defaultProviderId: string;
@@ -438,11 +442,24 @@ export async function withDatabaseItotoriServices<T>(
         },
       },
       sceneSummary: {
-        cliDependencies: async (providerFamily) => ({
+        // semantic-agent-cli-provider-run-not-reconciled — thread the
+        // run-scoped `--provider-runs-dir` into the live provider as a
+        // `LocalProviderRunArtifactRecorder(providerRunsDir)` so the standalone
+        // CLI run's served (model, provider) pair + billed `usage.cost` + ZDR
+        // posture are recorded into the reconciled telemetry surface the
+        // reconciler reads — mirroring localize-project-stage-command.ts. The
+        // resolver now REFUSES the live `openrouter` family without it (no
+        // silent global `.tmp/provider-runs` default).
+        cliDependencies: async (providerFamily, providerRunsDir) => ({
           actor: localUserActor,
           batchRepository: translationBatchRepository,
           summaryRepository: sceneSummaryRepository,
-          provider: resolveSceneSummaryProvider(providerFamily),
+          provider: resolveSceneSummaryProvider(
+            providerFamily,
+            providerRunsDir === undefined
+              ? undefined
+              : { artifactRecorder: new LocalProviderRunArtifactRecorder(providerRunsDir) },
+          ),
         }),
         // itotori-semantic-agent-clis-no-fake-context-on-real-path — the
         // production scene-summary wiring must NEVER default to a fake

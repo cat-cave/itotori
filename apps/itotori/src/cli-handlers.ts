@@ -152,8 +152,17 @@ export type ItotoriCliServices = {
     /**
      * Construct the per-invocation dependencies (provider, repositories,
      * actor). Optional so unit suites can omit it.
+     *
+     * semantic-agent-cli-provider-run-not-reconciled — `providerRunsDir` is the
+     * run-scoped `--provider-runs-dir`. When supplied, the factory builds the
+     * live provider with a `LocalProviderRunArtifactRecorder(providerRunsDir)`
+     * so the run's served pair + billed `usage.cost` + ZDR posture land in the
+     * reconciled telemetry surface (never the global scratch `.tmp/provider-runs`).
      */
-    cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
+    cliDependencies(
+      provider: ProviderFamily,
+      providerRunsDir?: string,
+    ): Promise<SceneSummaryCliDependencies>;
     defaultModelId: string;
     /** ITOTORI-220 — default providerId for the scene-summary model. */
     defaultProviderId: string;
@@ -161,7 +170,10 @@ export type ItotoriCliServices = {
     defaultContextWindowTokens: number;
   };
   characterRelationship?: {
-    cliDependencies(provider: ProviderFamily): Promise<CharacterRelationshipCliDependencies>;
+    cliDependencies(
+      provider: ProviderFamily,
+      providerRunsDir?: string,
+    ): Promise<CharacterRelationshipCliDependencies>;
     defaultModelId: string;
     /** ITOTORI-220 — default providerId for the character-relationship model. */
     defaultProviderId: string;
@@ -1382,6 +1394,10 @@ async function runGenerateSceneSummariesHandler(
   const dryRun = args.includes("--dry-run");
   const contextWindowRaw = optionalFlag(args, "--context-window");
   const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
+  // semantic-agent-cli-provider-run-not-reconciled — run-scoped provider-run
+  // directory. Threaded into the provider so its served pair + billed cost +
+  // ZDR posture are reconciled (never dropped into the global scratch dir).
+  const providerRunsDir = optionalFlag(args, "--provider-runs-dir");
 
   await dependencies.withServices(async (services) => {
     if (!services.sceneSummary) {
@@ -1391,7 +1407,7 @@ async function runGenerateSceneSummariesHandler(
       providerRaw === undefined
         ? services.sceneSummary.defaultProviderFamily
         : asProviderFamily(providerRaw);
-    const deps = await services.sceneSummary.cliDependencies(providerFamily);
+    const deps = await services.sceneSummary.cliDependencies(providerFamily, providerRunsDir);
     const result = await runGenerateSceneSummariesCli(
       {
         projectId,
@@ -1475,6 +1491,9 @@ async function runGenerateCharacterRelationshipsHandler(
   const dryRun = args.includes("--dry-run");
   const contextWindowRaw = optionalFlag(args, "--context-window");
   const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
+  // semantic-agent-cli-provider-run-not-reconciled — run-scoped provider-run
+  // directory threaded into the provider (see scene-summary handler).
+  const providerRunsDir = optionalFlag(args, "--provider-runs-dir");
 
   await dependencies.withServices(async (services) => {
     if (!services.characterRelationship) {
@@ -1484,7 +1503,10 @@ async function runGenerateCharacterRelationshipsHandler(
       providerRaw === undefined
         ? services.characterRelationship.defaultProviderFamily
         : asProviderFamily(providerRaw);
-    const deps = await services.characterRelationship.cliDependencies(providerFamily);
+    const deps = await services.characterRelationship.cliDependencies(
+      providerFamily,
+      providerRunsDir,
+    );
     const result = await runGenerateCharacterRelationshipsCli(
       {
         projectId,

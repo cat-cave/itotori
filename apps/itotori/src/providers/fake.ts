@@ -1,6 +1,9 @@
 import { assertProviderInvocationSupported } from "./capability-guard.js";
-import { LocalProviderRunArtifactRecorder } from "./artifacts.js";
-import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "./openrouter.js";
+import {
+  DEFAULT_COST_CAP_USD,
+  OpenRouterModelProvider,
+  type OpenRouterHttpClient,
+} from "./openrouter.js";
 import type {
   ModelCapabilities,
   ModelInvocationRequest,
@@ -249,18 +252,63 @@ export class SemanticAgentUnsupportedLiveFamilyError extends Error {
 
 /**
  * Live-path construction knobs for the ZDR OpenRouter semantic-agent provider.
- * All optional: production defaults mirror the translation path (the shared
- * per-process `DEFAULT_COST_CAP_USD` cap + a `LocalProviderRunArtifactRecorder`
- * writing to its default directory). The (modelId, providerId) routing is NOT
- * here — it is config-driven, travelling on each request from the agent's
- * `modelProfile`. Tests inject a scratch `artifactRecorder` + `env`.
+ *
+ * semantic-agent-cli-provider-run-not-reconciled — `artifactRecorder` is the
+ * RUN-SCOPED provider-run recorder the reconciled telemetry surface reads (the
+ * `--provider-runs-dir` a caller passes as
+ * `new LocalProviderRunArtifactRecorder(dir)`). It is REQUIRED for the live
+ * `openrouter` path and is NO LONGER defaulted to a global scratch
+ * `.tmp/provider-runs` directory: a standalone semantic-agent CLI run's served
+ * (model, provider) pair + billed `usage.cost` + ZDR posture MUST land in the
+ * run-scoped directory the telemetry reconciler consumes, exactly like the
+ * agentic-loop / localize-project-stage path (which builds
+ * `new LocalProviderRunArtifactRecorder(args.providerRunArtifactDirectory)` and
+ * hands it to the provider). Omitting it now fails LOUDLY
+ * ({@link SemanticAgentMissingProviderRunRecorderError}) rather than silently
+ * writing the run outside every reconciled surface.
+ *
+ * The (modelId, providerId) routing is NOT here — it is config-driven,
+ * travelling on each request from the agent's `modelProfile`. `costCapUsd`
+ * defaults to the shared per-process `DEFAULT_COST_CAP_USD`. `httpClient` /
+ * `baseUrl` are test-only transport seams (mirroring
+ * `OpenRouterModelProviderOptions`) so a deterministic test can drive the REAL
+ * provider through a mock fetch and assert the run is reconciled.
  */
 export type SemanticAgentLiveProviderOptions = {
   costCapUsd?: number;
   artifactRecorder?: ProviderRunArtifactRecorder;
   env?: Readonly<Record<string, string | undefined>>;
   providerName?: string;
+  /** Test-only transport injection (mirrors `OpenRouterModelProviderOptions.httpClient`). */
+  httpClient?: OpenRouterHttpClient;
+  /** Test-only base-URL override (mirrors `OpenRouterModelProviderOptions.baseUrl`). */
+  baseUrl?: string;
 };
+
+/**
+ * Thrown when the live `openrouter` semantic-agent path is constructed without
+ * a run-scoped provider-run `artifactRecorder`. The recorder is what makes the
+ * standalone CLI run's served pair + billed cost + ZDR posture VISIBLE to the
+ * reconciled telemetry surface (the run-scoped `--provider-runs-dir`); without
+ * it the run would be invisible to cost reconciliation, so the resolver refuses
+ * rather than defaulting to a global scratch directory the reconciler never
+ * reads.
+ */
+export class SemanticAgentMissingProviderRunRecorderError extends Error {
+  readonly agentName: string;
+  constructor(agentName: string) {
+    super(
+      `semantic-agent '${agentName}' refused to construct a live OpenRouter provider without a ` +
+        `run-scoped provider-run recorder: pass a LocalProviderRunArtifactRecorder pointed at the ` +
+        `run's --provider-runs-dir so the served (model, provider) pair + billed usage.cost + ZDR ` +
+        `posture land in the reconciled telemetry surface (mirror the agentic-loop / ` +
+        `localize-project-stage path). Defaulting to a global scratch .tmp/provider-runs directory ` +
+        `would hide the run from cost reconciliation.`,
+    );
+    this.name = "SemanticAgentMissingProviderRunRecorderError";
+    this.agentName = agentName;
+  }
+}
 
 /**
  * Resolve the model provider for a semantic-agent CLI.
@@ -290,16 +338,29 @@ export function resolveSemanticAgentProvider(options: {
   }
   if (family === "openrouter") {
     const live = options.live ?? {};
+    // semantic-agent-cli-provider-run-not-reconciled — REQUIRE the run-scoped
+    // provider-run recorder. The prior `?? new LocalProviderRunArtifactRecorder()`
+    // default silently routed a standalone CLI run's provider-run to the global
+    // scratch `.tmp/provider-runs`, which the telemetry reconciler never reads,
+    // so its ZDR spend + served pair were invisible to cost reconciliation.
+    // Fail closed instead, exactly like localize-project-stage's
+    // `LocalizeProjectMissingProviderRunArtifactsDirectoryError`.
+    if (live.artifactRecorder === undefined) {
+      throw new SemanticAgentMissingProviderRunRecorderError(agentName);
+    }
     // Mirror the translation path (see localize-project-stage-command.ts
     // `liveOpenRouterFactory`): construct the real OpenRouterModelProvider,
     // which asserts the account-wide ZDR posture and refuses on a missing
     // API key in its constructor, routes the request's (modelId, providerId)
-    // pair with `provider.zdr=true`, and records real `usage.cost`.
+    // pair with `provider.zdr=true`, and records real `usage.cost` into the
+    // run-scoped recorder the reconciler consumes.
     return new OpenRouterModelProvider({
       costCapUsd: live.costCapUsd ?? DEFAULT_COST_CAP_USD,
-      artifactRecorder: live.artifactRecorder ?? new LocalProviderRunArtifactRecorder(),
+      artifactRecorder: live.artifactRecorder,
       ...(live.env !== undefined ? { env: live.env } : {}),
       ...(live.providerName !== undefined ? { providerName: live.providerName } : {}),
+      ...(live.httpClient !== undefined ? { httpClient: live.httpClient } : {}),
+      ...(live.baseUrl !== undefined ? { baseUrl: live.baseUrl } : {}),
     });
   }
   throw new SemanticAgentUnsupportedLiveFamilyError(agentName, family);
