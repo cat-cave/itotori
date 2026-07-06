@@ -181,6 +181,68 @@ describe("repository-derived platform-language conflicts", () => {
     );
   });
 
+  it("does not stamp the last-wins source when two external ids share one provenance (collision diagnosed, status skipped)", async () => {
+    const snapshot = buildSnapshot({
+      externalIds: [
+        // Two external ids sharing ONE provenance — attribution via it is ambiguous.
+        externalId("vndb", "v1002", "prov-shared", catalogExternalIdKindValues.sourceRecord),
+        externalId("egs", "101002", "prov-shared", catalogExternalIdKindValues.sourceRecord),
+        externalId("dlsite", "RJ02222222", "prov-dlsite", catalogExternalIdKindValues.storeProduct),
+      ],
+      languageStatuses: [
+        languageStatus("ls-shared", "prov-shared", catalogLanguageStatusValues.none),
+        languageStatus("ls-dlsite", "prov-dlsite", catalogLanguageStatusValues.none),
+      ],
+    });
+    const result = await deriveCatalogPlatformLanguageConflictsFromRepository(
+      readerFor(snapshot),
+      actor,
+      { officialEvidence, workLookup: { catalogSource: "igdb", sourceId: "252001" } },
+    );
+
+    // The ambiguous status is NOT attributed to either colliding source (no last-wins stamp):
+    // only the unambiguous dlsite row is compared.
+    const comparedIds = result.comparedCandidateRows.map((entry) => entry.languageStatusId);
+    expect(comparedIds).toEqual(["ls-dlsite"]);
+    expect(comparedIds).not.toContain("ls-shared");
+    expect(
+      result.comparedCandidateRows.some((entry) => entry.sourceProvenanceId === "prov-shared"),
+    ).toBe(false);
+
+    // The collision itself is diagnosed, naming both colliding external ids.
+    expect(result.readDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: catalogRepositoryDerivedConflictDiagnosticCodeValues.provenanceCollision,
+          metadata: expect.objectContaining({
+            sourceProvenanceId: "prov-shared",
+            externalIds: expect.arrayContaining([
+              expect.objectContaining({ catalogSource: "vndb", sourceId: "v1002" }),
+              expect.objectContaining({ catalogSource: "egs", sourceId: "101002" }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+    // ...and the status routed through the ambiguous provenance is recorded as unattributed
+    // rather than mis-stamped with the wrong source.
+    expect(result.readDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: catalogRepositoryDerivedConflictDiagnosticCodeValues.candidateRowUnattributed,
+          metadata: expect.objectContaining({ languageStatusId: "ls-shared" }),
+        }),
+      ]),
+    );
+    // Exactly one collision diagnostic for the shared provenance (no duplicate emission).
+    expect(
+      result.readDiagnostics.filter(
+        (diag) =>
+          diag.code === catalogRepositoryDerivedConflictDiagnosticCodeValues.provenanceCollision,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("emits a work-not-found diagnostic when the lookup resolves nothing", async () => {
     const reader: CatalogRepositoryDerivedConflictReader = {
       getWorkByExternalId: async () => null,

@@ -42,6 +42,7 @@ export const catalogRepositoryDerivedConflictDiagnosticCodeValues = {
     "catalog.repository_derived_platform_language_conflict.candidate_row_unattributed",
   noComparableCandidateRows:
     "catalog.repository_derived_platform_language_conflict.no_comparable_candidate_rows",
+  provenanceCollision: "catalog.repository_derived_platform_language_conflict.provenance_collision",
 } as const;
 
 export type CatalogRepositoryDerivedConflictDiagnosticCode =
@@ -171,11 +172,51 @@ export async function deriveCatalogPlatformLanguageConflictsFromRepository(
   // attributed to the exact candidate row it came from — without ever reassigning an
   // external id. A status is attributed only when it shares a provenance with a stored
   // external id from a candidate source.
+  //
+  // Provenance is normally per-source-record-unique. If two external ids nonetheless share
+  // one provenance the attribution is AMBIGUOUS: last-wins would silently stamp a status
+  // with the wrong catalogSource/sourceId. We refuse to keep either colliding external id
+  // for that provenance (the provenance becomes unattributable) and record a diagnostic, so
+  // a status routed through it is skipped-and-diagnosed rather than mis-stamped.
   const externalIdByProvenance = new Map<string, CatalogExternalIdRecord>();
+  const collidedProvenanceIds = new Set<string>();
   for (const externalId of snapshot.externalIds) {
-    if (externalId.sourceProvenanceId !== null) {
-      externalIdByProvenance.set(externalId.sourceProvenanceId, externalId);
+    const provenanceId = externalId.sourceProvenanceId;
+    if (provenanceId === null) {
+      continue;
     }
+    if (collidedProvenanceIds.has(provenanceId)) {
+      // Already known ambiguous (>= 3 external ids share it); keep it unattributable.
+      continue;
+    }
+    const existing = externalIdByProvenance.get(provenanceId);
+    if (existing !== undefined) {
+      // Collision: do NOT keep the last-wins external id. Mark the provenance ambiguous.
+      externalIdByProvenance.delete(provenanceId);
+      collidedProvenanceIds.add(provenanceId);
+      readDiagnostics.push({
+        code: catalogRepositoryDerivedConflictDiagnosticCodeValues.provenanceCollision,
+        message:
+          "Two external ids share one source provenance; the provenance is ambiguous and cannot attribute a status to a single source identity without risking a wrong stamp. The provenance is treated as unattributable.",
+        metadata: {
+          sourceProvenanceId: provenanceId,
+          externalIds: [
+            {
+              externalIdId: existing.externalIdId,
+              catalogSource: existing.catalogSource,
+              sourceId: existing.sourceId,
+            },
+            {
+              externalIdId: externalId.externalIdId,
+              catalogSource: externalId.catalogSource,
+              sourceId: externalId.sourceId,
+            },
+          ],
+        },
+      });
+      continue;
+    }
+    externalIdByProvenance.set(provenanceId, externalId);
   }
 
   const comparedCandidateRows: CatalogRepositoryDerivedComparedRow[] = [];
