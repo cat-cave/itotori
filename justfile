@@ -16,6 +16,7 @@ check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
     node --test scripts/db-test-skip-visibility.test.mjs
+    node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/alpha-proof-gate.test.mjs
@@ -227,6 +228,10 @@ ci-itotori:
     rm -f .tmp/itotori-db/no-database-skipped.json
     pnpm --filter @itotori/db test:db
     node scripts/assert-db-tests-not-skipped.mjs
+    # CATALOG-072: prove the catalog source-adapter replay + idempotency suites
+    # (CATALOG-065 contract) explicitly RAN against this database — a skipped or
+    # zero-test outcome fails loudly rather than passing as replay coverage.
+    node scripts/catalog-replay-db-gate.mjs
     pnpm --filter @itotori/db build
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app test
@@ -298,6 +303,21 @@ test-db-strict:
     rm -f .tmp/itotori-db/no-database-skipped.json
     pnpm --filter @itotori/db test:db
     node scripts/assert-db-tests-not-skipped.mjs
+
+# CATALOG-072: DB-backed local gate PROVING the catalog source-adapter replay +
+# idempotency repository tests (the CATALOG-065 idempotent fact-import contract)
+# actually ran against a disposable database. These suites are DB-classified, so
+# a fast-local run SKIPS them — and a skipped suite is NOT replay coverage. This
+# gate makes "full replay coverage ran" provable: with no DATABASE_URL it writes
+# a machine-readable skipped artifact and FAILS (non-zero) instead of going
+# green-on-skip; with a reachable Postgres it runs ONLY the catalog replay/
+# idempotency suites and asserts each one executed replayed tests (per-suite
+# count > 0, zero skipped, zero failed), emitting a deterministic proof artifact.
+# Bring up a disposable Postgres first (see `just db-up` / `just db-migrate`);
+# this recipe does not itself manage docker. Run `DATABASE_URL= just
+# catalog-replay-db-strict` to see the missing-DATABASE_URL failure.
+catalog-replay-db-strict:
+    node scripts/catalog-replay-db-gate.mjs
 
 # ALPHA-009: the suite alpha proof / public-fixture vertical is the required
 # integration guardrail (replaces the retired literal Hello World gate).

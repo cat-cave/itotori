@@ -53,3 +53,42 @@ The replay validation record for recorded fixtures must include:
 The critical replay window is: `recordFetchedStep` succeeds, source facts are written, the process
 crashes before `commitStepImport`, then the same recorded fixture replays. A conforming importer must
 not duplicate facts in that window.
+
+## Verifying the contract (DB-backed local gate)
+
+The replay and idempotency tests that prove this contract are DB-classified: they drive an isolated
+migrated Postgres via `packages/itotori-db/test/db-test-context.ts`, so the fast-local
+`pnpm --filter @itotori/db test` (and any run without `DATABASE_URL`) **skips** them with a
+prominent, machine-readable marker. A skipped suite is _not_ replay coverage — a green fast-local run
+proves nothing about the CATALOG-065 replay path.
+
+To prove the replay path actually ran against a database, use the CATALOG-072 DB-backed local gate:
+
+```sh
+just db-up          # bring up a disposable Postgres (docker/podman compose)
+just db-migrate     # apply migrations
+just catalog-replay-db-strict   # run + PROVE the catalog replay/idempotency suites
+just db-down        # tear the disposable database down
+```
+
+`just catalog-replay-db-strict` (`scripts/catalog-replay-db-gate.mjs`) runs only the catalog
+source-adapter replay + idempotency repository suites against the database:
+
+- `catalog-crawler-repository.test.ts` — crash-before-`commitStepImport` replay windows.
+- `catalog-recorded-importers.test.ts` — VNDB / EGS / DLsite / Steam / IGDB / Wikidata rerun
+  idempotency.
+- `catalog-dlsite-demand.test.ts` — DLsite demand-import replay idempotency.
+
+The gate is **fail-loud, never green-on-skip**:
+
+- With no `DATABASE_URL` it writes a machine-readable skipped artifact
+  (`.tmp/itotori-db/catalog-replay-skipped.json`, `replayCovered: false`) and **exits non-zero**, so
+  a skip can never be mistaken for full persisted replay verification.
+- With a reachable database it asserts each named suite executed replayed tests (per-suite test
+  count &gt; 0, zero skipped, zero failed) and writes a deterministic proof artifact
+  (`.tmp/itotori-db/catalog-replay-proof.json`) recording per-suite counts. A zero-test or skipped
+  outcome is a hard failure.
+
+`just ci-itotori` runs this gate after bringing up the database, so CATALOG-065 replay coverage is
+proven explicitly in CI (not merely implied by an all-suites `test:db` run). The gate uses only
+public recorded fixtures — no private data or network credentials.
