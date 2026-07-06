@@ -133,14 +133,22 @@ function realRoot(root) {
 // and did NOT escape `$`, so any `$` in a decoded DATABASE_URL credential was
 // silently corrupted before Postgres ever saw it.
 //
-// compose-go dotenv, by contrast, treats a SINGLE-QUOTED value as a raw
-// literal: no variable expansion and no backslash escape processing. The only
-// bytes a single-quoted value cannot carry are a single quote itself (there is
-// no in-quote escape for it) and a newline. So we single-quote every value,
-// which preserves `$`, double quotes, spaces, backslashes, and braces
-// byte-for-byte, and REJECT — with a semantic diagnostic naming the offending
-// character — the two bytes that a single-quoted value provably cannot
-// round-trip. Credentials generally never contain those, so the reject path is
+// compose-go dotenv, by contrast, treats a SINGLE-QUOTED value's CONTENT as a
+// raw literal: no variable expansion and no backslash unescaping. So we
+// single-quote every value, which preserves `$`, double quotes, spaces, braces,
+// and interior backslashes byte-for-byte.
+//
+// There is ONE subtlety, and it is why this encoder is not a blanket "backslash
+// is always safe": compose-go's dotenv terminator scan (the loop that hunts for
+// the CLOSING quote) treats `\` as escaping the FOLLOWING byte for BOTH quote
+// styles, even though the single-quote CONTENT is otherwise raw. A value ending
+// in an ODD run of backslashes therefore has its last backslash escape the
+// closing quote, so compose-go never finds the terminator and mis-parses the
+// value as unterminated. An EVEN trailing run pairs up harmlessly and the
+// closing quote stays free. So we REJECT — with a semantic diagnostic naming
+// the offending character — the bytes a single-quoted value provably cannot
+// round-trip: a single quote, a newline/CR, and a value ending in an odd run of
+// backslashes. Credentials generally never contain those, so the reject path is
 // a guard, not a routine outcome.
 export function encodeEnvFileValue(value, name = "value") {
   const str = String(value);
@@ -159,18 +167,52 @@ export function encodeEnvFileValue(value, name = "value") {
         `(compose-go dotenv has no in-quote escape for it)`,
     );
   }
+  const trailingBackslashes = str.match(/\\+$/u);
+  if (trailingBackslashes && trailingBackslashes[0].length % 2 === 1) {
+    throw new Error(
+      `cannot encode ${name} into a compose env file: value ends in an odd run of ` +
+        `backslashes (\\), whose final backslash escapes the closing quote in ` +
+        `compose-go's dotenv terminator scan and leaves the value unterminated`,
+    );
+  }
   return `'${str}'`;
 }
 
-// Reference decoder modelling compose-go's dotenv single-quote parsing: strip
-// the surrounding single quotes to recover the raw literal. Encoding a value
-// and decoding the result must reproduce the input byte-for-byte. Exported so
-// the round-trip test can prove the model without requiring a compose binary.
+// Reference decoder modelling compose-go's dotenv single-quote parsing. It does
+// NOT simply strip the surrounding quotes: it reproduces compose-go's TERMINATOR
+// SCAN, in which `\` escapes the following byte (including the closing quote).
+// A value whose trailing backslash run is odd escapes its own closing quote,
+// leaving the value UNTERMINATED — this decoder must surface that mis-parse so
+// the round-trip test would EXPOSE an encoder that emitted such a value, rather
+// than hide it behind a naive strip-the-quotes model. Encoding a value and
+// decoding the result must reproduce the input byte-for-byte. Exported so the
+// round-trip test can prove the model without requiring a compose binary.
 export function decodeComposeEnvFileValue(encoded) {
-  if (encoded.length < 2 || encoded[0] !== "'" || encoded[encoded.length - 1] !== "'") {
+  if (encoded.length < 2 || encoded[0] !== "'") {
     throw new Error(`not a single-quoted compose env-file value: ${encoded}`);
   }
-  return encoded.slice(1, -1);
+  let i = 1;
+  while (i < encoded.length) {
+    const ch = encoded[i];
+    if (ch === "\\") {
+      // A backslash escapes the next byte; neither can terminate the value.
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      if (i !== encoded.length - 1) {
+        throw new Error(
+          `trailing bytes after the closing quote in a compose env-file value: ${encoded}`,
+        );
+      }
+      return encoded.slice(1, i);
+    }
+    i += 1;
+  }
+  throw new Error(
+    `unterminated single-quoted compose env-file value ` +
+      `(a trailing backslash escaped the closing quote): ${encoded}`,
+  );
 }
 
 function pathToMainUrl(value) {

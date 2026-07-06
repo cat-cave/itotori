@@ -217,6 +217,8 @@ const preservedCredentials = [
   'has "double" quotes',
   "has spaces and\ttab",
   "back\\slash\\path",
+  "even-trailing-run\\\\", // EVEN trailing backslash run — pairs up, quote stays free
+  "back\\\\slash\\\\", // interior + even trailing backslashes
   "trailing#hash and =equals",
   "itotori", // the public no-secret default
   "", // empty credential
@@ -251,6 +253,39 @@ test("encodeEnvFileValue rejects bytes a single-quoted value cannot carry, namin
     () => encodeEnvFileValue("has\rcr", "ITOTORI_DB_NAME"),
     /ITOTORI_DB_NAME.*carriage return \(\\r\)/u,
   );
+});
+
+test("encodeEnvFileValue rejects a value ending in an ODD backslash run (escapes the closing quote)", () => {
+  // A single trailing backslash: its backslash escapes the closing quote in
+  // compose-go's terminator scan, leaving the value unterminated.
+  assert.throws(
+    () => encodeEnvFileValue("secret\\", "ITOTORI_DB_PASSWORD"),
+    /ITOTORI_DB_PASSWORD.*odd run of backslashes.*unterminated/su,
+    "an odd trailing backslash run must be rejected with a diagnostic naming the char",
+  );
+  // Three trailing backslashes is still odd -> still rejected.
+  assert.throws(
+    () => encodeEnvFileValue("pw\\\\\\", "ITOTORI_DB_PASSWORD"),
+    /ITOTORI_DB_PASSWORD.*odd run of backslashes/u,
+  );
+  // A value that is ONLY an odd backslash run is rejected too.
+  assert.throws(() => encodeEnvFileValue("\\", "ITOTORI_DB_PASSWORD"), /odd run of backslashes/u);
+
+  // An EVEN trailing run pairs up harmlessly and must round-trip, not be rejected.
+  const even = "pw\\\\"; // pw + two backslashes
+  assert.equal(decodeComposeEnvFileValue(encodeEnvFileValue(even, "ITOTORI_DB_PASSWORD")), even);
+});
+
+test("decodeComposeEnvFileValue models compose-go's escape-during-terminator scan", () => {
+  // Interior backslashes never touch the terminator: the value round-trips.
+  assert.equal(decodeComposeEnvFileValue("'back\\slash\\path'"), "back\\slash\\path");
+  // An EVEN trailing run leaves the closing quote free: terminator found.
+  assert.equal(decodeComposeEnvFileValue("'pw\\\\'"), "pw\\\\");
+  // An ODD trailing run escapes the closing quote: compose-go sees NO terminator,
+  // so the reference decoder must report the value as UNTERMINATED (mis-parse),
+  // not silently strip the quotes. This is the exposure the naive decoder hid.
+  assert.throws(() => decodeComposeEnvFileValue("'pass\\'"), /unterminated/u);
+  assert.throws(() => decodeComposeEnvFileValue("'\\'"), /unterminated/u);
 });
 
 test("a $-bearing DATABASE_URL credential survives the full compose-env render", () => {
