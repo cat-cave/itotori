@@ -181,6 +181,43 @@ describe("dlsite-demand recorded importer", () => {
     }
   });
 
+  it("assigns non-rank demand fact observedAt deterministically from recorded input across reprocessing", async () => {
+    // CATALOG-086: non-rank DLsite demand facts previously derived observedAt from
+    // insertion wall-clock time, so reprocessing the same recorded input produced
+    // DIFFERENT timestamps. They must now derive from the recorded step fetchedAt so
+    // reprocessing yields identical observedAt; rank facts keep their recorded
+    // observed_at unchanged.
+    const first = await importDemandFactsInFreshContext();
+    const second = await importDemandFactsInFreshContext();
+
+    // The recorded crawl/snapshot time for RJ01111111 in the fixture.
+    const recordedFetchedAt = "2026-06-18T13:10:00.000Z";
+    const nonRankKinds = [
+      catalogDemandFactKindValues.dlCount,
+      catalogDemandFactKindValues.ratingSummary,
+      catalogDemandFactKindValues.ratingHistogram,
+      catalogDemandFactKindValues.wishlistCount,
+      catalogDemandFactKindValues.workType,
+      catalogDemandFactKindValues.translationTree,
+    ];
+    for (const kind of nonRankKinds) {
+      const firstObserved = observedAtForKind(first, kind);
+      const secondObserved = observedAtForKind(second, kind);
+      // Deterministic under replay: identical across the two independent reprocesses...
+      expect(firstObserved).toBe(secondObserved);
+      // ...and equal to the recorded fetchedAt (recorded input), not wall-clock.
+      expect(firstObserved).toBe(recordedFetchedAt);
+    }
+
+    // Rank facts preserve their own recorded observed_at (a real per-snapshot ranking
+    // timestamp), independent of fetchedAt.
+    const firstRank = first.find((fact) => fact.factKind === catalogDemandFactKindValues.rank);
+    expect(firstRank?.observedAt.toISOString()).toBe("2026-06-18T00:00:00.000Z");
+    expect(observedAtForKind(first, catalogDemandFactKindValues.rank)).toBe(
+      observedAtForKind(second, catalogDemandFactKindValues.rank),
+    );
+  });
+
   it("reports present malformed demand fields as DLsite parse drift", () => {
     expect(() => createDlsiteRecordedStorefrontAdapter(parseDriftFixture)).toThrow(
       /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999999 sourceField=dl_count/u,
@@ -232,6 +269,53 @@ describe("dlsite-demand recorded importer", () => {
     );
   });
 });
+
+type DemandFactObservation = { factKind: string; observedAt: Date };
+
+async function importDemandFactsInFreshContext(): Promise<DemandFactObservation[]> {
+  const context = await isolatedMigratedContext();
+  try {
+    const services = {
+      catalogRepository: new ItotoriCatalogRepository(context.db),
+      crawlerRepository: new ItotoriCatalogCrawlerRepository(context.db),
+      runner: new ItotoriCatalogCrawlerRunner(),
+    };
+    await services.runner.run(createDlsiteRecordedStorefrontAdapter(dlsiteFixture), {
+      repository: services.crawlerRepository,
+      actor,
+      workerId: "worker-dlsite-demand-determinism",
+      mode: "recorded_fixture",
+      ingestStep: createCatalogRecordedImporterIngestStep({
+        catalogRepository: services.catalogRepository,
+        actor,
+      }),
+      verifyFactImport: createCatalogRecordedImporterVerifier({
+        catalogRepository: services.catalogRepository,
+        actor,
+      }),
+    });
+    const work = await services.catalogRepository.getWorkByExternalId(
+      actor,
+      "dlsite",
+      "RJ01111111",
+      catalogExternalIdKindValues.storeProduct,
+    );
+    return (work?.demandFacts ?? []).map((fact) => ({
+      factKind: fact.factKind,
+      observedAt: fact.observedAt,
+    }));
+  } finally {
+    await context.close();
+  }
+}
+
+function observedAtForKind(facts: readonly DemandFactObservation[], factKind: string): string {
+  const fact = facts.find((entry) => entry.factKind === factKind);
+  if (fact === undefined) {
+    throw new Error(`missing demand fact for kind ${factKind}`);
+  }
+  return fact.observedAt.toISOString();
+}
 
 async function demandFactCount(pool: {
   query<T extends object = object>(sql: string): Promise<{ rows: T[] }>;

@@ -2715,9 +2715,15 @@ function demandFactInputs(
       parserVersion: context.adapter.parserVersion,
       metadata: compactJson({ ...demandFact.metadata, ...importMetadata }),
     };
-    if (demandFact.observedAt !== undefined) {
-      input.observedAt = demandFact.observedAt;
-    }
+    // Rank demand facts carry their own recorded observed_at (a real per-snapshot
+    // ranking timestamp). Non-rank demand facts (dl_count, rating summary/histogram,
+    // wishlist_count, work_type, translation_tree) have no per-fact source timestamp,
+    // so they MUST default to the recorded step fetchedAt (the recorded crawl/snapshot
+    // time from the fixture) rather than insertion wall-clock time. Deriving from the
+    // recorded input keeps observedAt deterministic under recorded-importer replay:
+    // reprocessing the same recorded input yields identical observedAt. This mirrors
+    // the languageStatusInputs contract (status.observedAt ?? context.step.fetchedAt).
+    input.observedAt = demandFact.observedAt ?? context.step.fetchedAt;
     return input;
   });
 }
