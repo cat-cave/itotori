@@ -54,6 +54,8 @@ after the database has been migrated.
 | `queue.read`      | Read durable queue event and job internals        |
 | `catalog.read`    | Read catalog work identity and provenance records |
 | `catalog.write`   | Persist catalog work identity and provenance      |
+| `audit.write`     | Record and resolve audit findings                 |
+| `style_guide.approve` | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
 | `system.reset`    | Reset local hello-world persisted state           |
 
 Project dashboard reads do not currently require a permission gate. Catalog

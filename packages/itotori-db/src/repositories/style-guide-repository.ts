@@ -360,6 +360,14 @@ export type ApproveStyleGuideVersionResult = {
 };
 
 export interface ItotoriStyleGuideRepositoryPort {
+  /**
+   * Fail-closed approval authorization. Callers (the approval service) MUST
+   * invoke this BEFORE reading any branch/version latest-state, so an
+   * unauthorized caller is denied without any branch/version detail being read
+   * or leaked back to them. Throws {@link AuthorizationError} when the actor
+   * lacks the dedicated `style_guide.approve` permission.
+   */
+  authorizeApproval(actor: AuthorizationActor): Promise<void>;
   getLocaleBranchContext(
     projectId: string,
     localeBranchId: string,
@@ -382,6 +390,10 @@ export interface ItotoriStyleGuideRepositoryPort {
 
 export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
+
+  async authorizeApproval(actor: AuthorizationActor): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.styleGuideApprove);
+  }
 
   async getLocaleBranchContext(
     projectId: string,
@@ -592,7 +604,7 @@ export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryP
     actor: AuthorizationActor,
     input: ApproveStyleGuideVersionInput,
   ): Promise<ApproveStyleGuideVersionResult> {
-    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    await requirePermission(this.db, actor, permissionValues.styleGuideApprove);
 
     return this.db.transaction(async (tx) => {
       const guideRows = await tx

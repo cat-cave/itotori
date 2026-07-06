@@ -417,8 +417,14 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.createVersion(deniedActor, undefined as never),
   ),
   styleGuideGate(
+    "authorizeApproval",
+    "styleGuideApprove",
+    "style-guide-repository.test.ts approval authorization coverage",
+    (repo) => repo.authorizeApproval(deniedActor),
+  ),
+  styleGuideGate(
     "approveVersion",
-    "draftWrite",
+    "styleGuideApprove",
     "style-guide-repository.test.ts approval coverage",
     (repo) => repo.approveVersion(deniedActor, undefined as never),
   ),
@@ -1323,8 +1329,14 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriStyleGuideRepository.authorizeApproval",
+          "requiredPermission": "style_guide.approve",
+          "successFixture": "style-guide-repository.test.ts approval authorization coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriStyleGuideRepository.approveVersion",
-          "requiredPermission": "draft.write",
+          "requiredPermission": "style_guide.approve",
           "successFixture": "style-guide-repository.test.ts approval coverage",
         },
         {

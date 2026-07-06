@@ -137,6 +137,12 @@ export class ItotoriStyleGuideService {
     actor: AuthorizationActor,
     input: ApproveStyleGuideVersionCommand,
   ): Promise<StyleGuideCommandResult> {
+    // Fail-closed: authorize the dedicated `style_guide.approve` permission
+    // BEFORE reading any branch/version latest-state. An unauthorized caller
+    // must be denied without the service reading -- and thus without it being
+    // able to leak back -- branch existence or the latest/stale version state.
+    await this.repository.authorizeApproval(actor);
+
     const branch = await this.repository.getLocaleBranchContext(
       input.projectId,
       input.localeBranchId,

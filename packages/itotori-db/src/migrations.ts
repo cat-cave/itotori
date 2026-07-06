@@ -280,6 +280,10 @@ export const migrations = [
     id: "0055_catalog_seed_target_inert_status",
     file: "0055_catalog_seed_target_inert_status.sql",
   },
+  {
+    id: "0056_style_guide_approve_permission",
+    file: "0056_style_guide_approve_permission.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

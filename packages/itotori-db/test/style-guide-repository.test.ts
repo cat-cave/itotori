@@ -507,7 +507,7 @@ describe("ItotoriStyleGuideService", () => {
           styleGuideVersionId: fixture.cases.approve.styleGuideVersionId,
           expectedLatestVersionId: fixture.cases.approve.expectedLatestVersionId,
         }),
-      ).rejects.toThrow(/missing permission draft\.write/);
+      ).rejects.toThrow(/missing permission style_guide\.approve/);
 
       const stale = await service.approveStyleGuideVersion(localActor, {
         projectId: fixture.projectId,
@@ -547,6 +547,105 @@ describe("ItotoriStyleGuideService", () => {
       });
 
       await expect(outboxEventCount(context.db)).resolves.toBe(outboxCountBeforeFailures);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("requires the dedicated style_guide.approve permission and fails closed before reading state", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideService(repository);
+      const fixture = styleGuideFixture();
+
+      const draftWriteOnlyActor: AuthorizationActor = { userId: "style-guide-draft-write-only" };
+      await seedDraftWriteOnlyUser(context.db, draftWriteOnlyActor.userId);
+      const approverOnlyActor: AuthorizationActor = { userId: "style-guide-approver-only" };
+      await seedStyleGuideApproverOnlyUser(context.db, approverOnlyActor.userId);
+      const deniedActor: AuthorizationActor = { userId: "style-guide-no-permissions" };
+      await seedUserWithoutPermissions(context.db, deniedActor.userId);
+
+      await repository.createVersion(localActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: fixture.cases.create.styleGuideVersionId,
+        status: styleGuideVersionStatusValues.approved,
+        policy: fixture.cases.create.policy,
+      });
+      await repository.createVersion(localActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: fixture.cases.update.styleGuideVersionId,
+        expectedPreviousVersionId: fixture.cases.update.expectedPreviousVersionId,
+        policy: fixture.cases.update.policy,
+      });
+      const outboxCountBeforeApproval = await outboxEventCount(context.db);
+
+      // draft.write alone no longer authorizes approval -- it needs the
+      // dedicated style_guide.approve permission.
+      await expect(
+        service.approveStyleGuideVersion(draftWriteOnlyActor, {
+          projectId: fixture.projectId,
+          localeBranchId: fixture.localeBranchId,
+          styleGuideVersionId: fixture.cases.approve.styleGuideVersionId,
+          expectedLatestVersionId: fixture.cases.approve.expectedLatestVersionId,
+        }),
+      ).rejects.toMatchObject({
+        name: "AuthorizationError",
+        actor: draftWriteOnlyActor,
+        permission: permissionValues.styleGuideApprove,
+      });
+
+      // Fail-closed: an unauthorized caller that passes a STALE version is
+      // denied by the authorization check BEFORE any branch/version state is
+      // read, so the service never returns a stale/branch diagnostic that would
+      // leak latest-version state to the caller.
+      await expect(
+        service.approveStyleGuideVersion(deniedActor, {
+          projectId: fixture.projectId,
+          localeBranchId: fixture.localeBranchId,
+          styleGuideVersionId: fixture.outbox.staleApproval.styleGuideVersionId,
+          expectedLatestVersionId: fixture.outbox.staleApproval.expectedLatestVersionId,
+        }),
+      ).rejects.toMatchObject({
+        name: "AuthorizationError",
+        actor: deniedActor,
+        permission: permissionValues.styleGuideApprove,
+      });
+
+      // No approval read or write happened for either denied caller.
+      await expect(outboxEventCount(context.db)).resolves.toBe(outboxCountBeforeApproval);
+
+      // The dedicated permission (and only it) authorizes a successful approval.
+      const approverPermissions = await context.db
+        .select({ permission: userPermissionGrants.permission })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.userId, approverOnlyActor.userId));
+      expect(approverPermissions.map((entry) => entry.permission).sort()).toEqual([
+        permissionValues.styleGuideApprove,
+      ]);
+
+      const approved = await service.approveStyleGuideVersion(approverOnlyActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: fixture.outbox.approval.approvedStyleGuideVersionId,
+        expectedLatestVersionId: fixture.outbox.approval.approvedStyleGuideVersionId,
+      });
+      expect(approved).toMatchObject({
+        status: "approved",
+        version: {
+          approverUserId: approverOnlyActor.userId,
+          styleGuideVersionId: fixture.outbox.approval.approvedStyleGuideVersionId,
+        },
+      });
+      await expect(
+        repository.getApprovedVersionByLocaleBranchId(fixture.localeBranchId),
+      ).resolves.toMatchObject({
+        styleGuideVersionId: fixture.outbox.approval.approvedStyleGuideVersionId,
+        status: styleGuideVersionStatusValues.approved,
+      });
     } finally {
       await context.close();
     }
@@ -1043,6 +1142,14 @@ async function seedDraftWriteOnlyUser(db: ItotoriDatabase, userId: string): Prom
   await db.insert(userPermissionGrants).values({
     userId,
     permission: permissionValues.draftWrite,
+  });
+}
+
+async function seedStyleGuideApproverOnlyUser(db: ItotoriDatabase, userId: string): Promise<void> {
+  await db.insert(users).values({ userId, displayName: "Style guide approver" });
+  await db.insert(userPermissionGrants).values({
+    userId,
+    permission: permissionValues.styleGuideApprove,
   });
 }
 
