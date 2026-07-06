@@ -41,11 +41,28 @@ import type {
 import { ReviewerQueueRepositoryError, reviewerQueueItemKindValues } from "@itotori/db";
 import type {
   AgenticLoopBundle,
+  AgenticLoopRoutingOutcome,
   LocalizationUnitV02,
   QaFinding,
   QaFindingSeverity,
 } from "@itotori/localization-bridge-schema";
 import type { DraftProtectedSpanViolation } from "../draft/protected-span-validator.js";
+
+/**
+ * True for every loop outcome that DEFERS the unit to the human queue (the
+ * draft was NOT persisted): a plain budget-exhaustion / immediate-review defer,
+ * a deterministic-P0 short-circuit, OR a `repaired_then_qa_rejected` — the
+ * repaired draft cleared the deterministic recheck but the bounded post-repair
+ * re-QA (agentic-loop-post-repair-qa-revalidation) still flagged it, so it must
+ * reach a human exactly like any other defer.
+ */
+function isDeferredLoopOutcome(outcome: AgenticLoopRoutingOutcome): boolean {
+  return (
+    outcome === "deferred_to_human" ||
+    outcome === "short_circuit_deterministic_p0" ||
+    outcome === "repaired_then_qa_rejected"
+  );
+}
 
 /**
  * Severity floor at/above which a QA finding warrants human review even when
@@ -115,7 +132,7 @@ export function agenticLoopWarrantsReviewerQueueItem(input: {
   qaFindings: ReadonlyArray<QaFinding>;
 }): boolean {
   const outcome = input.bundle.routingSummary.outcome;
-  if (outcome === "deferred_to_human" || outcome === "short_circuit_deterministic_p0") {
+  if (isDeferredLoopOutcome(outcome)) {
     return true;
   }
   return input.qaFindings.some((finding) =>
@@ -148,7 +165,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
 ): CreateReviewerQueueItemInput {
   const { bundle, unit } = input;
   const outcome = bundle.routingSummary.outcome;
-  const deferred = outcome === "deferred_to_human" || outcome === "short_circuit_deterministic_p0";
+  const deferred = isDeferredLoopOutcome(outcome);
   const flaggedFindings = input.qaFindings.filter((finding) =>
     AGENTIC_LOOP_REVIEW_SEVERITY_FLOOR.has(finding.severity),
   );

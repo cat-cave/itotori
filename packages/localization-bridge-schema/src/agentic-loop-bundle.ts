@@ -64,16 +64,27 @@ export type AgenticLoopStageName = (typeof AGENTIC_LOOP_STAGE_NAMES)[number];
 /**
  * Closed enum of routing outcomes. `accepted` means the draft cleared
  * every gate AND triage routed everything to a benign class.
- * `repaired_then_accepted` means a repair iteration produced an
- * accepted draft. `deferred_to_human` means the orchestrator
- * exhausted the repair budget (or routing immediately requested
- * human review) and the draft was NOT persisted — the human triage
- * queue owns the next step. `escalated_to_runtime` is reserved for
- * runtime-attribution routing (HumanFinding with attribution=runtime).
+ * `repaired_then_accepted` means a repair iteration produced a draft
+ * that cleared BOTH the deterministic recheck AND a bounded re-QA pass
+ * (the QA judge re-evaluated the repaired draft and confirmed the
+ * QA-flagged issue that drove the repair is resolved — zero repairable
+ * causes + zero critical findings). `repaired_then_qa_rejected` means a
+ * repair iteration cleared the deterministic recheck but the bounded
+ * re-QA pass STILL flagged a repairable/critical issue on the repaired
+ * draft: the repair did not confirmably fix the problem, so the draft is
+ * NOT persisted and is routed to the human queue (distinct from a plain
+ * budget-exhaustion defer so telemetry shows repair WAS attempted +
+ * re-judged but not confirmed). `deferred_to_human` means the
+ * orchestrator exhausted the repair budget without ever producing a
+ * deterministically-clean repaired draft (or routing immediately
+ * requested human review) and the draft was NOT persisted — the human
+ * triage queue owns the next step. `escalated_to_runtime` is reserved
+ * for runtime-attribution routing (HumanFinding with attribution=runtime).
  */
 export const AGENTIC_LOOP_ROUTING_OUTCOMES = [
   "accepted",
   "repaired_then_accepted",
+  "repaired_then_qa_rejected",
   "deferred_to_human",
   "escalated_to_runtime",
   "short_circuit_deterministic_p0",

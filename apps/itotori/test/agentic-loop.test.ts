@@ -289,6 +289,63 @@ function findingsProviderFactory(args: {
   };
 }
 
+/**
+ * agentic-loop-post-repair-qa-revalidation — a provider factory whose QA judges
+ * emit the SAME repairable finding on EVERY invocation (initial pass AND the
+ * bounded post-repair re-QA), while the repair translation emits a
+ * deterministically-CLEAN draft. This isolates the post-repair contract: the
+ * repaired draft clears the deterministic recheck yet the re-QA still flags the
+ * issue, so the loop must record `repaired_then_qa_rejected` (NOT falsely
+ * accept). Every repair attempt fires exactly one repair translation + one
+ * four-agent re-QA pass, so the invocation counts prove the loop stays bounded.
+ */
+function persistentlyFlaggingProviderFactory(args: {
+  qaFinding: QaFinding;
+  repairDraftText: string;
+  repairSpanStart: number;
+  repairSpanEnd: number;
+}): AgenticLoopProviderFactory {
+  let translationCallCount = 0;
+  return ({ stage, agentLabel }) => {
+    return new FakeModelProvider({
+      providerName: `fake-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest) => {
+        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+          return makeSpeakerLabelContent(makeUnit());
+        }
+        if (request.taskKind === "experiment") {
+          return fakeSemanticContextContent(agentLabel);
+        }
+        if (request.taskKind === "draft_translation") {
+          translationCallCount += 1;
+          if (translationCallCount === 1) {
+            return makeTranslationContent({
+              unit: makeUnit(),
+              draftText: DRAFT_TEXT,
+              spanStart: 7,
+              spanEnd: 15,
+            });
+          }
+          // Every repair attempt emits a deterministically-clean draft — so the
+          // ONLY thing that can reject it is the bounded re-QA.
+          return makeTranslationContent({
+            unit: makeUnit(),
+            draftText: args.repairDraftText,
+            spanStart: args.repairSpanStart,
+            spanEnd: args.repairSpanEnd,
+          });
+        }
+        if (request.taskKind === "llm_qa") {
+          // Persistent rejection: the flagged issue is never resolved, so both
+          // the initial QA pass AND every re-QA pass surface the finding.
+          return makeQaContent([args.qaFinding]);
+        }
+        return "";
+      },
+    });
+  };
+}
+
 // ---------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------
@@ -458,6 +515,130 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     expect(bundle.finalDraft.deferredReason).toBeDefined();
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
     expect(repairStage?.outcome).toBe("cap_exceeded");
+  });
+
+  it("post-repair re-QA CONFIRMS the fix: a repaired draft that passes the bounded re-QA is accepted", async () => {
+    // agentic-loop-post-repair-qa-revalidation — option (a) accept path. The
+    // initial QA flags a repairable mistranslation; the repair emits a clean
+    // draft; the bounded re-QA (four judges, once) comes back CLEAN, so the
+    // repaired draft is accepted with real evidence the flagged issue is gone.
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f02",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "major",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: tighten the draft",
+      agentRationale: "fixture-finding",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 1 }),
+      // `findingsProviderFactory` emits the finding ONLY on the first QA call,
+      // so the post-repair re-QA (QA calls 5-8) is clean → confirmed fix.
+      findingsProviderFactory({
+        qaFinding: finding,
+        repairDraftText: DRAFT_TEXT,
+        repairSpanStart: 7,
+        repairSpanEnd: 15,
+      }),
+    );
+    expect(bundle.routingSummary.outcome).toBe("repaired_then_accepted");
+    expect(bundle.routingSummary.repairAttempts).toBe(1);
+    expect(bundle.finalDraft.draftText).toBe(DRAFT_TEXT);
+    expect(bundle.finalDraft.deferredReason).toBeUndefined();
+    const repairStage = bundle.stages.find((s) => s.stageName === "repair");
+    expect(repairStage?.outcome).toBe("repaired_then_accepted_at_attempt_1");
+    // The repair stage owns BOTH the repair translation (1) AND its bounded
+    // re-QA (4 focused judges) = 5 invocations. The `qa_findings` stage stays
+    // the INITIAL four-agent pass — the re-QA is not double-counted there.
+    expect(repairStage?.invocations.length).toBe(5);
+    const reqaInvocations =
+      repairStage?.invocations.filter((i) => i.agentLabel.includes("-reqa[")) ?? [];
+    expect(reqaInvocations.length).toBe(4);
+    const qaStage = bundle.stages.find((s) => s.stageName === "qa_findings");
+    expect(qaStage?.invocations.length).toBe(4);
+  });
+
+  it("post-repair re-QA REJECTS: a repaired draft that clears deterministic checks but still fails re-QA is NOT falsely accepted", async () => {
+    // agentic-loop-post-repair-qa-revalidation — option (a) reject path. The
+    // repaired draft is deterministically CLEAN (balanced / non-empty / charset
+    // / protected-spans all pass), yet the bounded re-QA STILL flags the
+    // repairable issue. Deterministic-only acceptance would falsely mark this
+    // `repaired_then_accepted`; the contract instead records the distinct
+    // `repaired_then_qa_rejected` and defers, with no persisted draft.
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f03",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "major",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: the repaired draft STILL mistranslates",
+      agentRationale: "fixture-finding",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 1 }),
+      persistentlyFlaggingProviderFactory({
+        qaFinding: finding,
+        repairDraftText: DRAFT_TEXT,
+        repairSpanStart: 7,
+        repairSpanEnd: 15,
+      }),
+    );
+    expect(bundle.routingSummary.outcome).toBe("repaired_then_qa_rejected");
+    expect(bundle.routingSummary.repairAttempts).toBe(1);
+    // NOT falsely accepted: no draft is persisted, a reason is carried.
+    expect(bundle.finalDraft.draftText).toBeUndefined();
+    expect(bundle.finalDraft.deferredReason).toBeDefined();
+    const repairStage = bundle.stages.find((s) => s.stageName === "repair");
+    expect(repairStage?.outcome).toBe("repaired_then_qa_rejected_after_1_attempts");
+    expect(repairStage?.invocations.length).toBe(5);
+    // The bundle round-trips through the schema asserter with the new outcome.
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
+  });
+
+  it("post-repair re-QA stays BOUNDED: exactly maxRepairAttempts repair+re-QA cycles, never an unbounded loop", async () => {
+    // agentic-loop-post-repair-qa-revalidation — the bound proof. With a
+    // persistently-flagging re-QA the loop can NEVER accept, so it must run
+    // EXACTLY `maxRepairAttempts` cycles and stop — each cycle firing one
+    // repair translation + one four-agent re-QA (no unbounded QA→repair→QA).
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f04",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "major",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: never resolvable",
+      agentRationale: "fixture-finding",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 2 }),
+      persistentlyFlaggingProviderFactory({
+        qaFinding: finding,
+        repairDraftText: DRAFT_TEXT,
+        repairSpanStart: 7,
+        repairSpanEnd: 15,
+      }),
+    );
+    expect(bundle.routingSummary.outcome).toBe("repaired_then_qa_rejected");
+    // The cap held: exactly 2 attempts, not one more.
+    expect(bundle.routingSummary.repairAttempts).toBe(2);
+    const repairStage = bundle.stages.find((s) => s.stageName === "repair");
+    expect(repairStage?.outcome).toBe("repaired_then_qa_rejected_after_2_attempts");
+    // 2 repair translations + 2 × 4 re-QA judges = 10 invocations. If the loop
+    // were unbounded this would blow past 10.
+    expect(repairStage?.invocations.length).toBe(10);
+    const repairPrimaryCount =
+      repairStage?.invocations.filter((i) => i.agentLabel.startsWith("repair-primary")).length ?? 0;
+    expect(repairPrimaryCount).toBe(2);
+    const reqaCount =
+      repairStage?.invocations.filter((i) => i.agentLabel.includes("-reqa[")).length ?? 0;
+    expect(reqaCount).toBe(8);
   });
 
   it("round-trip: serialize + parse via the schema asserter yields a byte-equal bundle", async () => {

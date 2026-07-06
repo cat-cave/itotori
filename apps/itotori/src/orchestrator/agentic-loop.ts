@@ -662,11 +662,38 @@ export async function runAgenticLoopForUnit(
     finalDraftText = undefined;
     deferredReason = `maxRepairAttempts=${policy.maxRepairAttempts} but ${repairableCauseCount} repairable cause(s) emerged`;
   } else {
-    // Run the bounded repair loop. We invoke the repair agent once
-    // per repair budget; if any iteration produces a clean draft the
-    // loop terminates with `repaired_then_accepted`. Otherwise the
-    // bundle records `deferred_to_human`.
+    // Run the bounded repair loop. We invoke the repair agent once per
+    // repair budget. A repaired draft is accepted ONLY when it clears
+    // BOTH gates in sequence:
+    //   (1) the DETERMINISTIC recheck (balanced / non-empty / charset /
+    //       protected-spans), AND
+    //   (2) a BOUNDED post-repair re-QA pass (agentic-loop-post-repair-qa-
+    //       revalidation) — the same four focused QA judges that DROVE the
+    //       repair re-evaluate the repaired draft to CONFIRM the flagged
+    //       issue is actually resolved, not merely deterministically valid.
+    //
+    // DECISION — bounded re-QA over deterministic-only (option (a)). The
+    // original QA pass is a FIXED-cost, four-agent evaluation
+    // (`invokeQaStage` × the four focused labels); it is not itself a loop.
+    // The repair loop is ALREADY strictly bounded by
+    // `policy.maxRepairAttempts`. Re-running that fixed QA pass ONCE per
+    // repair attempt therefore keeps the total cost bounded at
+    // `initialQA(4) + maxRepairAttempts × (repair(1) + reQA(4))` — there is
+    // NO unbounded QA→repair→QA recursion, because the re-QA only decides
+    // accept-vs-continue WITHIN the existing attempt budget; it never spawns
+    // an attempt beyond `maxRepairAttempts`. Deterministic-only acceptance
+    // (option (b)) would FALSELY accept a draft that clears
+    // balanced/charset/protected-span checks yet still mistranslates — the
+    // deterministic gate cannot see the semantic issue the QA judge flagged.
+    // Re-QA closes that gap with real evidence that the repair worked.
+    //
+    // Terminal outcomes:
+    //   - a draft that clears (1) AND (2)          → `repaired_then_accepted`
+    //   - the last deterministically-clean draft still fails (2) after the
+    //     budget is spent                          → `repaired_then_qa_rejected`
+    //   - no attempt ever cleared (1)              → `deferred_to_human`
     let attempt = 0;
+    let lastReQaRejected = false;
     while (attempt < policy.maxRepairAttempts) {
       attempt += 1;
       const repairProvider = providerFactory({
@@ -706,20 +733,64 @@ export async function runAgenticLoopForUnit(
             ?.protectedSpanRefs ?? [],
         targetLocale: policy.targetLocale,
       });
-      if (!recheck.shortCircuit && recheck.violations.length === 0) {
+      if (recheck.shortCircuit || recheck.violations.length > 0) {
+        // Gate (1) still fails — this attempt cannot be accepted. Do NOT run
+        // re-QA on a deterministically-broken draft; try again if budget
+        // remains, else fall through to the budget-exhaustion defer.
+        lastReQaRejected = false;
+        continue;
+      }
+      // Gate (1) passed — run the BOUNDED post-repair re-QA (gate (2)). This
+      // runs at most once per attempt, so it adds a fixed four-call pass to a
+      // loop that is already capped at `maxRepairAttempts`.
+      const reQa = await runPostRepairReQaPass({
+        input,
+        policy,
+        pairPolicy,
+        providerFactory,
+        draftText: repairedText,
+        attempt,
+        repairStage,
+      });
+      const reTriage = routeFindingsAndViolations({
+        findings: reQa.findings,
+        // Gate (1) already confirmed zero deterministic violations remain.
+        violations: [],
+        projectId: policy.projectId,
+      });
+      const reRepairableCount = reTriage.routings.filter((routing) =>
+        isRepairableCauseClass(routing.rootCause.class),
+      ).length;
+      if (reRepairableCount === 0 && reTriage.summary.criticalCount === 0) {
+        // Re-QA CONFIRMS the flagged issue is resolved: no repairable cause
+        // and no critical finding on the repaired draft. Accept.
         finalDraftText = repairedText;
         routingOutcome = "repaired_then_accepted";
         repairAttempts = attempt;
         repairStage.outcome = `repaired_then_accepted_at_attempt_${attempt}`;
         break;
       }
+      // Re-QA still flags a repairable/critical issue: the repair did NOT
+      // confirmably fix the problem. Continue to the next attempt if budget
+      // remains; otherwise this records `repaired_then_qa_rejected` below.
+      lastReQaRejected = true;
     }
     if (routingOutcome !== "repaired_then_accepted") {
       repairAttempts = attempt;
-      routingOutcome = "deferred_to_human";
       finalDraftText = undefined;
-      deferredReason = `repair budget exhausted after ${attempt} attempt(s) (maxRepairAttempts=${policy.maxRepairAttempts})`;
-      repairStage.outcome = `cap_exhausted_after_${attempt}_attempts`;
+      if (lastReQaRejected) {
+        // The final deterministically-clean repaired draft was still rejected
+        // by the bounded re-QA — a DISTINCT outcome from a plain budget-exhaust
+        // defer, so telemetry shows repair WAS attempted + re-judged but the
+        // flagged issue was not confirmed resolved.
+        routingOutcome = "repaired_then_qa_rejected";
+        deferredReason = `repaired draft still failed the bounded re-QA after ${attempt} attempt(s): the QA-flagged issue was not confirmed resolved (maxRepairAttempts=${policy.maxRepairAttempts})`;
+        repairStage.outcome = `repaired_then_qa_rejected_after_${attempt}_attempts`;
+      } else {
+        routingOutcome = "deferred_to_human";
+        deferredReason = `repair budget exhausted after ${attempt} attempt(s) (maxRepairAttempts=${policy.maxRepairAttempts})`;
+        repairStage.outcome = `cap_exhausted_after_${attempt}_attempts`;
+      }
     }
   }
   stages.push(repairStage);
@@ -1632,6 +1703,62 @@ async function invokeQaStage(args: {
     qaPromptVersion: `${QA_PROMPT_TEMPLATE_VERSION_V1}-${args.agentLabel}`,
   };
   return agent.invokeQa(args.input.actor, input);
+}
+
+/**
+ * agentic-loop-post-repair-qa-revalidation — the BOUNDED post-repair re-QA
+ * pass (gate (2) of the repair acceptance contract).
+ *
+ * Re-runs the SAME four focused QA judges that drove the repair against the
+ * repaired draft to CONFIRM the flagged issue is resolved (not merely
+ * deterministically valid). This is a FIXED-cost, four-call pass — it is not a
+ * loop and it never triggers a new repair attempt on its own, so it stays
+ * strictly bounded inside the caller's `maxRepairAttempts`-capped repair loop.
+ *
+ * Every re-QA invocation is drawn from the SAME per-agent QA pair-policy the
+ * initial pass used (no defaulting) and is recorded onto the repair stage's
+ * telemetry (labelled `<agent>-reqa[attempt]`) so the repair stage owns the
+ * full cost of the repair-and-verify cycle while the `qa_findings` stage stays
+ * the initial-QA pass. Returns the concatenated findings; the caller routes
+ * them to decide accept vs. `repaired_then_qa_rejected`.
+ */
+async function runPostRepairReQaPass(args: {
+  input: AgenticLoopUnitInput;
+  policy: AgenticLoopPolicy;
+  pairPolicy: PairPolicy;
+  providerFactory: AgenticLoopProviderFactory;
+  draftText: string;
+  attempt: number;
+  repairStage: StageAccumulator;
+}): Promise<{ findings: QaFinding[] }> {
+  const { input, policy, pairPolicy, providerFactory, draftText, attempt, repairStage } = args;
+  let findings: QaFinding[] = [];
+  for (const entry of [
+    { agentLabel: "qa-style-adherence", pair: pairPolicy.qa.styleAdherence },
+    { agentLabel: "qa-semantic-drift", pair: pairPolicy.qa.semanticDrift },
+    { agentLabel: "qa-tone-register", pair: pairPolicy.qa.toneRegister },
+    { agentLabel: "qa-unresolved-terminology", pair: pairPolicy.qa.unresolvedTerminology },
+  ]) {
+    const provider = providerFactory({
+      stage: "qa_findings",
+      agentLabel: entry.agentLabel,
+      pair: entry.pair,
+    });
+    const result = await invokeQaStage({
+      provider,
+      pair: entry.pair,
+      input,
+      policy,
+      draftText,
+      agentLabel: entry.agentLabel,
+    });
+    pushInvocation(
+      repairStage,
+      providerTelemetryFromQa(result, entry.pair, `${entry.agentLabel}-reqa[${attempt}]`),
+    );
+    findings = findings.concat(result.findings);
+  }
+  return { findings };
 }
 
 function providerTelemetryFromQa(
