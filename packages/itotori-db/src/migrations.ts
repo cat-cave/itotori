@@ -272,6 +272,10 @@ export const migrations = [
     id: "0053_style_guide_version_reference_integrity",
     file: "0053_style_guide_version_reference_integrity.sql",
   },
+  {
+    id: "0054_style_guide_version_changed_outbox_payload_contract",
+    file: "0054_style_guide_version_changed_outbox_payload_contract.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
