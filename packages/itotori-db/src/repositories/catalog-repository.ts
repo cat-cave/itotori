@@ -128,6 +128,10 @@ export const catalogArtifactMappingErrorCodes = [
   "install_state_release_not_in_work",
   /** An install-state references a local-scan entry owned by a different work. */
   "install_state_local_scan_entry_belongs_to_other_work",
+  /** A conflict-evidence row references a subject id that does not exist for its declared kind. */
+  "conflict_evidence_subject_unknown",
+  /** A conflict-evidence row references a subject owned by a different work than the conflict. */
+  "conflict_evidence_subject_belongs_to_other_work",
 ] as const;
 
 export type CatalogArtifactMappingErrorCode = (typeof catalogArtifactMappingErrorCodes)[number];
@@ -1117,6 +1121,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const normalized = assertCatalogWorkInput(input);
     await assertWorkScopedArtifactReferences(this.db, normalized);
+    await assertConflictEvidenceSubjectReferences(this.db, normalized);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -4900,6 +4905,175 @@ async function assertWorkScopedArtifactReferences(
       throw new CatalogArtifactMappingError(
         "install_state_local_scan_entry_belongs_to_other_work",
         "installState.localScanEntryId must belong to the install state work",
+      );
+    }
+  }
+}
+
+/**
+ * Validates the subject identity of every CATALOG-002 conflict-evidence row
+ * being written for a work. Conflict evidence stores a free-text
+ * `(subjectKind, subjectId)` with no foreign key (subjects span several tables),
+ * so without this guard an evidence row can DANGLE (reference a subject id that
+ * does not exist for its declared kind) or point ACROSS normalized works (its
+ * subject belongs to a different work than the conflict).
+ *
+ * For every referenced subject the id must EXIST for its declared kind and,
+ * for work-scoped kinds, belong to the SAME work as the conflict. Subjects
+ * created in this same upsert are treated as belonging to the parent work (they
+ * are inserted earlier in the write transaction than the evidence rows).
+ * `sourceProvenance` is a global (work-agnostic) record, so only existence is
+ * enforced for it.
+ */
+async function assertConflictEvidenceSubjectReferences(
+  db: ItotoriDatabase,
+  input: NormalizedCatalogWorkInput,
+): Promise<void> {
+  const externalIdSubjects = new Set<string>();
+  const releaseSubjects = new Set<string>();
+  const languageStatusSubjects = new Set<string>();
+  const workSubjects = new Set<string>();
+  const sourceProvenanceSubjects = new Set<string>();
+
+  for (const conflict of input.conflicts) {
+    for (const evidence of conflict.evidence) {
+      switch (evidence.subjectKind) {
+        case catalogConflictSubjectKindValues.externalId:
+          externalIdSubjects.add(evidence.subjectId);
+          break;
+        case catalogConflictSubjectKindValues.release:
+          releaseSubjects.add(evidence.subjectId);
+          break;
+        case catalogConflictSubjectKindValues.languageStatus:
+          languageStatusSubjects.add(evidence.subjectId);
+          break;
+        case catalogConflictSubjectKindValues.work:
+          workSubjects.add(evidence.subjectId);
+          break;
+        case catalogConflictSubjectKindValues.sourceProvenance:
+          sourceProvenanceSubjects.add(evidence.subjectId);
+          break;
+      }
+    }
+  }
+
+  await assertWorkScopedConflictSubjects(
+    externalIdSubjects,
+    new Set(input.externalIds.map((externalId) => externalId.externalIdId)),
+    input.workId,
+    "external id",
+    async (ids) => {
+      const rows = await db
+        .select({ id: catalogExternalIds.externalIdId, workId: catalogExternalIds.workId })
+        .from(catalogExternalIds)
+        .where(inArray(catalogExternalIds.externalIdId, ids));
+      return new Map(rows.map((row) => [row.id, row.workId]));
+    },
+  );
+
+  await assertWorkScopedConflictSubjects(
+    releaseSubjects,
+    new Set(input.releases.map((release) => release.releaseId)),
+    input.workId,
+    "release",
+    async (ids) => {
+      const rows = await db
+        .select({ id: catalogReleases.releaseId, workId: catalogReleases.workId })
+        .from(catalogReleases)
+        .where(inArray(catalogReleases.releaseId, ids));
+      return new Map(rows.map((row) => [row.id, row.workId]));
+    },
+  );
+
+  await assertWorkScopedConflictSubjects(
+    languageStatusSubjects,
+    new Set(input.languageStatuses.map((languageStatus) => languageStatus.languageStatusId)),
+    input.workId,
+    "language status",
+    async (ids) => {
+      const rows = await db
+        .select({
+          id: catalogLanguageStatuses.languageStatusId,
+          workId: catalogLanguageStatuses.workId,
+        })
+        .from(catalogLanguageStatuses)
+        .where(inArray(catalogLanguageStatuses.languageStatusId, ids));
+      return new Map(rows.map((row) => [row.id, row.workId]));
+    },
+  );
+
+  // `work`-kind subjects name a work directly: the parent work is valid (it is
+  // inserted in this same transaction); any other id is cross-work if it exists
+  // and dangling otherwise.
+  const otherWorkSubjects = [...workSubjects].filter((id) => id !== input.workId);
+  if (otherWorkSubjects.length > 0) {
+    const rows = await db
+      .select({ id: catalogWorks.workId })
+      .from(catalogWorks)
+      .where(inArray(catalogWorks.workId, otherWorkSubjects));
+    const knownWorkIds = new Set(rows.map((row) => row.id));
+    for (const subjectId of otherWorkSubjects) {
+      if (knownWorkIds.has(subjectId)) {
+        throw new CatalogArtifactMappingError(
+          "conflict_evidence_subject_belongs_to_other_work",
+          `conflict.evidence subjectId must reference a work in the parent work (${subjectId})`,
+        );
+      }
+      throw new CatalogArtifactMappingError(
+        "conflict_evidence_subject_unknown",
+        `conflict.evidence subjectId must reference a known work (${subjectId})`,
+      );
+    }
+  }
+
+  // `sourceProvenance` records are global (work-agnostic): existence only.
+  if (sourceProvenanceSubjects.size > 0) {
+    const rows = await db
+      .select({ id: catalogSourceProvenance.sourceProvenanceId })
+      .from(catalogSourceProvenance)
+      .where(inArray(catalogSourceProvenance.sourceProvenanceId, [...sourceProvenanceSubjects]));
+    const knownProvenanceIds = new Set(rows.map((row) => row.id));
+    for (const subjectId of sourceProvenanceSubjects) {
+      if (!knownProvenanceIds.has(subjectId)) {
+        throw new CatalogArtifactMappingError(
+          "conflict_evidence_subject_unknown",
+          `conflict.evidence subjectId must reference a known source provenance (${subjectId})`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Validates a set of work-scoped conflict-evidence subject ids: each must exist
+ * (either created in this upsert or already persisted) and belong to the parent
+ * work. Subjects present in `inputIds` are created in the same transaction and
+ * therefore belong to `workId` by construction.
+ */
+async function assertWorkScopedConflictSubjects(
+  subjectIds: Set<string>,
+  inputIds: Set<string>,
+  workId: string,
+  subjectLabel: string,
+  fetchWorkIds: (ids: string[]) => Promise<Map<string, string>>,
+): Promise<void> {
+  const lookupIds = [...subjectIds].filter((id) => !inputIds.has(id));
+  const existingWorkIds = lookupIds.length > 0 ? await fetchWorkIds(lookupIds) : new Map();
+  for (const subjectId of subjectIds) {
+    if (inputIds.has(subjectId)) {
+      continue;
+    }
+    const ownerWorkId = existingWorkIds.get(subjectId);
+    if (ownerWorkId === undefined) {
+      throw new CatalogArtifactMappingError(
+        "conflict_evidence_subject_unknown",
+        `conflict.evidence subjectId must reference a known ${subjectLabel} (${subjectId})`,
+      );
+    }
+    if (ownerWorkId !== workId) {
+      throw new CatalogArtifactMappingError(
+        "conflict_evidence_subject_belongs_to_other_work",
+        `conflict.evidence subjectId must reference a ${subjectLabel} in the parent work (${subjectId})`,
       );
     }
   }
