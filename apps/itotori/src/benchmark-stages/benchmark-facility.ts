@@ -69,6 +69,8 @@ import {
   type DeterministicMetricSuiteResult,
   type MetricScore,
 } from "./deterministic-metrics/index.js";
+import { populateBackTranslations, type BackTranslator } from "./back-translate-live.js";
+import type { ProviderRunRecord } from "../providers/index.js";
 import type { DeanonymizedHumanScore } from "./human-calibration-anchor.js";
 import {
   rankContestants,
@@ -310,6 +312,18 @@ export type BenchmarkFacilityInput = {
   minModelFamilies?: number;
   /** Optional §9 meta-validity self-validation leg. */
   metaValidity?: BenchmarkFacilityMetaValidity;
+  /**
+   * Optional §3 back-translation TRIPWIRE producer. When supplied, the real ZDR
+   * MT round-trip (a `ZdrBackTranslator` on the live path) back-translates every
+   * unit's target text to the source language and populates `unit.backTranslation`
+   * BEFORE the deterministic suite runs, so the gross-meaning-loss tripwire fires
+   * on the live path. When absent, the metric inputs pass through unchanged (a
+   * fixture may inject `backTranslation` directly on the units, or the tripwire is
+   * simply skipped for units without it). Its real `usage.cost` per call surfaces
+   * on {@link BenchmarkFacilityResult.backTranslationRuns}; cost is never
+   * approximated.
+   */
+  backTranslator?: BackTranslator;
 };
 
 /** The composed benchmark result — every stage joined on a consistent identity. */
@@ -334,6 +348,12 @@ export type BenchmarkFacilityResult = {
   metaValidityScenario: MetaValidityScenario;
   /** §9 the meta-validity report — present only when the meta-validity leg ran. */
   metaValidity: MetaValidityReport | null;
+  /**
+   * §3 the REAL provider runs from the back-translation round-trip (one per
+   * back-translated unit, each carrying the authoritative `usage.cost`). Empty
+   * when no back-translator was supplied. Never approximated.
+   */
+  backTranslationRuns: ProviderRunRecord[];
 };
 
 /**
@@ -368,8 +388,19 @@ export async function runBenchmarkFacility(
     ...(input.minModelFamilies !== undefined ? { minModelFamilies: input.minModelFamilies } : {}),
   });
 
+  // §3 back-translation TRIPWIRE input: on the live path a `ZdrBackTranslator`
+  // fills `unit.backTranslation` via a REAL ZDR MT round-trip before the
+  // deterministic suite runs; absent, the inputs pass through unchanged.
+  let metricInputs = harness.anonymizedBundle.metricInputs;
+  let backTranslationRuns: ProviderRunRecord[] = [];
+  if (input.backTranslator !== undefined) {
+    const populated = await populateBackTranslations(metricInputs, input.backTranslator);
+    metricInputs = populated.systems;
+    backTranslationRuns = populated.runs;
+  }
+
   const metric = runDeterministicMetricSuite({
-    systems: harness.anonymizedBundle.metricInputs,
+    systems: metricInputs,
     glossary: input.glossary,
     canonNames: input.canonNames,
     ...(input.metricConfig !== undefined ? { config: input.metricConfig } : {}),
@@ -471,5 +502,6 @@ export async function runBenchmarkFacility(
     costLatency,
     metaValidityScenario,
     metaValidity,
+    backTranslationRuns,
   };
 }

@@ -218,6 +218,22 @@ export {
 } from "./blind-judge-live.js";
 
 export {
+  BACK_TRANSLATE_LIVE_FLAG,
+  BACK_TRANSLATE_LIVE_MAX_PRICE_USD,
+  BackTranslateError,
+  ZdrBackTranslator,
+  populateBackTranslations,
+  runBackTranslateLiveSmoke,
+  type BackTranslateLiveOptions,
+  type BackTranslateLiveResult,
+  type BackTranslateOutcome,
+  type BackTranslateUnitInput,
+  type BackTranslator,
+  type PopulateBackTranslationsResult,
+  type ZdrBackTranslatorOptions,
+} from "./back-translate-live.js";
+
+export {
   FAN_CORRECTED_CALIBRATION_POLICY,
   FAN_CORRECTED_ENGINE,
   FanCorrectedCalibrationError,
