@@ -54,6 +54,57 @@ The critical replay window is: `recordFetchedStep` succeeds, source facts are wr
 crashes before `commitStepImport`, then the same recorded fixture replays. A conforming importer must
 not duplicate facts in that window.
 
+## Durable replay-validation artifact (CATALOG-076)
+
+The runner returns the replay validation records in memory (`CatalogCrawlerRunResult.replayValidation`),
+which by itself only proves acceptance inside the test process. CATALOG-076 makes that evidence
+**durable, deterministic, and redacted** so adapter acceptance can cite an artifact instead of only a
+green test log.
+
+`buildCatalogReplayValidationArtifact(records)` /
+`writeCatalogReplayValidationArtifact(records, outPath)`
+(`packages/itotori-db/src/services/catalog-replay-validation-artifact.ts`) emit a
+`catalog-replay-validation.v1` JSON artifact:
+
+```jsonc
+{
+  "artifactVersion": "catalog-replay-validation.v1",
+  "node": "CATALOG-076",
+  "contractId": "CATALOG-065",
+  "recordCount": 2,
+  "records": [
+    {
+      "contractId": "CATALOG-065",
+      "catalogSource": "vndb",
+      "sourceId": "v1001",
+      "fixtureId": "catalog-recorded-importer-vndb-dump-v0.1",
+      "stepKey": "...",
+      "stableImportKey": "catalog-import:<sha256>",
+      "importTransactionId": "catalog-import:<sha256>",
+      "factCount": 1,
+      "factIdentities": ["catalogSource=vndb|sourceId=v1001"],
+      "alreadyImported": false,
+    },
+  ],
+  "digest": "sha256:<sha256 over the sorted records>",
+}
+```
+
+- **Redacted**: each record is an explicit WHITELIST projection of safe identity metadata
+  (`catalogReplayValidationRecordFields`). There is no raw source payload, no request body, and no
+  private local filesystem path — even if an upstream record object carried extra fields, the
+  projection drops everything outside the whitelist.
+- **Deterministic**: records are sorted by a stable content key (`stableImportKey`, then `stepKey`,
+  then `sourceId`), serialization sorts object keys, and the artifact carries a content `digest` but
+  **no run-varying timestamp**. Because `stableImportKey` is derived from content (not per-job ids),
+  two runs of the same replay serialize byte-identically.
+
+**How adapter acceptance cites it**: `just catalog-replay-db-strict` runs the
+`catalog-replay-validation-artifact.test.ts` suite against the database, which performs a real replay
+run and writes `.tmp/itotori-db/catalog-replay-validation.json`. Acceptance cites that artifact path
+plus its `digest` (and the covered `sourceId` / `fixtureId` / `stableImportKey` / `factIdentities`) as
+durable evidence of CATALOG-065 replay conformance, rather than pointing only at test-run logs.
+
 ## Verifying the contract (DB-backed local gate)
 
 The replay and idempotency tests that prove this contract are DB-classified: they drive an isolated

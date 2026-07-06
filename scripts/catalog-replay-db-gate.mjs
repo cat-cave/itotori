@@ -36,6 +36,9 @@ const catalogReplaySuites = [
   "catalog-crawler-repository.test.ts",
   "catalog-recorded-importers.test.ts",
   "catalog-dlsite-demand.test.ts",
+  // CATALOG-076: emits the durable, deterministic, redacted replay-validation
+  // artifact (.tmp/itotori-db/catalog-replay-validation.json) from a real run.
+  "catalog-replay-validation-artifact.test.ts",
 ];
 
 const tmpDir = path.join(repoRoot, ".tmp/itotori-db");

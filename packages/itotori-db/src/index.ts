@@ -594,6 +594,18 @@ export type {
   RecordedCatalogCrawlerFixture,
 } from "./services/catalog-crawler-runner.js";
 export {
+  buildCatalogReplayValidationArtifact,
+  catalogReplayValidationArtifactNode,
+  catalogReplayValidationArtifactVersion,
+  catalogReplayValidationRecordFields,
+  serializeCatalogReplayValidationArtifact,
+  writeCatalogReplayValidationArtifact,
+} from "./services/catalog-replay-validation-artifact.js";
+export type {
+  CatalogReplayValidationArtifact,
+  CatalogReplayValidationArtifactRecord,
+} from "./services/catalog-replay-validation-artifact.js";
+export {
   catalogRecordedStorefrontDiagnosticCodeValues,
   catalogRecordedImporterVersion,
   createDlsiteRecordedStorefrontAdapter,

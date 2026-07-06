@@ -67,6 +67,7 @@ test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proo
     "catalog-crawler-repository.test.ts",
     "catalog-dlsite-demand.test.ts",
     "catalog-recorded-importers.test.ts",
+    "catalog-replay-validation-artifact.test.ts",
   ]);
   assert.ok(
     typeof artifact.remediationCommand === "string" && artifact.remediationCommand.length > 0,
