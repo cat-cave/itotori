@@ -276,6 +276,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.listSeedTargets(deniedActor),
   ),
   catalogGate(
+    "listBenchmarkSelectableSeedTargets",
+    "catalogRead",
+    "catalog-recorded-importers.test.ts benchmark selectable seed read coverage",
+    (repo) => repo.listBenchmarkSelectableSeedTargets(deniedActor),
+  ),
+  catalogGate(
     "listCatalogCandidateTargetWorks",
     "catalogRead",
     "catalog-repository.test.ts candidate target read coverage",
@@ -1182,6 +1188,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriCatalogRepository.listSeedTargets",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-repository.test.ts seed target read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.listBenchmarkSelectableSeedTargets",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-recorded-importers.test.ts benchmark selectable seed read coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

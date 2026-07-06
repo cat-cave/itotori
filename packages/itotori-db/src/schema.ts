@@ -373,6 +373,11 @@ export type CatalogSeedOrigin =
   (typeof catalogSeedOriginValues)[keyof typeof catalogSeedOriginValues];
 
 export const catalogSeedStatusValues = {
+  // Inert evidence: a recorded-importer-authored seed hint that is NOT yet
+  // benchmark-selectable. Importer hints land here (CATALOG-080) and stay inert
+  // until CATALOG-004 readiness filtering consumes them, records a readiness
+  // explanation, and promotes them to a selectable status.
+  inert: "inert",
   pending: "pending",
   queued: "queued",
   imported: "imported",

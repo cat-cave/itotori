@@ -973,6 +973,7 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     status?: CatalogSeedStatus,
   ): Promise<CatalogSeedTargetRecord[]>;
+  listBenchmarkSelectableSeedTargets(actor: AuthorizationActor): Promise<CatalogSeedTargetRecord[]>;
   listCatalogCandidateTargetWorks(
     actor: AuthorizationActor,
   ): Promise<CatalogCandidateTargetWorkRecord[]>;
@@ -1050,6 +1051,35 @@ const catalogRawContentRedactionClasses = Object.values(
 ) as CatalogRawContentRedactionClass[];
 const catalogSeedOrigins = Object.values(catalogSeedOriginValues) as CatalogSeedOrigin[];
 const catalogSeedStatuses = Object.values(catalogSeedStatusValues) as CatalogSeedStatus[];
+
+// CATALOG-080: the seed statuses in which a seed target is actionable as a
+// benchmark selection. Inert (importer hint), imported, ignored and failed seeds
+// are never benchmark-selectable.
+const catalogBenchmarkSelectableSeedStatuses: CatalogSeedStatus[] = [
+  catalogSeedStatusValues.pending,
+  catalogSeedStatusValues.queued,
+];
+
+// CATALOG-080: metadata key that CATALOG-004 readiness filtering writes onto a
+// seed target when it consumes an importer-authored hint and produces a readiness
+// explanation. Importer-origin hints WITHOUT this record are inert evidence and
+// are excluded from benchmark selection.
+export const catalogSeedReadinessExplanationMetadataKey = "catalog004ReadinessExplanation";
+
+// A seed target is benchmark-selectable only when it sits in an actionable
+// status AND — for recorded-importer-authored hints — CATALOG-004 has already
+// consumed it and recorded a readiness explanation. A raw, un-filtered importer
+// hint is never directly benchmark-selectable (CATALOG-080).
+function seedTargetIsBenchmarkSelectable(seed: CatalogSeedTargetRecord): boolean {
+  if (!catalogBenchmarkSelectableSeedStatuses.includes(seed.status)) {
+    return false;
+  }
+  if (seed.seedOrigin === catalogSeedOriginValues.importer) {
+    const explanation = seed.metadata[catalogSeedReadinessExplanationMetadataKey];
+    return explanation !== undefined && explanation !== null;
+  }
+  return true;
+}
 const catalogCandidateMatchStatuses = Object.values(
   catalogCandidateMatchStatusValues,
 ) as CatalogCandidateMatchStatus[];
@@ -1581,6 +1611,24 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             .where(eq(catalogSeedTargets.status, status))
             .orderBy(desc(catalogSeedTargets.priority), catalogSeedTargets.addedAt);
     return rows.map(seedTargetFromRow);
+  }
+
+  // CATALOG-080: the benchmark-candidate seed-target query. It returns only seeds
+  // that are safe to select as benchmark targets — excluding recorded-importer
+  // seed hints that have not yet been consumed by CATALOG-004 readiness filtering
+  // (i.e. that lack a readiness-explanation record). Source-fact provenance of the
+  // excluded inert hints remains available via listSeedTargets for later
+  // explanation generation.
+  async listBenchmarkSelectableSeedTargets(
+    actor: AuthorizationActor,
+  ): Promise<CatalogSeedTargetRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await this.db
+      .select()
+      .from(catalogSeedTargets)
+      .where(inArray(catalogSeedTargets.status, catalogBenchmarkSelectableSeedStatuses))
+      .orderBy(desc(catalogSeedTargets.priority), catalogSeedTargets.addedAt);
+    return rows.map(seedTargetFromRow).filter(seedTargetIsBenchmarkSelectable);
   }
 
   async listCatalogCandidateTargetWorks(

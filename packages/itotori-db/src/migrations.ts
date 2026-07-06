@@ -276,6 +276,10 @@ export const migrations = [
     id: "0054_style_guide_version_changed_outbox_payload_contract",
     file: "0054_style_guide_version_changed_outbox_payload_contract.sql",
   },
+  {
+    id: "0055_catalog_seed_target_inert_status",
+    file: "0055_catalog_seed_target_inert_status.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

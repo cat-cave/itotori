@@ -2813,10 +2813,20 @@ function seedTargetInput(
     seedOrigin: catalogSeedOriginValues.importer,
     originRef: seedTarget?.originRef ?? context.adapter.fixtureId ?? context.adapter.adapterName,
     sourceProvenanceId: context.step.sourceProvenanceId,
-    status: seedTarget?.status ?? catalogSeedStatusValues.pending,
+    // CATALOG-080: a recorded importer only authors an INERT seed HINT. It must
+    // never be directly benchmark-selectable; it stays inert (carrying its
+    // source-fact provenance) until CATALOG-004 readiness filtering consumes it
+    // and produces a readiness explanation. The importer's suggested status and
+    // priority are preserved as evidence for that later promotion.
+    status: catalogSeedStatusValues.inert,
     priority: seedTarget?.priority ?? 0,
     addedAt: context.step.fetchedAt,
-    metadata: compactJson({ ...seedTarget?.metadata, ...importMetadata }),
+    metadata: compactJson({
+      ...seedTarget?.metadata,
+      ...importMetadata,
+      seedHintState: catalogSeedStatusValues.inert,
+      importerRequestedStatus: seedTarget?.status ?? catalogSeedStatusValues.pending,
+    }),
   };
 }
 
