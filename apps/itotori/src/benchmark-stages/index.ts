@@ -111,6 +111,14 @@ export {
 } from "./contestant-harness.js";
 
 export {
+  CostLatencyDimensionsError,
+  computeCostLatencyDimensions,
+  type ContestantAggregateCostLatency,
+  type ContestantUnitCostLatency,
+  type CostLatencyDimensions,
+} from "./cost-latency-dims.js";
+
+export {
   DecodedContextFeedError,
   buildDecodedContextFeed,
   assertJudgeFeedGroundTruthOnly,
