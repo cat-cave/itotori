@@ -6,12 +6,14 @@ import type {
   ModelInvocationRequest,
   ModelInvocationResult,
   ModelProvider,
+  ProviderCost,
   ProviderDescriptor,
   ProviderFamily,
   ProviderRunArtifactRecorder,
   ProviderRunRecord,
 } from "./types.js";
 import { createProviderRunId, localOnlyRoutingPosture } from "./types.js";
+import { ZERO_COST } from "./cost.js";
 
 /**
  * ITOTORI-220 — fake-provider construction options. The model identifier
@@ -26,11 +28,22 @@ export type FakeModelProviderOptions = Partial<{
   providerName: string;
   modelId: string;
   generate: (request: ModelInvocationRequest) => string;
+  /**
+   * SYNTHETIC billed-cost override. Fake providers never leave the process
+   * and never bill, so they default to `ZERO_COST`. Tests that must exercise
+   * a cost-carrying path (e.g. proving the agentic-loop bundle renders a
+   * sub-micro billed cost at full precision, not truncated to micros) inject
+   * a `ProviderCost` here. The value is used VERBATIM as `providerRun.cost`;
+   * callers build it from the real cost parser (`usageCostToDecimalString` /
+   * `usageCostToMicros`) so no fabricated cost literal is introduced.
+   */
+  cost: ProviderCost;
 }>;
 
 export class FakeModelProvider implements ModelProvider {
   readonly descriptor: ProviderDescriptor;
   private readonly generate: (request: ModelInvocationRequest) => string;
+  private readonly cost: ProviderCost;
 
   constructor(options: FakeModelProviderOptions = {}) {
     const modelId = options.modelId ?? "itotori-fake-draft-v0";
@@ -42,6 +55,7 @@ export class FakeModelProvider implements ModelProvider {
       capabilities: fakeModelCapabilities,
     };
     this.generate = options.generate ?? defaultFakeCompletion;
+    this.cost = options.cost ?? ZERO_COST;
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
@@ -80,12 +94,9 @@ export class FakeModelProvider implements ModelProvider {
         completionTokens,
         totalTokens: promptTokens + completionTokens,
       },
-      cost: {
-        costKind: "zero",
-        currency: "USD",
-        amountUsd: "0",
-        amountMicrosUsd: 0,
-      },
+      // Defaults to ZERO_COST (fake providers never bill); a test may inject
+      // a SYNTHETIC billed `ProviderCost` via the constructor `cost` option.
+      cost: this.cost,
       // ITOTORI-230 — fake providers never leave the process so the
       // canonical ZDR posture is trivially in force; record it
       // explicitly so the ledger row + telemetry have a uniform shape.

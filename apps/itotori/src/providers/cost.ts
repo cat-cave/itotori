@@ -177,6 +177,62 @@ export function assertBilledCost(cost: ProviderCost): bigint {
 }
 
 /**
+ * Return the billed amount as the canonical FULL-PRECISION decimal-USD
+ * string for a `ProviderCost` — the same authoritative representation the
+ * ledger persists (`ProviderCost.amountUsd`, the verbatim provider
+ * `usage.cost`). Unlike {@link assertBilledCost}, which returns the
+ * integer-micros mirror that rounds a `0.00000602` charge to `0.000006`
+ * (a 2e-8 error), this preserves EVERY significant digit including the
+ * sub-micro tail cheap models bill. Zero-cost runs return `"0"`. Callers
+ * that render a per-invocation / per-stage `costUsd` MUST use this so the
+ * bundle carries the same precision as the ledger, never the truncated
+ * micros form.
+ */
+export function assertBilledCostDecimal(cost: ProviderCost): string {
+  if (cost.costKind === "billed") {
+    return cost.amountUsd;
+  }
+  if (cost.costKind === "zero") {
+    return "0";
+  }
+  // Exhaustive — mirror of assertBilledCost; guards against enum widening.
+  const _exhaustive: never = cost.costKind;
+  throw new ModelProviderError(
+    `unsupported costKind: ${String(_exhaustive)}`,
+    "provider_response_invalid",
+    false,
+  );
+}
+
+/**
+ * Losslessly add two non-negative decimal-USD strings, returning the sum
+ * in canonical full-precision form (trailing-zero-trimmed). Used to roll
+ * per-invocation billed costs into a per-stage total WITHOUT rounding to
+ * micros: summing `"0.00000602" + "0.00000602"` yields `"0.00001204"`,
+ * where the micros mirror would round each addend to `0.000006` and lose
+ * the sub-micro tail. Operates on the scaled integer representation via
+ * BigInt so there is no floating-point drift. Inputs are validated the
+ * same way the canonical parser validates (plain, non-negative decimals).
+ */
+export function addDecimalUsd(a: string, b: string): string {
+  const av = decimalUsdStringCanonical(a);
+  const bv = decimalUsdStringCanonical(b);
+  const [aWhole, aFrac = ""] = av.split(".");
+  const [bWhole, bFrac = ""] = bv.split(".");
+  const scale = Math.max(aFrac.length, bFrac.length);
+  const aScaled = BigInt(aWhole + aFrac.padEnd(scale, "0"));
+  const bScaled = BigInt(bWhole + bFrac.padEnd(scale, "0"));
+  const sum = aScaled + bScaled;
+  if (scale === 0) {
+    return sum.toString();
+  }
+  const digits = sum.toString().padStart(scale + 1, "0");
+  const whole = digits.slice(0, digits.length - scale);
+  const frac = digits.slice(digits.length - scale);
+  return normalizeDecimalString(`${whole}.${frac}`);
+}
+
+/**
  * Constant for the canonical zero-cost shape. Used by failure paths
  * (failed HTTP, network errors, response validation errors) where no
  * upstream charge occurred.

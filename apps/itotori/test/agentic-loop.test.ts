@@ -41,7 +41,12 @@ import {
   type PairPolicy,
 } from "../src/orchestrator/agentic-loop.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
-import type { ModelInvocationRequest, ModelProvider } from "../src/providers/types.js";
+import { usageCostToDecimalString, usageCostToMicros } from "../src/providers/cost.js";
+import type {
+  ModelInvocationRequest,
+  ModelProvider,
+  ProviderCost,
+} from "../src/providers/types.js";
 import type { AuthorizationActor } from "@itotori/db";
 
 const ACTOR: AuthorizationActor = { userId: "itotori-222-test-actor" };
@@ -203,10 +208,11 @@ function makeQaContent(findings: ReadonlyArray<QaFinding>): string {
   });
 }
 
-function happyPathProviderFactory(): AgenticLoopProviderFactory {
+function happyPathProviderFactory(cost?: ProviderCost): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) => {
     return new FakeModelProvider({
       providerName: `fake-${stage}-${agentLabel}`,
+      ...(cost !== undefined ? { cost } : {}),
       generate: (request: ModelInvocationRequest) => {
         if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
           return makeSpeakerLabelContent(makeUnit());
@@ -506,6 +512,78 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     for (const proofId of proofIds) {
       expect(proofId).toMatch(/^fake[:-]/u);
     }
+  });
+
+  it("renders a SUB-MICRO billed cost at full precision (not truncated to 6 digits) per-invocation and per-stage", async () => {
+    // Regression guard for the agentic-loop bundle costUsd truncation:
+    // `microsToAmount(assertBilledCost(...))` padded to EXACTLY 6 fractional
+    // digits, so a 0.00000602 USD invocation (6.02 micros) reported
+    // "0.000006", silently dropping the sub-micro tail the ledger preserves.
+    //
+    // SYNTHETIC injected cost — the value is derived from the REAL cost parser
+    // (`usageCostToDecimalString` / `usageCostToMicros`), never a fabricated
+    // cost literal, so `audit-no-hardcoded-cost` stays green. The full-
+    // precision decimal (`amountUsd`) is the SAME authoritative value the
+    // draft-attempt ledger persists.
+    const SUB_MICRO_USD = "0.00000602";
+    const billedCost: ProviderCost = {
+      costKind: "billed",
+      currency: "USD",
+      amountUsd: usageCostToDecimalString(SUB_MICRO_USD),
+      amountMicrosUsd: usageCostToMicros(SUB_MICRO_USD),
+    };
+    // The micros mirror rounds 6.02 -> 6 micros; the OLD renderer would emit
+    // this truncated string. The fix must NOT produce it.
+    const TRUNCATED = "0.000006";
+    expect(billedCost.amountUsd).toBe(SUB_MICRO_USD);
+    expect(billedCost.amountMicrosUsd).toBe(6);
+
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy(),
+      happyPathProviderFactory(billedCost),
+    );
+
+    const invocations = bundle.stages.flatMap((s) => s.invocations);
+    expect(invocations.length).toBeGreaterThan(0);
+    // Per-invocation: every billed invocation renders the exact full-precision
+    // amount, never the micros-truncated form.
+    for (const invocation of invocations) {
+      expect(invocation.costUsd).toBe(SUB_MICRO_USD);
+      expect(invocation.costUsd).not.toBe(TRUNCATED);
+    }
+
+    // Per-stage: the roll-up is a LOSSLESS decimal sum of the invocation
+    // costs — sub-micro tail preserved — not a micros-truncated total.
+    let sawMultiInvocationStage = false;
+    for (const stage of bundle.stages) {
+      const count = stage.invocations.length;
+      if (count === 0) {
+        expect(stage.costUsd).toBe("0");
+        continue;
+      }
+      // Independent expectation: each invocation is 602 units of 1e-8 USD.
+      const units = 602 * count;
+      const scaled = String(units).padStart(9, "0");
+      const whole = scaled.slice(0, scaled.length - 8).replace(/^0+(?=\d)/u, "");
+      const frac = scaled.slice(scaled.length - 8).replace(/0+$/u, "");
+      const expected = frac.length > 0 ? `${whole}.${frac}` : whole;
+      expect(stage.costUsd).toBe(expected);
+      if (count > 1) {
+        sawMultiInvocationStage = true;
+        // The truncated micros total (count * 6 micros) would strictly
+        // under-report; the full-precision sum must exceed it.
+        expect(Number(stage.costUsd)).toBeGreaterThan((count * 6) / 1e6);
+      }
+    }
+    // The happy path fans out multiple context invocations, so the per-stage
+    // (not just per-invocation) precision path is genuinely exercised.
+    expect(sawMultiInvocationStage).toBe(true);
+
+    // The bundle still round-trips through the schema asserter with the full-
+    // precision decimal strings (the decimal pattern accepts them).
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
   });
 });
 

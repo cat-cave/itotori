@@ -94,7 +94,7 @@ import {
   type AgenticLoopReviewerQueueSink,
 } from "./reviewer-queue-bridge.js";
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
-import { assertBilledCost } from "../providers/cost.js";
+import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
 
 // ---------------------------------------------------------------------------
@@ -373,7 +373,14 @@ type StageAccumulator = {
   outcome: string;
   tokensIn: number;
   tokensOut: number;
-  costMicros: bigint;
+  /**
+   * Running per-stage billed cost as a canonical full-precision decimal-USD
+   * string. Accumulated via `addDecimalUsd` (lossless BigInt-scaled sum), NOT
+   * an integer-micros total — so a stage of sub-micro invocations preserves
+   * the sub-micro tail (`"0.00000602" + "0.00000602" = "0.00001204"`) instead
+   * of rounding each addend to `0.000006`.
+   */
+  costUsd: string;
   latencyMs: number;
   /**
    * Best-effort semantic-enrichment agents that were DROPPED on this stage
@@ -389,7 +396,12 @@ type RawProviderTelemetry = {
   pair: PairChoice;
   tokensIn: number;
   tokensOut: number;
-  costMicros: bigint;
+  /**
+   * Billed cost of this single invocation as the canonical full-precision
+   * decimal-USD string (the ledger's `amountUsd`, via `assertBilledCostDecimal`),
+   * never the integer-micros mirror that truncates sub-micro charges.
+   */
+  costUsd: string;
   latencyMs: number;
   providerProofId: string;
   /**
@@ -801,7 +813,7 @@ function startStage(stageName: AgenticLoopStageName): StageAccumulator {
     outcome: "pending",
     tokensIn: 0,
     tokensOut: 0,
-    costMicros: 0n,
+    costUsd: "0",
     latencyMs: 0,
     droppedEnrichments: [],
   };
@@ -819,7 +831,7 @@ function pushInvocation(stage: StageAccumulator, telemetry: RawProviderTelemetry
     pair: { modelId: telemetry.pair.pair.modelId, providerId: telemetry.pair.pair.providerId },
     tokensIn: telemetry.tokensIn,
     tokensOut: telemetry.tokensOut,
-    costUsd: microsToAmount(telemetry.costMicros),
+    costUsd: telemetry.costUsd,
     latencyMs: telemetry.latencyMs,
     providerProofId: telemetry.providerProofId,
     zdr: telemetry.pair.zdr,
@@ -827,7 +839,9 @@ function pushInvocation(stage: StageAccumulator, telemetry: RawProviderTelemetry
   });
   stage.tokensIn += telemetry.tokensIn;
   stage.tokensOut += telemetry.tokensOut;
-  stage.costMicros += telemetry.costMicros;
+  // Lossless full-precision roll-up — never an integer-micros sum that would
+  // truncate the sub-micro tail of each invocation's billed cost.
+  stage.costUsd = addDecimalUsd(stage.costUsd, telemetry.costUsd);
   stage.latencyMs += telemetry.latencyMs;
 }
 
@@ -838,7 +852,7 @@ function stageAccumulatorToRecord(stage: StageAccumulator): AgenticLoopStageReco
     invocations: stage.invocations,
     tokensIn: stage.tokensIn,
     tokensOut: stage.tokensOut,
-    costUsd: microsToAmount(stage.costMicros),
+    costUsd: stage.costUsd,
     latencyMs: stage.latencyMs,
     // Present only when a best-effort semantic agent was dropped; an all-succeed
     // context stage (and every non-context stage) omits the field entirely so
@@ -1274,7 +1288,7 @@ function providerTelemetryFromSemanticRun(
     pair,
     tokensIn,
     tokensOut,
-    costMicros: assertBilledCost(providerRun.cost),
+    costUsd: assertBilledCostDecimal(providerRun.cost),
     latencyMs: providerRun.latencyMs,
     providerProofId: providerRun.runId,
     seed: pair.seed,
@@ -1327,7 +1341,7 @@ function providerTelemetryFromSpeakerLabel(
     pair: pairPolicy.preTranslation.speakerLabel,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
+    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     seed: pairPolicy.preTranslation.speakerLabel.seed,
@@ -1541,7 +1555,7 @@ function providerTelemetryFromTranslation(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
+    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     // ITOTORI-234 — repair invocations pass `pair.seed + attempt`
@@ -1631,7 +1645,7 @@ function providerTelemetryFromQa(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
+    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     seed: pair.seed,
@@ -1910,12 +1924,4 @@ function defaultNow(): () => Date {
     tick += 1;
     return date;
   };
-}
-
-function microsToAmount(micros: bigint): string {
-  const sign = micros < 0n ? "-" : "";
-  const abs = micros < 0n ? -micros : micros;
-  const whole = abs / 1_000_000n;
-  const fractional = (abs % 1_000_000n).toString().padStart(6, "0");
-  return `${sign}${whole.toString()}.${fractional}`;
 }

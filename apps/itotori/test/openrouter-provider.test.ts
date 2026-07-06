@@ -21,7 +21,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  addDecimalUsd,
   assertBilledCost,
+  assertBilledCostDecimal,
   CapabilityGuard,
   DEV_PAIR,
   extractCacheDiscountMicros,
@@ -1234,6 +1236,45 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
         amountMicrosUsd: 0,
       }),
     ).toBe(0n);
+  });
+});
+
+describe("full-precision billed-cost rendering (assertBilledCostDecimal + addDecimalUsd)", () => {
+  it("assertBilledCostDecimal returns the verbatim sub-micro amountUsd, not the micros-rounded form", () => {
+    // The billed cost carries amountUsd "0.00000602" and amountMicrosUsd 6
+    // (6.02 micros rounded). The decimal accessor must return the FULL
+    // precision string the ledger persists, never the 6-digit micros mirror.
+    const decimal = assertBilledCostDecimal({
+      costKind: "billed",
+      currency: "USD",
+      amountUsd: "0.00000602",
+      amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic micros mirror (6.02→6) proving the decimal accessor returns amountUsd verbatim, never this rounded value
+    });
+    expect(decimal).toBe("0.00000602");
+    expect(decimal).not.toBe("0.000006");
+    // Zero cost renders "0".
+    expect(
+      assertBilledCostDecimal({
+        costKind: "zero",
+        currency: "USD",
+        amountUsd: "0",
+        amountMicrosUsd: 0,
+      }),
+    ).toBe("0");
+  });
+
+  it("addDecimalUsd sums sub-micro decimals losslessly (no micros truncation, carries across scale)", () => {
+    // Two sub-micro charges: the micros mirror would round each to 0.000006
+    // and total 0.000012, losing the 0.00000004 tail. The lossless sum keeps
+    // every digit.
+    expect(addDecimalUsd("0.00000602", "0.00000602")).toBe("0.00001204");
+    expect(addDecimalUsd("0", "0.00000602")).toBe("0.00000602");
+    expect(addDecimalUsd("0", "0")).toBe("0");
+    // Mismatched fractional scales align correctly.
+    expect(addDecimalUsd("0.1", "0.02")).toBe("0.12");
+    // Fractional carry into the whole part.
+    expect(addDecimalUsd("0.6", "0.6")).toBe("1.2");
+    expect(addDecimalUsd("0.999999995", "0.000000005")).toBe("1");
   });
 });
 

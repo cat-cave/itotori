@@ -97,8 +97,12 @@ export type AgenticLoopProviderPair = {
  * `runId` (provider proof id), which is also the join key for the
  * draft-attempt provider ledger. `costUsd` is the real billed USD
  * cost as a decimal string (the field carries actual cost, not an
- * estimate); `tokensIn` / `tokensOut` and `latencyMs` are non-negative
- * integers.
+ * estimate), rendered at FULL precision — the same authoritative value
+ * the ledger persists (`ProviderCost.amountUsd`, the verbatim provider
+ * `usage.cost`). It is NOT rounded to integer micros: a `0.00000602`
+ * charge is recorded verbatim as `"0.00000602"`, never truncated to
+ * `"0.000006"`, so the sub-micro tail cheap models bill is preserved.
+ * `tokensIn` / `tokensOut` and `latencyMs` are non-negative integers.
  */
 export type AgenticLoopInvocation = {
   invocationId: string;

@@ -126,7 +126,9 @@ export type {
 } from "./types.js";
 export { localOnlyRoutingPosture, ModelProviderError } from "./types.js";
 export {
+  addDecimalUsd,
   assertBilledCost,
+  assertBilledCostDecimal,
   decimalUsdStringCanonical,
   decimalUsdStringToMicros,
   usageCostToDecimalString,
