@@ -40,8 +40,8 @@
       "path": "fixtures/catalog-recorded-importers/platform-language-conflicts.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "4eeec2959ac7deaadd2800de47e28241fb8290b6ecc262d18a3a2aeaf6ddf2e1",
-      "bytes": 3980,
+      "sha256": "5e677d0a0b45f59f1640d35cc817086b1bb382c7a270d9ecf7d290eda43f3f69",
+      "bytes": 6920,
       "redistributable": true
     },
     {
