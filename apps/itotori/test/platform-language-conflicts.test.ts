@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   augmentCatalogPlatformLanguageConflicts,
+  catalogPlatformLanguageConflictCompatibilityBasisValues,
   catalogPlatformLanguageConflictDiagnosticCodeValues,
   catalogPlatformLanguageConflictReasonCode,
   catalogPlatformLanguageConflictStatusValues,
@@ -33,6 +34,9 @@ describe("platform-language-conflicts app contract", () => {
 
     expect(results.map((entry) => [entry.caseId, entry.result.status])).toEqual([
       ["igdb-official-english-vs-vndb-dlsite-gaps", "conflict"],
+      ["igdb-official-english-pc-vs-switch-incompatible", "unknown"],
+      ["igdb-official-english-pc-vs-switch-declared-comparable", "conflict"],
+      ["igdb-official-english-pc-vs-pc-same-platform", "conflict"],
       ["wikidata-official-english-vs-egs-unknown", "unknown"],
       ["steam-already-official-false-positive", "no_conflict"],
       ["local-corpus-unknown-remains-unknown", "unknown"],
@@ -47,9 +51,48 @@ describe("platform-language-conflicts app contract", () => {
         ]),
       }),
     });
-    expect(results[2]?.result.status).toBe(catalogPlatformLanguageConflictStatusValues.noConflict);
-    expect(results[3]?.result.status).toBe(catalogPlatformLanguageConflictStatusValues.unknown);
-    expect(results[3]?.result.diagnostics).toEqual(
+
+    const byCaseId = new Map(results.map((entry) => [entry.caseId, entry.result]));
+
+    // Official PC vs a Switch-only gap must not benchmark-demote: it stays review-only.
+    const incompatible = required(byCaseId.get("igdb-official-english-pc-vs-switch-incompatible"));
+    expect(incompatible.status).toBe(catalogPlatformLanguageConflictStatusValues.unknown);
+    expect(incompatible.conflicts).toEqual([]);
+    expect(incompatible.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: catalogPlatformLanguageConflictDiagnosticCodeValues.candidatePlatformIncompatible,
+        }),
+      ]),
+    );
+
+    // An explicit cross-platform declaration restores the demotion.
+    const declared = required(
+      byCaseId.get("igdb-official-english-pc-vs-switch-declared-comparable"),
+    );
+    expect(declared.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(declared.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        catalogSource: "vndb",
+        compatibilityBasis:
+          catalogPlatformLanguageConflictCompatibilityBasisValues.crossPlatformDeclared,
+      }),
+    ]);
+
+    // A same-platform gap demotes on the same_platform basis.
+    const samePlatform = required(byCaseId.get("igdb-official-english-pc-vs-pc-same-platform"));
+    expect(samePlatform.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(samePlatform.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        compatibilityBasis: catalogPlatformLanguageConflictCompatibilityBasisValues.samePlatform,
+      }),
+    ]);
+
+    const steam = required(byCaseId.get("steam-already-official-false-positive"));
+    expect(steam.status).toBe(catalogPlatformLanguageConflictStatusValues.noConflict);
+    const localCorpus = required(byCaseId.get("local-corpus-unknown-remains-unknown"));
+    expect(localCorpus.status).toBe(catalogPlatformLanguageConflictStatusValues.unknown);
+    expect(localCorpus.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           code: catalogPlatformLanguageConflictDiagnosticCodeValues.candidateEvidenceUnknown,
@@ -58,3 +101,10 @@ describe("platform-language-conflicts app contract", () => {
     );
   });
 });
+
+function required<T>(value: T | undefined | null): T {
+  if (value === undefined || value === null) {
+    throw new Error("missing required test fixture value");
+  }
+  return value;
+}

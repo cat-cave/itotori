@@ -7,6 +7,7 @@ import {
 } from "../src/repositories/catalog-repository.js";
 import {
   augmentCatalogPlatformLanguageConflicts,
+  catalogPlatformLanguageConflictCompatibilityBasisValues,
   catalogPlatformLanguageConflictDiagnosticCodeValues,
   catalogPlatformLanguageConflictReasonCode,
   catalogPlatformLanguageConflictStatusValues,
@@ -92,6 +93,48 @@ describe("platform-language-conflicts augmenter", () => {
         }),
       ]),
     );
+
+    // Cross-platform (PC official vs Switch-only gap) stays review-only: no demotion.
+    const incompatible = augmentCatalogPlatformLanguageConflicts(
+      required(byCase.get("igdb-official-english-pc-vs-switch-incompatible")).request,
+    );
+    expect(incompatible.status).toBe(catalogPlatformLanguageConflictStatusValues.unknown);
+    expect(incompatible.conflicts).toEqual([]);
+    expect(incompatible.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: catalogPlatformLanguageConflictDiagnosticCodeValues.candidatePlatformIncompatible,
+          severity: "info",
+          metadata: expect.objectContaining({
+            officialPlatform: "pc",
+            candidatePlatform: "nintendo_switch",
+          }),
+        }),
+      ]),
+    );
+
+    // Same-platform official-vs-none gap still demotes on the same_platform basis.
+    const samePlatform = augmentCatalogPlatformLanguageConflicts(
+      required(byCase.get("igdb-official-english-pc-vs-pc-same-platform")).request,
+    );
+    expect(samePlatform.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(samePlatform.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        compatibilityBasis: catalogPlatformLanguageConflictCompatibilityBasisValues.samePlatform,
+      }),
+    ]);
+
+    // An explicit cross-platform declaration restores the demotion across platforms.
+    const declared = augmentCatalogPlatformLanguageConflicts(
+      required(byCase.get("igdb-official-english-pc-vs-switch-declared-comparable")).request,
+    );
+    expect(declared.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(declared.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        compatibilityBasis:
+          catalogPlatformLanguageConflictCompatibilityBasisValues.crossPlatformDeclared,
+      }),
+    ]);
   });
 
   it("demotes benchmark opportunities using generated conflict facts without deleting original facts", async () => {
@@ -235,6 +278,110 @@ describe("platform-language-conflicts augmenter", () => {
           ],
         }),
       ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps incompatible-platform gaps review-only and does not benchmark-demote", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const officialProvenance = await repo.recordSourceProvenance(actor, {
+        sourceProvenanceId: uuid(5001),
+        catalogSource: "igdb",
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
+        sourceId: "252003",
+        sourceVersion: "platform-language-conflicts-v0.1",
+        requestId: "recorded://igdb/games/252003",
+        ok: true,
+        rawContentRedactionClass: catalogRawContentRedactionClassValues.publicMetadata,
+        fetchedAt: "2026-06-18T13:20:00.000Z",
+        metadata: { fixtureId: fixture.fixtureId },
+      });
+      const candidateProvenance = await repo.recordSourceProvenance(actor, {
+        sourceProvenanceId: uuid(5002),
+        catalogSource: "vndb",
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
+        sourceId: "v1003",
+        sourceVersion: "platform-language-conflicts-v0.1",
+        requestId: "dump://vndb/vn+releases/v1003",
+        ok: true,
+        rawContentRedactionClass: catalogRawContentRedactionClassValues.publicMetadata,
+        fetchedAt: "2026-06-18T13:00:00.000Z",
+        metadata: { fixtureId: fixture.fixtureId },
+      });
+
+      // Official English on PC vs a Switch-only gap: the augmenter emits no conflict fact.
+      const generated = augmentCatalogPlatformLanguageConflicts({
+        ...required(
+          fixture.cases.find(
+            (testCase) => testCase.caseId === "igdb-official-english-pc-vs-switch-incompatible",
+          ),
+        ).request,
+        officialEvidence: {
+          ...required(
+            fixture.cases.find(
+              (testCase) => testCase.caseId === "igdb-official-english-pc-vs-switch-incompatible",
+            ),
+          ).request.officialEvidence,
+          sourceProvenanceId: officialProvenance.sourceProvenanceId,
+        },
+        candidateEvidence: [
+          {
+            ...required(
+              fixture.cases.find(
+                (testCase) => testCase.caseId === "igdb-official-english-pc-vs-switch-incompatible",
+              ),
+            ).request.candidateEvidence[0],
+            sourceProvenanceId: candidateProvenance.sourceProvenanceId,
+            languageStatusId: uuid(6001),
+          },
+        ],
+      });
+      expect(generated.status).toBe(catalogPlatformLanguageConflictStatusValues.unknown);
+      expect(generated.conflicts).toEqual([]);
+
+      // Persist the work with the Switch gap only; no conflict fact is generated to persist.
+      await repo.upsertWork(actor, {
+        workId: uuid(5003),
+        canonicalTitle: "Aurora Bridge Chronicle",
+        originalLanguage: "ja-JP",
+        externalIds: [
+          {
+            catalogSource: "vndb",
+            sourceId: "v1003",
+            externalIdKind: catalogExternalIdKindValues.sourceRecord,
+            sourceProvenanceId: candidateProvenance.sourceProvenanceId,
+          },
+        ],
+        languageStatuses: [
+          {
+            languageStatusId: uuid(6001),
+            language: "en-US",
+            status: catalogLanguageStatusValues.none,
+            statusScope: catalogLanguageStatusScopeValues.platform,
+            platform: "nintendo_switch",
+            sourceProvenanceId: candidateProvenance.sourceProvenanceId,
+          },
+        ],
+      });
+
+      const snapshot = await repo.getWorkByExternalId(actor, "vndb", "v1003");
+      expect(snapshot?.conflicts ?? []).toEqual([]);
+
+      const ranking = await repo.catalogAlphaBenchmarkOpportunityRanking(actor, {
+        targetLanguage: "en-US",
+        includeDemoted: true,
+      });
+      const row = ranking.rows.find((entry) => entry.workId === snapshot?.workId);
+      expect(row, "work should appear in the ranking without a platform-language demotion").toEqual(
+        expect.objectContaining({
+          workId: snapshot?.workId,
+          decision: "seed",
+          demotions: [],
+        }),
+      );
     } finally {
       await context.close();
     }

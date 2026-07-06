@@ -35,8 +35,102 @@
             "language": "en-US",
             "status": "none",
             "statusScope": "platform",
-            "platform": "dlsite",
+            "platform": "pc",
             "evidenceRef": "dlsite.translation_info.language_editions"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "igdb-official-english-pc-vs-switch-incompatible",
+      "expectedStatus": "unknown",
+      "request": {
+        "targetLanguage": "en-US",
+        "sourceField": "conflicts[0]",
+        "officialEvidence": {
+          "catalogSource": "igdb",
+          "sourceId": "252003",
+          "externalIdKind": "source_record",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc",
+          "evidenceRef": "igdb.language_supports[1]"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "v1003",
+            "externalIdKind": "source_record",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "platform",
+            "platform": "nintendo_switch",
+            "evidenceRef": "vndb.releases"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "igdb-official-english-pc-vs-switch-declared-comparable",
+      "expectedStatus": "conflict",
+      "request": {
+        "targetLanguage": "en-US",
+        "sourceField": "conflicts[0]",
+        "officialEvidence": {
+          "catalogSource": "igdb",
+          "sourceId": "252004",
+          "externalIdKind": "source_record",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc",
+          "evidenceRef": "igdb.language_supports[1]"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "v1004",
+            "externalIdKind": "source_record",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "platform",
+            "platform": "nintendo_switch",
+            "crossPlatformComparable": true,
+            "evidenceRef": "vndb.releases",
+            "metadata": {
+              "reason": "Shared script across PC and Switch editions per publisher notes"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "igdb-official-english-pc-vs-pc-same-platform",
+      "expectedStatus": "conflict",
+      "request": {
+        "targetLanguage": "en-US",
+        "sourceField": "conflicts[0]",
+        "officialEvidence": {
+          "catalogSource": "igdb",
+          "sourceId": "252005",
+          "externalIdKind": "source_record",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc",
+          "evidenceRef": "igdb.language_supports[1]"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "v1005",
+            "externalIdKind": "source_record",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "platform",
+            "platform": "pc",
+            "evidenceRef": "vndb.releases"
           }
         ]
       }

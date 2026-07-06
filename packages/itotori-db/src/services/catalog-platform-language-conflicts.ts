@@ -39,11 +39,36 @@ export const catalogPlatformLanguageConflictDiagnosticCodeValues = {
   officialEvidenceNotPositive: "catalog.platform_language_conflict.official_evidence_not_positive",
   candidateAlreadyOfficial: "catalog.platform_language_conflict.candidate_already_official",
   candidateEvidenceUnknown: "catalog.platform_language_conflict.candidate_evidence_unknown",
+  candidatePlatformIncompatible:
+    "catalog.platform_language_conflict.candidate_platform_incompatible",
   noCandidateGap: "catalog.platform_language_conflict.no_candidate_gap",
 } as const;
 
 export type CatalogPlatformLanguageConflictDiagnosticCode =
   (typeof catalogPlatformLanguageConflictDiagnosticCodeValues)[keyof typeof catalogPlatformLanguageConflictDiagnosticCodeValues];
+
+/**
+ * Basis on which a candidate gap is judged comparable (or not) with the official
+ * target-language evidence. Only the demoting bases end up in a conflict fact; an
+ * `incompatible_platform` candidate is review-only and never benchmark-demotes.
+ */
+export const catalogPlatformLanguageConflictCompatibilityBasisValues = {
+  /** Candidate names the same platform as the official evidence. */
+  samePlatform: "same_platform",
+  /** Candidate is work-scoped, so its claim spans every platform of the work. */
+  workScoped: "work_scoped",
+  /** Official evidence names no specific platform, so it is platform-agnostic. */
+  officialPlatformAgnostic: "official_platform_agnostic",
+  /** Candidate is release/platform-scoped but names no platform to compare against. */
+  candidatePlatformUnspecified: "candidate_platform_unspecified",
+  /** Candidate explicitly declares its gap comparable across platforms. */
+  crossPlatformDeclared: "cross_platform_declared",
+  /** Candidate names a different, incompatible platform (review-only, never demotes). */
+  incompatiblePlatform: "incompatible_platform",
+} as const;
+
+export type CatalogPlatformLanguageConflictCompatibilityBasis =
+  (typeof catalogPlatformLanguageConflictCompatibilityBasisValues)[keyof typeof catalogPlatformLanguageConflictCompatibilityBasisValues];
 
 export type CatalogPlatformLanguageConflictEvidence = {
   catalogSource: CatalogSource;
@@ -53,6 +78,12 @@ export type CatalogPlatformLanguageConflictEvidence = {
   status: CatalogLanguageStatus;
   statusScope?: CatalogLanguageStatusScope;
   platform?: string | null;
+  /**
+   * When true, an otherwise cross-platform candidate gap is explicitly declared
+   * comparable with the official evidence (e.g. a work whose script is shared across
+   * platforms). Cross-platform declarations must be explicit; the default is false.
+   */
+  crossPlatformComparable?: boolean;
   sourceProvenanceId?: string;
   languageStatusId?: string;
   evidenceRef?: string;
@@ -111,6 +142,11 @@ const conflictGapStatuses = new Set<CatalogLanguageStatus>([
   catalogLanguageStatusValues.unverifiedConsole,
 ]);
 
+type CatalogPlatformLanguageConflictConflictCandidate = {
+  evidence: CatalogPlatformLanguageConflictEvidence;
+  compatibilityBasis: CatalogPlatformLanguageConflictCompatibilityBasis;
+};
+
 export function augmentCatalogPlatformLanguageConflicts(
   request: CatalogPlatformLanguageConflictRequest,
 ): CatalogPlatformLanguageConflictResult {
@@ -168,7 +204,8 @@ export function augmentCatalogPlatformLanguageConflicts(
     );
   }
 
-  const conflictCandidates: CatalogPlatformLanguageConflictEvidence[] = [];
+  const conflictCandidates: CatalogPlatformLanguageConflictConflictCandidate[] = [];
+  const incompatibleCandidates: CatalogPlatformLanguageConflictEvidence[] = [];
   for (const candidate of candidates) {
     if (candidate.language !== targetLanguage) {
       continue;
@@ -195,9 +232,31 @@ export function augmentCatalogPlatformLanguageConflicts(
       );
       continue;
     }
-    if (conflictGapStatuses.has(candidate.status)) {
-      conflictCandidates.push(candidate);
+    if (!conflictGapStatuses.has(candidate.status)) {
+      continue;
     }
+    const compatibilityBasis = candidateCompatibilityBasis(official, candidate);
+    if (
+      compatibilityBasis ===
+      catalogPlatformLanguageConflictCompatibilityBasisValues.incompatiblePlatform
+    ) {
+      incompatibleCandidates.push(candidate);
+      diagnostics.push(
+        diagnostic(
+          catalogPlatformLanguageConflictDiagnosticCodeValues.candidatePlatformIncompatible,
+          "info",
+          "Candidate gap evidence is on an incompatible platform, so it stays review-only" +
+            " instead of demoting the benchmark candidate.",
+          {
+            candidateEvidence: evidenceMetadata(candidate),
+            officialPlatform: official.platform ?? null,
+            candidatePlatform: candidate.platform ?? null,
+          },
+        ),
+      );
+      continue;
+    }
+    conflictCandidates.push({ evidence: candidate, compatibilityBasis });
   }
 
   if (conflictCandidates.length === 0) {
@@ -213,7 +272,7 @@ export function augmentCatalogPlatformLanguageConflicts(
       ),
     );
     return result(
-      hasUnknownEvidence
+      hasUnknownEvidence || incompatibleCandidates.length > 0
         ? catalogPlatformLanguageConflictStatusValues.unknown
         : catalogPlatformLanguageConflictStatusValues.noConflict,
       targetLanguage,
@@ -222,6 +281,7 @@ export function augmentCatalogPlatformLanguageConflicts(
     );
   }
 
+  const conflictEvidence = conflictCandidates.map((candidate) => candidate.evidence);
   const metadata = compactJson({
     reasonCode: catalogPlatformLanguageConflictReasonCode,
     severity: "warning",
@@ -229,9 +289,17 @@ export function augmentCatalogPlatformLanguageConflicts(
     sourceField: request.sourceField,
     fixtureId: request.fixtureId,
     officialEvidence: evidenceMetadata(official),
-    candidateGaps: conflictCandidates.map(evidenceMetadata),
+    candidateGaps: conflictCandidates.map((candidate) => ({
+      ...evidenceMetadata(candidate.evidence),
+      compatibilityBasis: candidate.compatibilityBasis,
+    })),
     platformScope: official.platform ?? official.statusScope ?? null,
-    sources: [official, ...conflictCandidates].map(sourceMetadata),
+    sources: [official, ...conflictEvidence].map(sourceMetadata),
+    reviewOnlyGaps: incompatibleCandidates.map((candidate) => ({
+      ...evidenceMetadata(candidate),
+      compatibilityBasis:
+        catalogPlatformLanguageConflictCompatibilityBasisValues.incompatiblePlatform,
+    })),
     unknownEvidence: candidates
       .filter(
         (candidate) =>
@@ -245,7 +313,7 @@ export function augmentCatalogPlatformLanguageConflicts(
     request.summary ??
     `${sourceLabel(official)} reports official ${targetLanguage} support` +
       ` on ${official.platform ?? official.statusScope ?? "platform scope"}, while ` +
-      `${conflictCandidates.map(sourceLabel).join(", ")} candidate evidence does not.`;
+      `${conflictEvidence.map(sourceLabel).join(", ")} candidate evidence does not.`;
 
   const conflict: CatalogPlatformLanguageConflictFact = {
     conflictKind: catalogConflictKindValues.languageStatus,
@@ -254,7 +322,7 @@ export function augmentCatalogPlatformLanguageConflicts(
     reasonCode: catalogPlatformLanguageConflictReasonCode,
     severity: "warning",
     metadata,
-    evidence: [official, ...conflictCandidates].map((entry, index) =>
+    evidence: [official, ...conflictEvidence].map((entry, index) =>
       conflictEvidenceFromLanguageEvidence(entry, index),
     ),
   };
@@ -341,6 +409,49 @@ function isOfficialPositiveEvidence(
   );
 }
 
+/**
+ * Decide whether a candidate gap can be demoted by the official target-language
+ * evidence, and on what basis. Official platform-A evidence must not demote a gap that
+ * is only known on platform B: cross-platform gaps stay review-only unless they are
+ * work-scoped, share the official platform, or explicitly declare cross-platform
+ * comparability.
+ */
+function candidateCompatibilityBasis(
+  official: CatalogPlatformLanguageConflictEvidence,
+  candidate: CatalogPlatformLanguageConflictEvidence,
+): CatalogPlatformLanguageConflictCompatibilityBasis {
+  // A work-scoped gap spans every platform of the work, so it is always comparable.
+  if (candidate.statusScope === catalogLanguageStatusScopeValues.work) {
+    return catalogPlatformLanguageConflictCompatibilityBasisValues.workScoped;
+  }
+  const officialPlatform = normalizePlatform(official.platform);
+  // Official evidence that names no platform is platform-agnostic and comparable.
+  if (officialPlatform === null) {
+    return catalogPlatformLanguageConflictCompatibilityBasisValues.officialPlatformAgnostic;
+  }
+  const candidatePlatform = normalizePlatform(candidate.platform);
+  // A release/platform-scoped gap that names no platform cannot be proven incompatible.
+  if (candidatePlatform === null) {
+    return catalogPlatformLanguageConflictCompatibilityBasisValues.candidatePlatformUnspecified;
+  }
+  if (candidatePlatform === officialPlatform) {
+    return catalogPlatformLanguageConflictCompatibilityBasisValues.samePlatform;
+  }
+  // Different platforms only demote when the gap explicitly declares comparability.
+  if (candidate.crossPlatformComparable === true) {
+    return catalogPlatformLanguageConflictCompatibilityBasisValues.crossPlatformDeclared;
+  }
+  return catalogPlatformLanguageConflictCompatibilityBasisValues.incompatiblePlatform;
+}
+
+function normalizePlatform(platform: string | null | undefined): string | null {
+  if (typeof platform !== "string") {
+    return null;
+  }
+  const trimmed = platform.trim().toLowerCase();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 function invalidDiagnostic(message: string): CatalogPlatformLanguageConflictDiagnostic {
   return diagnostic(
     catalogPlatformLanguageConflictDiagnosticCodeValues.invalidRequest,
@@ -387,6 +498,7 @@ function evidenceMetadata(evidence: CatalogPlatformLanguageConflictEvidence): Ca
     status: evidence.status,
     statusScope: evidence.statusScope ?? catalogLanguageStatusScopeValues.platform,
     platform: evidence.platform ?? null,
+    crossPlatformComparable: evidence.crossPlatformComparable === true ? true : undefined,
     sourceProvenanceId: evidence.sourceProvenanceId,
     languageStatusId: evidence.languageStatusId,
     evidenceRef: evidence.evidenceRef,

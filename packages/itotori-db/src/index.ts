@@ -935,12 +935,14 @@ export type {
 } from "./services/catalog-exact-external-id-linker.js";
 export {
   augmentCatalogPlatformLanguageConflicts,
+  catalogPlatformLanguageConflictCompatibilityBasisValues,
   catalogPlatformLanguageConflictDiagnosticCodeValues,
   catalogPlatformLanguageConflictReasonCode,
   catalogPlatformLanguageConflictSchemaVersion,
   catalogPlatformLanguageConflictStatusValues,
 } from "./services/catalog-platform-language-conflicts.js";
 export type {
+  CatalogPlatformLanguageConflictCompatibilityBasis,
   CatalogPlatformLanguageConflictDiagnostic,
   CatalogPlatformLanguageConflictDiagnosticCode,
   CatalogPlatformLanguageConflictEvidence,
