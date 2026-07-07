@@ -12,11 +12,13 @@ import {
   STYLE_GUIDE_PROVIDER_SMOKE_SCHEMA_VERSION,
   STYLE_GUIDE_SUGGESTION_TOOL_NAME,
   assertStyleGuideProviderSmokeLedger,
+  assertStyleGuideSuggestionStructuredOutput,
   parseStyleGuideSuggestionFromProviderResult,
   readSmokeFixture,
   runRecordedStyleGuideProviderSmoke,
   runStyleGuideProviderSmoke,
   styleGuideSuggestionRequest,
+  styleGuideSuggestionSchemaDescriptor,
   type StyleGuideProviderSmokeFixture,
 } from "../src/style-guide-provider-smoke.js";
 
@@ -76,7 +78,7 @@ describe("style-guide provider smoke", () => {
     );
   });
 
-  it("rejects malformed structured output before policy projection", () => {
+  it("rejects malformed structured output at the structured-output boundary before policy projection", () => {
     const fixture = readSmokeFixture();
     const result: ModelInvocationResult = {
       content: JSON.stringify({
@@ -88,8 +90,103 @@ describe("style-guide provider smoke", () => {
       toolCalls: [],
     };
 
+    // ITOTORI-133 — missing required top-level fields (turns/proposals/etc.)
+    // now fail EARLY at the tightened schema boundary, before the deep
+    // transcript validator or policy projection ever run.
     expect(() => parseStyleGuideSuggestionFromProviderResult(result)).toThrow(
-      /style-guide suggestion validation failed/u,
+      /style-guide suggestion rejected at structured-output boundary/u,
+    );
+  });
+
+  it("accepts the recorded fixture content against the tightened structured-output schema", () => {
+    const fixture = readSmokeFixture();
+    expect(() =>
+      assertStyleGuideSuggestionStructuredOutput(fixture.providerResult.contentJson),
+    ).not.toThrow();
+  });
+
+  it("exposes typed item requirements for turns and proposals in the structured-output schema", () => {
+    // ITOTORI-133 — turns/proposals are no longer bare `{ type: "array" }`;
+    // each carries typed item requirements (required fields + shapes) so the
+    // structured-output boundary rejects malformed items.
+    const turns = styleGuideSuggestionSchemaDescriptor.jsonSchema.properties?.turns as
+      | Record<string, unknown>
+      | undefined;
+    const proposals = styleGuideSuggestionSchemaDescriptor.jsonSchema.properties?.proposals as
+      | Record<string, unknown>
+      | undefined;
+
+    expect(turns?.type).toBe("array");
+    expect(turns?.items).toMatchObject({
+      type: "object",
+      required: expect.arrayContaining([
+        "turnId",
+        "role",
+        "localeBranchId",
+        "policyVersionId",
+        "redaction",
+        "proposalIds",
+        "citations",
+        "publicSummary",
+      ]),
+    });
+    expect(proposals?.type).toBe("array");
+    expect(proposals?.items).toMatchObject({
+      type: "object",
+      required: expect.arrayContaining([
+        "proposalId",
+        "turnId",
+        "rationale",
+        "citationIds",
+        "examples",
+        "edits",
+        "decision",
+      ]),
+    });
+  });
+
+  it("rejects a turn missing turnId at the structured-output boundary", () => {
+    const content = cloneFixtureContentJson();
+    delete content.turns[0]!.turnId;
+
+    expect(() => assertStyleGuideSuggestionStructuredOutput(content)).toThrow(
+      /rejected at structured-output boundary:.*turns\[0\]\.turnId is required/u,
+    );
+  });
+
+  it("rejects a non-object turn item at the structured-output boundary", () => {
+    const content = cloneFixtureContentJson();
+    content.turns[0] = "not-an-object" as unknown as (typeof content.turns)[number];
+
+    expect(() => assertStyleGuideSuggestionStructuredOutput(content)).toThrow(
+      /rejected at structured-output boundary:.*turns\[0\] must be an object/u,
+    );
+  });
+
+  it("rejects a proposal missing proposalId at the structured-output boundary", () => {
+    const content = cloneFixtureContentJson();
+    delete content.proposals[0]!.proposalId;
+
+    expect(() => assertStyleGuideSuggestionStructuredOutput(content)).toThrow(
+      /rejected at structured-output boundary:.*proposals\[0\]\.proposalId is required/u,
+    );
+  });
+
+  it("rejects a proposal edit missing its rule object at the structured-output boundary", () => {
+    const content = cloneFixtureContentJson();
+    delete content.proposals[0]!.edits[0]!.rule;
+
+    expect(() => assertStyleGuideSuggestionStructuredOutput(content)).toThrow(
+      /rejected at structured-output boundary:.*proposals\[0\]\.edits\[0\]\.rule is required/u,
+    );
+  });
+
+  it("rejects a proposal with an empty edits array at the structured-output boundary", () => {
+    const content = cloneFixtureContentJson();
+    content.proposals[0]!.edits = [];
+
+    expect(() => assertStyleGuideSuggestionStructuredOutput(content)).toThrow(
+      /rejected at structured-output boundary:.*proposals\[0\]\.edits must contain at least 1/u,
     );
   });
 
@@ -279,6 +376,18 @@ function memoryRecorder() {
   return {
     recordProviderRun: vi.fn(async () => {}),
   };
+}
+
+function cloneFixtureContentJson() {
+  return structuredClone(readSmokeFixture().providerResult.contentJson) as {
+    turns: Array<Record<string, unknown>>;
+    proposals: Array<
+      {
+        proposalId?: string;
+        edits: Array<{ rule?: Record<string, unknown> } & Record<string, unknown>>;
+      } & Record<string, unknown>
+    >;
+  } & Record<string, unknown>;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

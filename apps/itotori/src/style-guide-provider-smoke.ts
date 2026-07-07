@@ -3,10 +3,19 @@ import { fileURLToPath } from "node:url";
 import {
   projectStyleGuideConversationToPolicyDraft,
   validateStyleGuideConversationTranscript,
+  STYLE_GUIDE_CITATION_SOURCE_KINDS,
+  STYLE_GUIDE_CONVERSATION_ROLES,
+  STYLE_GUIDE_CONVERSATION_SCHEMA_VERSION,
+  STYLE_GUIDE_EXAMPLE_PRIVACY,
+  STYLE_GUIDE_POLICY_SECTIONS,
+  STYLE_GUIDE_PROPOSAL_DECISIONS,
+  STYLE_GUIDE_PROPOSAL_OPERATIONS,
+  STYLE_GUIDE_REDACTION_STATUSES,
   type StyleGuideConversationDiagnostic,
   type StyleGuideConversationTranscript,
   type StyleGuideProjectedVersionDraft,
 } from "@itotori/localization-bridge-schema";
+import { assertRegistrySchemaValue, type RegistrySchemaDescriptor } from "./agents/index.js";
 import {
   OpenRouterProvider,
   assertOpenRouterZdrAccount,
@@ -168,6 +177,7 @@ export function parseStyleGuideSuggestionFromProviderResult(
     result.providerRun.structuredOutputMode === "tool_call_arguments"
       ? parseToolCallSuggestion(result)
       : parseJsonContent(result.content);
+  assertStyleGuideSuggestionStructuredOutput(value);
   const diagnostics = validateStyleGuideConversationTranscript(value);
   if (diagnostics.length > 0) {
     const first = diagnostics[0] ?? {
@@ -185,6 +195,30 @@ export function parseStyleGuideSuggestionFromProviderResult(
     projectedVersion: projectStyleGuideConversationToPolicyDraft(value),
     diagnostics,
   };
+}
+
+/**
+ * ITOTORI-133 — the structured-output boundary check. Rejects a malformed
+ * style-guide suggestion (missing required fields, non-object turn/proposal
+ * items, wrong types) against the tightened canonical schema BEFORE the deep
+ * transcript validator runs, so structurally malformed turns/proposals fail
+ * early at the boundary instead of slipping through to semantic validation or
+ * policy projection.
+ */
+export function assertStyleGuideSuggestionStructuredOutput(value: unknown): void {
+  try {
+    assertRegistrySchemaValue(
+      styleGuideSuggestionSchemaDescriptor,
+      value,
+      "style-guide suggestion",
+    );
+  } catch (error) {
+    throw new Error(
+      `style-guide suggestion rejected at structured-output boundary: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 export function styleGuideSuggestionRequest(
@@ -357,7 +391,30 @@ function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
 }
 
 function styleGuideSuggestionJsonSchema(): JsonObject {
-  return {
+  return styleGuideSuggestionSchemaDescriptor.jsonSchema;
+}
+
+/**
+ * ITOTORI-133 — the canonical structured-output contract for a style-guide
+ * conversation transcript. Turns and proposals carry TYPED item requirements
+ * (required fields + property shapes) instead of bare arrays, so a malformed
+ * turn/proposal is rejected at the structured-output boundary BEFORE the deep
+ * transcript validator / policy projection ever run.
+ *
+ * This is a structural FLOOR (`additionalProperties: true`): it pins the
+ * required shape of every turn/proposal item but leaves optional and
+ * section-specific fields (e.g. edit `toneRegister`/`spanKind`/`preserveMode`,
+ * example `publicText`) to the deep validator, which remains the privacy and
+ * semantic ceiling. Enum values are spread from the canonical
+ * `STYLE_GUIDE_*` constants so the schema cannot drift from the types.
+ */
+export const styleGuideSuggestionSchemaDescriptor: RegistrySchemaDescriptor = {
+  schemaId: "itotori.style-guide-suggestion",
+  schemaVersion: STYLE_GUIDE_CONVERSATION_SCHEMA_VERSION,
+  description:
+    "Structured-output contract for a style-guide conversation transcript; " +
+    "turns and proposals carry typed item requirements rejected at the boundary.",
+  jsonSchema: {
     type: "object",
     required: [
       "schemaVersion",
@@ -373,19 +430,146 @@ function styleGuideSuggestionJsonSchema(): JsonObject {
     ],
     additionalProperties: true,
     properties: {
-      schemaVersion: { const: "itotori.style-guide-conversation.v0" },
-      transcriptId: { type: "string" },
-      projectId: { type: "string" },
-      localeBranchId: { type: "string" },
-      targetLocale: { type: "string" },
-      basePolicyVersionId: { type: "string" },
-      projectedStyleGuideVersionId: { type: "string" },
-      recordingMode: { enum: ["public_fixture", "human_entered"] },
-      turns: { type: "array" },
-      proposals: { type: "array" },
+      schemaVersion: { const: STYLE_GUIDE_CONVERSATION_SCHEMA_VERSION },
+      transcriptId: { type: "string", minLength: 1 },
+      projectId: { type: "string", minLength: 1 },
+      localeBranchId: { type: "string", minLength: 1 },
+      targetLocale: { type: "string", minLength: 1 },
+      basePolicyVersionId: { type: "string", minLength: 1 },
+      projectedStyleGuideVersionId: { type: "string", minLength: 1 },
+      recordingMode: { type: "string", enum: ["public_fixture", "human_entered"] },
+      turns: {
+        type: "array",
+        items: {
+          type: "object",
+          required: [
+            "turnId",
+            "role",
+            "localeBranchId",
+            "policyVersionId",
+            "redaction",
+            "proposalIds",
+            "citations",
+            "publicSummary",
+          ],
+          additionalProperties: true,
+          properties: {
+            turnId: { type: "string", minLength: 1 },
+            role: { type: "string", enum: [...STYLE_GUIDE_CONVERSATION_ROLES] },
+            localeBranchId: { type: "string", minLength: 1 },
+            policyVersionId: { type: "string", minLength: 1 },
+            redaction: {
+              type: "object",
+              required: ["status", "privateExampleRefs"],
+              additionalProperties: true,
+              properties: {
+                status: { type: "string", enum: [...STYLE_GUIDE_REDACTION_STATUSES] },
+                privateExampleRefs: { type: "array", items: { type: "string" } },
+              },
+            },
+            proposalIds: { type: "array", items: { type: "string" } },
+            citations: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["citationId", "sourceKind", "sourceRef", "excerptHash"],
+                additionalProperties: true,
+                properties: {
+                  citationId: { type: "string", minLength: 1 },
+                  sourceKind: {
+                    type: "string",
+                    enum: [...STYLE_GUIDE_CITATION_SOURCE_KINDS],
+                  },
+                  sourceRef: { type: "string", minLength: 1 },
+                  excerptHash: { type: "string", minLength: 1 },
+                },
+              },
+            },
+            publicSummary: { type: "string", minLength: 1 },
+          },
+        },
+      },
+      proposals: {
+        type: "array",
+        items: {
+          type: "object",
+          required: [
+            "proposalId",
+            "turnId",
+            "localeBranchId",
+            "policyVersionId",
+            "rationale",
+            "citationIds",
+            "examples",
+            "edits",
+            "decision",
+          ],
+          additionalProperties: true,
+          properties: {
+            proposalId: { type: "string", minLength: 1 },
+            turnId: { type: "string", minLength: 1 },
+            localeBranchId: { type: "string", minLength: 1 },
+            policyVersionId: { type: "string", minLength: 1 },
+            rationale: { type: "string", minLength: 1 },
+            citationIds: { type: "array", items: { type: "string" } },
+            examples: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["exampleId", "privacy", "redactionStatus", "excerptHash"],
+                additionalProperties: true,
+                properties: {
+                  exampleId: { type: "string", minLength: 1 },
+                  privacy: { type: "string", enum: [...STYLE_GUIDE_EXAMPLE_PRIVACY] },
+                  redactionStatus: {
+                    type: "string",
+                    enum: [...STYLE_GUIDE_REDACTION_STATUSES],
+                  },
+                  excerptHash: { type: "string", minLength: 1 },
+                },
+              },
+            },
+            edits: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                required: ["operation", "section", "rule"],
+                additionalProperties: true,
+                properties: {
+                  operation: {
+                    type: "string",
+                    enum: [...STYLE_GUIDE_PROPOSAL_OPERATIONS],
+                  },
+                  section: { type: "string", enum: [...STYLE_GUIDE_POLICY_SECTIONS] },
+                  rule: {
+                    type: "object",
+                    required: ["ruleId", "guidance"],
+                    additionalProperties: true,
+                    properties: {
+                      ruleId: { type: "string", minLength: 1 },
+                      guidance: { type: "string", minLength: 1 },
+                    },
+                  },
+                },
+              },
+            },
+            decision: {
+              type: "object",
+              required: ["status", "decidedByTurnId", "rationale"],
+              additionalProperties: true,
+              properties: {
+                status: { type: "string", enum: [...STYLE_GUIDE_PROPOSAL_DECISIONS] },
+                decidedByTurnId: { type: "string", minLength: 1 },
+                rationale: { type: "string", minLength: 1 },
+              },
+            },
+          },
+        },
+      },
     },
-  };
-}
+  },
+};
 
 function memoryRecorder(): ProviderRunArtifactRecorder & { artifacts: ProviderRunArtifact[] } {
   const artifacts: ProviderRunArtifact[] = [];
