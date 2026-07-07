@@ -33,6 +33,8 @@ const SYSTEM_INSTRUCTIONS = [
   "Every protected span listed for a bridge unit in the input catalog MUST appear in protectedSpanRefs; missing or duplicated refs are rejected by the validator.",
   "citationRefs cites glossary term ids or context-artifact ids you consulted; never raw quotes.",
   "agentRationale explains the translation choices and any policy applications.",
+  "draftText MUST contain ONLY the target-language rendering of the source line.",
+  "Do NOT append translator's notes, TL notes, meta-commentary, or any parenthetical annotation intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)'). All commentary belongs in `agentRationale`, never in `draftText`.",
   `confidenceFloor MUST be one of: ${TRANSLATION_DRAFT_CONFIDENCE_FLOORS.join(", ")}.`,
   `Emit ONLY a JSON object that conforms to the schema with schemaVersion '${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}'.`,
   "Do NOT emit prose, markdown, or trailing commas. RFC 8259 JSON only.",

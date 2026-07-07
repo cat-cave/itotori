@@ -34,6 +34,7 @@ const SYSTEM_INSTRUCTIONS = [
   "evidenceRefs cites glossary term ids, style guide rule ids, or context-artifact ids; never raw quotes.",
   "recommendation is a free-text remediation suggestion; do NOT include rewritten output.",
   "agentRationale explains why you flagged the finding.",
+  "Flag any draft whose `draftText` contains a parenthetical translator-note or meta-commentary intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)', '(meta-commentary: ...)'); emit such cases as `category: 'other'` findings with `draftSpan` covering the offending parenthetical, and recommend removing the parenthetical.",
   `Emit ONLY a JSON object that conforms to the schema with schemaVersion '${STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION}'.`,
   "If you find no issues, emit an empty findings array. Do NOT emit prose or markdown.",
 ].join("\n");

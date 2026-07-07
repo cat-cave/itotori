@@ -39,3 +39,14 @@ export {
   TONE_SHIFT_FIXTURE,
   type CalibrationFixture,
 } from "./calibration-fixtures.js";
+
+export {
+  detectTranslatorNoteFindings,
+  findTranslatorNoteMatches,
+  TRANSLATOR_NOTE_FINDING_CATEGORY,
+  TRANSLATOR_NOTE_FINDING_SEVERITY,
+  TRANSLATOR_NOTE_PATTERNS,
+  TRANSLATOR_NOTE_RULE_ID,
+  type TranslatorNoteCheckUnit,
+  type TranslatorNoteMatch,
+} from "./translator-note-check.js";
