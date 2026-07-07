@@ -55,6 +55,8 @@ check:
     node scripts/audit-no-hardcoded-cost.mjs
     node --test scripts/audit-strictness.test.mjs
     node scripts/audit-strictness.mjs
+    node --test scripts/audit-no-hardcoded-roles.test.mjs
+    node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs

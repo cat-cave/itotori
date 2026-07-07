@@ -343,6 +343,8 @@ function validateRoleOutput(
   content: string | null,
 ): ValidatedRoleOutput {
   const raw = content ?? "";
+  // authz-guard:allow domain-role — "draft" is a provider-proof STAGE role
+  // (draft vs QA validation shape), not an auth/authorization role.
   if (role === "draft") {
     const parsed = parseStructuredTranslationDraftOutput(raw);
     return { itemCount: parsed.drafts.length, findings: [] };

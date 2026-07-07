@@ -1414,7 +1414,7 @@ function dlsiteEditionReleasesAndMappings(
         targetReleaseId: `${originalWorkno}:dlsite`,
         relationKind: catalogReleaseMappingKindValues.translationOf,
         portability:
-          role === "official_translation"
+          role === "official_translation" // authz-guard:allow domain-role — DLsite translation-source role, not an auth role
             ? catalogTranslationPortabilityValues.likelyPortable
             : catalogTranslationPortabilityValues.needsReview,
         confidence: edition.confidence ?? catalogConfidenceValues.high,
