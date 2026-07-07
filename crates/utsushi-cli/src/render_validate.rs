@@ -154,7 +154,7 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         }
     };
 
-    drive(Params {
+    let report = drive(Params {
         seen_path: &seen_path,
         scene_id,
         artifact_root: &artifact_root,
@@ -162,46 +162,62 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         expect_text_contains: expect_text_contains.as_deref(),
         width,
         height,
-        output: output.as_deref(),
         gameexe_path: &gameexe_path,
         game_dir: &game_dir,
         source_seen: source_seen.as_deref(),
         bg_asset: bg_asset.as_deref(),
         private_artifact_root: private_artifact_root.as_deref(),
         public_redact,
-    })
+    })?;
+
+    if let Some(path) = output.as_deref() {
+        let serialized = serde_json::to_string_pretty(&report)
+            .map_err(|err| format!("utsushi.cli.render_validate.serialise: {err}"))?;
+        std::fs::write(path, serialized)
+            .map_err(|err| format!("utsushi.cli.render_validate.write: {err}"))?;
+    }
+    Ok(())
 }
 
-struct Params<'a> {
-    seen_path: &'a Path,
-    scene_id: u16,
-    artifact_root: &'a Path,
-    run_id: &'a str,
-    expect_text_contains: Option<&'a str>,
+/// Parameters for the shared RealLive render-validate drive. Exposed to the
+/// crate (not just this module) so the composed `patch-render` command can
+/// reuse the exact same rasterizing render pipeline on the patched Seen.txt
+/// without duplicating the observe/composite/layout/emit logic.
+pub(crate) struct Params<'a> {
+    pub(crate) seen_path: &'a Path,
+    pub(crate) scene_id: u16,
+    pub(crate) artifact_root: &'a Path,
+    pub(crate) run_id: &'a str,
+    pub(crate) expect_text_contains: Option<&'a str>,
     /// Framebuffer width override; `None` uses the Gameexe screen width.
-    width: Option<u32>,
+    pub(crate) width: Option<u32>,
     /// Framebuffer height override; `None` uses the Gameexe screen height.
-    height: Option<u32>,
-    output: Option<&'a Path>,
-    gameexe_path: &'a Path,
-    game_dir: &'a Path,
+    pub(crate) height: Option<u32>,
+    pub(crate) gameexe_path: &'a Path,
+    pub(crate) game_dir: &'a Path,
     /// Pristine (pre-patch) source Seen.txt. Used to recover the REAL
     /// per-speaker #NAMAE colour when a dialogue-only translation rewrote
     /// the inline 【…】 name prefix into the target language (the Japanese
     /// #NAMAE key no longer matches on the patched line). `None` renders
     /// the translated name box without a recovered colour.
-    source_seen: Option<&'a Path>,
+    pub(crate) source_seen: Option<&'a Path>,
     /// Real g00 background stem composited when the observed play-order
     /// scene set no graphics of its own (a headless dialogue-scene drive
     /// inherits its background from a prior scene, so its own terminal
     /// stack can be empty). The named stem's REAL decoded g00 art is
     /// cover-scaled into the frame so the composite is always real art.
-    bg_asset: Option<&'a str>,
-    private_artifact_root: Option<&'a Path>,
-    public_redact: bool,
+    pub(crate) bg_asset: Option<&'a str>,
+    pub(crate) private_artifact_root: Option<&'a Path>,
+    pub(crate) public_redact: bool,
 }
 
-fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
+/// Drive the real RealLive render-validate pipeline for one scene and
+/// return the deterministic JSON evidence report. Emits the redacted
+/// public PNG (+ the gitignored private full-fidelity PNG) through the
+/// substrate frame sink at E2 as a side effect; the report is redaction
+/// aware but carries the artifact filesystem paths for the standalone CLI
+/// (the composed `patch-render` command re-projects a path-free subset).
+pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Error>> {
     // 1. Parse the real Gameexe.ini → the #WINDOW.000 message-box config,
     //    the game's declared virtual screen size the config coordinates
     //    live in, and the #NAMAE → #COLOR_TABLE speaker/colour resolver.
@@ -439,13 +455,6 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         "privateArtifactSha256": shots.private_png_sha256,
     });
 
-    if let Some(path) = params.output {
-        let serialized = serde_json::to_string_pretty(&report)
-            .map_err(|err| format!("utsushi.cli.render_validate.serialise: {err}"))?;
-        std::fs::write(path, serialized)
-            .map_err(|err| format!("utsushi.cli.render_validate.write: {err}"))?;
-    }
-
     println!(
         "{RENDER_OK_CODE}: scene={} artifact_id={} uri={} evidence_tier={} \
          play_order_messages={} name_box={} color={} redaction={} private={}",
@@ -463,7 +472,7 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         },
         shots.private_png_path.display(),
     );
-    Ok(())
+    Ok(report)
 }
 
 /// Parse an optional `--width` / `--height` dimension override. Absent →

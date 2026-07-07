@@ -1,6 +1,7 @@
 mod coverage_export;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
+mod patch_render;
 mod render_validate;
 mod replay;
 mod replay_validate;
@@ -15,7 +16,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -93,6 +94,16 @@ fn run_cli_with_registry(
             // the text-only `replay-validate` capture surface.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             render_validate::run_render_validate_command(&tail)?;
+        }
+        Some("patch-render") => {
+            // kaifuu-utsushi-patch-to-render-path — the COMPOSED command:
+            // Kaifuu patchback (translated script -> patched Seen.txt) chained
+            // into Utsushi render-validate (patched scene -> redacted localized
+            // PNG + JSON evidence), config-parameterized for any RealLive
+            // project. Owns its own flag parsing; skips the leading
+            // `patch-render` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            patch_render::run_patch_render_command(&tail)?;
         }
         Some("rpgmaker-mv-capture") => {
             // RPG Maker MV/MZ vertical-slice runtime evidence: drives the
