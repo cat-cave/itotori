@@ -408,6 +408,77 @@ describe("ItotoriTerminologyRepository", () => {
     }
   });
 
+  it("ranks equal-score and equal-sourceTerm semantic matches deterministically by term id", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const terminology = new ItotoriTerminologyRepository(context.db);
+      // Two distinct terms with the SAME sourceTerm and SAME embedding vector.
+      // Both produce an identical cosine score, so the only stable final
+      // tie-breaker is the term id (ascending).
+      const equalTermOptions = {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceTerm: "剣",
+        termKind: terminologyTermKindValues.general,
+        semanticIndex: {
+          searchDocument: "Sword blade edge weapon",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [1, 0],
+          status: terminologySemanticIndexStatusValues.ready,
+        },
+      } as const;
+      await terminology.upsertTerm(localActor, {
+        ...equalTermOptions,
+        termId: "term-tie-bravo",
+        preferredTranslation: "Sword Bravo",
+      });
+      await terminology.upsertTerm(localActor, {
+        ...equalTermOptions,
+        termId: "term-tie-alpha",
+        preferredTranslation: "Sword Alpha",
+      });
+
+      const service = new ItotoriSemanticGlossarySearchService(
+        context.db,
+        new RecordedEmbeddingFixtureAdapter({
+          fixtureId: "semantic-glossary-fixture-v1",
+          provider: "recorded-fixture",
+          model: "semantic-fixture-v1",
+          dimension: 2,
+          vectors: [{ text: "Sword blade edge weapon", embedding: [1, 0] }],
+        }),
+      );
+
+      const expectedOrder = ["term-tie-alpha", "term-tie-bravo"];
+      const firstRun = await service.searchGlossary(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        query: "Sword blade edge weapon",
+        minScore: 0.1,
+        limit: 10,
+      });
+      expect(firstRun.matches).toHaveLength(2);
+      expect(firstRun.matches[0]?.score).toBe(firstRun.matches[1]?.score);
+      expect(firstRun.matches[0]?.term.sourceTerm).toBe(firstRun.matches[1]?.term.sourceTerm);
+      expect(firstRun.matches.map((match) => match.term.termId)).toEqual(expectedOrder);
+
+      // Re-running the search on the same input yields the identical order.
+      const secondRun = await service.searchGlossary(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        query: "Sword blade edge weapon",
+        minScore: 0.1,
+        limit: 10,
+      });
+      expect(secondRun.matches.map((match) => match.term.termId)).toEqual(expectedOrder);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("prefers exact glossary matches missing semantic rows over weaker semantic candidates", async () => {
     const context = await isolatedMigratedContext();
     try {

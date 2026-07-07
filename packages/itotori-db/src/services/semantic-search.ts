@@ -586,14 +586,18 @@ function termSummary(candidate: SemanticCandidate): SemanticGlossarySearchTermSu
   };
 }
 
-function compareSemanticMatches(
+export function compareSemanticMatches(
   left: SemanticGlossarySearchMatch,
   right: SemanticGlossarySearchMatch,
 ): number {
   if (left.score !== right.score) {
     return right.score - left.score;
   }
-  return left.term.sourceTerm.localeCompare(right.term.sourceTerm);
+  const sourceTermComparison = left.term.sourceTerm.localeCompare(right.term.sourceTerm);
+  if (sourceTermComparison !== 0) {
+    return sourceTermComparison;
+  }
+  return left.term.termId.localeCompare(right.term.termId);
 }
 
 function hasStrongExactMatch(match: TerminologySearchResult): boolean {

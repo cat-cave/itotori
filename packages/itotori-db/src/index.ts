@@ -436,6 +436,7 @@ export type {
 } from "./repositories/translation-memory-repository.js";
 export {
   ItotoriSemanticGlossarySearchService,
+  compareSemanticMatches,
   normalizeSemanticSearchText,
   RecordedEmbeddingFixtureAdapter,
   semanticGlossarySearchDiagnosticCodeValues,
