@@ -23,7 +23,10 @@ import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriLocalizationPassLedgerRepository } from "../src/repositories/localization-pass-ledger-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
-import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
+import {
+  type ItotoriPrincipalRepositoryPort,
+  ItotoriPrincipalRepository,
+} from "../src/repositories/principal-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
@@ -1061,6 +1064,40 @@ const repositoryPermissionGateMatrix = [
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
+/**
+ * auth-007 — the auth-management API permission matrix.
+ *
+ * `authManagementOperations` is the EXHAUSTIVE list of public methods on
+ * `ItotoriPrincipalRepository` (the auth-management surface: principal/account/
+ * permission-set CRUD, direct + set grant/revoke, and the gated principal
+ * reads). Every entry is gated on `auth.admin` and registered in
+ * `repositoryPermissionGateMatrix` with a success fixture and a denial fixture.
+ * The `satisfies` clause keeps each entry honest against
+ * `ItotoriPrincipalRepositoryPort`; the runtime exhaustiveness assertion in the
+ * `auth-management operation matrix (auth-007)` group makes the list EXHAUSTIVE
+ * against the actual class's public methods, so adding a new auth-management
+ * method without registering it here fails the test. The per-operation
+ * assertions then require each listed operation to carry an `auth.admin` matrix
+ * entry AND an `auth.admin` `requirePermission` call in source — closing the gap
+ * the generic repository source-gate scan cannot: an auth-management method
+ * that forgets its `requirePermission` call entirely.
+ */
+const authManagementOperations = [
+  "createAccount",
+  "createPrincipal",
+  "createPermissionSet",
+  "addPermissionToSet",
+  "removePermissionFromSet",
+  "renamePermissionSet",
+  "deletePermissionSet",
+  "grantPermissionSet",
+  "revokePermissionSet",
+  "grantDirectPermission",
+  "revokeDirectPermission",
+  "loadPrincipal",
+  "resolvePrincipalPermissions",
+] as const satisfies readonly (keyof ItotoriPrincipalRepositoryPort)[];
+
 describe("repository permission gate matrix", () => {
   it("names each permission-gated repository/API-adjacent mutation with fixtures", () => {
     expect(
@@ -2092,6 +2129,74 @@ describe("repository permission denial fixtures", () => {
   );
 });
 
+describe("auth-management operation matrix (auth-007)", () => {
+  const authManagementMatrixEntries = repositoryPermissionGateMatrix.filter(
+    (entry) => entry.repository === "ItotoriPrincipalRepository",
+  );
+  const principalSourceGates = sourcePermissionGates().filter(
+    (gate) => gate.sourceFile === "principal-repository.ts",
+  );
+
+  // ANY auth-management-op-is-gated check: the explicit list must cover EVERY
+  // public method on ItotoriPrincipalRepository AND the matrix must register
+  // exactly those operations. A new auth-management method added to the class
+  // without being listed (and thus matrix-registered) fails here, and the
+  // per-operation tests below fail if a listed op is un-gated or un-registered.
+  it("registers every ItotoriPrincipalRepository public method as an auth-management operation", () => {
+    expect([...authManagementOperations].sort()).toEqual(principalRepositoryPublicMethods());
+    const matrixMutations = authManagementMatrixEntries.map((entry) => entry.mutation).sort();
+    expect(matrixMutations).toEqual([...authManagementOperations].sort());
+  });
+
+  it.each(authManagementOperations)(
+    "gates ItotoriPrincipalRepository.%s on auth.admin with success and denial fixtures",
+    (operation) => {
+      const entry = authManagementMatrixEntries.find((e) => e.mutation === operation);
+      expect(
+        entry,
+        `ItotoriPrincipalRepository.${operation} must be registered in the authorization matrix`,
+      ).toBeDefined();
+      if (entry === undefined) {
+        return;
+      }
+      expect(
+        entry.permissionKey,
+        `ItotoriPrincipalRepository.${operation} must be gated on auth.admin`,
+      ).toBe("authAdmin");
+      expect(
+        entry.requiredPermission,
+        `ItotoriPrincipalRepository.${operation} must require permission auth.admin`,
+      ).toBe(permissionValues.authAdmin);
+      expect(
+        entry.successFixture,
+        `ItotoriPrincipalRepository.${operation} must reference a success fixture`,
+      ).toMatch(/coverage$/);
+      expect(
+        entry.denialFixture,
+        `ItotoriPrincipalRepository.${operation} must reference a denial fixture`,
+      ).toMatch(/missing permission actor/);
+    },
+  );
+
+  it.each(authManagementOperations)(
+    "calls requirePermission(authAdmin) in source for ItotoriPrincipalRepository.%s",
+    (operation) => {
+      const gate = principalSourceGates.find((g) => g.mutation === operation);
+      expect(
+        gate,
+        `ItotoriPrincipalRepository.${operation} must call requirePermission(authAdmin) in principal-repository.ts`,
+      ).toBeDefined();
+      if (gate === undefined) {
+        return;
+      }
+      expect(
+        gate.permissionKey,
+        `ItotoriPrincipalRepository.${operation} source gate must be auth.admin`,
+      ).toBe("authAdmin");
+    },
+  );
+});
+
 function projectGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -2702,4 +2807,41 @@ function requiredContext(context: DatabaseContext | undefined): DatabaseContext 
     throw new Error("database context was not initialized");
   }
   return context;
+}
+
+/**
+ * The sorted names of every PUBLIC method declared on `ItotoriPrincipalRepository`
+ * (the auth-management surface), read from source via the TypeScript AST. This is
+ * the runtime exhaustiveness primitive for `authManagementOperations`: a new
+ * public method on the class that is not listed (and thus not matrix-registered)
+ * makes the auth-management-group list drift and fails the test. Private /
+ * protected helpers are excluded so only the gated auth-management API counts.
+ */
+function principalRepositoryPublicMethods(): string[] {
+  const repositorySourceDir = new URL("../src/repositories/", import.meta.url);
+  const sourcePath = new URL("principal-repository.ts", repositorySourceDir);
+  const source = readFileSync(sourcePath, "utf8");
+  const sourceFile = ts.createSourceFile(sourcePath.pathname, source, ts.ScriptTarget.Latest, true);
+  const methods: string[] = [];
+  ts.forEachChild(sourceFile, (node) => {
+    if (!ts.isClassDeclaration(node) || node.name?.text !== "ItotoriPrincipalRepository") {
+      return;
+    }
+    for (const member of node.members) {
+      if (!ts.isMethodDeclaration(member)) {
+        continue;
+      }
+      const modifiers = ts.getModifiers(member) ?? [];
+      const isPrivateOrProtected = modifiers.some(
+        (modifier) =>
+          modifier.kind === ts.SyntaxKind.PrivateKeyword ||
+          modifier.kind === ts.SyntaxKind.ProtectedKeyword,
+      );
+      if (isPrivateOrProtected) {
+        continue;
+      }
+      methods.push(member.name.getText(sourceFile));
+    }
+  });
+  return methods.sort();
 }

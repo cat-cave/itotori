@@ -235,6 +235,45 @@ Seeding is a bootstrap (like `bootstrapLocalUser`), idempotent, and account
 scoped (`permission-set-<accountId>-<key>`). No seed is granted `auth.admin` or
 `system.reset`.
 
+## Auth-Management API Permission Matrix (auth-007)
+
+The authorization-matrix test
+(`packages/itotori-db/test/authorization-matrix.test.ts`) is the invariant guard
+for the auth-management API surface: **every auth-management operation is
+permission-gated on `auth.admin` and registered in the matrix with a success
+fixture and a denial fixture.** The auth-management surface is
+`ItotoriPrincipalRepository` — principal/account/permission-set CRUD, direct +
+set grant/revoke, and the gated principal reads (`loadPrincipal`,
+`resolvePrincipalPermissions`). Administering the auth layer is itself a
+privileged action, so every public method on `ItotoriPrincipalRepositoryPort`
+carries an `auth.admin` gate.
+
+The matrix test enforces this with three layers:
+
+1. A generic repository source-gate AST scan that fails if any
+   `requirePermission` call in `src/repositories/*.ts` lacks a matching matrix
+   entry (catches a gate with no fixture).
+2. An **explicit auth-management-group check** (`authManagementOperations`) that
+   enumerates every `ItotoriPrincipalRepositoryPort` method and asserts each is
+   registered with `auth.admin` + success + denial fixtures AND has an
+   `auth.admin` `requirePermission` call in source. The list is
+   **runtime-exhaustive** against the actual public methods of
+   `ItotoriPrincipalRepository` (read from source via the TypeScript AST), so
+   adding a new auth-management method to the class without listing it fails the
+   test; the per-operation assertions then fail if a listed method is un-gated
+   or un-registered. This closes the gap the generic scan cannot: an
+   auth-management method that forgets its `requirePermission` call entirely.
+3. Per-entry denial fixtures run against an isolated migrated Postgres schema,
+   proving the gate actually throws `AuthorizationError` for an actor missing
+   `auth.admin`.
+
+A new auth-management mutation therefore cannot ship un-gated or
+un-registered: it must be added to the class, listed in
+`authManagementOperations` (exhaustiveness-enforced), call
+`requirePermission(authAdmin)`, and carry success + denial matrix fixtures.
+Beta member/settings APIs (auth-012/013/014) will register their gates here
+when built.
+
 ## Local Operator Migration (auth-003)
 
 The single local operator is represented in **both** models. The legacy
