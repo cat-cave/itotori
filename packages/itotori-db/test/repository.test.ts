@@ -43,6 +43,10 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function v02Sha256(label: string): string {
+  return `sha256:${createHash("sha256").update(label).digest("hex")}`;
+}
+
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
   const project: ItotoriProjectRecord = {
     projectId: "project-test",
@@ -1171,6 +1175,373 @@ describe("ItotoriProjectRepository", () => {
         source_revisions: firstImport.sourceRevisionCount,
         bridge_imports: 1,
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects asset ids reused by another project with a semantic ownership diagnostic", async () => {
+    // ITOTORI-061: an asset id that already belongs to a different project's
+    // source bundle is rejected with a semantic ownership diagnostic — not a
+    // silent accept and not a generic DB error. The asset guard fires inside
+    // assertImportOwnership BEFORE any project/bundle/unit rows are written, so
+    // the second project leaves no partial mutation behind. The second bridge
+    // uses a fresh bridge id (so the bundle/bridge ownership guard does not
+    // fire) and bridge-id-prefixed revisions (so the revision guard does not
+    // fire); only the asset id is reused, isolating the asset guard.
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const firstProject = projectFixture();
+      await repo.importSourceBundle(localActor, firstProject);
+
+      const secondProject = projectFixture({
+        projectId: "project-cross-asset",
+        localeBranchId: "locale-cross-asset",
+        bridge: {
+          ...firstProject.bridge,
+          bridgeId: "bridge-cross-asset",
+          sourceBundleHash: "hash-cross-asset",
+        },
+      });
+
+      await expect(repo.importSourceBundle(localActor, secondProject)).rejects.toThrow(
+        /asset source\.json already belongs to project project-test source bundle bridge-test/,
+      );
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_bundles: number;
+        bridge_imports: number;
+        assets: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports,
+          (select count(*)::int from itotori_assets) as assets
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 1,
+        source_bundles: 1,
+        bridge_imports: 1,
+        assets: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects source revision ids reused by another project with a semantic ownership diagnostic", async () => {
+    // ITOTORI-061: a source-revision id that already belongs to another project
+    // is rejected with a semantic ownership diagnostic. assertImportOwnership
+    // checks revisions BEFORE assets/units, so reusing the v0.2 fixture's
+    // revisions under a fresh bridge id (no bundle/bridge conflict) isolates the
+    // revision guard as the one that fires. The sourceBundleRevision value is
+    // rebased onto the second bundle's hash so the bundle passes schema
+    // validation, but its revision id is still reused from the first project.
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
+
+      const secondBundleHash = v02Sha256("cross-project-revision-reuse");
+      const secondBridge: BridgeBundleV02 = {
+        ...bridge,
+        bridgeId: "019ed001-0000-7000-8000-000000000099",
+        sourceBundleHash: secondBundleHash,
+        sourceBundleRevision: {
+          ...bridge.sourceBundleRevision,
+          value: secondBundleHash,
+        },
+      };
+      const secondProject: ItotoriProjectRecord = {
+        projectId: "project-cross-revision",
+        localeBranchId: "locale-cross-revision-fr-fr",
+        targetLocale: "fr-FR",
+        drafts: {},
+        bridge: secondBridge,
+      };
+
+      await expect(repo.importSourceBundle(localActor, secondProject)).rejects.toThrow(
+        /source revision [0-9a-f-]+ already belongs to project project-v02/,
+      );
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_bundles: number;
+        bridge_imports: number;
+        source_revisions: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports,
+          (select count(*)::int from itotori_source_revisions) as source_revisions
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 1,
+        source_bundles: 1,
+        bridge_imports: 1,
+        source_revisions: firstImport.sourceRevisionCount,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects bridge unit ids reused by another project with a semantic ownership diagnostic", async () => {
+    // ITOTORI-061: a bridge-unit id that already belongs to another project's
+    // source bundle is rejected with a semantic ownership diagnostic. The
+    // second bridge uses a fresh bridge id, fresh asset id (via patchRef), and
+    // bridge-id-prefixed revisions, so only the bridgeUnitId is reused —
+    // isolating the bridge-unit guard (the last ownership check).
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const firstProject = projectFixture();
+      const firstUnit = firstProject.bridge.units[0]!;
+      await repo.importSourceBundle(localActor, firstProject);
+
+      const secondProject = projectFixture({
+        projectId: "project-cross-unit",
+        localeBranchId: "locale-cross-unit",
+        bridge: {
+          ...firstProject.bridge,
+          bridgeId: "bridge-cross-unit",
+          sourceBundleHash: "hash-cross-unit",
+          units: [
+            {
+              ...firstUnit,
+              patchRef: {
+                ...firstUnit.patchRef,
+                assetId: "source-cross-unit.json",
+              },
+            },
+          ],
+        },
+      });
+
+      await expect(repo.importSourceBundle(localActor, secondProject)).rejects.toThrow(
+        /bridge unit bridge-unit-test already belongs to project project-test source bundle bridge-test/,
+      );
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_bundles: number;
+        bridge_imports: number;
+        source_units: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports,
+          (select count(*)::int from itotori_source_units) as source_units
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 1,
+        source_bundles: 1,
+        bridge_imports: 1,
+        source_units: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a reimport that reuses a source revision id with different content", async () => {
+    // ITOTORI-061: a same-project reimport may NOT reuse a source-revision id
+    // with different content. The revision already belongs to this project (so
+    // the cross-project ownership guard does not fire), but diffSourceRevisions
+    // rejects the content drift with a semantic diagnostic before any mutation.
+    // The sourceBundleHash + sourceBundleRevision.value move together (schema
+    // validation requires the content-hash revision to match the bundle hash).
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
+
+      const reimportedBridge: BridgeBundleV02 = {
+        ...bridge,
+        sourceBundleHash: v02Sha256("reimport-different-content"),
+        sourceBundleRevision: {
+          ...bridge.sourceBundleRevision,
+          value: v02Sha256("reimport-different-content"),
+        },
+      };
+
+      await expect(
+        repo.importSourceBundle(localActor, projectV02Fixture(reimportedBridge)),
+      ).rejects.toThrow(
+        new RegExp(
+          `source revision ${escapeRegExp(firstImport.sourceBundleRevisionId)} already exists with different content`,
+        ),
+      );
+
+      const counts = await context.pool.query<{
+        bridge_imports: number;
+        source_revisions: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports,
+          (select count(*)::int from itotori_source_revisions) as source_revisions
+      `);
+      expect(counts.rows[0]).toEqual({
+        bridge_imports: 1,
+        source_revisions: firstImport.sourceRevisionCount,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("preserves import-status invariants on an idempotent same-revision reimport", async () => {
+    // ITOTORI-061: reimporting the EXACT same (sourceBundleId,
+    // sourceBundleRevisionId) upserts the existing bridge_imports row (unique
+    // index) — it does NOT create a duplicate. The bridgeImportId is
+    // deterministic per (project, bundle, revision), the diff counts collapse to
+    // all-unchanged/existing, and the diff-count partitions sum to the totals
+    // across both imports. The project status stays "imported" (no invalid
+    // transition).
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const project = projectV02Fixture(bridge);
+
+      const firstImport = await repo.importSourceBundle(localActor, project);
+      const secondImport = await repo.importSourceBundle(localActor, project);
+
+      expect(secondImport.bridgeImportId).toBe(firstImport.bridgeImportId);
+      expect(secondImport.units).toEqual({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.units.length,
+      });
+      expect(secondImport.assets).toEqual({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.assets.length,
+      });
+      expect(secondImport.sourceRevisions).toEqual({
+        added: 0,
+        existing: firstImport.sourceRevisionCount,
+      });
+
+      for (const status of [firstImport, secondImport]) {
+        expect(status.sourceRevisions.added + status.sourceRevisions.existing).toBe(
+          status.sourceRevisionCount,
+        );
+        expect(status.units.added + status.units.updated + status.units.unchanged).toBe(
+          status.unitCount,
+        );
+        expect(status.assets.added + status.assets.updated + status.assets.unchanged).toBe(
+          status.assetCount,
+        );
+      }
+
+      const imports = await context.pool.query<{ count: number }>(
+        "select count(*)::int from itotori_bridge_imports where project_id = $1",
+        ["project-v02"],
+      );
+      expect(imports.rows[0]?.count).toBe(1);
+
+      const projectRow = await context.pool.query<{ status: string }>(
+        "select status from itotori_projects where project_id = $1",
+        ["project-v02"],
+      );
+      expect(projectRow.rows[0]?.status).toBe("imported");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("preserves import-status diff invariants across a new-revision reimport", async () => {
+    // ITOTORI-061: a reimport that advances the sourceBundleRevision creates a
+    // NEW bridge_imports row (one per revision) with a distinct deterministic
+    // bridgeImportId, while the diff counts transition correctly (one added
+    // revision, the rest existing; units/assets all unchanged). The diff-count
+    // partitions sum to the totals across the transition — no invalid status.
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
+
+      const reimportedBridge: BridgeBundleV02 = {
+        ...bridge,
+        sourceBundleHash: v02Sha256("new-revision-reimport-invariants"),
+        sourceBundleRevision: {
+          ...bridge.sourceBundleRevision,
+          revisionId: "019ed001-0000-7000-8000-000000000115",
+          value: v02Sha256("new-revision-reimport-invariants"),
+        },
+      };
+      const secondImport = await repo.importSourceBundle(
+        localActor,
+        projectV02Fixture(reimportedBridge),
+      );
+
+      expect(secondImport.bridgeImportId).not.toBe(firstImport.bridgeImportId);
+      expect(secondImport.sourceBundleRevisionId).toBe("019ed001-0000-7000-8000-000000000115");
+
+      expect(firstImport.sourceRevisions).toEqual({
+        added: firstImport.sourceRevisionCount,
+        existing: 0,
+      });
+      expect(secondImport.sourceRevisions).toEqual({
+        added: 1,
+        existing: firstImport.sourceRevisionCount - 1,
+      });
+      expect(secondImport.units).toEqual({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.units.length,
+      });
+      expect(secondImport.assets).toEqual({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.assets.length,
+      });
+
+      for (const status of [firstImport, secondImport]) {
+        expect(status.sourceRevisions.added + status.sourceRevisions.existing).toBe(
+          status.sourceRevisionCount,
+        );
+        expect(status.units.added + status.units.updated + status.units.unchanged).toBe(
+          status.unitCount,
+        );
+        expect(status.assets.added + status.assets.updated + status.assets.unchanged).toBe(
+          status.assetCount,
+        );
+      }
+
+      const imports = await context.pool.query<{ bridge_import_id: string }>(
+        "select bridge_import_id from itotori_bridge_imports where project_id = $1 order by source_bundle_revision_id",
+        ["project-v02"],
+      );
+      expect(imports.rows).toEqual([
+        { bridge_import_id: firstImport.bridgeImportId },
+        { bridge_import_id: secondImport.bridgeImportId },
+      ]);
+
+      const revisions = await context.pool.query<{ count: number }>(
+        "select count(*)::int from itotori_source_revisions where project_id = $1",
+        ["project-v02"],
+      );
+      expect(revisions.rows[0]?.count).toBe(firstImport.sourceRevisionCount + 1);
     } finally {
       await context.close();
     }
