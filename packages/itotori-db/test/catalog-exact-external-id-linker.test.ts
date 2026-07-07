@@ -214,6 +214,55 @@ describe("ItotoriCatalogExactExternalIdLinkerService", () => {
       await context.close();
     }
   });
+
+  it.each([
+    ["malformed object", { schemaVersion: catalogExactExternalIdLinkSchemaVersion }],
+    ["null", null],
+    ["array", []],
+    ["scalar", "not-a-request"],
+  ])(
+    "returns the same invalid-request diagnostics for %s payloads through the real catalog repository",
+    async (_name, payload) => {
+      const context = await isolatedMigratedContext();
+      try {
+        const realRepository = new ItotoriCatalogRepository(context.db);
+        const fakeRepository = new FakeCatalogLookupRepository([
+          [
+            exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.storeProduct),
+            workSnapshot("work-dlsite", "DLsite-only fixture"),
+          ],
+        ]);
+        const realService = new ItotoriCatalogExactExternalIdLinkerService(
+          realRepository,
+          localActor,
+        );
+        const fakeService = new ItotoriCatalogExactExternalIdLinkerService(
+          fakeRepository,
+          localActor,
+        );
+
+        const realResult = await realService.linkExactExternalIds(payload);
+        const fakeResult = await fakeService.linkExactExternalIds(payload);
+
+        expect(realResult).toEqual(fakeResult);
+        expect(realResult).toMatchObject({
+          status: catalogExactExternalIdLinkStatusValues.unsupported,
+          subject: null,
+          workId: null,
+          matches: [],
+          diagnostics: [
+            expect.objectContaining({
+              code: catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
+              severity: "error",
+            }),
+          ],
+        });
+        expect(fakeRepository.calls).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    },
+  );
 });
 
 class FakeCatalogLookupRepository implements Pick<
