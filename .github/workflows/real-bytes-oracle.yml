@@ -27,9 +27,10 @@ on:
         type: choice
         default: full
         options:
-          - full # (A) real-bytes ground truth + (B) synthetic-vs-real drift
+          - full # (A) real-bytes ground truth + (B) synthetic-vs-real drift + browser e2e
           - drift-only # (B) only — repo sources, no corpora required
           - ground-truth-only # (A) only
+          - browser-only # the real-browser Playwright e2e only (nix-Chromium)
 
 jobs:
   # DRIFT CHECK — repo-only (no corpora), so it runs on a hosted runner every
@@ -86,3 +87,33 @@ jobs:
       # hosted drift-check job re-runs (B) without corpora; the small overlap is
       # intentional so a corpora-less nightly still catches manifest drift.)
       - run: just real-bytes-oracle
+
+  # BROWSER E2E — the runtime-web review Playwright e2e (fe-runtime-web-playwright)
+  # in a REAL Chromium. This is the periodic/strict BROWSER lane, deliberately
+  # OUTSIDE per-gate CI so a per-gate green never launches a browser. It runs on
+  # the self-hosted `itotori-corpora` runner because that host provides nix (and
+  # thus the pinned nix-Chromium exported by the flake.nix devShell); Playwright's
+  # own downloaded Chromium cannot run on NixOS. `nix develop --command` enters
+  # the devShell so PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN point at the
+  # flake.lock-pinned Chromium. With no runnable Chromium, `just browser-e2e`
+  # FAILS LOUD (nonzero) rather than passing with the e2e unexercised.
+  # See docs/ci-lanes.md.
+  browser-e2e:
+    if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'browser-only' }}
+    runs-on: [self-hosted, itotori-corpora]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      # Enter the nix devShell so the pinned nix-Chromium is exported
+      # (PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN); `just` is provided by the
+      # devShell too, so it does not need a separate install here.
+      - run: nix develop --command just browser-e2e

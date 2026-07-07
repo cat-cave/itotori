@@ -265,6 +265,56 @@ real-bytes-oracle:
 real-bytes-oracle-drift:
     node scripts/real-bytes-oracle.mjs --drift-only
 
+# fe-contract-ci-lanes: STRICT/PERIODIC browser e2e lane. Runs the runtime-web
+# review Playwright e2e (apps/runtime-web-review/e2e/*.e2e.ts, 5 tests) in a REAL
+# Chromium. This is a BROWSER lane, deliberately OUTSIDE the fast per-gate lane:
+# `just ci` / `qd-full-ci` stay jsdom-only and browser-free so a per-gate gate
+# stays fast (~86s) and deterministic. It runs in the periodic/strict lane
+# alongside the real-bytes oracle (see `just periodic-strict`). Being a NAMED
+# recipe (not an orphan `pnpm ... e2e` script) is the anti-drift guarantee: the
+# e2e is reachable from the command surface and cannot silently rot.
+#
+# BROWSER BINARY (nix-Chromium): Playwright's own downloaded Chromium is
+# dynamically linked against libraries absent on NixOS and cannot run here. The
+# nix devShell (flake.nix) provides a runnable `pkgs.chromium` and exports its
+# store path as PLAYWRIGHT_CHROMIUM_BIN (and UTSUSHI_BROWSER_BIN, shared with the
+# Rust MV/MZ browser gates), with PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 so nothing is
+# ever downloaded. Enter it via direnv / `nix develop`; the browser is pinned by
+# flake.lock. In CI the browser lane runs on the self-hosted `itotori-corpora`
+# runner via `nix develop --command just browser-e2e` (see
+# .github/workflows/real-bytes-oracle.yml). Outside the devShell, export
+# PLAYWRIGHT_CHROMIUM_BIN to a runnable Chromium (>= 149, matching Playwright 1.60).
+#
+# SKIP-HONESTY / FAIL-LOUD: with no runnable Chromium this recipe FAILS LOUD
+# (non-zero) with a pointer to the devShell — it NEVER passes with the browser
+# e2e unexercised. This mirrors `ci-real-bytes`' missing-corpus pre-check and is
+# the strict-lane analogue of the DB skip-honesty gates: a strict proof lane may
+# not go green-on-skip. See docs/ci-lanes.md.
+browser-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="${PLAYWRIGHT_CHROMIUM_BIN:-${UTSUSHI_BROWSER_BIN:-}}"
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+      echo "browser-e2e: no runnable Chromium — PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN is unset or not executable (\"$bin\")." >&2
+      echo "  Enter the nix devShell (direnv / \`nix develop\`) so the nix-provided Chromium is exported," >&2
+      echo "  or export PLAYWRIGHT_CHROMIUM_BIN to a runnable Chromium (>= 149, matching Playwright 1.60)." >&2
+      echo "  Refusing to pass with the browser e2e unexercised (strict lane, no green-on-skip)." >&2
+      exit 1
+    fi
+    echo "browser-e2e: using nix-Chromium = $bin"
+    pnpm --filter @itotori/runtime-web-review e2e
+
+# fe-contract-ci-lanes: the PERIODIC/STRICT lane entry point. Runs BOTH heavy,
+# out-of-per-gate proofs in one named command: the real-browser Playwright e2e
+# (`browser-e2e`, needs the nix devShell Chromium) and the real-bytes
+# ground-truth oracle (`real-bytes-oracle`, needs the staged corpora + drift
+# check). Deliberately OUTSIDE per-gate CI / qd-full-ci — a per-gate green never
+# pays for or waits on this ~30-45min lane. The browser sub-lane runs FIRST so a
+# missing Chromium fails fast before the long oracle. Both sub-lanes fail LOUD on
+# a missing prerequisite (no Chromium / no corpus) rather than passing
+# unexercised. See docs/ci-lanes.md.
+periodic-strict: browser-e2e real-bytes-oracle
+
 # Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the
 # diff (vs ITOTORI_QD_AFFECTED_BASE, default `main`) can touch — apps/itotori-only
 # changes run the itotori gate + check; crate changes run that family's gate (+
