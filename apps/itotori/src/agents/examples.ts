@@ -12,6 +12,7 @@ import {
   DETERMINISTIC_PRE_EXPORT_QA_CHECK_CODES,
   runDeterministicPreExportQa,
 } from "../services/deterministic-pre-export-qa.js";
+import { missingRequiredProtectedSpanOccurrences } from "../services/protected-span-occurrences.js";
 import type { ProjectState } from "../services/project-workflow.js";
 import type {
   AgentJobInput,
@@ -508,38 +509,4 @@ export function parseTranslationQualityJudgeOutput(
 
 function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function missingRequiredProtectedSpanOccurrences(
-  requiredSpans: string[],
-  targetText: string,
-): string[] {
-  const availableCounts = new Map<string, number>();
-  const missing: string[] = [];
-  for (const spanRaw of requiredSpans) {
-    const available = availableCounts.get(spanRaw) ?? countOccurrences(targetText, spanRaw);
-    if (available <= 0) {
-      missing.push(spanRaw);
-      continue;
-    }
-    availableCounts.set(spanRaw, available - 1);
-  }
-  return missing;
-}
-
-function countOccurrences(targetText: string, raw: string): number {
-  if (raw.length === 0) {
-    return 0;
-  }
-  let count = 0;
-  let searchStart = 0;
-  while (searchStart <= targetText.length) {
-    const index = targetText.indexOf(raw, searchStart);
-    if (index < 0) {
-      return count;
-    }
-    count += 1;
-    searchStart = index + raw.length;
-  }
-  return count;
 }

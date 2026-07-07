@@ -16,6 +16,10 @@ import type {
   LocalizationUnitV02,
 } from "@itotori/localization-bridge-schema";
 import type { ProjectState } from "./project-workflow.js";
+import {
+  countProtectedSpanOccurrences,
+  missingRequiredProtectedSpanOccurrences,
+} from "./protected-span-occurrences.js";
 
 const CHECK_VERSION = "itotori-020.1";
 const CREATED_AT = "2026-06-19T00:00:00.000Z";
@@ -103,7 +107,7 @@ export function runDeterministicPreExportQa(project: ProjectState): {
       targetText,
     )) {
       const requiredCount = requiredProtectedSpans.filter((raw) => raw === spanRaw).length;
-      const observedCount = countOccurrences(targetText, spanRaw);
+      const observedCount = countProtectedSpanOccurrences(targetText, spanRaw);
       const occurrenceNote =
         requiredCount > 1
           ? ` The target contains ${observedCount} occurrence(s), but ${requiredCount} are required.`
@@ -225,40 +229,6 @@ function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
     return unit.spans.map((span) => span.raw);
   }
   return unit.protectedSpans.map((span) => span.raw);
-}
-
-function missingRequiredProtectedSpanOccurrences(
-  requiredSpans: string[],
-  targetText: string,
-): string[] {
-  const availableCounts = new Map<string, number>();
-  const missing: string[] = [];
-  for (const spanRaw of requiredSpans) {
-    const available = availableCounts.get(spanRaw) ?? countOccurrences(targetText, spanRaw);
-    if (available <= 0) {
-      missing.push(spanRaw);
-      continue;
-    }
-    availableCounts.set(spanRaw, available - 1);
-  }
-  return missing;
-}
-
-function countOccurrences(targetText: string, raw: string): number {
-  if (raw.length === 0) {
-    return 0;
-  }
-  let count = 0;
-  let searchStart = 0;
-  while (searchStart <= targetText.length) {
-    const index = targetText.indexOf(raw, searchStart);
-    if (index < 0) {
-      return count;
-    }
-    count += 1;
-    searchStart = index + raw.length;
-  }
-  return count;
 }
 
 function firstCharsetProblem(targetText: string): { label: string; observed: string } | undefined {
