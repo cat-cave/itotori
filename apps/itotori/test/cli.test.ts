@@ -716,8 +716,10 @@ describe("Itotori CLI handlers", () => {
   it("runs the recorded style-guide fixture flow and writes the persisted summary", async () => {
     const services = servicesFixture();
     const fixture = styleGuideConversationFixture();
+    const seedWork = styleGuideFixtureSeedWork();
     const reads = new Map<string, unknown>([
       ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
+      ["fixtures/itotori-style-guide/seed-work.json", seedWork],
     ]);
     const writes = new Map<string, unknown>();
 
@@ -729,6 +731,7 @@ describe("Itotori CLI handlers", () => {
 
     expect(services.styleGuideFixtureFlow.run).toHaveBeenCalledWith({
       transcript: fixture,
+      seedWork,
       fixtureId: undefined,
     });
     expect(writes.get("artifacts/itotori/style-guide-fixture-flow.json")).toEqual(
@@ -748,8 +751,10 @@ describe("Itotori CLI handlers", () => {
       throw rerunError;
     });
     const fixture = styleGuideConversationFixture();
+    const seedWork = styleGuideFixtureSeedWork();
     const reads = new Map<string, unknown>([
       ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
+      ["fixtures/itotori-style-guide/seed-work.json", seedWork],
     ]);
     const writes = new Map<string, unknown>();
 
@@ -1278,6 +1283,15 @@ function styleGuideConversationFixture(): unknown {
   return JSON.parse(
     readFileSync(
       new URL("../../../fixtures/itotori-style-guide/conversations/accepted.json", import.meta.url),
+      "utf8",
+    ),
+  );
+}
+
+function styleGuideFixtureSeedWork(): unknown {
+  return JSON.parse(
+    readFileSync(
+      new URL("../../../fixtures/itotori-style-guide/seed-work.json", import.meta.url),
       "utf8",
     ),
   );

@@ -1065,16 +1065,23 @@ async function runStyleGuideFixtureFlow(
 ): Promise<void> {
   const fixturePath =
     optionalFlag(args, "--fixture") ?? "fixtures/itotori-style-guide/conversations/accepted.json";
+  const seedWorkPath =
+    optionalFlag(args, "--seed-work") ?? "fixtures/itotori-style-guide/seed-work.json";
   const outputPath =
     optionalFlag(args, "--output") ?? "artifacts/itotori/style-guide-fixture-flow.json";
   const fixture = dependencies.io.readJson(fixturePath);
   assertStyleGuideConversationTranscript(fixture);
+  // The recorded fixture flow is DATA + service LOGIC: the bridge/draft/
+  // affected-work/benchmark seed records live in the seed-work DATA file, not
+  // hardcoded in the service. Editing seed text is a data edit.
+  const seedWork = dependencies.io.readJson(seedWorkPath);
   const fixtureId = optionalFlag(args, "--fixture-id");
   let result: StyleGuideFixtureFlowResult;
   try {
     result = await dependencies.withServices((services) =>
       services.styleGuideFixtureFlow.run({
         transcript: fixture satisfies StyleGuideConversationTranscript,
+        seedWork,
         ...(fixtureId === undefined ? {} : { fixtureId }),
       }),
     );

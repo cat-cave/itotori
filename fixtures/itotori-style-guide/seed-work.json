@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "itotori.style-guide-fixture-seed-work.v0",
+  "bridge": {
+    "schemaVersion": "0.1.0",
+    "sourceLocale": "ja-JP",
+    "extractorName": "kaifuu-fixture",
+    "extractorVersion": "0.0.0",
+    "units": [
+      {
+        "bridgeUnitId": "019ed007-0000-7000-8000-000000000101",
+        "sourceUnitKey": "style-guide.fixture.line.001",
+        "occurrenceId": "style-guide-fixture-occurrence-001",
+        "sourceHash": "sha256:style-guide-fixture-source-001",
+        "sourceLocale": "ja-JP",
+        "sourceText": "Hello, {player}.",
+        "textSurface": "dialogue",
+        "protectedSpans": [
+          {
+            "kind": "placeholder",
+            "raw": "{player}",
+            "start": 7,
+            "end": 15,
+            "preserveMode": "exact"
+          }
+        ],
+        "patchRef": {
+          "assetId": "style-guide-fixture.json",
+          "writeMode": "replace",
+          "sourceUnitKey": "style-guide.fixture.line.001"
+        },
+        "draft": "Welcome back, {player}."
+      },
+      {
+        "bridgeUnitId": "019ed007-0000-7000-8000-000000000102",
+        "sourceUnitKey": "style-guide.fixture.line.002",
+        "occurrenceId": "style-guide-fixture-occurrence-002",
+        "sourceHash": "sha256:style-guide-fixture-source-002",
+        "sourceLocale": "ja-JP",
+        "sourceText": "We should go now.",
+        "textSurface": "dialogue",
+        "protectedSpans": [],
+        "patchRef": {
+          "assetId": "style-guide-fixture.json",
+          "writeMode": "replace",
+          "sourceUnitKey": "style-guide.fixture.line.002"
+        },
+        "draft": "We should go now."
+      }
+    ]
+  },
+  "finding": {
+    "findingId": "019ed007-0000-7000-8000-000000000901",
+    "findingKind": "style_guide_violation",
+    "severity": "P2",
+    "qualityCategory": "style",
+    "title": "Base policy wording needs style-guide recheck",
+    "description": "The recorded fixture keeps an open style finding tied to the prior style-guide policy.",
+    "impact": "Approval of the projected style guide must invalidate the affected finding.",
+    "createdAt": "2026-06-19T00:00:00.000Z",
+    "affectedRefs": [
+      {
+        "subjectKind": "bridge_unit",
+        "subjectId": "019ed007-0000-7000-8000-000000000101",
+        "label": "style-guide.fixture.line.001"
+      }
+    ],
+    "evidence": [
+      {
+        "evidenceId": "019ed007-0000-7000-8000-000000000902",
+        "evidenceKind": "text_excerpt",
+        "summary": "The prior policy lacks the accepted warm direct player-address guidance.",
+        "expectedValue": "warm direct address",
+        "observedValue": "base policy address",
+        "provenanceIds": ["019ed007-0000-7000-8000-000000000903"]
+      }
+    ],
+    "provenance": [
+      {
+        "provenanceId": "019ed007-0000-7000-8000-000000000903",
+        "provenanceKind": "style_guide",
+        "styleGuideId": "style-guide:019ed063-0000-7000-8000-000000000010",
+        "styleGuideVersionId": "019ed063-0000-7000-8000-000000000020",
+        "ruleId": "tone-player-address-warm-direct",
+        "rulePath": "sections.tone"
+      }
+    ],
+    "causalLinks": []
+  },
+  "artifacts": [
+    {
+      "artifactKind": "patch_export",
+      "idSuffix": "patch-export-base-policy",
+      "uriSuffix": "patch-export"
+    },
+    {
+      "artifactKind": "benchmark_report",
+      "idSuffix": "benchmark-base-policy",
+      "uriSuffix": "benchmark"
+    }
+  ]
+}

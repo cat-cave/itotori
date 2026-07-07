@@ -3,6 +3,8 @@ import {
   assertStyleGuideConversationTranscript,
   projectStyleGuideConversationToPolicyDraft,
   STYLE_GUIDE_POLICY_SECTIONS,
+  type BridgeBundle,
+  type BridgeUnit,
   type FindingRecordV02,
   type StyleGuideConversationTranscript,
   type StyleGuidePolicySection,
@@ -19,6 +21,16 @@ import { ItotoriStyleGuideService, type StyleGuideCommandResult } from "./style-
 export const styleGuideFixtureFlowSchemaVersion = "itotori.style-guide-fixture-flow.v0";
 export const styleGuideSuggestionArtifactSchemaVersion =
   "itotori.style-guide-suggestion-artifact.v0";
+
+/**
+ * Schema version for the recorded style-guide fixture SEED WORK data file. The
+ * seed work holds the hardcoded bridge/draft/affected-work/benchmark seed
+ * records that accompany a recorded style-guide conversation transcript. Moving
+ * them into DATA (a fixture file) keeps the fixture-flow service pure LOGIC:
+ * editing fixture seed text is a data edit, not a code edit.
+ */
+export const styleGuideFixtureSeedWorkSchemaVersion =
+  "itotori.style-guide-fixture-seed-work.v0" as const;
 
 /**
  * Typed diagnostic code raised when the recorded style-guide fixture flow is
@@ -61,8 +73,60 @@ export class StyleGuideFixtureFlowRerunError extends Error {
   }
 }
 
+/**
+ * Raised when recorded style-guide fixture SEED WORK data fails structural or
+ * transcript-coherence validation. The seed work must structurally match the
+ * seed-work schema AND cohere with the transcript it is replayed against
+ * (locale-branch scope, base-policy version, bridge-unit references). An
+ * incoherent seed file is rejected BEFORE any write so the flow cannot seed
+ * partial-mismatched state.
+ */
+export class StyleGuideFixtureSeedWorkError extends Error {
+  readonly code = "style_guide.fixture_flow.invalid_seed_work" as const;
+
+  constructor(
+    message: string,
+    readonly detail: { field: string },
+  ) {
+    super(message);
+    this.name = "StyleGuideFixtureSeedWorkError";
+  }
+}
+
+export type StyleGuideFixtureSeedUnit = BridgeUnit & {
+  /** Target draft text persisted for this bridge unit. */
+  draft: string;
+};
+
+export type StyleGuideFixtureSeedArtifact = {
+  artifactKind: string;
+  idSuffix: string;
+  uriSuffix: string;
+};
+
+export type StyleGuideFixtureSeedWork = {
+  schemaVersion: typeof styleGuideFixtureSeedWorkSchemaVersion;
+  /**
+   * Bridge seed: the source units + extractor metadata. `bridgeId` and
+   * `sourceBundleHash` are derived by the service from the transcript (they
+   * are locale-branch-scoped), so the seed DATA omits them.
+   */
+  bridge: Omit<BridgeBundle, "bridgeId" | "sourceBundleHash" | "units"> & {
+    units: StyleGuideFixtureSeedUnit[];
+  };
+  finding: FindingRecordV02;
+  artifacts: StyleGuideFixtureSeedArtifact[];
+};
+
 export type StyleGuideFixtureFlowInput = {
   transcript: unknown;
+  /**
+   * Recorded seed work DATA for the fixture flow: the bridge/draft/affected-work/
+   * benchmark seed records that accompany the transcript. The service loads no
+   * hardcoded seed records; every seed row comes from this data. Editing seed
+   * text is a data edit (edit the fixture file), not a service-code edit.
+   */
+  seedWork: unknown;
   fixtureId?: string;
 };
 
@@ -106,7 +170,9 @@ export class ItotoriStyleGuideFixtureFlowService {
     const transcript = input.transcript;
     const projected = projectStyleGuideConversationToPolicyDraft(transcript);
     const fixtureId = input.fixtureId ?? transcript.transcriptId;
-    const project = projectFromTranscript(transcript);
+    const seedWork = parseSeedWork(input.seedWork);
+    assertSeedWorkCoherence(seedWork, transcript);
+    const project = projectFromSeedWork(transcript, seedWork);
 
     // Fail-fast rerun guard. This flow is seed-once: it materialises a fixed,
     // append-only style-guide version chain for this locale branch. If ANY
@@ -145,7 +211,7 @@ export class ItotoriStyleGuideFixtureFlowService {
     requireApproved(baseApproved, "base style guide version");
 
     await this.projectRepository.saveDrafts(this.actor, project);
-    await this.persistAffectedFixtureWork(transcript);
+    await this.persistAffectedFixtureWork(transcript, seedWork);
 
     const suggestionArtifactId = `style-guide-suggestions:${transcript.transcriptId}`;
     await this.projectRepository.linkArtifact(this.actor, {
@@ -219,142 +285,59 @@ export class ItotoriStyleGuideFixtureFlowService {
 
   private async persistAffectedFixtureWork(
     transcript: StyleGuideConversationTranscript,
+    seedWork: StyleGuideFixtureSeedWork,
   ): Promise<void> {
     await this.projectRepository.recordFinding(this.actor, {
       projectId: transcript.projectId,
       localeBranchId: transcript.localeBranchId,
-      finding: styleGuideFinding(transcript),
+      finding: seedWork.finding,
       status: "open",
     });
-    await this.projectRepository.linkArtifact(this.actor, {
-      artifactId: `${transcript.transcriptId}:patch-export-base-policy`,
-      projectId: transcript.projectId,
-      localeBranchId: transcript.localeBranchId,
-      artifactKind: "patch_export",
-      uri: `fixture://itotori-style-guide/${transcript.transcriptId}/patch-export`,
-      metadata: {
-        fixtureId: transcript.transcriptId,
-        styleGuideVersionId: transcript.basePolicyVersionId,
-      },
-    });
-    await this.projectRepository.linkArtifact(this.actor, {
-      artifactId: `${transcript.transcriptId}:benchmark-base-policy`,
-      projectId: transcript.projectId,
-      localeBranchId: transcript.localeBranchId,
-      artifactKind: "benchmark_report",
-      uri: `fixture://itotori-style-guide/${transcript.transcriptId}/benchmark`,
-      metadata: {
-        fixtureId: transcript.transcriptId,
-        styleGuideVersionId: transcript.basePolicyVersionId,
-      },
-    });
+    for (const artifact of seedWork.artifacts) {
+      await this.projectRepository.linkArtifact(this.actor, {
+        artifactId: `${transcript.transcriptId}:${artifact.idSuffix}`,
+        projectId: transcript.projectId,
+        localeBranchId: transcript.localeBranchId,
+        artifactKind: artifact.artifactKind,
+        uri: `fixture://itotori-style-guide/${transcript.transcriptId}/${artifact.uriSuffix}`,
+        metadata: {
+          fixtureId: transcript.transcriptId,
+          styleGuideVersionId: transcript.basePolicyVersionId,
+        },
+      });
+    }
   }
 }
 
-function projectFromTranscript(transcript: StyleGuideConversationTranscript): ItotoriProjectRecord {
-  const firstBridgeUnitId = bridgeUnitId(transcript, 1);
-  const secondBridgeUnitId = bridgeUnitId(transcript, 2);
+function projectFromSeedWork(
+  transcript: StyleGuideConversationTranscript,
+  seedWork: StyleGuideFixtureSeedWork,
+): ItotoriProjectRecord {
+  const drafts: Record<string, string> = {};
+  const units: BridgeUnit[] = [];
+  for (const unit of seedWork.bridge.units) {
+    drafts[unit.bridgeUnitId] = unit.draft;
+    const { draft: _draft, ...bridgeUnit } = unit;
+    void _draft;
+    units.push(bridgeUnit);
+  }
   return {
     projectId: transcript.projectId,
     localeBranchId: transcript.localeBranchId,
     targetLocale: transcript.targetLocale,
-    drafts: {
-      [firstBridgeUnitId]: "Welcome back, {player}.",
-      [secondBridgeUnitId]: "We should go now.",
-    },
+    drafts,
     bridge: {
-      schemaVersion: "0.1.0",
+      schemaVersion: seedWork.bridge.schemaVersion,
       bridgeId: `${transcript.projectId}:style-guide-bridge`,
       sourceBundleHash: fixtureHash({
         transcriptId: transcript.transcriptId,
         fixture: "style-guide-conversation",
       }),
-      sourceLocale: "ja-JP",
-      extractorName: "kaifuu-fixture",
-      extractorVersion: "0.0.0",
-      units: [
-        {
-          bridgeUnitId: firstBridgeUnitId,
-          sourceUnitKey: "style-guide.fixture.line.001",
-          occurrenceId: "style-guide-fixture-occurrence-001",
-          sourceHash: "sha256:style-guide-fixture-source-001",
-          sourceLocale: "ja-JP",
-          sourceText: "Hello, {player}.",
-          textSurface: "dialogue",
-          protectedSpans: [
-            {
-              kind: "placeholder",
-              raw: "{player}",
-              start: 7,
-              end: 15,
-              preserveMode: "exact",
-            },
-          ],
-          patchRef: {
-            assetId: "style-guide-fixture.json",
-            writeMode: "replace",
-            sourceUnitKey: "style-guide.fixture.line.001",
-          },
-        },
-        {
-          bridgeUnitId: secondBridgeUnitId,
-          sourceUnitKey: "style-guide.fixture.line.002",
-          occurrenceId: "style-guide-fixture-occurrence-002",
-          sourceHash: "sha256:style-guide-fixture-source-002",
-          sourceLocale: "ja-JP",
-          sourceText: "We should go now.",
-          textSurface: "dialogue",
-          protectedSpans: [],
-          patchRef: {
-            assetId: "style-guide-fixture.json",
-            writeMode: "replace",
-            sourceUnitKey: "style-guide.fixture.line.002",
-          },
-        },
-      ],
+      sourceLocale: seedWork.bridge.sourceLocale,
+      extractorName: seedWork.bridge.extractorName,
+      extractorVersion: seedWork.bridge.extractorVersion,
+      units,
     },
-  };
-}
-
-function styleGuideFinding(transcript: StyleGuideConversationTranscript): FindingRecordV02 {
-  return {
-    findingId: "019ed007-0000-7000-8000-000000000901",
-    findingKind: "style_guide_violation",
-    severity: "P2",
-    qualityCategory: "style",
-    title: "Base policy wording needs style-guide recheck",
-    description:
-      "The recorded fixture keeps an open style finding tied to the prior style-guide policy.",
-    impact: "Approval of the projected style guide must invalidate the affected finding.",
-    createdAt: "2026-06-19T00:00:00.000Z",
-    affectedRefs: [
-      {
-        subjectKind: "bridge_unit",
-        subjectId: bridgeUnitId(transcript, 1),
-        label: "style-guide.fixture.line.001",
-      },
-    ],
-    evidence: [
-      {
-        evidenceId: "019ed007-0000-7000-8000-000000000902",
-        evidenceKind: "text_excerpt",
-        summary: "The prior policy lacks the accepted warm direct player-address guidance.",
-        expectedValue: "warm direct address",
-        observedValue: "base policy address",
-        provenanceIds: ["019ed007-0000-7000-8000-000000000903"],
-      },
-    ],
-    provenance: [
-      {
-        provenanceId: "019ed007-0000-7000-8000-000000000903",
-        provenanceKind: "style_guide",
-        styleGuideId: `style-guide:${transcript.localeBranchId}`,
-        styleGuideVersionId: transcript.basePolicyVersionId,
-        ruleId: "tone-player-address-warm-direct",
-        rulePath: "sections.tone",
-      },
-    ],
-    causalLinks: [],
   };
 }
 
@@ -389,8 +372,94 @@ function diagnosticsSummary(result: StyleGuideCommandResult): string {
   return result.diagnostics.map((diagnostic) => diagnostic.code).join(", ") || result.status;
 }
 
-function bridgeUnitId(transcript: StyleGuideConversationTranscript, index: 1 | 2): string {
-  return `019ed007-0000-7000-8000-00000000010${index}`;
+/**
+ * Structural validation of recorded style-guide fixture SEED WORK data. Checks
+ * the seed-work schema envelope and the presence/shape of the bridge units,
+ * finding, and affected-work artifact descriptors the service persists. Throws
+ * a {@link StyleGuideFixtureSeedWorkError} naming the offending field on any
+ * structural shortfall so a malformed seed file is rejected before any write.
+ */
+function parseSeedWork(value: unknown): StyleGuideFixtureSeedWork {
+  const seed = recordAt(value, "$");
+  checkStringLiteral(seed.schemaVersion, styleGuideFixtureSeedWorkSchemaVersion, "$.schemaVersion");
+  const bridge = recordAt(seed.bridge, "$.bridge");
+  checkNonBlankString(bridge.schemaVersion, "$.bridge.schemaVersion");
+  checkNonBlankString(bridge.sourceLocale, "$.bridge.sourceLocale");
+  checkNonBlankString(bridge.extractorName, "$.bridge.extractorName");
+  checkNonBlankString(bridge.extractorVersion, "$.bridge.extractorVersion");
+  if (!Array.isArray(bridge.units) || bridge.units.length === 0) {
+    throw seedError("$.bridge.units", "bridge.units must be a non-empty array");
+  }
+  for (const [index, unitValue] of bridge.units.entries()) {
+    const field = `$.bridge.units[${index}]`;
+    const unit = recordAt(unitValue, field);
+    checkNonBlankString(unit.bridgeUnitId, `${field}.bridgeUnitId`);
+    checkNonBlankString(unit.sourceUnitKey, `${field}.sourceUnitKey`);
+    checkNonBlankString(unit.occurrenceId, `${field}.occurrenceId`);
+    checkNonBlankString(unit.sourceHash, `${field}.sourceHash`);
+    checkNonBlankString(unit.sourceLocale, `${field}.sourceLocale`);
+    checkNonBlankString(unit.sourceText, `${field}.sourceText`);
+    checkNonBlankString(unit.textSurface, `${field}.textSurface`);
+    checkNonBlankString(unit.draft, `${field}.draft`);
+    if (!Array.isArray(unit.protectedSpans)) {
+      throw seedError(`${field}.protectedSpans`, "protectedSpans must be an array");
+    }
+    recordAt(unit.patchRef, `${field}.patchRef`);
+  }
+  recordAt(seed.finding, "$.finding");
+  checkNonBlankString((seed.finding as { findingId?: unknown }).findingId, "$.finding.findingId");
+  if (!Array.isArray(seed.artifacts) || seed.artifacts.length === 0) {
+    throw seedError("$.artifacts", "artifacts must be a non-empty array");
+  }
+  for (const [index, artifactValue] of seed.artifacts.entries()) {
+    const field = `$.artifacts[${index}]`;
+    const artifact = recordAt(artifactValue, field);
+    checkNonBlankString(artifact.artifactKind, `${field}.artifactKind`);
+    checkNonBlankString(artifact.idSuffix, `${field}.idSuffix`);
+    checkNonBlankString(artifact.uriSuffix, `${field}.uriSuffix`);
+  }
+  return seed as unknown as StyleGuideFixtureSeedWork;
+}
+
+/**
+ * Coherence validation between recorded SEED WORK and the transcript it is
+ * replayed against. Guarantees the seed data is scoped to this locale branch:
+ * style-guide provenance references the transcript's locale branch + base
+ * policy version, and every affected-work finding reference points at a bridge
+ * unit declared in the seed. An incoherent pairing is rejected before any
+ * write so the flow cannot seed partial-mismatched state.
+ */
+function assertSeedWorkCoherence(
+  seedWork: StyleGuideFixtureSeedWork,
+  transcript: StyleGuideConversationTranscript,
+): void {
+  const expectedStyleGuideId = `style-guide:${transcript.localeBranchId}`;
+  const bridgeUnitIds = new Set(seedWork.bridge.units.map((unit) => unit.bridgeUnitId));
+  for (const [index, provenance] of seedWork.finding.provenance.entries()) {
+    if (provenance.provenanceKind !== "style_guide") {
+      continue;
+    }
+    if (provenance.styleGuideId !== expectedStyleGuideId) {
+      throw seedError(
+        `$.finding.provenance[${index}].styleGuideId`,
+        `provenance styleGuideId ${provenance.styleGuideId} must match transcript locale branch ${expectedStyleGuideId}`,
+      );
+    }
+    if (provenance.styleGuideVersionId !== transcript.basePolicyVersionId) {
+      throw seedError(
+        `$.finding.provenance[${index}].styleGuideVersionId`,
+        `provenance styleGuideVersionId ${provenance.styleGuideVersionId} must match transcript base policy version ${transcript.basePolicyVersionId}`,
+      );
+    }
+  }
+  for (const [index, ref] of seedWork.finding.affectedRefs.entries()) {
+    if (ref.subjectKind === "bridge_unit" && !bridgeUnitIds.has(ref.subjectId)) {
+      throw seedError(
+        `$.finding.affectedRefs[${index}].subjectId`,
+        `affected bridge unit ${ref.subjectId} must be declared in $.bridge.units`,
+      );
+    }
+  }
 }
 
 function fixtureHash(value: unknown): string {
@@ -408,4 +477,27 @@ function affectedSurface(payload: Record<string, unknown>): string | null {
 
 function isString(value: string | null | undefined): value is string {
   return typeof value === "string";
+}
+
+function recordAt(value: unknown, field: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw seedError(field, `${field} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function checkNonBlankString(value: unknown, field: string): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw seedError(field, `${field} must be a non-empty string`);
+  }
+}
+
+function checkStringLiteral(value: unknown, expected: string, field: string): void {
+  if (value !== expected) {
+    throw seedError(field, `${field} must be ${expected}`);
+  }
+}
+
+function seedError(field: string, message: string): StyleGuideFixtureSeedWorkError {
+  return new StyleGuideFixtureSeedWorkError(message, { field });
 }

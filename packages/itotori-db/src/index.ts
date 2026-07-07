@@ -481,13 +481,18 @@ export type {
 export {
   ItotoriStyleGuideFixtureFlowService,
   StyleGuideFixtureFlowRerunError,
+  StyleGuideFixtureSeedWorkError,
   styleGuideFixtureFlowRerunRejectedCode,
   styleGuideFixtureFlowSchemaVersion,
+  styleGuideFixtureSeedWorkSchemaVersion,
   styleGuideSuggestionArtifactSchemaVersion,
 } from "./services/style-guide-fixture-flow.js";
 export type {
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
+  StyleGuideFixtureSeedArtifact,
+  StyleGuideFixtureSeedUnit,
+  StyleGuideFixtureSeedWork,
 } from "./services/style-guide-fixture-flow.js";
 export {
   catalogArtifactMappingErrorCodes,
