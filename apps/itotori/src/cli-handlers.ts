@@ -37,6 +37,7 @@ import {
   runAssetDecisionsRecord,
   type AssetDecisionsCliPort,
 } from "./asset-decisions/cli.js";
+import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
@@ -198,6 +199,13 @@ export type ItotoriCliServices = {
     query: TelemetryQuery;
     actor: AuthorizationActor;
   };
+  /**
+   * ITOTORI-047 — queue-health read-model loader powering the
+   * `queue-health` CLI command. Optional so unit suites that don't exercise
+   * the queue command can omit it; the CLI handler raises a typed error when
+   * missing.
+   */
+  queueHealth?: QueueHealthCliPort;
 };
 
 export type ItotoriCliDependencies = {
@@ -330,6 +338,9 @@ export async function runItotoriCliCommand(
       break;
     case "reconcile-ledger-cost":
       await runReconcileLedgerCostHandler(args, dependencies);
+      break;
+    case "queue-health":
+      await runQueueHealthHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -1807,4 +1818,38 @@ function requireAssetDecisionsPort(services: ItotoriCliServices): AssetDecisions
     );
   }
   return services.assetDecisions;
+}
+
+// ITOTORI-047: queue-health inspection CLI command. Surfaces the typed
+// QueueHealthReadModel (outbox/job lag, pending counts by status, retry counts,
+// dead-letter review) via a validated typed API response — the SAME contract
+// the `queue.health` dashboard route emits.
+
+async function runQueueHealthHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const outputPath = requiredFlag(args, "--output");
+  const deadLetterLimitRaw = optionalFlag(args, "--dead-letter-limit");
+  const projectId = optionalFlag(args, "--project");
+  await dependencies.withServices(async (services) => {
+    const port = requireQueueHealthPort(services);
+    const cliArgs: Parameters<typeof runQueueHealthCli>[0] = { outputPath };
+    if (deadLetterLimitRaw !== undefined) {
+      cliArgs.deadLetterLimit = parseNonNegativeInteger(deadLetterLimitRaw, "--dead-letter-limit");
+    }
+    if (projectId !== undefined) {
+      cliArgs.projectId = projectId;
+    }
+    await runQueueHealthCli(cliArgs, port, dependencies.io);
+  });
+}
+
+function requireQueueHealthPort(services: ItotoriCliServices): QueueHealthCliPort {
+  if (services.queueHealth === undefined) {
+    throw new Error(
+      "queue-health service is not configured for this CLI context (queueHealth port missing)",
+    );
+  }
+  return services.queueHealth;
 }

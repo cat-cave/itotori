@@ -171,6 +171,71 @@ export type OutboxEventWithJobsResult = {
   jobs: JobQueueRecord[];
 };
 
+/**
+ * ITOTORI-047 — the schema-version literal stamped on every
+ * {@link QueueHealthReadModel} so dashboard/CLI consumers can pin the contract
+ * (mirrors the `reviewer.queue_dashboard.v0.1` pattern).
+ */
+export const QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION = "itotori.queue_health.v0.1";
+
+/**
+ * ITOTORI-047 — a single row of the per-status breakdown for the queue-health
+ * read-model. `status` is a member of {@link OutboxStatus} (outbox section) or
+ * {@link JobStatus} (jobs section); kept as a plain string so the read-model
+ * serializes without a tagged union.
+ */
+export type QueueStatusCount = {
+  status: string;
+  count: number;
+};
+
+/**
+ * ITOTORI-047 — the dead-letter review slice of a queue-health section: the
+ * TOTAL count of dead-lettered rows (unbounded) plus a bounded preview of the
+ * most recent dead-lettered records so an operator can inspect what failed.
+ */
+export type QueueDeadLetterReview<TRecord> = {
+  count: number;
+  recent: TRecord[];
+};
+
+/**
+ * ITOTORI-047 — one half of the {@link QueueHealthReadModel}: either the
+ * transactional outbox section or the durable job-queue section. Each carries
+ * the headline lag metric (oldest un-processed age), the per-status breakdown,
+ * the retry-load count, and the dead-letter review.
+ */
+export type QueueHealthSection<TRecord> = {
+  unprocessedCount: number;
+  oldestUnprocessedAt: Date | null;
+  unprocessedLagSeconds: number | null;
+  statusCounts: QueueStatusCount[];
+  retryingCount: number;
+  deadLetter: QueueDeadLetterReview<TRecord>;
+};
+
+/**
+ * ITOTORI-047 — the typed queue-health read-model an operator inspects to
+ * answer "is the queue healthy?": outbox lag (oldest un-processed age), pending
+ * job counts by status, retry counts, and dead-lettered work for both the
+ * transactional outbox and the durable job queue. Surfaced verbatim by the CLI
+ * `queue-health` command and the `queue.health` API route (typed responses, not
+ * dumped strings).
+ */
+export type QueueHealthReadModel = {
+  schemaVersion: typeof QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION;
+  generatedAt: Date;
+  outbox: QueueHealthSection<OutboxEventRecord>;
+  jobs: QueueHealthSection<JobQueueRecord>;
+};
+
+export type LoadQueueHealthOptions = {
+  /** Bound the dead-letter `recent` preview (default 50, range 1-200). */
+  deadLetterLimit?: number;
+  /** Optional project scope; omit for a global operator view. */
+  projectId?: string;
+};
+
 export type ClaimOutboxEventsOptions = {
   limit?: number;
   leaseSeconds?: number;
@@ -402,6 +467,15 @@ export interface ItotoriEventQueueRepositoryPort {
   ): Promise<OutboxEventRecord | null>;
   getJob(actor: AuthorizationActor, jobId: string): Promise<JobQueueRecord | null>;
   getJobEvents(actor: AuthorizationActor, jobId: string): Promise<JobEventRecord[]>;
+  /**
+   * ITOTORI-047 — load the typed queue-health read-model (outbox lag, pending
+   * job counts by status, retry counts, dead-lettered work) for operator
+   * inspection. Read-only; gated on `queue.read`.
+   */
+  loadQueueHealth(
+    actor: AuthorizationActor,
+    options?: LoadQueueHealthOptions,
+  ): Promise<QueueHealthReadModel>;
   pruneJobEvents(actor: AuthorizationActor, options?: PruneJobEventsOptions): Promise<number>;
 }
 
@@ -822,6 +896,148 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
       `,
     );
     return rows.map(jobEventFromRow);
+  }
+
+  /**
+   * ITOTORI-047 — load the typed queue-health read-model. Computes, in three
+   * cheap read-only queries per table (aggregate, per-status breakdown,
+   * bounded dead-letter preview), the operator-facing metrics: outbox/job lag
+   * (oldest un-processed age), pending counts by status, retry load, and the
+   * dead-letter review. The lag is derived deterministically from
+   * `generatedAt` minus the oldest un-processed timestamp (no moving DB
+   * `now()`), so it is stable and testable. Gated on `queue.read`.
+   */
+  async loadQueueHealth(
+    actor: AuthorizationActor,
+    options: LoadQueueHealthOptions = {},
+  ): Promise<QueueHealthReadModel> {
+    await requirePermission(this.db, actor, permissionValues.queueRead);
+    const deadLetterLimit = normalizeDeadLetterLimit(options.deadLetterLimit);
+    const projectId = options.projectId;
+    const projectFilter = projectId === undefined ? sql`` : sql`where project_id = ${projectId}`;
+    const executor = this.db as unknown as QueueSqlExecutor;
+    const generatedAt = new Date();
+
+    const outboxAggregate = await singleRow(
+      executeRows(
+        executor,
+        sql`
+          select
+            min(created_at) filter (
+              where status in (
+                ${outboxStatusValues.pending},
+                ${outboxStatusValues.publishing},
+                ${outboxStatusValues.retryWaiting}
+              )
+            ) as oldest_unprocessed_at,
+            count(*) filter (
+              where status in (
+                ${outboxStatusValues.pending},
+                ${outboxStatusValues.publishing},
+                ${outboxStatusValues.retryWaiting}
+              )
+            ) as unprocessed_count,
+            count(*) filter (
+              where status = ${outboxStatusValues.retryWaiting} and attempt_count > 0
+            ) as retrying_count,
+            count(*) filter (where status = ${outboxStatusValues.deadLetter}) as dead_letter_count
+          from ${eventOutbox}
+          ${projectFilter}
+        `,
+      ),
+      "itotori_event_outbox aggregate",
+    );
+    const outboxStatusRows = await executeRows(
+      executor,
+      sql`select status, count(*) as count from ${eventOutbox} ${projectFilter} group by status`,
+    );
+    const outboxDeadLetterRows = await executeRows(
+      executor,
+      sql`
+        select * from ${eventOutbox}
+        where status = ${outboxStatusValues.deadLetter}
+        ${projectId === undefined ? sql`` : sql`and project_id = ${projectId}`}
+        order by updated_at desc, created_at desc
+        limit ${deadLetterLimit}
+      `,
+    );
+
+    const jobsAggregate = await singleRow(
+      executeRows(
+        executor,
+        sql`
+          select
+            min(created_at) filter (
+              where status in (
+                ${jobStatusValues.queued},
+                ${jobStatusValues.running},
+                ${jobStatusValues.retryWaiting}
+              )
+            ) as oldest_unprocessed_at,
+            count(*) filter (
+              where status in (
+                ${jobStatusValues.queued},
+                ${jobStatusValues.running},
+                ${jobStatusValues.retryWaiting}
+              )
+            ) as unprocessed_count,
+            count(*) filter (
+              where status = ${jobStatusValues.retryWaiting} and attempt_count > 0
+            ) as retrying_count,
+            count(*) filter (where status = ${jobStatusValues.deadLetter}) as dead_letter_count
+          from ${jobQueue}
+          ${projectFilter}
+        `,
+      ),
+      "itotori_jobs aggregate",
+    );
+    const jobsStatusRows = await executeRows(
+      executor,
+      sql`select status, count(*) as count from ${jobQueue} ${projectFilter} group by status`,
+    );
+    const jobsDeadLetterRows = await executeRows(
+      executor,
+      sql`
+        select * from ${jobQueue}
+        where status = ${jobStatusValues.deadLetter}
+        ${projectId === undefined ? sql`` : sql`and project_id = ${projectId}`}
+        order by updated_at desc, created_at desc
+        limit ${deadLetterLimit}
+      `,
+    );
+
+    return {
+      schemaVersion: QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION,
+      generatedAt,
+      outbox: {
+        unprocessedCount: rowNumber(outboxAggregate, "unprocessed_count"),
+        oldestUnprocessedAt: nullableRowDate(outboxAggregate, "oldest_unprocessed_at"),
+        unprocessedLagSeconds: lagSeconds(
+          generatedAt,
+          nullableRowDate(outboxAggregate, "oldest_unprocessed_at"),
+        ),
+        statusCounts: mergeStatusCounts(Object.values(outboxStatusValues), outboxStatusRows),
+        retryingCount: rowNumber(outboxAggregate, "retrying_count"),
+        deadLetter: {
+          count: rowNumber(outboxAggregate, "dead_letter_count"),
+          recent: outboxDeadLetterRows.map(outboxEventFromRow),
+        },
+      },
+      jobs: {
+        unprocessedCount: rowNumber(jobsAggregate, "unprocessed_count"),
+        oldestUnprocessedAt: nullableRowDate(jobsAggregate, "oldest_unprocessed_at"),
+        unprocessedLagSeconds: lagSeconds(
+          generatedAt,
+          nullableRowDate(jobsAggregate, "oldest_unprocessed_at"),
+        ),
+        statusCounts: mergeStatusCounts(Object.values(jobStatusValues), jobsStatusRows),
+        retryingCount: rowNumber(jobsAggregate, "retrying_count"),
+        deadLetter: {
+          count: rowNumber(jobsAggregate, "dead_letter_count"),
+          recent: jobsDeadLetterRows.map(jobFromRow),
+        },
+      },
+    };
   }
 
   /**
@@ -1395,4 +1611,62 @@ function normalizeRetentionDays(value: number | undefined): number {
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.length > 4096 ? message.slice(0, 4096) : message;
+}
+
+async function singleRow(
+  rowsPromise: Promise<Array<Record<string, unknown>>>,
+  label: string,
+): Promise<Record<string, unknown>> {
+  const rows = await rowsPromise;
+  const row = rows[0];
+  if (row === undefined) {
+    throw new Error(`expected ${label} to return exactly one row`);
+  }
+  return row;
+}
+
+/**
+ * ITOTORI-047 — deterministic lag in seconds between the read-model's
+ * `generatedAt` and the oldest un-processed timestamp. Returns null when there
+ * is nothing pending (no oldest timestamp). Computed from a fixed
+ * `generatedAt` rather than a moving DB `now()` so the metric is stable and
+ * testable; clamped at 0 so a tiny app/DB clock skew can never report negative
+ * lag.
+ */
+function lagSeconds(generatedAt: Date, oldestUnprocessedAt: Date | null): number | null {
+  if (oldestUnprocessedAt === null) {
+    return null;
+  }
+  const seconds = (generatedAt.getTime() - oldestUnprocessedAt.getTime()) / 1000;
+  return Math.round(Math.max(0, seconds) * 1000) / 1000;
+}
+
+/**
+ * ITOTORI-047 — fold the per-status group-by rows into a STABLE breakdown that
+ * always lists every known status (missing statuses default to 0), so a
+ * consumer never has to defensively branch on an absent status. Statuses appear
+ * in the enum's declaration order for deterministic serialization.
+ */
+function mergeStatusCounts(
+  knownStatuses: readonly string[],
+  statusRows: Array<Record<string, unknown>>,
+): QueueStatusCount[] {
+  const countsByStatus = new Map<string, number>();
+  for (const row of statusRows) {
+    countsByStatus.set(rowString(row, "status"), rowNumber(row, "count"));
+  }
+  return knownStatuses.map((status) => ({
+    status,
+    count: countsByStatus.get(status) ?? 0,
+  }));
+}
+
+function normalizeDeadLetterLimit(value: number | undefined): number {
+  if (value === undefined) {
+    return 50;
+  }
+  if (!Number.isInteger(value) || value < 1 || value > 200) {
+    throw new Error("queue health dead-letter limit must be an integer from 1 through 200");
+  }
+  return value;
 }

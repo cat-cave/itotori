@@ -34,6 +34,8 @@ import {
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
+  type QueueHealthReadModel,
+  type LoadQueueHealthOptions,
   type RuntimeDashboardStatus,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
@@ -61,6 +63,7 @@ import {
   type ApiCandidateAssetsResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
+  type ApiQueueHealthResponse,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -186,6 +189,14 @@ export type ItotoriReadOnlyApiServices = {
     | "getCostDrilldown"
     | "getBenchmarkReports"
   >;
+  /**
+   * ITOTORI-047 — the queue-health read-model loader powering the
+   * `queue.health` route (operator inspection of outbox/job lag, retries,
+   * dead-letter). Read-only; gated on `queue.read` inside the repository.
+   */
+  queueHealth: {
+    loadQueueHealth(options?: LoadQueueHealthOptions): Promise<QueueHealthReadModel>;
+  };
 };
 
 /**
@@ -266,6 +277,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
       getCostReport: (projectId) => services.projectWorkflow.getCostReport(projectId),
       getCostDrilldown: (filter) => services.projectWorkflow.getCostDrilldown(filter),
       getBenchmarkReports: (projectId) => services.projectWorkflow.getBenchmarkReports(projectId),
+    },
+    queueHealth: {
+      loadQueueHealth: (options) => services.queueHealth.loadQueueHealth(options),
     },
   };
 }
@@ -786,6 +800,10 @@ async function routeReadOnlyItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/queue/health") {
+    return ok("queue.health", await services.queueHealth.loadQueueHealth());
+  }
+
   const reviewerDetailRoute = parseReviewerDetailApiRoute(request.pathname);
   if (request.method === "GET" && reviewerDetailRoute !== null) {
     const permission = await resolveApiReviewerQueuePermissionView(
@@ -822,6 +840,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/catalog/opportunities" ||
     request.pathname === "/api/terminology/search" ||
+    request.pathname === "/api/queue/health" ||
     assetDecisionRoute !== null ||
     request.pathname === "/api/reviewer/queue" ||
     reviewerDetailRoute !== null
@@ -1689,6 +1708,7 @@ function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): Ap
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
 function ok(routeId: "projects.costDrilldown", body: CostDrilldownPage): ApiJsonResponse;
 function ok(routeId: "projects.benchmarks", body: ApiBenchmarkReportsResponse): ApiJsonResponse;
+function ok(routeId: "queue.health", body: ApiQueueHealthResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
 function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;

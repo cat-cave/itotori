@@ -37,6 +37,8 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
+  type LoadQueueHealthOptions,
+  type QueueHealthReadModel,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
   type RefreshExactSearchDocumentsInput,
@@ -170,6 +172,14 @@ export type ItotoriApplicationServices = {
   telemetry: {
     query: TelemetryQuery;
     actor: AuthorizationActor;
+  };
+  /**
+   * ITOTORI-047 — queue-health read-model loader (outbox/job lag, retries,
+   * dead-letter) powering the `queue.health` API route and the
+   * `queue-health` CLI command. Read-only; gated on `queue.read`.
+   */
+  queueHealth: {
+    loadQueueHealth(options?: LoadQueueHealthOptions): Promise<QueueHealthReadModel>;
   };
 };
 
@@ -550,6 +560,9 @@ export async function withDatabaseItotoriServices<T>(
       telemetry: {
         query: telemetryQuery,
         actor: localUserActor,
+      },
+      queueHealth: {
+        loadQueueHealth: (options) => eventQueueRepository.loadQueueHealth(localUserActor, options),
       },
     });
   } finally {

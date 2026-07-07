@@ -27,6 +27,7 @@ import type {
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
+  QueueHealthReadModel,
   ReviewerQueueAction,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
@@ -142,6 +143,7 @@ export type ItotoriApiRouteId =
   | "projects.costDrilldown"
   | "projects.benchmarks"
   | "runtime.status"
+  | "queue.health"
   | "imports.bridge"
   | "branches.draft"
   | "findings.record"
@@ -190,6 +192,9 @@ export type ApiProjectCostDrilldownResponse = CostDrilldownPage;
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
 };
+
+/** ITOTORI-047 — typed queue-health read-model (outbox lag, job/retry/dead-letter). */
+export type ApiQueueHealthResponse = QueueHealthReadModel;
 
 export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
 
@@ -320,6 +325,7 @@ export type ItotoriApiResponseBody =
   | ApiProjectCostResponse
   | ApiProjectCostDrilldownResponse
   | ApiBenchmarkReportsResponse
+  | ApiQueueHealthResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
@@ -626,6 +632,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.benchmarks":
       assertApiBenchmarkReportsResponse(value);
+      return;
+    case "queue.health":
+      assertQueueHealthReadModel(value);
       return;
     case "runtime.status":
       assertRuntimeDashboardStatus(value);
@@ -2812,6 +2821,214 @@ function assertApiBenchmarkReportsResponse(
   for (const [index, report] of reports.entries()) {
     assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);
   }
+}
+
+/** ITOTORI-047 — assert a {@link QueueHealthReadModel} (the queue.health body). */
+export function assertQueueHealthReadModel(
+  value: unknown,
+  label = "QueueHealthReadModel",
+): asserts value is QueueHealthReadModel {
+  const model = asStrictRecord(value, label, ["schemaVersion", "generatedAt", "outbox", "jobs"]);
+  assertLiteral(model.schemaVersion, "itotori.queue_health.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertQueueHealthSection(model.outbox, `${label}.outbox`, "outbox");
+  assertQueueHealthSection(model.jobs, `${label}.jobs`, "jobs");
+}
+
+function assertQueueHealthSection(value: unknown, label: string, section: "outbox" | "jobs"): void {
+  const sectionKeys = [
+    "unprocessedCount",
+    "oldestUnprocessedAt",
+    "unprocessedLagSeconds",
+    "statusCounts",
+    "retryingCount",
+    "deadLetter",
+  ];
+  const sectionRecord = asStrictRecord(value, label, sectionKeys);
+  assertNonNegativeInteger(sectionRecord.unprocessedCount, `${label}.unprocessedCount`);
+  if (sectionRecord.oldestUnprocessedAt !== null) {
+    assertDateLike(sectionRecord.oldestUnprocessedAt, `${label}.oldestUnprocessedAt`);
+  }
+  if (sectionRecord.unprocessedLagSeconds !== null) {
+    assertNonNegativeNumber(sectionRecord.unprocessedLagSeconds, `${label}.unprocessedLagSeconds`);
+  }
+  const statusCounts = asArray(sectionRecord.statusCounts, `${label}.statusCounts`);
+  for (const [index, entry] of statusCounts.entries()) {
+    assertQueueStatusCount(entry, `${label}.statusCounts[${index}]`);
+  }
+  assertNonNegativeInteger(sectionRecord.retryingCount, `${label}.retryingCount`);
+  assertQueueDeadLetterReview(sectionRecord.deadLetter, `${label}.deadLetter`, section);
+}
+
+function assertQueueStatusCount(value: unknown, label: string): void {
+  const record = asStrictRecord(value, label, ["status", "count"]);
+  assertString(record.status, `${label}.status`);
+  assertNonNegativeInteger(record.count, `${label}.count`);
+}
+
+function assertQueueDeadLetterReview(
+  value: unknown,
+  label: string,
+  section: "outbox" | "jobs",
+): void {
+  const review = asStrictRecord(value, label, ["count", "recent"]);
+  assertNonNegativeInteger(review.count, `${label}.count`);
+  const recent = asArray(review.recent, `${label}.recent`);
+  for (const [index, entry] of recent.entries()) {
+    if (section === "outbox") {
+      assertQueueOutboxRecord(entry, `${label}.recent[${index}]`);
+    } else {
+      assertQueueJobRecord(entry, `${label}.recent[${index}]`);
+    }
+  }
+}
+
+function assertQueueOutboxRecord(value: unknown, label: string): void {
+  const record = asStrictRecord(value, label, [
+    "outboxEventId",
+    "projectId",
+    "localeBranchId",
+    "sourceEventId",
+    "eventType",
+    "status",
+    "idempotencyKey",
+    "correlationId",
+    "causationId",
+    "payload",
+    "availableAt",
+    "attemptCount",
+    "maxAttempts",
+    "lockedBy",
+    "lockedAt",
+    "leaseExpiresAt",
+    "publishedAt",
+    "lastError",
+    "errorHistory",
+    "createdAt",
+    "updatedAt",
+  ]);
+  assertString(record.outboxEventId, `${label}.outboxEventId`);
+  assertString(record.projectId, `${label}.projectId`);
+  if (record.localeBranchId !== null) {
+    assertString(record.localeBranchId, `${label}.localeBranchId`);
+  }
+  if (record.sourceEventId !== null) {
+    assertString(record.sourceEventId, `${label}.sourceEventId`);
+  }
+  assertString(record.eventType, `${label}.eventType`);
+  assertString(record.status, `${label}.status`);
+  assertString(record.idempotencyKey, `${label}.idempotencyKey`);
+  assertString(record.correlationId, `${label}.correlationId`);
+  if (record.causationId !== null) {
+    assertString(record.causationId, `${label}.causationId`);
+  }
+  asRecord(record.payload, `${label}.payload`);
+  assertDateLike(record.availableAt, `${label}.availableAt`);
+  assertNonNegativeInteger(record.attemptCount, `${label}.attemptCount`);
+  assertPositiveInteger(record.maxAttempts, `${label}.maxAttempts`);
+  if (record.lockedBy !== null) {
+    assertString(record.lockedBy, `${label}.lockedBy`);
+  }
+  if (record.lockedAt !== null) {
+    assertDateLike(record.lockedAt, `${label}.lockedAt`);
+  }
+  if (record.leaseExpiresAt !== null) {
+    assertDateLike(record.leaseExpiresAt, `${label}.leaseExpiresAt`);
+  }
+  if (record.publishedAt !== null) {
+    assertDateLike(record.publishedAt, `${label}.publishedAt`);
+  }
+  if (record.lastError !== null) {
+    assertString(record.lastError, `${label}.lastError`);
+  }
+  asArray(record.errorHistory, `${label}.errorHistory`);
+  assertDateLike(record.createdAt, `${label}.createdAt`);
+  assertDateLike(record.updatedAt, `${label}.updatedAt`);
+}
+
+function assertQueueJobRecord(value: unknown, label: string): void {
+  const record = asStrictRecord(value, label, [
+    "jobId",
+    "projectId",
+    "localeBranchId",
+    "sourceEventId",
+    "triggerOutboxEventId",
+    "jobType",
+    "jobName",
+    "queueName",
+    "status",
+    "idempotencyPolicy",
+    "idempotencyKey",
+    "correlationId",
+    "causationId",
+    "subjectRefs",
+    "dependsOnJobIds",
+    "payload",
+    "priority",
+    "availableAt",
+    "attemptCount",
+    "maxAttempts",
+    "lockedBy",
+    "lockedAt",
+    "leaseExpiresAt",
+    "completedAt",
+    "lastError",
+    "errorHistory",
+    "result",
+    "createdAt",
+    "updatedAt",
+  ]);
+  assertString(record.jobId, `${label}.jobId`);
+  assertString(record.projectId, `${label}.projectId`);
+  if (record.localeBranchId !== null) {
+    assertString(record.localeBranchId, `${label}.localeBranchId`);
+  }
+  if (record.sourceEventId !== null) {
+    assertString(record.sourceEventId, `${label}.sourceEventId`);
+  }
+  if (record.triggerOutboxEventId !== null) {
+    assertString(record.triggerOutboxEventId, `${label}.triggerOutboxEventId`);
+  }
+  assertString(record.jobType, `${label}.jobType`);
+  assertString(record.jobName, `${label}.jobName`);
+  assertString(record.queueName, `${label}.queueName`);
+  assertString(record.status, `${label}.status`);
+  assertString(record.idempotencyPolicy, `${label}.idempotencyPolicy`);
+  if (record.idempotencyKey !== null) {
+    assertString(record.idempotencyKey, `${label}.idempotencyKey`);
+  }
+  assertString(record.correlationId, `${label}.correlationId`);
+  if (record.causationId !== null) {
+    assertString(record.causationId, `${label}.causationId`);
+  }
+  asArray(record.subjectRefs, `${label}.subjectRefs`);
+  asArray(record.dependsOnJobIds, `${label}.dependsOnJobIds`);
+  asRecord(record.payload, `${label}.payload`);
+  assertNonNegativeInteger(record.priority, `${label}.priority`);
+  assertDateLike(record.availableAt, `${label}.availableAt`);
+  assertNonNegativeInteger(record.attemptCount, `${label}.attemptCount`);
+  assertPositiveInteger(record.maxAttempts, `${label}.maxAttempts`);
+  if (record.lockedBy !== null) {
+    assertString(record.lockedBy, `${label}.lockedBy`);
+  }
+  if (record.lockedAt !== null) {
+    assertDateLike(record.lockedAt, `${label}.lockedAt`);
+  }
+  if (record.leaseExpiresAt !== null) {
+    assertDateLike(record.leaseExpiresAt, `${label}.leaseExpiresAt`);
+  }
+  if (record.completedAt !== null) {
+    assertDateLike(record.completedAt, `${label}.completedAt`);
+  }
+  if (record.lastError !== null) {
+    assertString(record.lastError, `${label}.lastError`);
+  }
+  asArray(record.errorHistory, `${label}.errorHistory`);
+  if (record.result !== null) {
+    asRecord(record.result, `${label}.result`);
+  }
+  assertDateLike(record.createdAt, `${label}.createdAt`);
+  assertDateLike(record.updatedAt, `${label}.updatedAt`);
 }
 
 function assertBenchmarkReportSummary(

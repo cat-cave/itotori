@@ -268,6 +268,7 @@ export {
   jobLeaseRevalidationReasons,
   OutboxLeaseRevalidationError,
   outboxLeaseRevalidationReasons,
+  QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION,
 } from "./repositories/event-queue-repository.js";
 export type {
   ClaimJobsOptions,
@@ -280,6 +281,7 @@ export type {
   JobLeaseRevalidationReason,
   JobQueueInput,
   JobQueueRecord,
+  LoadQueueHealthOptions,
   OutboxEventInput,
   OutboxEventRecord,
   OutboxEventWithJobsInput,
@@ -288,9 +290,13 @@ export type {
   OutboxLeaseRevalidationDetails,
   OutboxLeaseRevalidationReason,
   PruneJobEventsOptions,
+  QueueDeadLetterReview,
   QueueErrorRecord,
   QueueFailureInput,
+  QueueHealthReadModel,
+  QueueHealthSection,
   QueueJsonRecord,
+  QueueStatusCount,
 } from "./repositories/event-queue-repository.js";
 export {
   branchPolicyGlossaryReferenceSchemaVersion,
