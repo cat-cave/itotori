@@ -20,7 +20,13 @@ function StudioProvider({ children }) {
   const [userId, setUserId] = useState("user-aoi");
   const currentUser = D.users.find((u) => u.id === userId) || D.users[0];
   const currentOrg = D.orgs.find((o) => o.id === orgId) || D.orgs[0];
-  const caps = { label: currentUser.role, canFlag: currentUser.canFlag, canDecide: currentUser.canDecide, canSteer: currentUser.canSteer, canReveal: currentUser.canReveal };
+  const caps = {
+    label: currentUser.role,
+    canFlag: currentUser.canFlag,
+    canDecide: currentUser.canDecide,
+    canSteer: currentUser.canSteer,
+    canReveal: currentUser.canReveal,
+  };
 
   // ── context ──
   const [projectId, setProjectId] = useState("proj-hoshimori-hd");
@@ -36,7 +42,11 @@ function StudioProvider({ children }) {
   const [queue, setQueue] = useState(D.reviewQueue.map((i) => ({ ...i })));
   const [coverage, setCoverage] = useState(() => {
     const m = {};
-    D.routes.forEach((r) => r.items.forEach((it) => { m[it.id] = it.coverage || "needs_check"; }));
+    D.routes.forEach((r) =>
+      r.items.forEach((it) => {
+        m[it.id] = it.coverage || "needs_check";
+      }),
+    );
     return m;
   });
   const [stages, setStages] = useState({ ...D.localization.stages });
@@ -65,12 +75,15 @@ function StudioProvider({ children }) {
   const flaggedScenes = scenesAll.filter((s) => coverage[s.id] === "flagged");
 
   const workIsAdult = work?.contentRating === "adult" || edition?.rating === "adult";
-  const shouldBlur = useCallback((sensitive) => {
-    if (shareRedaction) return true;
-    const isSensitive = sensitive || workIsAdult;
-    if (!isSensitive) return false;
-    return !(revealSensitive && caps.canReveal);
-  }, [shareRedaction, workIsAdult, revealSensitive, caps]);
+  const shouldBlur = useCallback(
+    (sensitive) => {
+      if (shareRedaction) return true;
+      const isSensitive = sensitive || workIsAdult;
+      if (!isSensitive) return false;
+      return !(revealSensitive && caps.canReveal);
+    },
+    [shareRedaction, workIsAdult, revealSensitive, caps],
+  );
 
   const pushToast = useCallback((message, tone = "neutral") => {
     const id = nextId("toast");
@@ -88,64 +101,146 @@ function StudioProvider({ children }) {
   }, []);
 
   // ── playtester: flag from the running build ──
-  const flagItem = useCallback((f) => {
-    const item = {
-      id: nextId("rq"), kind: f.category === "layout" ? "runtime" : "playtest", sceneId: f.sceneId || currentSceneId,
-      unit: f.unit || `bridge-unit:${f.sceneId || currentSceneId}-line`, speaker: f.speaker || "—", frame: f.frame,
-      title: f.text || "Playtester flag", category: f.category || "tone", severity: f.severity || "warning",
-      origin: "playtest", source: f.source || "—", draft: f.draft, proposal: f.proposal, note: f.text, status: "needs_review", fresh: true,
-    };
-    setQueue((q) => [item, ...q]);
-    setCoverage((c) => ({ ...c, [item.sceneId]: "flagged" }));
-    pushToast(`Flag sent to review · ${item.severity} · ${item.category}`, "neutral");
-    return item;
-  }, [currentSceneId, pushToast]);
+  const flagItem = useCallback(
+    (f) => {
+      const item = {
+        id: nextId("rq"),
+        kind: f.category === "layout" ? "runtime" : "playtest",
+        sceneId: f.sceneId || currentSceneId,
+        unit: f.unit || `bridge-unit:${f.sceneId || currentSceneId}-line`,
+        speaker: f.speaker || "—",
+        frame: f.frame,
+        title: f.text || "Playtester flag",
+        category: f.category || "tone",
+        severity: f.severity || "warning",
+        origin: "playtest",
+        source: f.source || "—",
+        draft: f.draft,
+        proposal: f.proposal,
+        note: f.text,
+        status: "needs_review",
+        fresh: true,
+      };
+      setQueue((q) => [item, ...q]);
+      setCoverage((c) => ({ ...c, [item.sceneId]: "flagged" }));
+      pushToast(`Flag sent to review · ${item.severity} · ${item.category}`, "neutral");
+      return item;
+    },
+    [currentSceneId, pushToast],
+  );
 
-  const markValidated = useCallback((sceneId) => {
-    setCoverage((c) => ({ ...c, [sceneId]: "validated" }));
-    pushToast("Scene marked validated.", "ok");
-  }, [pushToast]);
+  const markValidated = useCallback(
+    (sceneId) => {
+      setCoverage((c) => ({ ...c, [sceneId]: "validated" }));
+      pushToast("Scene marked validated.", "ok");
+    },
+    [pushToast],
+  );
 
   // ── reviewer: decide an item ──
-  const decideItem = useCallback((id, action, payload) => {
-    if (!caps.canDecide) { pushToast("Deciding review items needs a reviewer or director.", "critical"); return; }
-    if (action === "approve") {
-      setQueue((q) => q.map((i) => (i.id === id ? { ...i, status: "resolved", resolution: "approved", fresh: false } : i)));
-      setStages((s) => ({ ...s, translated: Math.max(0, s.translated - 8), proven: s.proven + 8 }));
-      pushToast("Approved as-is — unit marked proven.", "ok");
-    } else if (action === "queue") {
-      setQueue((q) => q.map((i) => (i.id === id ? { ...i, status: "queued", resolution: "correction", correction: payload, fresh: false } : i)));
-      pushToast(`Correction queued for pass ${passIndex + 1}.`, "neutral");
-    }
-  }, [caps, passIndex, pushToast]);
+  const decideItem = useCallback(
+    (id, action, payload) => {
+      if (!caps.canDecide) {
+        pushToast("Deciding review items needs a reviewer or director.", "critical");
+        return;
+      }
+      if (action === "approve") {
+        setQueue((q) =>
+          q.map((i) =>
+            i.id === id ? { ...i, status: "resolved", resolution: "approved", fresh: false } : i,
+          ),
+        );
+        setStages((s) => ({
+          ...s,
+          translated: Math.max(0, s.translated - 8),
+          proven: s.proven + 8,
+        }));
+        pushToast("Approved as-is — unit marked proven.", "ok");
+      } else if (action === "queue") {
+        setQueue((q) =>
+          q.map((i) =>
+            i.id === id
+              ? {
+                  ...i,
+                  status: "queued",
+                  resolution: "correction",
+                  correction: payload,
+                  fresh: false,
+                }
+              : i,
+          ),
+        );
+        pushToast(`Correction queued for pass ${passIndex + 1}.`, "neutral");
+      }
+    },
+    [caps, passIndex, pushToast],
+  );
 
   // ── director: launch the next pass (folds every queued correction) ──
   const launchPass = useCallback(() => {
-    if (!caps.canSteer) { pushToast("Only the director can launch a pass.", "critical"); return; }
+    if (!caps.canSteer) {
+      pushToast("Only the director can launch a pass.", "critical");
+      return;
+    }
     const queued = queue.filter((i) => i.status === "queued");
     if (queued.length === 0 || launching) return;
     const nextPass = passIndex + 1;
     setLaunching(true);
-    pushToast(`Pass ${nextPass} started — re-drafting ${queued.length} corrected ${queued.length === 1 ? "unit" : "units"}…`, "neutral");
+    pushToast(
+      `Pass ${nextPass} started — re-drafting ${queued.length} corrected ${queued.length === 1 ? "unit" : "units"}…`,
+      "neutral",
+    );
     const to = setTimeout(() => {
-      setQueue((q) => q.map((i) => (i.status === "queued" ? { ...i, status: "resolved", resolution: "repaired" } : i)));
+      setQueue((q) =>
+        q.map((i) =>
+          i.status === "queued" ? { ...i, status: "resolved", resolution: "repaired" } : i,
+        ),
+      );
       setStages((s) => {
         const moveA = Math.min(40, s.translated);
         const moveB = Math.min(30, s.revised + moveA);
-        return { translated: s.translated - moveA, qa: s.qa, revised: s.revised + moveA - moveB, proven: s.proven + moveB };
+        return {
+          translated: s.translated - moveA,
+          qa: s.qa,
+          revised: s.revised + moveA - moveB,
+          proven: s.proven + moveB,
+        };
       });
       setCycle((c) => ({ ...c, current: Math.min(c.of, c.current + 1) }));
       setPassIndex(nextPass);
-      setContestants((list) => list.map((c) => (c.kind === "self" ? { ...c, name: `Itotori (pass ${nextPass})`, score: Math.round((c.score + 0.15) * 100) / 100, wins: c.wins + 6, losses: Math.max(0, c.losses - 3) } : c)));
+      setContestants((list) =>
+        list.map((c) =>
+          c.kind === "self"
+            ? {
+                ...c,
+                name: `Itotori (pass ${nextPass})`,
+                score: Math.round((c.score + 0.15) * 100) / 100,
+                wins: c.wins + 6,
+                losses: Math.max(0, c.losses - 3),
+              }
+            : c,
+        ),
+      );
       setPasses((list) => {
         const prev = list[list.length - 1].score;
         const newScore = Math.round((prev + 0.15) * 100) / 100;
-        return [...list.map((p) => ({ ...p, current: false })), { pass: nextPass, score: newScore, feedback: queued.length, note: `Folded in ${queued.length} human ${queued.length === 1 ? "correction" : "corrections"} from review.`, current: true }];
+        return [
+          ...list.map((p) => ({ ...p, current: false })),
+          {
+            pass: nextPass,
+            score: newScore,
+            feedback: queued.length,
+            note: `Folded in ${queued.length} human ${queued.length === 1 ? "correction" : "corrections"} from review.`,
+            current: true,
+          },
+        ];
       });
       setContestants((list) => {
         const self = list.find((c) => c.kind === "self");
-        if (self && self.score >= D.benchmark.humanAnchor) { setConfidence("strong_caliber"); pushToast(`Pass ${nextPass} scored ${self.score} — strong-caliber reached.`, "ok"); }
-        else pushToast(`Pass ${nextPass} landed — benchmark re-scored.`, "ok");
+        if (self && self.score >= D.benchmark.humanAnchor) {
+          setConfidence("strong_caliber");
+          pushToast(`Pass ${nextPass} scored ${self.score} — strong-caliber reached.`, "ok");
+        } else pushToast(`Pass ${nextPass} landed — benchmark re-scored.`, "ok");
         return list;
       });
       setLaunching(false);
@@ -157,15 +252,56 @@ function StudioProvider({ children }) {
 
   const value = {
     D,
-    org: currentOrg, orgs: D.orgs, orgId, setOrgId, project, work, edition, projectId, setProjectId, branch, setBranch,
-    view, setView, currentSceneId, setCurrentSceneId,
-    users: D.users, currentUser, userId, switchUser, caps,
-    revealSensitive, setRevealSensitive, shareRedaction, setShareRedaction, shouldBlur, workIsAdult,
-    total, stages, cycle, passIndex, passes, contestants, confidence, selfScore, launching,
-    queue, needsReview, queuedForPass, resolvedItems,
-    coverage, scenesAll, validatedCount, flaggedScenes,
-    flagItem, markValidated, decideItem, launchPass,
-    toasts, pushToast, dismissToast,
+    org: currentOrg,
+    orgs: D.orgs,
+    orgId,
+    setOrgId,
+    project,
+    work,
+    edition,
+    projectId,
+    setProjectId,
+    branch,
+    setBranch,
+    view,
+    setView,
+    currentSceneId,
+    setCurrentSceneId,
+    users: D.users,
+    currentUser,
+    userId,
+    switchUser,
+    caps,
+    revealSensitive,
+    setRevealSensitive,
+    shareRedaction,
+    setShareRedaction,
+    shouldBlur,
+    workIsAdult,
+    total,
+    stages,
+    cycle,
+    passIndex,
+    passes,
+    contestants,
+    confidence,
+    selfScore,
+    launching,
+    queue,
+    needsReview,
+    queuedForPass,
+    resolvedItems,
+    coverage,
+    scenesAll,
+    validatedCount,
+    flaggedScenes,
+    flagItem,
+    markValidated,
+    decideItem,
+    launchPass,
+    toasts,
+    pushToast,
+    dismissToast,
   };
   return React.createElement(StudioContext.Provider, { value }, children);
 }
