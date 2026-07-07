@@ -193,7 +193,7 @@ impl ConformanceManifest {
 
     /// Serialize to a JSON [`serde_json::Value`] after validation.
     pub fn to_json_value(&self) -> UtsushiResult<serde_json::Value> {
-        self.validate().map_err(boxed_error)?;
+        self.validate()?;
         Ok(serde_json::to_value(self)?)
     }
 
@@ -201,7 +201,7 @@ impl ConformanceManifest {
     /// valid manifest by construction.
     pub fn from_json_value(value: serde_json::Value) -> UtsushiResult<Self> {
         let manifest: Self = serde_json::from_value(value)?;
-        manifest.validate().map_err(boxed_error)?;
+        manifest.validate()?;
         Ok(manifest)
     }
 
@@ -269,10 +269,6 @@ fn is_valid_extension_key(key: &str) -> bool {
     bytes
         .iter()
         .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
-}
-
-fn boxed_error(error: ConformanceError) -> Box<dyn std::error::Error> {
-    Box::new(error)
 }
 
 #[cfg(test)]

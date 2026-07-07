@@ -45,6 +45,9 @@ pub enum EnginePortError {
     /// Port emitted an observation event that failed validation.
     ObservationInvalid {
         stage: LifecycleStage,
+        // Boxed on purpose: this is the opaque underlying error surfaced by an
+        // arbitrary engine port, so no closed type can name it; `Send + Sync`
+        // keeps `EnginePortError` thread-safe.
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
@@ -68,6 +71,8 @@ pub enum EnginePortError {
     Lifecycle {
         stage: LifecycleStage,
         message: String,
+        // Boxed on purpose: opaque underlying error from a required lifecycle
+        // method of an arbitrary engine port; no closed type can name it.
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 

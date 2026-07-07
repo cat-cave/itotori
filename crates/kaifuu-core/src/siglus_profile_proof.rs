@@ -564,9 +564,8 @@ pub fn compose_siglus_profile_proof(
 
     // FAIL-LOUD deep scan (acceptance 2). Scan the raw, un-redacted body so a
     // seeded secret cannot be silently scrubbed and then written.
-    let body = serde_json::to_value(&report).map_err(|error| -> Box<dyn std::error::Error> {
-        format!("profile-proof serialization: {error}").into()
-    })?;
+    let body = serde_json::to_value(&report)
+        .map_err(|error| format!("profile-proof serialization: {error}"))?;
     let scan = deep_scan_persisted_artifact(&body);
     if scan.finding_count > 0 {
         return Err(format!(

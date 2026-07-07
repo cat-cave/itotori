@@ -10,6 +10,18 @@ use std::ffi::CString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Crate-wide result whose error is intentionally the boxed trait object.
+///
+/// `kaifuu-core` spans detection, extraction, patch-back, profiling and
+/// filesystem staging across every supported engine family; a single call
+/// chain routinely mixes `std::io::Error`, `serde_json::Error`, the many
+/// per-domain typed errors defined in this crate (e.g. `PatchTransactionError`,
+/// `Rgss3ExtractError`, `MvMzAssetVariantError`), and ad-hoc validation
+/// messages. Boxing is the correct heterogeneous-boundary choice here: a single
+/// closed enum spanning all of those domains would be a churn magnet with no
+/// caller that matches on the full set. Domain-specific typed errors are kept
+/// where a function's error set is knowable and are boxed into this alias via
+/// `?`/`From` at the boundary.
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
@@ -19238,7 +19250,7 @@ fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
         || relative_path.contains('\\')
         || relative_path.contains('\0')
     {
-        return Err(unsafe_relative_path_error(relative_path));
+        return Err(unsafe_relative_path_error(relative_path).into());
     }
 
     let parts = relative_path.split('/').collect::<Vec<_>>();
@@ -19249,7 +19261,7 @@ fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
             || (index == 0 && part.ends_with(':'))
             || is_windows_drive_prefix_component(part)
     }) {
-        return Err(unsafe_relative_path_error(relative_path));
+        return Err(unsafe_relative_path_error(relative_path).into());
     }
 
     Ok(parts)
@@ -19265,11 +19277,17 @@ fn path_has_windows_drive_prefix_component(path: &str) -> bool {
         .any(is_windows_drive_prefix_component)
 }
 
-fn unsafe_relative_path_error(relative_path: &str) -> Box<dyn std::error::Error> {
-    format!(
-        "unsafe relative output path {relative_path:?}: path must be relative and must not contain backslashes, dot components, traversal, or drive prefixes"
+fn unsafe_relative_path_error(relative_path: &str) -> io::Error {
+    // Typed as `io::Error` with `InvalidInput`: this rejects a caller-supplied
+    // relative path that violates the portable path rule. Callers box it into
+    // `KaifuuResult` via `?`/`.into()`, but keeping the concrete `io::Error`
+    // lets consumers match on `ErrorKind::InvalidInput`.
+    io::Error::new(
+        ErrorKind::InvalidInput,
+        format!(
+            "unsafe relative output path {relative_path:?}: path must be relative and must not contain backslashes, dot components, traversal, or drive prefixes"
+        ),
     )
-    .into()
 }
 
 pub fn atomic_write_text(path: &Path, content: &str) -> KaifuuResult<()> {
@@ -19336,7 +19354,7 @@ pub fn promote_staged_directory_no_clobber(
     let parent = output_dir.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
     if fs::symlink_metadata(output_dir).is_ok() {
-        return Err(output_already_exists_error(output_label, output_dir));
+        return Err(output_already_exists_error(output_label, output_dir).into());
     }
 
     match rename_directory_no_replace(staging_dir, output_dir) {
@@ -19345,10 +19363,10 @@ pub fn promote_staged_directory_no_clobber(
             Ok(())
         }
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-            Err(output_already_exists_error(output_label, output_dir))
+            Err(output_already_exists_error(output_label, output_dir).into())
         }
         Err(_error) if fs::symlink_metadata(output_dir).is_ok() => {
-            Err(output_already_exists_error(output_label, output_dir))
+            Err(output_already_exists_error(output_label, output_dir).into())
         }
         Err(error) => Err(format!(
             "{output_label} promotion failed without replacing an existing output path: {error}"
@@ -19357,15 +19375,18 @@ pub fn promote_staged_directory_no_clobber(
     }
 }
 
-fn output_already_exists_error(
-    output_label: &str,
-    output_dir: &Path,
-) -> Box<dyn std::error::Error> {
-    format!(
-        "{output_label} already exists; refusing to replace it during no-clobber promotion: {}",
-        redact_for_log_or_report(&output_dir.display().to_string())
+fn output_already_exists_error(output_label: &str, output_dir: &Path) -> io::Error {
+    // Typed as `io::Error` with `AlreadyExists`: the no-clobber promotion
+    // refuses to replace an existing output path. The concrete kind lets
+    // callers distinguish "already present" from other promotion failures;
+    // it is boxed into `KaifuuResult` at the call site via `?`/`.into()`.
+    io::Error::new(
+        ErrorKind::AlreadyExists,
+        format!(
+            "{output_label} already exists; refusing to replace it during no-clobber promotion: {}",
+            redact_for_log_or_report(&output_dir.display().to_string())
+        ),
     )
-    .into()
 }
 
 #[cfg(all(

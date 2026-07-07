@@ -343,14 +343,14 @@ impl ConformanceResult {
 
     /// Serialize to JSON after validation.
     pub fn to_json_value(&self) -> UtsushiResult<serde_json::Value> {
-        self.validate().map_err(boxed_error)?;
+        self.validate()?;
         Ok(serde_json::to_value(self)?)
     }
 
     /// Deserialize from JSON and validate.
     pub fn from_json_value(value: serde_json::Value) -> UtsushiResult<Self> {
         let result: Self = serde_json::from_value(value)?;
-        result.validate().map_err(boxed_error)?;
+        result.validate()?;
         Ok(result)
     }
 }
@@ -397,10 +397,6 @@ fn is_valid_segment(segment: &str) -> bool {
     bytes
         .iter()
         .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_')
-}
-
-fn boxed_error(error: ConformanceError) -> Box<dyn std::error::Error> {
-    Box::new(error)
 }
 
 /// Local RFC3339 instant parser. Kept here so the result module does

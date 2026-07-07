@@ -14,7 +14,7 @@ use utsushi_core::vfs::case_rule_matches;
 use utsushi_core::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, HelperId,
     IoSummary, PackageDescriptor, PackageKind, PackageSource, RequiredCapability,
-    RuntimeAdapterDiagnostic, TraversalKind, VfsError, VfsResult,
+    RuntimeAdapterDiagnostic, TraversalKind, UtsushiResult, VfsError, VfsResult,
 };
 
 /// Synthetic per-path access policy parsed from the fixture's `package.toml`.
@@ -529,7 +529,7 @@ fn case_rule_sensitive_helper_matches_only_exact_case() {
 /// envelope shape mirrors the previous test, which used the deleted
 /// (now-deleted) typed hook envelope as a transport for the same assertion;
 /// after UTSUSHI-224 we exercise the redaction filter directly.
-fn assert_message_passes_redaction(message: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn assert_message_passes_redaction(message: &str) -> UtsushiResult<()> {
     let value = serde_json::json!({
         "diagnostic": {
             "errorType": "vfs_diagnostic",

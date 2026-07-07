@@ -154,6 +154,16 @@ pub(crate) fn looks_like_local_path_public(value: &str) -> bool {
     looks_like_local_path(value)
 }
 
+/// Crate-wide result whose error is intentionally the boxed trait object.
+///
+/// `utsushi-core` is the runtime substrate: a single call chain mixes
+/// `std::io::Error`, `serde_json::Error`, the crate's own typed errors
+/// (`SinkError`, `InputError`, `VfsError`, `SnapshotError`, `EnginePortError`,
+/// `ConformanceError`, …) and JSON-shape validation messages. Boxing is the
+/// correct heterogeneous-boundary choice: a single closed enum spanning all of
+/// those subsystems would be a churn magnet that no caller matches on in full.
+/// Each subsystem keeps its own typed error; those are boxed into this alias
+/// via `?`/`From` at the boundary.
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
@@ -446,7 +456,7 @@ impl RuntimeArtifactRoot {
                 artifact_fs::open_root_dir(&self.root)
                     .map_err(|error| artifact_fs::describe_root_open(&self.root, error))?
             }
-            Err(error) => return Err(artifact_fs::describe_root_open(&self.root, error)),
+            Err(error) => return Err(artifact_fs::describe_root_open(&self.root, error).into()),
         };
 
         self.assert_not_obvious_unmanaged_root(root_fd.as_fd())?;
@@ -1609,26 +1619,21 @@ pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<(
         "RuntimeEvidenceReportV02.observationHookEvents",
     )?;
     for (index, event) in observation_events.iter().enumerate() {
-        let event_object = event
-            .as_object()
-            .ok_or_else(|| -> Box<dyn std::error::Error> {
-                format!("RuntimeEvidenceReportV02.observationHookEvents[{index}] must be an object")
-                    .into()
-            })?;
+        let event_object = event.as_object().ok_or_else(|| {
+            format!("RuntimeEvidenceReportV02.observationHookEvents[{index}] must be an object")
+        })?;
         let event_tier_str = event_object
             .get("evidenceTier")
             .and_then(Value::as_str)
-            .ok_or_else(|| -> Box<dyn std::error::Error> {
+            .ok_or_else(|| {
                 format!(
                     "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier must be present"
                 )
-                .into()
             })?;
-        let event_tier = EvidenceTier::from_str(event_tier_str).map_err(|_| -> Box<dyn std::error::Error> {
+        let event_tier = EvidenceTier::from_str(event_tier_str).map_err(|_| {
             format!(
                 "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier {event_tier_str} is not a recognised tier"
             )
-            .into()
         })?;
         if event_tier > evidence_tier {
             return Err(format!(
@@ -3951,46 +3956,60 @@ mod artifact_fs {
         parent: BorrowedFd<'_>,
         name: &OsStr,
         error: io::Error,
-    ) -> Box<dyn std::error::Error> {
+    ) -> io::Error {
+        // Filesystem-domain helper: return the concrete `io::Error` (either a
+        // descriptive re-classification or the original open failure) so callers
+        // keep the kind; it is boxed into `UtsushiResult` at the call site.
         if let Ok(file_type) = entry_file_type(parent, name) {
             if file_type.is_symlink() {
-                return format!(
-                    "runtime artifact path component must not be a symlink: {}",
-                    name.to_string_lossy()
-                )
-                .into();
+                return io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "runtime artifact path component must not be a symlink: {}",
+                        name.to_string_lossy()
+                    ),
+                );
             }
             if !file_type.is_dir() {
-                return format!(
-                    "runtime artifact path component must be a directory: {}",
-                    name.to_string_lossy()
-                )
-                .into();
+                return io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "runtime artifact path component must be a directory: {}",
+                        name.to_string_lossy()
+                    ),
+                );
             }
         }
-        error.into()
+        error
     }
 
     /// Map a root-open failure onto a stable, descriptive error (e.g. the root
     /// itself being a symlink that `O_NOFOLLOW` refused).
-    pub fn describe_root_open(path: &Path, error: io::Error) -> Box<dyn std::error::Error> {
+    pub fn describe_root_open(path: &Path, error: io::Error) -> io::Error {
+        // Filesystem-domain helper: keep the concrete `io::Error` (either a
+        // descriptive re-classification or the original open failure); it is
+        // boxed into `UtsushiResult` at the call site.
         if let Ok(metadata) = std::fs::symlink_metadata(path) {
             if metadata.file_type().is_symlink() {
-                return format!(
-                    "runtime artifact root must not be a symlink: {}",
-                    path.display()
-                )
-                .into();
+                return io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "runtime artifact root must not be a symlink: {}",
+                        path.display()
+                    ),
+                );
             }
             if !metadata.is_dir() {
-                return format!(
-                    "runtime artifact root must be a directory: {}",
-                    path.display()
-                )
-                .into();
+                return io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "runtime artifact root must be a directory: {}",
+                        path.display()
+                    ),
+                );
             }
         }
-        error.into()
+        error
     }
 
     fn create_dir_ignore_existing<P: rustix::path::Arg>(
@@ -4012,7 +4031,7 @@ mod artifact_fs {
         root: BorrowedFd<'_>,
         relative: &Path,
     ) -> UtsushiResult<OwnedFd> {
-        let mut current = reopen_dir(root).map_err(Box::<dyn std::error::Error>::from)?;
+        let mut current = reopen_dir(root)?;
         for component in relative.components() {
             let Component::Normal(name) = component else {
                 return Err(format!(
@@ -4026,7 +4045,7 @@ mod artifact_fs {
             current = match opened {
                 Ok(fd) => fd,
                 Err(error) => {
-                    return Err(describe_child_dir_error(current.as_fd(), name, error));
+                    return Err(describe_child_dir_error(current.as_fd(), name, error).into());
                 }
             };
         }

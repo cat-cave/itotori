@@ -323,8 +323,8 @@ impl ReplayLog {
         // Validate payload shapes and tick monotonicity end-to-end.
         let mut previous: Option<LogicalClockTick> = None;
         for entry in &log.events {
-            entry.event.validate_payload_shape().map_err(box_err)?;
-            assert_replay_event_redaction(&entry.event).map_err(box_err)?;
+            entry.event.validate_payload_shape()?;
+            assert_replay_event_redaction(&entry.event)?;
             if let Some(prev) = previous
                 && entry.tick <= prev
             {
@@ -337,10 +337,6 @@ impl ReplayLog {
         reject_unredacted_local_paths_public("", &value)?;
         Ok(log)
     }
-}
-
-fn box_err(err: InputError) -> Box<dyn std::error::Error> {
-    Box::new(err)
 }
 
 /// Walk a single event's serialized form and reject any unredacted host path.

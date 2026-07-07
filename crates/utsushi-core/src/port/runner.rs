@@ -383,8 +383,10 @@ fn ensure_capture_within_root(
 fn sink_error_into_send_sync(
     error: crate::sink::SinkError,
 ) -> Box<dyn std::error::Error + Send + Sync> {
-    // `SinkError` already implements Display via its stable semantic code
-    // surface; re-stringify for the runner's diagnostic carrier.
+    // Boxed on purpose: the target is `EnginePortError::ObservationInvalid.source`,
+    // the enum's opaque `Send + Sync` error carrier. `SinkError` already
+    // implements Display via its stable semantic code surface; re-stringify for
+    // the runner's diagnostic carrier.
     Box::<dyn std::error::Error + Send + Sync>::from(error.to_string())
 }
 

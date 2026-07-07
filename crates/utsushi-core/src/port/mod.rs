@@ -93,10 +93,13 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
         request: &RuntimeRequest<'_>,
         operation: RuntimeOperation,
     ) -> UtsushiResult<Value> {
+        // A poisoned lock carries a `PoisonError<MutexGuard<'_, _>>` whose guard
+        // borrows the mutex, so it is not `'static` and cannot be boxed
+        // directly; re-stringify into the boxed `UtsushiResult` boundary.
         let mut port = self
             .port
             .lock()
-            .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
+            .map_err(|error| format!("engine port lock poisoned: {error}"))?;
         let run_id = format!("{}-{}", P::MANIFEST.id, operation.as_str());
         let cancellation = request.cancellation.clone().unwrap_or_default();
         // The `RuntimeAdapter` surface carries the artifact root as a raw
@@ -135,8 +138,7 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
                 )
                 .into());
             }
-        }
-        .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+        }?;
 
         runner_outcome_to_value(&runner_outcome, operation)
     }
