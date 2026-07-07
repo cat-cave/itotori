@@ -10,6 +10,7 @@ import type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "./registry.js";
+import { deriveImplementationHash } from "./registry.js";
 
 export type ContextArtifactRetrievalToolInput = JsonObject & RetrieveContextArtifactsInput;
 
@@ -33,8 +34,6 @@ export type ContextArtifactRetrievalToolService = {
 };
 
 export const contextArtifactRetrievalRegistryToolName = contextArtifactToolName;
-export const contextArtifactRetrievalToolImplementationHash =
-  "sha256:0d8fe7d513a2dde8d96346519baff54ed51083d173f4a7f0ca9f6e28939472eb" satisfies StableJsonHash;
 
 export const contextArtifactRetrievalToolInputSchema = {
   schemaId: "itotori.tool.context-artifacts.input",
@@ -233,6 +232,15 @@ export const contextArtifactRetrievalToolOutputSchema = {
     },
   },
 } satisfies RegistrySchemaDescriptor;
+
+export const contextArtifactRetrievalToolImplementationHash = deriveImplementationHash({
+  toolName: contextArtifactRetrievalRegistryToolName,
+  toolVersion: contextArtifactToolVersion,
+  algorithmName: contextArtifactToolName,
+  algorithmVersion: contextArtifactToolVersion,
+  inputSchema: contextArtifactRetrievalToolInputSchema,
+  outputSchema: contextArtifactRetrievalToolOutputSchema,
+}) satisfies StableJsonHash;
 
 export function contextArtifactRetrievalTool(
   service: ContextArtifactRetrievalToolService,

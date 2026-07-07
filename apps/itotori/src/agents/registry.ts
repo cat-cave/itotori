@@ -90,6 +90,17 @@ export type DeterministicToolReproducibilitySpec = {
   sideEffectFree: true;
 };
 
+export type ImplementationHashProvenance = "verified" | "declared";
+
+export type ImplementationHashArtifacts = {
+  toolName: DeterministicToolName;
+  toolVersion: string;
+  algorithmName: string;
+  algorithmVersion: string;
+  inputSchema: RegistrySchemaDescriptor;
+  outputSchema: RegistrySchemaDescriptor;
+};
+
 export type DeterministicToolDefinition<
   Input extends JsonObject = JsonObject,
   Output extends JsonObject = JsonObject,
@@ -154,6 +165,7 @@ export type DeterministicToolRegistrationMetadata = {
   inputSchemaId: string;
   outputSchemaId: string;
   reproducibility: DeterministicToolReproducibilitySpec;
+  implementationHashProvenance: ImplementationHashProvenance;
 };
 
 export type AgentInvocationMetadata = {
@@ -176,6 +188,7 @@ export type DeterministicToolInvocationMetadata = {
   inputHash: StableJsonHash;
   outputHash: StableJsonHash;
   reproducibility: DeterministicToolReproducibilitySpec;
+  implementationHashProvenance: ImplementationHashProvenance;
   emittedEventId: Uuid7;
   verification?: {
     rerunOutputHash: StableJsonHash;
@@ -249,6 +262,11 @@ export class DeterministicToolRegistry {
     definition: DeterministicToolDefinition<Input, Output>,
   ): DeterministicToolRegistrationMetadata {
     assertDeterministicToolDefinitionShape(definition);
+    verifyImplementationHash(
+      definition.reproducibility.implementationHash,
+      toolImplementationHashArtifacts(definition),
+      `${definition.toolName}@${definition.toolVersion}`,
+    );
     const key = registryKey(definition.toolName, definition.toolVersion);
     if (this.definitions.has(key)) {
       throw new Error(
@@ -362,6 +380,7 @@ export class AgentToolRuntime {
       inputHash,
       outputHash,
       reproducibility: definition.reproducibility,
+      implementationHashProvenance: "verified",
       emittedEventId: event.eventId,
       ...(verification === undefined ? {} : { verification }),
     };
@@ -390,6 +409,47 @@ export function hashJson(value: JsonValue): StableJsonHash {
 
 export function stableStringify(value: JsonValue): string {
   return JSON.stringify(normalizeJsonValue(value));
+}
+
+export function deriveImplementationHash(artifacts: ImplementationHashArtifacts): StableJsonHash {
+  const canonical: JsonObject = {
+    algorithmName: artifacts.algorithmName,
+    algorithmVersion: artifacts.algorithmVersion,
+    inputSchema: artifacts.inputSchema,
+    outputSchema: artifacts.outputSchema,
+    toolName: artifacts.toolName,
+    toolVersion: artifacts.toolVersion,
+  };
+  return hashJson(canonical);
+}
+
+export function verifyImplementationHash(
+  declared: StableJsonHash,
+  artifacts: ImplementationHashArtifacts,
+  label: string,
+): void {
+  const derived = deriveImplementationHash(artifacts);
+  if (declared !== derived) {
+    throw new Error(
+      `${label} implementationHash mismatch: declared ${declared} does not match derived ${derived} ` +
+        `from canonical artifacts (tool=${artifacts.toolName}@${artifacts.toolVersion}, ` +
+        `algorithm=${artifacts.algorithmName}@${artifacts.algorithmVersion})`,
+    );
+  }
+}
+
+export function toolImplementationHashArtifacts<
+  Input extends JsonObject,
+  Output extends JsonObject,
+>(definition: DeterministicToolDefinition<Input, Output>): ImplementationHashArtifacts {
+  return {
+    toolName: definition.toolName,
+    toolVersion: definition.toolVersion,
+    algorithmName: definition.reproducibility.algorithmName,
+    algorithmVersion: definition.reproducibility.algorithmVersion,
+    inputSchema: definition.inputSchema,
+    outputSchema: definition.outputSchema,
+  };
 }
 
 function normalizeJsonValue(value: JsonValue): JsonValue {
@@ -630,6 +690,7 @@ function deterministicToolInvocationEvent<Input extends JsonObject, Output exten
       inputHash,
       outputHash,
       reproducibility: definition.reproducibility,
+      implementationHashProvenance: "verified",
     },
   };
 }
@@ -977,6 +1038,7 @@ function deterministicToolRegistrationMetadata<Input extends JsonObject, Output 
     inputSchemaId: definition.inputSchema.schemaId,
     outputSchemaId: definition.outputSchema.schemaId,
     reproducibility: definition.reproducibility,
+    implementationHashProvenance: "verified",
   };
 }
 

@@ -154,8 +154,11 @@ export {
   AgentToolRuntime,
   DeterministicToolRegistry,
   assertRegistrySchemaValue,
+  deriveImplementationHash,
   hashJson,
   stableStringify,
+  toolImplementationHashArtifacts,
+  verifyImplementationHash,
 } from "./registry.js";
 export type {
   AgentDefinition,
@@ -178,6 +181,8 @@ export type {
   DeterministicToolRegistrationMetadata,
   DeterministicToolReproducibilitySpec,
   DeterministicToolTaskKind,
+  ImplementationHashArtifacts,
+  ImplementationHashProvenance,
   RegistryInvocationContext,
   RegistrySchemaDescriptor,
   StableJsonHash,

@@ -21,6 +21,7 @@ import type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "./registry.js";
+import { deriveImplementationHash } from "./registry.js";
 
 export type SemanticGlossarySearchToolInput = JsonObject & SemanticGlossarySearchInput;
 
@@ -64,13 +65,9 @@ export type GlossaryContextToolService = {
 };
 
 export const semanticGlossarySearchRegistryToolName = semanticGlossarySearchToolName;
-export const semanticGlossarySearchToolImplementationHash =
-  "sha256:4c31cd6675554afac7ec21cbbbd1457f61055051260ad72bf4bb67d873f24f39" satisfies StableJsonHash;
 
 export const glossaryContextRegistryToolName = "tool.glossary-context";
 export const glossaryContextToolVersion = "1.0.0";
-export const glossaryContextToolImplementationHash =
-  "sha256:03c847d46fe81d2e9f7e738673c011f2d21c9c080da0252787722d35da00f8a7" satisfies StableJsonHash;
 
 export const semanticGlossarySearchToolInputSchema = {
   schemaId: "itotori.tool.semantic-glossary-search.input",
@@ -708,6 +705,24 @@ export const glossaryContextToolOutputSchema = {
     },
   },
 } satisfies RegistrySchemaDescriptor;
+
+export const semanticGlossarySearchToolImplementationHash = deriveImplementationHash({
+  toolName: semanticGlossarySearchRegistryToolName,
+  toolVersion: semanticGlossarySearchToolVersion,
+  algorithmName: semanticGlossarySearchToolName,
+  algorithmVersion: semanticGlossarySearchToolVersion,
+  inputSchema: semanticGlossarySearchToolInputSchema,
+  outputSchema: semanticGlossarySearchToolOutputSchema,
+}) satisfies StableJsonHash;
+
+export const glossaryContextToolImplementationHash = deriveImplementationHash({
+  toolName: glossaryContextRegistryToolName,
+  toolVersion: glossaryContextToolVersion,
+  algorithmName: "glossary.context",
+  algorithmVersion: glossaryContextToolVersion,
+  inputSchema: glossaryContextToolInputSchema,
+  outputSchema: glossaryContextToolOutputSchema,
+}) satisfies StableJsonHash;
 
 export function semanticGlossarySearchTool(
   service: SemanticGlossarySearchToolService,

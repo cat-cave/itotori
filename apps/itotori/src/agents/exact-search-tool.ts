@@ -6,6 +6,7 @@ import type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "./registry.js";
+import { deriveImplementationHash } from "./registry.js";
 
 export type SearchExactToolInput = JsonObject & {
   projectId: string;
@@ -52,8 +53,6 @@ export type SearchExactToolService = {
 };
 
 export const searchExactRegistryToolName = exactSearchToolName;
-export const searchExactToolImplementationHash =
-  "sha256:da0e89b87dfc6de4caef98b7a1a3bfa4e21264307db29c97d483e892da14633b" satisfies StableJsonHash;
 
 export const searchExactToolInputSchema = {
   schemaId: "itotori.tool.search-exact.input",
@@ -150,6 +149,15 @@ export const searchExactToolOutputSchema = {
     },
   },
 } satisfies RegistrySchemaDescriptor;
+
+export const searchExactToolImplementationHash = deriveImplementationHash({
+  toolName: searchExactRegistryToolName,
+  toolVersion: exactSearchToolVersion,
+  algorithmName: exactSearchToolName,
+  algorithmVersion: exactSearchToolVersion,
+  inputSchema: searchExactToolInputSchema,
+  outputSchema: searchExactToolOutputSchema,
+}) satisfies StableJsonHash;
 
 export function searchExactTool(
   service: SearchExactToolService,

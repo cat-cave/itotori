@@ -23,6 +23,7 @@ import type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "./registry.js";
+import { deriveImplementationHash } from "./registry.js";
 
 export type TranslationQualityJudgeInput = JsonObject & {
   sourceText: string;
@@ -414,11 +415,23 @@ export const protectedSpanCheckOutputFixture = {
   ],
 } satisfies ProtectedSpanCheckOutput;
 
-export const protectedSpanCheckImplementationHash =
-  "sha256:23ab6a33ca870f302b23ee2d815d8b91f5f4e982f86406136a09dff015974c57" satisfies StableJsonHash;
+export const protectedSpanCheckImplementationHash = deriveImplementationHash({
+  toolName: "tool.protected-span-check",
+  toolVersion: "1.0.0",
+  algorithmName: "protected-span-presence",
+  algorithmVersion: "1.0.0",
+  inputSchema: protectedSpanCheckInputSchema,
+  outputSchema: protectedSpanCheckOutputSchema,
+}) satisfies StableJsonHash;
 
-export const deterministicPreExportQaImplementationHash =
-  "sha256:c4c01335ee53909440c804927b2ea38f76f761784cf307c80a7599decdd7b545" satisfies StableJsonHash;
+export const deterministicPreExportQaImplementationHash = deriveImplementationHash({
+  toolName: "tool.deterministic-pre-export-qa",
+  toolVersion: "1.0.0",
+  algorithmName: "deterministic-pre-export-qa",
+  algorithmVersion: "itotori-020.1",
+  inputSchema: deterministicPreExportQaInputSchema,
+  outputSchema: deterministicPreExportQaOutputSchema,
+}) satisfies StableJsonHash;
 
 export function protectedSpanCheck(input: ProtectedSpanCheckInput): ProtectedSpanCheckOutput {
   const missingProtectedSpans = missingRequiredProtectedSpanOccurrences(

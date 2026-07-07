@@ -22,6 +22,7 @@ import {
   AgentToolRuntime,
   DeterministicToolRegistry,
   assertRegistrySchemaValue,
+  deriveImplementationHash,
   deterministicPreExportQaImplementationHash,
   deterministicPreExportQaJobFixture,
   deterministicPreExportQaOutputFixture,
@@ -52,15 +53,18 @@ import {
   semanticGlossarySearchToolImplementationHash,
   semanticGlossarySearchToolOutput,
   semanticGlossarySearchToolOutputSchema,
+  toolImplementationHashArtifacts,
   translationQualityJudgeInputSchema,
   translationQualityJudgeJobFixture,
   translationQualityJudgeOutputFixture,
   translationQualityJudgeOutputSchema,
+  verifyImplementationHash,
   type AgentDefinition,
   type DeterministicPreExportQaInput,
   type DeterministicPreExportQaOutput,
   type DeterministicToolDefinition,
   type DeterministicToolJobInput,
+  type ImplementationHashArtifacts,
   type ProtectedSpanCheckInput,
   type ProtectedSpanCheckOutput,
   type ContextArtifactRetrievalToolInput,
@@ -1012,12 +1016,21 @@ describe("agent and deterministic tool registries", () => {
     const agents = new AgentRegistry();
     const tools = new DeterministicToolRegistry();
     let runCount = 0;
+    const baseTool = protectedSpanTool();
     tools.register({
-      ...protectedSpanTool(),
+      ...baseTool,
       toolVersion: "1.0.1",
       reproducibility: {
-        ...protectedSpanTool().reproducibility,
+        ...baseTool.reproducibility,
         algorithmVersion: "1.0.1",
+        implementationHash: deriveImplementationHash({
+          toolName: baseTool.toolName,
+          toolVersion: "1.0.1",
+          algorithmName: baseTool.reproducibility.algorithmName,
+          algorithmVersion: "1.0.1",
+          inputSchema: baseTool.inputSchema,
+          outputSchema: baseTool.outputSchema,
+        }),
       },
       run: () => {
         runCount += 1;
@@ -1304,12 +1317,21 @@ describe("agent and deterministic tool registries", () => {
     const agents = new AgentRegistry();
     const tools = new DeterministicToolRegistry();
     let runCount = 0;
+    const baseTool = protectedSpanTool();
     tools.register({
-      ...protectedSpanTool(),
+      ...baseTool,
       toolVersion: "1.0.2",
       reproducibility: {
-        ...protectedSpanTool().reproducibility,
+        ...baseTool.reproducibility,
         algorithmVersion: "1.0.2",
+        implementationHash: deriveImplementationHash({
+          toolName: baseTool.toolName,
+          toolVersion: "1.0.2",
+          algorithmName: baseTool.reproducibility.algorithmName,
+          algorithmVersion: "1.0.2",
+          inputSchema: baseTool.inputSchema,
+          outputSchema: baseTool.outputSchema,
+        }),
       },
       run: () => {
         runCount += 1;
@@ -1471,6 +1493,175 @@ describe("agent and deterministic tool registries", () => {
       event: expect.objectContaining({
         eventKind: "qa_finding_reported",
       }),
+    });
+  });
+});
+
+describe("implementation hash derivation and verification (ITOTORI-054)", () => {
+  const sampleArtifacts: ImplementationHashArtifacts = {
+    toolName: "tool.sample",
+    toolVersion: "1.0.0",
+    algorithmName: "sample-algorithm",
+    algorithmVersion: "1.0.0",
+    inputSchema: protectedSpanCheckInputSchema,
+    outputSchema: protectedSpanCheckOutputSchema,
+  };
+
+  it("derives a deterministic implementation hash from canonical artifacts", () => {
+    const first = deriveImplementationHash(sampleArtifacts);
+    const second = deriveImplementationHash(sampleArtifacts);
+    expect(first).toBe(second);
+    expect(first).toMatch(/^sha256:[0-9a-f]{64}$/u);
+  });
+
+  it("produces different hashes when any versioned artifact changes", () => {
+    const baseline = deriveImplementationHash(sampleArtifacts);
+    const variants: ImplementationHashArtifacts[] = [
+      { ...sampleArtifacts, toolName: "tool.different" },
+      { ...sampleArtifacts, toolVersion: "2.0.0" },
+      { ...sampleArtifacts, algorithmName: "different-algorithm" },
+      { ...sampleArtifacts, algorithmVersion: "2.0.0" },
+      {
+        ...sampleArtifacts,
+        inputSchema: { ...sampleArtifacts.inputSchema, schemaId: "different.input" },
+      },
+      {
+        ...sampleArtifacts,
+        outputSchema: { ...sampleArtifacts.outputSchema, schemaId: "different.output" },
+      },
+    ];
+    for (const variant of variants) {
+      expect(deriveImplementationHash(variant)).not.toBe(baseline);
+    }
+  });
+
+  it("produces the same hash regardless of property insertion order", () => {
+    const reordered: ImplementationHashArtifacts = {
+      outputSchema: sampleArtifacts.outputSchema,
+      inputSchema: sampleArtifacts.inputSchema,
+      algorithmVersion: sampleArtifacts.algorithmVersion,
+      algorithmName: sampleArtifacts.algorithmName,
+      toolVersion: sampleArtifacts.toolVersion,
+      toolName: sampleArtifacts.toolName,
+    };
+    expect(deriveImplementationHash(reordered)).toBe(deriveImplementationHash(sampleArtifacts));
+  });
+
+  it("verifies a derived implementation hash without throwing", () => {
+    const declared = deriveImplementationHash(sampleArtifacts);
+    expect(() => verifyImplementationHash(declared, sampleArtifacts, "test-tool")).not.toThrow();
+  });
+
+  it("rejects a mismatched implementation hash with a diagnostic naming the tool, declared hash, and derived hash", () => {
+    const declared = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    expect(() => verifyImplementationHash(declared, sampleArtifacts, "tool.sample@1.0.0")).toThrow(
+      /tool\.sample@1\.0\.0 implementationHash mismatch: declared sha256:0+ does not match derived sha256:[0-9a-f]+ .*algorithm=sample-algorithm@1\.0\.0/u,
+    );
+  });
+
+  it("rejects a tool registration whose declared implementationHash does not match the derived artifacts", () => {
+    const tools = new DeterministicToolRegistry();
+    const base = protectedSpanTool();
+    const mismatchedHash = "sha256:deadbeef".padEnd(
+      71,
+      "0",
+    ) as unknown as import("../src/agents/index.js").StableJsonHash;
+    expect(() =>
+      tools.register({
+        ...base,
+        reproducibility: {
+          ...base.reproducibility,
+          implementationHash: mismatchedHash,
+        },
+      }),
+    ).toThrow(
+      /tool\.protected-span-check@1\.0\.0 implementationHash mismatch: declared sha256:deadbeef.* does not match derived sha256:[0-9a-f]+/u,
+    );
+  });
+
+  it("derives matching implementation hashes for every built-in deterministic tool", () => {
+    const tools = new DeterministicToolRegistry();
+    const searchExact = searchExactTool({
+      searchExact: async () => ({
+        status: "completed",
+        toolName: "search.exact",
+        toolVersion: "1.0.0",
+        projectId: "p",
+        localeBranchId: "l",
+        sourceRevisionId: "r",
+        query: "q",
+        normalizedQuery: "q",
+        diagnostics: [],
+        matches: [],
+      }),
+    });
+    const contextArtifact = contextArtifactRetrievalTool({
+      retrieveArtifacts: async () => ({
+        status: "completed",
+        toolName: "tool.context-artifacts",
+        toolVersion: "1.0.0",
+        projectId: "p",
+        localeBranchId: "l",
+        sourceRevisionId: "r",
+        query: null,
+        normalizedQuery: null,
+        categories: [],
+        diagnostics: [],
+        matches: [],
+      }),
+    });
+    const glossarySearch = semanticGlossarySearchTool({
+      searchGlossary: async () =>
+        ({
+          readiness: {
+            embeddingMode: "recorded_fixture",
+            liveProviderRequired: false,
+            pgvector: { available: true },
+            exactFallback: { triggered: false, reason: null },
+          },
+          matches: [],
+          diagnostics: [],
+        }) as unknown as SemanticGlossarySearchReadModel,
+    });
+    const glossaryContext = glossaryContextTool({
+      getGlossaryContext: async () => null,
+    });
+
+    for (const definition of [
+      protectedSpanTool(),
+      deterministicPreExportQaTool(),
+      searchExact,
+      contextArtifact,
+      glossarySearch,
+      glossaryContext,
+    ]) {
+      const derived = deriveImplementationHash(toolImplementationHashArtifacts(definition));
+      expect(definition.reproducibility.implementationHash).toBe(derived);
+      expect(() => tools.register(definition)).not.toThrow();
+    }
+  });
+
+  it("records verified implementation hash provenance in registration metadata and invocation events", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const metadata = tools.register(protectedSpanTool());
+    expect(metadata.implementationHashProvenance).toBe("verified");
+
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+
+    const result = await runtime.runDeterministicToolJob<
+      ProtectedSpanCheckInput,
+      ProtectedSpanCheckOutput
+    >(protectedSpanCheckJobFixture);
+
+    expect(result.metadata.implementationHashProvenance).toBe("verified");
+    expect(result.event.payload).toMatchObject({
+      implementationHashProvenance: "verified",
     });
   });
 });

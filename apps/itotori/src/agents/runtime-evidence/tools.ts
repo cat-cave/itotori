@@ -27,6 +27,7 @@ import type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "../registry.js";
+import { deriveImplementationHash } from "../registry.js";
 import type { RuntimeEvidenceArtifactStore } from "./artifact-store.js";
 import {
   RuntimeEvidenceArtifactUnresolvedError,
@@ -44,7 +45,7 @@ import {
 export const RUNTIME_EVIDENCE_TOOL_VERSION = "1.0.0" as const;
 
 // ---------------------------------------------------------------------------
-// Tool names + implementation hashes
+// Tool names
 // ---------------------------------------------------------------------------
 
 export const missingTextToolName = "tool.runtime-evidence.missing-text" as const;
@@ -52,17 +53,6 @@ export const wrongBranchToolName = "tool.runtime-evidence.wrong-branch" as const
 export const layoutToolName = "tool.runtime-evidence.layout" as const;
 export const mismatchToolName = "tool.runtime-evidence.mismatch" as const;
 export const ocrHintsToolName = "tool.runtime-evidence.ocr-hints" as const;
-
-export const missingTextToolImplementationHash =
-  "sha256:1a0f3c0b7e9d4a2c8f6b1e5d3a7c9b0e2f4d6a8c0b2e4d6f8a0c2e4d6f8a0c2e" satisfies StableJsonHash;
-export const wrongBranchToolImplementationHash =
-  "sha256:2b1e4d1c8fae5b3d9a7c2f6e4b8d0f1a3c5e7d9b1f3a5c7e9b1d3f5a7c9e1b3d5" satisfies StableJsonHash;
-export const layoutToolImplementationHash =
-  "sha256:3c2f5e2d9afb6c4eab8d3a7f5c9e1b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6" satisfies StableJsonHash;
-export const mismatchToolImplementationHash =
-  "sha256:4d3a6f3eab0c7d5fbc9e4b8a6d0f2c3e5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7" satisfies StableJsonHash;
-export const ocrHintsToolImplementationHash =
-  "sha256:5e4b7a4fbc1d8e6acd0f5c9b7e1a3d4f6b8d0c2e4a6c8e0b2d4f6a8c0e2b4d6f8" satisfies StableJsonHash;
 
 // ---------------------------------------------------------------------------
 // Shared JSON Schemas
@@ -253,6 +243,57 @@ export const ocrHintsToolOutputSchema = makeOutputSchema(
   "itotori.tool.runtime-evidence.ocr-hints.output",
   "runtime_evidence_ocr_hint",
 );
+
+// ---------------------------------------------------------------------------
+// Implementation hashes — derived from canonical versioned artifacts
+// (tool name/version, algorithm name/version, input/output schemas) so the
+// hash is grounded in the implementation contract, not asserted metadata.
+// ---------------------------------------------------------------------------
+
+export const missingTextToolImplementationHash = deriveImplementationHash({
+  toolName: missingTextToolName,
+  toolVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  algorithmName: missingTextToolName,
+  algorithmVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  inputSchema: missingTextToolInputSchema,
+  outputSchema: missingTextToolOutputSchema,
+}) satisfies StableJsonHash;
+
+export const wrongBranchToolImplementationHash = deriveImplementationHash({
+  toolName: wrongBranchToolName,
+  toolVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  algorithmName: wrongBranchToolName,
+  algorithmVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  inputSchema: wrongBranchToolInputSchema,
+  outputSchema: wrongBranchToolOutputSchema,
+}) satisfies StableJsonHash;
+
+export const layoutToolImplementationHash = deriveImplementationHash({
+  toolName: layoutToolName,
+  toolVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  algorithmName: layoutToolName,
+  algorithmVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  inputSchema: layoutToolInputSchema,
+  outputSchema: layoutToolOutputSchema,
+}) satisfies StableJsonHash;
+
+export const mismatchToolImplementationHash = deriveImplementationHash({
+  toolName: mismatchToolName,
+  toolVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  algorithmName: mismatchToolName,
+  algorithmVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  inputSchema: mismatchToolInputSchema,
+  outputSchema: mismatchToolOutputSchema,
+}) satisfies StableJsonHash;
+
+export const ocrHintsToolImplementationHash = deriveImplementationHash({
+  toolName: ocrHintsToolName,
+  toolVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  algorithmName: ocrHintsToolName,
+  algorithmVersion: RUNTIME_EVIDENCE_TOOL_VERSION,
+  inputSchema: ocrHintsToolInputSchema,
+  outputSchema: ocrHintsToolOutputSchema,
+}) satisfies StableJsonHash;
 
 // ---------------------------------------------------------------------------
 // Typed IO
