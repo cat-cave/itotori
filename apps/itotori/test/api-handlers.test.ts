@@ -2768,6 +2768,94 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });
 
+  describe("gate-mutation-route-status-echo — redact the success-body status echo", () => {
+    // The POST /api/imports/bridge + POST .../branches (draft) success bodies
+    // echo getDashboardStatus(), which embeds cost.recentRuns (provider/model
+    // + routing internals) + translation-memory reuse events. A caller without
+    // catalog.read — the same gate the sibling read routes enforce — must
+    // receive the redacted public summary; a holder still gets the full echo.
+    const mutationStatusEchoRoutes = [
+      {
+        name: "imports.bridge",
+        request: post("/api/imports/bridge", { bridge: bridgeFixture }),
+      },
+      {
+        name: "branches.draft",
+        request: post("/api/projects/project-1/branches", {
+          project: projectFixture,
+          targetLocale: "fr-FR",
+        }),
+      },
+    ] as const;
+
+    it.each(mutationStatusEchoRoutes)(
+      "echoes the FULL status to a $name caller holding catalog.read",
+      async ({ request }) => {
+        const services = serviceFixture();
+
+        const response = await handleItotoriApiRequest(request, services);
+
+        expect(response.statusCode).toBe(200);
+        const status = (response.body as { status: typeof dashboardStatusFixture }).status;
+        // Privileged callers see the run ledger + translation-memory reuse
+        // events verbatim — same shape the read routes return.
+        expect(status.cost.recentRuns).toHaveLength(costReportFixture.recentRuns.length);
+        expect(status.cost.translationMemoryReuse.recentEvents).toHaveLength(
+          costReportFixture.translationMemoryReuse.recentEvents.length,
+        );
+        const serialized = JSON.stringify(response.body);
+        expect(serialized).toContain("provider-run-1");
+        expect(serialized).toContain("openrouter");
+        // catalog.read was resolved for the echo gate (in addition to the
+        // mutation's own write permission).
+        expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+          permissionValues.catalogRead,
+        );
+      },
+    );
+
+    it.each(mutationStatusEchoRoutes)(
+      "REDACTS the $name status echo (recentRuns/recentEvents) without catalog.read",
+      async ({ request }) => {
+        const services = serviceFixture();
+        vi.mocked(services.authorization.requirePermission).mockImplementation(
+          async (permission) => {
+            if (permission === permissionValues.catalogRead) {
+              throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+            }
+          },
+        );
+
+        const response = await handleItotoriApiRequest(request, services);
+
+        expect(response.statusCode).toBe(200);
+        const status = (response.body as { status: typeof dashboardStatusFixture }).status;
+        // Run-ledger detail (provider/model/routing internals) is stripped.
+        expect(status.cost.recentRuns).toEqual([]);
+        // Translation-memory reuse events (carrying targetText) are stripped.
+        expect(status.cost.translationMemoryReuse.recentEvents).toEqual([]);
+        // Safe aggregates survive so the public dashboard still renders.
+        expect(status.cost.runCount).toBe(costReportFixture.runCount);
+        expect(status.cost.billedMicrosUsd).toBe(costReportFixture.billedMicrosUsd);
+        expect(status.cost.totalsByCostKind).toHaveLength(
+          costReportFixture.totalsByCostKind.length,
+        );
+        expect(status.cost.translationMemoryReuse.reuseEventCount).toBe(
+          costReportFixture.translationMemoryReuse.reuseEventCount,
+        );
+        // The sensitive strings must be ABSENT from the unprivileged echo.
+        const serialized = JSON.stringify(response.body);
+        expect(serialized).not.toContain("provider-run-1");
+        expect(serialized).not.toContain("openrouter");
+        expect(serialized).not.toContain("itotori-fake-draft-v0");
+        expect(serialized).not.toContain("routingPosture");
+        // Non-sensitive dashboard identity/counts remain visible.
+        expect(status.projectId).toBe(dashboardStatusFixture.projectId);
+        expect(status.unitCount).toBe(dashboardStatusFixture.unitCount);
+      },
+    );
+  });
+
   it.each(apiMutationPermissionMatrix)(
     "returns forbidden before invoking the $name mutation when authorization rejects",
     async ({ request, permission, service }) => {

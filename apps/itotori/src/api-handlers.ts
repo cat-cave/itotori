@@ -457,7 +457,17 @@ async function routeItotoriApiRequest(
     await requireApiPermission(services, apiMutationPermissionGates.bridgeImport);
     const project = await services.projectWorkflow.importBridge(body.bridge);
     const status = await services.projectWorkflow.getDashboardStatus();
-    return ok("imports.bridge", { project, status });
+    // gate-mutation-route-status-echo — the success body echoes the full
+    // dashboard status, which embeds cost.recentRuns (provider/model/routing
+    // internals) + translation-memory reuse events. REDACT that echo to the
+    // public summary UNLESS the caller holds catalog.read, the same gate the
+    // sibling read routes (/api/projects, /status, /cost) enforce — so the
+    // HTTP boundary agrees regardless of which route carries the status.
+    const canReadStatus = await resolveProjectReadPermission(services);
+    return ok("imports.bridge", {
+      project,
+      status: canReadStatus ? status : redactProjectDashboardStatus(status),
+    });
   }
 
   const projectRoute = parseProjectRoute(request.pathname);
@@ -485,7 +495,15 @@ async function routeItotoriApiRequest(
       const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
       const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
       const status = await services.projectWorkflow.getDashboardStatus();
-      return ok("branches.draft", { project, status });
+      // gate-mutation-route-status-echo — see POST /api/imports/bridge: the
+      // success body echoes the full dashboard status, so the same
+      // catalog.read gate + redaction applies (recentRuns / recentEvents
+      // stripped for a non-holder).
+      const canReadStatus = await resolveProjectReadPermission(services);
+      return ok("branches.draft", {
+        project,
+        status: canReadStatus ? status : redactProjectDashboardStatus(status),
+      });
     }
     case "findings": {
       const body = parseRecordFindingRequest(request.body);
