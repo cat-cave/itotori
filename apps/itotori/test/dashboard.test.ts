@@ -224,6 +224,13 @@ describe("Itotori dashboard", () => {
       "Dashboard data could not load.",
     );
     expect(root.textContent).toContain("failed to load projects.list: 500");
+    // ITOTORI-057 — the typed API error code + message render distinctly so
+    // a reviewer sees the actionable reason, not just an opaque HTTP status.
+    const apiErrorDetail = root.querySelector(".api-error-detail");
+    expect(apiErrorDetail).not.toBeNull();
+    expect(apiErrorDetail?.getAttribute("data-api-error-code")).toBe("internal_error");
+    expect(apiErrorDetail?.querySelector(".api-error-code")?.textContent).toBe("internal_error");
+    expect(apiErrorDetail?.querySelector(".api-error-message")?.textContent).toContain("offline");
   });
 
   it("checks MSW project fixtures against the real API response schema", () => {

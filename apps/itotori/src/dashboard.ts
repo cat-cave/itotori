@@ -11,9 +11,11 @@ import type {
 import {
   assertDashboardDecisionReadModel,
   assertItotoriApiResponse,
+  assertItotoriApiErrorResponse,
   assertProjectCostDrilldownResponse,
   assertProjectDashboardStatus,
   assertReviewerQueueDashboardReadModel,
+  type ApiErrorResponse,
   type ApiProjectsResponse,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
@@ -85,9 +87,75 @@ type DashboardReadResponses = {
  */
 export type DashboardPanelState<T> =
   | { state: "unknown" }
-  | { state: "unavailable"; error: string }
+  | { state: "unavailable"; error: string; apiError?: DashboardApiErrorDetail }
   | { state: "empty" }
   | { state: "populated"; data: T };
+
+/**
+ * ITOTORI-057 — the structured, actionable detail parsed from a typed API
+ * error response (`{ code, error }`). The dashboard shell renders the
+ * `code` + `message` when the failing response carried a typed body so a
+ * reviewer sees the actionable reason (e.g. `[forbidden] not permitted to
+ * read cost`) instead of an opaque HTTP status. When the body was
+ * malformed / missing / unreadable, `code` and `message` are `null` and
+ * the shell falls back to a SAFE generic state (no crash, no fabricated
+ * code). `routeId` + `status` are always present so the fallback still
+ * points at the failing route.
+ */
+export type DashboardApiErrorDetail = {
+  routeId: string;
+  status: number;
+  code: ApiErrorResponse["code"] | null;
+  message: string | null;
+};
+
+/**
+ * ITOTORI-057 — the error `fetchApi` throws when a dashboard read fails.
+ * Carries the typed {@link DashboardApiErrorDetail} so the renderers can
+ * surface `code` + `message` distinctly from the generic route/status
+ * fallback. The base `Error.message` keeps the `failed to load <routeId>:
+ * <status>` form so existing logs / assertions stay meaningful.
+ */
+export class DashboardApiError extends Error {
+  readonly routeId: string;
+  readonly status: number;
+  readonly code: ApiErrorResponse["code"] | null;
+  readonly typedMessage: string | null;
+
+  constructor(detail: DashboardApiErrorDetail) {
+    super(`failed to load ${detail.routeId}: ${detail.status}`);
+    this.name = "DashboardApiError";
+    this.routeId = detail.routeId;
+    this.status = detail.status;
+    this.code = detail.code;
+    this.typedMessage = detail.message;
+  }
+
+  get detail(): DashboardApiErrorDetail {
+    return {
+      routeId: this.routeId,
+      status: this.status,
+      code: this.code,
+      message: this.typedMessage,
+    };
+  }
+}
+
+/**
+ * ITOTORI-057 — parse a typed {@link ApiErrorResponse} (`{ code, error }`)
+ * from a failed request body. Returns `null` for ANY malformed / missing /
+ * non-conforming body so the caller can fall back to a safe generic state
+ * instead of crashing or rendering a half-parsed code. Pure + throw-free so
+ * it is unit-testable without a `Response`.
+ */
+export function parseTypedApiError(body: unknown): ApiErrorResponse | null {
+  try {
+    assertItotoriApiErrorResponse(body);
+    return body;
+  } catch {
+    return null;
+  }
+}
 
 type DashboardData =
   | {
@@ -257,11 +325,40 @@ async function fetchApi<RouteId extends DashboardReadRouteId>(
 ): Promise<DashboardReadResponses[RouteId]> {
   const response = await fetch(resolveUrl(endpoint));
   if (!response.ok) {
-    throw new Error(`failed to load ${routeId}: ${response.status}`);
+    // ITOTORI-057 — parse the typed error body (`{ code, error }`) when the
+    // failing response carries one so the shell can render actionable
+    // code + message. A malformed / missing / unreadable body resolves to
+    // `null` fields (safe fallback) — the thrown DashboardApiError still
+    // carries the route + status so the generic fallback points at the
+    // failing route instead of crashing.
+    throw await readDashboardApiError(routeId, response);
   }
   const body = await response.json();
   assertItotoriApiResponse(routeId as ItotoriApiRouteId, body);
   return body as DashboardReadResponses[RouteId];
+}
+
+// ITOTORI-057 — read a failed `Response` and build a DashboardApiError. The
+// typed body is parsed best-effort: any JSON parse failure, schema mismatch,
+// or empty body resolves to `null` code/message (safe fallback) so a
+// malformed error body never breaks the shell.
+async function readDashboardApiError(
+  routeId: string,
+  response: Response,
+): Promise<DashboardApiError> {
+  let code: ApiErrorResponse["code"] | null = null;
+  let message: string | null = null;
+  try {
+    const body = await response.json();
+    const typed = parseTypedApiError(body);
+    if (typed !== null) {
+      code = typed.code;
+      message = typed.error;
+    }
+  } catch {
+    // Body was not JSON / empty / unreadable — fall back safely.
+  }
+  return new DashboardApiError({ routeId, status: response.status, code, message });
 }
 
 // ITOTORI-056 — fetch the reviewer queue for the status's selected locale
@@ -290,11 +387,31 @@ function settleError(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
 }
 
+// ITOTORI-057 — extract the structured typed-error detail from a rejected
+// panel query so the unavailable notice can render code + message. Returns
+// `undefined` for any non-DashboardApiError (e.g. a thrown builder load),
+// leaving that panel on the safe generic fallback.
+function settleApiError(reason: unknown): DashboardApiErrorDetail | undefined {
+  return reason instanceof DashboardApiError ? reason.detail : undefined;
+}
+
+// ITOTORI-057 — build an `unavailable` panel state, threading the typed
+// detail ONLY when it exists. The conditional inclusion keeps the state
+// clean under `exactOptionalPropertyTypes` (no explicit `undefined`), and a
+// malformed / non-typed failure resolves to the safe generic fallback.
+function unavailablePanelState<T>(reasonOrError: unknown): DashboardPanelState<T> {
+  const apiError = settleApiError(reasonOrError);
+  if (apiError === undefined) {
+    return { state: "unavailable", error: settleError(reasonOrError) };
+  }
+  return { state: "unavailable", error: settleError(reasonOrError), apiError };
+}
+
 function costPanelState(
   result: PromiseSettledResult<ProjectCostReport>,
 ): DashboardPanelState<ProjectCostReport> {
   if (result.status === "rejected") {
-    return { state: "unavailable", error: settleError(result.reason) };
+    return unavailablePanelState(result.reason);
   }
   // The cost report is a structured read-model: once it loads it is
   // `populated` (it carries totals / TM reuse even with zero runs). The
@@ -306,7 +423,7 @@ function benchmarksPanelState(
   result: PromiseSettledResult<BenchmarkReportsResponse>,
 ): DashboardPanelState<BenchmarkReportSummary[]> {
   if (result.status === "rejected") {
-    return { state: "unavailable", error: settleError(result.reason) };
+    return unavailablePanelState(result.reason);
   }
   const reports = result.value.reports;
   return reports.length === 0 ? { state: "empty" } : { state: "populated", data: reports };
@@ -319,7 +436,13 @@ function jobsPanelState(
     case "unknown":
       return { state: "unknown" };
     case "unavailable":
-      return { state: "unavailable", error: cost.error };
+      // ITOTORI-057 — Jobs shares the cost query, so it inherits the cost
+      // panel's typed error detail (code + message) when the cost read
+      // failed with a typed body. The conditional keeps the property
+      // absent (not explicit undefined) under exactOptionalPropertyTypes.
+      return cost.apiError === undefined
+        ? { state: "unavailable", error: cost.error }
+        : { state: "unavailable", error: cost.error, apiError: cost.apiError };
     case "empty":
       return { state: "empty" };
     case "populated":
@@ -351,7 +474,7 @@ async function styleGuidePanelState(
     });
     return { state: "populated", data: context };
   } catch (error) {
-    return { state: "unavailable", error: settleError(error) };
+    return unavailablePanelState(error);
   }
 }
 
@@ -393,6 +516,11 @@ function renderEmpty(root: HTMLElement): void {
 
 function renderError(root: HTMLElement, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
+  // ITOTORI-057 — when the failure is a typed API error, surface the
+  // actionable `code` + `message` above the generic route/status fallback.
+  // A malformed / missing error body resolves to the safe fallback block
+  // (no fabricated code) so the shell never crashes on a bad error body.
+  const apiError = error instanceof DashboardApiError ? error.detail : undefined;
   root.innerHTML = `
     ${dashboardStyles()}
     <main class="itotori-shell" data-state="error">
@@ -405,9 +533,39 @@ function renderError(root: HTMLElement, error: unknown): void {
       <section class="state-panel state-panel-error" aria-label="Dashboard error">
         <h2>Dashboard unavailable</h2>
         <p role="alert">Dashboard data could not load.</p>
+        ${renderApiErrorDetail(apiError)}
         <pre>${escapeHtml(message)}</pre>
       </section>
     </main>
+  `;
+}
+
+// ITOTORI-057 — render the typed API error code + message when the failing
+// response carried a typed body. Returns the safe fallback notice when the
+// body was malformed / missing (a typed body that failed schema assertion),
+// and an empty string for non-API errors (e.g. a network failure thrown
+// before any response) so the caller's generic alert + <pre> stay the only
+// surface. The code is stamped as `data-api-error-code` so a test (or a
+// reviewer inspecting the DOM) can tell a typed failure from a safe
+// fallback (`data-api-error-code="unavailable"`).
+function renderApiErrorDetail(apiError: DashboardApiErrorDetail | undefined): string {
+  if (apiError === undefined) {
+    return "";
+  }
+  if (apiError.code !== null && apiError.message !== null) {
+    return `
+      <p class="api-error-detail" role="note" data-api-error-code="${escapeHtml(apiError.code)}">
+        <code class="api-error-code">${escapeHtml(apiError.code)}</code>
+        <span class="api-error-message">${escapeHtml(apiError.message)}</span>
+      </p>
+    `;
+  }
+  return `
+    <p
+      class="api-error-detail api-error-detail-fallback"
+      role="note"
+      data-api-error-code="unavailable"
+    >The API response did not include a typed error body.</p>
   `;
 }
 
@@ -1444,12 +1602,29 @@ function statePanel<T>(
   `;
 }
 
+// ITOTORI-057 — render the typed API error code + message as an inline
+// badge appended to a panel's unavailable notice. Returns an empty string
+// when the panel has no typed detail (safe fallback), so the base notice
+// stays the only surface and is never decorated with a fabricated code.
+function renderApiErrorInline(apiError: DashboardApiErrorDetail | undefined): string {
+  if (apiError === undefined || apiError.code === null || apiError.message === null) {
+    return "";
+  }
+  return ` <span class="api-error-inline" data-api-error-code="${escapeHtml(apiError.code)}"><code>${escapeHtml(
+    apiError.code,
+  )}</code> ${escapeHtml(apiError.message)}</span>`;
+}
+
 // ITOTORI-056 — render the state notice for any non-populated panel state.
 // Returns `null` when the panel is `populated` so the caller can fall
 // through to its data-driven body via `??`. The notices are worded so a
 // reviewer can tell "not queried yet" (unknown), "the call failed"
 // (unavailable), and "the API answered with nothing" (empty) apart — they
 // are never collapsed into a single "empty" string.
+//
+// ITOTORI-057 — the unavailable notice appends the typed API error code +
+// message when the failing response carried a typed body, so a reviewer
+// sees the actionable reason inline (e.g. `[forbidden] not permitted`).
 function stateNotice(
   panelState: DashboardPanelState<unknown>,
   panelName: string,
@@ -1463,7 +1638,7 @@ function stateNotice(
     case "unavailable":
       return `<p class="panel-state panel-state-unavailable" role="alert" data-panel-state-notice="unavailable">${escapeHtml(
         `${panelName} data could not be loaded: ${panelState.error}`,
-      )}</p>`;
+      )}${renderApiErrorInline(panelState.apiError)}</p>`;
     case "empty":
       return `<p class="panel-state panel-state-empty" data-panel-state-notice="empty">${escapeHtml(
         emptyMessage,
@@ -1951,6 +2126,45 @@ function dashboardStyles(): string {
       .panel-state-inline {
         color: #8a2e1c;
         font-weight: 800;
+      }
+
+      /* ITOTORI-057 — typed API error rendering. The actionable code +
+         message render distinctly from the generic route/status fallback so
+         a reviewer can act on a typed [forbidden] reason instead of an
+         opaque HTTP status. */
+      .api-error-detail {
+        margin: 0 0 8px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        color: #8a2e1c;
+        font-weight: 700;
+      }
+
+      .api-error-detail-fallback {
+        color: #56636d;
+        font-weight: 400;
+      }
+
+      .api-error-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.82rem;
+        background: #ffe7e1;
+        border-radius: 4px;
+        padding: 1px 6px;
+      }
+
+      .api-error-inline {
+        color: #8a2e1c;
+        font-weight: 700;
+      }
+
+      .api-error-inline code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.82rem;
+        background: #ffe7e1;
+        border-radius: 4px;
+        padding: 1px 6px;
       }
 
       @media (max-width: 920px) {
