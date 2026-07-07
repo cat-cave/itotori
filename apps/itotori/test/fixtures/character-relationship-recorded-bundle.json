@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "itotori.recorded-provider-bundle.v3",
+  "bundleId": "character-relationship-recorded-bundle-001",
+  "capturedProviderFamily": "openrouter",
+  "capturedProviderName": "openrouter:character-relationship-judge",
+  "capturedRequestedModelId": "itotori-fake-character-relationship-v0",
+  "capturedActualModelId": "openrouter:anthropic/claude-opus-fixture",
+  "capturedProviderId": "fake-fixture",
+  "responses": {
+    "char-rel-recorded-bundle-001-key": {
+      "content": "{\"bios\":[{\"characterId\":\"勇者\",\"bioText\":\"物語の主人公。王様と王女に深く関わる。\",\"citedUnitIds\":[\"019ed018-0000-7000-8000-000000000a01\",\"019ed018-0000-7000-8000-000000000a03\"]},{\"characterId\":\"王様\",\"bioText\":\"この国の統治者。勇者を信頼している。\",\"citedUnitIds\":[\"019ed018-0000-7000-8000-000000000a01\",\"019ed018-0000-7000-8000-000000000a02\"]},{\"characterId\":\"王女\",\"bioText\":\"勇者の古くからの友人。\",\"citedUnitIds\":[\"019ed018-0000-7000-8000-000000000a03\"]}],\"relationships\":[{\"fromCharacterId\":\"勇者\",\"toCharacterId\":\"王様\",\"kind\":\"Allegiance\",\"direction\":\"FromAToB\",\"descriptor\":\"勇者は王様に仕える\",\"citedUnitIds\":[\"019ed018-0000-7000-8000-000000000a01\"]},{\"fromCharacterId\":\"勇者\",\"toCharacterId\":\"王女\",\"kind\":\"Friendship\",\"direction\":\"Symmetric\",\"descriptor\":\"幼馴染\",\"citedUnitIds\":[\"019ed018-0000-7000-8000-000000000a03\"]}]}",
+      "finishReason": "stop",
+      "tokenUsage": {
+        "tokenCountSource": "provider_reported",
+        "promptTokens": 1024,
+        "completionTokens": 384,
+        "totalTokens": 1408
+      },
+      "cost": {
+        "costKind": "zero",
+        "currency": "USD",
+        "amountUsd": "0",
+        "amountMicrosUsd": 0
+      },
+      "routingPosture": {
+        "order": ["fake-fixture"],
+        "allow_fallbacks": false,
+        "data_collection": "deny",
+        "zdr": true,
+        "require_parameters": true
+      },
+      "usageResponseJson": {
+        "_synthetic_character_relationship_test_bundle": true
+      }
+    }
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "_comment": "ITOTORI-149 — committed expected pack from generateCharacterRelationships replayed against apps/itotori/test/fixtures/character-relationship-recorded-bundle.json (RecordedModelProvider bundle). The test asserts byte-for-byte equality against this snapshot AFTER stripping the random `id` (UUID7) and `providerRun` fields (the only non-deterministic parts). All other fields are deterministic from the fixed input fixture + sealed provider transcript. `promptHash` (raw SHA-256 hex, no `sha256:` prefix) and `inputTokenEstimate` are computed at test time from the rendered prompt and injected before comparison; the placeholders below are filled in by the test.",
+  "bios": [
+    {
+      "projectId": "019ed018-0000-7000-8000-000000000001",
+      "localeBranchId": "019ed018-0000-7000-8000-000000000002",
+      "sourceRevisionId": "019ed018-0000-7000-8000-000000000003",
+      "characterId": "勇者",
+      "bioLocale": "ja-JP",
+      "bioText": "物語の主人公。王様と王女に深く関わる。",
+      "citedUnitIds": [
+        "019ed018-0000-7000-8000-000000000a01",
+        "019ed018-0000-7000-8000-000000000a03"
+      ],
+      "citedUnitHashes": ["hash-a-1", "hash-a-3"],
+      "modelProfile": {
+        "providerFamily": "fake",
+        "modelId": "itotori-fake-character-relationship-v0",
+        "providerId": "fake-fixture",
+        "contextWindowTokens": 16000,
+        "maxOutputTokens": 1024
+      },
+      "promptTemplateVersion": "itotori-character-relationship-v1",
+      "promptHash": "__INJECT_PROMPT_HASH__",
+      "inputTokenEstimate": "__INJECT_INPUT_TOKEN_ESTIMATE__",
+      "completionTokens": 384,
+      "generatedAt": "2026-06-23T12:00:00.000Z",
+      "status": "Fresh"
+    },
+    {
+      "projectId": "019ed018-0000-7000-8000-000000000001",
+      "localeBranchId": "019ed018-0000-7000-8000-000000000002",
+      "sourceRevisionId": "019ed018-0000-7000-8000-000000000003",
+      "characterId": "王様",
+      "bioLocale": "ja-JP",
+      "bioText": "この国の統治者。勇者を信頼している。",
+      "citedUnitIds": [
+        "019ed018-0000-7000-8000-000000000a01",
+        "019ed018-0000-7000-8000-000000000a02"
+      ],
+      "citedUnitHashes": ["hash-a-1", "hash-a-2"],
+      "modelProfile": {
+        "providerFamily": "fake",
+        "modelId": "itotori-fake-character-relationship-v0",
+        "providerId": "fake-fixture",
+        "contextWindowTokens": 16000,
+        "maxOutputTokens": 1024
+      },
+      "promptTemplateVersion": "itotori-character-relationship-v1",
+      "promptHash": "__INJECT_PROMPT_HASH__",
+      "inputTokenEstimate": "__INJECT_INPUT_TOKEN_ESTIMATE__",
+      "completionTokens": 384,
+      "generatedAt": "2026-06-23T12:00:00.000Z",
+      "status": "Fresh"
+    },
+    {
+      "projectId": "019ed018-0000-7000-8000-000000000001",
+      "localeBranchId": "019ed018-0000-7000-8000-000000000002",
+      "sourceRevisionId": "019ed018-0000-7000-8000-000000000003",
+      "characterId": "王女",
+      "bioLocale": "ja-JP",
+      "bioText": "勇者の古くからの友人。",
+      "citedUnitIds": ["019ed018-0000-7000-8000-000000000a03"],
+      "citedUnitHashes": ["hash-a-3"],
+      "modelProfile": {
+        "providerFamily": "fake",
+        "modelId": "itotori-fake-character-relationship-v0",
+        "providerId": "fake-fixture",
+        "contextWindowTokens": 16000,
+        "maxOutputTokens": 1024
+      },
+      "promptTemplateVersion": "itotori-character-relationship-v1",
+      "promptHash": "__INJECT_PROMPT_HASH__",
+      "inputTokenEstimate": "__INJECT_INPUT_TOKEN_ESTIMATE__",
+      "completionTokens": 384,
+      "generatedAt": "2026-06-23T12:00:00.000Z",
+      "status": "Fresh"
+    }
+  ],
+  "relationships": [
+    {
+      "projectId": "019ed018-0000-7000-8000-000000000001",
+      "localeBranchId": "019ed018-0000-7000-8000-000000000002",
+      "sourceRevisionId": "019ed018-0000-7000-8000-000000000003",
+      "fromCharacterId": "勇者",
+      "toCharacterId": "王様",
+      "kind": "Allegiance",
+      "direction": "FromAToB",
+      "descriptor": "勇者は王様に仕える",
+      "descriptorLocale": "ja-JP",
+      "citedUnitIds": ["019ed018-0000-7000-8000-000000000a01"],
+      "citedUnitHashes": ["hash-a-1"],
+      "modelProfile": {
+        "providerFamily": "fake",
+        "modelId": "itotori-fake-character-relationship-v0",
+        "providerId": "fake-fixture",
+        "contextWindowTokens": 16000,
+        "maxOutputTokens": 1024
+      },
+      "promptTemplateVersion": "itotori-character-relationship-v1",
+      "promptHash": "__INJECT_PROMPT_HASH__",
+      "generatedAt": "2026-06-23T12:00:00.000Z",
+      "status": "Fresh"
+    },
+    {
+      "projectId": "019ed018-0000-7000-8000-000000000001",
+      "localeBranchId": "019ed018-0000-7000-8000-000000000002",
+      "sourceRevisionId": "019ed018-0000-7000-8000-000000000003",
+      "fromCharacterId": "勇者",
+      "toCharacterId": "王女",
+      "kind": "Friendship",
+      "direction": "Symmetric",
+      "descriptor": "幼馴染",
+      "descriptorLocale": "ja-JP",
+      "citedUnitIds": ["019ed018-0000-7000-8000-000000000a03"],
+      "citedUnitHashes": ["hash-a-3"],
+      "modelProfile": {
+        "providerFamily": "fake",
+        "modelId": "itotori-fake-character-relationship-v0",
+        "providerId": "fake-fixture",
+        "contextWindowTokens": 16000,
+        "maxOutputTokens": 1024
+      },
+      "promptTemplateVersion": "itotori-character-relationship-v1",
+      "promptHash": "__INJECT_PROMPT_HASH__",
+      "generatedAt": "2026-06-23T12:00:00.000Z",
+      "status": "Fresh"
+    }
+  ]
+}
