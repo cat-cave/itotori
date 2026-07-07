@@ -294,6 +294,62 @@ export async function handleItotoriApiRequest(
   }
 }
 
+/**
+ * itotori-043-followup-transport-level-readonly-routing — the
+ * transport-level READ-ONLY entrypoint for GET requests. It receives ONLY
+ * the {@link ItotoriReadOnlyApiServices} surface, so a GET served through
+ * this entrypoint is STRUCTURALLY unable to reach a mutation service
+ * (`draftProject`, `executeBatch`, `submitCorrections`, …): the dependency
+ * object literally has no mutation methods. The server transport
+ * (`server.ts`) constructs GET requests through the read-only DB factory
+ * (`withDatabaseReadOnlyApiServices`) and dispatches them here, so the
+ * least-privilege guarantee holds at the transport boundary, not just
+ * handler-internally.
+ *
+ * Behavior preserves {@link handleItotoriApiRequest} for GET requests: a
+ * GET read route resolves identically, a GET on a mutation path still
+ * returns the same `405 method_not_allowed`, and an unknown GET still
+ * returns `404`.
+ */
+export async function handleReadOnlyItotoriApiRequest(
+  request: ItotoriApiRequest,
+  services: ItotoriReadOnlyApiServices,
+): Promise<ApiJsonResponse> {
+  try {
+    const readOnlyResponse = await routeReadOnlyItotoriApiRequest(request, services);
+    if (readOnlyResponse !== null) {
+      return readOnlyResponse;
+    }
+    return readOnlyMutationPathResponse(request);
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
+ * itotori-043-followup-transport-level-readonly-routing — the
+ * method-not-allowed / not-found response for a GET that did not match a
+ * read route. It mirrors the wrong-method gating the mutation router
+ * ({@link routeItotoriApiRequest}) applies, so a GET on a mutation path
+ * keeps returning `405 method_not_allowed` (not `404`) now that GET
+ * requests are dispatched through the read-only entrypoint. The checks are
+ * pure path/method — no service method is invoked — so the read-only
+ * surface is sufficient.
+ */
+function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonResponse {
+  if (
+    request.pathname === "/api/reviewer/queue/batch-preview" ||
+    request.pathname === "/api/reviewer/queue/batch-confirm" ||
+    parseReviewerSingleActionApiRoute(request.pathname) !== null
+  ) {
+    return methodNotAllowed(["POST"]);
+  }
+  if (parseProjectRoute(request.pathname) !== null) {
+    return methodNotAllowed(["POST"]);
+  }
+  return notFound(request.pathname);
+}
+
 async function routeItotoriApiRequest(
   request: ItotoriApiRequest,
   services: ItotoriApiServices,

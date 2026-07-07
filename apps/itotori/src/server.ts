@@ -2,16 +2,23 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile, realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, join, relative, resolve, sep } from "node:path";
-import { handleItotoriApiRequest, isItotoriApiPath } from "./api-handlers.js";
 import {
+  handleItotoriApiRequest,
+  handleReadOnlyItotoriApiRequest,
+  isItotoriApiPath,
+} from "./api-handlers.js";
+import {
+  toReadOnlyServiceFactory,
   withDatabaseItotoriServices,
   type ItotoriServiceFactory,
+  type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
   port?: number;
   serviceFactory?: ItotoriServiceFactory;
+  readOnlyServiceFactory?: ItotoriReadOnlyServiceFactory;
   webRoot?: URL;
   runtimeWebRoot?: URL;
   managedArtifactRoot?: URL;
@@ -32,22 +39,39 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const serviceFactory =
     options.serviceFactory ??
     ((callback) => withDatabaseItotoriServices(databaseOptions(options), callback));
+  // itotori-043-followup-transport-level-readonly-routing — GET (read-only)
+  // requests are served through the read-only service factory so a GET can
+  // NEVER reach a mutation service: the factory hands the handler only the
+  // narrowed read-only surface (`ItotoriReadOnlyApiServices`), which has no
+  // mutation methods. The read-only factory is DERIVED from the full factory
+  // (via `toReadOnlyServiceFactory`) so an injected `serviceFactory` (tests)
+  // is narrowed consistently and the production default constructs the
+  // read-only DB services directly. It may also be injected directly.
+  const readOnlyServiceFactory =
+    options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
       try {
         const body = await readJsonRequestBody(request);
-        const apiResponse = await serviceFactory((services) =>
-          handleItotoriApiRequest(
-            {
-              method: request.method ?? "GET",
-              pathname: url.pathname,
-              search: url.search,
-              body,
-            },
-            services,
-          ),
-        );
+        const method = request.method ?? "GET";
+        const apiRequest = {
+          method,
+          pathname: url.pathname,
+          search: url.search,
+          body,
+        };
+        // itotori-043-followup-transport-level-readonly-routing — dispatch by
+        // HTTP method at the transport boundary: a GET runs through the
+        // read-only factory + read-only handler (least-privilege, no mutation
+        // surface); any other method runs through the full factory + full
+        // handler, preserving the existing mutation routing and 405 behavior.
+        const apiResponse =
+          method === "GET"
+            ? await readOnlyServiceFactory((services) =>
+                handleReadOnlyItotoriApiRequest(apiRequest, services),
+              )
+            : await serviceFactory((services) => handleItotoriApiRequest(apiRequest, services));
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {

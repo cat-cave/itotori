@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Permission } from "@itotori/db";
 import type { ItotoriApplicationServices } from "../src/services/database-services.js";
+import { toReadOnlyServiceFactory } from "../src/services/database-services.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   benchmarkReportFixture,
@@ -360,6 +361,109 @@ describe("Itotori server API contracts", () => {
         await closeServer(server);
       }
     });
+  });
+});
+
+describe("itotori-043-followup transport-level read-only routing", () => {
+  it("dispatches a GET through the read-only service factory (never the full one)", async () => {
+    const fullFactory = vi.fn(serviceFactory);
+    const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
+    const server = createItotoriServer({
+      serviceFactory: fullFactory,
+      readOnlyServiceFactory: readOnlyFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/projects/status`);
+
+      expect(response.status).toBe(200);
+      await response.json();
+      // The transport selected the read-only factory for the GET and never
+      // constructed the full (mutation-bearing) services.
+      expect(readOnlyFactory).toHaveBeenCalledTimes(1);
+      expect(fullFactory).not.toHaveBeenCalled();
+      // The GET resolved through the read-only projection of the shared
+      // services (the narrowed surface delegates to the same read method).
+      expect(getDashboardStatus).toHaveBeenCalledTimes(1);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("dispatches a mutation through the full service factory (never the read-only one)", async () => {
+    const fullFactory = vi.fn(serviceFactory);
+    const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
+    const server = createItotoriServer({
+      serviceFactory: fullFactory,
+      readOnlyServiceFactory: readOnlyFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/imports/bridge`, {
+        method: "POST",
+        body: JSON.stringify({ bridge: bridgeFixture }),
+        headers: { "content-type": "application/json" },
+      });
+
+      expect(response.status).toBe(200);
+      await response.json();
+      // The transport selected the full factory for the mutation and never
+      // touched the read-only factory.
+      expect(fullFactory).toHaveBeenCalledTimes(1);
+      expect(readOnlyFactory).not.toHaveBeenCalled();
+      expect(importBridge).toHaveBeenCalledWith(bridgeFixture);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("preserves 405 method_not_allowed for a GET on a POST-only reviewer mutation path", async () => {
+    const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
+    const server = createItotoriServer({
+      serviceFactory,
+      readOnlyServiceFactory: readOnlyFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/reviewer/queue/batch-preview`,
+      );
+
+      expect(response.status).toBe(405);
+      await expect(response.json()).resolves.toMatchObject({ code: "method_not_allowed" });
+      // A GET still flows through the read-only factory (no mutation surface
+      // constructed) even when it is refused as a wrong-method request.
+      expect(readOnlyFactory).toHaveBeenCalledTimes(1);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("preserves 405 method_not_allowed for a GET on a project mutation route", async () => {
+    const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
+    const server = createItotoriServer({
+      serviceFactory,
+      readOnlyServiceFactory: readOnlyFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/projects/project-1/branches`,
+      );
+
+      expect(response.status).toBe(405);
+      expect(readOnlyFactory).toHaveBeenCalledTimes(1);
+    } finally {
+      await closeServer(server);
+    }
   });
 });
 
