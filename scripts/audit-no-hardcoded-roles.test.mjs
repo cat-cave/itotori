@@ -1,14 +1,19 @@
-// auth-006-no-hardcoded-roles-guard — regression suite for the
-// no-hardcoded-roles CI guard.
+// auth-006-no-hardcoded-roles-guard — regression suite for the AST-based
+// no-hardcoded-roles CI guard (auth-noroles-guard-ast).
 //
-// Proves the guard CATCHES every auth-role-branching shape it forbids
-// (`role === "..."`, `isAdmin`, `hasRole`, `roleValues`, `ROLES`,
-// `actor.role`), that it does NOT flag legitimate DOMAIN role comparisons
-// (property-access forms like `message.role` / `args.role`, lowercase
-// `roles`, a bare `role` variable not compared to a string), and that the
-// `// authz-guard:allow domain-role` marker (inline OR in the comment block
-// above) is the only per-line opt-out — with a MANDATORY non-empty token
-// after `allow` so a bare marker cannot silently exempt a real auth branch.
+// The guard was rewritten from a line-regex sieve to an AST walk (TypeScript
+// compiler API for .ts/.tsx/.js/.mjs/.cjs; a pragmatic pattern-scan for Rust
+// .rs). This suite proves it now CATCHES the four shapes the regex missed —
+// each with a POSITIVE fixture (auth role → flagged) and a NEGATIVE fixture
+// (the SAME shape on a domain/LLM role → passes):
+//   1. property-access comparison   `user.role === "admin"`   vs `message.role === "user"`
+//   2. switch on a role read        `switch (role) { case "admin" }` vs domain cases
+//   3. inequality comparison        `role !== "viewer"`       vs `role !== "inventory_only"`
+//   4. role-keyed lookup map        `ROLES[role]`             vs `roles[role]` / `accepted[role]`
+// plus alias/destructuring role reads, the Rust equivalents, the classic
+// name-based shortcuts (`isAdmin`, `hasRole`, `roleValues`, `ROLES`), and the
+// expression-narrow `// authz-guard:allow domain-role` marker (inline OR in the
+// comment block above; a bare marker with no reason does NOT exempt).
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -23,18 +28,32 @@ import { findViolations } from "./audit-no-hardcoded-roles.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "audit-no-hardcoded-roles.mjs");
 
-const SRC_PATH = "apps/itotori/src/some/module.ts";
+const TS = "apps/itotori/src/some/module.ts";
+const RS = "crates/foo/src/lib.rs";
+
+const LABELS = {
+  comparison: "auth role-name branching (comparison on a role read)",
+  switch: "auth role-name branching (switch on a role read)",
+  lookup: "auth role-keyed lookup map (indexing by a role read)",
+  subject: "auth-subject role gating (`<subject>.role`)",
+  isAdmin: "auth-role boolean `isAdmin` / `is_admin`",
+  hasRole: "auth-role helper `hasRole(...)` / `has_role(...)`",
+  roleValues: "auth-roles enum `roleValues`",
+  roles: "auth-roles enum `ROLES`",
+};
 
 function labels(path, contents) {
   return findViolations(path, contents).map((v) => v.pattern);
 }
 
-// Invoke the auditor CLI as a fully CAPTURED subprocess. On a detected
-// violation the auditor writes its failure line to ITS stderr; capturing
-// stdout+stderr keeps that inside this helper (so tooling grepping the test's
-// own stderr for the failure string does not false-trip on an intentional
-// detection check), while the tests still PROVE detection by asserting on the
-// captured stderr. Mirrors audit-no-hardcoded-cost.test.mjs.
+function isFlagged(path, contents) {
+  return findViolations(path, contents).length > 0;
+}
+
+// Invoke the auditor CLI as a fully CAPTURED subprocess so an intentional
+// detection's stderr stays inside the helper (tooling grepping the test's own
+// stderr does not false-trip), while the tests still PROVE detection by
+// asserting on the captured stderr. Mirrors audit-no-hardcoded-cost.test.mjs.
 function runAuditCli(...files) {
   try {
     const stdout = execFileSync("node", [scriptPath, ...files], {
@@ -47,166 +66,297 @@ function runAuditCli(...files) {
   }
 }
 
-// ---- Pattern: bare `role === "..."` / `role == "..."` --------------------
-test('catches `if (role === "admin")` (the canonical auth-role branch)', () => {
-  const hits = labels(SRC_PATH, '  if (role === "admin") {');
-  assert.deepEqual(hits, ['auth role-name branching: `role === "..."` / `role == "..."`']);
+function writeShippedProbe(name, contents) {
+  const dir = mkdtempSync(join(tmpdir(), "audit-roles-"));
+  const srcDir = join(dir, "apps/itotori/src");
+  mkdirSync(srcDir, { recursive: true });
+  const probe = join(srcDir, name);
+  writeFileSync(probe, contents);
+  return probe;
+}
+
+// =========================================================================
+// Previously-missed shape 1 — PROPERTY-ACCESS comparison (the core bug: the
+// old regex EXPLICITLY excluded property access, so `user.role === "admin"`
+// slipped through).
+// =========================================================================
+test('SHAPE 1 (property-access): catches `user.role === "admin"` (was missed)', () => {
+  const hits = labels(TS, 'if (user.role === "admin") { grant(); }');
+  assert.ok(
+    hits.includes(LABELS.comparison),
+    `expected comparison flag, got ${JSON.stringify(hits)}`,
+  );
 });
 
-test('catches `role == "admin"` (loose equality, single-line)', () => {
-  const hits = labels(SRC_PATH, '  const ok = role == "admin";');
-  assert.deepEqual(hits, ['auth role-name branching: `role === "..."` / `role == "..."`']);
+test('SHAPE 1 (negative): does NOT flag the LLM message role `message.role === "user"`', () => {
+  assert.deepEqual(labels(TS, 'const isUser = message.role === "user";'), []);
+  assert.deepEqual(labels(TS, 'const isSys = msg.role === "system";'), []);
+  // proof-stage domain role via a non-auth-subject property.
+  assert.deepEqual(labels(TS, 'const isDraft = args.role === "draft";'), []);
 });
 
-test("catches single-quoted and backtick-quoted role literals too", () => {
-  assert.deepEqual(labels(SRC_PATH, "  if (role === 'superuser') {"), [
-    'auth role-name branching: `role === "..."` / `role == "..."`',
-  ]);
-  assert.deepEqual(labels(SRC_PATH, "  if (role === `owner`) {"), [
-    'auth role-name branching: `role === "..."` / `role == "..."`',
-  ]);
+// =========================================================================
+// Previously-missed shape 2 — SWITCH on a role read (the old regex never
+// handled `switch (role) { case "admin": ... }`).
+// =========================================================================
+test('SHAPE 2 (switch): catches `switch (role) { case "admin": ... }` (was missed)', () => {
+  const hits = labels(TS, 'switch (role) { case "admin": return 1; default: return 0; }');
+  assert.deepEqual(hits, [LABELS.switch]);
 });
 
-test("does NOT flag a bare `role` that is not compared to a string literal", () => {
-  // A `role` variable used in a non-string comparison / as a value is honest.
-  assert.deepEqual(labels(SRC_PATH, "  const upper = role.toUpperCase();"), []);
-  assert.deepEqual(labels(SRC_PATH, "  roles.push(role);"), []);
-  assert.deepEqual(labels(SRC_PATH, "  if (role === otherRole) {"), []);
+test("SHAPE 2 (switch, auth-subject discriminant): catches `switch (actor.role)`", () => {
+  const hits = labels(TS, 'switch (actor.role) { case "x": return 1; }');
+  assert.ok(hits.includes(LABELS.switch), JSON.stringify(hits));
 });
 
-// ---- Pattern: property-access `.role` is NOT matched (domain roles) -------
-test("does NOT flag property-access `.role` comparisons (chat-message / proof-stage / text roles)", () => {
-  // These are DOMAIN roles accessed as properties, not the bare auth `role`.
-  assert.deepEqual(labels(SRC_PATH, '  message.role === "user"'), []);
-  assert.deepEqual(labels(SRC_PATH, '  const isDraft = args.role === "draft";'), []);
-  assert.deepEqual(labels(SRC_PATH, '  if (actor.role !== "guest") grant();'), [
-    "auth-actor role gating `actor.role`",
-  ]);
-  // Rust text-role enum comparison on a property is not a bare-role string
-  // branch (property access + enum variant, not a string literal).
+test("SHAPE 2 (negative): does NOT flag a switch on a domain role with non-auth cases", () => {
   assert.deepEqual(
-    labels("crates/kaifuu-tyrano/src/parse.rs", "  u.role == TextRole::Dialogue"),
+    labels(TS, 'switch (message.role) { case "user": return 1; case "assistant": return 2; }'),
+    [],
+  );
+  assert.deepEqual(
+    labels(TS, 'switch (role) { case "draft": return 1; case "qa": return 2; }'),
     [],
   );
 });
 
-// ---- Patterns: isAdmin / is_admin, hasRole / has_role --------------------
+// =========================================================================
+// Previously-missed shape 3 — INEQUALITY (`!==` / `!=`); the old regex only
+// caught `===` / `==`.
+// =========================================================================
+test('SHAPE 3 (inequality): catches `role !== "viewer"` and `role != "admin"` (was missed)', () => {
+  assert.deepEqual(labels(TS, 'if (role !== "viewer") deny();'), [LABELS.comparison]);
+  assert.deepEqual(labels(TS, "const bad = role != 'admin';"), [LABELS.comparison]);
+});
+
+test('SHAPE 3 (negative): does NOT flag `role !== "inventory_only"` (asset-surface domain role)', () => {
+  assert.deepEqual(labels(TS, 'return role !== "inventory_only";'), []);
+  // `role !== undefined` is not a string-literal comparison at all.
+  assert.deepEqual(labels(TS, "if (role !== undefined) map(role);"), []);
+});
+
+// =========================================================================
+// Previously-missed shape 4 — role-keyed LOOKUP MAP (`ROLES[role]` /
+// `ROLE_PERMISSIONS[role]`); the old regex never saw element-access indexing.
+// =========================================================================
+test("SHAPE 4 (lookup map): catches `ROLES[role]` and `ROLE_PERMISSIONS[role]` (was missed)", () => {
+  assert.ok(labels(TS, "const perms = ROLES[role];").includes(LABELS.lookup));
+  assert.deepEqual(labels(TS, "const perms = ROLE_PERMISSIONS[role];"), [LABELS.lookup]);
+  // actor.role index is also an auth-subject read → both labels; lookup present.
+  const both = labels(TS, "const perms = rolePermissions[actor.role];");
+  assert.ok(both.includes(LABELS.lookup) && both.includes(LABELS.subject), JSON.stringify(both));
+});
+
+test("SHAPE 4 (negative): does NOT flag domain maps `roles[role]` / `accepted[role]`", () => {
+  assert.deepEqual(labels(TS, "const e = roles[role];"), []);
+  assert.deepEqual(labels(TS, "accepted[role] = outcome.accepted;"), []);
+  assert.deepEqual(labels(TS, "const a = fixture.roles[role].attempts;"), []);
+});
+
+// =========================================================================
+// Alias / destructuring role reads (branch on a variable that aliases a role).
+// =========================================================================
+test('catches an aliased role read: `const r = user.role; if (r === "admin")`', () => {
+  const hits = labels(TS, ["const r = user.role;", 'if (r === "admin") grant();'].join("\n"));
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches a destructured/aliased role read: `const { role: r } = actor; r === "owner"`', () => {
+  const hits = labels(TS, ["const { role: r } = actor;", 'if (r === "owner") grant();'].join("\n"));
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test("does NOT flag an aliased DOMAIN role read compared to a non-auth value", () => {
+  // `const role = edition.translationRole; role === "official_translation"` —
+  // the real catalog shape (bare-`role` alias, non-auth value).
+  assert.deepEqual(
+    labels(
+      TS,
+      ["const role = edition.translationRole;", 'const y = role === "official_translation";'].join(
+        "\n",
+      ),
+    ),
+    [],
+  );
+});
+
+// =========================================================================
+// Auth-subject `.role` read in any context (a bare access, not only a compare).
+// =========================================================================
+test("catches a bare `actor.role` / `principal.role` read even outside a comparison", () => {
+  assert.deepEqual(labels(TS, "return actor.role;"), [LABELS.subject]);
+  assert.deepEqual(labels(TS, "const r = principal.role;"), [LABELS.subject]);
+});
+
+test("does NOT flag a non-auth-subject `.role` read (`message.role`, `row.role`, `user.roles`)", () => {
+  assert.deepEqual(labels(TS, "const x = message.role;"), []);
+  assert.deepEqual(labels(TS, "const x = row.role;"), []);
+  assert.deepEqual(labels(TS, "for (const r of user.roles) {}"), []);
+});
+
+// =========================================================================
+// Classic name-based shortcuts — preserved from the original guard.
+// =========================================================================
 test("catches `isAdmin` / `is_admin` auth-gating booleans", () => {
-  assert.deepEqual(labels(SRC_PATH, "  if (user.isAdmin) grant();"), [
-    "auth-role boolean `isAdmin` / `is_admin`",
-  ]);
-  assert.deepEqual(labels("crates/foo/src/lib.rs", "  if user.is_admin {"), [
-    "auth-role boolean `isAdmin` / `is_admin`",
-  ]);
+  assert.deepEqual(labels(TS, "if (user.isAdmin) grant();"), [LABELS.isAdmin]);
+  assert.deepEqual(
+    labels(RS, "if user.is_admin { grant(); }").filter((l) => l === LABELS.isAdmin),
+    [LABELS.isAdmin],
+  );
 });
 
 test("catches `hasRole(...)` / `has_role(...)` auth-gating helpers", () => {
-  assert.deepEqual(labels(SRC_PATH, '  if (hasRole(user, "admin")) grant();'), [
-    "auth-role helper `hasRole(...)` / `has_role(...)`",
-  ]);
-  assert.deepEqual(labels("crates/foo/src/lib.rs", '  if has_role(user, "admin") {'), [
-    "auth-role helper `hasRole(...)` / `has_role(...)`",
-  ]);
-});
-
-// ---- Patterns: roleValues, ROLES enum, actor.role ------------------------
-test("catches a `roleValues` auth-roles enum", () => {
-  assert.deepEqual(labels(SRC_PATH, "  const admin = roleValues.admin;"), [
-    "auth-roles enum `roleValues`",
-  ]);
-});
-
-test("catches an all-caps `ROLES` auth-roles enum but NOT a lowercase `roles` collection", () => {
-  assert.deepEqual(labels(SRC_PATH, "  const admin = ROLES.ADMIN;"), ["auth-roles enum `ROLES`"]);
-  // A lowercase `roles` array/field is a legitimate domain collection.
-  assert.deepEqual(labels(SRC_PATH, "  for (const r of user.roles) {"), []);
-});
-
-test("catches `actor.role` auth-actor role gating", () => {
-  assert.deepEqual(labels(SRC_PATH, '  if (actor.role === "admin") grant();'), [
-    "auth-actor role gating `actor.role`",
-  ]);
-  // `actor.role` is caught even outside a string compare — any access is the
-  // anti-pattern (the permission-based AuthorizationActor carries no role).
-  assert.deepEqual(labels(SRC_PATH, "  return actor.role;"), [
-    "auth-actor role gating `actor.role`",
-  ]);
-});
-
-// ---- Allowlist marker (inline + comment-block-above) --------------------
-test("an inline `authz-guard:allow domain-role` marker exempts the line", () => {
-  const marked = '  if (role === "draft") { // authz-guard:allow domain-role — proof stage role';
-  assert.deepEqual(labels(SRC_PATH, marked), []);
-});
-
-test("a marker in the contiguous comment block ABOVE exempts the line below", () => {
-  const block = [
-    "  // authz-guard:allow domain-role — provider-proof stage role",
-    '  if (role === "draft") {',
-  ].join("\n");
+  // hasRole(...) is a call; the "admin" string is an argument, not a role-read
+  // comparison, so only the helper label fires.
+  assert.deepEqual(labels(TS, 'if (hasRole(user, "admin")) grant();'), [LABELS.hasRole]);
   assert.deepEqual(
-    findViolations(SRC_PATH, block).map((v) => v.pattern),
-    [],
+    labels(RS, 'if has_role(user, "admin") { }').filter((l) => l === LABELS.hasRole),
+    [LABELS.hasRole],
   );
 });
 
-test("a marker on a comment block separated by code does NOT exempt a later line", () => {
-  // The marker only covers the IMMEDIATELY following code line (contiguous
-  // comment block); a line after intervening code is not exempt.
+test("catches a `roleValues` auth-roles enum and an all-caps `ROLES` enum", () => {
+  assert.deepEqual(labels(TS, "const admin = roleValues.admin;"), [LABELS.roleValues]);
+  assert.deepEqual(labels(TS, "const admin = ROLES.ADMIN;"), [LABELS.roles]);
+  // A lowercase `roles` array/field is a legitimate domain collection.
+  assert.deepEqual(labels(TS, "for (const r of user.roles) {}"), []);
+});
+
+// =========================================================================
+// Rust shapes — pragmatic pattern-scan.
+// =========================================================================
+test('RUST: catches an auth-role branch `user.role == "admin"` and `role != "viewer"`', () => {
+  assert.ok(labels(RS, 'if user.role == "admin" { grant(); }').includes(LABELS.comparison));
+  assert.ok(labels(RS, 'if role != "viewer" { deny(); }').includes(LABELS.comparison));
+});
+
+test('RUST: catches a `match role { "admin" => ... }` auth branch', () => {
+  const hits = labels(RS, ["match role {", '  "admin" => 1,', "  _ => 0,", "}"].join("\n"));
+  assert.ok(hits.includes(LABELS.switch), JSON.stringify(hits));
+});
+
+test("RUST: catches `ROLES[role]` lookup and `principal.role` auth-subject read", () => {
+  assert.ok(labels(RS, "let p = ROLES[role];").includes(LABELS.lookup));
+  assert.ok(labels(RS, "let r = principal.role;").includes(LABELS.subject));
+});
+
+test("RUST (negative): does NOT flag domain role branches (enum variant / non-auth value / two reads)", () => {
+  // `TextRole` enum variant comparison — not a string literal.
+  assert.deepEqual(labels(RS, "x.filter(|u| u.role == TextRole::Dialogue)"), []);
+  // `r.role == "primary"` — a non-auth domain value.
+  assert.deepEqual(labels(RS, 'if r.role == "primary" { 1 }'), []);
+  // `s.role == role` — two role reads, no string literal.
+  assert.deepEqual(labels(RS, "x.filter(|s| s.role == role)"), []);
+});
+
+// =========================================================================
+// The expression-narrow `// authz-guard:allow domain-role` marker.
+// =========================================================================
+test("an inline `authz-guard:allow domain-role` marker exempts the flagged line", () => {
+  const marked = 'if (user.role === "admin") { } // authz-guard:allow domain-role — system actor';
+  assert.deepEqual(labels(TS, marked), []);
+});
+
+test("a marker in the contiguous comment block ABOVE exempts the code line below", () => {
   const block = [
-    "  // authz-guard:allow domain-role — proof stage role",
-    "  doSomethingElse();",
-    '  if (role === "admin") {',
+    "// authz-guard:allow domain-role — provider-proof stage role",
+    'if (role === "admin") {',
   ].join("\n");
-  const hits = findViolations(SRC_PATH, block).map((v) => v.pattern);
-  assert.deepEqual(hits, ['auth role-name branching: `role === "..."` / `role == "..."`']);
+  assert.deepEqual(labels(TS, block), []);
+});
+
+test("the marker is EXPRESSION-NARROW: a marker block separated by code does NOT exempt a later line", () => {
+  const block = [
+    "// authz-guard:allow domain-role — proof stage role",
+    "doSomethingElse();",
+    'if (user.role === "admin") {',
+  ].join("\n");
+  assert.ok(isFlagged(TS, block), "later line after intervening code must still flag");
 });
 
 test("a bare `authz-guard:allow` with NO reason token does NOT exempt (mandatory reason)", () => {
-  // The marker requires a non-empty token after `allow` so a bare marker
-  // cannot silently opt a real auth-role branch out.
-  const bareInline = '  if (role === "admin") { // authz-guard:allow';
-  assert.deepEqual(labels(SRC_PATH, bareInline), [
-    'auth role-name branching: `role === "..."` / `role == "..."`',
-  ]);
-  const bareAbove = ["  // authz-guard:allow", '  if (role === "admin") {'].join("\n");
-  assert.deepEqual(
-    findViolations(SRC_PATH, bareAbove).map((v) => v.pattern),
-    ['auth role-name branching: `role === "..."` / `role == "..."`'],
-  );
+  assert.ok(isFlagged(TS, 'if (user.role === "admin") { } // authz-guard:allow'));
+  assert.ok(isFlagged(TS, ["// authz-guard:allow", 'if (role === "admin") {'].join("\n")));
 });
 
-test("the marker exempts every pattern, not just the role-name branch", () => {
-  // isAdmin / hasRole / actor.role behind a genuine domain marker pass too.
+test("the marker exempts every shape, not just the comparison (e.g. `isAdmin`, lookup)", () => {
   assert.deepEqual(
-    labels(SRC_PATH, "  if (user.isAdmin) { // authz-guard:allow domain-role — system actor"),
+    labels(TS, "if (user.isAdmin) { } // authz-guard:allow domain-role — trusted system actor"),
+    [],
+  );
+  assert.deepEqual(
+    labels(TS, "const p = ROLES[role]; // authz-guard:allow domain-role — documented domain table"),
     [],
   );
 });
 
-// ---- CLI: scan scope + exit codes ----------------------------------------
-test('CLI exits 1 on a crafted shipped-src file with `if (role === "admin")`', () => {
-  const dir = mkdtempSync(join(tmpdir(), "audit-roles-"));
-  // Place the probe UNDER a */src/ tree so it is in scan scope.
-  const srcDir = join(dir, "apps/itotori/src");
-  mkdirSync(srcDir, { recursive: true });
-  const probe = join(srcDir, "probe-admin-role.ts");
-  writeFileSync(probe, 'export function gate(role: string) {\n  return role === "admin";\n}\n');
+// =========================================================================
+// The two REAL domain-role allowlist sites + the LLM message-role uses pass.
+// =========================================================================
+test('the real provider-proof stage role `role === "draft"` passes (non-auth value)', () => {
+  assert.deepEqual(labels(TS, 'if (role === "draft") {'), []);
+});
+
+test('the real catalog translation-source role `role === "official_translation"` passes', () => {
+  assert.deepEqual(labels(TS, 'const ok = role === "official_translation";'), []);
+});
+
+test('the LLM message-role uses `{ role: "system" }` / `message.role === "user"` pass', () => {
+  assert.deepEqual(labels(TS, 'const m = { role: "system", content: text };'), []);
+  assert.deepEqual(labels(TS, 'const isUser = message.role === "user";'), []);
+});
+
+// =========================================================================
+// CLI: scan scope + exit codes, incl. a temp-file probe for each missed shape.
+// =========================================================================
+test('CLI exits 1 on a shipped-src probe with `user.role === "admin"` (property-access shape)', () => {
+  const probe = writeShippedProbe(
+    "probe-property-access.ts",
+    'export function gate(user: { role: string }) {\n  return user.role === "admin";\n}\n',
+  );
   const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
   assert.match(stderr, /no-hardcoded-roles audit failed/u);
+  assert.match(stderr, /comparison on a role read/u);
 });
 
-test("CLI exits 0 on a crafted shipped-src file with only clean domain-role code", () => {
-  const dir = mkdtempSync(join(tmpdir(), "audit-roles-"));
-  const srcDir = join(dir, "apps/itotori/src");
-  mkdirSync(srcDir, { recursive: true });
-  const probe = join(srcDir, "probe-clean.ts");
-  writeFileSync(
-    probe,
+test("CLI exits 1 on a shipped-src probe with `switch (role)` (switch shape)", () => {
+  const probe = writeShippedProbe(
+    "probe-switch.ts",
+    'export function gate(role: string) {\n  switch (role) {\n    case "admin":\n      return true;\n    default:\n      return false;\n  }\n}\n',
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /switch on a role read/u);
+});
+
+test('CLI exits 1 on a shipped-src probe with `role !== "viewer"` (inequality shape)', () => {
+  const probe = writeShippedProbe(
+    "probe-inequality.ts",
+    'export function gate(role: string) {\n  return role !== "viewer";\n}\n',
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /comparison on a role read/u);
+});
+
+test("CLI exits 1 on a shipped-src probe with `ROLE_PERMISSIONS[role]` (lookup-map shape)", () => {
+  const probe = writeShippedProbe(
+    "probe-lookup.ts",
+    "const ROLE_PERMISSIONS: Record<string, string[]> = {};\nexport const permsFor = (role: string) => ROLE_PERMISSIONS[role];\n",
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /lookup map/u);
+});
+
+test("CLI exits 0 on a shipped-src probe with only clean domain-role code", () => {
+  const probe = writeShippedProbe(
+    "probe-clean.ts",
     [
       'export const pick = (message: { role: string }) => message.role === "user";',
       'export const stage = (args: { role: string }) => args.role === "draft";',
+      "export const lookup = (roles: Record<string, unknown>, role: string) => roles[role];",
     ].join("\n"),
   );
   const { code, stdout } = runAuditCli(probe);
@@ -215,12 +365,9 @@ test("CLI exits 0 on a crafted shipped-src file with only clean domain-role code
 });
 
 test("CLI ignores a violation in a file OUTSIDE shipped src (not in scan scope)", () => {
-  // A file NOT under an apps/packages/crates */src/ tree is never scanned,
-  // so a blatant `role === "admin"` there does not fail the guard. This proves
-  // the scan-scope filter (tests/fixtures/scripts trees are out of scope).
   const dir = mkdtempSync(join(tmpdir(), "audit-roles-"));
   const probe = join(dir, "not-shipped-src.ts");
-  writeFileSync(probe, 'export const gate = (role: string) => role === "admin";\n');
+  writeFileSync(probe, 'export const gate = (user: { role: string }) => user.role === "admin";\n');
   const { code, stdout } = runAuditCli(probe);
   assert.equal(code, 0);
   assert.match(stdout, /audit passed/u);

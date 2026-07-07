@@ -31,26 +31,44 @@ fails verification.
 ## No-Hardcoded-Roles Guard
 
 A CI guard enforces the "Authorization checks must not branch on role names"
-rule above. `scripts/audit-no-hardcoded-roles.mjs` scans shipped source
-(`apps/*/src`, `packages/*/src`, `crates/*/src`, excluding tests/fixtures/docs)
-and fails the build (non-zero) on any auth-role-name branching:
+rule above. `scripts/audit-no-hardcoded-roles.mjs` is **AST-based**: it parses
+shipped source (`apps/*/src`, `packages/*/src`, `crates/*/src`, excluding
+tests/fixtures/docs) — the TypeScript compiler API for `.ts`/`.tsx`/`.js`/`.mjs`
+files (mirroring `authorization-matrix.test.ts`), a pragmatic pattern-scan for
+Rust `.rs` — and fails the build (non-zero) on any auth-role-name branching.
 
-- `role === "..."` / `role == "..."` — a bare `role` variable compared to a
-  string literal (`if (role === "admin")`).
-- `isAdmin` / `is_admin`, `hasRole(...)` / `has_role(...)` — classic
-  auth-gating shortcuts.
-- `roleValues` / `ROLES` — an auth-roles enum (the shape the permission model,
-  `permissionValues`, replaces).
-- `actor.role` — gating on the authorization actor's role (the
-  permission-based `AuthorizationActor` carries only `userId`).
+A **role read** is an identifier named `role`, any `<obj>.role` property access,
+or a variable that aliases one (`const r = x.role`, `const { role } = x`). A
+role-read branch is an **auth** violation (rather than a legitimate domain role)
+when ANY of these hold, in these shapes:
 
-Property-access comparisons such as `message.role === "user"` (a chat-message
-role) or `args.role === "draft"` (a proof-stage role) are NOT flagged — they
-are domain roles, not auth roles.
+- **comparison** — `===`/`==`/`!==`/`!=` between a role read and a string
+  literal (`if (user.role === "admin")`, `if (role !== "viewer")`);
+- **switch** — `switch` on a role read with string-literal cases
+  (`switch (role) { case "admin": … }`);
+- **lookup map** — indexing an auth-roles map by a role read (`ROLES[role]`,
+  `ROLE_PERMISSIONS[actor.role]`);
+- **auth-subject read** — any `<subject>.role` where the subject is an auth
+  actor (`user`, `actor`, `principal`, `session`, `subject`, …), regardless of
+  the compared value (the permission-based `AuthorizationActor` carries only
+  `userId`);
+- **name-based** — `isAdmin`/`is_admin`, `hasRole(...)`/`has_role(...)`,
+  `roleValues`, `ROLES`.
 
-A genuine **domain** (non-auth) role that must branch on a bare `role` value
-carries an explicit per-line marker so a reviewer can judge each exemption
-individually:
+The auth-vs-domain distinction is by the role VALUE, the auth-subject object, or
+the map name — because the shape alone cannot tell `user.role === "admin"`
+(auth) from `args.role === "draft"` (a proof stage). A role read is auth iff it
+is on an auth-subject object, OR its compared/case value is a known auth role
+NAME (`admin`, `owner`, `moderator`, `editor`, `viewer`, `guest`, `member`,
+`superuser`, `root`, …), OR its lookup container is a known auth-roles map. The
+LLM message roles (`user`, `assistant`, `system`, `tool`, …) and the domain
+roles present in the tree (`draft`, `qa`, `official_translation`,
+`inventory_only`, `primary`, `TextRole` enum variants, `roles[role]` /
+`accepted[role]` domain maps) are therefore NOT flagged.
+
+A genuine **domain** (non-auth) role that must branch on an auth-role-NAME value
+in a domain context carries an explicit per-line marker so a reviewer can judge
+each exemption individually:
 
 ```ts
 // authz-guard:allow domain-role — proof stage role, not an auth role
@@ -59,11 +77,14 @@ if (role === "draft") {
 
 The marker requires a non-empty token after `allow` (the convention is the
 literal `domain-role` tag plus a short reason); a bare `// authz-guard:allow`
-does NOT exempt. The marker may sit inline on the line or in the contiguous
-comment block directly above it. The two current domain-role exemptions are a
-provider-proof stage role (`apps/itotori/src/provider-proof/harness.ts`) and a
-DLsite translation-source role
-(`packages/itotori-db/src/services/catalog-recorded-importers.ts`).
+does NOT exempt. It is **expression-narrow**: it exempts only the flagged line
+(inline trailing marker) or the single code line immediately below a contiguous
+`//`-comment block — never a whole file or region. The two current domain-role
+exemptions branch on non-auth values (`role === "draft"` /
+`role === "official_translation"`) so they already pass on value; the marker
+documents that intent: a provider-proof stage role
+(`apps/itotori/src/provider-proof/harness.ts`) and a DLsite translation-source
+role (`packages/itotori-db/src/services/catalog-recorded-importers.ts`).
 
 The guard runs in `just check` (which `just ci` depends on), next to the
 `audit-no-hardcoded-cost` and `audit-strictness` guards, and has a companion
