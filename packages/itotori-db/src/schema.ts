@@ -758,6 +758,10 @@ export const catalogReleaseMappings = pgTable(
       table.targetReleaseId,
       table.relationKind,
     ),
+    index("itotori_catalog_release_mappings_source_idx").on(
+      table.sourceReleaseId,
+      table.relationKind,
+    ),
     index("itotori_catalog_release_mappings_provenance_idx").on(table.sourceProvenanceId),
   ],
 );

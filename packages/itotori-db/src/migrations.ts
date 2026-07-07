@@ -304,6 +304,10 @@ export const migrations = [
     id: "0061_auth_authorization_boundary_hardening",
     file: "0061_auth_authorization_boundary_hardening.sql",
   },
+  {
+    id: "0062_catalog_release_mapping_source_traversal_index",
+    file: "0062_catalog_release_mapping_source_traversal_index.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
