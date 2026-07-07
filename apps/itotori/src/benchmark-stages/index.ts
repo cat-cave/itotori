@@ -200,6 +200,25 @@ export {
 } from "./benchmark-facility.js";
 
 export {
+  REAL_RUN_BENCHMARK_SCHEMA_VERSION,
+  RealRunBenchmarkAdapterError,
+  InMemoryRealRunArtifactPort,
+  makeSelfRunDraftRunner,
+  runRealRunBenchmarkAdapter,
+  type ComparatorTierRef,
+  type RealRunArtifactPort,
+  type RealRunBenchmarkAdapterInput,
+  type RealRunBenchmarkReport,
+  type RealRunGenerativeRunners,
+  type RealRunHumanAnchor,
+  type RealRunMetaValidityConfig,
+  type RealRunReadinessGateConfig,
+  type RealRunRef,
+  type ResolvedComparatorTier,
+  type ResolvedSelfRun,
+} from "./benchmark-real-run-adapter.js";
+
+export {
   ZdrJudgeError,
   ZdrModelJudge,
   parseJudgeScoringJson,
