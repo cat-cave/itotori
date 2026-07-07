@@ -20,10 +20,14 @@
 //      this adapter builds reads the run's draft per unit (NO regeneration —
 //      the run already produced it). Its per-unit cost is the run's RECORDED
 //      provider run when the port surfaces one (REAL `usage.cost`, never
-//      approximated); when the run carries no recorded provider run it records
-//      a deterministic zero-cost REPLAY artifact — the cost already happened on
-//      the run, and re-scoring an artifact bills nothing (truthful zero, the
-//      canonical ZERO_COST shape — audit-no-hardcoded-cost clean).
+//      approximated). A deterministic zero-cost REPLAY artifact is recorded
+//      ONLY under EXPLICIT replay intent (the caller declares `replayMode`):
+//      the cost already happened on the run, and re-scoring an artifact bills
+//      nothing (truthful zero, the canonical ZERO_COST shape —
+//      audit-no-hardcoded-cost clean). In the default REAL-RUN mode the adapter
+//      FAILS CLOSED if ANY scored unit lacks its recorded provider run — it
+//      never silently ZERO_COSTs a real run (cost must be REAL/recorded, never
+//      assumed/hardcoded).
 //   3. The COMPOSITION. The adapter threads the resolved run + comparators +
 //      decoded structure + glossary + human anchor into {@link runBenchmarkFacility}
 //      (which owns every scoring stage — it fans out into the contestant
@@ -47,8 +51,10 @@
 //     archives; it consumes run artifacts (drafts / pass-ledger / patch-export
 //     outputs) the orchestrator already produced.
 //   - COST IS REAL: the SELF contestant's cost is the run's recorded provider
-//     run when present (read VERBATIM, never approximated); a recorded-run-less
-//     replay records truthful ZERO_COST. No fabricated or hardcoded billed cost.
+//     run when present (read VERBATIM, never approximated). A recorded-run-less
+//     replay records truthful ZERO_COST ONLY under EXPLICIT replay intent
+//     (`replayMode`); the default REAL-RUN mode FAILS CLOSED on a missing
+//     recorded run (no silent ZERO_COST). No fabricated or hardcoded billed cost.
 //   - BLINDNESS PRESERVED: the adapter never touches the §4.2 anonymization —
 //     it feeds the harness, and the harness anonymizes (the judge still sees
 //     only opaque salted handles; de-anon happens at scoring aggregation).
@@ -156,8 +162,11 @@ export type ResolvedSelfRun = {
    * The run's RECORDED provider runs, keyed by `bridgeUnitId`, when the port
    * surfaces them. Each carries the authoritative REAL `usage.cost` the run
    * billed (read VERBATIM, never approximated). When absent for a unit the
-   * adapter records a deterministic zero-cost REPLAY artifact (the cost already
-   * happened on the run; re-scoring an artifact bills nothing — truthful zero).
+   * adapter records a deterministic zero-cost REPLAY artifact ONLY under
+   * EXPLICIT replay intent (`replayMode` on the adapter input) — the cost
+   * already happened on the run, and re-scoring an artifact bills nothing
+   * (truthful zero). In the default REAL-RUN mode a missing recorded run for
+   * any scored unit FAILS CLOSED (no silent ZERO_COST of a real run).
    */
   providerRunsByUnit?: Record<string, ProviderRunRecord>;
 };
@@ -312,6 +321,18 @@ export type RealRunBenchmarkAdapterInput = {
   humanAnchor: RealRunHumanAnchor;
   /** The archive-free port that resolves the refs into run artifacts. */
   artifactPort: RealRunArtifactPort;
+  /**
+   * EXPLICIT replay-intent signal. When `true`, the adapter records a
+   * deterministic ZERO_COST replay artifact for any scored unit the run did
+   * NOT record a provider run for (the run already produced the draft;
+   * re-scoring bills nothing — truthful zero, the canonical ZERO_COST shape).
+   * When `false`/absent (the default REAL-RUN mode) the adapter FAILS CLOSED
+   * with a typed error if ANY scored unit lacks its recorded provider run — it
+   * never silently ZERO_COSTs a real run (itotori's invariant: cost must be
+   * REAL/recorded, never assumed/hardcoded). ZERO_COST is legitimate ONLY
+   * under this explicit declaration.
+   */
+  replayMode?: boolean;
   /** The prior run's per-signal scores (§10.3 regression telemetry). */
   priorRun?: { perSignalScores: BacklogSignalScore[] };
   /** Optional §3 metric threshold overrides. */
@@ -385,16 +406,24 @@ const SELF_REPLAY_PROMPT_PRESET_VERSION = "1.0.0" as const;
  * Cost is REAL when the run recorded a provider run for the unit: it is read
  * VERBATIM from the recorded run (the authoritative `usage.cost`, never
  * approximated, audit-no-hardcoded-cost clean). When the run carries no
- * recorded provider run, the runner records a deterministic zero-cost REPLAY
- * artifact — re-scoring an already-produced draft bills nothing, so truthful
- * zero (the canonical ZERO_COST shape) is the honest read. The replay run id is
- * derived deterministically from the run ref + unit id, so two replays of the
- * same run produce byte-equal harness output.
+ * recorded provider run the behavior is gated on EXPLICIT replay intent:
+ *   - `replayMode: true`  — record a deterministic zero-cost REPLAY artifact
+ *     (re-scoring an already-produced draft bills nothing, so truthful zero,
+ *     the canonical ZERO_COST shape, is the honest read).
+ *   - `replayMode: false` / absent (REAL-RUN mode) — FAIL CLOSED with a typed
+ *     {@link RealRunBenchmarkAdapterError}; the adapter never silently
+ *     ZERO_COSTs a real run (cost must be REAL/recorded, never
+ *     assumed/hardcoded).
+ *
+ * The replay run id is derived deterministically from the run ref + unit id,
+ * so two replays of the same run produce byte-equal harness output.
  */
 export function makeSelfRunDraftRunner(
   selfRun: ResolvedSelfRun,
   ref: RealRunRef,
+  options?: { replayMode?: boolean },
 ): GenerativeContestantRunner {
+  const replayMode = options?.replayMode === true;
   const drafts = new Map(Object.entries(selfRun.selfDraftsByUnit));
   const recordedRuns = new Map(Object.entries(selfRun.providerRunsByUnit ?? {}));
   return async (unit: ContestantCorpusUnit): Promise<GeneratedContestantOutput> => {
@@ -408,6 +437,11 @@ export function makeSelfRunDraftRunner(
     if (recorded !== undefined) {
       return { targetText, providerRun: recorded };
     }
+    if (!replayMode) {
+      throw new RealRunBenchmarkAdapterError(
+        `real-run mode requires a recorded provider run for every scored unit; run '${ref.runId}' has none for unit '${unit.unitId}' (declare replayMode for an explicit zero-cost replay of an already-produced draft)`,
+      );
+    }
     return { targetText, providerRun: deterministicSelfReplayRun(ref, unit, targetText) };
   };
 }
@@ -420,6 +454,11 @@ export function makeSelfRunDraftRunner(
  * replays of the same run produce byte-equal harness output (no clock, no
  * entropy). Marks itself a replay via the `prompt.presetId` + `usageResponseJson`
  * sentinel so a reviewer sees WHY no billed cost exists.
+ *
+ * Invoked ONLY under EXPLICIT replay intent ({@link makeSelfRunDraftRunner}
+ * `replayMode: true`). In the default REAL-RUN mode a missing recorded run
+ * FAILS CLOSED before this function can ever be reached — ZERO_COST is never
+ * applied to a real run silently.
  */
 function deterministicSelfReplayRun(
   ref: RealRunRef,
@@ -554,8 +593,28 @@ export async function runRealRunBenchmarkAdapter(
     );
   }
 
+  // ── (1b) FAIL CLOSED in REAL-RUN mode if any scored unit lacks its recorded
+  //        provider run. ZERO_COST is legitimate ONLY under EXPLICIT replay
+  //        intent; a real run must carry its REAL recorded cost (never silent
+  //        ZERO_COST). The eager check surfaces the offending units in ONE
+  //        clear error BEFORE any scoring work begins (the per-unit runner
+  //        remains a defense-in-depth guard for the same condition).
+  // ────────────────────────────────────────────────────────────────────────
+  const replayMode = input.replayMode === true;
+  if (!replayMode) {
+    const recordedByUnit = selfRun.providerRunsByUnit ?? {};
+    const missingUnits = selfRun.corpus
+      .filter((unit) => recordedByUnit[unit.unitId] === undefined)
+      .map((unit) => unit.unitId);
+    if (missingUnits.length > 0) {
+      throw new RealRunBenchmarkAdapterError(
+        `real-run mode requires a recorded provider run for every scored unit (cost must be REAL/recorded, never silent ZERO_COST); run '${input.selfRunRef.runId}' is missing recorded provider runs for ${missingUnits.length} unit${missingUnits.length === 1 ? "" : "s"}: ${missingUnits.join(", ")} (declare replayMode for an explicit zero-cost replay of already-produced drafts)`,
+      );
+    }
+  }
+
   // ── (2) Wire the SELF contestant + corpus contestants + generative runners. ──
-  const selfRunner = makeSelfRunDraftRunner(selfRun, input.selfRunRef);
+  const selfRunner = makeSelfRunDraftRunner(selfRun, input.selfRunRef, { replayMode });
 
   const facilityInput: BenchmarkFacilityInput = {
     contestant: {

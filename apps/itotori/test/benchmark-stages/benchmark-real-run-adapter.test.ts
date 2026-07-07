@@ -14,8 +14,10 @@
 //   2. PROVENANCE — the SELF contestant's candidate text IS the run's accepted
 //      drafts (the facility scored the REAL run, not a regeneration).
 //   3. COST IS REAL — when the run records provider runs, the SELF cost
-//      surfaces VERBATIM (no fabrication); a recorded-run-less replay records
-//      truthful ZERO_COST.
+//      surfaces VERBATIM (no fabrication). A recorded-run-less replay records
+//      truthful ZERO_COST ONLY under EXPLICIT replay intent (`replayMode`);
+//      the default REAL-RUN mode FAILS CLOSED on a missing recorded run (no
+//      silent ZERO_COST of a real run).
 //   4. GAME-AGNOSTIC — the resolved corpus carries only generic
 //      `unitId/label/sourceText`; no game/engine/title field anywhere.
 //   5. DETERMINISTIC — two adapter runs on byte-equal inputs produce byte-equal
@@ -279,7 +281,16 @@ function adapterInput(opts: {
   readiness?: { qa: { f1: number } | null };
   selfScore?: number;
   defectiveU1?: boolean;
+  /**
+   * EXPLICIT replay-intent signal threaded into the adapter input. Defaults to
+   * `true` when `withRecordedRuns` is false so the legacy "no recorded runs"
+   * fixtures (provenance / blindness / determinism / readiness) still exercise
+   * the explicit-replay path; tests that pin the REAL-RUN fail-closed path
+   * pass `replayMode: false` explicitly.
+   */
+  replayMode?: boolean;
 }): RealRunBenchmarkAdapterInput {
+  const { withRecordedRuns, replayMode = !withRecordedRuns } = opts;
   const swaps: RobustnessSwap[] = [
     { swapId: "order-swap", swapKind: "order", judges: judges(), panelSeed: "alt-seed" },
     { swapId: "judge-swap", swapKind: "judge", judges: judges(), panelSeed: "real-run-seed" },
@@ -287,7 +298,7 @@ function adapterInput(opts: {
   const port = new InMemoryRealRunArtifactPort()
     .registerSelfRun(
       REAL_RUN_REF,
-      resolvedSelfRun({ withRecordedRuns: opts.withRecordedRuns, defectiveU1: opts.defectiveU1 }),
+      resolvedSelfRun({ withRecordedRuns, defectiveU1: opts.defectiveU1 }),
     )
     .registerComparatorTier(FAN_REF, FAN_TIER)
     .registerComparatorTier(PRO_REF, PRO_TIER);
@@ -311,6 +322,7 @@ function adapterInput(opts: {
     anonymizationSalt: "real-run-adapter-secret-2026-07-07",
     humanAnchor: { raters: ["trevor"], ratings: humanScores(opts.selfScore ?? 4) },
     artifactPort: port,
+    replayMode,
     ...(opts.withMetaValidity
       ? {
           metaValidity: {
@@ -417,8 +429,14 @@ describe("runRealRunBenchmarkAdapter — CRUX: scores a REAL run vs fan/pro + an
     expect(selfRunIds.has("prov-run-self-u-real")).toBe(true);
   });
 
-  it("SELF cost is truthful ZERO_COST when the run carries no recorded provider runs", async () => {
-    const report = await runRealRunBenchmarkAdapter(adapterInput({ withRecordedRuns: false }));
+  it("SELF cost is truthful ZERO_COST ONLY under EXPLICIT replayMode (replay intent declared)", async () => {
+    // The caller declares replay intent → the adapter records a deterministic
+    // zero-cost replay artifact for each unit the run did NOT record a provider
+    // run for (re-scoring an already-produced draft bills nothing → truthful
+    // zero). This is the ONLY legitimate ZERO_COST path.
+    const report = await runRealRunBenchmarkAdapter(
+      adapterInput({ withRecordedRuns: false, replayMode: true }),
+    );
     const selfCost = report.costLatency.perSystem.find(
       (s) => s.contestantKind === "itotori_context_on",
     );
@@ -426,6 +444,49 @@ describe("runRealRunBenchmarkAdapter — CRUX: scores a REAL run vs fan/pro + an
     expect(selfCost!.isGenerative).toBe(true);
     // Re-scoring an already-produced draft bills nothing → truthful zero.
     expect(selfCost!.totalCostMicrosUsd).toBe(0);
+    // The replay run is marked as such (no billed cost, deterministic).
+    const selfReplayRuns = report.facility.harness.providerRuns.filter(
+      (r) => r.provider.providerName === "itotori-real-run-adapter",
+    );
+    expect(selfReplayRuns.length).toBe(2);
+    for (const run of selfReplayRuns) {
+      expect(run.cost.amountMicrosUsd).toBe(0);
+      expect(run.cost.costKind).toBe("zero");
+      expect(run.usageResponseJson).toMatchObject({ _real_run_replay_no_billing: true });
+    }
+  });
+
+  it("REAL-RUN mode FAILS CLOSED when a scored unit lacks its recorded provider run (no silent ZERO_COST)", async () => {
+    // No replayMode declared → REAL-RUN mode. A real run missing its recorded
+    // cost for any scored unit MUST fail closed: cost must be REAL/recorded,
+    // never silently ZERO_COST (the cost-fidelity hole the codex audit closed).
+    await expect(
+      runRealRunBenchmarkAdapter(adapterInput({ withRecordedRuns: false, replayMode: false })),
+    ).rejects.toThrow(/real-run mode requires a recorded provider run for every scored unit/);
+  });
+
+  it("REAL-RUN mode FAILS CLOSED listing every unit missing a recorded provider run", async () => {
+    // A partial gap (one of two units lacks a recorded run) still fails closed,
+    // and the error names the offending unit so a reviewer can fix the run.
+    const partial: ResolvedSelfRun = {
+      targetLocale: "en-US",
+      corpus: resolvedSelfRun({ withRecordedRuns: true }).corpus,
+      selfDraftsByUnit: resolvedSelfRun({ withRecordedRuns: true }).selfDraftsByUnit,
+      providerRunsByUnit: {
+        // Only U1 carries a recorded run; U2 is missing.
+        [U1]: realBilledCost(0.00000602),
+      },
+    };
+    const port = new InMemoryRealRunArtifactPort()
+      .registerSelfRun(REAL_RUN_REF, partial)
+      .registerComparatorTier(FAN_REF, FAN_TIER)
+      .registerComparatorTier(PRO_REF, PRO_TIER);
+    await expect(
+      runRealRunBenchmarkAdapter({
+        ...adapterInput({ withRecordedRuns: true, replayMode: false }),
+        artifactPort: port,
+      }),
+    ).rejects.toThrow(new RegExp(U2));
   });
 
   it("DETERMINISTIC over the adapter-owned signals (caller-runner telemetry aside)", async () => {
@@ -541,9 +602,11 @@ describe("runRealRunBenchmarkAdapter — REFUSAL (typed errors before scoring)",
       })
       .registerComparatorTier(FAN_REF, FAN_TIER)
       .registerComparatorTier(PRO_REF, PRO_TIER);
+    // replayMode bypasses the real-run recorded-run check so the missing-DRAFT
+    // refusal (raised per-unit inside the SELF runner) is what surfaces here.
     await expect(
       runRealRunBenchmarkAdapter({
-        ...adapterInput({ withRecordedRuns: false }),
+        ...adapterInput({ withRecordedRuns: false, replayMode: true }),
         artifactPort: port,
       }),
     ).rejects.toBeInstanceOf(RealRunBenchmarkAdapterError);
@@ -590,9 +653,9 @@ describe("makeSelfRunDraftRunner — the SELF contestant runner in isolation", (
     expect(out.providerRun.runId).toBe("prov-run-self-u-real");
   });
 
-  it("falls back to a deterministic zero-cost replay when no run is recorded", async () => {
+  it("records a deterministic zero-cost replay ONLY under explicit replayMode", async () => {
     const run = resolvedSelfRun({});
-    const runner = makeSelfRunDraftRunner(run, REAL_RUN_REF);
+    const runner = makeSelfRunDraftRunner(run, REAL_RUN_REF, { replayMode: true });
     const out = await runner(run.corpus[0]!);
     expect(out.targetText).toBe(run.selfDraftsByUnit[U1]!);
     expect(out.providerRun.cost.amountMicrosUsd).toBe(0);
@@ -601,5 +664,11 @@ describe("makeSelfRunDraftRunner — the SELF contestant runner in isolation", (
     // Deterministic run id (two calls → byte-equal).
     const again = await runner(run.corpus[0]!);
     expect(again.providerRun.runId).toBe(out.providerRun.runId);
+  });
+
+  it("FAILS CLOSED in REAL-RUN mode (no replayMode) when a unit lacks a recorded run", async () => {
+    const run = resolvedSelfRun({}); // no recorded provider runs
+    const runner = makeSelfRunDraftRunner(run, REAL_RUN_REF); // default real-run mode
+    await expect(runner(run.corpus[0]!)).rejects.toBeInstanceOf(RealRunBenchmarkAdapterError);
   });
 });
