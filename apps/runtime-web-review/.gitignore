@@ -1,0 +1,5 @@
+# Playwright e2e (fe-runtime-web-playwright) run output — never committed.
+test-results/
+playwright-report/
+blob-report/
+.playwright/

@@ -24,10 +24,25 @@
           nodejs_24
           just
           git
+          # Browser lane: nix-provided Chromium for the runtime-web Playwright
+          # e2e (fe-runtime-web-playwright) AND the Rust MV/MZ real-browser
+          # gates. Playwright's own downloaded browsers are dynamically linked
+          # against libraries absent on NixOS, so the deterministic, hermetic
+          # binary is this nix-built Chromium (pinned by flake.lock).
+          chromium
         ];
         env = {
           # rust-analyzer std sources
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+          # The runtime-web Playwright config reads this to launch the
+          # nix-provided Chromium via `executablePath` instead of a downloaded
+          # browser. The Rust adapters read `UTSUSHI_BROWSER_BIN` for the same
+          # binary, so both point at one deterministic Chromium.
+          PLAYWRIGHT_CHROMIUM_BIN = "${pkgs.chromium}/bin/chromium";
+          UTSUSHI_BROWSER_BIN = "${pkgs.chromium}/bin/chromium";
+          # Never let Playwright try to download its own (unusable on NixOS)
+          # browser bundle; the nix Chromium above is the only supported one.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
         };
         shellHook = ''
           # Heavy/churny build artifacts live on the fast RAID0 scratch, not the boot drive.

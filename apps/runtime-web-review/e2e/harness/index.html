@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Utsushi runtime-web review — e2e harness</title>
+  </head>
+  <body>
+    <!--
+      Real-browser e2e harness for the Utsushi runtime-web review UI
+      (fe-runtime-web-playwright). It mounts the SHIPPING app modules
+      (embed.ts / demo-bundle.ts / branch-explorer-view.ts / input-bridge.ts)
+      against the app's OWN committed fixtures + built-in seed data — NO game
+      bytes, no live game, no live server. Playwright drives the rendered DOM
+      and asserts observable behavior. This harness is test scaffolding: it is
+      NOT part of the shipped app entry (main.ts).
+    -->
+    <main>
+      <section data-testid="embed-region">
+        <div id="embed-root"></div>
+      </section>
+      <section data-testid="demo-region">
+        <div id="demo-root"></div>
+      </section>
+      <section data-testid="branch-region">
+        <div id="branch-root"></div>
+      </section>
+      <section data-testid="input-region">
+        <div id="input-root"></div>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
