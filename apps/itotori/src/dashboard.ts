@@ -452,18 +452,32 @@ function jobsPanelState(
   }
 }
 
-// ITOTORI-056 — the Style guide panel is `unknown` when the status read
-// model does not carry the route context (locale branch + policy version)
-// the builder needs; `unavailable` when the builder load throws; and
-// `populated` when it returns a context. It is never `empty` — once the
-// builder resolves it carries a policy / proposal view to render.
+// ITOTORI-127 — a missing style-guide route context (no selected locale
+// branch, or no policy version on the selected branch) degrades to a
+// PANEL-SCOPED `unavailable` state naming the missing piece, instead of
+// collapsing the whole dashboard. The rest of the dashboard still renders;
+// only the style-guide panel shows why its context is missing. The builder
+// load throwing is also `unavailable` (carrying the thrown error); a
+// successful load is `populated`. It is never `empty` — once the builder
+// resolves it carries a policy / proposal view to render.
 async function styleGuidePanelState(
   status: ProjectDashboardStatus,
 ): Promise<DashboardPanelState<StyleGuideBuilderContext>> {
   const localeBranchId = status.selectedLocaleBranchId;
   const policyVersionId = status.currentStyleGuidePolicyVersionId;
-  if (localeBranchId === null || policyVersionId === null) {
-    return { state: "unknown" };
+  // ITOTORI-127 — name the specific missing route-context piece so the
+  // unavailable notice tells a reviewer WHY the style-guide panel could not
+  // load (no branch selected vs. branch selected but no policy version),
+  // instead of an opaque "not queried" state. The inline null checks keep
+  // TypeScript narrowing both ids to `string` for the load below.
+  if (localeBranchId === null) {
+    return { state: "unavailable", error: "no locale branch is selected" };
+  }
+  if (policyVersionId === null) {
+    return {
+      state: "unavailable",
+      error: "the selected locale branch has no style-guide policy version",
+    };
   }
   try {
     const context = await loadStyleGuideContext({

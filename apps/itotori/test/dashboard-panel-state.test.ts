@@ -212,15 +212,16 @@ describe("ITOTORI-056 dashboard panel state model", () => {
     });
   });
 
-  describe("style-guide panel distinguishes unknown vs populated", () => {
-    it("renders data-panel-state=unknown when the status lacks the builder route context", async () => {
+  describe("style-guide panel degrades to unavailable when context is missing (ITOTORI-127)", () => {
+    it("renders data-panel-state=unavailable naming the reason when no locale branch is selected", async () => {
       server.use(
         http.get("http://itotori.test/api/projects/status", () =>
           apiJson("projects.status", {
             ...dashboardStatusFixture,
-            // No style-guide policy version wired on the selected branch
-            // → the builder has no route context → the panel is unknown,
-            // NOT empty.
+            // No locale branch + no style-guide policy version → the
+            // builder has no route context → the panel degrades to a
+            // panel-scoped unavailable state naming why, NOT unknown and
+            // NOT a whole-dashboard failure.
             selectedLocaleBranchId: null,
             currentStyleGuidePolicyVersionId: null,
           }),
@@ -240,10 +241,53 @@ describe("ITOTORI-056 dashboard panel state model", () => {
       const root = await renderReadyRoot();
 
       const styleGuide = root.querySelector("#style-guide");
-      expect(styleGuide?.getAttribute("data-panel-state")).toBe("unknown");
-      expect(styleGuide?.querySelector('[data-panel-state-notice="unknown"]')).not.toBeNull();
+      expect(styleGuide?.getAttribute("data-panel-state")).toBe("unavailable");
+      expect(styleGuide?.querySelector('[data-panel-state-notice="unavailable"]')).not.toBeNull();
+      // The unavailable notice names WHY the context is missing.
+      expect(styleGuide?.textContent).toContain("could not be loaded");
+      expect(styleGuide?.textContent).toContain("no locale branch is selected");
+      // A missing context is never presented as confirmed empty or unqueried.
       expect(styleGuide?.querySelector('[data-panel-state-notice="empty"]')).toBeNull();
-      expect(styleGuide?.textContent).toContain("not been queried");
+      expect(styleGuide?.querySelector('[data-panel-state-notice="unknown"]')).toBeNull();
+      expect(styleGuide?.textContent).not.toContain("not been queried");
+      // ITOTORI-127 — the rest of the dashboard still renders (the missing
+      // style-guide context degrades to a PANEL-scoped state, not a
+      // whole-dashboard error).
+      expect(root.querySelector('[data-state="ready"]')).not.toBeNull();
+      expect(root.querySelector('[data-state="error"]')).toBeNull();
+      expect(root.querySelector('#jobs[data-panel-state="populated"]')).not.toBeNull();
+      expect(root.querySelector("#projects")).not.toBeNull();
+    });
+
+    it("renders data-panel-state=unavailable naming the policy version when a branch has no policy", async () => {
+      server.use(
+        http.get("http://itotori.test/api/projects/status", () =>
+          apiJson("projects.status", {
+            ...dashboardStatusFixture,
+            // A locale branch IS selected, but it carries no style-guide
+            // policy version → the panel names the policy-version gap.
+            currentStyleGuidePolicyVersionId: null,
+          }),
+        ),
+        http.get("http://itotori.test/api/projects", () =>
+          apiJson("projects.list", {
+            projects: [{ ...dashboardStatusFixture, currentStyleGuidePolicyVersionId: null }],
+          }),
+        ),
+      );
+      const root = await renderReadyRoot();
+
+      const styleGuide = root.querySelector("#style-guide");
+      expect(styleGuide?.getAttribute("data-panel-state")).toBe("unavailable");
+      expect(styleGuide?.querySelector('[data-panel-state-notice="unavailable"]')).not.toBeNull();
+      expect(styleGuide?.textContent).toContain("could not be loaded");
+      expect(styleGuide?.textContent).toContain(
+        "the selected locale branch has no style-guide policy version",
+      );
+      expect(styleGuide?.querySelector('[data-panel-state-notice="unknown"]')).toBeNull();
+      // The rest of the dashboard still renders.
+      expect(root.querySelector('[data-state="ready"]')).not.toBeNull();
+      expect(root.querySelector('[data-state="error"]')).toBeNull();
     });
 
     it("renders data-panel-state=populated when the builder route context is present", async () => {
