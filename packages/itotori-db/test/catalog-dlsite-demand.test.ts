@@ -127,8 +127,8 @@ describe("dlsite-demand recorded importer", () => {
       );
       expect(missing?.metadata).toMatchObject({
         diagnostics: expect.arrayContaining([
-          expect.objectContaining({ sourceField: "demand.wishlist_count" }),
-          expect.objectContaining({ sourceField: "demand.rank_facts" }),
+          expect.objectContaining({ sourceField: "wishlist_count" }),
+          expect.objectContaining({ sourceField: "rank_facts" }),
         ]),
       });
       expect(missing?.demandFacts.map((fact) => fact.factKind)).toEqual(

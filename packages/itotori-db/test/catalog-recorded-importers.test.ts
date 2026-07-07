@@ -858,11 +858,11 @@ describe("catalog recorded source importers", () => {
             code: "missing_demand_field",
             fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
             sourceRevision: "dlsite-storefront-synthetic-2026-06-18",
-            sourceField: "demand.wishlist_count",
+            sourceField: "wishlist_count",
           }),
           expect.objectContaining({
             code: "missing_demand_field",
-            sourceField: "demand.rank_facts",
+            sourceField: "rank_facts",
           }),
         ],
       });

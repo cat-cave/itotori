@@ -81,9 +81,9 @@ describe("dlsite-demand recorded fixture mapper", () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: "missing_demand_field",
-          sourceField: "demand.wishlist_count",
+          sourceField: "wishlist_count",
         }),
-        expect.objectContaining({ code: "missing_demand_field", sourceField: "demand.rank_facts" }),
+        expect.objectContaining({ code: "missing_demand_field", sourceField: "rank_facts" }),
       ]),
     );
     expect(mapped.facts.map((fact) => fact.factKind)).toEqual(

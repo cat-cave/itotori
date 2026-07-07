@@ -499,6 +499,7 @@ function parseDlsiteStorefrontResponse(
     demand,
     ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
     "DLsite",
+    DLSITE_DEMAND_RECORDED_SOURCE_FIELD_BY_FIELD,
   );
   const diagnostics = [...demandDiags, ...normalized.mappingDiagnostics];
   const languages = normalized.languageStatuses;
@@ -583,6 +584,7 @@ export function mapDlsiteDemandFactsForRecordedResponse(
       normalized.demand,
       ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
       "DLsite",
+      DLSITE_DEMAND_RECORDED_SOURCE_FIELD_BY_FIELD,
     ),
   };
 }
@@ -1497,25 +1499,42 @@ function steamLanguageStatuses(
   };
 }
 
+// DLsite demand fields are normalized into a `demand` subtree, but the recorded
+// source response carries them at the payload top level. Missing-demand
+// warnings must cite where the datum actually came from in the recorded DLsite
+// response, so this map translates each normalized demand field into its
+// recorded source response field path.
+const DLSITE_DEMAND_RECORDED_SOURCE_FIELD_BY_FIELD: Readonly<Record<string, string>> = {
+  dl_count: "dl_count",
+  rating_summary: "rating_summary",
+  rating_histogram: "rating_histogram",
+  wishlist_count: "wishlist_count",
+  rank_facts: "rank_facts",
+};
+
 function demandDiagnostics(
   fixture: CatalogRecordedStorefrontFixture,
   response: CatalogRecordedStorefrontResponse,
   demand: CatalogJsonRecord,
   fields: readonly string[],
   sourceLabel: string,
+  recordedSourceFieldByField: Readonly<Record<string, string>>,
 ): CatalogRecordedStorefrontDiagnostic[] {
   return fields
     .filter((field) => demand[field] === undefined)
-    .map((field) => ({
-      code: catalogRecordedStorefrontDiagnosticCodeValues.missingDemandField,
-      severity: "warning",
-      fixtureId: fixture.fixtureId,
-      sourceRevision: fixture.sourceVersion,
-      stepKey: response.stepKey,
-      sourceId: response.sourceId,
-      sourceField: `demand.${field}`,
-      message: `${sourceLabel} recorded response did not include demand.${field}`,
-    }));
+    .map((field) => {
+      const recordedSourceField = recordedSourceFieldByField[field] ?? field;
+      return {
+        code: catalogRecordedStorefrontDiagnosticCodeValues.missingDemandField,
+        severity: "warning",
+        fixtureId: fixture.fixtureId,
+        sourceRevision: fixture.sourceVersion,
+        stepKey: response.stepKey,
+        sourceId: response.sourceId,
+        sourceField: recordedSourceField,
+        message: `${sourceLabel} recorded response did not include ${recordedSourceField}`,
+      };
+    });
 }
 
 function dlsiteDemandFacts(
