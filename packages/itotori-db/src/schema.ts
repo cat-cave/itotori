@@ -1,6 +1,7 @@
 import {
   bigint as pgBigint,
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -1660,7 +1661,7 @@ export const branchPolicyGlossaryReferences = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     updateReason: text("update_reason").notNull(),
-    eventId: text("event_id"),
+    eventId: text("event_id").references(() => events.eventId, { onDelete: "set null" }),
     supersedesReferenceId: text("supersedes_reference_id"),
     actorUserId: text("actor_user_id").references(() => users.userId, {
       onDelete: "set null",
@@ -1687,6 +1688,24 @@ export const branchPolicyGlossaryReferences = pgTable(
       table.glossaryContentHash,
     ),
     index("itotori_branch_policy_glossary_refs_event_idx").on(table.eventId),
+    // ITOTORI-140: bring the Drizzle metadata into parity with migration 0022.
+    // These check constraints are the source-of-truth runtime guards documented
+    // in the SQL; modeling them here keeps schema-drift introspection honest. A
+    // regression test (branch-policy-glossary-references-migration-drift) pins
+    // the round-trip between this declaration and pg_constraint.
+    check("itotori_branch_policy_glossary_refs_sequence_check", sql`${table.versionSequence} > 0`),
+    check(
+      "itotori_branch_policy_glossary_refs_term_refs_check",
+      sql`jsonb_typeof(${table.glossaryTermRefs}) = 'array'`,
+    ),
+    check(
+      "itotori_branch_policy_glossary_refs_review_refs_check",
+      sql`jsonb_typeof(${table.glossaryReviewItemRefs}) = 'array'`,
+    ),
+    check(
+      "itotori_branch_policy_glossary_refs_metadata_check",
+      sql`jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
   ],
 );
 
