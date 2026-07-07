@@ -20,11 +20,21 @@
 // (for strict `asStrictRecord` bodies) `additionalProperties: false` so a
 // renamed / leaked top-level field fails. The DEEP field-by-field contract
 // stays with the guards (`assertItotoriApiResponse`), which the harness runs
-// ALONGSIDE this schema. A parity test proves the two agree on real fixtures so
-// they cannot silently fork.
+// ALONGSIDE this schema.
+//
+// fe-openapi-parity-all-routes: every strict (`additionalProperties:false`)
+// body's `required` list is GENERATED from `ITOTORI_STRICT_API_BODY_KEYS` — the
+// SAME array the guard passes to `asStrictRecord`. There is no hand-authored
+// second source for a strict body's envelope, so it cannot fork from the guard
+// for ANY strict route (the reviewer / workspace / queue-health / asset-decision
+// routes that previously lacked a parity fixture included). The loose
+// (`additionalProperties:true`) bodies keep their guard<->schema parity proven
+// by real response fixtures. The parity suite adds per-route teeth for all 33
+// routes (a dropped required key or a leaked strict field fails).
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
   API_ERROR_RESPONSE_CODES,
+  ITOTORI_STRICT_API_BODY_KEYS,
   reviewerSingleActionList,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
@@ -123,13 +133,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Shared -----------------------------------------------------------------
   ApiErrorResponse: () =>
     object({
-      required: ["error", "code"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiErrorResponse,
       properties: { error: str, code: { enum: [...API_ERROR_RESPONSE_CODES] } },
       additionalProperties: false,
     }),
   ReviewerQueuePermissionView: () =>
     object({
-      required: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueuePermissionView,
       properties: {
         actorUserId: str,
         canReadQueue: bool,
@@ -142,13 +152,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Asset decisions --------------------------------------------------------
   ApiAssetDecisionsResponse: () =>
     object({
-      required: ["decisions"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
       properties: { decisions: arr },
       additionalProperties: false,
     }),
   ApiCandidateAssetsResponse: () =>
     object({
-      required: ["candidateAssets"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
       properties: { candidateAssets: arr },
       additionalProperties: false,
     }),
@@ -156,22 +166,26 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Catalog ----------------------------------------------------------------
   CatalogBenchmarkSeedFinderReadModel: () =>
     object({
-      required: ["targetLanguage", "generatedAt", "rows"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
       properties: { targetLanguage: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.benchmark_seed_finder.v0.1",
     }),
   CatalogCompletenessBenchmarkPools: () =>
     object({
-      required: ["targetLanguage", "pools", "publicReport"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
       properties: { targetLanguage: str, pools: obj, publicReport: obj },
       additionalProperties: false,
     }),
   CatalogConflictReviewReadModel: () =>
-    object({ required: ["rows"], properties: { rows: arr }, additionalProperties: false }),
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
+      properties: { rows: arr },
+      additionalProperties: false,
+    }),
   CatalogOpportunityRankingReadModel: () =>
     object({
-      required: ["targetLanguage", "generatedAt", "weightsVersion", "rows"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
       properties: { targetLanguage: str, weightsVersion: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.opportunity_ranking.v0.1",
@@ -180,14 +194,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Reviewer ---------------------------------------------------------------
   ReviewerQueueDashboardReadModel: (ref) =>
     object({
-      required: [
-        "localeBranchId",
-        "generatedAt",
-        "permission",
-        "rows",
-        "aggregate",
-        "defaultBatchRequest",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueueDashboardReadModel,
       properties: {
         localeBranchId: str,
         permission: ref("ReviewerQueuePermissionView"),
@@ -200,27 +207,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ReviewerDetailContext: (ref) =>
     object({
-      required: [
-        "reviewItemId",
-        "permission",
-        "item",
-        "source",
-        "draft",
-        "policy",
-        "glossary",
-        "branchReference",
-        "qaFindings",
-        "runtimeEvidence",
-        "rationaleRefs",
-        "transitions",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerDetailContext,
       properties: { reviewItemId: str, permission: ref("ReviewerQueuePermissionView") },
       additionalProperties: false,
     }),
   ReviewerBatchPreview: (ref) =>
     object({
-      required: ["request", "permission", "items", "aggregate", "allAllowed", "permissionDenied"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchPreview,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         items: arr,
@@ -232,13 +225,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ReviewerBatchExecuteResult: () =>
     object({
-      required: ["request", "preview", "applied", "refusedAll", "appliedAll"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchExecuteResult,
       properties: { applied: arr, refusedAll: bool, appliedAll: bool },
       additionalProperties: false,
     }),
   ReviewerSingleActionResult: () =>
     object({
-      required: ["request", "preview", "outcome", "applied", "refused"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerSingleActionResult,
       properties: { applied: bool, refused: bool },
       additionalProperties: false,
     }),
@@ -254,7 +247,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Workspace --------------------------------------------------------------
   WorkspaceProjectBrowseReadModel: (ref) =>
     object({
-      required: ["generatedAt", "permission", "projects", "diagnostics"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceProjectBrowseReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         projects: arr,
@@ -265,14 +258,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceSceneBrowseReadModel: (ref) =>
     object({
-      required: [
-        "generatedAt",
-        "permission",
-        "projectId",
-        "localeBranchId",
-        "scenes",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSceneBrowseReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         projectId: str,
@@ -285,14 +271,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceAssetBrowseReadModel: (ref) =>
     object({
-      required: [
-        "generatedAt",
-        "permission",
-        "projectId",
-        "localeBranchId",
-        "assets",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceAssetBrowseReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         projectId: str,
@@ -305,20 +284,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceComparisonReadModel: (ref) =>
     object({
-      required: [
-        "generatedAt",
-        "permission",
-        "reviewItemId",
-        "localeBranchId",
-        "sourceRevisionId",
-        "bridgeUnitId",
-        "sourceUnitKey",
-        "contextNote",
-        "cells",
-        "hasFinal",
-        "runtimeEvidenceLinks",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceComparisonReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         reviewItemId: str,
@@ -333,18 +299,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceSearchReadModel: (ref) =>
     object({
-      required: [
-        "generatedAt",
-        "permission",
-        "projectId",
-        "localeBranchId",
-        "query",
-        "normalizedQuery",
-        "mode",
-        "results",
-        "droppedOpaqueCount",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSearchReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         projectId: str,
@@ -361,7 +316,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceCorrectionPreviewReadModel: (ref) =>
     object({
-      required: ["generatedAt", "permission", "localeBranchId", "units", "diagnostics"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         localeBranchId: str,
@@ -373,22 +328,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   WorkspaceCorrectionSubmitReadModel: (ref) =>
     object({
-      required: [
-        "generatedAt",
-        "permission",
-        "localeBranchId",
-        "batchId",
-        "batchLabel",
-        "submittedCount",
-        "edits",
-        "repairCandidateReportIds",
-        "decisionQueueReportIds",
-        "needsContextReportIds",
-        "affectedBridgeUnitIds",
-        "writebacks",
-        "scheduledRerunJobIds",
-        "diagnostics",
-      ],
+      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionSubmitReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
         localeBranchId: str,
@@ -480,12 +420,16 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   CostDrilldownPage: () =>
     object({
-      required: ["filter", "pagination", "rows"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.CostDrilldownPage,
       properties: { filter: obj, pagination: obj, rows: arr },
       additionalProperties: false,
     }),
   ApiBenchmarkReportsResponse: () =>
-    object({ required: ["reports"], properties: { reports: arr }, additionalProperties: false }),
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
+      properties: { reports: arr },
+      additionalProperties: false,
+    }),
   RuntimeDashboardStatus: () =>
     object({
       required: [
@@ -528,7 +472,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   QueueHealthReadModel: () =>
     object({
-      required: ["generatedAt", "outbox", "jobs"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.QueueHealthReadModel,
       properties: { outbox: obj, jobs: obj },
       additionalProperties: false,
       schemaVersion: "itotori.queue_health.v0.1",
@@ -632,7 +576,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ReviewerBatchActionRequest: () =>
     object({
-      required: ["action", "actorUserId", "selections"],
+      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
       properties: { action: str, actorUserId: str, selections: arr },
       additionalProperties: false,
     }),

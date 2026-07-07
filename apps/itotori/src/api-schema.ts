@@ -165,6 +165,159 @@ export const API_ERROR_RESPONSE_CODES = [
 ] as const satisfies readonly ApiErrorResponse["code"][];
 
 /**
+ * fe-openapi-parity-all-routes — the SINGLE authority for every STRICT
+ * (`additionalProperties:false`) API body's top-level key list. Each guard
+ * below passes its array here to {@link asStrictRecord} (so a leaked/renamed
+ * top-level key is rejected by the runtime guard) AND the OpenAPI emitter
+ * (`api-contract.ts`) generates that component's `required` +
+ * `additionalProperties:false` from the SAME array. There is therefore exactly
+ * one source for a strict body's envelope — the emitted JSON-Schema cannot fork
+ * from the guard, for EVERY strict route (not just the ones with a parity
+ * fixture). `schemaVersion`, when present, is listed in `keys` (the guard
+ * asserts it as a literal) and the emitter pins it as a `const`.
+ *
+ * DECISION (Trevor 2026-07-07): the guards remain the contract AUTHORITY and
+ * zod stays deferred; this metadata is a reusable VIEW of the guards' existing
+ * strict key-lists, not a second schema definition. Deep field types stay with
+ * the guards; this pins only the wire envelope (top-level keys + strictness +
+ * schemaVersion const), consistent with the emitter's stated altitude.
+ */
+export const ITOTORI_STRICT_API_BODY_KEYS = {
+  ApiErrorResponse: ["error", "code"],
+  ReviewerQueuePermissionView: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
+  ApiAssetDecisionsResponse: ["decisions"],
+  ApiCandidateAssetsResponse: ["candidateAssets"],
+  CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
+  CatalogCompletenessBenchmarkPools: ["targetLanguage", "pools", "publicReport"],
+  CatalogConflictReviewReadModel: ["rows"],
+  CatalogOpportunityRankingReadModel: [
+    "schemaVersion",
+    "targetLanguage",
+    "generatedAt",
+    "weightsVersion",
+    "rows",
+  ],
+  ReviewerQueueDashboardReadModel: [
+    "schemaVersion",
+    "localeBranchId",
+    "generatedAt",
+    "permission",
+    "rows",
+    "aggregate",
+    "defaultBatchRequest",
+  ],
+  ReviewerDetailContext: [
+    "reviewItemId",
+    "permission",
+    "item",
+    "source",
+    "draft",
+    "policy",
+    "glossary",
+    "branchReference",
+    "qaFindings",
+    "runtimeEvidence",
+    "rationaleRefs",
+    "transitions",
+    "diagnostics",
+  ],
+  ReviewerBatchPreview: [
+    "request",
+    "permission",
+    "items",
+    "aggregate",
+    "allAllowed",
+    "permissionDenied",
+  ],
+  ReviewerBatchExecuteResult: ["request", "preview", "applied", "refusedAll", "appliedAll"],
+  ReviewerSingleActionResult: ["request", "preview", "outcome", "applied", "refused"],
+  CostDrilldownPage: ["filter", "pagination", "rows"],
+  ApiBenchmarkReportsResponse: ["reports"],
+  QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
+  WorkspaceProjectBrowseReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projects",
+    "diagnostics",
+  ],
+  WorkspaceSceneBrowseReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "scenes",
+    "diagnostics",
+  ],
+  WorkspaceAssetBrowseReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "assets",
+    "diagnostics",
+  ],
+  WorkspaceComparisonReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "reviewItemId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "bridgeUnitId",
+    "sourceUnitKey",
+    "contextNote",
+    "cells",
+    "hasFinal",
+    "runtimeEvidenceLinks",
+    "diagnostics",
+  ],
+  WorkspaceSearchReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "query",
+    "normalizedQuery",
+    "mode",
+    "results",
+    "droppedOpaqueCount",
+    "diagnostics",
+  ],
+  WorkspaceCorrectionPreviewReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "localeBranchId",
+    "units",
+    "diagnostics",
+  ],
+  WorkspaceCorrectionSubmitReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "localeBranchId",
+    "batchId",
+    "batchLabel",
+    "submittedCount",
+    "edits",
+    "repairCandidateReportIds",
+    "decisionQueueReportIds",
+    "needsContextReportIds",
+    "affectedBridgeUnitIds",
+    "writebacks",
+    "scheduledRerunJobIds",
+    "diagnostics",
+  ],
+  ReviewerBatchActionRequest: ["action", "actorUserId", "selections"],
+} as const satisfies Readonly<Record<string, readonly string[]>>;
+
+export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
+
+/**
  * ITOTORI-051 — assert an {@link ApiErrorResponse} body. Error responses are
  * not tied to a single route id (every route may emit one), so they are
  * validated independently of {@link assertItotoriApiResponse}. The MSW
@@ -176,7 +329,7 @@ export function assertItotoriApiErrorResponse(
   value: unknown,
   label = "ApiErrorResponse",
 ): asserts value is ApiErrorResponse {
-  const response = asStrictRecord(value, label, ["error", "code"]);
+  const response = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiErrorResponse);
   assertString(response.error, `${label}.error`);
   assertEnum(response.code, API_ERROR_RESPONSE_CODES, `${label}.code`);
 }
@@ -425,11 +578,11 @@ export function parseRuntimeEvidenceRequest(body: unknown): ApiRuntimeEvidenceRe
 
 export function parseReviewerBatchPreviewRequest(body: unknown): ApiReviewerBatchPreviewRequest {
   return parseRequest("ApiReviewerBatchPreviewRequest", () => {
-    const request = asStrictRecord(body, "ApiReviewerBatchPreviewRequest", [
-      "action",
-      "actorUserId",
-      "selections",
-    ]);
+    const request = asStrictRecord(
+      body,
+      "ApiReviewerBatchPreviewRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
+    );
     assertEnum(
       request.action,
       reviewerQueueActionList as readonly ReviewerQueueAction[],
@@ -664,7 +817,11 @@ function assertApiAssetDecisionsResponse(
   value: unknown,
   label = "ApiAssetDecisionsResponse",
 ): asserts value is ApiAssetDecisionsResponse {
-  const response = asStrictRecord(value, label, ["decisions"]);
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiAssetDecisionsResponse,
+  );
   const decisions = asArray(response.decisions, `${label}.decisions`);
   for (const [index, decision] of decisions.entries()) {
     assertAssetDecisionRecord(decision, `${label}.decisions[${index}]`);
@@ -675,7 +832,11 @@ function assertApiCandidateAssetsResponse(
   value: unknown,
   label = "ApiCandidateAssetsResponse",
 ): asserts value is ApiCandidateAssetsResponse {
-  const response = asStrictRecord(value, label, ["candidateAssets"]);
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiCandidateAssetsResponse,
+  );
   const candidateAssets = asArray(response.candidateAssets, `${label}.candidateAssets`);
   for (const [index, candidate] of candidateAssets.entries()) {
     assertCandidateAssetRecord(candidate, `${label}.candidateAssets[${index}]`);
@@ -743,15 +904,11 @@ export function assertReviewerQueueDashboardReadModel(
   value: unknown,
   label = "ReviewerQueueDashboardReadModel",
 ): asserts value is ReviewerQueueDashboardReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "localeBranchId",
-    "generatedAt",
-    "permission",
-    "rows",
-    "aggregate",
-    "defaultBatchRequest",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueueDashboardReadModel,
+  );
   assertLiteral(model.schemaVersion, "reviewer.queue_dashboard.v0.1", `${label}.schemaVersion`);
   assertString(model.localeBranchId, `${label}.localeBranchId`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
@@ -828,12 +985,11 @@ function assertReviewerQueueDashboardAggregate(value: unknown, label: string): v
 }
 
 function assertReviewerQueuePermissionView(value: unknown, label: string): void {
-  const permission = asStrictRecord(value, label, [
-    "actorUserId",
-    "canReadQueue",
-    "canManageQueue",
-    "denialReasons",
-  ]);
+  const permission = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueuePermissionView,
+  );
   assertString(permission.actorUserId, `${label}.actorUserId`);
   assertBoolean(permission.canReadQueue, `${label}.canReadQueue`);
   assertBoolean(permission.canManageQueue, `${label}.canManageQueue`);
@@ -871,14 +1027,11 @@ export function assertWorkspaceCorrectionPreviewReadModel(
   value: unknown,
   label = "WorkspaceCorrectionPreviewReadModel",
 ): asserts value is WorkspaceCorrectionPreviewReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "localeBranchId",
-    "units",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.correction_preview.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -941,23 +1094,11 @@ export function assertWorkspaceCorrectionSubmitReadModel(
   value: unknown,
   label = "WorkspaceCorrectionSubmitReadModel",
 ): asserts value is WorkspaceCorrectionSubmitReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "localeBranchId",
-    "batchId",
-    "batchLabel",
-    "submittedCount",
-    "edits",
-    "repairCandidateReportIds",
-    "decisionQueueReportIds",
-    "needsContextReportIds",
-    "affectedBridgeUnitIds",
-    "writebacks",
-    "scheduledRerunJobIds",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionSubmitReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.correction_submit.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1096,13 +1237,11 @@ export function assertWorkspaceProjectBrowseReadModel(
   value: unknown,
   label = "WorkspaceProjectBrowseReadModel",
 ): asserts value is WorkspaceProjectBrowseReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projects",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceProjectBrowseReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.project_browse.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1177,15 +1316,11 @@ export function assertWorkspaceSceneBrowseReadModel(
   value: unknown,
   label = "WorkspaceSceneBrowseReadModel",
 ): asserts value is WorkspaceSceneBrowseReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "scenes",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSceneBrowseReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.scene_browse.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1243,15 +1378,11 @@ export function assertWorkspaceAssetBrowseReadModel(
   value: unknown,
   label = "WorkspaceAssetBrowseReadModel",
 ): asserts value is WorkspaceAssetBrowseReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "assets",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceAssetBrowseReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.asset_browse.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1284,21 +1415,11 @@ export function assertWorkspaceComparisonReadModel(
   value: unknown,
   label = "WorkspaceComparisonReadModel",
 ): asserts value is WorkspaceComparisonReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "reviewItemId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "bridgeUnitId",
-    "sourceUnitKey",
-    "contextNote",
-    "cells",
-    "hasFinal",
-    "runtimeEvidenceLinks",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceComparisonReadModel,
+  );
   assertLiteral(model.schemaVersion, "workspace.comparison.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1345,19 +1466,7 @@ export function assertWorkspaceSearchReadModel(
   value: unknown,
   label = "WorkspaceSearchReadModel",
 ): asserts value is WorkspaceSearchReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "query",
-    "normalizedQuery",
-    "mode",
-    "results",
-    "droppedOpaqueCount",
-    "diagnostics",
-  ]);
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSearchReadModel);
   assertLiteral(model.schemaVersion, "workspace.search.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
@@ -1399,7 +1508,11 @@ export function assertWorkspaceSearchReadModel(
 }
 
 function assertReviewerBatchActionRequest(value: unknown, label: string): void {
-  const request = asStrictRecord(value, label, ["action", "actorUserId", "selections"]);
+  const request = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
+  );
   assertEnum(
     request.action,
     reviewerQueueActionList as readonly ReviewerQueueAction[],
@@ -1425,7 +1538,11 @@ function parseReviewerBatchActionRequestBody(
   label: string,
 ): ReviewerBatchActionRequest {
   return parseRequest(label, () => {
-    const request = asStrictRecord(body, label, ["action", "actorUserId", "selections"]);
+    const request = asStrictRecord(
+      body,
+      label,
+      ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
+    );
     assertEnum(
       request.action,
       reviewerQueueActionList as readonly ReviewerQueueAction[],
@@ -1459,21 +1576,7 @@ function assertReviewerDetailContext(
   value: unknown,
   label = "ReviewerDetailContext",
 ): asserts value is ReviewerDetailContext {
-  const context = asStrictRecord(value, label, [
-    "reviewItemId",
-    "permission",
-    "item",
-    "source",
-    "draft",
-    "policy",
-    "glossary",
-    "branchReference",
-    "qaFindings",
-    "runtimeEvidence",
-    "rationaleRefs",
-    "transitions",
-    "diagnostics",
-  ]);
+  const context = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ReviewerDetailContext);
   assertString(context.reviewItemId, `${label}.reviewItemId`);
   assertReviewerQueuePermissionView(context.permission, `${label}.permission`);
   if (context.item !== null) {
@@ -1519,14 +1622,7 @@ function assertReviewerBatchPreview(
   value: unknown,
   label = "ReviewerBatchPreview",
 ): asserts value is ReviewerBatchPreview {
-  const preview = asStrictRecord(value, label, [
-    "request",
-    "permission",
-    "items",
-    "aggregate",
-    "allAllowed",
-    "permissionDenied",
-  ]);
+  const preview = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchPreview);
   assertReviewerBatchActionRequest(preview.request, `${label}.request`);
   assertReviewerQueuePermissionView(preview.permission, `${label}.permission`);
   asArray(preview.items, `${label}.items`);
@@ -1555,13 +1651,11 @@ function assertReviewerBatchExecuteResult(
   value: unknown,
   label = "ReviewerBatchExecuteResult",
 ): asserts value is ReviewerBatchExecuteResult {
-  const result = asStrictRecord(value, label, [
-    "request",
-    "preview",
-    "applied",
-    "refusedAll",
-    "appliedAll",
-  ]);
+  const result = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchExecuteResult,
+  );
   assertReviewerBatchActionRequest(result.request, `${label}.request`);
   assertReviewerBatchPreview(result.preview, `${label}.preview`);
   const applied = asArray(result.applied, `${label}.applied`);
@@ -1576,13 +1670,11 @@ function assertReviewerSingleActionResult(
   value: unknown,
   label = "ReviewerSingleActionResult",
 ): asserts value is ReviewerSingleActionResult {
-  const result = asStrictRecord(value, label, [
-    "request",
-    "preview",
-    "outcome",
-    "applied",
-    "refused",
-  ]);
+  const result = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ReviewerSingleActionResult,
+  );
   assertReviewerSingleActionRequest(result.request, `${label}.request`);
   // `preview` is one BatchPreviewItem; the batch preview schema only
   // asserts the item array shape, so assert the load-bearing fields here.
@@ -1732,13 +1824,11 @@ export function assertCatalogOpportunityRankingReadModel(
   value: unknown,
   label = "CatalogOpportunityRankingReadModel",
 ): asserts value is CatalogOpportunityRankingReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "targetLanguage",
-    "generatedAt",
-    "weightsVersion",
-    "rows",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.CatalogOpportunityRankingReadModel,
+  );
   assertLiteral(model.schemaVersion, "catalog.opportunity_ranking.v0.1", `${label}.schemaVersion`);
   assertPublicOpportunityString(model.targetLanguage, `${label}.targetLanguage`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
@@ -1973,12 +2063,11 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
   value: unknown,
   label = "CatalogBenchmarkSeedFinderReadModel",
 ): asserts value is CatalogBenchmarkSeedFinderReadModel {
-  const model = asStrictRecord(value, label, [
-    "schemaVersion",
-    "targetLanguage",
-    "generatedAt",
-    "rows",
-  ]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.CatalogBenchmarkSeedFinderReadModel,
+  );
   assertLiteral(
     model.schemaVersion,
     "catalog.benchmark_seed_finder.v0.1",
@@ -2355,7 +2444,11 @@ export function assertCatalogCompletenessBenchmarkPools(
   value: unknown,
   label = "CatalogCompletenessBenchmarkPools",
 ): asserts value is CatalogCompletenessBenchmarkPools {
-  const model = asStrictRecord(value, label, ["targetLanguage", "pools", "publicReport"]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.CatalogCompletenessBenchmarkPools,
+  );
   assertString(model.targetLanguage, `${label}.targetLanguage`);
   const pools = asStrictRecord(model.pools, `${label}.pools`, [
     "mtl_only",
@@ -2626,7 +2719,11 @@ export function assertCatalogConflictReviewReadModel(
   value: unknown,
   label = "CatalogConflictReviewReadModel",
 ): asserts value is CatalogConflictReviewReadModel {
-  const model = asStrictRecord(value, label, ["rows"]);
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.CatalogConflictReviewReadModel,
+  );
   const rows = asArray(model.rows, `${label}.rows`);
   for (const [index, rowValue] of rows.entries()) {
     const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
@@ -2816,7 +2913,11 @@ function assertApiBenchmarkReportsResponse(
   value: unknown,
   label = "ApiBenchmarkReportsResponse",
 ): asserts value is ApiBenchmarkReportsResponse {
-  const response = asStrictRecord(value, label, ["reports"]);
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
+  );
   const reports = asArray(response.reports, `${label}.reports`);
   for (const [index, report] of reports.entries()) {
     assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);
@@ -2828,7 +2929,7 @@ export function assertQueueHealthReadModel(
   value: unknown,
   label = "QueueHealthReadModel",
 ): asserts value is QueueHealthReadModel {
-  const model = asStrictRecord(value, label, ["schemaVersion", "generatedAt", "outbox", "jobs"]);
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.QueueHealthReadModel);
   assertLiteral(model.schemaVersion, "itotori.queue_health.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertQueueHealthSection(model.outbox, `${label}.outbox`, "outbox");
@@ -3295,7 +3396,7 @@ export function assertProjectCostDrilldownResponse(
   value: unknown,
   label = "ApiProjectCostDrilldownResponse",
 ): asserts value is ApiProjectCostDrilldownResponse {
-  const page = asStrictRecord(value, label, ["filter", "pagination", "rows"]);
+  const page = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.CostDrilldownPage);
 
   const filter = asStrictRecord(page.filter, `${label}.filter`, [
     "projectId",
