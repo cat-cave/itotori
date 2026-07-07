@@ -71,6 +71,24 @@ type DashboardReadResponses = {
   "runtime.status": RuntimeDashboardStatus;
 };
 
+/**
+ * ITOTORI-056 — dashboard panel state model. A panel NEVER presents
+ * unqueried or failed data as a confirmed empty state. The four states:
+ *  - `unknown`     — the panel's data source has not been queried yet.
+ *  - `unavailable` — the query was attempted but failed/errored.
+ *  - `empty`       — the query succeeded and genuinely returned no data.
+ *  - `populated`   — the query succeeded and returned data (rendered).
+ *
+ * The style-guide, glossary, jobs, and benchmark panels each carry one of
+ * these states so a reviewer can tell "the API has not been asked yet"
+ * apart from "the API answered with nothing" and "the API call failed".
+ */
+export type DashboardPanelState<T> =
+  | { state: "unknown" }
+  | { state: "unavailable"; error: string }
+  | { state: "empty" }
+  | { state: "populated"; data: T };
+
 type DashboardData =
   | {
       state: "ready";
@@ -78,11 +96,18 @@ type DashboardData =
       status: ProjectDashboardStatus;
       decisions: DashboardDecisionReadModel;
       reviewerQueue: ReviewerQueueDashboardReadModel;
-      cost: ProjectCostReport;
       costDrilldown: CostDrilldownPage;
-      benchmarks: BenchmarkReportSummary[];
       runtime: RuntimeDashboardStatus;
-      styleGuide: StyleGuideBuilderContext;
+      // ITOTORI-056 — the four panel states. Each panel renders its state
+      // distinctly so unqueried / failed data is never shown as confirmed
+      // empty. `cost` backs both the Jobs panel (via recentRuns) and the
+      // Model cost panel; `benchmarks` backs the Benchmarks, QA agent
+      // metrics, and Benchmark reports panels.
+      styleGuide: DashboardPanelState<StyleGuideBuilderContext>;
+      glossary: DashboardPanelState<unknown[]>;
+      jobs: DashboardPanelState<ProjectCostReport["recentRuns"]>;
+      benchmarks: DashboardPanelState<BenchmarkReportSummary[]>;
+      cost: DashboardPanelState<ProjectCostReport>;
     }
   | {
       state: "empty";
@@ -126,26 +151,39 @@ export async function fetchDashboardData(
     return { state: "empty", projects: [] };
   }
 
-  const [status, decisions, cost, costDrilldown, benchmarksResponse, runtime] = await Promise.all([
-    fetchApi("projects.status", endpoints.status),
-    fetchApi("projects.decisions", endpoints.decisions),
-    fetchApi("projects.cost", endpoints.cost),
+  // `status` is the project shell context (header strip, branch/locale
+  // panels, decision cross-check). It stays a HARD dependency: if it fails
+  // the whole dashboard renders the error state, since every panel below
+  // relies on the project/branch identity it carries.
+  const status = await fetchApi("projects.status", endpoints.status);
+  assertProjectDashboardStatus(status);
+
+  // ITOTORI-056 — the panel-source queries settle INDEPENDENTLY so a single
+  // failed read degrades JUST the panel it backs (unavailable) instead of
+  // collapsing the whole dashboard. `decisions`, `runtime`, `reviewerQueue`,
+  // and `costDrilldown` stay required (their panels are not in the 4-state
+  // scope and they share no source with the four panels); `cost` and
+  // `benchmarks` are isolated because they back the Jobs and Benchmark
+  // panels, and `styleGuide` is isolated because it backs the Style guide
+  // panel.
+  const [decisions, costDrilldown, runtime, reviewerQueue] = await Promise.all([
+    fetchApi("projects.decisions", endpoints.decisions).then((value) => {
+      assertDecisionReadMatchesStatus(status, value);
+      return value;
+    }),
     fetchApi("projects.costDrilldown", endpoints.costDrilldown),
-    fetchApi("projects.benchmarks", endpoints.benchmarks),
     fetchApi("runtime.status", endpoints.runtime),
+    fetchReviewerQueueForStatus(endpoints.reviewerQueue, status),
   ]);
-  assertDecisionReadMatchesStatus(status, decisions);
-  const reviewerQueueEndpoint = withQueryParam(
-    endpoints.reviewerQueue,
-    "localeBranchId",
-    status.selectedLocaleBranchId,
-  );
-  const reviewerQueue =
-    status.selectedLocaleBranchId === null
-      ? emptyReviewerQueue(status.projectId)
-      : await fetchApi("reviewer.queue", reviewerQueueEndpoint);
   assertReviewerQueueDashboardReadModel(reviewerQueue);
-  const styleGuide = await loadStyleGuideContext(styleGuideInputFromStatus(status));
+
+  const [costResult, benchmarksResult] = await Promise.allSettled([
+    fetchApi("projects.cost", endpoints.cost),
+    fetchApi("projects.benchmarks", endpoints.benchmarks),
+  ]);
+  const cost = costPanelState(costResult);
+  const benchmarks = benchmarksPanelState(benchmarksResult);
+  const styleGuide = await styleGuidePanelState(status);
 
   return {
     state: "ready",
@@ -153,11 +191,18 @@ export async function fetchDashboardData(
     status,
     decisions,
     reviewerQueue,
-    cost,
     costDrilldown,
-    benchmarks: benchmarksResponse.reports,
     runtime,
     styleGuide,
+    // ITOTORI-056 — the glossary has no API-backed query wired yet, so it
+    // is ALWAYS `unknown`. Rendering it as `empty` ("No glossary entries
+    // were returned by the API") would present unqueried data as a
+    // confirmed empty state — exactly the conflation this state model
+    // exists to prevent.
+    glossary: { state: "unknown" },
+    jobs: jobsPanelState(cost),
+    benchmarks,
+    cost,
   };
 }
 
@@ -217,6 +262,97 @@ async function fetchApi<RouteId extends DashboardReadRouteId>(
   const body = await response.json();
   assertItotoriApiResponse(routeId as ItotoriApiRouteId, body);
   return body as DashboardReadResponses[RouteId];
+}
+
+// ITOTORI-056 — fetch the reviewer queue for the status's selected locale
+// branch. When no branch is selected the queue is structurally empty (no
+// branch to scope items to); this is NOT the same as the panel `empty`
+// state, it is a valid zero-row read model returned inline.
+async function fetchReviewerQueueForStatus(
+  endpoint: string,
+  status: ProjectDashboardStatus,
+): Promise<ReviewerQueueDashboardReadModel> {
+  if (status.selectedLocaleBranchId === null) {
+    return emptyReviewerQueue(status.projectId);
+  }
+  return fetchApi(
+    "reviewer.queue",
+    withQueryParam(endpoint, "localeBranchId", status.selectedLocaleBranchId),
+  );
+}
+
+// ITOTORI-056 — derive the per-panel state for each of the four panels from
+// the settled promise of its data-source query. A rejected promise becomes
+// `unavailable` (never `empty`); a fulfilled promise becomes `empty` or
+// `populated` based on whether the payload genuinely carries data.
+
+function settleError(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
+function costPanelState(
+  result: PromiseSettledResult<ProjectCostReport>,
+): DashboardPanelState<ProjectCostReport> {
+  if (result.status === "rejected") {
+    return { state: "unavailable", error: settleError(result.reason) };
+  }
+  // The cost report is a structured read-model: once it loads it is
+  // `populated` (it carries totals / TM reuse even with zero runs). The
+  // Jobs panel derives its own `empty` vs `populated` from recentRuns.
+  return { state: "populated", data: result.value };
+}
+
+function benchmarksPanelState(
+  result: PromiseSettledResult<BenchmarkReportsResponse>,
+): DashboardPanelState<BenchmarkReportSummary[]> {
+  if (result.status === "rejected") {
+    return { state: "unavailable", error: settleError(result.reason) };
+  }
+  const reports = result.value.reports;
+  return reports.length === 0 ? { state: "empty" } : { state: "populated", data: reports };
+}
+
+function jobsPanelState(
+  cost: DashboardPanelState<ProjectCostReport>,
+): DashboardPanelState<ProjectCostReport["recentRuns"]> {
+  switch (cost.state) {
+    case "unknown":
+      return { state: "unknown" };
+    case "unavailable":
+      return { state: "unavailable", error: cost.error };
+    case "empty":
+      return { state: "empty" };
+    case "populated":
+      return cost.data.recentRuns.length === 0
+        ? { state: "empty" }
+        : { state: "populated", data: cost.data.recentRuns };
+  }
+}
+
+// ITOTORI-056 — the Style guide panel is `unknown` when the status read
+// model does not carry the route context (locale branch + policy version)
+// the builder needs; `unavailable` when the builder load throws; and
+// `populated` when it returns a context. It is never `empty` — once the
+// builder resolves it carries a policy / proposal view to render.
+async function styleGuidePanelState(
+  status: ProjectDashboardStatus,
+): Promise<DashboardPanelState<StyleGuideBuilderContext>> {
+  const localeBranchId = status.selectedLocaleBranchId;
+  const policyVersionId = status.currentStyleGuidePolicyVersionId;
+  if (localeBranchId === null || policyVersionId === null) {
+    return { state: "unknown" };
+  }
+  try {
+    const context = await loadStyleGuideContext({
+      localeBranchId,
+      policyVersionId,
+      fixtureState: "empty_policy",
+      permissionProfile: "reviewer",
+    });
+    return { state: "populated", data: context };
+  } catch (error) {
+    return { state: "unavailable", error: settleError(error) };
+  }
 }
 
 function renderLoading(root: HTMLElement): void {
@@ -279,8 +415,8 @@ function renderWorkbench(
   root: HTMLElement,
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
-  const { status, cost, costDrilldown, runtime, projects, benchmarks } = data;
-  const { decisions, reviewerQueue, styleGuide } = data;
+  const { status, costDrilldown, runtime, projects } = data;
+  const { decisions, reviewerQueue, styleGuide, glossary, jobs, benchmarks, cost } = data;
   root.innerHTML = `
     ${dashboardStyles()}
     ${styleGuideBuilderStyles()}
@@ -330,17 +466,17 @@ function renderWorkbench(
         ${renderProjects(projects)}
         ${renderImportStatus(status)}
         ${renderLocaleBranches(status)}
-        ${renderStyleGuide(styleGuide)}
-        ${renderGlossary()}
-        ${renderJobs(cost)}
+        ${renderStyleGuidePanel(styleGuide)}
+        ${renderGlossaryPanel(glossary)}
+        ${renderJobsPanel(jobs)}
         ${renderQaFindings(decisions)}
         ${renderReviewerQueue(reviewerQueue)}
         ${renderRuntimeEvidence(runtime)}
-        ${renderCost(cost)}
+        ${renderCostPanel(cost)}
         ${renderCostDrilldown(costDrilldown)}
-        ${renderBenchmarks(benchmarks, cost, status)}
-        ${renderQaAgentMetrics(benchmarks)}
-        ${renderBenchmarkReports(benchmarks)}
+        ${renderBenchmarksPanel(benchmarks, cost, status)}
+        ${renderQaAgentMetricsPanel(benchmarks)}
+        ${renderBenchmarkReportsPanel(benchmarks)}
       </section>
     </main>
   `;
@@ -441,19 +577,49 @@ function renderLocaleBranches(status: ProjectDashboardStatus): string {
   );
 }
 
-function renderStyleGuide(context: StyleGuideBuilderContext): string {
-  return panel("style-guide", "Style guide", renderStyleGuideBuilderPanel(context));
-}
+// ITOTORI-056 — the four panel-state-aware renderers. Each one carries a
+// `data-panel-state` attribute so a test (or a reviewer inspecting the DOM)
+// can tell `unknown` / `unavailable` / `empty` / `populated` apart. The
+// non-populated states render a state notice INSTEAD of any data-derived
+// body, so unqueried or failed data is never shown as a confirmed empty.
 
-function renderGlossary(): string {
-  return panel("glossary", "Glossary", emptyText("No glossary entries were returned by the API."));
-}
-
-function renderJobs(cost: ProjectCostReport): string {
-  if (cost.recentRuns.length === 0) {
-    return panel("jobs", "Jobs", emptyText("No job or provider runs were returned by the API."));
+function renderStyleGuidePanel(state: DashboardPanelState<StyleGuideBuilderContext>): string {
+  if (state.state !== "populated") {
+    return statePanel(
+      "style-guide",
+      "Style guide",
+      state,
+      stateNotice(state, "Style guide", "No style-guide policy was returned by the API.")!,
+    );
   }
-  const rows = cost.recentRuns
+  return statePanel("style-guide", "Style guide", state, renderStyleGuideBuilderPanel(state.data));
+}
+
+function renderGlossaryPanel(state: DashboardPanelState<unknown[]>): string {
+  return statePanel(
+    "glossary",
+    "Glossary",
+    state,
+    state.state === "populated"
+      ? ""
+      : stateNotice(state, "Glossary", "No glossary entries were returned by the API.")!,
+  );
+}
+
+function renderJobsPanel(state: DashboardPanelState<ProjectCostReport["recentRuns"]>): string {
+  if (state.state !== "populated") {
+    return statePanel(
+      "jobs",
+      "Jobs",
+      state,
+      stateNotice(state, "Jobs", "No job or provider runs were returned by the API.")!,
+    );
+  }
+  return statePanel("jobs", "Jobs", state, renderJobsTable(state.data));
+}
+
+function renderJobsTable(runs: ProjectCostReport["recentRuns"]): string {
+  const rows = runs
     .map(
       (run) => `
         <tr>
@@ -471,29 +637,25 @@ function renderJobs(cost: ProjectCostReport): string {
       `,
     )
     .join("");
-  return panel(
-    "jobs",
-    "Jobs",
-    `
-      <table>
-        <thead>
-          <tr>
-            <th>Task</th>
-            <th>Status</th>
-            <th>Provider</th>
-            <th>Model</th>
-            <th>Prompt</th>
-            <th>Retries</th>
-            <th>Fallback</th>
-            <th>Data policy</th>
-            <th>Cost</th>
-            <th>Tokens</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `,
-  );
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Status</th>
+          <th>Provider</th>
+          <th>Model</th>
+          <th>Prompt</th>
+          <th>Retries</th>
+          <th>Fallback</th>
+          <th>Data policy</th>
+          <th>Cost</th>
+          <th>Tokens</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 function renderQaFindings(decisions: DashboardDecisionReadModel): string {
@@ -642,27 +804,43 @@ function countRuntimeArtifactsByKind(
 // cost-run heuristic. Each row is a recorded run with its quality
 // penalty + QA-agent count; the provider-run cost that the same
 // benchmark generated is tracked through the ledger (Jobs / Model cost).
-function renderBenchmarks(
-  reports: BenchmarkReportSummary[],
-  cost: ProjectCostReport,
+//
+// ITOTORI-056 — the panel now distinguishes the four query states. The
+// benchmark cost metric is only rendered when the cost query also
+// resolved (populated); otherwise it degrades to an explicit
+// "unavailable" so a failed cost read is never shown as a $0.00.
+function renderBenchmarksPanel(
+  state: DashboardPanelState<BenchmarkReportSummary[]>,
+  cost: DashboardPanelState<ProjectCostReport>,
   status: ProjectDashboardStatus,
 ): string {
-  const benchmarkCostRuns = cost.recentRuns.filter((run) => run.taskKind.includes("benchmark"));
+  if (state.state !== "populated") {
+    return statePanel(
+      "benchmarks",
+      "Benchmarks",
+      state,
+      stateNotice(
+        state,
+        "Benchmarks",
+        status.latestEventKind?.includes("benchmark") === true
+          ? `Latest benchmark event: ${status.latestEventKind}`
+          : "No benchmark reports were returned by the API.",
+      )!,
+    );
+  }
+  const reports = state.data;
+  const benchmarkCostRuns =
+    cost.state === "populated"
+      ? cost.data.recentRuns.filter((run) => run.taskKind.includes("benchmark"))
+      : [];
   const benchmarkCostMicros = benchmarkCostRuns.reduce(
     (sum, run) => sum + (run.amountMicrosUsd ?? 0),
     0,
   );
-  if (reports.length === 0) {
-    return panel(
-      "benchmarks",
-      "Benchmarks",
-      emptyText(
-        status.latestEventKind?.includes("benchmark") === true
-          ? `Latest benchmark event: ${status.latestEventKind}`
-          : "No benchmark reports were returned by the API.",
-      ),
-    );
-  }
+  const benchmarkCostCell =
+    cost.state === "populated"
+      ? formatMicrosUsd(benchmarkCostMicros)
+      : `<span class="panel-state-inline" data-panel-state-notice="unavailable">unavailable</span>`;
   const rows = reports
     .map(
       (report) => `
@@ -678,14 +856,15 @@ function renderBenchmarks(
       `,
     )
     .join("");
-  return panel(
+  return statePanel(
     "benchmarks",
     "Benchmarks",
+    state,
     `
       <dl class="metric-list metric-list-compact">
         <div><dt>Reports</dt><dd>${reports.length}</dd></div>
         <div><dt>QA evaluations</dt><dd>${reports.reduce((sum, report) => sum + report.qaAgents.length, 0)}</dd></div>
-        <div><dt>Benchmark cost</dt><dd>${formatMicrosUsd(benchmarkCostMicros)}</dd></div>
+        <div><dt>Benchmark cost</dt><dd>${benchmarkCostCell}</dd></div>
         <div><dt>Runs</dt><dd>${benchmarkCostRuns.length}</dd></div>
       </dl>
       <table>
@@ -710,83 +889,105 @@ function renderBenchmarks(
 // false-negative representation. Counts are the recorded per-agent
 // calibration (never re-estimated); precision/recall/F1 are the recorded
 // metrics from the benchmark report.
-function renderQaAgentMetrics(reports: BenchmarkReportSummary[]): string {
-  const agents = reports.flatMap((report) => report.qaAgents.map((agent) => ({ report, agent })));
-  if (agents.length === 0) {
-    return panel(
+//
+// ITOTORI-056 — derives its state from the same benchmarks query as the
+// Benchmarks panel. `populated` reports with zero QA-agent evaluations
+// resolve to the panel's own `empty` state (the benchmarks query
+// answered, there is just nothing to calibrate against).
+function renderQaAgentMetricsPanel(state: DashboardPanelState<BenchmarkReportSummary[]>): string {
+  if (state.state === "populated") {
+    const agents = state.data.flatMap((report) =>
+      report.qaAgents.map((agent) => ({ report, agent })),
+    );
+    if (agents.length === 0) {
+      return statePanel(
+        "qa-agent-metrics",
+        "QA agent metrics",
+        { state: "empty" },
+        stateNotice(
+          { state: "empty" },
+          "QA agent metrics",
+          "No QA-agent evaluations were returned by the API.",
+        )!,
+      );
+    }
+    const totals = agents.reduce(
+      (acc, { agent }) => ({
+        truePositives: acc.truePositives + agent.truePositives,
+        falsePositives: acc.falsePositives + agent.falsePositives,
+        falseNegatives: acc.falseNegatives + agent.falseNegatives,
+      }),
+      { truePositives: 0, falsePositives: 0, falseNegatives: 0 },
+    );
+    const rows = agents
+      .map(
+        ({ report, agent }) => `
+          <tr>
+            <td>${escapeHtml(agent.qaAgentId)}@${escapeHtml(agent.qaAgentVersion)}</td>
+            <td>${escapeHtml(report.benchmarkName)}</td>
+            <td>${escapeHtml(agent.evaluatedSystemId)}</td>
+            <td>${agent.truePositives}</td>
+            <td class="qa-fp">${agent.falsePositives}</td>
+            <td class="qa-fn">${agent.falseNegatives}</td>
+            <td>${formatRatio(agent.seededPrecision)}</td>
+            <td>${formatRatio(agent.seededRecall)}</td>
+            <td>${formatRatio(agent.f1)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    return statePanel(
       "qa-agent-metrics",
       "QA agent metrics",
-      emptyText("No QA-agent evaluations were returned by the API."),
+      state,
+      `
+        <dl class="metric-list metric-list-compact">
+          <div><dt>True positives</dt><dd>${totals.truePositives}</dd></div>
+          <div><dt>False positives</dt><dd class="qa-fp">${totals.falsePositives}</dd></div>
+          <div><dt>False negatives</dt><dd class="qa-fn">${totals.falseNegatives}</dd></div>
+          <div><dt>Evaluations</dt><dd>${agents.length}</dd></div>
+        </dl>
+        <table>
+          <thead>
+            <tr>
+              <th>QA agent</th>
+              <th>Benchmark</th>
+              <th>System</th>
+              <th>TP</th>
+              <th>FP</th>
+              <th>FN</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>F1</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `,
     );
   }
-  const totals = agents.reduce(
-    (acc, { agent }) => ({
-      truePositives: acc.truePositives + agent.truePositives,
-      falsePositives: acc.falsePositives + agent.falsePositives,
-      falseNegatives: acc.falseNegatives + agent.falseNegatives,
-    }),
-    { truePositives: 0, falsePositives: 0, falseNegatives: 0 },
-  );
-  const rows = agents
-    .map(
-      ({ report, agent }) => `
-        <tr>
-          <td>${escapeHtml(agent.qaAgentId)}@${escapeHtml(agent.qaAgentVersion)}</td>
-          <td>${escapeHtml(report.benchmarkName)}</td>
-          <td>${escapeHtml(agent.evaluatedSystemId)}</td>
-          <td>${agent.truePositives}</td>
-          <td class="qa-fp">${agent.falsePositives}</td>
-          <td class="qa-fn">${agent.falseNegatives}</td>
-          <td>${formatRatio(agent.seededPrecision)}</td>
-          <td>${formatRatio(agent.seededRecall)}</td>
-          <td>${formatRatio(agent.f1)}</td>
-        </tr>
-      `,
-    )
-    .join("");
-  return panel(
-    "qa-agent-metrics",
+  const notice = stateNotice(
+    state,
     "QA agent metrics",
-    `
-      <dl class="metric-list metric-list-compact">
-        <div><dt>True positives</dt><dd>${totals.truePositives}</dd></div>
-        <div><dt>False positives</dt><dd class="qa-fp">${totals.falsePositives}</dd></div>
-        <div><dt>False negatives</dt><dd class="qa-fn">${totals.falseNegatives}</dd></div>
-        <div><dt>Evaluations</dt><dd>${agents.length}</dd></div>
-      </dl>
-      <table>
-        <thead>
-          <tr>
-            <th>QA agent</th>
-            <th>Benchmark</th>
-            <th>System</th>
-            <th>TP</th>
-            <th>FP</th>
-            <th>FN</th>
-            <th>Precision</th>
-            <th>Recall</th>
-            <th>F1</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `,
+    "No QA-agent evaluations were returned by the API.",
   );
+  return statePanel("qa-agent-metrics", "QA agent metrics", state, notice ?? "");
 }
 
 // ITOTORI-027 — per-report drilldown. Each recorded benchmark report is
 // rendered as an anchored details block (linked from the Benchmarks
 // table) exposing the full quality + QA-agent breakdown.
-function renderBenchmarkReports(reports: BenchmarkReportSummary[]): string {
-  if (reports.length === 0) {
-    return panel(
+function renderBenchmarkReportsPanel(state: DashboardPanelState<BenchmarkReportSummary[]>): string {
+  if (state.state !== "populated") {
+    return statePanel(
       "benchmark-reports",
       "Benchmark reports",
-      emptyText("No benchmark reports were returned by the API."),
+      state,
+      stateNotice(state, "Benchmark reports", "No benchmark reports were returned by the API.")!,
     );
   }
-  const body = reports.map(renderBenchmarkReportDetail).join("");
-  return panel("benchmark-reports", "Benchmark reports", body);
+  const body = state.data.map(renderBenchmarkReportDetail).join("");
+  return statePanel("benchmark-reports", "Benchmark reports", state, body);
 }
 
 function renderBenchmarkReportDetail(report: BenchmarkReportSummary): string {
@@ -842,7 +1043,23 @@ function renderBenchmarkReportDetail(report: BenchmarkReportSummary): string {
   `;
 }
 
-function renderCost(cost: ProjectCostReport): string {
+// ITOTORI-056 — the Model cost panel shares the cost query with the Jobs
+// panel. When the cost query is unavailable the panel renders the
+// unavailable notice instead of a phantom $0.00 target; when populated it
+// renders the real recorded cost report (target + ledger + TM reuse).
+function renderCostPanel(cost: DashboardPanelState<ProjectCostReport>): string {
+  if (cost.state !== "populated") {
+    return statePanel(
+      "cost",
+      "Model cost",
+      cost,
+      stateNotice(cost, "Model cost", "No cost report was returned by the API.")!,
+    );
+  }
+  return statePanel("cost", "Model cost", cost, renderCostReport(cost.data));
+}
+
+function renderCostReport(cost: ProjectCostReport): string {
   const rows = cost.totalsByCostKind
     .map(
       (entry) => `
@@ -868,49 +1085,45 @@ function renderCost(cost: ProjectCostReport): string {
       `,
     )
     .join("");
-  return panel(
-    "cost",
-    "Model cost",
-    `
-      ${renderCostTarget(cost)}
-      <dl class="metric-list metric-list-compact">
-        <div><dt>Billed</dt><dd>${formatMicrosUsd(cost.billedMicrosUsd)}</dd></div>
-        <div><dt>Runs</dt><dd>${cost.runCount}</dd></div>
-        <div><dt>Zero-cost runs</dt><dd>${cost.zeroRunCount}</dd></div>
-        <div>
-          <dt>TM avoided</dt>
-          <dd>${cost.translationMemoryReuse.providerCallAvoidedCount}</dd>
-        </div>
-        <div>
-          <dt>TM tokens saved</dt>
-          <dd>${cost.translationMemoryReuse.estimatedTotalTokensSaved}</dd>
-        </div>
-      </dl>
-      <table>
-        <thead>
-          <tr>
-            <th>Kind</th>
-            <th>Runs</th>
-            <th>Amount</th>
-            <th>Tokens</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <table>
-        <thead>
-          <tr>
-            <th>TM unit</th>
-            <th>Status</th>
-            <th>Match</th>
-            <th>Avoided</th>
-            <th>Tokens saved</th>
-          </tr>
-        </thead>
-        <tbody>${reuseRows || `<tr><td colspan="5">No translation memory reuse.</td></tr>`}</tbody>
-      </table>
-    `,
-  );
+  return `
+    ${renderCostTarget(cost)}
+    <dl class="metric-list metric-list-compact">
+      <div><dt>Billed</dt><dd>${formatMicrosUsd(cost.billedMicrosUsd)}</dd></div>
+      <div><dt>Runs</dt><dd>${cost.runCount}</dd></div>
+      <div><dt>Zero-cost runs</dt><dd>${cost.zeroRunCount}</dd></div>
+      <div>
+        <dt>TM avoided</dt>
+        <dd>${cost.translationMemoryReuse.providerCallAvoidedCount}</dd>
+      </div>
+      <div>
+        <dt>TM tokens saved</dt>
+        <dd>${cost.translationMemoryReuse.estimatedTotalTokensSaved}</dd>
+      </div>
+    </dl>
+    <table>
+      <thead>
+        <tr>
+          <th>Kind</th>
+          <th>Runs</th>
+          <th>Amount</th>
+          <th>Tokens</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <table>
+      <thead>
+        <tr>
+          <th>TM unit</th>
+          <th>Status</th>
+          <th>Match</th>
+          <th>Avoided</th>
+          <th>Tokens saved</th>
+        </tr>
+      </thead>
+      <tbody>${reuseRows || `<tr><td colspan="5">No translation memory reuse.</td></tr>`}</tbody>
+    </table>
+  `;
 }
 
 // ITOTORI-053 — the paginated cost drilldown table. It CONSUMES the filtered
@@ -1206,6 +1419,60 @@ function panel(id: string, title: string, body: string): string {
   `;
 }
 
+// ITOTORI-056 — a `panel` variant that stamps the panel's query state on
+// the section element (`data-panel-state`) so the four states are
+// distinguishable in the DOM. Used by the style-guide, glossary, jobs,
+// benchmarks, QA agent metrics, benchmark reports, and Model cost panels.
+function statePanel<T>(
+  id: string,
+  title: string,
+  panelState: DashboardPanelState<T>,
+  body: string,
+): string {
+  return `
+    <section
+      class="panel"
+      id="${id}"
+      aria-label="${escapeHtml(title)}"
+      data-panel-state="${panelState.state}"
+    >
+      <header class="panel-header">
+        <h2>${escapeHtml(title)}</h2>
+      </header>
+      ${body}
+    </section>
+  `;
+}
+
+// ITOTORI-056 — render the state notice for any non-populated panel state.
+// Returns `null` when the panel is `populated` so the caller can fall
+// through to its data-driven body via `??`. The notices are worded so a
+// reviewer can tell "not queried yet" (unknown), "the call failed"
+// (unavailable), and "the API answered with nothing" (empty) apart — they
+// are never collapsed into a single "empty" string.
+function stateNotice(
+  panelState: DashboardPanelState<unknown>,
+  panelName: string,
+  emptyMessage: string,
+): string | null {
+  switch (panelState.state) {
+    case "unknown":
+      return `<p class="panel-state panel-state-unknown" role="status" data-panel-state-notice="unknown">${escapeHtml(
+        `${panelName} data has not been queried yet.`,
+      )}</p>`;
+    case "unavailable":
+      return `<p class="panel-state panel-state-unavailable" role="alert" data-panel-state-notice="unavailable">${escapeHtml(
+        `${panelName} data could not be loaded: ${panelState.error}`,
+      )}</p>`;
+    case "empty":
+      return `<p class="panel-state panel-state-empty" data-panel-state-notice="empty">${escapeHtml(
+        emptyMessage,
+      )}</p>`;
+    case "populated":
+      return null;
+  }
+}
+
 function navLink(label: string, id: string): string {
   return `<a href="#${id}">${escapeHtml(label)}</a>`;
 }
@@ -1289,20 +1556,6 @@ function withQueryParam(endpoint: string, key: string, value: string | null): st
     return url.toString();
   }
   return `${url.pathname}${url.search}`;
-}
-
-function styleGuideInputFromStatus(status: ProjectDashboardStatus) {
-  const localeBranchId = status.selectedLocaleBranchId;
-  const policyVersionId = status.currentStyleGuidePolicyVersionId;
-  if (localeBranchId === null || policyVersionId === null) {
-    throw new Error("dashboard status is missing style-guide builder route context");
-  }
-  return {
-    localeBranchId,
-    policyVersionId,
-    fixtureState: "empty_policy" as const,
-    permissionProfile: "reviewer" as const,
-  };
 }
 
 function endpointOrigin(endpoint: string): string | null {
@@ -1672,6 +1925,32 @@ function dashboardStyles(): string {
       .empty-copy {
         margin: 0;
         color: #56636d;
+      }
+
+      /* ITOTORI-056 — panel query-state notices. Each state gets a distinct
+         tone so a reviewer can tell unknown / unavailable / empty apart at
+         a glance; they are never collapsed to the same "empty" styling. */
+      .panel-state {
+        margin: 0;
+        font-weight: 700;
+      }
+
+      .panel-state-unknown {
+        color: #56636d;
+      }
+
+      .panel-state-unavailable {
+        color: #8a2e1c;
+      }
+
+      .panel-state-empty {
+        color: #56636d;
+        font-weight: 400;
+      }
+
+      .panel-state-inline {
+        color: #8a2e1c;
+        font-weight: 800;
       }
 
       @media (max-width: 920px) {
