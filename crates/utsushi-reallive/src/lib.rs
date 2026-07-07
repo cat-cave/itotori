@@ -151,6 +151,13 @@ pub mod vm;
 // `TextLine` events.
 pub mod replay;
 
+// utsushi-reallive-interactive-input-bridge: human-driven advance /
+// choice / navigation for the RealLive runtime. Generalises the
+// `LongOpScheduler` seam into an `InputSource` (headless / user / replay)
+// consumed by a `BridgeScheduler` that deterministically captures every
+// input event so a live playthrough replays byte-identically.
+pub mod input_bridge;
+
 // UTSUSHI-216: g00 image-format decoder (types 0, 1, 2). Owns the
 // shared LZSS variants and the corpus-wide lead-byte histogram that
 // emits `utsushi.reallive.g00_no_type_N_in_corpus` for types not
@@ -230,6 +237,10 @@ pub use g00::{
     G00DecodeError, G00Image, G00Rect, G00Region, G00Type, G00Warning, decode_g00,
 };
 
+pub use input_bridge::{
+    BRIDGE_ADAPTER_NAME, BRIDGE_ADAPTER_VERSION, BridgeScheduler, HeadlessSource, InputSource,
+    PendingYield, ReplaySource, UserInputQueue, UserInputSource,
+};
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
     DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, PortObservation, REPLAY_LOG_SCHEMA_VERSION,

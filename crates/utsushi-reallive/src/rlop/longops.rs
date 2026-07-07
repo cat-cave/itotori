@@ -391,7 +391,11 @@ impl HeadlessChoicePolicy {
     /// Resolve the chosen index for a prompt of `choice_count` options,
     /// advancing any internal cursor. Always returns an in-range index
     /// (or `0` for an empty prompt).
-    fn resolve(&self, cursor: usize, choice_count: usize) -> u16 {
+    ///
+    /// Public so the interactive [`crate::input_bridge::HeadlessSource`]
+    /// resolves a choice through the SAME deterministic policy the
+    /// [`HeadlessInputScheduler`] uses — the two paths must never diverge.
+    pub fn resolve(&self, cursor: usize, choice_count: usize) -> u16 {
         let raw = match self {
             Self::AlwaysFirst => 0u16,
             Self::Fixed(index) => *index,

@@ -1341,14 +1341,37 @@ impl ReplayEngine {
         opts: &ReplayOpts,
         policy: HeadlessChoicePolicy,
     ) -> BranchFollowingObservation {
-        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut scheduler = HeadlessInputScheduler::new(policy);
+        self.branch_following_observation_with_scheduler(scene_id, opts, &mut scheduler)
+    }
+
+    /// Drive `scene_id` branch-following under an arbitrary
+    /// [`LongOpScheduler`](crate::rlop::LongOpScheduler), capturing the
+    /// play-order [`TextLine`] stream and the first cross-scene dispatch
+    /// target — like [`Self::branch_following_observation`], but with the
+    /// caller supplying the input scheduler.
+    ///
+    /// This is the interactive-bridge seam: pass a
+    /// [`crate::input_bridge::BridgeScheduler`] driven by a headless / user /
+    /// replay [`crate::input_bridge::InputSource`] and a HUMAN (or a captured
+    /// input log) drives the advance / choice / navigation decisions the walk
+    /// makes, instead of the built-in headless auto policy. Because the
+    /// observable playthrough (the text-line stream + branch taken) is a pure
+    /// function of the scheduler's commits, replaying a captured input log
+    /// reproduces the identical observation.
+    pub fn branch_following_observation_with_scheduler(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        scheduler: &mut dyn crate::rlop::LongOpScheduler,
+    ) -> BranchFollowingObservation {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let pass = self.observe_pass(
             scene_id,
             opts,
             ControlFlowMount::BranchFollowing,
             Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
-            &mut scheduler,
+            scheduler,
         );
         BranchFollowingObservation {
             lines: sink.take_lines(),
