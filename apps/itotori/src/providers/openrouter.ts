@@ -8,7 +8,9 @@ import {
 } from "./capability-guard.js";
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
 import {
+  addDecimalUsd,
   assertBilledCost,
+  decimalUsdStringCanonical,
   decimalUsdStringToMicros,
   usageCostToDecimalString,
   usageCostToMicros,
@@ -955,16 +957,33 @@ function normalizeUsage(value: unknown): TokenUsage {
 }
 
 /**
- * ITOTORI-225 / ITOTORI-233 — single-branch real-cost normalizer with
- * cache-aware annotations.
+ * ITOTORI-225 / ITOTORI-233 / ITOTORI-134 — real-cost normalizer with
+ * cache-aware annotations and deterministic cost-estimate fallbacks.
  *
  * Per docs/openrouter-integration.md §5 (canonical real-cost contract) and
  * the live evidence at docs/openrouter-integration-evidence/2026-06-25.json,
  * every successful OpenRouter response carries `usage.cost` as a decimal
- * USD value. The integration is `usage.cost`-or-error: a successful HTTP
- * response without a `usage.cost` field is a protocol violation we surface
- * as `provider_response_invalid` so the caller can fail loudly instead of
- * silently undercounting spend.
+ * USD value. The preferred path is `usage.cost`-or-error: a successful HTTP
+ * response with `usage.cost` tags `costKind: 'billed'` and carries the
+ * verbatim amount.
+ *
+ * ITOTORI-134 — when `usage.cost` is ABSENT, two deterministic cost-ESTIMATE
+ * fallback branches produce `costKind: 'provider_estimate'` (a distinct
+ * ledger cost STATE, never a silent substitute for `billed`):
+ *
+ *   1. `cost_details` branch: `usage.cost_details.upstream_inference_cost`
+ *      (the upstream provider's own cost breakdown) is present → use it as
+ *      the estimate (`estimateBasis: 'cost_details'`).
+ *   2. endpoint-pricing branch: the selected endpoint (from
+ *      `openrouter_metadata.endpoints.available[].selected`) carries
+ *      per-token `pricing.prompt` / `pricing.completion`, and `usage`
+ *      carries `prompt_tokens` / `completion_tokens` → multiply and sum
+ *      (`estimateBasis: 'endpoint_pricing'`).
+ *
+ * If NEITHER `usage.cost` NOR any fallback pricing signal is available, the
+ * call surfaces `provider_response_invalid` — responses without enough
+ * pricing data remain EXPLICIT instead of fabricating precision (the
+ * third ITOTORI-134 acceptance criterion).
  *
  * ITOTORI-233 / DOC-AMBIGUOUS-6 RESOLVED (integration doc §11 entry 6,
  * §5.3): `usage.cost` is **net of `cache_discount`** by treaty — we treat
@@ -987,25 +1006,213 @@ function normalizeUsage(value: unknown): TokenUsage {
  */
 function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCost {
   const usage = isRecord(response.usage) ? response.usage : undefined;
-  if (usage === undefined || usage.cost === undefined || usage.cost === null) {
-    throw new ModelProviderError(
-      "OpenRouter response missing usage.cost; ITOTORI-225 contract requires real billed cost on every successful call",
-      "provider_response_invalid",
-      false,
-    );
+  // Branch 1 (preferred): direct usage.cost → billed.
+  if (usage !== undefined && usage.cost !== undefined && usage.cost !== null) {
+    const cost: ProviderCost = {
+      costKind: "billed",
+      currency: "USD",
+      // ITOTORI-232 — authoritative full-precision cost, the verbatim
+      // `usage.cost`. This is what the ledger persists and the
+      // migration-0041 CHECK validates; `amountMicrosUsd` below is the
+      // rounded informational mirror for the cap / telemetry only.
+      amountUsd: usageCostToDecimalString(usage.cost),
+      amountMicrosUsd: usageCostToMicros(usage.cost),
+      cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
+    };
+    return cost;
   }
-  const cost: ProviderCost = {
-    costKind: "billed",
-    currency: "USD",
-    // ITOTORI-232 — authoritative full-precision cost, the verbatim
-    // `usage.cost`. This is what the ledger persists and the
-    // migration-0041 CHECK validates; `amountMicrosUsd` below is the
-    // rounded informational mirror for the cap / telemetry only.
-    amountUsd: usageCostToDecimalString(usage.cost),
-    amountMicrosUsd: usageCostToMicros(usage.cost),
-    cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
+  // ITOTORI-134 — Branch 2: cost_details estimate → provider_estimate.
+  // `usage.cost` is absent; fall back to the upstream provider's own cost
+  // breakdown (`upstream_inference_cost`) when it is present. This is a
+  // deterministic value the provider surfaced, NOT a fabrication.
+  if (usage !== undefined) {
+    const detailsEstimate = estimateFromCostDetails(usage);
+    if (detailsEstimate !== undefined) {
+      const cost: ProviderCost = {
+        costKind: "provider_estimate",
+        currency: "USD",
+        amountUsd: detailsEstimate.decimalString,
+        amountMicrosUsd: detailsEstimate.micros,
+        estimateBasis: "cost_details",
+        cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
+      };
+      return cost;
+    }
+  }
+  // ITOTORI-134 — Branch 3: endpoint-pricing × tokens → provider_estimate.
+  // Neither `usage.cost` nor a usable `cost_details` is present; fall back to
+  // the selected endpoint's per-token pricing multiplied by reported token
+  // usage. Requires BOTH a pricing block and non-zero token counts.
+  const pricingEstimate = estimateFromEndpointPricing(response);
+  if (pricingEstimate !== undefined) {
+    const cost: ProviderCost = {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountUsd: pricingEstimate.decimalString,
+      amountMicrosUsd: pricingEstimate.micros,
+      estimateBasis: "endpoint_pricing",
+    };
+    return cost;
+  }
+  // Branch 4: no cost data of any kind → protocol violation. Responses
+  // without enough pricing data remain EXPLICIT instead of fabricating
+  // precision (ITOTORI-134 acceptance criterion #3).
+  throw new ModelProviderError(
+    "OpenRouter response missing usage.cost and no deterministic cost-estimate fallback (cost_details / endpoint pricing) was available; cannot record spend without real pricing data",
+    "provider_response_invalid",
+    false,
+  );
+}
+
+/**
+ * ITOTORI-134 — extract a deterministic cost estimate from
+ * `usage.cost_details.upstream_inference_cost` when the top-level
+ * `usage.cost` is absent.
+ *
+ * The canonical `cost_details` shape (docs/openrouter-integration.md §5.2,
+ * evidence file call_1) carries `upstream_inference_cost` as a USD decimal
+ * number — the upstream provider's own inference charge BEFORE any
+ * OpenRouter-side caching discount. When `usage.cost` is absent but this
+ * field is present, it is the most precise estimate available (it is the
+ * provider's real charge, not a recomputation). Returns `undefined` when
+ * `cost_details` / `upstream_inference_cost` is absent or not a usable
+ * number/string, so the caller can fall through to endpoint-pricing.
+ */
+function estimateFromCostDetails(usage: Record<string, unknown>):
+  | {
+      decimalString: string;
+      micros: number;
+    }
+  | undefined {
+  const costDetails = usage.cost_details;
+  if (!isRecord(costDetails)) {
+    return undefined;
+  }
+  const upstream = costDetails.upstream_inference_cost;
+  if (upstream === undefined || upstream === null) {
+    return undefined;
+  }
+  // Reuse the same validation + conversion path as usage.cost so a
+  // non-numeric / negative value throws `provider_response_invalid` rather
+  // than silently producing NaN.
+  return {
+    decimalString: usageCostToDecimalString(upstream),
+    micros: usageCostToMicros(upstream),
   };
-  return cost;
+}
+
+/**
+ * ITOTORI-134 — derive a deterministic cost estimate from the selected
+ * endpoint's per-token pricing multiplied by reported token usage, when
+ * neither `usage.cost` nor `cost_details` is available.
+ *
+ * The selected endpoint record (from `openrouter_metadata.endpoints.available`,
+ * surfaced by the `X-OpenRouter-Metadata: enabled` request header) carries a
+ * `pricing` block whose `prompt` / `completion` fields are USD-per-token
+ * decimal strings (docs/openrouter-integration.md §9.1: "pricing.prompt /
+ * pricing.completion are USD per token as decimal strings", e.g. `"0.00000014"`).
+ * The estimate is `prompt_tokens × pricing.prompt + completion_tokens ×
+ * pricing.completion`, computed via the lossless `addDecimalUsd` helper so
+ * sub-micro precision survives.
+ *
+ * Requires ALL of: a selected endpoint with a `pricing` block carrying
+ * numeric `prompt` + `completion`, AND `usage.prompt_tokens` /
+ * `usage.completion_tokens` present. Returns `undefined` when any input is
+ * absent so the caller can surface the explicit `provider_response_invalid`
+ * diagnostic rather than fabricating a partial estimate.
+ */
+function estimateFromEndpointPricing(response: Record<string, unknown>):
+  | {
+      decimalString: string;
+      micros: number;
+    }
+  | undefined {
+  const endpoint = selectedOpenRouterEndpoint(response);
+  if (endpoint === undefined) {
+    return undefined;
+  }
+  const pricing = endpoint.pricing;
+  if (!isRecord(pricing)) {
+    return undefined;
+  }
+  const promptPrice = pricing.prompt;
+  const completionPrice = pricing.completion;
+  if (
+    promptPrice === undefined ||
+    promptPrice === null ||
+    completionPrice === undefined ||
+    completionPrice === null
+  ) {
+    return undefined;
+  }
+  const usage = isRecord(response.usage) ? response.usage : undefined;
+  if (usage === undefined) {
+    return undefined;
+  }
+  const promptTokens = usage.prompt_tokens;
+  const completionTokens = usage.completion_tokens;
+  if (
+    typeof promptTokens !== "number" ||
+    !Number.isFinite(promptTokens) ||
+    typeof completionTokens !== "number" ||
+    !Number.isFinite(completionTokens)
+  ) {
+    return undefined;
+  }
+  // Validate the per-token prices via the canonical decimal-string parser
+  // (rejects negative / non-decimal) before multiplying. Prices are USD per
+  // token as decimal strings or numbers.
+  const promptDecimal = tokenPriceToDecimalString(promptPrice, "pricing.prompt");
+  const completionDecimal = tokenPriceToDecimalString(completionPrice, "pricing.completion");
+  const promptCost = multiplyDecimalByInteger(promptDecimal, promptTokens);
+  const completionCost = multiplyDecimalByInteger(completionDecimal, completionTokens);
+  const total = addDecimalUsd(promptCost, completionCost);
+  return {
+    decimalString: total,
+    micros: decimalUsdStringToMicros(total),
+  };
+}
+
+/**
+ * ITOTORI-134 — coerce a per-token price (string or number) into the
+ * canonical decimal-USD string form, validating it is a plain non-negative
+ * decimal. Mirrors `usageCostToDecimalString` but is named for the
+ * endpoint-pricing context so the throw site is self-locating.
+ */
+function tokenPriceToDecimalString(value: unknown, label: string): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return decimalUsdStringCanonical(value.toFixed(12));
+  }
+  if (typeof value === "string") {
+    return decimalUsdStringCanonical(value);
+  }
+  throw new ModelProviderError(
+    `OpenRouter endpoint ${label} must be a number or decimal string, got ${typeof value}`,
+    "provider_response_invalid",
+    false,
+  );
+}
+
+/**
+ * ITOTORI-134 — losslessly multiply a non-negative decimal-USD string by a
+ * non-negative integer token count, returning the canonical decimal-USD
+ * product. Operates on the scaled-integer representation via BigInt so there
+ * is no floating-point drift; mirrors `addDecimalUsd`'s precision posture.
+ */
+function multiplyDecimalByInteger(decimal: string, count: number): string {
+  const canonical = decimalUsdStringCanonical(decimal);
+  const [whole = "0", fractional = ""] = canonical.split(".");
+  const scale = fractional.length;
+  const scaledInteger = BigInt(whole + fractional);
+  const product = scaledInteger * BigInt(Math.trunc(count));
+  if (scale === 0) {
+    return product.toString();
+  }
+  const digits = product.toString().padStart(scale + 1, "0");
+  const productWhole = digits.slice(0, digits.length - scale);
+  const productFrac = digits.slice(digits.length - scale);
+  const trimmedFrac = productFrac.replace(/0+$/u, "");
+  return trimmedFrac.length > 0 ? `${productWhole}.${trimmedFrac}` : productWhole;
 }
 
 /**

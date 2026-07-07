@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ITOTORI-225 — CI guard: fail on any hardcoded model cost, deprecated
-// cost-tier abstraction, or revived `unknown` / `provider_estimate` /
-// `local_estimate` enum literal in the itotori codebase.
+// cost-tier abstraction, or revived `unknown` / `local_estimate` enum
+// literal in the itotori codebase.
 //
 // Per the standing rule from Trevor (2026-06-25):
 //   "There should never be a single hardcoded model cost anywhere in this
@@ -14,6 +14,15 @@
 // deleted shapes. This script greps the source tree for the forbidden
 // patterns, skipping allow-listed paths (recorded fixtures preserve real
 // captured costs; this script itself documents the patterns it forbids).
+//
+// ITOTORI-134 — `provider_estimate` is RE-INTRODUCED as a legitimate,
+// narrowly-scoped deterministic cost-estimate state (derived from
+// cost_details or endpoint-pricing × tokens) and is therefore REMOVED from
+// the forbidden legacy-enum list. Only `unknown` and `local_estimate`
+// remain forbidden — the guess-based / fabricated-cost states the standing
+// rule forbids. A production `costKind: "provider_estimate"` literal is now
+// allowed (it is a real cost state, not a hardcoded cost AMOUNT); the
+// cost-literal patterns still guard every hardcoded numeric amount.
 //
 // Exit codes:
 //   0 — no violations
@@ -119,12 +128,13 @@ const COST_LITERAL_ALLOW = new Map([
   ],
   // Bridge-schema benchmark-report fixtures. These carry a synthetic estimated
   // `amountMicrosUsd` under an external-system `costKind: "provider_estimate"`
-  // row (see LEGACY_ENUM_ALLOW below): the benchmark subsystem compares
-  // third-party systems whose per-call cost is genuinely unknowable, so the
-  // amount is an ESTIMATE (never itotori's own billed OpenRouter spend, which
-  // is always exact). These are enumerated per-file because JSON cannot host a
-  // per-line marker; a NEW un-listed schema fixture with a cost literal still
-  // fails the guard.
+  // row: the benchmark subsystem compares third-party systems whose per-call
+  // cost is genuinely unknowable, so the amount is an ESTIMATE. These are
+  // enumerated per-file because JSON cannot host a per-line marker; a NEW
+  // un-listed schema fixture with a cost literal still fails the guard.
+  // (ITOTORI-134: `provider_estimate` is now a generally-allowed costKind for
+  // itotori's own OpenRouter spend too, but the synthetic AMOUNT here still
+  // needs this per-file cost-literal exemption.)
   [
     "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
     "external-system benchmark cost, genuinely unknowable per audit-3; synthetic provider_estimate amount exercises the benchmark cost ledger",
@@ -144,17 +154,24 @@ const COST_LITERAL_ALLOW = new Map([
 ]);
 
 // LEGACY_ENUM_ALLOW — enumerated JSON fixtures permitted to carry the
-// `costKind: "provider_estimate" | "local_estimate" | "unknown"` legacy-enum
-// literal. Unlike itotori's own OpenRouter spend (purged to billed/zero by
-// ITOTORI-225), the cross-app BENCHMARK cost schema (BenchmarkCostAmountV02)
-// compares EXTERNAL third-party systems whose per-call cost is genuinely
-// unknowable — the estimate/unknown kinds are legitimate there (audit-3), and
-// forcing `billed` would fabricate a cost, violating this very guard. Because
-// JSON cannot host a `// itotori-225-audit-allow:` marker, each such benchmark
-// fixture is enumerated here with its reason. The legacy-enum pattern is
-// skipped ONLY for these exact paths; every other pattern still fires, and a
-// NEW un-listed schema fixture with a revived legacy enum still fails. A
-// `.ts`/`.tsx` file is NEVER eligible here — it carries a per-line marker.
+// `costKind: "local_estimate" | "unknown"` legacy-enum literal. Unlike
+// itotori's own OpenRouter spend (`provider_estimate` is re-introduced as a
+// legitimate deterministic estimate state by ITOTORI-134; `billed` /
+// `provider_estimate` / `zero` are all allowed everywhere), the cross-app
+// BENCHMARK cost schema (BenchmarkCostAmountV02) compares EXTERNAL third-party
+// systems. The `local_estimate` / `unknown` kinds are kept there for
+// genuinely-unknowable external benchmark costs (audit-3); forcing `billed`
+// would fabricate a cost, violating this very guard. Because JSON cannot host
+// a `// itotori-225-audit-allow:` marker, each such benchmark fixture is
+// enumerated here with its reason. The legacy-enum pattern is skipped ONLY for
+// these exact paths; every other pattern still fires, and a NEW un-listed
+// schema fixture with a revived legacy enum still fails. A `.ts`/`.tsx` file
+// is NEVER eligible here — it carries a per-line marker.
+//
+// NB: the currently-enumerated benchmark fixtures use `costKind:
+// "provider_estimate"` (now generally allowed by ITOTORI-134), so this map is
+// retained for completeness / future `local_estimate`/`unknown` benchmark
+// fixtures but is not currently load-bearing for the four listed files.
 const LEGACY_ENUM_ALLOW = new Map([
   [
     "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
@@ -195,18 +212,22 @@ const FORBIDDEN_PATTERNS = [
     regex: /\bProviderCostTier\b/u,
   },
   {
-    label: 'costKind: "unknown" / "provider_estimate" / "local_estimate"',
+    label: 'costKind: "unknown" / "local_estimate"',
     // Optional quotes around the key so the JSON form (`"costKind": "unknown"`)
     // is caught alongside the TS object-literal form (`costKind: "unknown"`).
-    // `legacyEnum` gates the per-file LEGACY_ENUM_ALLOW opt-out (the enumerated
+    // ITOTORI-134 — `provider_estimate` is REMOVED from this forbidden list: it
+    // is re-introduced as a legitimate deterministic cost-estimate state
+    // (derived from cost_details / endpoint pricing). Only the guess-based
+    // `unknown` and `local_estimate` states remain forbidden. `legacyEnum`
+    // gates the per-file LEGACY_ENUM_ALLOW opt-out (the enumerated
     // external-system benchmark fixtures); the pattern still fires everywhere
     // else, including any new un-listed schema JSON fixture.
-    regex: /["'`]?costKind["'`]?\s*:\s*['"`](unknown|provider_estimate|local_estimate)['"`]/u,
+    regex: /["'`]?costKind["'`]?\s*:\s*['"`](unknown|local_estimate)['"`]/u,
     legacyEnum: true,
   },
   {
-    label: 'cost_kind = "unknown" / "provider_estimate" / "local_estimate" (SQL)',
-    regex: /cost_kind\s*=\s*['"`](unknown|provider_estimate|local_estimate)['"`]/u,
+    label: 'cost_kind = "unknown" / "local_estimate" (SQL)',
+    regex: /cost_kind\s*=\s*['"`](unknown|local_estimate)['"`]/u,
   },
   {
     label: "deprecated unknownCost() helper",

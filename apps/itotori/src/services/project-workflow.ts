@@ -1139,7 +1139,7 @@ function emptyCostReport(projectId: string): ProjectCostReport {
     runCount: 0,
     billedMicrosUsd: 0,
     zeroRunCount: 0,
-    totalsByCostKind: (["billed", "zero"] as const).map((costKind) => ({
+    totalsByCostKind: (["billed", "provider_estimate", "zero"] as const).map((costKind) => ({
       costKind,
       runCount: 0,
       amountMicrosUsd: 0,

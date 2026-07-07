@@ -152,21 +152,28 @@ export function usageCostToDecimalString(value: unknown): string {
 }
 
 /**
- * Return the billed amount in micros-USD for a `ProviderCost`. Throws if
+ * Return the real cost amount in micros-USD for a `ProviderCost`. Throws if
  * the cost is not billed (i.e. zero-cost runs do not have a billable
  * amount to charge against the cap / aggregate). Callers that want to
  * include zero-cost runs in their sums should use `costToMicrosOrZero`
  * instead.
+ *
+ * ITOTORI-134 — `provider_estimate` costs carry a deterministic estimate
+ * derived from real provider pricing data (cost_details / endpoint pricing).
+ * The estimate IS a real expected spend number, so the cost cap / aggregate
+ * consumes it directly (fail-safe: an estimate counts toward the budget
+ * rather than silently passing). Both `billed` and `provider_estimate`
+ * therefore return their `amountMicrosUsd`; `zero` returns 0.
  */
 export function assertBilledCost(cost: ProviderCost): bigint {
-  if (cost.costKind === "billed") {
+  if (cost.costKind === "billed" || cost.costKind === "provider_estimate") {
     return BigInt(cost.amountMicrosUsd);
   }
   if (cost.costKind === "zero") {
     return 0n;
   }
-  // Exhaustive — the type is `'billed' | 'zero'`. This branch is
-  // unreachable, but the compile-time exhaustiveness check guards us
+  // Exhaustive — the type is `'billed' | 'provider_estimate' | 'zero'`. This
+  // branch is unreachable, but the compile-time exhaustiveness check guards us
   // against future enum widening.
   const _exhaustive: never = cost.costKind;
   throw new ModelProviderError(
@@ -177,7 +184,7 @@ export function assertBilledCost(cost: ProviderCost): bigint {
 }
 
 /**
- * Return the billed amount as the canonical FULL-PRECISION decimal-USD
+ * Return the real cost amount as the canonical FULL-PRECISION decimal-USD
  * string for a `ProviderCost` — the same authoritative representation the
  * ledger persists (`ProviderCost.amountUsd`, the verbatim provider
  * `usage.cost`). Unlike {@link assertBilledCost}, which returns the
@@ -187,9 +194,13 @@ export function assertBilledCost(cost: ProviderCost): bigint {
  * that render a per-invocation / per-stage `costUsd` MUST use this so the
  * bundle carries the same precision as the ledger, never the truncated
  * micros form.
+ *
+ * ITOTORI-134 — `provider_estimate` costs carry a deterministic estimate
+ * (cost_details / endpoint pricing) whose `amountUsd` is the derived
+ * decimal; it is returned verbatim alongside `billed`.
  */
 export function assertBilledCostDecimal(cost: ProviderCost): string {
-  if (cost.costKind === "billed") {
+  if (cost.costKind === "billed" || cost.costKind === "provider_estimate") {
     return cost.amountUsd;
   }
   if (cost.costKind === "zero") {

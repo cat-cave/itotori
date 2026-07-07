@@ -115,8 +115,16 @@ export type ProviderRunStatus =
 // states the cost-tracking audit (docs/audits/openrouter-cost-tracking-
 // audit-2026-06-25.md) considers correct: a real upstream charge, or no
 // charge at all. Migration 0039 backfills + tightens the CHECK constraint.
+//
+// ITOTORI-134 — re-introduces `provider_estimate` as a narrowly-scoped
+// deterministic cost-estimate state (derived from cost_details or
+// endpoint-pricing × tokens) for responses where the authoritative
+// `usage.cost` is absent. The TS type accepts it; the DB CHECK constraint
+// (migration 0039) is a separate follow-up — provider-level tests use an
+// in-memory recorder, so this widening is type-safe without a migration.
 export const providerCostKindValues = {
   billed: "billed",
+  provider_estimate: "provider_estimate",
   zero: "zero",
 } as const;
 

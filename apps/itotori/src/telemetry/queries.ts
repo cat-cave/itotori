@@ -192,7 +192,9 @@ export type TelemetryZdrEnforcedRow = {
 
 export type TelemetryCostKindRow = {
   readonly pair: TelemetryPairKey;
-  readonly costKind: "billed" | "zero";
+  // ITOTORI-134 — widened to surface provider_estimate cost rows alongside
+  // billed / zero in the telemetry cost-kind breakdown.
+  readonly costKind: "billed" | "provider_estimate" | "zero";
   readonly invocationCount: number;
   readonly amountMicrosUsd: number;
 };

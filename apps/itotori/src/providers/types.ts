@@ -355,25 +355,35 @@ export type TokenUsage = {
 };
 
 /**
- * ITOTORI-225 — `costKind` is `'billed' | 'zero'`, full stop.
+ * ITOTORI-225 / ITOTORI-134 — `costKind` is `'billed' | 'provider_estimate' | 'zero'`.
  *
  * - `billed`: a real upstream charge. `amountUsd` carries the exact spend
  *   reported by the provider (OpenRouter's `usage.cost`) verbatim;
  *   `amountMicrosUsd` is a derived cap/telemetry mirror. Required.
+ * - `provider_estimate` (ITOTORI-134): a deterministic cost ESTIMATE derived
+ *   from provider-supplied pricing signals when the authoritative
+ *   `usage.cost` is absent — either `usage.cost_details` (the
+ *   `upstream_inference_cost` breakdown) or the selected endpoint's per-token
+ *   `pricing` multiplied by reported token usage. This is a distinct ledger
+ *   cost STATE, never a substitute for `billed`: the real billed cost (if any)
+ *   lands later via the cost-reconciler (ITOTORI-235). `amountUsd` /
+ *   `amountMicrosUsd` carry the derived estimate; `estimateBasis` records
+ *   which fallback produced it (`"cost_details"` | `"endpoint_pricing"`).
  * - `zero`: no charge was incurred (recorded-fixture replays, deterministic
  *   local mocks, failed pre-billing requests). `amountUsd === "0"` and
  *   `amountMicrosUsd === 0`.
  *
- * No `unknown`. No `provider_estimate`. No `local_estimate`. The previous
- * enum existed because we were guessing; per the standing
- * no-hardcoded-cost / no-fallback rule, every successful upstream call
- * returns the real cost, and unsuccessful calls cost nothing.
+ * No `unknown`. No `local_estimate`. ITOTORI-225 purged the legacy
+ * guess-based enum; ITOTORI-134 re-introduces `provider_estimate` as a
+ * narrowly-scoped, deterministic fallback that records an EXPLICIT estimate
+ * (derived from real provider pricing data) rather than fabricating
+ * precision or silently undercounting spend.
  *
- * `amountMicrosUsd` is non-optional: both variants carry a real number. A
+ * `amountMicrosUsd` is non-optional: every variant carries a real number. A
  * caller cannot omit it.
  */
 export type ProviderCost = {
-  costKind: "billed" | "zero";
+  costKind: "billed" | "provider_estimate" | "zero";
   currency: "USD";
   /**
    * ITOTORI-232 — AUTHORITATIVE full-precision billed cost: the exact
@@ -416,6 +426,24 @@ export type ProviderCost = {
    * mirrored verbatim via `decimalUsdStringToMicros`.
    */
   cacheDiscountMicrosUsd?: number;
+  /**
+   * ITOTORI-134 — for `costKind: 'provider_estimate'` only, records which
+   * deterministic fallback produced the estimate so the ledger / audit can
+   * distinguish the two branches:
+   *
+   *   - `"cost_details"`: the estimate came from
+   *     `usage.cost_details.upstream_inference_cost` (the upstream provider's
+   *     own cost breakdown, surfaced when the top-level `usage.cost` is
+   *     absent).
+   *   - `"endpoint_pricing"`: the estimate came from the selected endpoint's
+   *     per-token `pricing` (from `openrouter_metadata.endpoints.available`)
+   *     multiplied by the reported `prompt_tokens` / `completion_tokens`.
+   *
+   * Absent for `costKind: 'billed'` / `costKind: 'zero'` (no estimate basis
+   * applies). A `provider_estimate` without an `estimateBasis` is a bug —
+   * every estimate branch in `normalizeOpenRouterCost` sets it.
+   */
+  estimateBasis?: "cost_details" | "endpoint_pricing";
 };
 
 export type ProviderRunIdentity = {

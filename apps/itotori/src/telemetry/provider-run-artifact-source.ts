@@ -97,7 +97,10 @@ type MutablePairAccumulator = {
   cacheWriteTokens: number;
   cacheDiscountMicrosUsd: number;
   zdrEnforcedCount: number;
-  costKinds: Map<"billed" | "zero", { invocationCount: number; amountMicrosUsd: number }>;
+  costKinds: Map<
+    "billed" | "provider_estimate" | "zero",
+    { invocationCount: number; amountMicrosUsd: number }
+  >;
 };
 
 /**

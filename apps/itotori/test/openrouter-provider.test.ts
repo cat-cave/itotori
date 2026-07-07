@@ -1103,6 +1103,305 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
   });
 });
 
+describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branches", () => {
+  // ITOTORI-134 acceptance: OpenRouter responses WITHOUT a direct
+  // `usage.cost` still produce a deterministic cost-estimate recorded as
+  // `costKind: 'provider_estimate'` (a distinct ledger cost STATE) when a
+  // real pricing signal is available. Two fallback branches are test-pinned:
+  //
+  //   1. cost_details branch — `usage.cost_details.upstream_inference_cost`
+  //      (the upstream provider's own cost breakdown) is the estimate.
+  //   2. endpoint-pricing branch — the selected endpoint's per-token
+  //      `pricing` × reported token usage is the estimate.
+  //
+  // Responses without ANY pricing signal remain explicit
+  // (`provider_response_invalid`), never fabricating precision — the third
+  // acceptance criterion, already covered by the existing "missing
+  // usage.cost" tests in the ITOTORI-225 real-cost-contract block.
+
+  it("cost_details branch: a response with usage.cost_details.upstream_inference_cost (and no usage.cost) records a provider_estimate with estimateBasis 'cost_details'", async () => {
+    // Canonical cost_details shape (docs/openrouter-integration.md §5.2):
+    // upstream_inference_cost is a USD decimal number. When usage.cost is
+    // absent but this field is present, it is the most precise estimate
+    // available — it is the provider's real charge, not a recomputation.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-cost-details-estimate",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+              cost_details: {
+                upstream_inference_cost: 0.00000602, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+                upstream_inference_prompt_cost: 0.00000154, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+                upstream_inference_completions_cost: 0.00000448, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const recorder = memoryRecorder();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const result = await provider.invoke(baseRequest());
+
+    // The estimate branch produces provider_estimate (NOT billed) with the
+    // verbatim upstream_inference_cost as the estimate amount.
+    expect(result.providerRun.cost.costKind).toBe("provider_estimate");
+    expect(result.providerRun.cost.estimateBasis).toBe("cost_details");
+    expect(result.providerRun.cost.amountUsd).toBe("0.00000602");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(6);
+    // cache_discount annotation still flows through (absent → 0).
+    expect(result.providerRun.cost.cacheDiscountMicrosUsd).toBe(0);
+    // The recorded artifact mirrors the same provider_estimate cost.
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.cost.costKind).toBe("provider_estimate");
+    expect(recorder.artifacts[0]?.run.cost.estimateBasis).toBe("cost_details");
+    expect(recorder.artifacts[0]?.run.cost.amountMicrosUsd).toBe(6);
+  });
+
+  it("cost_details branch: a string upstream_inference_cost is accepted (decimal-string shape)", async () => {
+    // Some OR responses stringify the cost_details numbers. The same
+    // decimal-string parser handles both shapes.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-cost-details-string",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+              cost_details: {
+                upstream_inference_cost: "0.0000019", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.cost.costKind).toBe("provider_estimate");
+    expect(result.providerRun.cost.estimateBasis).toBe("cost_details");
+    expect(result.providerRun.cost.amountUsd).toBe("0.0000019");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(2);
+  });
+
+  it("endpoint-pricing branch: a response without usage.cost but with selected-endpoint pricing × token usage records a provider_estimate with estimateBasis 'endpoint_pricing'", async () => {
+    // Neither usage.cost nor cost_details is present; the selected endpoint
+    // (openrouter_metadata.endpoints.available[].selected === true) carries
+    // per-token pricing (USD/token decimal strings per docs §9.1). The
+    // estimate is prompt_tokens × pricing.prompt + completion_tokens ×
+    // pricing.completion, computed losslessly via addDecimalUsd.
+    //
+    // Fixture: prompt=11 tokens @ 0.00000014/token = 0.00000154;
+    //          completion=19 tokens @ 0.00000028/token = 0.00000532;
+    //          total = 0.00000686 → 7 micros (6.86 rounds to 7).
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-endpoint-pricing-estimate",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: {
+              prompt_tokens: 11,
+              completion_tokens: 19,
+              total_tokens: 30,
+            },
+            openrouter_metadata: {
+              endpoints: {
+                total: 1,
+                available: [
+                  {
+                    provider: DEV_PAIR.providerId,
+                    model: DEV_PAIR.modelId,
+                    selected: true,
+                    pricing: {
+                      prompt: "0.00000014", // itotori-225-audit-allow: synthetic per-token price for endpoint-pricing fallback test
+                      completion: "0.00000028", // itotori-225-audit-allow: synthetic per-token price for endpoint-pricing fallback test
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const recorder = memoryRecorder();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const result = await provider.invoke(baseRequest());
+
+    // The endpoint-pricing branch produces provider_estimate with the
+    // deterministic pricing×tokens product.
+    expect(result.providerRun.cost.costKind).toBe("provider_estimate");
+    expect(result.providerRun.cost.estimateBasis).toBe("endpoint_pricing");
+    // 11 × 0.00000014 + 19 × 0.00000028 = 0.00000154 + 0.00000532 = 0.00000686
+    expect(result.providerRun.cost.amountUsd).toBe("0.00000686");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(7);
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.cost.costKind).toBe("provider_estimate");
+    expect(recorder.artifacts[0]?.run.cost.estimateBasis).toBe("endpoint_pricing");
+    expect(recorder.artifacts[0]?.run.cost.amountUsd).toBe("0.00000686");
+  });
+
+  it("cost_details branch is preferred over endpoint-pricing when both are available", async () => {
+    // The branch order is: usage.cost → cost_details → endpoint-pricing.
+    // When usage.cost is absent but BOTH cost_details and endpoint pricing
+    // are present, cost_details wins (it is the more precise upstream
+    // figure). This pins the precedence, not just each branch in isolation.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-precedence",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+              cost_details: {
+                upstream_inference_cost: 0.0000045, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+              },
+            },
+            openrouter_metadata: {
+              endpoints: {
+                total: 1,
+                available: [
+                  {
+                    provider: DEV_PAIR.providerId,
+                    model: DEV_PAIR.modelId,
+                    selected: true,
+                    pricing: { prompt: "0.00000014", completion: "0.00000028" }, // itotori-225-audit-allow: synthetic per-token prices
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const result = await provider.invoke(baseRequest());
+    // cost_details won — not endpoint_pricing.
+    expect(result.providerRun.cost.estimateBasis).toBe("cost_details");
+    expect(result.providerRun.cost.amountUsd).toBe("0.0000045");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(5);
+  });
+
+  it("a response without usage.cost, cost_details, or endpoint pricing remains provider_response_invalid (no fabrication)", async () => {
+    // ITOTORI-134 acceptance criterion #3: "Responses without enough pricing
+    // data remain explicit instead of fabricating precision." This is the
+    // fail-loud guard at the end of the branch ladder. The fixture has token
+    // counts but NO pricing signal of any kind.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-no-pricing",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("provider_response_invalid");
+      expect(error.message).toContain("usage.cost");
+    }
+  });
+
+  it("endpoint-pricing branch: numeric (not string) per-token prices are accepted", async () => {
+    // The per-token price parser handles both string and numeric shapes,
+    // mirroring usageCostToDecimalString. Some OR metadata echoes pricing
+    // as numbers rather than decimal strings.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-numeric-pricing",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+            openrouter_metadata: {
+              endpoints: {
+                total: 1,
+                available: [
+                  {
+                    provider: DEV_PAIR.providerId,
+                    model: DEV_PAIR.modelId,
+                    selected: true,
+                    pricing: {
+                      prompt: 0.000001, // itotori-225-audit-allow: synthetic per-token price for numeric-shape coverage
+                      completion: 0.000002, // itotori-225-audit-allow: synthetic per-token price for numeric-shape coverage
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const result = await provider.invoke(baseRequest());
+    // 100 × 0.000001 + 50 × 0.000002 = 0.0001 + 0.0001 = 0.0002
+    expect(result.providerRun.cost.costKind).toBe("provider_estimate");
+    expect(result.providerRun.cost.estimateBasis).toBe("endpoint_pricing");
+    expect(result.providerRun.cost.amountUsd).toBe("0.0002");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(200);
+  });
+});
+
 describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () => {
   // Acceptance criterion #1 (env-gated subset): synthetic response with
   // `prompt_tokens_details.cached_tokens > 0` lands cache fields on the

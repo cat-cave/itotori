@@ -3086,7 +3086,7 @@ export function assertProjectCostReport(
     const total = asRecord(totalValue, `${label}.totalsByCostKind[${index}]`);
     assertEnum(
       total.costKind,
-      ["billed", "zero"] as const,
+      ["billed", "provider_estimate", "zero"] as const,
       `${label}.totalsByCostKind[${index}].costKind`,
     );
     assertNonNegativeInteger(total.runCount, `${label}.totalsByCostKind[${index}].runCount`);
@@ -3132,7 +3132,11 @@ export function assertProjectCostReport(
     for (const [fallbackIndex, fallbackModel] of fallbackPlan.entries()) {
       assertString(fallbackModel, `${label}.recentRuns[${index}].fallbackPlan[${fallbackIndex}]`);
     }
-    assertEnum(run.costKind, ["billed", "zero"] as const, `${label}.recentRuns[${index}].costKind`);
+    assertEnum(
+      run.costKind,
+      ["billed", "provider_estimate", "zero"] as const,
+      `${label}.recentRuns[${index}].costKind`,
+    );
     if (run.amountMicrosUsd !== null) {
       assertNonNegativeInteger(
         run.amountMicrosUsd,
