@@ -158,6 +158,13 @@ pub mod replay;
 // input event so a live playthrough replays byte-identically.
 pub mod input_bridge;
 
+// utsushi-reallive-jump-resume: deterministic jump / resume to a
+// `(scene, line, frame)` target for ANY RealLive project. Owns the
+// engine-general, game-agnostic addressing model (`JumpTarget` +
+// reproducible address strings) a reviewer pins an annotation to; the
+// drive-to-target lives on `ReplayEngine::jump_to` (see `replay`).
+pub mod jump;
+
 // UTSUSHI-216: g00 image-format decoder (types 0, 1, 2). Owns the
 // shared LZSS variants and the corpus-wide lead-byte histogram that
 // emits `utsushi.reallive.g00_no_type_N_in_corpus` for types not
@@ -240,6 +247,9 @@ pub use g00::{
 pub use input_bridge::{
     BRIDGE_ADAPTER_NAME, BRIDGE_ADAPTER_VERSION, BridgeScheduler, HeadlessSource, InputSource,
     PendingYield, ReplaySource, UserInputQueue, UserInputSource,
+};
+pub use jump::{
+    JUMP_ADDRESS_PREFIX, JumpAddressError, JumpError, JumpLanding, JumpTarget, resolve_line_pc,
 };
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
