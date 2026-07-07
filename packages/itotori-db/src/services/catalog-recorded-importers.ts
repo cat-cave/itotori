@@ -29,6 +29,7 @@ import {
   catalogReleasePackageKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
+  catalogSourceRecordKindValues,
   catalogSourceValues,
   catalogTranslationPortabilityValues,
   type CatalogConfidence,
@@ -549,6 +550,13 @@ function parseDlsiteStorefrontResponse(
       seedTarget: false,
       metadata: compactJson({
         storefront: "dlsite",
+        // The recorded storefront parser only ever consumes recorded-fixture
+        // responses (its adapter refuses non-recorded_fixture mode), so the
+        // persisted fact carries the fixture-mode provenance marker directly.
+        // A consumer reading the fact metadata can distinguish replayed
+        // fixture evidence from live raw-cache evidence without joining the
+        // source provenance row.
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
         workno: sourceId,
         releaseMetadata: compactJson({ releaseDate, releaseYear, makerName }),
         workType,
@@ -650,6 +658,9 @@ function parseSteamStorefrontResponse(
         seedTarget: false,
         metadata: {
           storefront: "steam",
+          // Delisted Steam fixture responses are still recorded-fixture
+          // evidence (the parser only consumes recorded fixtures).
+          sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
           appId,
           packageStatus: "delisted",
           delistingStatus: "delisted",
@@ -724,6 +735,10 @@ function parseSteamStorefrontResponse(
       seedTarget: false,
       metadata: compactJson({
         storefront: "steam",
+        // Recorded Steam storefront parser only ever consumes recorded-fixture
+        // responses (its adapter refuses non-recorded_fixture mode), so the
+        // persisted fact carries the fixture-mode provenance marker directly.
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
         appId,
         releaseMetadata: compactJson({ releaseDate, releaseYear, developers, publishers }),
         localeMetadata: compactJson({
