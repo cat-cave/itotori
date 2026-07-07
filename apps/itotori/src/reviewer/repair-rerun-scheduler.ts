@@ -4,6 +4,12 @@
 // on the shared event/job queue. The scheduler owns payload shape,
 // idempotency keys, and dependency order; downstream workers own
 // execution.
+//
+// ITOTORI-048 — the payload + name/stage/reason constants now live in
+// @itotori/db (packages/itotori-db/src/job-registry.ts) so the typed
+// job-name registry is the single source of truth for name ↔ payload ↔
+// handler. This module re-exports them for existing callers and builds
+// jobs through the type-gated `buildRegisteredJobInput` builder.
 
 import { createHash } from "node:crypto";
 import type {
@@ -12,84 +18,37 @@ import type {
   JobQueueRecord,
   ReviewerQueueAction,
   ReviewerQueueActionResult,
-  ReviewerQueueItemKind,
+  ReviewerTriggeredRerunJobName,
+  ReviewerTriggeredRerunPayload,
+  ReviewerTriggeredRerunPolicyVersions,
+  ReviewerTriggeredRerunReasonCode,
+  ReviewerTriggeredRerunStage,
 } from "@itotori/db";
 import {
+  buildRegisteredJobInput,
   jobIdempotencyPolicyValues,
-  jobTaskTypeValues,
   reviewerQueueActionValues,
+  reviewerTriggeredRerunJobNameValues,
+  reviewerTriggeredRerunPayloadSchemaVersion,
+  reviewerTriggeredRerunReasonCodeValues,
+  reviewerTriggeredRerunStageValues,
 } from "@itotori/db";
 
-export const reviewerTriggeredRerunPayloadSchemaVersion =
-  "itotori.reviewer_triggered_rerun.v1" as const;
-
-export const reviewerTriggeredRerunStageValues = {
-  draftRepair: "draft-repair",
-  qaReplay: "qa-replay",
-  exportRegeneration: "export-regeneration",
-  runtimeValidation: "runtime-validation",
-} as const;
-
-export type ReviewerTriggeredRerunStage =
-  (typeof reviewerTriggeredRerunStageValues)[keyof typeof reviewerTriggeredRerunStageValues];
-
-export const reviewerTriggeredRerunJobNameValues = {
-  draftRepair: "rerun.draft-repair",
-  qaReplay: "rerun.qa-replay",
-  exportRegeneration: "rerun.export-regeneration",
-  runtimeValidation: "rerun.runtime-validation",
-} as const;
-
-export type ReviewerTriggeredRerunJobName =
-  (typeof reviewerTriggeredRerunJobNameValues)[keyof typeof reviewerTriggeredRerunJobNameValues];
-
-export const reviewerTriggeredRerunReasonCodeValues = {
-  reviewerRequestRepair: "reviewer_request_repair",
-  reviewerGlossaryUpdate: "reviewer_glossary_update",
-  reviewerStyleUpdate: "reviewer_style_update",
-  reviewerRuntimeFeedbackImport: "reviewer_runtime_feedback_import",
-  glossaryInvalidated: "glossary_invalidated",
-  policyInvalidated: "policy_invalidated",
-  runtimeFeedbackRerun: "runtime_feedback_rerun",
-  reviewerCorrectionWriteback: "reviewer_correction_writeback",
-  translationMemoryInvalidated: "translation_memory_invalidated",
-} as const;
-
-export type ReviewerTriggeredRerunReasonCode =
-  (typeof reviewerTriggeredRerunReasonCodeValues)[keyof typeof reviewerTriggeredRerunReasonCodeValues];
-
-export type ReviewerTriggeredRerunPolicyVersions = {
-  styleGuideVersionId: string | null;
-  glossaryVersionId: string | null;
-  pairPolicyVersionId: string | null;
-  qaPolicyVersionId: string | null;
-  exportPolicyVersionId: string | null;
-  runtimeValidationPolicyVersionId: string | null;
-};
-
-export type ReviewerTriggeredRerunPayload = {
-  schemaVersion: typeof reviewerTriggeredRerunPayloadSchemaVersion;
-  stage: ReviewerTriggeredRerunStage;
-  projectId: string;
-  localeBranchId: string;
-  sourceRevisionId: string;
-  affectedUnitIds: readonly string[];
-  artifactIds: readonly string[];
-  policyVersions: ReviewerTriggeredRerunPolicyVersions;
-  reasonCodes: readonly ReviewerTriggeredRerunReasonCode[];
-  reviewItemId: string;
-  transitionId: string;
-  reviewerAction: ReviewerQueueAction;
-  itemKind: ReviewerQueueItemKind;
-  sourceItemRef: string;
-  repairHint?: string;
-  termId?: string;
-  approvedTranslation?: string;
-  ruleLabel?: string;
-  runtimeEvidenceTier?: string;
-  observationEventIds?: string[];
-  artifactHashes?: string[];
-};
+// Re-export the registry-owned constants/types so existing imports of this
+// module keep resolving. The canonical definitions live in @itotori/db.
+export {
+  reviewerTriggeredRerunJobNameValues,
+  reviewerTriggeredRerunPayloadSchemaVersion,
+  reviewerTriggeredRerunReasonCodeValues,
+  reviewerTriggeredRerunStageValues,
+} from "@itotori/db";
+export type {
+  ReviewerTriggeredRerunJobName,
+  ReviewerTriggeredRerunPayload,
+  ReviewerTriggeredRerunPolicyVersions,
+  ReviewerTriggeredRerunReasonCode,
+  ReviewerTriggeredRerunStage,
+} from "@itotori/db";
 
 export type ReviewerTriggeredRerunScheduleResult = {
   jobs: JobQueueRecord[];
@@ -153,24 +112,24 @@ export function buildRerunJobInputsFromPayloadContext(
     const payload: ReviewerTriggeredRerunPayload = { ...context, stage };
     const idempotencyKey = idempotencyKeyFor(payload);
     const jobId = `reviewer-rerun-${digest(idempotencyKey).slice(0, 16)}`;
-    inputs.push({
-      jobId,
-      projectId: payload.projectId,
-      localeBranchId: payload.localeBranchId,
-      jobType: jobTaskTypeValues.rerun,
-      jobName: jobNameForStage(stage),
-      queueName: "reviewer-rerun",
-      idempotency: {
-        policy: jobIdempotencyPolicyValues.idempotent,
-        key: idempotencyKey,
-      },
-      correlationId: `reviewer-rerun:${payload.reviewItemId}`,
-      causationId: payload.transitionId,
-      subjectRefs: subjectRefsFor(payload),
-      dependsOnJobIds: inputs.length === 0 ? [] : [inputs[inputs.length - 1]!.jobId!],
-      payload: payload as unknown as Record<string, unknown>,
-      priority: priorityForStage(stage),
-    });
+    const jobName = jobNameForStage(stage);
+    inputs.push(
+      buildRegisteredJobInput(jobName, payload, {
+        jobId,
+        projectId: payload.projectId,
+        localeBranchId: payload.localeBranchId,
+        queueName: "reviewer-rerun",
+        idempotency: {
+          policy: jobIdempotencyPolicyValues.idempotent,
+          key: idempotencyKey,
+        },
+        correlationId: `reviewer-rerun:${payload.reviewItemId}`,
+        causationId: payload.transitionId,
+        subjectRefs: subjectRefsFor(payload),
+        dependsOnJobIds: inputs.length === 0 ? [] : [inputs[inputs.length - 1]!.jobId!],
+        priority: priorityForStage(stage),
+      }),
+    );
   }
   return inputs;
 }
