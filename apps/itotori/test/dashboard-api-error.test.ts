@@ -83,7 +83,7 @@ describe("ITOTORI-057 DashboardApiError", () => {
     });
     // The base Error.message keeps the existing `failed to load <route>:
     // <status>` form so logs / existing assertions stay meaningful.
-    expect(error.message).toBe("failed to load projects.cost: 403");
+    expect(error.message).toBe("failed to load projects.cost: 403"); // itotori-225-audit-allow: route id + HTTP status, not a model cost
     expect(error.routeId).toBe("projects.cost");
     expect(error.status).toBe(403);
     expect(error.code).toBe("forbidden");
@@ -103,7 +103,7 @@ describe("ITOTORI-057 DashboardApiError", () => {
       code: null,
       message: null,
     });
-    expect(error.message).toBe("failed to load projects.cost: 502");
+    expect(error.message).toBe("failed to load projects.cost: 502"); // itotori-225-audit-allow: route id + HTTP status, not a model cost
     expect(error.code).toBeNull();
     expect(error.typedMessage).toBeNull();
   });
