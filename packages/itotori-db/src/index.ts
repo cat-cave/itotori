@@ -8,6 +8,7 @@ export {
   localUserId,
   permissionValues,
   requirePermission,
+  resolvePrincipalEffectivePermissions,
 } from "./authorization.js";
 export type { AuthorizationActor, Permission } from "./authorization.js";
 export { migrate } from "./migrations.js";

@@ -15,12 +15,13 @@
 // against the existing single-user substrate — which stays intact.
 
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   type AuthorizationActor,
   type Permission,
   permissionValues,
   requirePermission,
+  resolvePrincipalEffectivePermissions,
 } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
@@ -299,39 +300,18 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
    * direct permission grants and the permissions of every permission-set granted
    * to it. This is how a permission-set ("role") resolves to concrete
    * permissions — the model never branches on a role string.
+   *
+   * This gated read enforces `auth.admin` and then delegates the union to the
+   * single authoritative resolver, `resolvePrincipalEffectivePermissions` — the
+   * SAME primitive `requirePermission` consults — so there is exactly one
+   * resolver of effective permissions in the codebase.
    */
   async resolvePrincipalPermissions(
     actor: AuthorizationActor,
     principalId: string,
   ): Promise<Permission[]> {
     await requirePermission(this.db, actor, permissionValues.authAdmin);
-
-    const directRows = await this.db
-      .select({ permission: authPrincipalPermissionGrants.permission })
-      .from(authPrincipalPermissionGrants)
-      .where(eq(authPrincipalPermissionGrants.principalId, principalId));
-
-    const setIdRows = await this.db
-      .select({ permissionSetId: authPrincipalPermissionSetGrants.permissionSetId })
-      .from(authPrincipalPermissionSetGrants)
-      .where(eq(authPrincipalPermissionSetGrants.principalId, principalId));
-    const setIds = setIdRows.map((row) => row.permissionSetId);
-
-    const setPermissionRows =
-      setIds.length === 0
-        ? []
-        : await this.db
-            .select({ permission: authPermissionSetPermissions.permission })
-            .from(authPermissionSetPermissions)
-            .where(inArray(authPermissionSetPermissions.permissionSetId, setIds));
-
-    const permissions = new Set<Permission>();
-    for (const row of directRows) {
-      permissions.add(row.permission);
-    }
-    for (const row of setPermissionRows) {
-      permissions.add(row.permission);
-    }
+    const permissions = await resolvePrincipalEffectivePermissions(this.db, principalId);
     return [...permissions].sort();
   }
 }
