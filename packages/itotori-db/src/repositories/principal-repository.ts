@@ -15,7 +15,7 @@
 // against the existing single-user substrate — which stays intact.
 
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   type AuthorizationActor,
   type Permission,
@@ -28,6 +28,8 @@ import {
   type AuthPrincipalKind,
   authAccounts,
   authAuditEvents,
+  authPermissionSetAuditActionValues,
+  authPermissionSetAuditEvents,
   authPermissionSetPermissions,
   authPermissionSets,
   authPrincipalPermissionGrants,
@@ -73,11 +75,14 @@ export type PrincipalRecord = {
 };
 
 export type CreatePermissionSetInput = {
+  actorPrincipalId: string;
   permissionSetId: string;
   accountId: string;
   name: string;
   description?: string;
   permissions: readonly Permission[];
+  reason?: string;
+  requestId?: string;
 };
 
 export type PermissionSetRecord = {
@@ -85,6 +90,41 @@ export type PermissionSetRecord = {
   accountId: string;
   name: string;
   permissions: Permission[];
+};
+
+/** Add a single permission to an existing set (edits the bundle's DATA). */
+export type AddPermissionToSetInput = {
+  actorPrincipalId: string;
+  permissionSetId: string;
+  permission: Permission;
+  reason?: string;
+  requestId?: string;
+};
+
+/** Remove a single permission from an existing set (edits the bundle's DATA). */
+export type RemovePermissionFromSetInput = {
+  actorPrincipalId: string;
+  permissionSetId: string;
+  permission: Permission;
+  reason?: string;
+  requestId?: string;
+};
+
+/** Rename a permission set. The name is a label; nothing branches on it. */
+export type RenamePermissionSetInput = {
+  actorPrincipalId: string;
+  permissionSetId: string;
+  name: string;
+  reason?: string;
+  requestId?: string;
+};
+
+/** Delete a permission set (blocked while granted; see `deletePermissionSet`). */
+export type DeletePermissionSetInput = {
+  actorPrincipalId: string;
+  permissionSetId: string;
+  reason?: string;
+  requestId?: string;
 };
 
 /** Grant a permission set (the "role assignment") to a principal. */
@@ -112,6 +152,13 @@ export interface ItotoriPrincipalRepositoryPort {
     actor: AuthorizationActor,
     input: CreatePermissionSetInput,
   ): Promise<PermissionSetRecord>;
+  addPermissionToSet(actor: AuthorizationActor, input: AddPermissionToSetInput): Promise<void>;
+  removePermissionFromSet(
+    actor: AuthorizationActor,
+    input: RemovePermissionFromSetInput,
+  ): Promise<void>;
+  renamePermissionSet(actor: AuthorizationActor, input: RenamePermissionSetInput): Promise<void>;
+  deletePermissionSet(actor: AuthorizationActor, input: DeletePermissionSetInput): Promise<void>;
   grantPermissionSet(actor: AuthorizationActor, input: GrantPermissionSetInput): Promise<void>;
   grantDirectPermission(
     actor: AuthorizationActor,
@@ -133,6 +180,9 @@ export class ItotoriPrincipalRepositoryError extends Error {
     this.name = "ItotoriPrincipalRepositoryError";
   }
 }
+
+/** The transaction handle drizzle passes to `db.transaction(async (tx) => …)`. */
+type PrincipalTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
 
 export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -204,12 +254,150 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
           })),
         );
       }
+      await this.recordSetAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        permissionSetId: input.permissionSetId,
+        setName: input.name,
+        action: authPermissionSetAuditActionValues.created,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
       return {
         permissionSetId: input.permissionSetId,
         accountId: input.accountId,
         name: input.name,
         permissions,
       };
+    });
+  }
+
+  /**
+   * Add one permission to an existing set. This EDITS the set's DATA: because
+   * `resolvePrincipalEffectivePermissions` expands granted sets at check time,
+   * every principal the set is granted to immediately GAINS this permission.
+   */
+  async addPermissionToSet(
+    actor: AuthorizationActor,
+    input: AddPermissionToSetInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      const set = await this.requirePermissionSet(tx, input.permissionSetId);
+      await tx
+        .insert(authPermissionSetPermissions)
+        .values({ permissionSetId: input.permissionSetId, permission: input.permission })
+        .onConflictDoNothing();
+      await this.touchPermissionSet(tx, input.permissionSetId);
+      await this.recordSetAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        permissionSetId: input.permissionSetId,
+        setName: set.name,
+        action: authPermissionSetAuditActionValues.permissionAdded,
+        permission: input.permission,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
+    });
+  }
+
+  /**
+   * Remove one permission from an existing set. Every principal the set is
+   * granted to immediately LOSES this permission (unless it also holds it via a
+   * direct grant or another granted set — resolution is a union).
+   */
+  async removePermissionFromSet(
+    actor: AuthorizationActor,
+    input: RemovePermissionFromSetInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      const set = await this.requirePermissionSet(tx, input.permissionSetId);
+      await tx
+        .delete(authPermissionSetPermissions)
+        .where(
+          and(
+            eq(authPermissionSetPermissions.permissionSetId, input.permissionSetId),
+            eq(authPermissionSetPermissions.permission, input.permission),
+          ),
+        );
+      await this.touchPermissionSet(tx, input.permissionSetId);
+      await this.recordSetAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        permissionSetId: input.permissionSetId,
+        setName: set.name,
+        action: authPermissionSetAuditActionValues.permissionRemoved,
+        permission: input.permission,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
+    });
+  }
+
+  /** Rename a permission set. The name is a label; authorization never reads it. */
+  async renamePermissionSet(
+    actor: AuthorizationActor,
+    input: RenamePermissionSetInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      await this.requirePermissionSet(tx, input.permissionSetId);
+      await tx
+        .update(authPermissionSets)
+        .set({ name: input.name, updatedAt: new Date() })
+        .where(eq(authPermissionSets.permissionSetId, input.permissionSetId));
+      await this.recordSetAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        permissionSetId: input.permissionSetId,
+        setName: input.name,
+        action: authPermissionSetAuditActionValues.renamed,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
+    });
+  }
+
+  /**
+   * Delete a permission set.
+   *
+   * DELETE-VS-GRANT SEMANTICS: deletion is BLOCKED while the set is still granted
+   * to any principal. The schema cascades a set deletion to its
+   * `principal_permission_set_grants`, which would SILENTLY strip authorization
+   * from every principal that held the set with no explicit record of the loss.
+   * Rather than cascade, we refuse (throwing `ItotoriPrincipalRepositoryError`)
+   * and require the admin to revoke the grants first, making the authorization
+   * change deliberate and individually auditable. Once no grants reference it,
+   * deletion proceeds and is recorded as `set_deleted` in the retained audit
+   * trail.
+   */
+  async deletePermissionSet(
+    actor: AuthorizationActor,
+    input: DeletePermissionSetInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      const set = await this.requirePermissionSet(tx, input.permissionSetId);
+      const grants = await tx
+        .select({ principalId: authPrincipalPermissionSetGrants.principalId })
+        .from(authPrincipalPermissionSetGrants)
+        .where(eq(authPrincipalPermissionSetGrants.permissionSetId, input.permissionSetId));
+      if (grants.length > 0) {
+        throw new ItotoriPrincipalRepositoryError(
+          `permission set ${input.permissionSetId} is still granted to ${grants.length} ` +
+            "principal(s); revoke the grants before deleting so no principal loses " +
+            "authorization silently",
+        );
+      }
+      await tx
+        .delete(authPermissionSets)
+        .where(eq(authPermissionSets.permissionSetId, input.permissionSetId));
+      await this.recordSetAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        permissionSetId: input.permissionSetId,
+        setName: set.name,
+        action: authPermissionSetAuditActionValues.deleted,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
     });
   }
 
@@ -313,5 +501,58 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     await requirePermission(this.db, actor, permissionValues.authAdmin);
     const permissions = await resolvePrincipalEffectivePermissions(this.db, principalId);
     return [...permissions].sort();
+  }
+
+  /** Load a set's current row or throw — validates the target of an edit exists. */
+  private async requirePermissionSet(
+    tx: PrincipalTransaction,
+    permissionSetId: string,
+  ): Promise<{ name: string }> {
+    const rows = await tx
+      .select({ name: authPermissionSets.name })
+      .from(authPermissionSets)
+      .where(eq(authPermissionSets.permissionSetId, permissionSetId))
+      .limit(1);
+    const set = rows[0];
+    if (set === undefined) {
+      throw new ItotoriPrincipalRepositoryError(`permission set ${permissionSetId} does not exist`);
+    }
+    return set;
+  }
+
+  /** Bump `updated_at` so an edited set reflects its last mutation time. */
+  private async touchPermissionSet(
+    tx: PrincipalTransaction,
+    permissionSetId: string,
+  ): Promise<void> {
+    await tx
+      .update(authPermissionSets)
+      .set({ updatedAt: new Date() })
+      .where(eq(authPermissionSets.permissionSetId, permissionSetId));
+  }
+
+  /** Append one row to the permission-set model audit trail. */
+  private async recordSetAuditEvent(
+    tx: PrincipalTransaction,
+    input: {
+      actorPrincipalId: string;
+      permissionSetId: string;
+      setName: string;
+      action: (typeof authPermissionSetAuditActionValues)[keyof typeof authPermissionSetAuditActionValues];
+      permission?: Permission;
+      reason?: string;
+      requestId?: string;
+    },
+  ): Promise<void> {
+    await tx.insert(authPermissionSetAuditEvents).values({
+      authPermissionSetAuditEventId: `auth-permission-set-audit-${randomUUID()}`,
+      actorPrincipalId: input.actorPrincipalId,
+      permissionSetId: input.permissionSetId,
+      setName: input.setName,
+      action: input.action,
+      ...(input.permission !== undefined ? { permission: input.permission } : {}),
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+    });
   }
 }

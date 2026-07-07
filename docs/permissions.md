@@ -158,6 +158,62 @@ for authorization branching anywhere; authorization always resolves to an
 exact-match permission via `requirePermission`. Administering this layer is
 itself gated on `auth.admin` (see `ItotoriPrincipalRepository`).
 
+## Permission-Set Model (auth-004)
+
+A permission set is a **first-class, editable, data-driven** bundle — the only
+thing a "role" may ever be. `ItotoriPrincipalRepository` exposes the full CRUD,
+every method gated on `auth.admin` and recorded in the permission-set audit
+trail (`itotori_auth_permission_set_audit_events`, migration
+`0060_auth_permission_set_model`):
+
+- `createPermissionSet` — create a named set with an initial permission list
+  (`set_created`).
+- `addPermissionToSet` / `removePermissionFromSet` — edit the bundle's DATA
+  (`permission_added` / `permission_removed`). Because
+  `resolvePrincipalEffectivePermissions` expands granted sets at check time,
+  editing a **granted** set immediately changes the effective permissions of
+  every principal it is granted to: adding a permission makes each grantee gain
+  it, removing one makes each grantee lose it (unless still held via a direct
+  grant or another set — resolution is a union).
+- `renamePermissionSet` — change the label (`set_renamed`). The name is a label
+  only; authorization never reads it.
+- `deletePermissionSet` — remove a set (`set_deleted`).
+
+The name is never compared in shipped code (enforced by the no-hardcoded-roles
+guard above); resolution is purely by the permissions in the set.
+
+### Delete-vs-grant semantics
+
+Deleting a permission set is **blocked while it is still granted to any
+principal**. The schema cascades a set deletion to
+`itotori_auth_principal_permission_set_grants`, which would silently strip
+authorization from every principal that held the set with no explicit record of
+the loss. Instead of cascading, `deletePermissionSet` refuses (throws
+`ItotoriPrincipalRepositoryError`) and requires the admin to revoke the grants
+first, making each authorization change deliberate and individually auditable.
+Once no grants reference the set, deletion proceeds. The audit row's
+`permission_set_id` is a retained plain id (not a foreign key) and `set_name`
+snapshots the name at deletion time, so a `set_deleted` event survives the set's
+removal.
+
+### Least-privilege seed sets (DATA)
+
+`seedDefaultPermissionSets(db, { accountId })` materializes the least-privilege
+`defaultPermissionSetSeeds` as editable data rows for an account. These are DATA,
+not code constants that authorization branches on — the names (`Viewer`,
+`Reviewer`, `Director`) are labels and the bundles are ordinary permission sets
+an admin edits via the CRUD above:
+
+| Seed       | Permissions                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------- |
+| `Viewer`   | `queue.read`, `catalog.read`                                                                                     |
+| `Reviewer` | `draft.write`, `queue.read`, `queue.manage`, `style_guide.approve`                                               |
+| `Director` | `project.import`, `draft.write`, `patch.export`, `queue.read`, `queue.manage`, `style_guide.approve`, `catalog.read`, `catalog.write` |
+
+Seeding is a bootstrap (like `bootstrapLocalUser`), idempotent, and account
+scoped (`permission-set-<accountId>-<key>`). No seed is granted `auth.admin` or
+`system.reset`.
+
 ## Future Teams
 
 The schema stores grants by `user_id` / `principal_id` and `permission`, not role

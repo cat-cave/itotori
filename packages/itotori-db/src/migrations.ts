@@ -296,6 +296,10 @@ export const migrations = [
     id: "0059_auth_principal_schema",
     file: "0059_auth_principal_schema.sql",
   },
+  {
+    id: "0060_auth_permission_set_model",
+    file: "0060_auth_permission_set_model.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

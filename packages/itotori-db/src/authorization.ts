@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { ItotoriDatabase } from "./connection.js";
 import {
   authPermissionSetPermissions,
+  authPermissionSets,
   authPrincipalPermissionGrants,
   authPrincipalPermissionSetGrants,
   authUsers,
@@ -180,4 +181,97 @@ export async function bootstrapLocalUser(db: ItotoriDatabase): Promise<Authoriza
   }
 
   return { userId: localUserId };
+}
+
+/**
+ * Least-privilege default permission sets, expressed as DATA.
+ *
+ * These are NOT roles and NOT code constants that authorization branches on.
+ * Each entry is the seed content of a `permission_set` row: a `name` LABEL plus
+ * the concrete `Permission` values that make up the bundle. `seedDefaultPermissionSets`
+ * writes them as editable data rows for a given account; from then on they are
+ * ordinary permission sets that admins can rename, add/remove permissions on, or
+ * delete via the gated CRUD in `ItotoriPrincipalRepository`. A principal granted
+ * one resolves to exactly the permissions listed here (via
+ * `resolvePrincipalEffectivePermissions`) — nothing ever compares the `name`.
+ *
+ * The `key` is a stable, account-scoped id suffix (so the same seed in two
+ * accounts gets distinct set ids); it is likewise a data label, never branched
+ * on.
+ */
+export const defaultPermissionSetSeeds = [
+  {
+    key: "viewer",
+    name: "Viewer",
+    description: "Read-only reviewer-queue and catalog access.",
+    permissions: [permissionValues.queueRead, permissionValues.catalogRead],
+  },
+  {
+    key: "reviewer",
+    name: "Reviewer",
+    description: "Review drafts, manage the reviewer queue, and approve style guides.",
+    permissions: [
+      permissionValues.draftWrite,
+      permissionValues.queueRead,
+      permissionValues.queueManage,
+      permissionValues.styleGuideApprove,
+    ],
+  },
+  {
+    key: "director",
+    name: "Director",
+    description:
+      "Broad localization authority: import, draft, review, approve, and export, plus catalog curation.",
+    permissions: [
+      permissionValues.projectImport,
+      permissionValues.draftWrite,
+      permissionValues.patchExport,
+      permissionValues.queueRead,
+      permissionValues.queueManage,
+      permissionValues.styleGuideApprove,
+      permissionValues.catalogRead,
+      permissionValues.catalogWrite,
+    ],
+  },
+] as const satisfies readonly {
+  key: string;
+  name: string;
+  description: string;
+  permissions: readonly Permission[];
+}[];
+
+/** The account-scoped `permission_set_id` a seed materializes to. */
+export function defaultPermissionSetId(accountId: string, key: string): string {
+  return `permission-set-${accountId}-${key}`;
+}
+
+/**
+ * Idempotently materialize the least-privilege `defaultPermissionSetSeeds` as
+ * editable DATA rows for `accountId`. This is a bootstrap (like
+ * `bootstrapLocalUser`), not a gated mutation: it seeds starter data an admin
+ * then edits through the gated CRUD. The rows are ordinary permission sets — the
+ * names are labels, resolution is purely by the seeded permissions.
+ */
+export async function seedDefaultPermissionSets(
+  db: ItotoriDatabase,
+  options: { accountId: string },
+): Promise<void> {
+  for (const seed of defaultPermissionSetSeeds) {
+    const permissionSetId = defaultPermissionSetId(options.accountId, seed.key);
+    await db
+      .insert(authPermissionSets)
+      .values({
+        permissionSetId,
+        accountId: options.accountId,
+        name: seed.name,
+        description: seed.description,
+      })
+      .onConflictDoNothing();
+    for (const permission of seed.permissions) {
+      await db
+        .insert(authPermissionSetPermissions)
+        .values({ permissionSetId, permission })
+        .onConflictDoNothing();
+    }
+  }
 }

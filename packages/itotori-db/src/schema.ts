@@ -4668,6 +4668,25 @@ export const authAuditEventActionValues = {
 export type AuthAuditEventAction =
   (typeof authAuditEventActionValues)[keyof typeof authAuditEventActionValues];
 
+/**
+ * The kind of permission-set MODEL mutation recorded in the permission-set audit
+ * trail. This is orthogonal to `authAuditEventActionValues` (which records a
+ * grant/revoke against a principal): a set mutation edits the DATA of a
+ * permission bundle itself, and its subject is a permission SET, not a target
+ * principal. Editing a set changes the effective permissions of every principal
+ * the set is granted to, so the change is auditable in its own right.
+ */
+export const authPermissionSetAuditActionValues = {
+  created: "set_created",
+  renamed: "set_renamed",
+  permissionAdded: "permission_added",
+  permissionRemoved: "permission_removed",
+  deleted: "set_deleted",
+} as const;
+
+export type AuthPermissionSetAuditAction =
+  (typeof authPermissionSetAuditActionValues)[keyof typeof authPermissionSetAuditActionValues];
+
 /** The org / workspace tenant that owns memberships, permission sets, etc. */
 export const authAccounts = pgTable("itotori_auth_accounts", {
   accountId: text("account_id").primaryKey(),
@@ -4901,5 +4920,45 @@ export const authAuditEvents = pgTable(
   (table) => [
     index("itotori_auth_audit_events_target_idx").on(table.targetPrincipalId, table.createdAt),
     index("itotori_auth_audit_events_actor_idx").on(table.actorPrincipalId, table.createdAt),
+  ],
+);
+
+/**
+ * Append-only audit trail of permission-set MODEL edits: which actor created,
+ * renamed, added/removed a permission to/from, or deleted which permission set,
+ * why, and under which request id. Editing a granted set changes the effective
+ * permissions of the principals it is granted to, so every set mutation is
+ * recorded here.
+ *
+ * `permissionSetId` is a plain retained id (NOT a foreign key): the row must
+ * survive the set's deletion so a `set_deleted` event is not itself cascaded
+ * away. `setName` snapshots the set's name at mutation time so a deleted set is
+ * still legible in the trail. `permission` is populated only for
+ * `permission_added` / `permission_removed`.
+ */
+export const authPermissionSetAuditEvents = pgTable(
+  "itotori_auth_permission_set_audit_events",
+  {
+    authPermissionSetAuditEventId: text("auth_permission_set_audit_event_id").primaryKey(),
+    actorPrincipalId: text("actor_principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
+    permissionSetId: text("permission_set_id").notNull(),
+    setName: text("set_name").notNull(),
+    action: text("action").notNull().$type<AuthPermissionSetAuditAction>(),
+    permission: text("permission").$type<Permission>(),
+    reason: text("reason"),
+    requestId: text("request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_auth_permission_set_audit_events_set_idx").on(
+      table.permissionSetId,
+      table.createdAt,
+    ),
+    index("itotori_auth_permission_set_audit_events_actor_idx").on(
+      table.actorPrincipalId,
+      table.createdAt,
+    ),
   ],
 );

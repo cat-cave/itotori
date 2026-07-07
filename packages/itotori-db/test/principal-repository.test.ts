@@ -58,6 +58,7 @@ describe("ItotoriPrincipalRepository", () => {
 
       // A "role" is ONLY a permission set: a named, editable bundle.
       const set = await repo.createPermissionSet(localActor, {
+        actorPrincipalId: "principal-admin",
         permissionSetId: "permission-set-editor",
         accountId: "account-crux",
         name: "Editor",
@@ -134,6 +135,7 @@ describe("ItotoriPrincipalRepository", () => {
       expect(service.principalKind).toBe("service_principal");
 
       await repo.createPermissionSet(localActor, {
+        actorPrincipalId: "principal-service",
         permissionSetId: "permission-set-ci",
         accountId: "account-svc",
         name: "CI",

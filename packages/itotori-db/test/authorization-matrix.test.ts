@@ -1000,6 +1000,30 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.createPermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
+    "addPermissionToSet",
+    "authAdmin",
+    "permission-set-model.test.ts add permission to set coverage",
+    (repo) => repo.addPermissionToSet(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "removePermissionFromSet",
+    "authAdmin",
+    "permission-set-model.test.ts remove permission from set coverage",
+    (repo) => repo.removePermissionFromSet(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "renamePermissionSet",
+    "authAdmin",
+    "permission-set-model.test.ts rename permission set coverage",
+    (repo) => repo.renamePermissionSet(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "deletePermissionSet",
+    "authAdmin",
+    "permission-set-model.test.ts delete permission set coverage",
+    (repo) => repo.deletePermissionSet(deniedActor, undefined as never),
+  ),
+  principalGate(
     "grantPermissionSet",
     "authAdmin",
     "principal-repository.test.ts grant permission set coverage",
@@ -1961,6 +1985,30 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriPrincipalRepository.createPermissionSet",
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts create permission set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.addPermissionToSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "permission-set-model.test.ts add permission to set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.removePermissionFromSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "permission-set-model.test.ts remove permission from set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.renamePermissionSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "permission-set-model.test.ts rename permission set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.deletePermissionSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "permission-set-model.test.ts delete permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

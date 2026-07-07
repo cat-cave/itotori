@@ -4,11 +4,14 @@ export {
   AuthorizationError,
   allPermissions,
   bootstrapLocalUser,
+  defaultPermissionSetId,
+  defaultPermissionSetSeeds,
   localUserDisplayName,
   localUserId,
   permissionValues,
   requirePermission,
   resolvePrincipalEffectivePermissions,
+  seedDefaultPermissionSets,
 } from "./authorization.js";
 export type { AuthorizationActor, Permission } from "./authorization.js";
 export { migrate } from "./migrations.js";
@@ -860,17 +863,29 @@ export {
 } from "./repositories/principal-repository.js";
 export type {
   AccountRecord,
+  AddPermissionToSetInput,
   CreateAccountInput,
   CreatePermissionSetInput,
   CreatePrincipalInput,
+  DeletePermissionSetInput,
   GrantDirectPermissionInput,
   GrantPermissionSetInput,
   ItotoriPrincipalRepositoryPort,
   PermissionSetRecord,
   PrincipalRecord,
+  RemovePermissionFromSetInput,
+  RenamePermissionSetInput,
 } from "./repositories/principal-repository.js";
-export { authAuditEventActionValues, authPrincipalKindValues } from "./schema.js";
-export type { AuthAuditEventAction, AuthPrincipalKind } from "./schema.js";
+export {
+  authAuditEventActionValues,
+  authPermissionSetAuditActionValues,
+  authPrincipalKindValues,
+} from "./schema.js";
+export type {
+  AuthAuditEventAction,
+  AuthPermissionSetAuditAction,
+  AuthPrincipalKind,
+} from "./schema.js";
 export type {
   CreateReviewerQueueItemInput,
   ItotoriReviewerQueueRepositoryPort,
