@@ -225,10 +225,10 @@ not code constants that authorization branches on — the names (`Viewer`,
 `Reviewer`, `Director`) are labels and the bundles are ordinary permission sets
 an admin edits via the CRUD above:
 
-| Seed       | Permissions                                                                                                     |
-| ---------- | --------------------------------------------------------------------------------------------------------------- |
-| `Viewer`   | `queue.read`, `catalog.read`                                                                                     |
-| `Reviewer` | `draft.write`, `queue.read`, `queue.manage`, `style_guide.approve`                                               |
+| Seed       | Permissions                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `Viewer`   | `queue.read`, `catalog.read`                                                                                                          |
+| `Reviewer` | `draft.write`, `queue.read`, `queue.manage`, `style_guide.approve`                                                                    |
 | `Director` | `project.import`, `draft.write`, `patch.export`, `queue.read`, `queue.manage`, `style_guide.approve`, `catalog.read`, `catalog.write` |
 
 Seeding is a bootstrap (like `bootstrapLocalUser`), idempotent, and account
