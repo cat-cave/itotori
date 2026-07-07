@@ -1780,6 +1780,15 @@ export const translationMemorySegments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // ITOTORI-145: keep Drizzle parity with migration 0063. The status enum
+    // (reusable|blocked) and the jsonb object shape of provenance are
+    // enforced at the DB; modeling the CHECK guards here keeps schema-drift
+    // introspection honest.
+    check("itotori_tm_segments_status_check", sql`${table.status} in ('reusable', 'blocked')`),
+    check(
+      "itotori_tm_segments_provenance_check",
+      sql`jsonb_typeof(${table.provenance}) = 'object'`,
+    ),
     index("itotori_tm_segments_exact_lookup_idx").on(
       table.localeBranchId,
       table.sourceRevisionId,
@@ -1975,6 +1984,31 @@ export const translationMemoryReuseEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // ITOTORI-145: mirror migration 0063's CHECK constraints on the reuse
+    // events table so schema-drift introspection reflects runtime DB
+    // enforcement: enum-like match_kind / reuse_status allowed values,
+    // normalized 0..1000 match_score range, and the jsonb object shape of
+    // provenance + cost_impact.
+    check(
+      "itotori_tm_reuse_events_match_kind_check",
+      sql`${table.matchKind} in ('exact', 'fuzzy')`,
+    ),
+    check(
+      "itotori_tm_reuse_events_match_score_check",
+      sql`${table.matchScore} >= 0 and ${table.matchScore} <= 1000`,
+    ),
+    check(
+      "itotori_tm_reuse_events_reuse_status_check",
+      sql`${table.reuseStatus} in ('suggested', 'applied')`,
+    ),
+    check(
+      "itotori_tm_reuse_events_provenance_check",
+      sql`jsonb_typeof(${table.provenance}) = 'object'`,
+    ),
+    check(
+      "itotori_tm_reuse_events_cost_impact_check",
+      sql`jsonb_typeof(${table.costImpact}) = 'object'`,
+    ),
     index("itotori_tm_reuse_events_target_idx").on(
       table.localeBranchId,
       table.targetBridgeUnitId,

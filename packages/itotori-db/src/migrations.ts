@@ -308,6 +308,10 @@ export const migrations = [
     id: "0062_catalog_release_mapping_source_traversal_index",
     file: "0062_catalog_release_mapping_source_traversal_index.sql",
   },
+  {
+    id: "0063_translation_memory_check_constraints",
+    file: "0063_translation_memory_check_constraints.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
