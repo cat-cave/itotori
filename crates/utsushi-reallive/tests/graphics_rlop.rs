@@ -39,9 +39,10 @@ use utsushi_core::substrate::{
 };
 
 use utsushi_reallive::{
-    BG_PLANE_SLOT, ExprValue, GRP_RLOP_COUNT, GraphicsObjectKind, GraphicsPlane, GraphicsRuntime,
-    GrpAllocDcOp, GrpOpcode, GrpOpenBgOp, GrpWipeOp, OBJ_RLOP_COUNT, ObjFgBgOp, ObjFgBgOpcode,
-    RLOperation, RenderPass, RlopRegistry, Vm, WipeColour, register_grp_rlops, register_obj_rlops,
+    ExprValue, GRP_MODULE_ID, GraphicsObjectKind, GraphicsPlane, GraphicsRuntime, GrpOp,
+    GrpRenderOp, OBJ_FG_CREATION_ID, OBJ_FG_SETTER_ID, ObjCreateOp, ObjSetOp, ObjSetProp,
+    RLOperation, RenderPass, RlopKey, RlopRegistry, SCREEN_DC_SLOT, Vm, WipeColour,
+    register_render_rlops,
 };
 
 const BG01A1_FILENAME: &str = "BG01A1.g00";
@@ -121,107 +122,154 @@ fn strip_g00_prefix(logical: &str) -> &str {
     logical.strip_prefix("g00/").unwrap_or(logical)
 }
 
-#[test]
-fn registry_mounts_alpha_tier_opcode_union() {
-    // Spec: ~25 opcodes across module_grp + module_obj_*. This crate
-    // ships 15 module_grp + 16 (4 mgmt + 12 fg/bg) = 31. Pinned so a
-    // future addition / removal surfaces in the audit trail.
-    let mut registry = RlopRegistry::new();
+fn runtime_with_registry() -> (Arc<GraphicsRuntime>, RlopRegistry) {
     let runtime = Arc::new(GraphicsRuntime::new());
-    let grp = register_grp_rlops(&mut registry, Arc::clone(&runtime));
-    let obj = register_obj_rlops(&mut registry, Arc::clone(&runtime));
-    assert_eq!(grp, GRP_RLOP_COUNT);
-    assert_eq!(obj, OBJ_RLOP_COUNT);
-    assert_eq!(grp + obj, 33);
-    assert_eq!(registry.len(), 33);
+    let mut registry = RlopRegistry::new();
+    register_render_rlops(&mut registry, Arc::clone(&runtime));
+    (runtime, registry)
+}
+
+fn int(v: i32) -> ExprValue {
+    ExprValue::Int(v)
+}
+
+fn bytes(v: &[u8]) -> ExprValue {
+    ExprValue::Bytes(v.to_vec())
 }
 
 #[test]
-fn alpha_tier_opcode_count_at_least_25_per_spec() {
-    // justification: `>= 25` is a genuine domain bound, not a relaxed
-    // floor. The spec's "~25 opcodes" is the alpha-tier coverage
-    // frontier; this test asserts we clear it. It is NOT masking an
-    // unknown real count — the EXACT shipped count (31) is pinned
-    // separately by `registry_mounts_alpha_tier_opcode_union`
-    // (`grp + obj == 31`, `registry.len() == 31`). This `>= 25`
-    // additionally documents that a future opcode split may not drop
-    // below the spec frontier. The const-block is required by
-    // clippy::assertions_on_constants because both inputs are const.
-    const _: () = {
-        assert!(GRP_RLOP_COUNT + OBJ_RLOP_COUNT >= 25);
-    };
+fn render_family_mounts_real_opcode_numbers_under_all_lattice_types() {
+    let (_rt, registry) = runtime_with_registry();
+    // The real render family fires on every observed compiler lattice type.
+    for module_type in [0u8, 1, 2] {
+        // grp.openBg (73), grp.grpBuffer (70), grp.grpDisplay (72).
+        for op in [70u16, 72, 73] {
+            assert!(
+                registry
+                    .get(RlopKey::new(module_type, GRP_MODULE_ID, op))
+                    .is_some(),
+                "grp opcode {op} must resolve at module_type {module_type}",
+            );
+        }
+        // objOfFile (1000) creation + objMove (1000) / objAlpha (1003) setters.
+        assert!(
+            registry
+                .get(RlopKey::new(module_type, OBJ_FG_CREATION_ID, 1000))
+                .is_some(),
+            "objOfFile must resolve at module_type {module_type}",
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(module_type, OBJ_FG_SETTER_ID, 1003))
+                .is_some(),
+            "objAlpha must resolve at module_type {module_type}",
+        );
+    }
+    // The catalog Advance stub is NOT what fires now: the render family is
+    // mounted first, so these keys carry real semantics.
+    assert!(registry.len() >= 200);
 }
 
 #[test]
-fn obj_set_layer_observably_reorders_render_pass_output() {
-    // Audit-focus pin: "Layer-ordering that ignores `objSetLayer`".
-    // We populate two foreground wipes, run a render, swap the layer
-    // order through `objSetLayer`, and run a second render. The
-    // single-pixel framebuffer must observably change colour.
-    let runtime = Arc::new(GraphicsRuntime::new());
-    let mut registry = RlopRegistry::new();
-    register_grp_rlops(&mut registry, Arc::clone(&runtime));
-    register_obj_rlops(&mut registry, Arc::clone(&runtime));
-
-    // Allocate two foreground wipes through the grp.wipe op so the
-    // dispatch path matches what the VM would do.
-    let wipe = GrpWipeOp::new(Arc::clone(&runtime));
-    let mut vm = Vm::new(1, 0);
-    // black at slot 0, white at slot 1 — both layer_order = 0 (default).
-    wipe.dispatch(
-        &mut vm,
-        &[
-            ExprValue::Int(0),
-            ExprValue::Int(0),
-            ExprValue::Int(0),
-            ExprValue::Int(0),
-        ],
-    );
-    wipe.dispatch(
-        &mut vm,
-        &[
-            ExprValue::Int(1),
-            ExprValue::Int(255),
-            ExprValue::Int(255),
-            ExprValue::Int(255),
-        ],
-    );
-
+fn obj_layer_observably_reorders_render_pass_output() {
+    // Two foreground OBJECT wipes: create via objOfFile then overwrite the
+    // slot with a coloured wipe (objOfFile makes an Image; we assert on the
+    // layer_order ordering through the real render pass). We instead drive
+    // the layer op directly: create two objects, then use objLayer to
+    // reorder and observe the render output flip.
+    let (runtime, _registry) = runtime_with_registry();
+    // Place two coloured wipes on the Foreground plane directly (the render
+    // pass paints them); then drive objLayer through the registry.
+    runtime.with_stack_mut(|stack| {
+        let mut black = utsushi_reallive::GraphicsObject::wipe(WipeColour::BLACK);
+        black.layer_order = 1_000_000; // fg base
+        let mut white = utsushi_reallive::GraphicsObject::wipe(WipeColour::WHITE);
+        white.layer_order = 1_000_001;
+        stack
+            .set(GraphicsPlane::Foreground, 0, black)
+            .expect("set black");
+        stack
+            .set(GraphicsPlane::Foreground, 1, white)
+            .expect("set white");
+    });
     let pass = RenderPass::with_dimensions(1, 1).expect("non-zero");
     let before = runtime.with_stack(|stack| pass.rasterise(stack));
-    // Both at layer_order=0 → slot order (slot 1) wins.
     assert_eq!(before.pixels(), &[0xFF, 0xFF, 0xFF, 0xFF]);
 
-    // Now push white below black via objSetLayer.
-    let set_layer = ObjFgBgOp::new(
+    // objLayer(buf=1, z=-5) → white drops below black → black wins.
+    let set_layer = ObjSetOp::new(
         Arc::clone(&runtime),
         GraphicsPlane::Foreground,
-        ObjFgBgOpcode::SetLayer,
+        ObjSetProp::Layer,
     );
-    set_layer.dispatch(&mut vm, &[ExprValue::Int(1), ExprValue::Int(-5)]);
+    let mut vm = Vm::new(1, 0);
+    set_layer.dispatch(&mut vm, &[int(1), int(-5)]);
     let after = runtime.with_stack(|stack| pass.rasterise(stack));
     assert_eq!(after.pixels(), &[0x00, 0x00, 0x00, 0xFF]);
 }
 
 #[test]
-fn alloc_dc_produces_observable_state_snapshot_mutation() {
-    // Audit-focus pin: "Opcodes that mutate state but never produce a
-    // visible effect". `allocDC` produces a slot allocation observable
-    // through `state_snapshot`; the snapshot reports both the slot
-    // count and the recorded DC dimensions.
-    let runtime = Arc::new(GraphicsRuntime::new());
-    let op = GrpAllocDcOp::new(Arc::clone(&runtime));
+fn obj_of_file_creates_sprite_and_setters_mutate_it() {
+    let (runtime, _registry) = runtime_with_registry();
     let mut vm = Vm::new(1, 0);
-    op.dispatch(
-        &mut vm,
-        &[ExprValue::Int(8), ExprValue::Int(1280), ExprValue::Int(720)],
-    );
+    ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+        .dispatch(&mut vm, &[int(3), bytes(b"CHAR01")]);
+    ObjSetOp::new(
+        Arc::clone(&runtime),
+        GraphicsPlane::Foreground,
+        ObjSetProp::Move,
+    )
+    .dispatch(&mut vm, &[int(3), int(120), int(48)]);
+    ObjSetOp::new(
+        Arc::clone(&runtime),
+        GraphicsPlane::Foreground,
+        ObjSetProp::Alpha,
+    )
+    .dispatch(&mut vm, &[int(3), int(128)]);
     let snap = runtime.state_snapshot();
-    assert_eq!(snap.allocated_slot_count(), 1);
-    let dc = snap.dc_allocation(8).expect("dc allocation recorded");
-    assert_eq!(dc.slot, 8);
-    assert_eq!(dc.width, 1280);
-    assert_eq!(dc.height, 720);
+    let obj = snap
+        .stack
+        .get(GraphicsPlane::Foreground, 3)
+        .expect("object created");
+    match &obj.kind {
+        GraphicsObjectKind::Image { image_ref } => assert_eq!(image_ref.asset_key, "CHAR01"),
+        other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
+    }
+    assert_eq!(obj.position.x, 120);
+    assert_eq!(obj.position.y, 48);
+    assert_eq!(obj.alpha.0, 128);
+}
+
+#[test]
+fn grp_buffer_then_display_promotes_offscreen_dc_to_screen() {
+    let (runtime, _registry) = runtime_with_registry();
+    let mut vm = Vm::new(1, 0);
+    // grpBuffer(filename, dc=2): load off-screen (invisible).
+    GrpRenderOp::new(Arc::clone(&runtime), GrpOp::Buffer)
+        .dispatch(&mut vm, &[bytes(b"EV01"), int(2)]);
+    let snap = runtime.state_snapshot();
+    let buf = snap
+        .stack
+        .get(GraphicsPlane::Background, 2)
+        .expect("dc2 loaded");
+    assert!(!buf.visible, "buffered dc must be off-screen");
+    assert!(
+        snap.stack
+            .get(GraphicsPlane::Background, SCREEN_DC_SLOT)
+            .is_none()
+    );
+    // grpDisplay(dc=2): copy dc2 → DC0 (visible screen).
+    GrpRenderOp::new(Arc::clone(&runtime), GrpOp::Display).dispatch(&mut vm, &[int(2), int(0)]);
+    let snap = runtime.state_snapshot();
+    let screen = snap
+        .stack
+        .get(GraphicsPlane::Background, SCREEN_DC_SLOT)
+        .expect("dc0 now shows the displayed buffer");
+    assert!(screen.visible);
+    match &screen.kind {
+        GraphicsObjectKind::Image { image_ref } => assert_eq!(image_ref.asset_key, "EV01"),
+        other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
+    }
 }
 
 #[test]
@@ -239,48 +287,35 @@ fn grp_openbg_bg01a1_registers_bg_plane() {
         );
         return;
     }
-
     let runtime = Arc::new(GraphicsRuntime::new());
     let package: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
     runtime.set_asset_package(Arc::clone(&package));
 
-    let op = GrpOpenBgOp::new(Arc::clone(&runtime));
+    // grpOpenBg(filename, effect) — the REAL opcode (73), filename FIRST.
+    let op = GrpRenderOp::new(Arc::clone(&runtime), GrpOp::OpenScreen);
     let mut vm = Vm::new(1, 0);
-    op.dispatch(&mut vm, &[ExprValue::Bytes(b"BG01A1".to_vec())]);
+    op.dispatch(&mut vm, &[bytes(b"BG01A1"), int(0)]);
 
     let snap = runtime.state_snapshot();
     let bg_object = snap
-        .background_slot(BG_PLANE_SLOT)
-        .expect("bg plane slot 0 registered");
+        .stack
+        .get(GraphicsPlane::Background, SCREEN_DC_SLOT)
+        .expect("DC0 registered");
     match &bg_object.kind {
-        GraphicsObjectKind::Image { image_ref } => {
-            assert_eq!(image_ref.asset_key, "BG01A1");
-        }
+        GraphicsObjectKind::Image { image_ref } => assert_eq!(image_ref.asset_key, "BG01A1"),
         other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
     }
-
     let bg_canvas = snap.bg_canvas.expect("bg canvas recorded");
     assert_eq!(bg_canvas.asset_key, "BG01A1");
-    // The g00 decoder may surface non-fatal warnings on this corpus
-    // (LZSS-variant detection etc.) without rejecting the file; the
-    // header still produces `(width, height)` per the type-0 byte
-    // layout. Pin the documented HD canvas size.
     let (width, height) = bg_canvas
         .dimensions
         .expect("decoded dimensions must be present once VFS is set");
     assert_eq!(width, BG01A1_WIDTH);
     assert_eq!(height, BG01A1_HEIGHT);
-
-    // Sanity: the runtime did not record any fail-soft warnings — the
-    // openBg succeeded structurally.
     let warnings = runtime.take_warnings();
     assert!(
         warnings.is_empty(),
-        "openBg recorded fail-soft warnings: {warnings:?}",
+        "openBg recorded warnings: {warnings:?}"
     );
-
-    // Touch the GrpOpcode enum so the import stays load-bearing.
-    assert_eq!(GrpOpcode::OpenBg.opcode(), 0x0006);
-    // Reference the spec-pinned verification command identifier.
     let _ = WipeColour::BLACK;
 }

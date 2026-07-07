@@ -56,13 +56,13 @@ use crate::rlop::module_catalog::register_catalog_rlops;
 use crate::rlop::module_ctrl::{
     register_control_flow_branch_following, register_control_flow_linear_walk,
 };
-use crate::rlop::module_grp::register_grp_rlops;
 use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
     MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout,
     register_text_rlops,
 };
-use crate::rlop::module_obj::{GraphicsRuntime, register_obj_rlops};
+use crate::rlop::module_obj::GraphicsRuntime;
+use crate::rlop::module_render::register_render_rlops;
 use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
@@ -959,9 +959,9 @@ pub fn build_scene_store(seen_bytes: &[u8]) -> Result<SceneStoreBundle, ReplayEr
 /// Mount ALL NINE opcode-module registrars onto a fresh registry.
 ///
 /// This is the acceptance-criterion-#1 surface: `rg -n
-/// 'register_.*_rlops' src/replay.rs` shows all nine
+/// 'register_.*_rlops' src/replay.rs` shows all families
 /// (`register_text_rlops`, `register_control_flow_rlops`,
-/// `register_grp_rlops`, `register_obj_rlops`, `register_audio_rlops`,
+/// `register_render_rlops`, `register_audio_rlops`,
 /// `register_sel_rlops`, `register_sys_rlops`, `register_mem_rlops`,
 /// `register_str_rlops`). The text family threads the supplied
 /// [`MsgRuntime`]; every other family is backed by a fixed-seed runtime
@@ -1044,11 +1044,14 @@ fn mount_registry_handles(
         }
     }
 
-    // Graphics: grp + obj share one GraphicsRuntime (obj re-orders the
-    // same layer stack grp populates).
+    // Graphics: the REAL-numbered render family (module_grp DCs +
+    // backgrounds, object creation/setters/management) all share one
+    // GraphicsRuntime. Registered under all three lattice types so it
+    // fires on real bytes regardless of the compiler's module_type
+    // artifact; mounted BEFORE the catalog gap-fill so no render op is
+    // shadowed by an `Advance` stub.
     let graphics_runtime = Arc::new(GraphicsRuntime::new());
-    register_grp_rlops(&mut registry, Arc::clone(&graphics_runtime));
-    register_obj_rlops(&mut registry, Arc::clone(&graphics_runtime));
+    register_render_rlops(&mut registry, Arc::clone(&graphics_runtime));
 
     // Audio.
     let audio_emitter = Arc::new(AudioEventEmitter::new());
