@@ -29,6 +29,9 @@ import {
   computePatchResultOutputHashRollupV02,
   evaluatePatchExportCompatibilityV02,
   projectStyleGuideConversationToPolicyDraft,
+  scanStyleGuideFixtureArtifactPrivacyLeaks,
+  STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE,
+  STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
   validateStyleGuideConversationTranscript,
 } from "../src/index.js";
 import {
@@ -976,6 +979,137 @@ describe("localization bridge schema guards", () => {
       expect(privacyDiagnostics).toEqual([]);
     },
   );
+
+  // ITOTORI-138 — persisted-artifact privacy scan. The committed style-guide
+  // fixture corpus (conversation transcripts, the recorded provider-smoke
+  // suggestion artifact, and the locale-branch style-guide fixture) is PUBLIC
+  // and redistributable, so every persisted file MUST scan clean for raw
+  // provider responses / HTTP bodies / fixtures/private-local references. A
+  // leak injected into any persisted artifact is caught with a finding naming
+  // the exact dotted field path.
+  const PERSISTED_STYLE_GUIDE_FIXTURE_ARTIFACTS = [
+    "fixtures/itotori-style-guide/conversations/accepted.json",
+    "fixtures/itotori-style-guide/conversations/rejected.json",
+    "fixtures/itotori-style-guide/conversations/conflicting.json",
+    "fixtures/itotori-style-guide/conversations/malformed.json",
+    "fixtures/itotori-style-guide/provider-smoke-suggestion.json",
+    "fixtures/itotori-style-guide/locale-branch-style-guide.json",
+  ] as const;
+
+  it.each(PERSISTED_STYLE_GUIDE_FIXTURE_ARTIFACTS)(
+    "persisted style-guide fixture artifact %s scans clean for privacy leaks",
+    (path) => {
+      const artifact = publicFixture(path);
+
+      const leaks = scanStyleGuideFixtureArtifactPrivacyLeaks(artifact);
+
+      expect(leaks).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
+      leak: "raw provider completion nested under providerResult",
+      apply: (artifact: Record<string, unknown>) => {
+        const providerResult = asTestRecord(artifact.providerResult, "provider result");
+        providerResult.completionText = "leaked raw provider completion payload";
+      },
+      rule: STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
+      field: "$.providerResult.completionText",
+    },
+    {
+      leak: "raw HTTP response body nested under a turn",
+      apply: (artifact: Record<string, unknown>) => {
+        const providerResult = asTestRecord(artifact.providerResult, "provider result");
+        const contentJson = asTestRecord(providerResult.contentJson, "content json");
+        const turns = contentJson.turns as Array<Record<string, unknown>>;
+        asTestRecord(turns[0], "first turn").responseBody =
+          '{"choices":[{"message":{"content":"leaked"}}]}';
+      },
+      rule: STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
+      field: "$.providerResult.contentJson.turns[0].responseBody",
+    },
+    {
+      leak: "fixtures/private-local reference in a citation sourceRef",
+      apply: (artifact: Record<string, unknown>) => {
+        const providerResult = asTestRecord(artifact.providerResult, "provider result");
+        const contentJson = asTestRecord(providerResult.contentJson, "content json");
+        const turns = contentJson.turns as Array<Record<string, unknown>>;
+        const humanTurn = asTestRecord(
+          turns.find((turn) => turn.turnId === "turn-human-style-preferences"),
+          "human turn",
+        );
+        const citations = humanTurn.citations as Array<Record<string, unknown>>;
+        asTestRecord(citations[0], "first citation").sourceRef =
+          "fixtures/private-local/secret-evidence.json";
+      },
+      rule: STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE,
+      field: "$.providerResult.contentJson.turns[1].citations[0].sourceRef",
+    },
+    {
+      leak: "raw provider prompt nested deep under a locale-branch case",
+      apply: (artifact: Record<string, unknown>) => {
+        const cases = asTestRecord(artifact.cases, "locale-branch cases");
+        const createCase = asTestRecord(cases.create, "create case");
+        createCase.promptText = "system: you are a localization reviewer...";
+      },
+      rule: STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
+      field: "$.cases.create.promptText",
+    },
+  ])("persisted-artifact privacy scan catches injected leak: $leak", ({ apply, rule, field }) => {
+    const artifact = field.startsWith("$.cases")
+      ? publicFixture("fixtures/itotori-style-guide/locale-branch-style-guide.json")
+      : publicFixture("fixtures/itotori-style-guide/provider-smoke-suggestion.json");
+    apply(artifact);
+
+    const leaks = scanStyleGuideFixtureArtifactPrivacyLeaks(artifact);
+
+    expect(leaks).toContainEqual(
+      expect.objectContaining({
+        rule,
+        field,
+      }),
+    );
+  });
+
+  it("persisted-artifact privacy scan catches every forbidden raw-private field name", () => {
+    // Pin the full forbidden set so the artifact scan cannot be silently
+    // trimmed to only the headline names. Each key is injected on the
+    // provider-smoke suggestion root so the exact field path is deterministic.
+    const forbiddenKeys = [
+      "completionText",
+      "completion_text",
+      "privateText",
+      "private_text",
+      "promptText",
+      "prompt_text",
+      "rawContent",
+      "raw_content",
+      "rawPrivateData",
+      "raw_private_data",
+      "rawText",
+      "raw_text",
+      "requestBody",
+      "request_body",
+      "responseBody",
+      "response_body",
+    ];
+    for (const forbiddenKey of forbiddenKeys) {
+      const artifact = publicFixture("fixtures/itotori-style-guide/provider-smoke-suggestion.json");
+      artifact[forbiddenKey] = "leaked-private-payload";
+
+      const leaks = scanStyleGuideFixtureArtifactPrivacyLeaks(artifact);
+
+      expect(
+        leaks.some(
+          (leak) =>
+            leak.rule === STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE &&
+            leak.field === `$.${forbiddenKey}`,
+        ),
+        `forbidden raw-private key ${forbiddenKey} must be caught by the artifact scan`,
+      ).toBe(true);
+    }
+  });
 
   it.each([
     {

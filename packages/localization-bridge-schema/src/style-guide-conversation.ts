@@ -1473,6 +1473,70 @@ export const STYLE_GUIDE_FORBIDDEN_RAW_PRIVATE_FIELDS = [
 
 const PRIVATE_LOCAL_FIXTURE_REFERENCE = "fixtures/private-local/";
 
+// ITOTORI-138 — the persisted-artifact privacy leak guard. Same forbidden
+// payload set as the in-transcript guard above, but applied to PERSISTED
+// style-guide fixture artifacts (the committed JSON corpus) and to CLI
+// command OUTPUT (e.g. the `style-guide-fixture-flow` result written to
+// disk). A persisted artifact that smuggles in raw provider text, a raw HTTP
+// body, or a fixtures/private-local path is a privacy leak and MUST be caught
+// by the scan with a finding naming the exact field path.
+export type StyleGuidePrivacyLeak = {
+  rule:
+    | typeof STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE
+    | typeof STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE;
+  field: string;
+  message: string;
+};
+
+/**
+ * ITOTORI-138 — scan an arbitrary persisted style-guide fixture artifact (or
+ * CLI command output payload) for the same raw-private-field /
+ * private-local-path privacy leaks the in-transcript guard rejects. Walks the
+ * full value recursively and returns one {@link StyleGuidePrivacyLeak} per
+ * offending field path. The committed fixture corpus and the CLI-emitted
+ * result MUST scan clean (zero findings); a leak injected into either is
+ * caught with a finding naming the exact dotted field path.
+ */
+export function scanStyleGuideFixtureArtifactPrivacyLeaks(value: unknown): StyleGuidePrivacyLeak[] {
+  const leaks: StyleGuidePrivacyLeak[] = [];
+  collectPrivacyLeaks(value, "$", leaks);
+  return leaks;
+}
+
+function collectPrivacyLeaks(value: unknown, field: string, leaks: StyleGuidePrivacyLeak[]): void {
+  if (typeof value === "string") {
+    if (value.includes(PRIVATE_LOCAL_FIXTURE_REFERENCE)) {
+      leaks.push({
+        rule: STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE,
+        field,
+        message: `${field} must not reference ${PRIVATE_LOCAL_FIXTURE_REFERENCE}`,
+      });
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      collectPrivacyLeaks(entry, `${field}[${index}]`, leaks);
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  const forbiddenKeys = new Set<string>(STYLE_GUIDE_FORBIDDEN_RAW_PRIVATE_FIELDS);
+  for (const [key, child] of Object.entries(value)) {
+    if (forbiddenKeys.has(key)) {
+      leaks.push({
+        rule: STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
+        field: `${field}.${key}`,
+        message: `${field}.${key} is not allowed; record ids, hashes, or redacted public text`,
+      });
+      continue;
+    }
+    collectPrivacyLeaks(child, `${field}.${key}`, leaks);
+  }
+}
+
 function checkNoRawPrivateFields(
   value: unknown,
   turnId: string,
