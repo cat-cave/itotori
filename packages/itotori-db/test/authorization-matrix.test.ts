@@ -1030,10 +1030,22 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.grantPermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
+    "revokePermissionSet",
+    "authAdmin",
+    "auth-grant-audit-log.test.ts revoke permission set coverage",
+    (repo) => repo.revokePermissionSet(deniedActor, undefined as never),
+  ),
+  principalGate(
     "grantDirectPermission",
     "authAdmin",
     "principal-repository.test.ts grant direct permission coverage",
     (repo) => repo.grantDirectPermission(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "revokeDirectPermission",
+    "authAdmin",
+    "auth-grant-audit-log.test.ts revoke direct permission coverage",
+    (repo) => repo.revokeDirectPermission(deniedActor, undefined as never),
   ),
   principalGate(
     "loadPrincipal",
@@ -2018,9 +2030,21 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.revokePermissionSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "auth-grant-audit-log.test.ts revoke permission set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.grantDirectPermission",
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts grant direct permission coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.revokeDirectPermission",
+          "requiredPermission": "auth.admin",
+          "successFixture": "auth-grant-audit-log.test.ts revoke direct permission coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

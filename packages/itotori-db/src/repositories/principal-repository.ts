@@ -29,6 +29,7 @@ import {
   type AuthPrincipalKind,
   authAccountMemberships,
   authAccounts,
+  authAuditEventActionValues,
   authAuditEvents,
   authPermissionSetAuditActionValues,
   authPermissionSetAuditEvents,
@@ -147,6 +148,24 @@ export type GrantDirectPermissionInput = {
   requestId?: string;
 };
 
+/** Revoke a previously-granted permission set (the "role unassignment"). */
+export type RevokePermissionSetInput = {
+  actorPrincipalId: string;
+  targetPrincipalId: string;
+  permissionSetId: string;
+  reason?: string;
+  requestId?: string;
+};
+
+/** Revoke a single direct exact-permission override from a principal. */
+export type RevokeDirectPermissionInput = {
+  actorPrincipalId: string;
+  targetPrincipalId: string;
+  permission: Permission;
+  reason?: string;
+  requestId?: string;
+};
+
 export interface ItotoriPrincipalRepositoryPort {
   createAccount(actor: AuthorizationActor, input: CreateAccountInput): Promise<AccountRecord>;
   createPrincipal(actor: AuthorizationActor, input: CreatePrincipalInput): Promise<PrincipalRecord>;
@@ -162,9 +181,14 @@ export interface ItotoriPrincipalRepositoryPort {
   renamePermissionSet(actor: AuthorizationActor, input: RenamePermissionSetInput): Promise<void>;
   deletePermissionSet(actor: AuthorizationActor, input: DeletePermissionSetInput): Promise<void>;
   grantPermissionSet(actor: AuthorizationActor, input: GrantPermissionSetInput): Promise<void>;
+  revokePermissionSet(actor: AuthorizationActor, input: RevokePermissionSetInput): Promise<void>;
   grantDirectPermission(
     actor: AuthorizationActor,
     input: GrantDirectPermissionInput,
+  ): Promise<void>;
+  revokeDirectPermission(
+    actor: AuthorizationActor,
+    input: RevokeDirectPermissionInput,
   ): Promise<void>;
   loadPrincipal(
     actor: AuthorizationActor,
@@ -456,11 +480,50 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
         principalId: input.targetPrincipalId,
         permissionSetId: input.permissionSetId,
       });
-      await tx.insert(authAuditEvents).values({
-        authAuditEventId: `auth-audit-${randomUUID()}`,
+      await this.recordAuditEvent(tx, {
         actorPrincipalId: input.actorPrincipalId,
         targetPrincipalId: input.targetPrincipalId,
-        action: "granted",
+        action: authAuditEventActionValues.granted,
+        permissionSetId: input.permissionSetId,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
+    });
+  }
+
+  /**
+   * Revoke a permission set previously granted to a principal — the "role
+   * unassignment". This is a permission-management mutation in its own right (the
+   * principal LOSES every permission the set contributed, unless it also holds it
+   * via a direct grant or another granted set), so it writes a complete `revoked`
+   * audit event. The grant must exist; revoking an absent grant throws rather than
+   * recording a phantom revoke.
+   */
+  async revokePermissionSet(
+    actor: AuthorizationActor,
+    input: RevokePermissionSetInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(authPrincipalPermissionSetGrants)
+        .where(
+          and(
+            eq(authPrincipalPermissionSetGrants.principalId, input.targetPrincipalId),
+            eq(authPrincipalPermissionSetGrants.permissionSetId, input.permissionSetId),
+          ),
+        )
+        .returning({ principalId: authPrincipalPermissionSetGrants.principalId });
+      if (deleted.length === 0) {
+        throw new ItotoriPrincipalRepositoryError(
+          `permission set ${input.permissionSetId} is not granted to principal ` +
+            `${input.targetPrincipalId}; nothing to revoke`,
+        );
+      }
+      await this.recordAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        targetPrincipalId: input.targetPrincipalId,
+        action: authAuditEventActionValues.revoked,
         permissionSetId: input.permissionSetId,
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
         ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
@@ -478,11 +541,49 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
         principalId: input.targetPrincipalId,
         permission: input.permission,
       });
-      await tx.insert(authAuditEvents).values({
-        authAuditEventId: `auth-audit-${randomUUID()}`,
+      await this.recordAuditEvent(tx, {
         actorPrincipalId: input.actorPrincipalId,
         targetPrincipalId: input.targetPrincipalId,
-        action: "granted",
+        action: authAuditEventActionValues.granted,
+        permission: input.permission,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      });
+    });
+  }
+
+  /**
+   * Revoke a single direct permission override from a principal. The principal
+   * loses this exact permission (unless it also resolves it via a granted set), so
+   * the change is recorded as a complete `revoked` audit event. The direct grant
+   * must exist; revoking an absent grant throws rather than recording a phantom
+   * revoke.
+   */
+  async revokeDirectPermission(
+    actor: AuthorizationActor,
+    input: RevokeDirectPermissionInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await this.db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(authPrincipalPermissionGrants)
+        .where(
+          and(
+            eq(authPrincipalPermissionGrants.principalId, input.targetPrincipalId),
+            eq(authPrincipalPermissionGrants.permission, input.permission),
+          ),
+        )
+        .returning({ principalId: authPrincipalPermissionGrants.principalId });
+      if (deleted.length === 0) {
+        throw new ItotoriPrincipalRepositoryError(
+          `direct permission ${input.permission} is not granted to principal ` +
+            `${input.targetPrincipalId}; nothing to revoke`,
+        );
+      }
+      await this.recordAuditEvent(tx, {
+        actorPrincipalId: input.actorPrincipalId,
+        targetPrincipalId: input.targetPrincipalId,
+        action: authAuditEventActionValues.revoked,
         permission: input.permission,
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
         ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
@@ -609,6 +710,38 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
       .update(authPermissionSets)
       .set({ updatedAt: new Date() })
       .where(eq(authPermissionSets.permissionSetId, permissionSetId));
+  }
+
+  /**
+   * Append one row to the principal grant/revoke audit trail
+   * (`itotori_auth_audit_events`). Every permission-management mutation whose
+   * subject is a TARGET PRINCIPAL (grant/revoke a direct permission or a
+   * permission set) routes through here so the trail is uniformly complete:
+   * actor, target, the permission/set delta, the `granted`/`revoked` action,
+   * plus the caller-supplied reason and correlation request id.
+   */
+  private async recordAuditEvent(
+    tx: PrincipalTransaction,
+    input: {
+      actorPrincipalId: string;
+      targetPrincipalId: string;
+      action: (typeof authAuditEventActionValues)[keyof typeof authAuditEventActionValues];
+      permission?: Permission;
+      permissionSetId?: string;
+      reason?: string;
+      requestId?: string;
+    },
+  ): Promise<void> {
+    await tx.insert(authAuditEvents).values({
+      authAuditEventId: `auth-audit-${randomUUID()}`,
+      actorPrincipalId: input.actorPrincipalId,
+      targetPrincipalId: input.targetPrincipalId,
+      action: input.action,
+      ...(input.permission !== undefined ? { permission: input.permission } : {}),
+      ...(input.permissionSetId !== undefined ? { permissionSetId: input.permissionSetId } : {}),
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+    });
   }
 
   /** Append one row to the permission-set model audit trail. */
