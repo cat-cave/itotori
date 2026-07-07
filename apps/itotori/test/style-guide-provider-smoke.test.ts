@@ -8,9 +8,12 @@ import {
   type ProviderRunRecord,
 } from "../src/providers/index.js";
 import {
+  STYLE_GUIDE_LIVE_PROVIDER_ID_ENV,
+  STYLE_GUIDE_LIVE_PROVIDER_MODEL_ENV,
   STYLE_GUIDE_LIVE_PROVIDER_SMOKE_FLAG,
   STYLE_GUIDE_PROVIDER_SMOKE_SCHEMA_VERSION,
   STYLE_GUIDE_SUGGESTION_TOOL_NAME,
+  assertStyleGuideProviderSmokeFallbackLedger,
   assertStyleGuideProviderSmokeLedger,
   assertStyleGuideSuggestionStructuredOutput,
   parseStyleGuideSuggestionFromProviderResult,
@@ -313,6 +316,172 @@ describe("style-guide provider smoke", () => {
       }),
     );
     expect(() => assertStyleGuideProviderSmokeLedger(result.providerRun)).not.toThrow();
+  });
+
+  // ITOTORI-132 — Style-guide live smoke fallback coverage.
+  //
+  // The generic OpenRouter provider unit tests (openrouter-provider.test.ts
+  // ITOTORI-242) already prove fallbackUsed + the served pair are recorded on
+  // an OR-side ZDR fallback. These tests exercise the SAME recording through
+  // the style-guide LIVE SMOKE path (with a MOCKED provider), so the smoke
+  // ledger — not just the generic provider — proves fallbackPlan +
+  // fallbackChain (+ the served pair) are recorded when a fallback occurs.
+  // Per [[feedback_or_side_fallback_not_strict_pin]] the OR-side fallback
+  // records the real served pair rather than enforcing a strict provider pin.
+  it("ITOTORI-132: records fallbackPlan + fallbackChain + served pair for a mocked successful fallback run through the live smoke path", async () => {
+    const fixture = readSmokeFixture();
+    const primaryModel = "openai/gpt-4o-mini";
+    const fallbackModel = "deepseek/deepseek-v4-flash";
+    const servedProvider = "DeepSeek";
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "gen-style-guide-fallback",
+        // OpenRouter served the FALLBACK model after the primary 429'd.
+        model: fallbackModel,
+        provider: servedProvider,
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify(fixture.providerResult.contentJson),
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 42,
+          total_tokens: 142,
+          cost: 0.000123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+        },
+        openrouter_metadata: {
+          requested: primaryModel,
+          strategy: "fallback",
+          // attempt is 1-indexed: attempt=2 means OpenRouter advanced past the
+          // 429'd primary to the next ZDR-allow-list provider (1 retry).
+          attempt: 2,
+          summary: `${primaryModel} rate-limited (429); served by ${servedProvider}`,
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const result = await runStyleGuideProviderSmoke({
+      mode: "live",
+      env: {
+        [STYLE_GUIDE_LIVE_PROVIDER_SMOKE_FLAG]: "1",
+        OPENROUTER_API_KEY: "test-key",
+        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        [STYLE_GUIDE_LIVE_PROVIDER_MODEL_ENV]: primaryModel,
+        [STYLE_GUIDE_LIVE_PROVIDER_ID_ENV]: "OpenAI",
+      },
+      fetch: fetchMock,
+      fallbackModels: [fallbackModel],
+    });
+
+    expect(result.status).toBe("passed");
+    if (result.status !== "passed") {
+      throw new Error("style-guide live fallback smoke should pass");
+    }
+    // The smoke ledger records the full fallbackPlan (primary + fallback).
+    expect(result.providerRun.fallbackPlan).toEqual([primaryModel, fallbackModel]);
+    // fallbackUsed is true: the chain was exercised.
+    expect(result.providerRun.fallbackUsed).toBe(true);
+    // requestedModelId is the primary; actualModelId is the served fallback.
+    expect(result.providerRun.provider.requestedModelId).toBe(primaryModel);
+    expect(result.providerRun.provider.actualModelId).toBe(fallbackModel);
+    // The real served pair (model + upstream provider) is recorded as truth.
+    expect(result.providerRun.provider.upstreamProvider).toBe(servedProvider);
+    // retryCount is coherent: a fallback occurred → >= 1 retry (attempt-1).
+    expect(result.providerRun.retryCount).toBe(1);
+
+    // The OR-side fallback chain (openrouterRouting) is mirrored verbatim
+    // onto the invocation's adapterMetadata AND the recorded artifact, so the
+    // swap is auditable, not silent.
+    const routing = (result.adapterMetadata as Record<string, unknown> | undefined)
+      ?.openrouterRouting as { attempt?: number; summary?: string; strategy?: string } | undefined;
+    expect(routing?.attempt).toBe(2);
+    expect(routing?.strategy).toBe("fallback");
+    expect(routing?.summary).toContain(servedProvider);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]?.adapterMetadata?.openrouterRouting).toMatchObject({
+      attempt: 2,
+      strategy: "fallback",
+    });
+
+    // The fallback-specific ledger assertion proves the fields are coherent.
+    expect(() =>
+      assertStyleGuideProviderSmokeFallbackLedger(result.providerRun, {
+        requestedModelId: primaryModel,
+        fallbackModel,
+        servedModelId: fallbackModel,
+        servedProviderId: servedProvider,
+      }),
+    ).not.toThrow();
+    // The structural ledger assertion still holds for the fallback run.
+    expect(() => assertStyleGuideProviderSmokeLedger(result.providerRun)).not.toThrow();
+    // The mocked fallback run made exactly one fetch (no itotori-side retry).
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ITOTORI-132: assertStyleGuideProviderSmokeFallbackLedger rejects a direct-serve run (no fallback) as incoherent", async () => {
+    // A direct serve (preferred provider answers, no fallback) must NOT pass
+    // the fallback ledger assertion: fallbackUsed is false and retryCount is
+    // 0, so the coherence check fails loud rather than silently accepting a
+    // misleading fallback plan.
+    const fixture = readSmokeFixture();
+    const primaryModel = "openai/gpt-4o-mini";
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "gen-style-guide-direct",
+        model: primaryModel,
+        provider: "OpenAI",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify(fixture.providerResult.contentJson),
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 42,
+          total_tokens: 142,
+          cost: 0.000123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const result = await runStyleGuideProviderSmoke({
+      mode: "live",
+      env: {
+        [STYLE_GUIDE_LIVE_PROVIDER_SMOKE_FLAG]: "1",
+        OPENROUTER_API_KEY: "test-key",
+        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        [STYLE_GUIDE_LIVE_PROVIDER_MODEL_ENV]: primaryModel,
+        [STYLE_GUIDE_LIVE_PROVIDER_ID_ENV]: "OpenAI",
+      },
+      fetch: fetchMock,
+      // A fallback plan is configured but OpenRouter served the primary
+      // directly — fallbackUsed must be false and the assertion must reject.
+      fallbackModels: ["deepseek/deepseek-v4-flash"],
+    });
+
+    expect(result.status).toBe("passed");
+    if (result.status !== "passed") {
+      throw new Error("style-guide live direct-serve smoke should pass");
+    }
+    expect(result.providerRun.fallbackUsed).toBe(false);
+    expect(result.providerRun.retryCount).toBe(0);
+    expect(() =>
+      assertStyleGuideProviderSmokeFallbackLedger(result.providerRun, {
+        requestedModelId: primaryModel,
+        fallbackModel: "deepseek/deepseek-v4-flash",
+        servedModelId: primaryModel,
+        servedProviderId: "OpenAI",
+      }),
+    ).toThrow(/fallback ledger incoherent/u);
   });
 
   it("skips live provider smoke unless explicit opt-in and credentials are already exported", async () => {

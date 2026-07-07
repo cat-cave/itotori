@@ -72,6 +72,13 @@ export type StyleGuideProviderSmokeResult =
       parsed: ParsedStyleGuideSuggestion;
       providerRun: ProviderRunRecord;
       artifacts: ProviderRunArtifact[];
+      /**
+       * ITOTORI-132 — the live invocation's adapterMetadata, carried on the
+       * passed live result so a caller can prove the OR-side fallback chain
+       * (`openrouterRouting.attempt` / `summary`) was recorded. Absent on
+       * recorded-mode passes (replay carries no adapterMetadata).
+       */
+      adapterMetadata?: JsonObject;
     }
   | {
       status: "skipped";
@@ -86,6 +93,17 @@ export type StyleGuideProviderSmokeOptions = {
   mode?: "recorded" | "live";
   fetch?: typeof fetch;
   live?: ProviderLiveRunOptions;
+  /**
+   * ITOTORI-132 — fallback model ids to append to the style-guide smoke
+   * request's `fallbackModels`. When non-empty the request sends OpenRouter a
+   * multi-entry `models` plan (`[primary, ...fallbackModels]`) so an opted-in
+   * live run can exercise a real OR-side fallback. A mocked live smoke passes
+   * these to prove the smoke ledger records a coherent `fallbackPlan` +
+   * `fallbackChain` when OpenRouter serves a non-primary entry. Defaults to
+   * `[]` (single-model plan, no fallback) — the deterministic recorded-mode
+   * shape that needs no live provider access.
+   */
+  fallbackModels?: string[];
 };
 
 const defaultFixtureUrl = new URL(
@@ -156,7 +174,12 @@ export async function runLiveStyleGuideProviderSmoke(
     ...providerOptions,
   });
   const providerId = env[STYLE_GUIDE_LIVE_PROVIDER_ID_ENV] ?? "deepseek";
-  const request = styleGuideSuggestionRequest(provider.descriptor.defaultModelId, providerId);
+  const request = styleGuideSuggestionRequest(
+    provider.descriptor.defaultModelId,
+    providerId,
+    styleGuideLiveSmokeCapabilities(),
+    options.fallbackModels ?? [],
+  );
   const result = await provider.invoke(request);
   const parsed = parseStyleGuideSuggestionFromProviderResult(result);
   assertStyleGuideProviderSmokeLedger(result.providerRun);
@@ -167,6 +190,12 @@ export async function runLiveStyleGuideProviderSmoke(
     parsed,
     providerRun: result.providerRun,
     artifacts: recorder.artifacts,
+    // ITOTORI-132 — surface the invocation's adapterMetadata (which carries
+    // `openrouterRouting` with the OR-side fallback `attempt` / `summary`)
+    // so a caller can prove the fallback chain was recorded without reaching
+    // into the artifacts array. Recorded-mode smoke has no adapterMetadata
+    // (replay), so this is live-only.
+    ...(result.adapterMetadata !== undefined ? { adapterMetadata: result.adapterMetadata } : {}),
   };
 }
 
@@ -231,6 +260,13 @@ export function styleGuideSuggestionRequest(
   // pass a sheet (the live runner uses styleGuideLiveSmokeCapabilities);
   // the default mirrors that ZDR-correct sheet.
   capabilities: ModelCapabilities = styleGuideLiveSmokeCapabilities(),
+  // ITOTORI-132 — fallback model ids appended to the request's
+  // `fallbackModels`. When non-empty the OR request body carries a
+  // multi-entry `models` plan so an opted-in live run can fall back across
+  // models; the smoke ledger then records the full `fallbackPlan` and the
+  // served (actual) model. Defaults to `[]` (single-model, no fallback) so
+  // the recorded-mode smoke stays deterministic.
+  fallbackModels: string[] = [],
 ): ModelInvocationRequest {
   return {
     taskKind: "experiment",
@@ -285,7 +321,7 @@ export function styleGuideSuggestionRequest(
       temperature: 0,
       maxOutputTokens: 1600,
     },
-    fallbackModels: [],
+    fallbackModels: [...fallbackModels],
   };
 }
 
@@ -325,6 +361,131 @@ export function assertStyleGuideProviderSmokeLedger(run: ProviderRunRecord): voi
     throw new Error(`style-guide provider smoke ledger missing ${missing.join(", ")}`);
   }
 }
+
+/**
+ * ITOTORI-132 — expected shape of a successful fallback run driven through the
+ * style-guide live smoke path. The primary (modelId, providerId) pair is what
+ * the request asked for; the served pair is what OpenRouter actually routed to
+ * after the primary failed. `fallbackModel` is the non-primary entry in the
+ * request's `fallbackPlan` that OpenRouter served.
+ */
+export type StyleGuideProviderSmokeFallbackExpectation = {
+  /** The requested (primary) model id — `request.modelId`. */
+  requestedModelId: string;
+  /** A non-primary model id the request asked OpenRouter to fall back to. */
+  fallbackModel: string;
+  /** The model id OpenRouter actually served (the fallback model). */
+  servedModelId: string;
+  /** The upstream provider that served the fallback model. */
+  servedProviderId: string;
+};
+
+/**
+ * ITOTORI-132 — prove the style-guide smoke ledger records a coherent
+ * fallback chain for a successful fallback run.
+ *
+ * A fallback run is one where the primary (modelId, providerId) pair failed
+ * transiently and OpenRouter served a different entry from the request's
+ * `fallbackPlan`. The ledger must prove:
+ *
+ *   1. `fallbackPlan` — the planned models list — includes BOTH the primary
+ *      and the fallback model (the plan that was on the wire).
+ *   2. `fallbackUsed` is `true` (the chain was actually exercised).
+ *   3. `requestedModelId` is the primary model (what the request pinned).
+ *   4. `actualModelId` is the served (fallback) model, differing from the
+ *      requested — the real served pair, per
+ *      [[feedback_or_side_fallback_not_strict_pin]].
+ *   5. `upstreamProvider` is the provider that served the fallback model.
+ *   6. `retryCount` is a non-negative integer AND `>= 1` — a fallback implies
+ *      at least one retry (OpenRouter's router `attempt` was `> 1`).
+ *
+ * This complements (does not replace) {@link assertStyleGuideProviderSmokeLedger},
+ * which checks the structural ledger fields for every run. Call this only for a
+ * run that actually fell back; a direct-serve run would (correctly) fail the
+ * `fallbackUsed` / `retryCount` checks.
+ */
+export function assertStyleGuideProviderSmokeFallbackLedger(
+  run: ProviderRunRecord,
+  expected: StyleGuideProviderSmokeFallbackExpectation,
+): void {
+  const failures: string[] = [];
+  if (!run.fallbackPlan.includes(expected.requestedModelId)) {
+    failures.push(`fallbackPlan missing requested model '${expected.requestedModelId}'`);
+  }
+  if (!run.fallbackPlan.includes(expected.fallbackModel)) {
+    failures.push(`fallbackPlan missing fallback model '${expected.fallbackModel}'`);
+  }
+  if (run.fallbackUsed !== true) {
+    failures.push("fallbackUsed is not true");
+  }
+  if (run.provider.requestedModelId !== expected.requestedModelId) {
+    failures.push(
+      `requestedModelId '${run.provider.requestedModelId}' !== '${expected.requestedModelId}'`,
+    );
+  }
+  if (run.provider.actualModelId !== expected.servedModelId) {
+    failures.push(
+      `actualModelId '${run.provider.actualModelId}' !== served '${expected.servedModelId}'`,
+    );
+  }
+  if (run.provider.actualModelId === run.provider.requestedModelId) {
+    failures.push("actualModelId equals requestedModelId (no model-level fallback recorded)");
+  }
+  if (run.provider.upstreamProvider !== expected.servedProviderId) {
+    failures.push(
+      `upstreamProvider '${run.provider.upstreamProvider ?? "<absent>"}' !== served '${expected.servedProviderId}'`,
+    );
+  }
+  if (!Number.isInteger(run.retryCount) || run.retryCount < 0) {
+    failures.push(`retryCount '${run.retryCount}' is not a non-negative integer`);
+  } else if (run.retryCount < 1) {
+    failures.push("retryCount is 0 but a fallback occurred (expected >= 1 retry)");
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `style-guide provider smoke fallback ledger incoherent: ${failures.join("; ")}`,
+    );
+  }
+}
+
+/**
+ * ITOTORI-132 — fallback expectations for an opted-in live style-guide smoke
+ * run.
+ *
+ * When the smoke request carries a non-empty `fallbackModels` list, the
+ * request body sends OpenRouter a multi-entry `models` plan
+ * (`[primary, ...fallbackModels]`) with `allow_fallbacks: true`. If the
+ * primary provider (order[0]) transiently fails (e.g. 429), OpenRouter
+ * advances to the next ZDR-allow-list provider and serves a fallback entry.
+ * The smoke ledger then records:
+ *
+ *   - `fallbackPlan`: the full planned models list (`[primary, ...fallbacks]`).
+ *   - `fallbackUsed: true`: the chain was exercised.
+ *   - `provider.requestedModelId`: the primary model the request pinned.
+ *   - `provider.actualModelId`: the model OpenRouter actually served (a
+ *     non-primary entry) — the real served pair, recorded as the truth per
+ *     [[feedback_or_side_fallback_not_strict_pin]] (no strict provider pin).
+ *   - `provider.upstreamProvider`: the provider that served the fallback.
+ *   - `retryCount`: derived from OpenRouter's 1-indexed router `attempt`
+ *     (`attempt-1`), so a fallback reads as `>= 1` retry, coherent with
+ *     `fallbackUsed`.
+ *   - `adapterMetadata.openrouterRouting`: the OR-side fallback chain
+ *     evidence (`attempt`, `summary`, `strategy`) mirrored verbatim from the
+ *     response's `openrouter_metadata`, so the swap is auditable, not silent.
+ *
+ * Recorded-mode smoke (the default) sends a single-model plan with no
+ * `fallbackModels`, so none of the above fallback fields engage — it stays
+ * deterministic and needs no live provider access.
+ */
+export const STYLE_GUIDE_SMOKE_FALLBACK_EXPECTATIONS = {
+  fallbackPlan: "full planned models list ([primary, ...fallbacks])",
+  fallbackUsed: "true when the chain was exercised",
+  requestedModelId: "the primary model the request pinned",
+  actualModelId: "the model OpenRouter actually served (a non-primary entry)",
+  upstreamProvider: "the provider that served the fallback model",
+  retryCount: "OpenRouter router attempt - 1 (>= 1 when a fallback occurred)",
+  openrouterRouting: "OR-side attempt / summary / strategy mirrored verbatim",
+} as const;
 
 export function readSmokeFixture(
   path = fileURLToPath(defaultFixtureUrl),

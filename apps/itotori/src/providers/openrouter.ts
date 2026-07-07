@@ -367,6 +367,14 @@ export class OpenRouterProvider implements ModelProvider {
         );
       }
     }
+    // ITOTORI-132 — surface OpenRouter's router `attempt` counter so
+    // `buildProviderRunRecord` can derive a coherent `retryCount` for an
+    // OR-side fallback (attempt>1 → retries = attempt-1). Without this the
+    // live ledger recorded `retryCount:0` even when OpenRouter fell back
+    // across the ZDR allow-list, disagreeing with `fallbackUsed:true` and
+    // the recorded-fixture semantics (retryCount:1). Absent on a direct
+    // serve (attempt=1 or no metadata) → 0 retries, unchanged.
+    const providerAttempt = openRouterAttemptCount(body);
     const run = buildProviderRunRecord({
       descriptor: this.descriptor,
       request,
@@ -380,6 +388,7 @@ export class OpenRouterProvider implements ModelProvider {
       tokenUsage: normalized.tokenUsage,
       cost: normalized.cost,
       routingPosture,
+      ...(providerAttempt !== undefined ? { providerAttempt } : {}),
       // ITOTORI-232 — mirror the response's `usage` block verbatim onto
       // the run so the recorder persists it into the ledger row. The
       // `cost` field in this object is the same upstream value
@@ -1155,6 +1164,13 @@ function buildProviderRunRecord(input: {
   errorClasses: string[];
   tokenUsage: TokenUsage;
   cost?: ProviderCost;
+  // ITOTORI-132 — OpenRouter's 1-indexed router `attempt` counter from the
+  // response's `openrouter_metadata.attempt`. attempt=1 means the preferred
+  // provider (order[0]) served directly; attempt=2 means OpenRouter advanced
+  // past one transiently-unavailable provider to the next ZDR-allow-list one.
+  // Used to derive a coherent `retryCount` for an OR-side fallback. Only
+  // threaded on the succeeded path (error paths leave it undefined → 0).
+  providerAttempt?: number;
   // ITOTORI-230 — typed routing posture for the captured run.
   routingPosture: OpenRouterRoutingPosture;
   // ITOTORI-232 — full `usage` block from the originating OR response,
@@ -1219,7 +1235,14 @@ function buildProviderRunRecord(input: {
     status: input.status,
     provider,
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
-    retryCount: 0,
+    // ITOTORI-132 — `retryCount` is derived from OpenRouter's router
+    // `attempt` counter on a successful serve: attempt=1 (preferred served
+    // directly, or attempt absent) → 0 retries; attempt=2 → 1 fallback;
+    // attempt=n → n-1. This keeps the live ledger coherent with
+    // `fallbackUsed` and the recorded-fixture semantics (retryCount:1 for a
+    // fallback). Error paths omit `providerAttempt` and stay 0: a failed run
+    // produced no successful retry to count.
+    retryCount: input.providerAttempt !== undefined ? Math.max(0, input.providerAttempt - 1) : 0,
     errorClasses: input.errorClasses,
     fallbackUsed: modelFallbackUsed || providerFallbackUsed,
     fallbackPlan,
@@ -1412,6 +1435,25 @@ function selectedOpenRouterEndpoint(body: unknown): Record<string, unknown> | un
   return endpoints.available.find(
     (endpoint) => isRecord(endpoint) && endpoint.selected === true,
   ) as Record<string, unknown> | undefined;
+}
+
+/**
+ * ITOTORI-132 — read OpenRouter's 1-indexed router `attempt` counter from the
+ * response's `openrouter_metadata.attempt`. attempt=1 means the preferred
+ * provider served directly (no fallback); attempt=2 means OpenRouter advanced
+ * past one transiently-unavailable provider. Returns `undefined` when the
+ * metadata is absent or the `attempt` field is not a positive integer, so the
+ * caller can leave `retryCount` at 0 (the no-metadata / direct-serve case).
+ */
+function openRouterAttemptCount(body: unknown): number | undefined {
+  if (!isRecord(body) || !isRecord(body.openrouter_metadata)) {
+    return undefined;
+  }
+  const attempt = body.openrouter_metadata.attempt;
+  if (typeof attempt === "number" && Number.isInteger(attempt) && attempt > 0) {
+    return attempt;
+  }
+  return undefined;
 }
 
 async function safeJson(response: Response): Promise<unknown> {
