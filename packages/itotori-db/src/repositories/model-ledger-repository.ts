@@ -18,6 +18,7 @@ import {
   type ProviderCostKind,
   type ProviderRunStatus,
 } from "../schema.js";
+import type { TranslationMemoryDiagnostic } from "./translation-memory-repository.js";
 
 export type LedgerJsonRecord = Record<string, unknown>;
 
@@ -147,6 +148,14 @@ export type TranslationMemoryReuseCostSummary = {
   calculation: string;
   provenance: LedgerJsonRecord;
   createdAt: string;
+  /**
+   * ITOTORI-146 — true when this row's stored `cost_impact` JSON does not
+   * match the well-formed shape the aggregation reads. The numeric / boolean
+   * fields above are defensively coerced to zero / false in that case so the
+   * row never blows up downstream consumers; consumers can use this flag to
+   * render a "malformed cost_impact" hint instead of the zeroed numbers.
+   */
+  malformedCostImpact: boolean;
 };
 
 export type TranslationMemoryReuseCostReport = {
@@ -159,6 +168,24 @@ export type TranslationMemoryReuseCostReport = {
   estimatedTotalTokensSaved: number;
   estimatedCostUsdSaved: number | null;
   recentEvents: TranslationMemoryReuseCostSummary[];
+  /**
+   * ITOTORI-146 — number of reuse events for this project whose stored
+   * `cost_impact` JSON does NOT match the well-formed shape the aggregation
+   * reads (`providerCallAvoided` boolean, `estimated*TokensSaved` /
+   * `estimatedCostUsdSaved` numeric). The repository API only ever writes
+   * well-formed rows, so any non-zero count here means a row was inserted
+   * OUTSIDE the repository (e.g. a raw SQL backfill, a historical pre-fix
+   * row). The aggregation MUST remain available — the malformed rows are
+   * skipped from the numeric sums and counted here so callers can surface
+   * a diagnostic and choose to repair them.
+   */
+  malformedCostImpactCount: number;
+  /**
+   * ITOTORI-146 — diagnostics describing the malformed rows so callers can
+   * surface a clear, actionable message without re-running the read. Empty
+   * when `malformedCostImpactCount === 0`.
+   */
+  diagnostics: TranslationMemoryDiagnostic[];
 };
 
 /**
@@ -674,23 +701,90 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
   private async getTranslationMemoryReuseCostReport(
     projectId: string,
   ): Promise<TranslationMemoryReuseCostReport> {
+    // ITOTORI-146 — defensive aggregation. The repository API only writes
+    // well-formed `cost_impact` JSON, but raw SQL backfills / historical rows
+    // can carry non-object JSON, missing keys, or non-numeric / non-boolean
+    // values. Casting a non-numeric text to int aborts the WHOLE query
+    // (`invalid input syntax for type integer`), which makes the project cost
+    // report unavailable. We classify each row in a CTE and conditionally
+    // sum / cast only the well-formed rows; malformed rows are counted in
+    // `malformed_cost_impact_count` and exposed via a diagnostic so the
+    // report REMAINS AVAILABLE.
     const totalsResult = await this.db.execute(sql`
+      with project_events as (
+        select
+          reuse_status,
+          cost_impact,
+          -- Well-formed predicate: cost_impact must be a JSON object AND
+          -- every numeric / boolean field the aggregation reads must be the
+          -- expected scalar shape. NULL (missing key) is tolerated; a key
+          -- whose value is the wrong JSON type is NOT.
+          (
+            jsonb_typeof(cost_impact) = 'object'
+            and (
+              cost_impact->>'providerCallAvoided' is null
+              or cost_impact->>'providerCallAvoided' in ('true', 'false')
+            )
+            and (
+              cost_impact->>'estimatedPromptTokensSaved' is null
+              or cost_impact->>'estimatedPromptTokensSaved' ~ '^-?\\d+$'
+            )
+            and (
+              cost_impact->>'estimatedCompletionTokensSaved' is null
+              or cost_impact->>'estimatedCompletionTokensSaved' ~ '^-?\\d+$'
+            )
+            and (
+              cost_impact->>'estimatedTotalTokensSaved' is null
+              or cost_impact->>'estimatedTotalTokensSaved' ~ '^-?\\d+$'
+            )
+            and (
+              cost_impact->>'estimatedCostUsdSaved' is null
+              or cost_impact->>'estimatedCostUsdSaved' ~ '^-?\\d+(\\.\\d+)?$'
+            )
+          ) as is_cost_impact_well_formed
+        from ${translationMemoryReuseEvents}
+        where project_id = ${projectId}
+      )
       select
         count(*)::int as reuse_event_count,
         count(*) filter (where reuse_status = 'applied')::int as applied_count,
         count(*) filter (where reuse_status = 'suggested')::int as suggested_count,
-        count(*) filter (where (cost_impact->>'providerCallAvoided')::boolean is true)::int
-          as provider_call_avoided_count,
-        coalesce(sum((cost_impact->>'estimatedPromptTokensSaved')::int), 0)::int
-          as estimated_prompt_tokens_saved,
-        coalesce(sum((cost_impact->>'estimatedCompletionTokensSaved')::int), 0)::int
-          as estimated_completion_tokens_saved,
-        coalesce(sum((cost_impact->>'estimatedTotalTokensSaved')::int), 0)::int
-          as estimated_total_tokens_saved,
-        sum((cost_impact->>'estimatedCostUsdSaved')::numeric)::text
-          as estimated_cost_usd_saved
-      from ${translationMemoryReuseEvents}
-      where project_id = ${projectId}
+        count(*) filter (where not is_cost_impact_well_formed)::int
+          as malformed_cost_impact_count,
+        count(*) filter (
+          where is_cost_impact_well_formed
+            and (cost_impact->>'providerCallAvoided')::boolean is true
+        )::int as provider_call_avoided_count,
+        coalesce(
+          sum(
+            case when is_cost_impact_well_formed
+              then (cost_impact->>'estimatedPromptTokensSaved')::int
+            end
+          ),
+          0
+        )::int as estimated_prompt_tokens_saved,
+        coalesce(
+          sum(
+            case when is_cost_impact_well_formed
+              then (cost_impact->>'estimatedCompletionTokensSaved')::int
+            end
+          ),
+          0
+        )::int as estimated_completion_tokens_saved,
+        coalesce(
+          sum(
+            case when is_cost_impact_well_formed
+              then (cost_impact->>'estimatedTotalTokensSaved')::int
+            end
+          ),
+          0
+        )::int as estimated_total_tokens_saved,
+        sum(
+          case when is_cost_impact_well_formed
+            then (cost_impact->>'estimatedCostUsdSaved')::numeric
+          end
+        )::text as estimated_cost_usd_saved
+      from project_events
     `);
     const totals = (totalsResult.rows[0] ?? {}) as Record<string, unknown>;
 
@@ -715,6 +809,28 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
       limit 20
     `);
 
+    const recentEvents = (recentEventsResult.rows as Array<Record<string, unknown>>).map(
+      translationMemoryReuseFromRow,
+    );
+    const malformedCostImpactCount = Number(totals.malformed_cost_impact_count ?? 0);
+    const diagnostics: TranslationMemoryDiagnostic[] =
+      malformedCostImpactCount === 0
+        ? []
+        : [
+            {
+              code: "translation_memory.reuse_event.cost_impact.malformed",
+              severity: "warning",
+              message:
+                "One or more translation-memory reuse events for this project have a malformed cost_impact JSON shape. Their cost-impact fields were skipped from the aggregation so the report remains available; the affected rows are still listed in `recentEvents` with `malformedCostImpact: true` and zeroed cost fields. Repair by re-deriving cost_impact for the affected events.",
+              reasonCode: "malformed_cost_impact_json",
+              field: "cost_impact",
+              metadata: {
+                projectId,
+                malformedCostImpactCount,
+              },
+            },
+          ];
+
     return {
       reuseEventCount: Number(totals.reuse_event_count ?? 0),
       appliedCount: Number(totals.applied_count ?? 0),
@@ -727,9 +843,9 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         totals.estimated_cost_usd_saved === null || totals.estimated_cost_usd_saved === undefined
           ? null
           : Number(totals.estimated_cost_usd_saved),
-      recentEvents: (recentEventsResult.rows as Array<Record<string, unknown>>).map(
-        translationMemoryReuseFromRow,
-      ),
+      recentEvents,
+      malformedCostImpactCount,
+      diagnostics,
     };
   }
 
@@ -1452,7 +1568,52 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
 function translationMemoryReuseFromRow(
   row: Record<string, unknown>,
 ): TranslationMemoryReuseCostSummary {
-  const costImpact = recordOrEmpty(row.cost_impact);
+  // ITOTORI-146 — defensive read. `cost_impact` may be a malformed JSON
+  // value (non-object, missing keys, wrong scalar type) if the row was
+  // inserted OUTSIDE the repository API. We never let a wrong-type numeric
+  // (e.g. `"abc"`) leak through as NaN — instead we coerce defensively and
+  // mark the row so the caller can render a "malformed" hint instead of a
+  // misleading zero. Missing keys are tolerated (coerced to zero / null),
+  // matching the SQL-side well-formed predicate.
+  const rawCostImpact = row.cost_impact;
+  const isCostImpactObject =
+    rawCostImpact !== null &&
+    rawCostImpact !== undefined &&
+    !Array.isArray(rawCostImpact) &&
+    typeof rawCostImpact === "object";
+  const costImpact = isCostImpactObject ? (rawCostImpact as Record<string, unknown>) : {};
+  const malformedByType = (value: unknown, kind: "bool" | "int" | "number"): boolean => {
+    if (value === null || value === undefined) return false;
+    if (kind === "bool") return typeof value !== "boolean";
+    if (kind === "int") {
+      return typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value);
+    }
+    return typeof value !== "number" || !Number.isFinite(value);
+  };
+  const promptValue = costImpact.estimatedPromptTokensSaved;
+  const completionValue = costImpact.estimatedCompletionTokensSaved;
+  const totalValue = costImpact.estimatedTotalTokensSaved;
+  const usdSavedValue = costImpact.estimatedCostUsdSaved;
+  const providerCallValue = costImpact.providerCallAvoided;
+  const hasMalformedField =
+    !isCostImpactObject ||
+    malformedByType(promptValue, "int") ||
+    malformedByType(completionValue, "int") ||
+    malformedByType(totalValue, "int") ||
+    (usdSavedValue !== null &&
+      usdSavedValue !== undefined &&
+      (typeof usdSavedValue !== "string" || !/^-?\d+(\.\d+)?$/.test(usdSavedValue))) ||
+    malformedByType(providerCallValue, "bool");
+
+  const coerceInt = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) ? value : 0;
+  const coerceNumber = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+    return null;
+  };
+  const coerceBool = (value: unknown): boolean => value === true;
+
   return {
     reuseEventId: String(row.reuse_event_id),
     localeBranchId: String(row.locale_branch_id),
@@ -1464,15 +1625,16 @@ function translationMemoryReuseFromRow(
     sourceHash: String(row.source_hash),
     candidateSourceHash: String(row.candidate_source_hash),
     targetText: String(row.target_text),
-    providerCallAvoided: costImpact.providerCallAvoided === true,
-    estimatedPromptTokensSaved: Number(costImpact.estimatedPromptTokensSaved ?? 0),
-    estimatedCompletionTokensSaved: Number(costImpact.estimatedCompletionTokensSaved ?? 0),
-    estimatedTotalTokensSaved: Number(costImpact.estimatedTotalTokensSaved ?? 0),
-    estimatedCostUsdSaved: nullableNumber(costImpact.estimatedCostUsdSaved),
+    providerCallAvoided: coerceBool(providerCallValue),
+    estimatedPromptTokensSaved: coerceInt(promptValue),
+    estimatedCompletionTokensSaved: coerceInt(completionValue),
+    estimatedTotalTokensSaved: coerceInt(totalValue),
+    estimatedCostUsdSaved: coerceNumber(usdSavedValue),
     calculation: String(costImpact.calculation ?? "unknown"),
     provenance: recordOrEmpty(row.provenance),
     createdAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    malformedCostImpact: hasMalformedField,
   };
 }
 

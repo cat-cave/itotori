@@ -1192,6 +1192,8 @@ function emptyTranslationMemoryReuseCostReport(): ProjectCostReport["translation
     estimatedTotalTokensSaved: 0,
     estimatedCostUsdSaved: null,
     recentEvents: [],
+    malformedCostImpactCount: 0,
+    diagnostics: [],
   };
 }
 
