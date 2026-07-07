@@ -4489,6 +4489,323 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  // ITOTORI-141 — glossary review item glossary-reference migration contract.
+  //
+  // Migration 0022 backfills the `glossary_reference_id` reference column onto
+  // `itotori_glossary_review_items` (an ALTER TABLE ADD COLUMN, so it lands at
+  // the table's tail), plus a lookup index and a set-null foreign key back to
+  // `itotori_branch_policy_glossary_references`. The repository layer
+  // (terminology-repository / branch-reference-repository) reads this column to
+  // link a review item to the glossary reference that produced it, and the
+  // queue/proposal flows depend on the surrounding column/index/FK shape.
+  //
+  // This suite pins that contract EXPLICITLY against the real migrated schema
+  // (information_schema.columns + pg_constraint + pg_index), mirroring the
+  // locale-branch-unit-provenance coverage above, so a drift on either side —
+  // a dropped column/index/FK in only the SQL or only the Drizzle model — is
+  // caught. The glossary_reference_id column, the
+  // itotori_glossary_review_items_glossary_reference_idx index, and the
+  // itotori_glossary_review_items_glossary_reference_id_fkey foreign key are
+  // the acceptance-critical entries the assertions must surface.
+  it("keeps glossary review item glossary-reference column, index, and foreign-key migration contracts stable", async () => {
+    const context = await migratedContext();
+    try {
+      const columns = await context.db.execute(sql`
+        select table_name, column_name, data_type, is_nullable
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name in ('itotori_glossary_review_items')
+        order by table_name, ordinal_position
+      `);
+      expect(
+        columns.rows.map((row) => ({
+          tableName: String(row.table_name),
+          columnName: String(row.column_name),
+          dataType: String(row.data_type),
+          nullable: String(row.is_nullable) === "YES",
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "review_item_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "project_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "locale_branch_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "term_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "source_revision_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "style_guide_version_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "state",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "source_term",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "normalized_source_term",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "proposed_translation",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "normalized_proposed_translation",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "protected_span_refs",
+          dataType: "jsonb",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "provenance",
+          dataType: "jsonb",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "semantic_diagnostics",
+          dataType: "jsonb",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "metadata",
+          dataType: "jsonb",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "created_by_user_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "created_at",
+          dataType: "timestamp with time zone",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "updated_at",
+          dataType: "timestamp with time zone",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          columnName: "glossary_reference_id",
+          dataType: "text",
+          nullable: true,
+        },
+      ]);
+
+      const keyConstraints = await context.db.execute(sql`
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          con.contype as constraint_type,
+          pg_get_constraintdef(con.oid) as constraint_definition
+        from pg_constraint con
+        join pg_class c on c.oid = con.conrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = current_schema()
+          and c.relname in ('itotori_glossary_review_items')
+          and con.contype in ('p', 'u')
+        order by c.relname, con.conname
+      `);
+      expect(
+        keyConstraints.rows.map((row) => ({
+          tableName: String(row.table_name),
+          constraintName: String(row.constraint_name),
+          constraintType: String(row.constraint_type),
+          constraintDefinition: String(row.constraint_definition),
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_pkey",
+          constraintType: "p",
+          constraintDefinition: "PRIMARY KEY (review_item_id)",
+        },
+      ]);
+
+      const indexes = await context.db.execute(sql`
+        select
+          index_class.relname as index_name,
+          table_class.relname as table_name,
+          index_record.indisunique,
+          array_to_string(array_agg(attribute.attname order by key.ordinality), ',') as column_names
+        from pg_index index_record
+        join pg_class table_class on table_class.oid = index_record.indrelid
+        join pg_namespace namespace on namespace.oid = table_class.relnamespace
+        join pg_class index_class on index_class.oid = index_record.indexrelid
+        join lateral unnest(index_record.indkey) with ordinality as key(attnum, ordinality)
+          on true
+        join pg_attribute attribute
+          on attribute.attrelid = table_class.oid
+          and attribute.attnum = key.attnum
+        where namespace.nspname = current_schema()
+          and index_class.relname in (
+            'itotori_glossary_review_items_proposal_idx',
+            'itotori_glossary_review_items_term_idx',
+            'itotori_glossary_review_items_queue_idx',
+            'itotori_glossary_review_items_style_guide_idx',
+            'itotori_glossary_review_items_glossary_reference_idx'
+          )
+        group by index_class.relname, table_class.relname, index_record.indisunique
+        order by index_class.relname
+      `);
+      expect(
+        indexes.rows.map((row) => ({
+          indexName: String(row.index_name),
+          tableName: String(row.table_name),
+          unique: row.indisunique === true,
+          columnNames: String(row.column_names),
+        })),
+      ).toEqual([
+        {
+          indexName: "itotori_glossary_review_items_glossary_reference_idx",
+          tableName: "itotori_glossary_review_items",
+          unique: false,
+          columnNames: "glossary_reference_id",
+        },
+        {
+          indexName: "itotori_glossary_review_items_proposal_idx",
+          tableName: "itotori_glossary_review_items",
+          unique: true,
+          columnNames:
+            "locale_branch_id,source_revision_id,normalized_source_term,normalized_proposed_translation",
+        },
+        {
+          indexName: "itotori_glossary_review_items_queue_idx",
+          tableName: "itotori_glossary_review_items",
+          unique: false,
+          columnNames: "locale_branch_id,state,updated_at",
+        },
+        {
+          indexName: "itotori_glossary_review_items_style_guide_idx",
+          tableName: "itotori_glossary_review_items",
+          unique: false,
+          columnNames: "style_guide_version_id",
+        },
+        {
+          indexName: "itotori_glossary_review_items_term_idx",
+          tableName: "itotori_glossary_review_items",
+          unique: false,
+          columnNames: "term_id,source_revision_id",
+        },
+      ]);
+
+      const foreignKeys = await context.db.execute(sql`
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          pg_get_constraintdef(con.oid) as constraint_definition
+        from pg_constraint con
+        join pg_class c on c.oid = con.conrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = current_schema()
+          and c.relname in ('itotori_glossary_review_items')
+          and con.contype = 'f'
+        order by c.relname, con.conname
+      `);
+      expect(
+        foreignKeys.rows.map((row) => ({
+          tableName: String(row.table_name),
+          constraintName: String(row.constraint_name),
+          constraintDefinition: String(row.constraint_definition),
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_created_by_user_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (created_by_user_id) REFERENCES itotori_users(user_id) ON DELETE SET NULL",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_glossary_reference_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (glossary_reference_id) REFERENCES itotori_branch_policy_glossary_references(reference_id) ON DELETE SET NULL",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_locale_branch_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (locale_branch_id) REFERENCES itotori_locale_branches(locale_branch_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_project_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (project_id) REFERENCES itotori_projects(project_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_source_revision_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (source_revision_id) REFERENCES itotori_source_revisions(source_revision_id) ON DELETE RESTRICT",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_style_guide_version_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (style_guide_version_id) REFERENCES itotori_style_guide_versions(style_guide_version_id) ON DELETE SET NULL",
+        },
+        {
+          tableName: "itotori_glossary_review_items",
+          constraintName: "itotori_glossary_review_items_term_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (term_id) REFERENCES itotori_terminology_terms(term_id) ON DELETE SET NULL",
+        },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("upgrades existing context artifact migrations without losing citations on source-unit deletion", async () => {
     const databaseUrl = requiredDatabaseUrl();
     const admin = new pg.Pool({ connectionString: databaseUrl });
