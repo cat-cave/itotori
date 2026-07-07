@@ -296,6 +296,23 @@ export {
 } from "./meta-validity-harness.js";
 
 export {
+  DEFAULT_STRONG_CALIBER_THRESHOLDS,
+  STRONG_CALIBER_READINESS_SCHEMA_VERSION,
+  STRONG_CALIBER_THRESHOLD_PROVENANCE,
+  StrongCaliberReadinessGateError,
+  decideStrongCaliberReadiness,
+  type StrongCaliberReadinessEvidence,
+  type StrongCaliberReadinessFinding,
+  type StrongCaliberReadinessFindingKind,
+  type StrongCaliberReadinessGate,
+  type StrongCaliberReadinessGateId,
+  type StrongCaliberReadinessGateInput,
+  type StrongCaliberReadinessQaSignal,
+  type StrongCaliberReadinessThresholds,
+  type StrongCaliberReadinessVerdict,
+} from "./strong-caliber-readiness-gate.js";
+
+export {
   HUMAN_CALIBRATION_ANCHOR_POLICY,
   HumanCalibrationAnchorError,
   PANEL_DIVERGENCE_ALERT_THRESHOLD,
