@@ -788,6 +788,195 @@ describe("localization bridge schema guards", () => {
     );
   });
 
+  // ITOTORI-125 — privacy leak guard for style-guide conversation transcripts.
+  // Public transcripts must never carry raw provider text (promptText/
+  // completionText/rawText/...), raw HTTP bodies (requestBody/responseBody),
+  // or fixtures/private-local references. Each named leak pattern below is
+  // test-pinned so a fixture cannot smuggle private payload into the corpus.
+  function findStyleGuideTurn(
+    transcript: Record<string, unknown>,
+    turnId: string,
+  ): Record<string, unknown> {
+    return asTestRecord(
+      (transcript.turns as Array<Record<string, unknown>>).find((turn) => turn.turnId === turnId),
+      `style-guide turn ${turnId}`,
+    );
+  }
+
+  function findStyleGuideProposal(
+    transcript: Record<string, unknown>,
+    proposalId: string,
+  ): Record<string, unknown> {
+    return asTestRecord(
+      (transcript.proposals as Array<Record<string, unknown>>).find(
+        (proposal) => proposal.proposalId === proposalId,
+      ),
+      `style-guide proposal ${proposalId}`,
+    );
+  }
+
+  it.each([
+    {
+      leak: "turn.promptText (raw provider prompt)",
+      apply: (transcript: Record<string, unknown>) => {
+        findStyleGuideTurn(transcript, "turn-human-answers").promptText =
+          "system: you are a localization reviewer...";
+      },
+      field: "$.turns[1].promptText",
+      turnId: "turn-human-answers",
+      rule: "style_guide_conversation.privacy.no_raw_private_fields",
+    },
+    {
+      leak: "proposal.completionText (raw provider completion)",
+      apply: (transcript: Record<string, unknown>) => {
+        findStyleGuideProposal(transcript, "019ed063-0000-7000-8000-000000000201").completionText =
+          "Sure! Here is the rule: ...";
+      },
+      field: "$.proposals[0].completionText",
+      turnId: "turn-assistant-proposals",
+      rule: "style_guide_conversation.privacy.no_raw_private_fields",
+    },
+    {
+      leak: "turn.rawText (raw provider response text)",
+      apply: (transcript: Record<string, unknown>) => {
+        findStyleGuideTurn(transcript, "turn-assistant-proposals").rawText =
+          "RAW: assistant completion payload";
+      },
+      field: "$.turns[2].rawText",
+      turnId: "turn-assistant-proposals",
+      rule: "style_guide_conversation.privacy.no_raw_private_fields",
+    },
+    {
+      leak: "turn.responseBody (raw HTTP response body)",
+      apply: (transcript: Record<string, unknown>) => {
+        findStyleGuideTurn(transcript, "turn-system-context").responseBody =
+          '{"choices":[{"message":{"content":"leaked"}}]}';
+      },
+      field: "$.turns[0].responseBody",
+      turnId: "turn-system-context",
+      rule: "style_guide_conversation.privacy.no_raw_private_fields",
+    },
+    {
+      leak: "citation.sourceRef referencing fixtures/private-local",
+      apply: (transcript: Record<string, unknown>) => {
+        const turn = findStyleGuideTurn(transcript, "turn-human-answers");
+        const citations = turn.citations as Array<Record<string, unknown>>;
+        asTestRecord(citations[0], "first human-answer citation").sourceRef =
+          "fixtures/private-local/secret-evidence.json";
+      },
+      field: "$.turns[1].citations[0].sourceRef",
+      turnId: "turn-human-answers",
+      rule: "style_guide_conversation.privacy.no_private_fixture_paths",
+    },
+  ])(
+    "rejects style-guide transcript privacy leak: $leak",
+    ({
+      apply,
+      field,
+      turnId,
+      rule,
+    }: {
+      apply: (transcript: Record<string, unknown>) => void;
+      field: string;
+      turnId: string;
+      rule: string;
+    }) => {
+      const transcript = styleGuideConversationFixture("accepted");
+      apply(transcript);
+
+      const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+      // The leak MUST be rejected with a diagnostic naming the offending
+      // turn, the exact field path, and the privacy rule.
+      expect(diagnostics).toContainEqual(
+        expect.objectContaining({
+          severity: "error",
+          turnId,
+          field,
+          rule,
+        }),
+      );
+      expect(() => assertStyleGuideConversationTranscript(transcript)).toThrow(
+        /style_guide_conversation\.privacy\./,
+      );
+    },
+  );
+
+  it("rejects every forbidden raw-private field name anywhere in a style-guide transcript", () => {
+    // Pin the full forbidden set so the guard cannot be silently trimmed to
+    // only the headline names. Each key is injected on a known turn so the
+    // exact field path and scoped turn id are deterministic.
+    const forbiddenKeys = [
+      "completionText",
+      "completion_text",
+      "privateText",
+      "private_text",
+      "promptText",
+      "prompt_text",
+      "rawContent",
+      "raw_content",
+      "rawPrivateData",
+      "raw_private_data",
+      "rawText",
+      "raw_text",
+      "requestBody",
+      "request_body",
+      "responseBody",
+      "response_body",
+    ];
+    for (const forbiddenKey of forbiddenKeys) {
+      const transcript = styleGuideConversationFixture("accepted");
+      findStyleGuideTurn(transcript, "turn-reviewer-accepts")[forbiddenKey] =
+        "leaked-private-payload";
+
+      const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+      expect(
+        diagnostics.some(
+          (diagnostic) =>
+            diagnostic.rule === "style_guide_conversation.privacy.no_raw_private_fields" &&
+            diagnostic.field === `$.turns[3].${forbiddenKey}` &&
+            diagnostic.turnId === "turn-reviewer-accepts",
+        ),
+        `forbidden raw-private key ${forbiddenKey} must be rejected`,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects a fixtures/private-local reference nested under a proposal example", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const proposal = findStyleGuideProposal(transcript, "019ed063-0000-7000-8000-000000000203");
+    const examples = proposal.examples as Array<Record<string, unknown>>;
+    asTestRecord(examples[0], "honorific example").publicText =
+      "see fixtures/private-local/honorific-evidence.txt";
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.proposals[2].examples[0].publicText",
+        rule: "style_guide_conversation.privacy.no_private_fixture_paths",
+      }),
+    );
+  });
+
+  it.each(["accepted", "rejected", "conflicting", "malformed"])(
+    "admits clean style-guide transcript %s without privacy leak diagnostics",
+    (name) => {
+      const transcript = styleGuideConversationFixture(name);
+
+      const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+      const privacyDiagnostics = diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "style_guide_conversation.privacy.no_raw_private_fields" ||
+          diagnostic.rule === "style_guide_conversation.privacy.no_private_fixture_paths",
+      );
+      expect(privacyDiagnostics).toEqual([]);
+    },
+  );
+
   it.each([
     {
       path: "./examples/invalid/bridge-v0.2-dangling-asset-ref.json",

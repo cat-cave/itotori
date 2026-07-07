@@ -1439,20 +1439,54 @@ function checkEnum<T extends string>(
   }
 }
 
+// ITOTORI-125 — raw-private-field + private-local-path privacy leak guard.
+//
+// Public style-guide transcripts must only ever carry record ids, hashes, or
+// redacted public text. A transcript that smuggles in raw provider text
+// (promptText/completionText/rawText/...), a raw HTTP body (requestBody/
+// responseBody), or a fixtures/private-local path is a privacy leak and MUST
+// fail validation with a diagnostic naming the exact field path and the
+// offending turn.
+export const STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE =
+  "style_guide_conversation.privacy.no_raw_private_fields" as const;
+export const STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE =
+  "style_guide_conversation.privacy.no_private_fixture_paths" as const;
+
+export const STYLE_GUIDE_FORBIDDEN_RAW_PRIVATE_FIELDS = [
+  "completionText",
+  "completion_text",
+  "privateText",
+  "private_text",
+  "promptText",
+  "prompt_text",
+  "rawContent",
+  "raw_content",
+  "rawPrivateData",
+  "raw_private_data",
+  "rawText",
+  "raw_text",
+  "requestBody",
+  "request_body",
+  "responseBody",
+  "response_body",
+] as const;
+
+const PRIVATE_LOCAL_FIXTURE_REFERENCE = "fixtures/private-local/";
+
 function checkNoRawPrivateFields(
   value: unknown,
   turnId: string,
   field: string,
   diagnostics: StyleGuideConversationDiagnostic[],
 ): void {
-  if (typeof value !== "object" || value === null) {
-    if (typeof value === "string" && value.includes("fixtures/private-local/")) {
+  if (typeof value === "string") {
+    if (value.includes(PRIVATE_LOCAL_FIXTURE_REFERENCE)) {
       diagnostics.push(
         diagnostic(
           turnId,
           field,
-          "style_guide_conversation.privacy.no_private_fixture_paths",
-          "public transcripts must not reference fixtures/private-local",
+          STYLE_GUIDE_PRIVACY_PRIVATE_FIXTURE_PATH_RULE,
+          `${field} must not reference ${PRIVATE_LOCAL_FIXTURE_REFERENCE}`,
         ),
       );
     }
@@ -1464,37 +1498,29 @@ function checkNoRawPrivateFields(
     }
     return;
   }
-  const forbiddenKeys = new Set([
-    "completionText",
-    "completion_text",
-    "privateText",
-    "private_text",
-    "promptText",
-    "prompt_text",
-    "rawContent",
-    "raw_content",
-    "rawPrivateData",
-    "raw_private_data",
-    "rawText",
-    "raw_text",
-    "requestBody",
-    "request_body",
-    "responseBody",
-    "response_body",
-  ]);
+  if (!isRecord(value)) {
+    return;
+  }
+  // Attribute leaks nested under a turn/proposal object to that object's
+  // declared turnId so the diagnostic names the offending turn, not just the
+  // transcript sentinel. Falls back to the inherited turn id when the object
+  // has no usable turnId (e.g. the transcript root or a malformed entry).
+  const scopedTurnId =
+    typeof value.turnId === "string" && value.turnId.trim().length > 0 ? value.turnId : turnId;
+  const forbiddenKeys = new Set<string>(STYLE_GUIDE_FORBIDDEN_RAW_PRIVATE_FIELDS);
   for (const [key, child] of Object.entries(value)) {
     if (forbiddenKeys.has(key)) {
       diagnostics.push(
         diagnostic(
-          turnId,
+          scopedTurnId,
           `${field}.${key}`,
-          "style_guide_conversation.privacy.no_raw_private_fields",
+          STYLE_GUIDE_PRIVACY_RAW_PRIVATE_FIELD_RULE,
           `${field}.${key} is not allowed; record ids, hashes, or redacted public text`,
         ),
       );
       continue;
     }
-    checkNoRawPrivateFields(child, turnId, `${field}.${key}`, diagnostics);
+    checkNoRawPrivateFields(child, scopedTurnId, `${field}.${key}`, diagnostics);
   }
 }
 
