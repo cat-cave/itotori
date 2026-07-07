@@ -20,17 +20,25 @@ import {
   seedDefaultPermissionSets,
   type AuthorizationActor,
 } from "../src/authorization.js";
+import type { DatabaseContext } from "../src/connection.js";
 import {
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
 } from "../src/repositories/principal-repository.js";
-import { authPermissionSetAuditEvents, authPrincipalPermissionSetGrants } from "../src/schema.js";
+import {
+  authAccountMemberships,
+  authPermissionSetAuditEvents,
+  authPrincipalPermissionSetGrants,
+} from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
 /** Stand up an account + admin principal + target principal for a test. */
-async function bootstrapAccountAndPrincipals(repo: ItotoriPrincipalRepository): Promise<void> {
+async function bootstrapAccountAndPrincipals(
+  repo: ItotoriPrincipalRepository,
+  db: DatabaseContext["db"],
+): Promise<void> {
   await repo.createAccount(localActor, {
     accountId: "account-model",
     slug: "model",
@@ -48,6 +56,13 @@ async function bootstrapAccountAndPrincipals(repo: ItotoriPrincipalRepository): 
     userId: "user-target",
     displayName: "Target",
   });
+  // The target's account context: a permission set is account-scoped and may
+  // only be granted within an account the principal is a member of.
+  await db.insert(authAccountMemberships).values({
+    membershipId: "membership-target",
+    accountId: "account-model",
+    userId: "user-target",
+  });
 }
 
 describe("permission-set model (auth-004)", () => {
@@ -55,7 +70,7 @@ describe("permission-set model (auth-004)", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);
-      await bootstrapAccountAndPrincipals(repo);
+      await bootstrapAccountAndPrincipals(repo, context.db);
 
       // A set with a single permission, granted to the target.
       await repo.createPermissionSet(localActor, {
@@ -105,7 +120,7 @@ describe("permission-set model (auth-004)", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);
-      await bootstrapAccountAndPrincipals(repo);
+      await bootstrapAccountAndPrincipals(repo, context.db);
 
       await repo.createPermissionSet(localActor, {
         actorPrincipalId: "principal-admin",
@@ -154,7 +169,7 @@ describe("permission-set model (auth-004)", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);
-      await bootstrapAccountAndPrincipals(repo);
+      await bootstrapAccountAndPrincipals(repo, context.db);
 
       await repo.createPermissionSet(localActor, {
         actorPrincipalId: "principal-admin",
@@ -207,7 +222,7 @@ describe("permission-set model (auth-004)", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);
-      await bootstrapAccountAndPrincipals(repo);
+      await bootstrapAccountAndPrincipals(repo, context.db);
       await expect(
         repo.addPermissionToSet(localActor, {
           actorPrincipalId: "principal-admin",
@@ -224,7 +239,7 @@ describe("permission-set model (auth-004)", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);
-      await bootstrapAccountAndPrincipals(repo);
+      await bootstrapAccountAndPrincipals(repo, context.db);
 
       // Seeds are DATA, materialized for an account, not code branches.
       await seedDefaultPermissionSets(context.db, { accountId: "account-model" });

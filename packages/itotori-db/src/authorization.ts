@@ -1,10 +1,17 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { ItotoriDatabase } from "./connection.js";
 import {
+  type AuthPrincipalKind,
+  authAccountMemberships,
+  authAccounts,
+  authExternalIdentities,
   authPermissionSetPermissions,
   authPermissionSets,
   authPrincipalPermissionGrants,
   authPrincipalPermissionSetGrants,
+  authPrincipals,
+  authServicePrincipals,
+  authSessions,
   authUsers,
   userPermissionGrants,
   users,
@@ -49,8 +56,35 @@ export const allPermissions = [
 export const localUserId = "local-user";
 export const localUserDisplayName = "Local user";
 
+/**
+ * Raw userIds reserved for the legacy single-user substrate that MUST NOT be
+ * re-registered as multi-user principals (`itotori_auth_users.user_id`).
+ *
+ * `itotori_user_permission_grants.user_id` (legacy, where the bootstrap
+ * `local-user` holds every permission) and `itotori_auth_users.user_id` share
+ * one raw-string namespace. If a principal could be created with the bootstrap
+ * userId, an external identity linked to it would inherit the bootstrap
+ * all-permissions grant through the legacy path. Reserving the bootstrap ids —
+ * enforced by a DB CHECK on `itotori_auth_users` (migration 0061) and by
+ * `createPrincipal` — makes that collision impossible at the source. See
+ * `requirePermission` for the complementary provider-backed legacy-skip rule.
+ */
+export const reservedAuthUserIds = [localUserId] as const;
+
+/** Whether `userId` is reserved for the legacy substrate (see above). */
+export function isReservedAuthUserId(userId: string): boolean {
+  return (reservedAuthUserIds as readonly string[]).includes(userId);
+}
+
 export type AuthorizationActor = {
   userId: string;
+  /**
+   * Optional opaque session id. When present, authorization enforces the
+   * ACTIVE-SUBJECT session boundary: the session must belong to the resolved
+   * principal and be neither revoked nor expired. Legacy / local-user callers
+   * carry no session and are unaffected.
+   */
+  sessionId?: string;
 };
 
 export class AuthorizationError extends Error {
@@ -61,6 +95,42 @@ export class AuthorizationError extends Error {
     super(`user ${actor.userId} is missing permission ${permission}`);
     this.name = "AuthorizationError";
   }
+}
+
+/**
+ * The principal's ACTIVE account context: the ids of the accounts it belongs to
+ * whose own `disabled_at IS NULL`. A human user belongs via
+ * `itotori_auth_account_memberships` (a user may belong to several accounts); a
+ * service principal belongs to exactly one account (`service_principals.account_id`)
+ * and only while its own `disabled_at IS NULL`. A disabled account is excluded,
+ * so a permission set owned by a disabled account contributes nothing.
+ */
+async function resolveActiveAccountContext(
+  db: ItotoriDatabase,
+  principalId: string,
+  principalKind: AuthPrincipalKind,
+): Promise<Set<string>> {
+  if (principalKind === "service_principal") {
+    const rows = await db
+      .select({ accountId: authServicePrincipals.accountId })
+      .from(authServicePrincipals)
+      .innerJoin(authAccounts, eq(authAccounts.accountId, authServicePrincipals.accountId))
+      .where(
+        and(
+          eq(authServicePrincipals.principalId, principalId),
+          isNull(authServicePrincipals.disabledAt),
+          isNull(authAccounts.disabledAt),
+        ),
+      );
+    return new Set(rows.map((row) => row.accountId));
+  }
+  const rows = await db
+    .select({ accountId: authAccountMemberships.accountId })
+    .from(authAccountMemberships)
+    .innerJoin(authUsers, eq(authUsers.userId, authAccountMemberships.userId))
+    .innerJoin(authAccounts, eq(authAccounts.accountId, authAccountMemberships.accountId))
+    .where(and(eq(authUsers.principalId, principalId), isNull(authAccounts.disabledAt)));
+  return new Set(rows.map((row) => row.accountId));
 }
 
 /**
@@ -78,29 +148,81 @@ export class AuthorizationError extends Error {
  * resolver of record. A "permission set" is the only thing a role may be — a
  * data bundle of permission rows — and it resolves here to concrete
  * permissions; nothing branches on a role string.
+ *
+ * TWO security boundaries are enforced here so they hold for EVERY caller of the
+ * resolver of record:
+ *
+ *   ACTIVE-SUBJECT BOUNDARY — a disabled principal
+ *   (`itotori_auth_principals.disabled_at`) authorizes NOTHING. A service
+ *   principal whose own `disabled_at` is set, or whose sole owning account is
+ *   disabled, is fully inert. (The session leg of this boundary lives in
+ *   `requirePermission`, since a session is an actor credential, not a property
+ *   of the principal's grants.)
+ *
+ *   ACCOUNT-SCOPE BOUNDARY (cross-account escalation fix) — a permission set is
+ *   account-scoped; a granted set contributes its permissions ONLY when the
+ *   set's owning account is in the principal's ACTIVE account context. A set
+ *   from ANOTHER account authorizes NOTHING even if a grant row exists, so a
+ *   cross-account grant can never escalate privilege. Direct permission grants
+ *   are not account-scoped and count for any active principal.
  */
 export async function resolvePrincipalEffectivePermissions(
   db: ItotoriDatabase,
   principalId: string,
 ): Promise<Set<Permission>> {
+  const principalRows = await db
+    .select({
+      principalKind: authPrincipals.principalKind,
+      disabledAt: authPrincipals.disabledAt,
+    })
+    .from(authPrincipals)
+    .where(eq(authPrincipals.principalId, principalId))
+    .limit(1);
+  const principal = principalRows[0];
+  // A missing or disabled principal authorizes nothing.
+  if (principal === undefined || principal.disabledAt !== null) {
+    return new Set<Permission>();
+  }
+
+  const activeAccountIds = await resolveActiveAccountContext(
+    db,
+    principalId,
+    principal.principalKind,
+  );
+  // A service principal belongs to exactly one account; an empty active-account
+  // context means its own or its account's `disabled_at` is set, so it is inert.
+  if (principal.principalKind === "service_principal" && activeAccountIds.size === 0) {
+    return new Set<Permission>();
+  }
+
   const directRows = await db
     .select({ permission: authPrincipalPermissionGrants.permission })
     .from(authPrincipalPermissionGrants)
     .where(eq(authPrincipalPermissionGrants.principalId, principalId));
 
-  const setIdRows = await db
-    .select({ permissionSetId: authPrincipalPermissionSetGrants.permissionSetId })
+  const setGrantRows = await db
+    .select({
+      permissionSetId: authPrincipalPermissionSetGrants.permissionSetId,
+      accountId: authPermissionSets.accountId,
+    })
     .from(authPrincipalPermissionSetGrants)
+    .innerJoin(
+      authPermissionSets,
+      eq(authPermissionSets.permissionSetId, authPrincipalPermissionSetGrants.permissionSetId),
+    )
     .where(eq(authPrincipalPermissionSetGrants.principalId, principalId));
-  const setIds = setIdRows.map((row) => row.permissionSetId);
+  // Only sets whose owning account is in the principal's active account context.
+  const eligibleSetIds = setGrantRows
+    .filter((row) => activeAccountIds.has(row.accountId))
+    .map((row) => row.permissionSetId);
 
   const setPermissionRows =
-    setIds.length === 0
+    eligibleSetIds.length === 0
       ? []
       : await db
           .select({ permission: authPermissionSetPermissions.permission })
           .from(authPermissionSetPermissions)
-          .where(inArray(authPermissionSetPermissions.permissionSetId, setIds));
+          .where(inArray(authPermissionSetPermissions.permissionSetId, eligibleSetIds));
 
   const permissions = new Set<Permission>();
   for (const row of directRows) {
@@ -113,51 +235,108 @@ export async function resolvePrincipalEffectivePermissions(
 }
 
 /**
- * Authorize `actor` for `permission` or throw. The actor's effective
- * permissions are the union of TWO grant sources, and a permission is
- * authorized iff at least one of them contains it:
+ * Whether `sessionId` is a currently-usable session for `principalId`: it exists,
+ * belongs to the principal, is not revoked (`revoked_at IS NULL`), and has not
+ * expired (`expires_at > now()`).
+ */
+async function isActiveSession(
+  db: ItotoriDatabase,
+  sessionId: string,
+  principalId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ sessionId: authSessions.sessionId })
+    .from(authSessions)
+    .where(
+      and(
+        eq(authSessions.sessionId, sessionId),
+        eq(authSessions.principalId, principalId),
+        isNull(authSessions.revokedAt),
+        gt(authSessions.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Authorize `actor` for `permission` or throw. A permission is authorized iff a
+ * persisted grant row (legacy, principal-direct, or via a granted permission
+ * set) contains it AND the actor clears every security boundary below.
  *
- *   1. The legacy single-user direct-grant table
- *      (`itotori_user_permission_grants`, keyed by `userId`) — how the bootstrap
- *      local user is granted; this path stays authoritative and unchanged.
+ *   1. NAMESPACE BOUNDARY (userId-collision fix) — the legacy single-user
+ *      direct-grant table (`itotori_user_permission_grants`, keyed by `userId`,
+ *      where the bootstrap `local-user` holds every permission) is consulted
+ *      ONLY for actors that are NOT backed by an external identity provider. An
+ *      actor whose `userId` has an `itotori_auth_external_identities` link
+ *      authorizes EXCLUSIVELY through its principal grants, so a provider-linked
+ *      identity can never inherit a legacy/bootstrap grant that merely shares
+ *      its raw userId. (The bootstrap ids are additionally reserved out of
+ *      `itotori_auth_users` — see `reservedAuthUserIds` / migration 0061 — so
+ *      the collision cannot be constructed in the first place.)
  *   2. The multi-user principal layer: the actor's `userId` is mapped to its
  *      principal (`itotori_auth_users`), whose effective permissions (direct
- *      grants + expanded permission-set grants) are resolved by
+ *      grants + account-scoped, expanded permission-set grants) are resolved by
  *      `resolvePrincipalEffectivePermissions`.
+ *   3. ACTIVE-SUBJECT BOUNDARY — a disabled principal / account / service
+ *      principal authorizes nothing (enforced inside the resolver of record),
+ *      and if the actor presents a `sessionId` it must belong to the principal
+ *      and be neither revoked nor expired (enforced here). A revoked/expired
+ *      session authorizes nothing even when the principal holds the permission.
  *
- * Authorization is ALWAYS an exact-match against a persisted grant row. There is
- * no code path where an external-provider role / group / claim grants a
- * permission: an OIDC/SAML identity (`itotori_auth_external_identities`) only
- * links a provider subject to a `userId`; it carries no permissions. Absent a
- * grant row (legacy, direct, or via a granted permission set) the claim
- * authorizes nothing and this throws.
+ * Authorization is ALWAYS an exact-match against a persisted grant row. An
+ * OIDC/SAML identity only links a provider subject to a `userId`; it carries no
+ * permissions of its own. Absent a qualifying grant this throws.
  */
 export async function requirePermission(
   db: ItotoriDatabase,
   actor: AuthorizationActor,
   permission: Permission,
 ): Promise<void> {
-  const legacyGrant = await db
-    .select({ permission: userPermissionGrants.permission })
-    .from(userPermissionGrants)
-    .where(
-      and(
-        eq(userPermissionGrants.userId, actor.userId),
-        eq(userPermissionGrants.permission, permission),
-      ),
-    )
-    .limit(1);
-  if (legacyGrant.length > 0) {
-    return;
-  }
-
   const principalRows = await db
     .select({ principalId: authUsers.principalId })
     .from(authUsers)
     .where(eq(authUsers.userId, actor.userId))
     .limit(1);
   const principalId = principalRows[0]?.principalId;
+
+  // NAMESPACE BOUNDARY: skip the legacy table entirely for provider-backed
+  // actors so a provider-linked userId can never inherit a bootstrap grant.
+  const externalProviderBacked =
+    principalId !== undefined &&
+    (
+      await db
+        .select({ externalIdentityId: authExternalIdentities.externalIdentityId })
+        .from(authExternalIdentities)
+        .where(eq(authExternalIdentities.userId, actor.userId))
+        .limit(1)
+    ).length > 0;
+
+  if (!externalProviderBacked) {
+    const legacyGrant = await db
+      .select({ permission: userPermissionGrants.permission })
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.userId, actor.userId),
+          eq(userPermissionGrants.permission, permission),
+        ),
+      )
+      .limit(1);
+    if (legacyGrant.length > 0) {
+      return;
+    }
+  }
+
   if (principalId !== undefined) {
+    // ACTIVE-SUBJECT BOUNDARY (session leg): a presented session must be valid
+    // for this principal, else deny outright.
+    if (
+      actor.sessionId !== undefined &&
+      !(await isActiveSession(db, actor.sessionId, principalId))
+    ) {
+      throw new AuthorizationError(actor, permission);
+    }
     const effective = await resolvePrincipalEffectivePermissions(db, principalId);
     if (effective.has(permission)) {
       return;

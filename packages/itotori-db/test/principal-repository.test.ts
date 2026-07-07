@@ -56,6 +56,14 @@ describe("ItotoriPrincipalRepository", () => {
       });
       expect(target.principalKind).toBe("human_user");
 
+      // Account membership is the target's account context; a permission set is
+      // account-scoped and may only be granted within the principal's account.
+      await context.db.insert(authAccountMemberships).values({
+        membershipId: "membership-target",
+        accountId: "account-crux",
+        userId: "user-target",
+      });
+
       // A "role" is ONLY a permission set: a named, editable bundle.
       const set = await repo.createPermissionSet(localActor, {
         actorPrincipalId: "principal-admin",

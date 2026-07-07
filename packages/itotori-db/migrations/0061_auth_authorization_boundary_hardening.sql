@@ -1,0 +1,42 @@
+-- auth-authorization-boundary-hardening: close three interrelated authorization
+-- holes in the multi-user auth foundation (accounts / principals / permission
+-- sets from migrations 0059 + 0060). The behavioural fixes live in
+-- packages/itotori-db/src/authorization.ts (requirePermission +
+-- resolvePrincipalEffectivePermissions) and
+-- src/repositories/principal-repository.ts (grantPermissionSet); this migration
+-- adds the ONE schema-level guard that must be enforced by the database itself.
+--
+-- GOVERNING INVARIANT (docs/permissions.md): access control is PERMISSION-based,
+-- never role-based. Nothing here introduces a role; it hardens the boundaries an
+-- exact-match permission check already relies on.
+--
+-- Holes closed (see the source for the query/enforcement changes):
+--
+--   P0 cross-account permission-set escalation — a permission set is
+--     account-scoped; it must not be granted to, nor authorize, a principal in a
+--     different account. Enforced transactionally in grantPermissionSet and,
+--     authoritatively, in the effective-permission resolver (a cross-account set
+--     expands to NOTHING). No column is added: a human user is many-to-many with
+--     accounts (via itotori_auth_account_memberships), so the same-account
+--     invariant is a membership predicate a single composite FK cannot express;
+--     the resolver + grant-time check are the enforcement of record.
+--
+--   P1 active-subject boundary — a disabled principal / account / service
+--     principal, or a revoked/expired session, authorizes nothing. Enforced in
+--     the resolver (disabled_at) and requirePermission (session revoked_at /
+--     expires_at) using columns migration 0059 already provides; no schema
+--     change required.
+--
+--   P1 legacy/principal userId namespace collision — itotori_user_permission_grants.user_id
+--     (legacy, where the bootstrap `local-user` holds every permission) and
+--     itotori_auth_users.user_id share one raw-string namespace. A provider-linked
+--     actor must never inherit a legacy bootstrap grant that merely shares its
+--     userId. requirePermission skips the legacy table for any external-identity-
+--     backed actor; this migration additionally RESERVES the bootstrap ids out of
+--     itotori_auth_users so the collision cannot be constructed at the source. The
+--     reserved set mirrors reservedAuthUserIds in authorization.ts (currently the
+--     bootstrap `local-user`).
+
+alter table itotori_auth_users
+  add constraint itotori_auth_users_reserved_user_id_check
+  check (user_id not in ('local-user'));

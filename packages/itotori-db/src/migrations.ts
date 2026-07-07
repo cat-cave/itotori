@@ -300,6 +300,10 @@ export const migrations = [
     id: "0060_auth_permission_set_model",
     file: "0060_auth_permission_set_model.sql",
   },
+  {
+    id: "0061_auth_authorization_boundary_hardening",
+    file: "0061_auth_authorization_boundary_hardening.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

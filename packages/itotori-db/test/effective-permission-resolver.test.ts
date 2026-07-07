@@ -17,7 +17,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
-import { authExternalIdentities } from "../src/schema.js";
+import { authAccountMemberships, authExternalIdentities } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 // The bootstrap local user is granted every permission directly in the LEGACY
@@ -40,7 +40,15 @@ describe("requirePermission effective-permission resolution", () => {
         userId: "user-set",
         displayName: "Set User",
       });
+      // A permission set is account-scoped; it authorizes a human principal only
+      // within an account the principal is a member of (account-scope boundary).
+      await context.db.insert(authAccountMemberships).values({
+        membershipId: "membership-set",
+        accountId: "acct",
+        userId: "user-set",
+      });
       await repo.createPermissionSet(localActor, {
+        actorPrincipalId: "principal-set",
         permissionSetId: "set-editor",
         accountId: "acct",
         name: "Editor",

@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
   type AuthorizationActor,
+  isReservedAuthUserId,
   type Permission,
   permissionValues,
   requirePermission,
@@ -26,6 +27,7 @@ import {
 import type { ItotoriDatabase } from "../connection.js";
 import {
   type AuthPrincipalKind,
+  authAccountMemberships,
   authAccounts,
   authAuditEvents,
   authPermissionSetAuditActionValues,
@@ -205,6 +207,17 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     input: CreatePrincipalInput,
   ): Promise<PrincipalRecord> {
     await requirePermission(this.db, actor, permissionValues.authAdmin);
+    // NAMESPACE BOUNDARY (P1): the bootstrap/legacy userIds are reserved and may
+    // never be registered as a multi-user principal, so a provider-linked
+    // identity can never be created under a legacy grantee's raw userId and
+    // inherit its bootstrap grants. The DB CHECK (migration 0061) is the
+    // authoritative guard; this gives a precise, early error.
+    if (input.kind === "human_user" && isReservedAuthUserId(input.userId)) {
+      throw new ItotoriPrincipalRepositoryError(
+        `userId ${input.userId} is reserved for the legacy single-user substrate and ` +
+          "cannot be registered as an auth principal",
+      );
+    }
     return this.db.transaction(async (tx) => {
       await tx.insert(authPrincipals).values({
         principalId: input.principalId,
@@ -401,12 +414,44 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     });
   }
 
+  /**
+   * Grant a permission set to a principal.
+   *
+   * ACCOUNT-SCOPE INVARIANT (P0, cross-account escalation fix): a permission set
+   * is owned by exactly one account; it may be granted ONLY to a principal that
+   * belongs to that same account (a human via `account_memberships`, a service
+   * principal via its intrinsic `account_id`). Granting a set from account B to a
+   * principal in account A would let that principal resolve account B's
+   * permissions — a cross-account privilege escalation. We reject it
+   * transactionally here, and the effective-permission resolver additionally
+   * refuses to expand any cross-account set (defense in depth), so even a grant
+   * row inserted out of band authorizes nothing.
+   */
   async grantPermissionSet(
     actor: AuthorizationActor,
     input: GrantPermissionSetInput,
   ): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.authAdmin);
     await this.db.transaction(async (tx) => {
+      const setRows = await tx
+        .select({ accountId: authPermissionSets.accountId })
+        .from(authPermissionSets)
+        .where(eq(authPermissionSets.permissionSetId, input.permissionSetId))
+        .limit(1);
+      const setAccountId = setRows[0]?.accountId;
+      if (setAccountId === undefined) {
+        throw new ItotoriPrincipalRepositoryError(
+          `permission set ${input.permissionSetId} does not exist`,
+        );
+      }
+      const targetAccountIds = await this.principalAccountIds(tx, input.targetPrincipalId);
+      if (!targetAccountIds.has(setAccountId)) {
+        throw new ItotoriPrincipalRepositoryError(
+          `permission set ${input.permissionSetId} belongs to account ${setAccountId}, which ` +
+            `principal ${input.targetPrincipalId} is not a member of; a permission set may only ` +
+            "be granted within the principal's own account (cross-account grant refused)",
+        );
+      }
       await tx.insert(authPrincipalPermissionSetGrants).values({
         principalId: input.targetPrincipalId,
         permissionSetId: input.permissionSetId,
@@ -501,6 +546,41 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     await requirePermission(this.db, actor, permissionValues.authAdmin);
     const permissions = await resolvePrincipalEffectivePermissions(this.db, principalId);
     return [...permissions].sort();
+  }
+
+  /**
+   * The accounts a principal belongs to: a service principal's single intrinsic
+   * `account_id`, or a human user's `account_memberships`. Used to enforce the
+   * grant-time same-account invariant. (Membership existence, not account-active
+   * state, is checked at grant time; the resolver separately voids grants whose
+   * account is disabled.)
+   */
+  private async principalAccountIds(
+    tx: PrincipalTransaction,
+    principalId: string,
+  ): Promise<Set<string>> {
+    const principalRows = await tx
+      .select({ principalKind: authPrincipals.principalKind })
+      .from(authPrincipals)
+      .where(eq(authPrincipals.principalId, principalId))
+      .limit(1);
+    const kind = principalRows[0]?.principalKind;
+    if (kind === undefined) {
+      throw new ItotoriPrincipalRepositoryError(`principal ${principalId} does not exist`);
+    }
+    if (kind === "service_principal") {
+      const rows = await tx
+        .select({ accountId: authServicePrincipals.accountId })
+        .from(authServicePrincipals)
+        .where(eq(authServicePrincipals.principalId, principalId));
+      return new Set(rows.map((row) => row.accountId));
+    }
+    const rows = await tx
+      .select({ accountId: authAccountMemberships.accountId })
+      .from(authAccountMemberships)
+      .innerJoin(authUsers, eq(authUsers.userId, authAccountMemberships.userId))
+      .where(eq(authUsers.principalId, principalId));
+    return new Set(rows.map((row) => row.accountId));
   }
 
   /** Load a set's current row or throw — validates the target of an edit exists. */
