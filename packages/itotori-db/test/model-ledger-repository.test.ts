@@ -1281,7 +1281,7 @@ describe("ItotoriModelLedgerRepository", () => {
         values
           ('tm-segment-good', 'project-test', 'locale-en-us', ${sourceRevisionId},
            'hello.scene.001.line.001', 'occurrence-1', 'source-hash', 'fingerprint-good',
-           'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'active', '{}'::jsonb)
+           'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'reusable', '{}'::jsonb)
       `);
 
       // WELL-FORMED reuse event: every numeric / boolean field is the
@@ -1413,7 +1413,7 @@ describe("ItotoriModelLedgerRepository", () => {
         values
           ('tm-segment-good-2', 'project-test', 'locale-en-us', ${sourceRevisionId},
            'hello.scene.001.line.001', 'occurrence-1', 'source-hash', 'fingerprint-good-2',
-           'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'active', '{}'::jsonb)
+           'こんにちは、{player}。', 'en-US', 'Hello, {player}.', 'reusable', '{}'::jsonb)
       `);
       await context.db.execute(sql`
         insert into itotori_translation_memory_reuse_events
