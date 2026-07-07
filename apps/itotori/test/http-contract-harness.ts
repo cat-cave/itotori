@@ -27,6 +27,7 @@
 // call pins status + content-type + the full body contract in one shot.
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import Ajv, { type ValidateFunction } from "ajv";
 import { expect, vi } from "vitest";
 import type { Permission } from "@itotori/db";
 import {
@@ -36,6 +37,12 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "../src/api-schema.js";
+import {
+  ITOTORI_API_ROUTES,
+  interpolateRoutePath,
+  jsonSchemaForApiError,
+  jsonSchemaForRoute,
+} from "../src/api-contract.js";
 import { createItotoriServer, type DashboardServerOptions } from "../src/server.js";
 import type {
   ItotoriReadOnlyServiceFactory,
@@ -176,9 +183,10 @@ async function driveFetch(
   target: HttpTarget,
   init: HttpContractRequestInit = {},
 ): Promise<HttpContractResult> {
-  const route = resolveRoute(target);
-  const method = init.method ?? route?.method ?? "GET";
-  const pathname = route === null ? (target as string) : route.path(init.params);
+  const routeId = resolveRouteId(target);
+  const method = init.method ?? (routeId === null ? "GET" : ITOTORI_API_ROUTES[routeId].method);
+  const pathname =
+    routeId === null ? (target as string) : interpolateRoutePath(routeId, init.params);
   const response = await fetch(
     buildUrl(origin, pathname, init.query),
     buildFetchInit(method, init),
@@ -200,15 +208,11 @@ function buildFetchInit(method: string, init: HttpContractRequestInit): RequestI
   return requestInit;
 }
 
-function resolveRoute(target: HttpTarget): {
-  readonly method: string;
-  readonly path: (params?: Readonly<Record<string, string>>) => string;
-} | null {
+function resolveRouteId(target: HttpTarget): ItotoriApiRouteId | null {
   if (typeof target !== "string" || !ROUTE_IDS.has(target)) {
     return null;
   }
-  const route = ITOTORI_API_ROUTES[target as ItotoriApiRouteId];
-  return { method: route.method, path: route.path };
+  return target as ItotoriApiRouteId;
 }
 
 function buildUrl(
@@ -287,6 +291,8 @@ export function assertHttpContractOk<RouteId extends ItotoriApiRouteId>(
     "application/json",
   );
   assertItotoriApiResponse(routeId, result.body);
+  // fe-api-openapi-emit: also pin the response against the emitted wire contract.
+  assertBodyMatchesEmittedSchema(routeId, result.body);
 }
 
 export type HttpContractErrorOptions = {
@@ -308,93 +314,65 @@ export function assertHttpContractError(
   }
   expect(result.headers.get("content-type"), "error content-type").toContain("application/json");
   assertItotoriApiErrorResponse(result.body);
+  // fe-api-openapi-emit: also pin the error body against the emitted wire contract.
+  assertBodyMatchesEmittedErrorSchema(result.body);
   if (options.code !== undefined) {
     expect((result.body as ApiErrorResponse).code, "error code").toBe(options.code);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Route table — binds each ItotoriApiRouteId to its HTTP method + path.
+// Route table — the SINGLE authority (`ITOTORI_API_ROUTES` in `src/api-contract`)
+// binds each ItotoriApiRouteId to its method + path template. The same registry
+// feeds the emitted OpenAPI + JSON-Schema contract, so the harness drives real
+// requests off the exact topology the wire contract publishes.
 // ---------------------------------------------------------------------------
 
-type ApiRouteShape = {
-  readonly method: "GET" | "POST";
-  readonly path: (params?: Readonly<Record<string, string>>) => string;
-};
-
-function staticRoute(method: ApiRouteShape["method"], path: string): ApiRouteShape {
-  return { method, path: () => path };
-}
-
-function paramRoute(
-  method: ApiRouteShape["method"],
-  build: (params: Readonly<Record<string, string>>) => string,
-): ApiRouteShape {
-  return {
-    method,
-    path: (params) => {
-      if (params === undefined) {
-        throw new Error("parameterized route requires `init.params`");
-      }
-      return build(params);
-    },
-  };
-}
-
-/**
- * The Itotori `/api` route table. Each {@link ItotoriApiRouteId} is bound to
- * its HTTP method and path template. Non-parameterized routes return a static
- * path; parameterized routes interpolate `init.params`. The same id also keys
- * the {@link assertItotoriApiResponse} contract asserter, so a route id is the
- * single source of truth for method + path + body contract.
- */
-export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ApiRouteShape>> = {
-  "projects.list": staticRoute("GET", "/api/projects"),
-  "projects.status": staticRoute("GET", "/api/projects/status"),
-  "projects.decisions": staticRoute("GET", "/api/projects/decisions"),
-  "projects.cost": staticRoute("GET", "/api/projects/cost"),
-  "projects.costDrilldown": staticRoute("GET", "/api/projects/cost/drilldown"),
-  "projects.benchmarks": staticRoute("GET", "/api/projects/benchmarks"),
-  "runtime.status": staticRoute("GET", "/api/runtime/v0.2/status"),
-  "catalog.conflicts": staticRoute("GET", "/api/catalog/conflicts"),
-  "catalog.completeness": staticRoute("GET", "/api/catalog/completeness"),
-  "catalog.benchmarkSeeds": staticRoute("GET", "/api/catalog/benchmark-seeds"),
-  "catalog.opportunities": staticRoute("GET", "/api/catalog/opportunities"),
-  "terminology.search": staticRoute("GET", "/api/terminology/search"),
-  "queue.health": staticRoute("GET", "/api/queue/health"),
-  "reviewer.queue": staticRoute("GET", "/api/reviewer/queue"),
-  "reviewer.detail": paramRoute("GET", (p) => `/api/reviewer/queue/${p.reviewItemId}/detail`),
-  "reviewer.batchPreview": staticRoute("POST", "/api/reviewer/queue/batch-preview"),
-  "reviewer.batchExecute": staticRoute("POST", "/api/reviewer/queue/batch-confirm"),
-  "reviewer.itemAction": paramRoute("POST", (p) => `/api/reviewer/queue/${p.reviewItemId}/action`),
-  "workspace.projects": staticRoute("GET", "/api/workspace/projects"),
-  "workspace.scenes": staticRoute("GET", "/api/workspace/scenes"),
-  "workspace.assets": staticRoute("GET", "/api/workspace/assets"),
-  "workspace.comparison": staticRoute("GET", "/api/workspace/comparison"),
-  "workspace.search": staticRoute("GET", "/api/workspace/search"),
-  "workspace.correctionPreview": staticRoute("GET", "/api/workspace/corrections"),
-  "workspace.correctionSubmit": staticRoute("POST", "/api/workspace/corrections"),
-  "assetDecisions.active": paramRoute(
-    "GET",
-    (p) => `/api/projects/${p.projectId}/locale-branches/${p.localeBranchId}/asset-decisions`,
-  ),
-  "assetDecisions.candidates": paramRoute(
-    "GET",
-    (p) =>
-      `/api/projects/${p.projectId}/locale-branches/${p.localeBranchId}/asset-decisions/candidates`,
-  ),
-  "imports.bridge": staticRoute("POST", "/api/imports/bridge"),
-  "branches.draft": paramRoute("POST", (p) => `/api/projects/${p.projectId}/branches`),
-  "findings.record": paramRoute("POST", (p) => `/api/projects/${p.projectId}/findings`),
-  "decisions.record": paramRoute("POST", (p) => `/api/projects/${p.projectId}/decisions`),
-  "benchmarks.record": paramRoute("POST", (p) => `/api/projects/${p.projectId}/benchmarks`),
-  "runtimeEvidence.ingest": paramRoute(
-    "POST",
-    (p) => `/api/projects/${p.projectId}/runtime-evidence`,
-  ),
-};
-
 const ROUTE_IDS: ReadonlySet<string> = new Set(Object.keys(ITOTORI_API_ROUTES));
+
+// ---------------------------------------------------------------------------
+// Emitted-JSON-Schema validation — the harness validates every real response
+// body against the emitted contract (fe-api-openapi-emit) IN ADDITION to the
+// api-schema guard, so the black-box tests pin the published wire contract.
+// ---------------------------------------------------------------------------
+
+const schemaAjv = new Ajv({ strict: false, allErrors: true });
+const responseValidators = new Map<ItotoriApiRouteId, ValidateFunction>();
+let errorValidator: ValidateFunction | undefined;
+
+function responseSchemaValidator(routeId: ItotoriApiRouteId): ValidateFunction {
+  const cached = responseValidators.get(routeId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const schema = jsonSchemaForRoute(routeId, "response");
+  if (schema === null) {
+    throw new Error(`route ${routeId} has no response schema`);
+  }
+  const validate = schemaAjv.compile(schema as object);
+  responseValidators.set(routeId, validate);
+  return validate;
+}
+
+function assertBodyMatchesEmittedSchema(routeId: ItotoriApiRouteId, body: unknown): void {
+  const validate = responseSchemaValidator(routeId);
+  expect(
+    validate(body),
+    `${routeId} response body violates the emitted JSON-Schema: ${schemaAjv.errorsText(
+      validate.errors,
+    )}`,
+  ).toBe(true);
+}
+
+function assertBodyMatchesEmittedErrorSchema(body: unknown): void {
+  if (errorValidator === undefined) {
+    errorValidator = schemaAjv.compile(jsonSchemaForApiError() as object);
+  }
+  expect(
+    errorValidator(body),
+    `error body violates the emitted JSON-Schema: ${schemaAjv.errorsText(errorValidator.errors)}`,
+  ).toBe(true);
+}
 
 // ---------------------------------------------------------------------------
 // Deterministic fixture-backed service factory.

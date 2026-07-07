@@ -52,6 +52,13 @@ export default defineConfig({
       // them out from under the byte-compare.
       "fixtures/kaifuu/kirikiri/xp3-private-local/**",
       "apps/itotori/src/engine-capability/**",
+      // fe-api-openapi-emit: the OpenAPI + JSON-Schema API contract is byte-pinned
+      // to the emitter's `JSON.stringify(sortJsonDeep(...), null, 2)` output
+      // (`src/api-contract.ts`); the determinism + drift tests compare exact bytes
+      // and the HTTP contract harness validates real responses against it, so the
+      // formatter must not rewrite it out from under the byte-compare.
+      "apps/itotori/openapi.json",
+      "apps/itotori/api-jsonschema.json",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
       // KAIFUU-016 TyranoScript `.ks` scenario fixture is load-bearing at the

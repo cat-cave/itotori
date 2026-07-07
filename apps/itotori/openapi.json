@@ -1,0 +1,3693 @@
+{
+  "components": {
+    "schemas": {
+      "ApiAssetDecisionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "decisions": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "type": "object"
+      },
+      "ApiBenchmarkReportsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "reports": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "reports"
+        ],
+        "type": "object"
+      },
+      "ApiCandidateAssetsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateAssets": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidateAssets"
+        ],
+        "type": "object"
+      },
+      "ApiDraftBranchRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "targetLocale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "targetLocale"
+        ],
+        "type": "object"
+      },
+      "ApiDraftBranchResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "status": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "bad_request",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "internal_error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiProjectImportRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "bridge": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "bridge"
+        ],
+        "type": "object"
+      },
+      "ApiProjectImportResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "status": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiProjectsResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "projects": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "type": "object"
+      },
+      "ApiRecordBenchmarkRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "benchmarkReport": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "benchmarkReport"
+        ],
+        "type": "object"
+      },
+      "ApiRecordBenchmarkResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "artifactId": {
+            "type": "string"
+          },
+          "benchmarkRunId": {
+            "type": "string"
+          },
+          "findingCount": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "partial"
+            ]
+          },
+          "systemCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "artifactId",
+          "benchmarkRunId",
+          "findingCount",
+          "status",
+          "systemCount"
+        ],
+        "type": "object"
+      },
+      "ApiRecordDecisionRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "event": {
+            "type": "object"
+          },
+          "localeBranchId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "type": "object"
+      },
+      "ApiRecordDecisionResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "decisionId": {
+            "type": "string"
+          },
+          "eventKind": {
+            "type": "string"
+          },
+          "recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "decisionId",
+          "eventKind",
+          "recorded"
+        ],
+        "type": "object"
+      },
+      "ApiRecordFindingRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "finding": {
+            "type": "object"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "resolved",
+              "superseded"
+            ]
+          }
+        },
+        "required": [
+          "finding"
+        ],
+        "type": "object"
+      },
+      "ApiRecordFindingResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "findingId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "resolved",
+              "superseded"
+            ]
+          }
+        },
+        "required": [
+          "findingId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiReviewerSingleActionRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "reject",
+              "defer",
+              "escalate",
+              "request_repair"
+            ]
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "expectedSourceRevisionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actorUserId",
+          "expectedSourceRevisionId"
+        ],
+        "type": "object"
+      },
+      "ApiRuntimeEvidenceRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "runtimeReport": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "runtimeReport"
+        ],
+        "type": "object"
+      },
+      "ApiRuntimeEvidenceResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "bridgeId": {
+            "type": "string"
+          },
+          "dashboard": {
+            "type": "object"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "patchExportId": {
+            "type": "string"
+          },
+          "patchResultId": {
+            "type": "string"
+          },
+          "runtimeReportId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "hello_world_passed",
+              "hello_world_failed"
+            ]
+          }
+        },
+        "required": [
+          "bridgeId",
+          "dashboard",
+          "localeBranchId",
+          "patchResultId",
+          "runtimeReportId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiWorkspaceCorrectionSubmitRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "actorDisplayName": {
+            "type": "string"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "batchLabel": {
+            "type": "string"
+          },
+          "corrections": {
+            "type": "array"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "sourceBundleId": {
+            "type": "string"
+          },
+          "targetLocale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actorUserId",
+          "corrections",
+          "localeBranchId",
+          "projectId",
+          "sourceBundleId",
+          "targetLocale"
+        ],
+        "type": "object"
+      },
+      "CatalogBenchmarkSeedFinderReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {},
+          "rows": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "catalog.benchmark_seed_finder.v0.1"
+          },
+          "targetLanguage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "rows",
+          "schemaVersion",
+          "targetLanguage"
+        ],
+        "type": "object"
+      },
+      "CatalogCompletenessBenchmarkPools": {
+        "additionalProperties": false,
+        "properties": {
+          "pools": {
+            "type": "object"
+          },
+          "publicReport": {
+            "type": "object"
+          },
+          "targetLanguage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pools",
+          "publicReport",
+          "targetLanguage"
+        ],
+        "type": "object"
+      },
+      "CatalogConflictReviewReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "type": "object"
+      },
+      "CatalogOpportunityRankingReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {},
+          "rows": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "catalog.opportunity_ranking.v0.1"
+          },
+          "targetLanguage": {
+            "type": "string"
+          },
+          "weightsVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "rows",
+          "schemaVersion",
+          "targetLanguage",
+          "weightsVersion"
+        ],
+        "type": "object"
+      },
+      "CostDrilldownPage": {
+        "additionalProperties": false,
+        "properties": {
+          "filter": {
+            "type": "object"
+          },
+          "pagination": {
+            "type": "object"
+          },
+          "rows": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "filter",
+          "pagination",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "DashboardDecisionReadModel": {
+        "additionalProperties": true,
+        "properties": {
+          "counts": {
+            "type": "object"
+          },
+          "pendingDecisions": {
+            "type": "array"
+          },
+          "projectId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "counts",
+          "pendingDecisions",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "ProjectCostReport": {
+        "additionalProperties": true,
+        "properties": {
+          "billedMicrosUsd": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "recentRuns": {
+            "type": "array"
+          },
+          "runCount": {
+            "type": "number"
+          },
+          "totalsByCostKind": {
+            "type": "array"
+          },
+          "translationMemoryReuse": {
+            "type": "object"
+          },
+          "zeroRunCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "billedMicrosUsd",
+          "currency",
+          "projectId",
+          "recentRuns",
+          "runCount",
+          "totalsByCostKind",
+          "translationMemoryReuse",
+          "zeroRunCount"
+        ],
+        "type": "object"
+      },
+      "ProjectDashboardStatus": {
+        "additionalProperties": true,
+        "properties": {
+          "artifactCount": {
+            "type": "number"
+          },
+          "branchCount": {
+            "type": "number"
+          },
+          "cost": {
+            "type": "object"
+          },
+          "findingCount": {
+            "type": "number"
+          },
+          "importStatus": {
+            "type": "object"
+          },
+          "localeBranches": {
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "projectKey": {
+            "type": "string"
+          },
+          "sourceBundleHash": {
+            "type": "string"
+          },
+          "sourceBundleId": {
+            "type": "string"
+          },
+          "sourceBundleRevisionId": {
+            "type": "string"
+          },
+          "sourceLocale": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "unitCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "artifactCount",
+          "branchCount",
+          "cost",
+          "findingCount",
+          "importStatus",
+          "localeBranches",
+          "name",
+          "projectId",
+          "projectKey",
+          "sourceBundleHash",
+          "sourceBundleId",
+          "sourceBundleRevisionId",
+          "sourceLocale",
+          "status",
+          "unitCount"
+        ],
+        "type": "object"
+      },
+      "QueueHealthReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {},
+          "jobs": {
+            "type": "object"
+          },
+          "outbox": {
+            "type": "object"
+          },
+          "schemaVersion": {
+            "const": "itotori.queue_health.v0.1"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "jobs",
+          "outbox",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ReviewerBatchActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "selections": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "actorUserId",
+          "selections"
+        ],
+        "type": "object"
+      },
+      "ReviewerBatchExecuteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {
+            "type": "array"
+          },
+          "appliedAll": {
+            "type": "boolean"
+          },
+          "preview": {},
+          "refusedAll": {
+            "type": "boolean"
+          },
+          "request": {}
+        },
+        "required": [
+          "applied",
+          "appliedAll",
+          "preview",
+          "refusedAll",
+          "request"
+        ],
+        "type": "object"
+      },
+      "ReviewerBatchPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregate": {
+            "type": "object"
+          },
+          "allAllowed": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "permissionDenied": {
+            "type": "boolean"
+          },
+          "request": {}
+        },
+        "required": [
+          "aggregate",
+          "allAllowed",
+          "items",
+          "permission",
+          "permissionDenied",
+          "request"
+        ],
+        "type": "object"
+      },
+      "ReviewerDetailContext": {
+        "additionalProperties": false,
+        "properties": {
+          "branchReference": {},
+          "diagnostics": {},
+          "draft": {},
+          "glossary": {},
+          "item": {},
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "policy": {},
+          "qaFindings": {},
+          "rationaleRefs": {},
+          "reviewItemId": {
+            "type": "string"
+          },
+          "runtimeEvidence": {},
+          "source": {},
+          "transitions": {}
+        },
+        "required": [
+          "branchReference",
+          "diagnostics",
+          "draft",
+          "glossary",
+          "item",
+          "permission",
+          "policy",
+          "qaFindings",
+          "rationaleRefs",
+          "reviewItemId",
+          "runtimeEvidence",
+          "source",
+          "transitions"
+        ],
+        "type": "object"
+      },
+      "ReviewerQueueDashboardReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregate": {
+            "type": "object"
+          },
+          "defaultBatchRequest": {
+            "type": "object"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "rows": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "reviewer.queue_dashboard.v0.1"
+          }
+        },
+        "required": [
+          "aggregate",
+          "defaultBatchRequest",
+          "generatedAt",
+          "localeBranchId",
+          "permission",
+          "rows",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ReviewerQueuePermissionView": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {
+            "type": "string"
+          },
+          "canManageQueue": {
+            "type": "boolean"
+          },
+          "canReadQueue": {
+            "type": "boolean"
+          },
+          "denialReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "actorUserId",
+          "canManageQueue",
+          "canReadQueue",
+          "denialReasons"
+        ],
+        "type": "object"
+      },
+      "ReviewerSingleActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "outcome": {},
+          "preview": {},
+          "refused": {
+            "type": "boolean"
+          },
+          "request": {}
+        },
+        "required": [
+          "applied",
+          "outcome",
+          "preview",
+          "refused",
+          "request"
+        ],
+        "type": "object"
+      },
+      "RuntimeDashboardStatus": {
+        "additionalProperties": true,
+        "properties": {
+          "approximations": {
+            "type": "array"
+          },
+          "artifacts": {
+            "type": "array"
+          },
+          "evidenceTier": {
+            "type": "string"
+          },
+          "fidelityTier": {
+            "type": "string"
+          },
+          "finalStatus": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array"
+          },
+          "frameCaptureCount": {
+            "type": "number"
+          },
+          "limitations": {
+            "type": "array"
+          },
+          "recordingArtifactCount": {
+            "type": "number"
+          },
+          "runtimeReportId": {},
+          "runtimeRunId": {},
+          "runtimeStatus": {
+            "type": "string"
+          },
+          "screenshotArtifactCount": {
+            "type": "number"
+          },
+          "textEventCount": {
+            "type": "number"
+          },
+          "traceEvents": {
+            "type": "array"
+          },
+          "unsupportedCapabilities": {
+            "type": "array"
+          },
+          "validationFindingCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "approximations",
+          "artifacts",
+          "evidenceTier",
+          "fidelityTier",
+          "finalStatus",
+          "findings",
+          "frameCaptureCount",
+          "limitations",
+          "recordingArtifactCount",
+          "runtimeReportId",
+          "runtimeRunId",
+          "runtimeStatus",
+          "screenshotArtifactCount",
+          "textEventCount",
+          "traceEvents",
+          "unsupportedCapabilities",
+          "validationFindingCount"
+        ],
+        "type": "object"
+      },
+      "TerminologySearchReadModel": {
+        "additionalProperties": true,
+        "properties": {
+          "localeBranchId": {
+            "type": "string"
+          },
+          "normalizedQuery": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "localeBranchId",
+          "normalizedQuery",
+          "query",
+          "results"
+        ],
+        "type": "object"
+      },
+      "WorkspaceAssetBrowseReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "type": "array"
+          },
+          "diagnostics": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "workspace.asset_browse.v0.1"
+          }
+        },
+        "required": [
+          "assets",
+          "diagnostics",
+          "generatedAt",
+          "localeBranchId",
+          "permission",
+          "projectId",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "WorkspaceComparisonReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {},
+          "cells": {
+            "type": "array"
+          },
+          "contextNote": {},
+          "diagnostics": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "hasFinal": {
+            "type": "boolean"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "reviewItemId": {
+            "type": "string"
+          },
+          "runtimeEvidenceLinks": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "workspace.comparison.v0.1"
+          },
+          "sourceRevisionId": {},
+          "sourceUnitKey": {}
+        },
+        "required": [
+          "bridgeUnitId",
+          "cells",
+          "contextNote",
+          "diagnostics",
+          "generatedAt",
+          "hasFinal",
+          "localeBranchId",
+          "permission",
+          "reviewItemId",
+          "runtimeEvidenceLinks",
+          "schemaVersion",
+          "sourceRevisionId",
+          "sourceUnitKey"
+        ],
+        "type": "object"
+      },
+      "WorkspaceCorrectionPreviewReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostics": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "schemaVersion": {
+            "const": "workspace.correction_preview.v0.1"
+          },
+          "units": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "diagnostics",
+          "generatedAt",
+          "localeBranchId",
+          "permission",
+          "schemaVersion",
+          "units"
+        ],
+        "type": "object"
+      },
+      "WorkspaceCorrectionSubmitReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "affectedBridgeUnitIds": {
+            "type": "array"
+          },
+          "batchId": {
+            "type": "string"
+          },
+          "batchLabel": {},
+          "decisionQueueReportIds": {
+            "type": "array"
+          },
+          "diagnostics": {
+            "type": "array"
+          },
+          "edits": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "needsContextReportIds": {
+            "type": "array"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "repairCandidateReportIds": {
+            "type": "array"
+          },
+          "scheduledRerunJobIds": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "workspace.correction_submit.v0.1"
+          },
+          "submittedCount": {
+            "type": "number"
+          },
+          "writebacks": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "affectedBridgeUnitIds",
+          "batchId",
+          "batchLabel",
+          "decisionQueueReportIds",
+          "diagnostics",
+          "edits",
+          "generatedAt",
+          "localeBranchId",
+          "needsContextReportIds",
+          "permission",
+          "repairCandidateReportIds",
+          "scheduledRerunJobIds",
+          "schemaVersion",
+          "submittedCount",
+          "writebacks"
+        ],
+        "type": "object"
+      },
+      "WorkspaceProjectBrowseReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostics": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "projects": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "workspace.project_browse.v0.1"
+          }
+        },
+        "required": [
+          "diagnostics",
+          "generatedAt",
+          "permission",
+          "projects",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSceneBrowseReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostics": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "scenes": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "workspace.scene_browse.v0.1"
+          }
+        },
+        "required": [
+          "diagnostics",
+          "generatedAt",
+          "localeBranchId",
+          "permission",
+          "projectId",
+          "scenes",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSearchReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostics": {
+            "type": "array"
+          },
+          "droppedOpaqueCount": {
+            "type": "number"
+          },
+          "generatedAt": {},
+          "localeBranchId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "normalizedQuery": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/ReviewerQueuePermissionView"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "workspace.search.v0.1"
+          }
+        },
+        "required": [
+          "diagnostics",
+          "droppedOpaqueCount",
+          "generatedAt",
+          "localeBranchId",
+          "mode",
+          "normalizedQuery",
+          "permission",
+          "projectId",
+          "query",
+          "results",
+          "schemaVersion"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Emitted deterministically FROM the api-schema.ts type-guard authority (fe-api-openapi-emit). Do not hand-edit; regenerate with the openapi emitter. The guards remain the deep contract authority; this document pins the wire envelope + route topology.",
+    "title": "Itotori /api contract",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/catalog/benchmark-seeds": {
+      "get": {
+        "operationId": "catalogBenchmarkSeeds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBenchmarkSeedFinderReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Catalog benchmark seed finder read model.",
+        "x-itotoriRouteId": "catalog.benchmarkSeeds"
+      }
+    },
+    "/api/catalog/completeness": {
+      "get": {
+        "operationId": "catalogCompleteness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogCompletenessBenchmarkPools"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Catalog completeness benchmark pools.",
+        "x-itotoriRouteId": "catalog.completeness"
+      }
+    },
+    "/api/catalog/conflicts": {
+      "get": {
+        "operationId": "catalogConflicts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogConflictReviewReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Catalog conflict review read model.",
+        "x-itotoriRouteId": "catalog.conflicts"
+      }
+    },
+    "/api/catalog/opportunities": {
+      "get": {
+        "operationId": "catalogOpportunities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogOpportunityRankingReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Catalog opportunity ranking read model.",
+        "x-itotoriRouteId": "catalog.opportunities"
+      }
+    },
+    "/api/imports/bridge": {
+      "post": {
+        "operationId": "importsBridge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiProjectImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProjectImportResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Import a bridge bundle.",
+        "x-itotoriRouteId": "imports.bridge"
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "operationId": "projectsList",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProjectsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "List projects with dashboard status.",
+        "x-itotoriRouteId": "projects.list"
+      }
+    },
+    "/api/projects/benchmarks": {
+      "get": {
+        "operationId": "projectsBenchmarks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiBenchmarkReportsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Benchmark report summaries.",
+        "x-itotoriRouteId": "projects.benchmarks"
+      }
+    },
+    "/api/projects/cost": {
+      "get": {
+        "operationId": "projectsCost",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCostReport"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Project cost report.",
+        "x-itotoriRouteId": "projects.cost"
+      }
+    },
+    "/api/projects/cost/drilldown": {
+      "get": {
+        "operationId": "projectsCostDrilldown",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostDrilldownPage"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Paged cost drill-down.",
+        "x-itotoriRouteId": "projects.costDrilldown"
+      }
+    },
+    "/api/projects/decisions": {
+      "get": {
+        "operationId": "projectsDecisions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardDecisionReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Dashboard decision read model.",
+        "x-itotoriRouteId": "projects.decisions"
+      }
+    },
+    "/api/projects/status": {
+      "get": {
+        "operationId": "projectsStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDashboardStatus"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Project dashboard status.",
+        "x-itotoriRouteId": "projects.status"
+      }
+    },
+    "/api/projects/{projectId}/benchmarks": {
+      "post": {
+        "operationId": "benchmarksRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRecordBenchmarkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiRecordBenchmarkResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Record a benchmark report.",
+        "x-itotoriRouteId": "benchmarks.record"
+      }
+    },
+    "/api/projects/{projectId}/branches": {
+      "post": {
+        "operationId": "branchesDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiDraftBranchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiDraftBranchResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Draft a locale branch.",
+        "x-itotoriRouteId": "branches.draft"
+      }
+    },
+    "/api/projects/{projectId}/decisions": {
+      "post": {
+        "operationId": "decisionsRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRecordDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiRecordDecisionResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Record a triage decision event.",
+        "x-itotoriRouteId": "decisions.record"
+      }
+    },
+    "/api/projects/{projectId}/findings": {
+      "post": {
+        "operationId": "findingsRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRecordFindingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiRecordFindingResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Record a QA finding.",
+        "x-itotoriRouteId": "findings.record"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/asset-decisions": {
+      "get": {
+        "operationId": "assetDecisionsActive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiAssetDecisionsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Active asset localization decisions.",
+        "x-itotoriRouteId": "assetDecisions.active"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/asset-decisions/candidates": {
+      "get": {
+        "operationId": "assetDecisionsCandidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiCandidateAssetsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Candidate assets for localization decisions.",
+        "x-itotoriRouteId": "assetDecisions.candidates"
+      }
+    },
+    "/api/projects/{projectId}/runtime-evidence": {
+      "post": {
+        "operationId": "runtimeEvidenceIngest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRuntimeEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiRuntimeEvidenceResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Ingest a runtime evidence report.",
+        "x-itotoriRouteId": "runtimeEvidence.ingest"
+      }
+    },
+    "/api/queue/health": {
+      "get": {
+        "operationId": "queueHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueHealthReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Queue health read model (outbox + jobs).",
+        "x-itotoriRouteId": "queue.health"
+      }
+    },
+    "/api/reviewer/queue": {
+      "get": {
+        "operationId": "reviewerQueue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerQueueDashboardReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Reviewer queue dashboard read model.",
+        "x-itotoriRouteId": "reviewer.queue"
+      }
+    },
+    "/api/reviewer/queue/batch-confirm": {
+      "post": {
+        "operationId": "reviewerBatchExecute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewerBatchActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerBatchExecuteResult"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Execute a reviewer batch action.",
+        "x-itotoriRouteId": "reviewer.batchExecute"
+      }
+    },
+    "/api/reviewer/queue/batch-preview": {
+      "post": {
+        "operationId": "reviewerBatchPreview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewerBatchActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerBatchPreview"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Preview a reviewer batch action.",
+        "x-itotoriRouteId": "reviewer.batchPreview"
+      }
+    },
+    "/api/reviewer/queue/{reviewItemId}/action": {
+      "post": {
+        "operationId": "reviewerItemAction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reviewItemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiReviewerSingleActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerSingleActionResult"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Apply a single-item reviewer action.",
+        "x-itotoriRouteId": "reviewer.itemAction"
+      }
+    },
+    "/api/reviewer/queue/{reviewItemId}/detail": {
+      "get": {
+        "operationId": "reviewerDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reviewItemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerDetailContext"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Reviewer queue item detail context.",
+        "x-itotoriRouteId": "reviewer.detail"
+      }
+    },
+    "/api/runtime/v0.2/status": {
+      "get": {
+        "operationId": "runtimeStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeDashboardStatus"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Runtime dashboard status.",
+        "x-itotoriRouteId": "runtime.status"
+      }
+    },
+    "/api/terminology/search": {
+      "get": {
+        "operationId": "terminologySearch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminologySearchReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Terminology search read model.",
+        "x-itotoriRouteId": "terminology.search"
+      }
+    },
+    "/api/workspace/assets": {
+      "get": {
+        "operationId": "workspaceAssets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAssetBrowseReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace asset browse read model.",
+        "x-itotoriRouteId": "workspace.assets"
+      }
+    },
+    "/api/workspace/comparison": {
+      "get": {
+        "operationId": "workspaceComparison",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceComparisonReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace comparison read model.",
+        "x-itotoriRouteId": "workspace.comparison"
+      }
+    },
+    "/api/workspace/corrections": {
+      "get": {
+        "operationId": "workspaceCorrectionPreview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceCorrectionPreviewReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace correction preview read model.",
+        "x-itotoriRouteId": "workspace.correctionPreview"
+      },
+      "post": {
+        "operationId": "workspaceCorrectionSubmit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiWorkspaceCorrectionSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceCorrectionSubmitReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Submit workspace corrections.",
+        "x-itotoriRouteId": "workspace.correctionSubmit"
+      }
+    },
+    "/api/workspace/projects": {
+      "get": {
+        "operationId": "workspaceProjects",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceProjectBrowseReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace project browse read model.",
+        "x-itotoriRouteId": "workspace.projects"
+      }
+    },
+    "/api/workspace/scenes": {
+      "get": {
+        "operationId": "workspaceScenes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSceneBrowseReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace scene browse read model.",
+        "x-itotoriRouteId": "workspace.scenes"
+      }
+    },
+    "/api/workspace/search": {
+      "get": {
+        "operationId": "workspaceSearch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSearchReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Workspace search read model.",
+        "x-itotoriRouteId": "workspace.search"
+      }
+    }
+  }
+}

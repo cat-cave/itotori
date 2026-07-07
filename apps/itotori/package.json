@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "emit:openapi": "UPDATE_OPENAPI_CONTRACT=1 vitest run test/openapi-contract.test.ts",
     "build": "tsc -p tsconfig.json && vite build --outDir web-dist"
   },
   "dependencies": {

@@ -1,0 +1,1207 @@
+{
+  "$id": "https://itotori.dev/api/json-schema/v0.1.0",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ApiAssetDecisionsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "decisions": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "decisions"
+      ],
+      "type": "object"
+    },
+    "ApiBenchmarkReportsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "reports": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "reports"
+      ],
+      "type": "object"
+    },
+    "ApiCandidateAssetsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateAssets": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidateAssets"
+      ],
+      "type": "object"
+    },
+    "ApiDraftBranchRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "targetLocale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "targetLocale"
+      ],
+      "type": "object"
+    },
+    "ApiDraftBranchResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "status": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "project",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "bad_request",
+            "forbidden",
+            "not_found",
+            "method_not_allowed",
+            "internal_error"
+          ]
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "error"
+      ],
+      "type": "object"
+    },
+    "ApiProjectImportRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "bridge": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "bridge"
+      ],
+      "type": "object"
+    },
+    "ApiProjectImportResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "status": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "project",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiProjectsResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "projects": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "type": "object"
+    },
+    "ApiRecordBenchmarkRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "benchmarkReport": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "benchmarkReport"
+      ],
+      "type": "object"
+    },
+    "ApiRecordBenchmarkResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "benchmarkRunId": {
+          "type": "string"
+        },
+        "findingCount": {
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "partial"
+          ]
+        },
+        "systemCount": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifactId",
+        "benchmarkRunId",
+        "findingCount",
+        "status",
+        "systemCount"
+      ],
+      "type": "object"
+    },
+    "ApiRecordDecisionRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "event": {
+          "type": "object"
+        },
+        "localeBranchId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "type": "object"
+    },
+    "ApiRecordDecisionResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "decisionId": {
+          "type": "string"
+        },
+        "eventKind": {
+          "type": "string"
+        },
+        "recorded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "decisionId",
+        "eventKind",
+        "recorded"
+      ],
+      "type": "object"
+    },
+    "ApiRecordFindingRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "finding": {
+          "type": "object"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved",
+            "superseded"
+          ]
+        }
+      },
+      "required": [
+        "finding"
+      ],
+      "type": "object"
+    },
+    "ApiRecordFindingResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "findingId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved",
+            "superseded"
+          ]
+        }
+      },
+      "required": [
+        "findingId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiReviewerSingleActionRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "enum": [
+            "approve",
+            "reject",
+            "defer",
+            "escalate",
+            "request_repair"
+          ]
+        },
+        "actorUserId": {
+          "type": "string"
+        },
+        "expectedSourceRevisionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "actorUserId",
+        "expectedSourceRevisionId"
+      ],
+      "type": "object"
+    },
+    "ApiRuntimeEvidenceRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "runtimeReport": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "project",
+        "runtimeReport"
+      ],
+      "type": "object"
+    },
+    "ApiRuntimeEvidenceResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "bridgeId": {
+          "type": "string"
+        },
+        "dashboard": {
+          "type": "object"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "patchExportId": {
+          "type": "string"
+        },
+        "patchResultId": {
+          "type": "string"
+        },
+        "runtimeReportId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "hello_world_passed",
+            "hello_world_failed"
+          ]
+        }
+      },
+      "required": [
+        "bridgeId",
+        "dashboard",
+        "localeBranchId",
+        "patchResultId",
+        "runtimeReportId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiWorkspaceCorrectionSubmitRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "actorDisplayName": {
+          "type": "string"
+        },
+        "actorUserId": {
+          "type": "string"
+        },
+        "batchLabel": {
+          "type": "string"
+        },
+        "corrections": {
+          "type": "array"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "sourceBundleId": {
+          "type": "string"
+        },
+        "targetLocale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "actorUserId",
+        "corrections",
+        "localeBranchId",
+        "projectId",
+        "sourceBundleId",
+        "targetLocale"
+      ],
+      "type": "object"
+    },
+    "CatalogBenchmarkSeedFinderReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "generatedAt": {},
+        "rows": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "catalog.benchmark_seed_finder.v0.1"
+        },
+        "targetLanguage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "rows",
+        "schemaVersion",
+        "targetLanguage"
+      ],
+      "type": "object"
+    },
+    "CatalogCompletenessBenchmarkPools": {
+      "additionalProperties": false,
+      "properties": {
+        "pools": {
+          "type": "object"
+        },
+        "publicReport": {
+          "type": "object"
+        },
+        "targetLanguage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pools",
+        "publicReport",
+        "targetLanguage"
+      ],
+      "type": "object"
+    },
+    "CatalogConflictReviewReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    },
+    "CatalogOpportunityRankingReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "generatedAt": {},
+        "rows": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "catalog.opportunity_ranking.v0.1"
+        },
+        "targetLanguage": {
+          "type": "string"
+        },
+        "weightsVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "rows",
+        "schemaVersion",
+        "targetLanguage",
+        "weightsVersion"
+      ],
+      "type": "object"
+    },
+    "CostDrilldownPage": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "type": "object"
+        },
+        "pagination": {
+          "type": "object"
+        },
+        "rows": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "filter",
+        "pagination",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "DashboardDecisionReadModel": {
+      "additionalProperties": true,
+      "properties": {
+        "counts": {
+          "type": "object"
+        },
+        "pendingDecisions": {
+          "type": "array"
+        },
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "counts",
+        "pendingDecisions",
+        "projectId"
+      ],
+      "type": "object"
+    },
+    "ProjectCostReport": {
+      "additionalProperties": true,
+      "properties": {
+        "billedMicrosUsd": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "recentRuns": {
+          "type": "array"
+        },
+        "runCount": {
+          "type": "number"
+        },
+        "totalsByCostKind": {
+          "type": "array"
+        },
+        "translationMemoryReuse": {
+          "type": "object"
+        },
+        "zeroRunCount": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "billedMicrosUsd",
+        "currency",
+        "projectId",
+        "recentRuns",
+        "runCount",
+        "totalsByCostKind",
+        "translationMemoryReuse",
+        "zeroRunCount"
+      ],
+      "type": "object"
+    },
+    "ProjectDashboardStatus": {
+      "additionalProperties": true,
+      "properties": {
+        "artifactCount": {
+          "type": "number"
+        },
+        "branchCount": {
+          "type": "number"
+        },
+        "cost": {
+          "type": "object"
+        },
+        "findingCount": {
+          "type": "number"
+        },
+        "importStatus": {
+          "type": "object"
+        },
+        "localeBranches": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "projectKey": {
+          "type": "string"
+        },
+        "sourceBundleHash": {
+          "type": "string"
+        },
+        "sourceBundleId": {
+          "type": "string"
+        },
+        "sourceBundleRevisionId": {
+          "type": "string"
+        },
+        "sourceLocale": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "unitCount": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifactCount",
+        "branchCount",
+        "cost",
+        "findingCount",
+        "importStatus",
+        "localeBranches",
+        "name",
+        "projectId",
+        "projectKey",
+        "sourceBundleHash",
+        "sourceBundleId",
+        "sourceBundleRevisionId",
+        "sourceLocale",
+        "status",
+        "unitCount"
+      ],
+      "type": "object"
+    },
+    "QueueHealthReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "generatedAt": {},
+        "jobs": {
+          "type": "object"
+        },
+        "outbox": {
+          "type": "object"
+        },
+        "schemaVersion": {
+          "const": "itotori.queue_health.v0.1"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "jobs",
+        "outbox",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ReviewerBatchActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "actorUserId": {
+          "type": "string"
+        },
+        "selections": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "actorUserId",
+        "selections"
+      ],
+      "type": "object"
+    },
+    "ReviewerBatchExecuteResult": {
+      "additionalProperties": false,
+      "properties": {
+        "applied": {
+          "type": "array"
+        },
+        "appliedAll": {
+          "type": "boolean"
+        },
+        "preview": {},
+        "refusedAll": {
+          "type": "boolean"
+        },
+        "request": {}
+      },
+      "required": [
+        "applied",
+        "appliedAll",
+        "preview",
+        "refusedAll",
+        "request"
+      ],
+      "type": "object"
+    },
+    "ReviewerBatchPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate": {
+          "type": "object"
+        },
+        "allAllowed": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "permissionDenied": {
+          "type": "boolean"
+        },
+        "request": {}
+      },
+      "required": [
+        "aggregate",
+        "allAllowed",
+        "items",
+        "permission",
+        "permissionDenied",
+        "request"
+      ],
+      "type": "object"
+    },
+    "ReviewerDetailContext": {
+      "additionalProperties": false,
+      "properties": {
+        "branchReference": {},
+        "diagnostics": {},
+        "draft": {},
+        "glossary": {},
+        "item": {},
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "policy": {},
+        "qaFindings": {},
+        "rationaleRefs": {},
+        "reviewItemId": {
+          "type": "string"
+        },
+        "runtimeEvidence": {},
+        "source": {},
+        "transitions": {}
+      },
+      "required": [
+        "branchReference",
+        "diagnostics",
+        "draft",
+        "glossary",
+        "item",
+        "permission",
+        "policy",
+        "qaFindings",
+        "rationaleRefs",
+        "reviewItemId",
+        "runtimeEvidence",
+        "source",
+        "transitions"
+      ],
+      "type": "object"
+    },
+    "ReviewerQueueDashboardReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate": {
+          "type": "object"
+        },
+        "defaultBatchRequest": {
+          "type": "object"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "rows": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "reviewer.queue_dashboard.v0.1"
+        }
+      },
+      "required": [
+        "aggregate",
+        "defaultBatchRequest",
+        "generatedAt",
+        "localeBranchId",
+        "permission",
+        "rows",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ReviewerQueuePermissionView": {
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {
+          "type": "string"
+        },
+        "canManageQueue": {
+          "type": "boolean"
+        },
+        "canReadQueue": {
+          "type": "boolean"
+        },
+        "denialReasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "actorUserId",
+        "canManageQueue",
+        "canReadQueue",
+        "denialReasons"
+      ],
+      "type": "object"
+    },
+    "ReviewerSingleActionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "outcome": {},
+        "preview": {},
+        "refused": {
+          "type": "boolean"
+        },
+        "request": {}
+      },
+      "required": [
+        "applied",
+        "outcome",
+        "preview",
+        "refused",
+        "request"
+      ],
+      "type": "object"
+    },
+    "RuntimeDashboardStatus": {
+      "additionalProperties": true,
+      "properties": {
+        "approximations": {
+          "type": "array"
+        },
+        "artifacts": {
+          "type": "array"
+        },
+        "evidenceTier": {
+          "type": "string"
+        },
+        "fidelityTier": {
+          "type": "string"
+        },
+        "finalStatus": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array"
+        },
+        "frameCaptureCount": {
+          "type": "number"
+        },
+        "limitations": {
+          "type": "array"
+        },
+        "recordingArtifactCount": {
+          "type": "number"
+        },
+        "runtimeReportId": {},
+        "runtimeRunId": {},
+        "runtimeStatus": {
+          "type": "string"
+        },
+        "screenshotArtifactCount": {
+          "type": "number"
+        },
+        "textEventCount": {
+          "type": "number"
+        },
+        "traceEvents": {
+          "type": "array"
+        },
+        "unsupportedCapabilities": {
+          "type": "array"
+        },
+        "validationFindingCount": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "approximations",
+        "artifacts",
+        "evidenceTier",
+        "fidelityTier",
+        "finalStatus",
+        "findings",
+        "frameCaptureCount",
+        "limitations",
+        "recordingArtifactCount",
+        "runtimeReportId",
+        "runtimeRunId",
+        "runtimeStatus",
+        "screenshotArtifactCount",
+        "textEventCount",
+        "traceEvents",
+        "unsupportedCapabilities",
+        "validationFindingCount"
+      ],
+      "type": "object"
+    },
+    "TerminologySearchReadModel": {
+      "additionalProperties": true,
+      "properties": {
+        "localeBranchId": {
+          "type": "string"
+        },
+        "normalizedQuery": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "results": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "localeBranchId",
+        "normalizedQuery",
+        "query",
+        "results"
+      ],
+      "type": "object"
+    },
+    "WorkspaceAssetBrowseReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "assets": {
+          "type": "array"
+        },
+        "diagnostics": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "workspace.asset_browse.v0.1"
+        }
+      },
+      "required": [
+        "assets",
+        "diagnostics",
+        "generatedAt",
+        "localeBranchId",
+        "permission",
+        "projectId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "WorkspaceComparisonReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {},
+        "cells": {
+          "type": "array"
+        },
+        "contextNote": {},
+        "diagnostics": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "hasFinal": {
+          "type": "boolean"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "reviewItemId": {
+          "type": "string"
+        },
+        "runtimeEvidenceLinks": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "workspace.comparison.v0.1"
+        },
+        "sourceRevisionId": {},
+        "sourceUnitKey": {}
+      },
+      "required": [
+        "bridgeUnitId",
+        "cells",
+        "contextNote",
+        "diagnostics",
+        "generatedAt",
+        "hasFinal",
+        "localeBranchId",
+        "permission",
+        "reviewItemId",
+        "runtimeEvidenceLinks",
+        "schemaVersion",
+        "sourceRevisionId",
+        "sourceUnitKey"
+      ],
+      "type": "object"
+    },
+    "WorkspaceCorrectionPreviewReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "schemaVersion": {
+          "const": "workspace.correction_preview.v0.1"
+        },
+        "units": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "diagnostics",
+        "generatedAt",
+        "localeBranchId",
+        "permission",
+        "schemaVersion",
+        "units"
+      ],
+      "type": "object"
+    },
+    "WorkspaceCorrectionSubmitReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedBridgeUnitIds": {
+          "type": "array"
+        },
+        "batchId": {
+          "type": "string"
+        },
+        "batchLabel": {},
+        "decisionQueueReportIds": {
+          "type": "array"
+        },
+        "diagnostics": {
+          "type": "array"
+        },
+        "edits": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "needsContextReportIds": {
+          "type": "array"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "repairCandidateReportIds": {
+          "type": "array"
+        },
+        "scheduledRerunJobIds": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "workspace.correction_submit.v0.1"
+        },
+        "submittedCount": {
+          "type": "number"
+        },
+        "writebacks": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "affectedBridgeUnitIds",
+        "batchId",
+        "batchLabel",
+        "decisionQueueReportIds",
+        "diagnostics",
+        "edits",
+        "generatedAt",
+        "localeBranchId",
+        "needsContextReportIds",
+        "permission",
+        "repairCandidateReportIds",
+        "scheduledRerunJobIds",
+        "schemaVersion",
+        "submittedCount",
+        "writebacks"
+      ],
+      "type": "object"
+    },
+    "WorkspaceProjectBrowseReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "projects": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "workspace.project_browse.v0.1"
+        }
+      },
+      "required": [
+        "diagnostics",
+        "generatedAt",
+        "permission",
+        "projects",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "WorkspaceSceneBrowseReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "scenes": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "workspace.scene_browse.v0.1"
+        }
+      },
+      "required": [
+        "diagnostics",
+        "generatedAt",
+        "localeBranchId",
+        "permission",
+        "projectId",
+        "scenes",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "WorkspaceSearchReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "type": "array"
+        },
+        "droppedOpaqueCount": {
+          "type": "number"
+        },
+        "generatedAt": {},
+        "localeBranchId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "normalizedQuery": {
+          "type": "string"
+        },
+        "permission": {
+          "$ref": "#/definitions/ReviewerQueuePermissionView"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "results": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "workspace.search.v0.1"
+        }
+      },
+      "required": [
+        "diagnostics",
+        "droppedOpaqueCount",
+        "generatedAt",
+        "localeBranchId",
+        "mode",
+        "normalizedQuery",
+        "permission",
+        "projectId",
+        "query",
+        "results",
+        "schemaVersion"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Emitted deterministically FROM api-schema.ts (fe-api-openapi-emit). Wire envelope + route-body definitions; the guards remain the deep authority.",
+  "title": "Itotori /api JSON-Schema bundle",
+  "x-itotoriProductVersion": "0.1.0"
+}
