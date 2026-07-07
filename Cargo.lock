@@ -567,6 +567,7 @@ dependencies = [
  "kaifuu-core",
  "kaifuu-delta",
  "kaifuu-engine-fixture",
+ "kaifuu-kirikiri",
  "kaifuu-reallive",
  "kaifuu-rpgmaker",
  "kaifuu-vault-source",

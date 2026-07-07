@@ -45,6 +45,7 @@ mod ids;
 mod parse;
 mod patch;
 pub mod xp3_crypt;
+pub mod xp3_crypt_chain;
 pub mod xp3_patch;
 pub mod xp3_private_local_summary;
 
@@ -60,6 +61,12 @@ pub use xp3_crypt::{
     Xp3CryptExtractedMember, Xp3CryptFixture, Xp3CryptManifest, Xp3CryptMemberDigest,
     Xp3CryptMissingKeyReport, Xp3CryptReport, Xp3CryptWrongKeyReport, Xp3CryptoProfile,
     build_synthetic_crypt_xp3, run_xp3_crypt_smoke_from_fixture, run_xp3_crypt_smoke_from_path,
+};
+pub use xp3_crypt_chain::{
+    Xp3ChainDeltaEvidence, Xp3ChainDeltaMember, Xp3ChainDeltaOperation, Xp3ChainDetectReport,
+    Xp3ChainError, Xp3ChainProfileResolveReport, Xp3ChainStage, Xp3ChainStageOutcome,
+    Xp3CryptChainReport, detect_xp3_container, run_xp3_crypt_chain_smoke_from_fixture,
+    run_xp3_crypt_chain_smoke_from_paths,
 };
 pub use xp3_patch::{
     Xp3PatchCapability, Xp3PatchChangeReport, Xp3PatchCoverage, Xp3PatchError,

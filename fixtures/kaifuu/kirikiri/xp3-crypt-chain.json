@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kirikiri-xp3-crypt-chain-fixture",
+  "sourceNodeId": "KAIFUU-072",
+  "engineFamily": "kirikiri",
+  "container": "xp3",
+  "cryptoProfile": "xor-simple-crypt-fixture",
+  "codec": "shift_jis_text",
+  "surface": "scenario-script",
+  "secretRequirementId": "kaifuu-k100-xp3-crypt-key",
+  "secretRef": "local-secret:kaifuu-kirikiri-crypt-fixture-key",
+  "containerSource": "synthetic-stub",
+  "expectedMemberIds": ["scenario/intro.ks", "system/config.txt"]
+}

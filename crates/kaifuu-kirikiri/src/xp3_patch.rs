@@ -302,7 +302,7 @@ pub struct Xp3PatchReport {
 }
 
 impl Xp3PatchReport {
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             schema_version: self.schema_version.clone(),
             capability_id: redact_for_log_or_report(&self.capability_id),
@@ -372,7 +372,7 @@ type MemberPlaintext = (String, Vec<u8>);
 /// Apply the manifest's replacements to the decrypted member plaintexts,
 /// returning the patched plaintexts and the count of members changed. Each
 /// replacement's `find` must occur exactly once in its target member.
-fn apply_replacements(
+pub(crate) fn apply_replacements(
     members: &[MemberPlaintext],
     manifest: &Xp3PatchManifest,
 ) -> Result<(Vec<MemberPlaintext>, Vec<String>), Xp3PatchError> {

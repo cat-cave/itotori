@@ -554,7 +554,7 @@ pub struct Xp3CryptMemberDigest {
 }
 
 impl Xp3CryptMemberDigest {
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             member_id: redact_for_log_or_report(&self.member_id),
             plaintext_byte_len: self.plaintext_byte_len,

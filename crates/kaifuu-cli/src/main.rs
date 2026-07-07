@@ -1955,13 +1955,58 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         "contract-scaffold" => {
             return run_xp3_contract_scaffold(args);
         }
+        "crypt-smoke" => {
+            return run_xp3_crypt_chain_smoke(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
+                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold|crypt-smoke> ..."
                     .into(),
             );
         }
     }
+    Ok(())
+}
+
+/// KAIFUU-072 — `kaifuu xp3 crypt-smoke --fixture <fixture.json>
+/// --manifest <manifest.json> [--output <report.json>]`.
+///
+/// Runs the full Kaifuu chain on an encrypted KiriKiri XP3 archive through a
+/// keyRef-bound crypt profile: detect the container by magic-byte signature,
+/// resolve the crypt profile + decrypt key through the keyRef, decrypt +
+/// integrity-verify + extract every member, apply one trivial text replacement,
+/// re-encipher + repack, re-decrypt + verify against the declared profile +
+/// secret requirement id, and emit a REDACTED delta package (one-way hashes +
+/// secret refs only). Engine-general and game-agnostic: the crypt profile +
+/// keyRef are data, not a per-game code path. Writes the redacted report to
+/// `--output` (or stdout) and exits non-zero if the chain fails.
+fn run_xp3_crypt_chain_smoke(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let manifest_path = PathBuf::from(flag(args, "--manifest")?);
+    let report =
+        kaifuu_kirikiri::run_xp3_crypt_chain_smoke_from_paths(&fixture_path, &manifest_path)
+            .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
+    let json = report.stable_json()?;
+    match flag_optional(args, "--output") {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
+    }
+    if !report.is_ok() {
+        return Err(format!("XP3 crypt-chain smoke failed: status {:?}", report.status).into());
+    }
+    // Surface a one-line stage summary to stdout so CI logs carry the chain
+    // shape without re-reading the report.
+    let stages: Vec<&str> = report
+        .stages
+        .iter()
+        .map(|outcome| outcome.stage.as_str())
+        .collect();
+    eprintln!(
+        "kaifuu xp3 crypt-smoke: stages={} delta_changed={} delta_unchanged={}",
+        stages.join("->"),
+        report.delta.members_changed,
+        report.delta.members_unchanged
+    );
     Ok(())
 }
 

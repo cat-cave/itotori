@@ -10,6 +10,7 @@ repository.workspace = true
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-delta = { path = "../kaifuu-delta" }
 kaifuu-engine-fixture = { path = "../kaifuu-engine-fixture" }
+kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 kaifuu-rpgmaker = { path = "../kaifuu-rpgmaker" }
 kaifuu-vault-source = { path = "../kaifuu-vault-source" }
