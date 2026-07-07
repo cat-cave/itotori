@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "0.1.0",
+  "boundarySetId": "kaifuu-wolf-helper-boundary-fixtures",
+  "sourceNodeId": "KAIFUU-121",
+  "engineFamily": "wolf",
+  "profiles": [
+    {
+      "fixtureId": "wolf.static-key.resolved",
+      "profileId": "wolf-static-key-local-import-resolved",
+      "boundaryKind": "static_key_local_import",
+      "keyRequirement": {
+        "requirementId": "wolf-static-archive-key",
+        "keyRef": "local-secret:fixture/wolf/static-archive-key",
+        "materialKind": "archivePassword"
+      },
+      "locallyAvailable": true,
+      "expectedOutcome": "key_resolved"
+    },
+    {
+      "fixtureId": "wolf.static-key.missing",
+      "profileId": "wolf-static-key-local-import-missing",
+      "boundaryKind": "static_key_local_import",
+      "keyRequirement": {
+        "requirementId": "wolf-static-archive-key",
+        "keyRef": "local-secret:fixture/wolf/static-archive-key",
+        "materialKind": "archivePassword"
+      },
+      "locallyAvailable": false,
+      "expectedOutcome": "key_missing"
+    },
+    {
+      "fixtureId": "wolf.dynamic-key.helper-required",
+      "profileId": "wolf-dynamic-key-local-helper-required",
+      "boundaryKind": "dynamic_key_local_helper",
+      "keyRequirement": {
+        "requirementId": "wolf-pro-per-game-key",
+        "keyRef": "local-secret:fixture/wolf/pro-per-game-key",
+        "materialKind": "fixedBytes"
+      },
+      "locallyAvailable": true,
+      "expectedOutcome": "helper_required"
+    },
+    {
+      "fixtureId": "wolf.dynamic-key.helper-unavailable",
+      "profileId": "wolf-dynamic-key-local-helper-unavailable",
+      "boundaryKind": "dynamic_key_local_helper",
+      "keyRequirement": {
+        "requirementId": "wolf-pro-per-game-key",
+        "keyRef": "local-secret:fixture/wolf/pro-per-game-key",
+        "materialKind": "fixedBytes"
+      },
+      "locallyAvailable": false,
+      "expectedOutcome": "helper_unavailable"
+    }
+  ]
+}

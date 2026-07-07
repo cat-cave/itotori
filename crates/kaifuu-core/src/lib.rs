@@ -226,10 +226,19 @@ pub mod rgss3_smoke;
 pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
+pub mod wolf_helper_boundary;
 pub mod wolf_protection_detector;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+pub use wolf_helper_boundary::{
+    WOLF_HELPER_BOUNDARY_REPORT_SCHEMA_VERSION, WOLF_HELPER_BOUNDARY_SCHEMA_VERSION,
+    WOLF_HELPER_BOUNDARY_SUPPORT_BOUNDARY, WolfHelperBoundaryEntryReport,
+    WolfHelperBoundaryFinding, WolfHelperBoundaryFixture, WolfHelperBoundaryKind,
+    WolfHelperBoundaryOutcome, WolfHelperBoundaryProfile, WolfHelperBoundaryReport,
+    WolfHelperKeyRequirement, derive_wolf_helper_boundary_outcome,
+    read_wolf_helper_boundary_fixture, resolve_wolf_helper_boundary, run_wolf_helper_boundary,
+};
 pub use wolf_protection_detector::{
     WOLF_ENGINE_FAMILY, WOLF_PROTECTION_DETECTOR_REPORT_SCHEMA_VERSION,
     WOLF_PROTECTION_DETECTOR_SCHEMA_VERSION, WOLF_PROTECTION_DETECTOR_SUPPORT_BOUNDARY,
