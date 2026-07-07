@@ -26,17 +26,74 @@ tests, MSW-backed app tests, and shared fixture contracts.
 - Avoid test pyramid drift: many fast contract/unit tests, focused repository
   and adapter integration tests, and a small number of end-to-end fixture loops.
 
+## Behavior-First Principle
+
+Prefer BLACK-BOX tests that assert OBSERVABLE behavior through a PUBLIC
+boundary over WHITE-BOX / mocked / implementation-coupled tests that assert on
+internal call shape, private helper order, or stubbed return values. This is a
+BIAS, not a ban.
+
+A test is **behavior** (black-box) when its assertion point is one of:
+
+- a real HTTP response (a started server, a real `fetch`, a status code / body
+  a client observes) — e.g. `apps/itotori/test/server.test.ts`;
+- a row persisted to and read back from a real Postgres — e.g. the
+  `packages/itotori-db/test/*.repository.test.ts` suites;
+- bytes a real decoder/patcher produced (the real-bytes oracle lanes
+  `crates/**/tests/*_real_bytes.rs`);
+- a rendered DOM node (a `jsdom` suite asserting on visible text or accessible
+  state), e.g. `apps/itotori/test/dashboard.test.ts`.
+
+A test is **white-box** when it bypasses the public boundary to assert on an
+internal seam: a direct handler/module invocation (e.g.
+`handleItotoriApiRequest(…)`-direct in `api-handlers.test.ts`), a `vi.fn` /
+MSW stub asserting on mock call shape, or a private-helper call order. These
+couple the test to today's implementation and silently pass when the
+implementation rots beneath the contract.
+
+### When a white-box unit test is acceptable
+
+A white-box test is the RIGHT choice when the code under test has no public
+boundary to observe — i.e. **pure model logic**: index math, hash functions,
+encoding rules, schema validation, delta apply/reverse math, protected-span
+preservation. A pure-logic `#[test]` or vitest unit on a total function is
+fine and expected (the Rust `internal` seam and the TS `internal`/`mocked`
+seams exist for exactly this). The standing rule targets BEHAVIOR code —
+HTTP handlers, repository methods, dashboard components, engine ports — that
+DOES have a public boundary. For that code, reach for the boundary first and
+fall back to an internal seam only when the boundary is genuinely out of reach
+(and note why in the test).
+
+### Naming follows the behavior
+
+The grammar in **Behavior Naming** below is the expression of this principle:
+`<subject> rejects <invalid input> when <contract rule broken>` reads as a
+falsifiable behavior claim through the public boundary. A name like `calls
+helper` or `works` is the smell of a white-box test asserting on internal
+mechanics — rewrite it as the observable outcome a reviewer can falsify.
+
+### Making drift visible
+
+Because this is a bias and not a ban, drift is the risk: behavior code slowly
+accumulates internal-seam tests because they are faster to write. The
+classifier `scripts/classify-test-seams.mjs` (`just test-ratio`) scans the
+tracked test suites and prints the by-seam ratio (behavior vs internal) so the
+drift is visible. It is a REPORT, not a gate: it always exits 0 and anchors a
+baseline ratio the team diffs against by eye. See **Test-Seam Classifier**
+near the end of this document.
+
 ## Command Surface
 
 The root `justfile` is the shared command surface:
 
-| Command                  | Purpose                                                                                                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check. |
-| `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                       |
-| `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                             |
-| `just fixtures-validate` | Validates committed public fixture manifests and hashes.                                                                                                             |
-| `just roadmap-validate`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                   |
+| Command                  | Purpose                                                                                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.             |
+| `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                   |
+| `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                         |
+| `just fixtures-validate` | Validates committed public fixture manifests and hashes.                                                                                                                         |
+| `just roadmap-validate`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                               |
+| `just test-ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate. |
 
 Package-level commands are allowed for tight loops, but PR verification should
 name the root command that protects the changed behavior.
@@ -457,16 +514,57 @@ by the user or explicitly loaded from approved local-only env sources, record
 provider/model/cost metadata in ignored artifacts, and commit only sanitized
 summaries or public fixtures.
 
+## Test-Seam Classifier
+
+`scripts/classify-test-seams.mjs` (invoked as `just test-ratio`) is the
+behavior-first drift detector. It scans the tracked test suites
+(`apps/*/test`, `packages/*/test`, `crates/`) and classifies each test FILE
+into exactly one PRIMARY seam by the strongest signal it emits, then prints a
+by-seam count and the behavior-vs-internal ratio. Dev-harness suites under
+`scripts/` and `suite/scripts/` are excluded (they test the tooling, not the
+product).
+
+Seams (highest precedence first; a file maps to its strongest signal):
+
+| Seam               | Signal                                                                       | Kind      |
+| ------------------ | ---------------------------------------------------------------------------- | --------- |
+| `real-bytes`       | Rust `*_real_bytes.rs` or `#[ignore]` naming a live corpus env.              | behavior  |
+| `real-http`        | TS that starts the real Itotori HTTP server (`startItotoriServer`).          | behavior  |
+| `internal-handler` | TS that calls `handleItotoriApiRequest(…)` directly (bypasses HTTP).         | white-box |
+| `dom`              | TS with `@vitest-environment jsdom` (renders real DOM).                      | behavior  |
+| `real-db`          | TS that drives a real Postgres (`isolatedMigratedContext` / `DATABASE_URL`). | behavior  |
+| `mocked`           | TS whose only signal is `setupServer` / `vi.fn` / `vi.mock` (no boundary).   | white-box |
+| `internal`         | default (pure model logic; acceptable white-box).                            | white-box |
+
+The precedence encodes the principle: the strongest PUBLIC-BOUNDARY signal
+wins (`real-bytes` > `real-http` > `dom` > `real-db`), and a file that opts
+OUT of the boundary (`internal-handler`) is white-box even when it ALSO does
+real-db work — bypassing HTTP is the defining choice. Notably `server.test.ts`
+stubs every service with `vi.fn` but goes through real HTTP, so it correctly
+counts as `real-http` (behavior); `api-handlers.test.ts` calls the handler
+directly AND uses a real Postgres, and counts as `internal-handler`
+(white-box) — which is why a ratio exists to watch.
+
+The classifier is a REPORT, not a gate: it always exits 0 and prints the
+baseline ratio. Run it on the current tree to anchor the baseline; diff
+against it by eye when reviewing a change that adds tests. Promoting it to a
+hard fail (e.g. a `--check` mode against a committed baseline file) is a
+later decision — the first step is making the bias and the drift visible.
+
 ## Review Checklist
 
 Before merging testing changes:
 
 1. Test names describe observable behavior.
-2. Fixtures are at the lowest suitable layer and public fixtures have manifests.
-3. MSW/browser suites fail on unhandled network requests.
-4. DB tests isolate state and close connections.
-5. Golden updates are stable, normalized, and justified.
-6. Property or mutation tests target real invariants instead of blanket quotas.
-7. `just roadmap-validate` and `just check` pass.
-8. No committed test requires live providers, private corpora, or local-only
+2. New behavior code (handlers, repositories, components, engine ports) is
+   covered through a PUBLIC boundary first (real HTTP / real DB / real DOM /
+   real bytes), not only through an internal seam or a mock. Pure model-logic
+   unit tests are fine.
+3. Fixtures are at the lowest suitable layer and public fixtures have manifests.
+4. MSW/browser suites fail on unhandled network requests.
+5. DB tests isolate state and close connections.
+6. Golden updates are stable, normalized, and justified.
+7. Property or mutation tests target real invariants instead of blanket quotas.
+8. `just roadmap-validate` and `just check` pass.
+9. No committed test requires live providers, private corpora, or local-only
    credentials.

@@ -55,6 +55,7 @@ check:
     node scripts/audit-no-hardcoded-cost.mjs
     node --test scripts/audit-strictness.test.mjs
     node scripts/audit-strictness.mjs
+    node --test scripts/classify-test-seams.test.mjs
     node --test scripts/audit-no-hardcoded-roles.test.mjs
     node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
@@ -88,6 +89,16 @@ fixtures-validate:
 test:
     pnpm exec vp run ts:test
     cargo test --workspace
+
+# fe-test-behavior-standard: print the test-seam classifier report — the
+# behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs
+# internal-handler / mocked / internal). A REPORT, not a gate: always exits 0
+# and anchors a baseline ratio to diff against by eye. Scopes the tracked
+# product test suites (apps/*/test, packages/*/test, crates/); dev-harness
+# suites under scripts/ + suite/scripts/ are excluded. See
+# docs/testing-standard.md § Behavior-First Principle + § Test-Seam Classifier.
+test-ratio:
+    node scripts/classify-test-seams.mjs
 
 localize-project-test:
     node --test suite/scripts/localize-project/*.test.mjs
