@@ -292,6 +292,10 @@ export const migrations = [
     id: "0058_localization_pass_ledger",
     file: "0058_localization_pass_ledger.sql",
   },
+  {
+    id: "0059_auth_principal_schema",
+    file: "0059_auth_principal_schema.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

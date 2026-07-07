@@ -14,6 +14,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+// Type-only import (erased at compile time — no runtime cycle with
+// authorization.ts, which imports table VALUES from this module). Types the
+// auth permission-set / grant / audit columns to the single Permission source
+// of truth in authorization.ts.
+import type { Permission } from "./authorization.js";
 
 export const projectStatusValues = {
   imported: "imported",
@@ -4619,5 +4624,282 @@ export const localizationPassLedger = pgTable(
       table.localeBranchId,
       table.passNumber,
     ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// auth-001-principal-schema — multi-user principal / account / permission-set
+// identity layer.
+//
+// This EXTENDS the existing single-user substrate (`itotori_users` +
+// `itotori_user_permission_grants` above, which `requirePermission` reads) with
+// the organization / membership / identity / session / permission-set / audit
+// layer a real multi-user auth service needs. The single-user substrate stays
+// intact and working; nothing here replaces it.
+//
+// GOVERNING INVARIANT (docs/permissions.md): access control is PERMISSION-based,
+// NEVER role-based. There is NO role column anywhere that authorization branches
+// on. A "role" is ONLY a `permission_set` — a named, editable DATA bundle of
+// permission rows granted to a principal. Effective permissions for a principal
+// are the UNION of its direct permission grants and the permissions of every
+// permission-set granted to it; authorization still resolves to an exact-match
+// permission check, never to a role string.
+//
+// `principal_kind` below is an identity-TYPE discriminator (human user vs
+// non-human service principal), NOT an authorization role: no authorization code
+// branches on it. It exists only so a grant / session / audit row can reference
+// either kind of principal through one supertype id.
+
+/** Principal identity TYPE. NOT an authorization role — see the note above. */
+export const authPrincipalKindValues = {
+  humanUser: "human_user",
+  servicePrincipal: "service_principal",
+} as const;
+
+export type AuthPrincipalKind =
+  (typeof authPrincipalKindValues)[keyof typeof authPrincipalKindValues];
+
+/** Direction of a permission / permission-set delta recorded in the audit log. */
+export const authAuditEventActionValues = {
+  granted: "granted",
+  revoked: "revoked",
+} as const;
+
+export type AuthAuditEventAction =
+  (typeof authAuditEventActionValues)[keyof typeof authAuditEventActionValues];
+
+/** The org / workspace tenant that owns memberships, permission sets, etc. */
+export const authAccounts = pgTable("itotori_auth_accounts", {
+  accountId: text("account_id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+});
+
+/**
+ * The unifying principal supertype: a principal is a human user OR a service
+ * principal. Grants, sessions, and audit rows reference a principal by this id
+ * regardless of kind. `principalKind` is an identity-type discriminator, not a
+ * role (see the module note).
+ */
+export const authPrincipals = pgTable(
+  "itotori_auth_principals",
+  {
+    principalId: text("principal_id").primaryKey(),
+    principalKind: text("principal_kind").notNull().$type<AuthPrincipalKind>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  },
+  (table) => [index("itotori_auth_principals_kind_idx").on(table.principalKind)],
+);
+
+/** Human user identity subtype (1:1 with a `human_user` principal). */
+export const authUsers = pgTable(
+  "itotori_auth_users",
+  {
+    userId: text("user_id").primaryKey(),
+    principalId: text("principal_id")
+      .notNull()
+      .unique()
+      .references(() => authPrincipals.principalId, { onDelete: "cascade" }),
+    email: text("email"),
+    displayName: text("display_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("itotori_auth_users_email_idx").on(table.email)],
+);
+
+/** Non-human principal subtype (1:1 with a `service_principal` principal). */
+export const authServicePrincipals = pgTable("itotori_auth_service_principals", {
+  servicePrincipalId: text("service_principal_id").primaryKey(),
+  principalId: text("principal_id")
+    .notNull()
+    .unique()
+    .references(() => authPrincipals.principalId, { onDelete: "cascade" }),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+});
+
+/** User ↔ account tenancy link. Unique on (account, user). */
+export const authAccountMemberships = pgTable(
+  "itotori_auth_account_memberships",
+  {
+    membershipId: text("membership_id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.userId, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_auth_account_memberships_account_user_key").on(table.accountId, table.userId),
+    index("itotori_auth_account_memberships_user_idx").on(table.userId),
+  ],
+);
+
+/** OIDC / SAML identity link. Unique on (provider, subject). */
+export const authExternalIdentities = pgTable(
+  "itotori_auth_external_identities",
+  {
+    externalIdentityId: text("external_identity_id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsers.userId, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    subject: text("subject").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_auth_external_identities_provider_subject_key").on(
+      table.provider,
+      table.subject,
+    ),
+    index("itotori_auth_external_identities_user_idx").on(table.userId),
+  ],
+);
+
+/**
+ * An account invitation. `initialPermissionSetIds` is the OPTIONAL list of
+ * permission-set ids to grant the accepting principal on join — a permission
+ * bundle, never a role string.
+ */
+export const authInvitations = pgTable(
+  "itotori_auth_invitations",
+  {
+    invitationId: text("invitation_id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    initialPermissionSetIds: jsonb("initial_permission_set_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("itotori_auth_invitations_account_email_idx").on(table.accountId, table.email)],
+);
+
+/** Opaque server-side session for a principal (human or service). */
+export const authSessions = pgTable(
+  "itotori_auth_sessions",
+  {
+    sessionId: text("session_id").primaryKey(),
+    principalId: text("principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [index("itotori_auth_sessions_principal_idx").on(table.principalId)],
+);
+
+/**
+ * A named, editable permission bundle. This is the ONLY thing a "role" may ever
+ * be: a data row of permissions, account-scoped and editable. Unique per
+ * (account, name).
+ */
+export const authPermissionSets = pgTable(
+  "itotori_auth_permission_sets",
+  {
+    permissionSetId: text("permission_set_id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_auth_permission_sets_account_name_key").on(table.accountId, table.name),
+  ],
+);
+
+/**
+ * The permissions in a permission set. `permission` is a `Permission` value
+ * (the same exact-match permission strings `requirePermission` checks); it is
+ * validated by the typed repository layer, keeping a single source of truth in
+ * `permissionValues` rather than a second SQL enum copy.
+ */
+export const authPermissionSetPermissions = pgTable(
+  "itotori_auth_permission_set_permissions",
+  {
+    permissionSetId: text("permission_set_id")
+      .notNull()
+      .references(() => authPermissionSets.permissionSetId, { onDelete: "cascade" }),
+    permission: text("permission").notNull().$type<Permission>(),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.permissionSetId, table.permission] })],
+);
+
+/** Direct exact-permission overrides granted to a principal. */
+export const authPrincipalPermissionGrants = pgTable(
+  "itotori_auth_principal_permission_grants",
+  {
+    principalId: text("principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "cascade" }),
+    permission: text("permission").notNull().$type<Permission>(),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.principalId, table.permission] })],
+);
+
+/** A permission set granted to a principal (the "role assignment"). */
+export const authPrincipalPermissionSetGrants = pgTable(
+  "itotori_auth_principal_permission_set_grants",
+  {
+    principalId: text("principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "cascade" }),
+    permissionSetId: text("permission_set_id")
+      .notNull()
+      .references(() => authPermissionSets.permissionSetId, { onDelete: "cascade" }),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.principalId, table.permissionSetId] })],
+);
+
+/**
+ * Append-only audit trail of authorization changes: which actor granted/revoked
+ * which permission or permission-set to/from which target principal, why, and
+ * under which request id.
+ */
+export const authAuditEvents = pgTable(
+  "itotori_auth_audit_events",
+  {
+    authAuditEventId: text("auth_audit_event_id").primaryKey(),
+    actorPrincipalId: text("actor_principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
+    targetPrincipalId: text("target_principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
+    action: text("action").notNull().$type<AuthAuditEventAction>(),
+    permission: text("permission").$type<Permission>(),
+    permissionSetId: text("permission_set_id").references(
+      () => authPermissionSets.permissionSetId,
+      { onDelete: "set null" },
+    ),
+    reason: text("reason"),
+    requestId: text("request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_auth_audit_events_target_idx").on(table.targetPrincipalId, table.createdAt),
+    index("itotori_auth_audit_events_actor_idx").on(table.actorPrincipalId, table.createdAt),
   ],
 );

@@ -23,6 +23,7 @@ import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriLocalizationPassLedgerRepository } from "../src/repositories/localization-pass-ledger-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
+import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
@@ -980,6 +981,48 @@ const repositoryPermissionGateMatrix = [
     "localization-pass-ledger-repository.test.ts branch passes coverage",
     (repo) => repo.loadPassesForBranch(deniedActor, "locale-branch-x"),
   ),
+  principalGate(
+    "createAccount",
+    "authAdmin",
+    "principal-repository.test.ts create account coverage",
+    (repo) => repo.createAccount(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "createPrincipal",
+    "authAdmin",
+    "principal-repository.test.ts create principal coverage",
+    (repo) => repo.createPrincipal(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "createPermissionSet",
+    "authAdmin",
+    "principal-repository.test.ts create permission set coverage",
+    (repo) => repo.createPermissionSet(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "grantPermissionSet",
+    "authAdmin",
+    "principal-repository.test.ts grant permission set coverage",
+    (repo) => repo.grantPermissionSet(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "grantDirectPermission",
+    "authAdmin",
+    "principal-repository.test.ts grant direct permission coverage",
+    (repo) => repo.grantDirectPermission(deniedActor, undefined as never),
+  ),
+  principalGate(
+    "loadPrincipal",
+    "authAdmin",
+    "principal-repository.test.ts load principal coverage",
+    (repo) => repo.loadPrincipal(deniedActor, "principal-x"),
+  ),
+  principalGate(
+    "resolvePrincipalPermissions",
+    "authAdmin",
+    "principal-repository.test.ts resolve principal permissions coverage",
+    (repo) => repo.resolvePrincipalPermissions(deniedActor, "principal-x"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1901,6 +1944,48 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "draft.write",
           "successFixture": "localization-pass-ledger-repository.test.ts branch passes coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.createAccount",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts create account coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.createPrincipal",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts create principal coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.createPermissionSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts create permission set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.grantPermissionSet",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts grant permission set coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.grantDirectPermission",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts grant direct permission coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.loadPrincipal",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts load principal coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.resolvePrincipalPermissions",
+          "requiredPermission": "auth.admin",
+          "successFixture": "principal-repository.test.ts resolve principal permissions coverage",
+        },
       ]
     `);
   });
@@ -2348,6 +2433,22 @@ function localizationPassLedgerGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriLocalizationPassLedgerRepository(db)),
+  });
+}
+
+function principalGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriPrincipalRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriPrincipalRepository",
+    sourceFile: "principal-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriPrincipalRepository(db)),
   });
 }
 

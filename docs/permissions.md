@@ -56,6 +56,7 @@ after the database has been migrated.
 | `catalog.write`       | Persist catalog work identity and provenance                                    |
 | `audit.write`         | Record and resolve audit findings                                               |
 | `style_guide.approve` | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
+| `auth.admin`          | Administer principals, accounts, permission sets, and grants (multi-user auth)  |
 | `system.reset`        | Reset local hello-world persisted state                                         |
 
 Project dashboard reads do not currently require a permission gate. Catalog
@@ -96,10 +97,30 @@ new check constraint. For a retired permission, first remove active call sites
 and grants, then add a migration that removes the value from the check
 constraint. Do not weaken the constraint to an unconstrained text column.
 
+## Multi-User Principal Layer
+
+Migration `0059_auth_principal_schema` adds the multi-user identity layer
+(`itotori_auth_*` tables) that extends the single-user substrate above without
+replacing it. A **principal** is a human user OR a service principal; grants,
+sessions, and audit rows reference a principal through one supertype id
+(`itotori_auth_principals.principal_id`). `principal_kind` is an identity-TYPE
+discriminator (human vs machine), **not** an authorization role — no
+authorization code branches on it.
+
+A "role", if ever named, is **only** a `permission_set`: a named, editable data
+bundle of permission rows (`itotori_auth_permission_sets` +
+`itotori_auth_permission_set_permissions`). A principal's effective permissions
+are the UNION of its direct grants (`itotori_auth_principal_permission_grants`)
+and the permissions of every permission-set granted to it
+(`itotori_auth_principal_permission_set_grants`). There is no role column used
+for authorization branching anywhere; authorization always resolves to an
+exact-match permission via `requirePermission`. Administering this layer is
+itself gated on `auth.admin` (see `ItotoriPrincipalRepository`).
+
 ## Future Teams
 
-The schema stores grants by `user_id` and `permission`, not role strings. Custom
-roles or teams can be added later as grant assignment helpers, for example by
-adding team membership tables and deriving user grants from direct plus team
-permissions. Mutation code should continue to call the authorization helper with
-a typed permission value, regardless of how permissions are assigned.
+The schema stores grants by `user_id` / `principal_id` and `permission`, not role
+strings. Custom roles are realized as `permission_set` rows and set grants (see
+the multi-user layer above); mutation code continues to call the authorization
+helper with a typed permission value, regardless of how permissions are
+assigned.

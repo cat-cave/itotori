@@ -853,6 +853,23 @@ export type {
   LocalizationPassLedgerRecord,
   RecordLocalizationPassInput,
 } from "./repositories/localization-pass-ledger-repository.js";
+export {
+  ItotoriPrincipalRepository,
+  ItotoriPrincipalRepositoryError,
+} from "./repositories/principal-repository.js";
+export type {
+  AccountRecord,
+  CreateAccountInput,
+  CreatePermissionSetInput,
+  CreatePrincipalInput,
+  GrantDirectPermissionInput,
+  GrantPermissionSetInput,
+  ItotoriPrincipalRepositoryPort,
+  PermissionSetRecord,
+  PrincipalRecord,
+} from "./repositories/principal-repository.js";
+export { authAuditEventActionValues, authPrincipalKindValues } from "./schema.js";
+export type { AuthAuditEventAction, AuthPrincipalKind } from "./schema.js";
 export type {
   CreateReviewerQueueItemInput,
   ItotoriReviewerQueueRepositoryPort,
