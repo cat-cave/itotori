@@ -235,6 +235,42 @@ Seeding is a bootstrap (like `bootstrapLocalUser`), idempotent, and account
 scoped (`permission-set-<accountId>-<key>`). No seed is granted `auth.admin` or
 `system.reset`.
 
+## Local Operator Migration (auth-003)
+
+The single local operator is represented in **both** models. The legacy
+`local-user` (above) keeps its every-permission direct grant in
+`itotori_user_permission_grants` and stays a legacy-grant actor. Migration into
+the multi-user model is `bootstrapDefaultAccountPrincipal(db)`, an idempotent
+bootstrap (all inserts `onConflictDoNothing`) that materializes the operator's
+multi-user representation as DATA:
+
+| Row                 | Value                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Default account     | `account-local` (`Local workspace`)                                                                                  |
+| Operator user       | `local-operator` (a **non-reserved** userId)                                                                         |
+| Operator principal  | `principal-local-operator` (`human_user`), account member                                                            |
+| All-permissions set | `permission-set-account-local-operator-all` (editable), granting every permission, granted to the operator principal |
+
+The operator principal resolves **every** permission through its granted
+all-permissions set (account-scope boundary satisfied: it is a member of
+`account-local`, which owns the set), not through the legacy table. The set is an
+ordinary editable permission set — an admin can rename it, add/remove
+permissions, or delete it via the gated CRUD.
+
+**Reconciliation with the 0061 reservation.** The reserved `local-user` is
+**never** registered in `itotori_auth_users`; a separate, non-colliding
+`local-operator` principal is created instead, so the reservation CHECK (which
+still rejects registering `local-user` as a principal) is never tripped and the
+namespace-collision escalation stays closed.
+
+**`localUserActor` mapping.** The app's default actor (`localUserActor` in
+`apps/itotori/src/auth.ts`) **stays** `{ userId: "local-user" }` (the legacy
+path) so every existing caller authorizes unchanged; the `local-operator`
+principal is the multi-user representation used by principal-backed / auth-admin
+flows. This migration is wired into the application bootstrap
+(`withDatabaseItotoriServices`) alongside `bootstrapLocalUser`, NOT into
+`migrate()` — the plain migrate path seeds only the legacy substrate.
+
 ## Future Teams
 
 The schema stores grants by `user_id` / `principal_id` and `permission`, not role

@@ -8,6 +8,20 @@ import {
   requirePermission,
 } from "@itotori/db";
 
+/**
+ * The default app-side authorization actor.
+ *
+ * auth-003 DECISION: this STAYS the legacy `local-user` actor. The local
+ * operator now ALSO has a multi-user principal representation (a default account
+ * + `local-operator` principal + editable all-permissions set, seeded by
+ * `bootstrapDefaultAccountPrincipal`), but the default actor deliberately keeps
+ * resolving through the legacy `itotori_user_permission_grants` all-grant so
+ * every existing `{ userId: "local-user" }` caller authorizes unchanged and no
+ * behavior regresses. `local-user` is intentionally NOT registered in
+ * `itotori_auth_users` (reserved by migration 0061); the multi-user principal is
+ * the SEPARATE, non-colliding `local-operator`. Multi-user / auth-admin flows
+ * that need a principal-backed actor use the operator principal directly.
+ */
 export const localUserActor: AuthorizationActor = { userId: localUserId };
 
 export interface ItotoriAuthorizationPort {

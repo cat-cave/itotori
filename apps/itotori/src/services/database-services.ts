@@ -21,6 +21,7 @@ import {
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
   ItotoriWorkspaceCorrectionRepository,
+  bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -316,7 +317,11 @@ export async function withDatabaseItotoriServices<T>(
   const context = createDatabaseContext(options.databaseUrl);
   try {
     if (options.bootstrapLocalUser ?? true) {
+      // The legacy single-user actor (direct grants) stays intact for
+      // backward-compat, and the local operator is ALSO materialized as its
+      // multi-user principal representation (auth-003). Both are idempotent.
       await bootstrapLocalUser(context.db);
+      await bootstrapDefaultAccountPrincipal(context.db);
     }
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);

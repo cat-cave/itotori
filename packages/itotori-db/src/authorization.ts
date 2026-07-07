@@ -76,6 +76,51 @@ export function isReservedAuthUserId(userId: string): boolean {
   return (reservedAuthUserIds as readonly string[]).includes(userId);
 }
 
+/**
+ * The default local ACCOUNT + operator PRINCIPAL that represent the single
+ * operator of a local install in the multi-user model (auth-003).
+ *
+ * The legacy `local-user` (above) keeps its every-permission direct grant in
+ * `itotori_user_permission_grants` and stays a legacy-grant actor; it is
+ * deliberately NOT registered in `itotori_auth_users` (reserved by migration
+ * 0061). The multi-user REPRESENTATION of the same operator is a distinct
+ * principal whose `userId` (`localOperatorUserId`) is intentionally different
+ * from — and never collides with — the reserved `local-user`, so registering it
+ * cannot trip the 0061 reservation. The operator resolves ALL permissions
+ * through an editable, account-scoped ALL-permissions set granted to it, NOT
+ * through the legacy table.
+ */
+export const defaultLocalAccountId = "account-local";
+export const defaultLocalAccountSlug = "local";
+export const defaultLocalAccountName = "Local workspace";
+
+/**
+ * The multi-user principal representation of the local operator. `userId` is
+ * NON-reserved (distinct from `localUserId`) so it is a valid `auth_users` row.
+ */
+export const localOperatorUserId = "local-operator";
+export const localOperatorPrincipalId = "principal-local-operator";
+export const localOperatorDisplayName = "Local operator";
+export const localOperatorMembershipId = "membership-local-operator";
+
+/**
+ * The account-scoped seed key for the editable ALL-permissions set granted to
+ * the default operator principal. It is an ORDINARY permission set (an admin can
+ * rename it, add/remove permissions, or delete it via the gated CRUD); the name
+ * is a label and nothing branches on it. Unlike the least-privilege
+ * `defaultPermissionSetSeeds`, this set intentionally carries every permission —
+ * it is the multi-user equivalent of the legacy `local-user` all-grant.
+ */
+export const localOperatorAllPermissionsSetKey = "operator-all";
+export const localOperatorAllPermissionsSetName = "Local operator (all permissions)";
+export const localOperatorAllPermissionsSetDescription =
+  "All-permissions bundle for the default local operator principal (editable).";
+
+/** The permission-set id the operator's all-permissions bundle materializes to. */
+export function localOperatorAllPermissionsSetId(): string {
+  return defaultPermissionSetId(defaultLocalAccountId, localOperatorAllPermissionsSetKey);
+}
+
 export type AuthorizationActor = {
   userId: string;
   /**
@@ -453,4 +498,99 @@ export async function seedDefaultPermissionSets(
         .onConflictDoNothing();
     }
   }
+}
+
+/**
+ * auth-003 — migrate the single local operator into the multi-user model.
+ *
+ * Idempotently materialize, as ordinary DATA rows, the multi-user REPRESENTATION
+ * of the local operator:
+ *
+ *   - ONE default local account (`defaultLocalAccountId`);
+ *   - ONE human-user PRINCIPAL under a NON-reserved userId
+ *     (`localOperatorUserId`, distinct from the reserved `local-user`), linked
+ *     to the account by a membership;
+ *   - an editable, account-scoped ALL-permissions set granted to that principal.
+ *
+ * The operator principal then resolves EVERY permission through its granted set
+ * (via `resolvePrincipalEffectivePermissions`), account-scope boundary included:
+ * it belongs to the account, the set is owned by that account, so the grant is
+ * eligible. Authorization is entirely through the principal/permission-set
+ * layer; the operator does NOT rely on the legacy `itotori_user_permission_grants`
+ * table.
+ *
+ * This is a BOOTSTRAP (like `bootstrapLocalUser` / `seedDefaultPermissionSets`),
+ * not a gated mutation, and is fully idempotent (every insert is
+ * `onConflictDoNothing`). It is INTENTIONALLY separate from `migrate()` /
+ * `bootstrapLocalUser`: the plain migrate path seeds only the legacy substrate,
+ * so tests that assert an empty multi-user layer after migration stay valid. The
+ * application bootstrap (`withDatabaseItotoriServices`) runs this alongside
+ * `bootstrapLocalUser` so the real operator runtime has both the legacy actor
+ * and its multi-user principal.
+ *
+ * RECONCILIATION WITH THE 0061 RESERVATION: the reserved `local-user` is never
+ * registered in `itotori_auth_users`; this creates a SEPARATE, non-colliding
+ * `localOperatorUserId` principal instead. The reservation CHECK is untouched
+ * and still rejects any attempt to register `local-user` as a principal.
+ *
+ * @returns the operator's multi-user authorization actor.
+ */
+export async function bootstrapDefaultAccountPrincipal(
+  db: ItotoriDatabase,
+): Promise<AuthorizationActor> {
+  await db
+    .insert(authAccounts)
+    .values({
+      accountId: defaultLocalAccountId,
+      slug: defaultLocalAccountSlug,
+      name: defaultLocalAccountName,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(authPrincipals)
+    .values({ principalId: localOperatorPrincipalId, principalKind: "human_user" })
+    .onConflictDoNothing();
+
+  await db
+    .insert(authUsers)
+    .values({
+      userId: localOperatorUserId,
+      principalId: localOperatorPrincipalId,
+      displayName: localOperatorDisplayName,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(authAccountMemberships)
+    .values({
+      membershipId: localOperatorMembershipId,
+      accountId: defaultLocalAccountId,
+      userId: localOperatorUserId,
+    })
+    .onConflictDoNothing();
+
+  const permissionSetId = localOperatorAllPermissionsSetId();
+  await db
+    .insert(authPermissionSets)
+    .values({
+      permissionSetId,
+      accountId: defaultLocalAccountId,
+      name: localOperatorAllPermissionsSetName,
+      description: localOperatorAllPermissionsSetDescription,
+    })
+    .onConflictDoNothing();
+  for (const permission of allPermissions) {
+    await db
+      .insert(authPermissionSetPermissions)
+      .values({ permissionSetId, permission })
+      .onConflictDoNothing();
+  }
+
+  await db
+    .insert(authPrincipalPermissionSetGrants)
+    .values({ principalId: localOperatorPrincipalId, permissionSetId })
+    .onConflictDoNothing();
+
+  return { userId: localOperatorUserId };
 }
