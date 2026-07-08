@@ -892,6 +892,22 @@ export type {
   RecordLocalizationPassInput,
 } from "./repositories/localization-pass-ledger-repository.js";
 export {
+  BENCHMARK_RUN_DEFAULT_LIMIT,
+  BENCHMARK_RUN_MAX_LIMIT,
+  BenchmarkRunRepositoryError,
+  ItotoriBenchmarkRunRepository,
+  benchmarkRunKindValues,
+  benchmarkRunStatusValues,
+} from "./repositories/benchmark-run-repository.js";
+export type {
+  BenchmarkRunKind,
+  BenchmarkRunRecord,
+  BenchmarkRunStatus,
+  ItotoriBenchmarkRunRepositoryPort,
+  LoadBenchmarkRunsForProjectOptions,
+  RecordBenchmarkRunInput,
+} from "./repositories/benchmark-run-repository.js";
+export {
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
 } from "./repositories/principal-repository.js";

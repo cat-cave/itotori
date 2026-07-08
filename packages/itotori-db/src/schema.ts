@@ -4694,6 +4694,49 @@ export const localizationPassLedger = pgTable(
   ],
 );
 
+/**
+ * itotori-bmk-cockpit-read-model — durable store for benchmark cockpit runs.
+ * One row per benchmark run; the benchmark facility's body
+ * (game-agnostic contestants + ranked ladder + the §8 panel↔human anchor +
+ * the §10 actionable backlog) carried verbatim in `report_body` so a reviewer
+ * can page a run history + render the latest run's composed cockpit shape.
+ * Append-only; no UPDATE / DELETE.
+ */
+export const benchmarkRuns = pgTable(
+  "itotori_benchmark_runs",
+  {
+    runId: text("run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    targetLocale: text("target_locale").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    unitsScored: integer("units_scored").notNull(),
+    reportBody: jsonb("report_body")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_benchmark_runs_project_recorded_idx").on(
+      table.projectId,
+      table.recordedAt,
+    ),
+    index("itotori_benchmark_runs_branch_recorded_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.recordedAt,
+    ),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // auth-001-principal-schema — multi-user principal / account / permission-set
 // identity layer.

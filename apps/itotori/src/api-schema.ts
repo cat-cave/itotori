@@ -123,6 +123,11 @@ import type {
   ProjectOverviewReadModel,
 } from "./project-overview-read-model.js";
 import { PROJECT_OVERVIEW_SCHEMA_VERSION } from "./project-overview-read-model.js";
+import type {
+  BmkCockpitReadModel,
+  BmkCockpitRunHistoryPage,
+} from "./bmk-cockpit-read-model.js";
+import { BMK_COCKPIT_SCHEMA_VERSION } from "./bmk-cockpit-read-model.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -151,6 +156,15 @@ export type ItotoriApiRouteId =
   | "projects.cost"
   | "projects.costDrilldown"
   | "projects.benchmarks"
+  // itotori-bmk-cockpit-read-model — the benchmark COCKPIT read-model route.
+  // Returns the LATEST benchmark run's composed shape (5 contestants
+  // official/self/self_nocontext/fan/mtl + human anchor + confidence + the
+  // actionable improvement backlog). The benchmark is a DIAGNOSTIC INSTRUMENT,
+  // not a leaderboard — the actionable backlog is the primary output.
+  | "projects.bmkCockpit"
+  // itotori-bmk-cockpit-history — paged run history, so a reviewer can confirm
+  // the actionable backlog is shrinking over time. Same gate as `bmkCockpit`.
+  | "projects.bmkCockpitHistory"
   | "jobs.runTable"
   | "runtime.status"
   | "queue.health"
@@ -266,6 +280,27 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "canSteer",
   ],
   ApiBenchmarkReportsResponse: ["reports"],
+  // itotori-bmk-cockpit-read-model — the benchmark cockpit read-model envelope.
+  BmkCockpitReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "localeBranchId",
+    "runId",
+    "targetLocale",
+    "kind",
+    "status",
+    "unitsScored",
+    "recordedAt",
+    "contestants",
+    "rankedRoles",
+    "humanAnchor",
+    "confidence",
+    "actionableBacklog",
+    "actionableBacklogSize",
+  ],
+  // itotori-bmk-cockpit-history — paged run-history rows envelope.
+  BmkCockpitRunHistoryPage: ["filter", "pagination", "rows"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
   WorkspaceProjectBrowseReadModel: [
     "schemaVersion",
@@ -386,6 +421,17 @@ export type ApiJobsRunTableResponse = JobsRunTableReadModel;
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
 };
+
+/**
+ * itotori-bmk-cockpit-read-model — the typed /api/projects/{projectId}/bmk-cockpit
+ * response. The cockpit composes the persisted benchmark run body onto the §10
+ * framing's vocabulary: 5 contestants (official / self / self_nocontext / fan /
+ * mtl) + the §8 human anchor + a confidence rollup + the actionable backlog.
+ */
+export type ApiBmkCockpitResponse = BmkCockpitReadModel;
+
+/** itotori-bmk-cockpit-history — paged run-history response. */
+export type ApiBmkCockpitHistoryResponse = BmkCockpitRunHistoryPage;
 
 /** ITOTORI-047 — typed queue-health read-model (outbox lag, job/retry/dead-letter). */
 export type ApiQueueHealthResponse = QueueHealthReadModel;

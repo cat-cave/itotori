@@ -454,6 +454,41 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { reports: arr },
       additionalProperties: false,
     }),
+  // itotori-bmk-cockpit-read-model — the benchmark cockpit read-model wire
+  // envelope. The deep body fields (contestants / humanAnchor / confidence /
+  // actionableBacklog) are typed objects — the schema pins the wire envelope
+  // (the top-level required keys + the schemaVersion const); the guarded
+  // runtime API asserts and re-projects the deep shape on the API boundary.
+  BmkCockpitReadModel: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitReadModel,
+      properties: {
+        generatedAt: str,
+        projectId: str,
+        localeBranchId: { type: ["string", "null"] },
+        runId: str,
+        targetLocale: str,
+        kind: { enum: ["real_run", "fixture", "replay"] },
+        status: { enum: ["succeeded", "failed", "partial"] },
+        unitsScored: num,
+        recordedAt: str,
+        contestants: arr,
+        rankedRoles: arr,
+        humanAnchor: obj,
+        confidence: obj,
+        actionableBacklog: obj,
+        actionableBacklogSize: num,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.bmk-cockpit.v0.1",
+    }),
+  // itotori-bmk-cockpit-history — paged run-history wire envelope.
+  BmkCockpitRunHistoryPage: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitRunHistoryPage,
+      properties: { filter: obj, pagination: obj, rows: arr },
+      additionalProperties: false,
+    }),
   RuntimeDashboardStatus: () =>
     object({
       required: [
@@ -745,6 +780,29 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "Benchmark report summaries.",
     pathParams: [],
     responseSchema: "ApiBenchmarkReportsResponse",
+  },
+  // itotori-bmk-cockpit-read-model — the benchmark COCKPIT read-model for one
+  // project. The benchmark is a DIAGNOSTIC INSTRUMENT (per §10 framing), not a
+  // leaderboard — the actionable backlog is the primary output. Composes the
+  // 5 contestants (official / self / self_nocontext / fan / mtl) + the §8
+  // human anchor + a confidence rollup + the actionable backlog.
+  "projects.bmkCockpit": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/bmk-cockpit",
+    operationId: "projectsBmkCockpit",
+    summary: "Benchmark cockpit read model — contestants + anchor + confidence + backlog.",
+    pathParams: ["projectId"],
+    responseSchema: "BmkCockpitReadModel",
+  },
+  // itotori-bmk-cockpit-history — paged run history so a reviewer can confirm
+  // the actionable backlog is shrinking over time.
+  "projects.bmkCockpitHistory": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/bmk-cockpit/history",
+    operationId: "projectsBmkCockpitHistory",
+    summary: "Benchmark cockpit run history.",
+    pathParams: ["projectId"],
+    responseSchema: "BmkCockpitRunHistoryPage",
   },
   "jobs.runTable": {
     method: "GET",

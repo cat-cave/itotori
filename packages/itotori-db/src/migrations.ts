@@ -312,6 +312,10 @@ export const migrations = [
     id: "0063_translation_memory_check_constraints",
     file: "0063_translation_memory_check_constraints.sql",
   },
+  {
+    id: "0064_benchmark_runs",
+    file: "0064_benchmark_runs.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
