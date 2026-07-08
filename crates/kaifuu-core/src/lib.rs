@@ -228,6 +228,7 @@ pub mod rgss3_smoke;
 pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
+pub mod wolf_encrypted_smoke;
 pub mod wolf_helper_boundary;
 pub mod wolf_protection_detector;
 pub mod wolf_readiness;
@@ -249,6 +250,16 @@ pub use bgi_detector_fixture::{
     BgiDetectorReport, read_bgi_detector_fixture, run_bgi_detector_fixture,
 };
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+pub use wolf_encrypted_smoke::{
+    WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID, WOLF_ENCRYPTED_SMOKE_CONTAINER,
+    WOLF_ENCRYPTED_SMOKE_MARKER, WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID,
+    WOLF_ENCRYPTED_SMOKE_SCHEMA_VERSION, WOLF_ENCRYPTED_SMOKE_SUPPORT_BOUNDARY,
+    WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF, WolfEncryptedArchiveSource, WolfEncryptedCryptoProfile,
+    WolfEncryptedMemberDigest, WolfEncryptedPatchProof, WolfEncryptedSmokeError,
+    WolfEncryptedSmokeFixture, WolfEncryptedSmokeReport, WolfEncryptedSmokeStage,
+    WolfEncryptedSmokeStageOutcome, build_synthetic_wolf_encrypted_archive,
+    run_wolf_encrypted_smoke_from_fixture, run_wolf_encrypted_smoke_from_path,
+};
 pub use wolf_helper_boundary::{
     WOLF_HELPER_BOUNDARY_REPORT_SCHEMA_VERSION, WOLF_HELPER_BOUNDARY_SCHEMA_VERSION,
     WOLF_HELPER_BOUNDARY_SUPPORT_BOUNDARY, WolfHelperBoundaryEntryReport,
