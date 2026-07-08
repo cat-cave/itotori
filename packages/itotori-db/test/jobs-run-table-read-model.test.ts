@@ -183,7 +183,7 @@ async function seedRunTableRow(input: {
     cost: {
       costKind: providerCostKindValues.billed,
       currency: "USD",
-      amountMicrosUsd: 12_500,
+      amountMicrosUsd: 12_500, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     },
     routingPosture: { zdr: input.zdr, data_collection: "deny", allow_fallbacks: true },
   });
@@ -209,7 +209,7 @@ async function seedRunTableRow(input: {
       prompt_tokens: 500,
       completion_tokens: 200,
       total_tokens: 700,
-      cost: 0.0125,
+      cost: 0.0125, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     },
     fallbackChain:
       input.requestedModelId === input.actualModelId
