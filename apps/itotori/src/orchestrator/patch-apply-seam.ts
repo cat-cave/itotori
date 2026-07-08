@@ -34,8 +34,6 @@
 // shell.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import type {
   AssetDecisionRecord,
   AuthorizationActor,
@@ -70,6 +68,7 @@ import type {
   SourceBridgeView,
 } from "../patch-export/source-bridge-view.js";
 import type { DrivenPatchReport, TranslationScope } from "./project-driven-executor.js";
+import { resolveNativeCli } from "../native-cli.js";
 
 // ---------------------------------------------------------------------------
 // (1) Production DraftArtifactBundle loader — real executor drafts, no fixture
@@ -443,38 +442,7 @@ export function resolveKaifuuCli(env: NodeJS.ProcessEnv): {
   command: string;
   prefixArgs: string[];
 } {
-  const explicit = env.ITOTORI_KAIFUU_BIN;
-  if (explicit !== undefined && explicit.length > 0 && isExecutableFile(explicit)) {
-    return { command: explicit, prefixArgs: [] };
-  }
-  const candidates: string[] = [];
-  if (env.ITOTORI_LIBEXEC_DIR !== undefined && env.ITOTORI_LIBEXEC_DIR.length > 0) {
-    candidates.push(join(env.ITOTORI_LIBEXEC_DIR, "kaifuu-cli"));
-    candidates.push(join(env.ITOTORI_LIBEXEC_DIR, "kaifuu-cli.exe"));
-  }
-  const targetDirs: string[] = [];
-  if (env.CARGO_TARGET_DIR !== undefined && env.CARGO_TARGET_DIR.length > 0) {
-    targetDirs.push(env.CARGO_TARGET_DIR);
-  }
-  for (const dir of targetDirs) {
-    candidates.push(join(dir, "release", "kaifuu-cli"));
-    candidates.push(join(dir, "debug", "kaifuu-cli"));
-  }
-  for (const candidate of candidates) {
-    if (isExecutableFile(candidate)) {
-      return { command: candidate, prefixArgs: [] };
-    }
-  }
-  // Dev-checkout fallback: drive the crate through cargo (matches run.mjs).
-  return { command: "cargo", prefixArgs: ["run", "-p", "kaifuu-cli", "--quiet", "--"] };
-}
-
-function isExecutableFile(path: string): boolean {
-  try {
-    return existsSync(path) && statSync(path).isFile();
-  } catch {
-    return false;
-  }
+  return resolveNativeCli("kaifuu-cli", env);
 }
 
 function defaultRunProcess(

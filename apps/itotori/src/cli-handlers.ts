@@ -126,6 +126,7 @@ import {
   VisionGateRejectedError,
   type RedactionMode,
 } from "./render-gate/index.js";
+import { runNativeCli, type NativeCliRunner } from "./native-cli.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -213,6 +214,7 @@ export type ItotoriCliDependencies = {
   io: JsonFileStore;
   migrateDatabase(): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
+  nativeCli?: NativeCliRunner;
 };
 
 export async function runItotoriCliCommand(
@@ -266,6 +268,12 @@ export async function runItotoriCliCommand(
       break;
     case "export-patch-v2":
       await runExportPatchV2(args, dependencies);
+      break;
+    case "patch":
+      await runPatchCommand(args, dependencies);
+      break;
+    case "validate":
+      await runValidateCommand(args, dependencies);
       break;
     case "ingest-runtime":
       await runIngestRuntime(args, dependencies);
@@ -349,6 +357,116 @@ export async function runItotoriCliCommand(
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
+}
+
+async function runPatchCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const sourceRoot = requiredFlag(args, "--source");
+  const targetRoot = requiredFlag(args, "--target");
+  const bundlePath = requiredFlag(args, "--bundle");
+  const scope = requiredFlag(args, "--scope");
+  if (scope !== "dialogue-only" && scope !== "dialogue+choices") {
+    throw new Error(
+      `itotori patch: --scope must be 'dialogue-only' or 'dialogue+choices', got '${scope}'`,
+    );
+  }
+  const nativeArgs = [
+    "patch",
+    "--engine",
+    "reallive",
+    "--bundle",
+    bundlePath,
+    "--source",
+    sourceRoot,
+    "--target",
+    targetRoot,
+    "--scope",
+    scope,
+  ];
+  if (args.includes("--force")) {
+    nativeArgs.push("--force");
+  }
+  runNativeCommandOrThrow("patch", "kaifuu-cli", nativeArgs, dependencies.nativeCli);
+}
+
+async function runValidateCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const seenPath = requiredFlag(args, "--seen");
+  const scene = requiredFlag(args, "--scene");
+  const replayLogPath = requiredFlag(args, "--replay-log");
+  const gameexePath = requiredFlag(args, "--gameexe");
+  const gameDir = requiredFlag(args, "--game-dir");
+  const artifactRoot = requiredFlag(args, "--artifact-root");
+  const renderOutputPath = requiredFlag(args, "--render-output");
+  const redaction = optionalFlag(args, "--redaction") ?? "on";
+  if (redaction !== "on" && redaction !== "off") {
+    throw new Error(`itotori validate: --redaction must be 'on' or 'off', got '${redaction}'`);
+  }
+
+  const replayArgs = [
+    "replay-validate",
+    "--engine",
+    "reallive",
+    "--seen",
+    seenPath,
+    "--scene",
+    scene,
+    "--print-replay-log",
+    replayLogPath,
+  ];
+  if (args.includes("--print-textlines")) {
+    replayArgs.push("--print-textlines");
+  }
+  runNativeCommandOrThrow("validate replay", "utsushi-cli", replayArgs, dependencies.nativeCli);
+
+  const renderArgs = [
+    "render-validate",
+    "--engine",
+    "reallive",
+    "--seen",
+    seenPath,
+    "--scene",
+    scene,
+    "--gameexe",
+    gameexePath,
+    "--game-dir",
+    gameDir,
+    "--artifact-root",
+    artifactRoot,
+    "--redaction",
+    redaction,
+    "--output",
+    renderOutputPath,
+  ];
+  appendOptionalFlag(renderArgs, args, "--source-seen");
+  appendOptionalFlag(renderArgs, args, "--bg-asset");
+  appendOptionalFlag(renderArgs, args, "--private-artifact-root");
+  appendOptionalFlag(renderArgs, args, "--run-id");
+  appendOptionalFlag(renderArgs, args, "--expect-text-contains");
+  appendOptionalFlag(renderArgs, args, "--width");
+  appendOptionalFlag(renderArgs, args, "--height");
+  runNativeCommandOrThrow("validate render", "utsushi-cli", renderArgs, dependencies.nativeCli);
+}
+
+function runNativeCommandOrThrow(
+  commandName: string,
+  bin: "kaifuu-cli" | "utsushi-cli",
+  args: string[],
+  nativeCli: NativeCliRunner | undefined,
+): void {
+  const result = runNativeCli(bin, args, nativeCli);
+  if (result.status !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || "<no output>";
+    throw new Error(
+      `itotori ${commandName}: ${bin} failed with status ${String(result.status)}: ${detail}`,
+    );
+  }
+  if (result.stdout.length > 0) process.stdout.write(result.stdout);
+  if (result.stderr.length > 0) process.stderr.write(result.stderr);
 }
 
 async function runTelemetrySummaryHandler(
@@ -1508,6 +1626,13 @@ function optionalFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   const value = args[index + 1];
   return index >= 0 && value ? value : undefined;
+}
+
+function appendOptionalFlag(target: string[], source: string[], name: string): void {
+  const value = optionalFlag(source, name);
+  if (value !== undefined) {
+    target.push(name, value);
+  }
 }
 
 function parseBooleanFlag(value: string, name: string): boolean {
