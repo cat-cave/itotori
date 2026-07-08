@@ -27,6 +27,7 @@ import {
   carveArchiveIntoWorks,
   resolveEffectiveScope,
   WorkCarveError,
+  type CarveWorkEntryOverride,
   type ScopeCharacter,
   type ScopeGlossaryEntry,
   type SharedScope,
@@ -284,6 +285,228 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     const a = carveArchiveIntoWorks(GAME_SELECT_DECODE, { archiveRef: ARCHIVE });
     const b = carveArchiveIntoWorks(GAME_SELECT_DECODE, { archiveRef: ARCHIVE });
     expect(a).toEqual(b);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OPERATOR entry-scene override — the deterministic escape hatch for the
+// `game-select-unresolved-options` case (the real Sweetie HD scene-2 title
+// MENU). The operator pins the base (and/or fandisk) entry scene(s) in config
+// and carve roots the works DETERMINISTICALLY from them, bypassing the
+// unresolvable game-select. A whole-game localize run targets base-only (one
+// entry scene) or base+fandisk (two) via this config field.
+//
+// The fixture mirrors the REAL Sweetie HD unresolved shape: scene 2 is a
+// `button-object` TITLE MENU whose options are NOT enumerable on the select
+// scene (the carve reports `game-select-unresolved-options` without the
+// override), while the base root (scene 100) and fandisk root (scene 500) ARE
+// present in the decode — the operator pins them and carve roots from there.
+// Scene ids + opcode-shape only; NO game bytes.
+const UNRESOLVED_TITLE_MENU_ARCHIVE: NarrativeStructure = {
+  schemaVersion: "utsushi.narrative-structure.v1",
+  entryScene: 2,
+  sceneDispatchOrder: [2, 3, 100, 101, 500],
+  scenes: [
+    {
+      sceneId: 2,
+      selectionControl: "button-object",
+      nextScene: 3,
+      messages: [],
+      choices: [],
+    },
+    { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+    {
+      sceneId: 100,
+      selectionControl: "none",
+      nextScene: 101,
+      messages: [
+        { order: 0, speaker: "Rin", text: "Base-game opening.", textSurface: null },
+        { order: 1, speaker: "Mei", text: "You're early.", textSurface: null },
+      ],
+      choices: [],
+    },
+    {
+      sceneId: 101,
+      selectionControl: "none",
+      nextScene: null,
+      messages: [{ order: 0, speaker: "Rin", text: "Let's go.", textSurface: null }],
+      choices: [],
+    },
+    {
+      sceneId: 500,
+      selectionControl: "none",
+      nextScene: null,
+      messages: [
+        { order: 0, speaker: "Rin", text: "It's been a while.", textSurface: null },
+        { order: 1, speaker: "Sae", text: "A fandisk-only face.", textSurface: null },
+      ],
+      choices: [],
+    },
+  ],
+};
+
+describe("carveArchiveIntoWorks — OPERATOR entry-scene override (game-select-unresolved escape hatch)", () => {
+  it("WITHOUT the override, the title-menu game-select reports the honest unresolved ambiguity", () => {
+    // The real Sweetie HD boundary: scene 2 is a button-object title MENU with
+    // no enumerable options → the carve CANNOT root the works from the decode.
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("game-select-unresolved-options");
+    expect(carve.derivation.gameSelectScene).toBe(2);
+    expect(carve.works).toHaveLength(1);
+    expect(carve.derivation.notes).toContain("title MENU");
+  });
+
+  it("WITH the override, carve deterministically roots the base + fandisk works from the entry scenes", () => {
+    const entryScenes: CarveWorkEntryOverride[] = [
+      { scene: 100, label: "Sweetie (base story)", workSlug: "base" },
+      { scene: 500, label: "Sweetie After (fandisk)", workSlug: "fandisk" },
+    ];
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      entryScenes,
+    });
+    expect(carve.derivation.signal).toBe("operator-entry-scene-override");
+    // Deterministic base + fandisk scope, in declaration order.
+    expect(carve.works).toHaveLength(2);
+    expect(carve.works.map((w) => w.branchEntryScene)).toEqual([100, 500]);
+    expect(carve.works.map((w) => w.optionIndex)).toEqual([0, 1]);
+    // Stable operator-supplied workIds (slug-suffixed) for scope-graph seeding.
+    expect(carve.works.map((w) => w.workId)).toEqual([
+      "sweetie-hd#work:entry:base",
+      "sweetie-hd#work:entry:fandisk",
+    ]);
+    // Labels rode through → the operator naming signal.
+    expect(carve.works[0]!.optionLabel).toContain("base");
+    expect(carve.works[1]!.optionLabel).toContain("fandisk");
+    expect(carve.derivation.namingSignal).toBe("provided");
+    expect(carve.derivation.gameSelectScene).toBeNull();
+    expect(carve.derivation.selectionControl).toBe("none");
+    // Each work's magnitude + speakers reduced from its rooted scene.
+    expect(carve.works[0]!.branchMessageCount).toBe(2);
+    expect(carve.works[0]!.branchSpeakers).toEqual(["Rin", "Mei"]);
+    expect(carve.works[1]!.branchSpeakers).toEqual(["Rin", "Sae"]);
+  });
+
+  it("targets BASE-ONLY via config (one entry scene → one work)", () => {
+    // A whole-game localize run can scope to base-only by supplying just the
+    // base entry scene — the fandisk is excluded from the work-set.
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      entryScenes: [{ scene: 100, label: "base", workSlug: "base" }],
+    });
+    expect(carve.derivation.signal).toBe("operator-entry-scene-override");
+    expect(carve.works).toHaveLength(1);
+    expect(carve.works[0]!.branchEntryScene).toBe(100);
+    expect(carve.works[0]!.workId).toBe("sweetie-hd#work:entry:base");
+  });
+
+  it("targets FANDISK-ONLY via config (the other single entry scene)", () => {
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      entryScenes: [{ scene: 500, label: "fandisk", workSlug: "fandisk" }],
+    });
+    expect(carve.works).toHaveLength(1);
+    expect(carve.works[0]!.branchEntryScene).toBe(500);
+  });
+
+  it("the override TAKES PRECEDENCE over the gameSelectScene override (roots win)", () => {
+    // Even with a gameSelectScene pinned, the entryScenes override is the more
+    // direct rooting and wins — the game-select is moot once roots are supplied.
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      gameSelectScene: 2,
+      entryScenes: [
+        { scene: 100, workSlug: "base" },
+        { scene: 500, workSlug: "fandisk" },
+      ],
+    });
+    expect(carve.derivation.signal).toBe("operator-entry-scene-override");
+    expect(carve.derivation.gameSelectScene).toBeNull();
+    expect(carve.works.map((w) => w.branchEntryScene)).toEqual([100, 500]);
+  });
+
+  it("reports namingSignal=unknown when the override carries no labels", () => {
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      entryScenes: [{ scene: 100 }, { scene: 500 }],
+    });
+    expect(carve.derivation.namingSignal).toBe("unknown");
+    // workIds fall back to the entry scene id when no slug is supplied.
+    expect(carve.works.map((w) => w.workId)).toEqual([
+      "sweetie-hd#work:entry:100",
+      "sweetie-hd#work:entry:500",
+    ]);
+  });
+
+  it("REJECTS an entry scene NOT present in the decode (honest validation)", () => {
+    expect(() =>
+      carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+        archiveRef: ARCHIVE,
+        entryScenes: [{ scene: 4242 }],
+      }),
+    ).toThrow(WorkCarveError);
+  });
+
+  it("REJECTS two works rooted at the SAME scene (not disjoint)", () => {
+    expect(() =>
+      carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+        archiveRef: ARCHIVE,
+        entryScenes: [{ scene: 100 }, { scene: 100 }],
+      }),
+    ).toThrow(WorkCarveError);
+  });
+
+  it("REJECTS a duplicate workSlug", () => {
+    expect(() =>
+      carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+        archiveRef: ARCHIVE,
+        entryScenes: [
+          { scene: 100, workSlug: "x" },
+          { scene: 500, workSlug: "x" },
+        ],
+      }),
+    ).toThrow(WorkCarveError);
+  });
+
+  it("is deterministic (same override + decode → identical carve)", () => {
+    const opts = {
+      archiveRef: ARCHIVE,
+      entryScenes: [
+        { scene: 100, label: "base", workSlug: "base" },
+        { scene: 500, label: "fandisk", workSlug: "fandisk" },
+      ],
+    } as const;
+    const a = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, opts);
+    const b = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, opts);
+    expect(a).toEqual(b);
+  });
+
+  it("the override-rooted carve flows into the scope graph identically to a decoded carve", () => {
+    // The override produces a WorkCarve the scope-graph builder consumes the
+    // SAME way as a decoded game-select carve — per-work seeds key off the
+    // stable operator workIds.
+    const carve = carveArchiveIntoWorks(UNRESOLVED_TITLE_MENU_ARCHIVE, {
+      archiveRef: ARCHIVE,
+      entryScenes: [
+        { scene: 100, label: "base", workSlug: "base" },
+        { scene: 500, label: "fandisk", workSlug: "fandisk" },
+      ],
+    });
+    const graph = buildScopeGraph({
+      shared: sharedScope(),
+      carve,
+      perWork: {
+        "sweetie-hd#work:entry:base": { structure: BASE_WORK_STRUCTURE },
+        "sweetie-hd#work:entry:fandisk": { structure: FANDISK_WORK_STRUCTURE },
+      },
+    });
+    expect(graph.titleToWorks[ARCHIVE]).toEqual([
+      "sweetie-hd#work:entry:base",
+      "sweetie-hd#work:entry:fandisk",
+    ]);
+    // Both works inherit the shared scope's brand character.
+    const baseEff = resolveEffectiveScope(graph, "sweetie-hd#work:entry:base");
+    expect(baseEff.characters.find((c) => c.characterId === "rin")?.provenance).toBe("inherited");
   });
 });
 

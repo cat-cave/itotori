@@ -37,15 +37,23 @@ export type WorkCarveDerivation = {
    * `game-select-unresolved-options` — a button-object game-select IDENTIFIES
    * the archive as multi-work, but its option branches are not enumerable on
    * the select scene (Sweetie HD scene 2: a title MENU whose goto_case($store)
-   * branches dispatch to menu/config scenes + a store-relative New-Game routine
-   * that does not decode, not to enumerable per-work story roots); rooting the
-   * works needs upstream/operator context the decode does not provide.
-   * `single-work-no-game-select` — no button-object game-select present, the
-   * whole archive is ONE work (any text-window selects are in-story branches).
+   * branches dispatch to menu/config scenes + a store-relative New-Game routine,
+   * not to enumerable per-work story roots); rooting the works needs
+   * upstream/operator context the decode does not provide.
+   * `operator-entry-scene-override` — the operator supplied the base (and/or
+   * fandisk) entry scene(s) directly via `CarveOptions.entryScenes`, so the
+   * carve rooted the works DETERMINISTICALLY from those entry scenes without
+   * going through the decoded game-select (the escape hatch for the
+   * `game-select-unresolved-options` case). A whole-archive localize run can
+   * target base-only (one entry scene) or base+fandisk (two) via this override.
+   * `single-work-no-game-select` — no button-object game-select present AND no
+   * operator entry-scene override, the whole archive is ONE work (any text-window
+   * selects are in-story branches).
    */
   signal:
     | "game-select-option-branches"
     | "game-select-unresolved-options"
+    | "operator-entry-scene-override"
     | "single-work-no-game-select";
   /** The scene whose select carves the archive (the game-select), or null. */
   gameSelectScene: number | null;

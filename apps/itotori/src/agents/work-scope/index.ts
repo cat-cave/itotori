@@ -14,7 +14,7 @@
 //     (`buildWorkScopedContext` / `buildWorkScopedSliceContext`).
 
 export * from "./shapes.js";
-export { carveArchiveIntoWorks, type CarveOptions } from "./carve.js";
+export { carveArchiveIntoWorks, type CarveOptions, type CarveWorkEntryOverride } from "./carve.js";
 export {
   buildScopeGraph,
   resolveEffectiveScope,

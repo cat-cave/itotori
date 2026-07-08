@@ -73,6 +73,63 @@ export type CarveOptions = {
    * button-object game-select the headless decode cannot cross into).
    */
   gameSelectScene?: number;
+  /**
+   * OPERATOR entry-scene override — the deterministic escape hatch for the
+   * `game-select-unresolved-options` case. Roots the base (and/or fandisk)
+   * works DIRECTLY from operator-supplied entry scenes, bypassing the decoded
+   * game-select entirely. One work is carved per declared entry scene, in
+   * declaration order; each entry scene is validated to be PRESENT in the
+   * decode and the entry scenes must be DISTINCT (the disjoint-works
+   * invariant).
+   *
+   * Whole-game targeting via config: supply ONE entry scene to target a
+   * BASE-ONLY localize run, or TWO (base + fandisk) to target both. This is
+   * the seam an unattended whole-game localize run consumes when the decoded
+   * game-select is a title MENU that does not statically enumerate per-work
+   * story roots.
+   *
+   * Takes precedence over `gameSelectScene` when both are supplied (the entry
+   * scenes are the more direct rooting — the game-select is moot once the work
+   * roots are pinned).
+   *
+   * Sweetie HD (Sukara/Oshioki) — how an operator finds the base + fandisk
+   * entry scenes: all 198 populated scenes now decode (decode-100), but the
+   * decode carries NO per-work entry-scene list (the game-select is a title
+   * MENU and Gameexe.ini carries no per-work entry-scene list either), so
+   * which decoded scene roots the base vs the fandisk is NOT statically
+   * determinable. An operator resolves it OUTSIDE the decode and pins it here:
+   *
+   *   1. play the title to the New-Game branch point and record the scene id
+   *      the base-game path and the fandisk path each dispatch into (the
+   *      `farcall`/`jump` target the New-Game routine follows per branch), or
+   *   2. read it off the game's own scenario layout / a community scene-id map,
+   *      or
+   *   3. derive it from the dispatch graph the structure_export emits (the
+   *      New-Game routine's `goto_case($store)` arms route to the base root and
+   *      the fandisk root respectively — pick the two story-root scenes).
+   *
+   * The override is GAME-AGNOSTIC config/scoping logic: it carries only entry
+   * scene METADATA (scene ids + optional labels/slugs), never game bytes.
+   */
+  entryScenes?: CarveWorkEntryOverride[];
+};
+
+/**
+ * One operator-supplied work entry scene — the deterministic rooting unit for
+ * the `entryScenes` override. The scene MUST exist in the decoded archive; the
+ * carve validates presence (and distinctness across the declared set).
+ */
+export type CarveWorkEntryOverride = {
+  /** The scene id that roots this work's subtree (must exist in the decode). */
+  scene: number;
+  /** Optional operator label (e.g. "base game", "fandisk") — a naming signal. */
+  label?: string;
+  /**
+   * Optional stable slug for the workId (e.g. "base", "fandisk"). When absent
+   * the workId suffix is `entry:<scene>`. Stable across runs so scope-graph
+   * seeds can key off it. Must be unique within the override set.
+   */
+  workSlug?: string;
 };
 
 function distinctSpeakers(messages: ReadonlyArray<NarrativeMessage>): string[] {
@@ -143,6 +200,89 @@ function pickGameSelectScene(
 }
 
 /**
+ * Root the works DETERMINISTICALLY from the operator-supplied entry-scene
+ * override — the escape hatch for the `game-select-unresolved-options` case.
+ *
+ * Validates every declared entry scene is PRESENT in the decode and that the
+ * entry scenes (and work slugs) are DISTINCT — the disjoint-works invariant
+ * the decoded game-select path also enforces. Emits the
+ * `operator-entry-scene-override` derivation signal.
+ */
+function carveFromOperatorEntryScenes(
+  structure: NarrativeStructure,
+  overrides: CarveWorkEntryOverride[],
+  archiveRef: string,
+): WorkCarve {
+  if (overrides.length === 0) {
+    throw new WorkCarveError("entryScenes override must declare at least one entry scene");
+  }
+  const sceneById = new Map(structure.scenes.map((s) => [s.sceneId, s] as const));
+  const seenScenes = new Set<number>();
+  const seenSlugs = new Set<string>();
+  const works: CarvedWork[] = overrides.map((entry, index) => {
+    const scene = sceneById.get(entry.scene);
+    if (scene === undefined) {
+      throw new WorkCarveError(
+        `entryScenes[${index}].scene ${entry.scene} is not present in the decoded archive`,
+      );
+    }
+    if (seenScenes.has(entry.scene)) {
+      throw new WorkCarveError(
+        `entryScenes[${index}].scene ${entry.scene} duplicates an earlier entry scene ` +
+          `(works must root DISTINCT subtrees)`,
+      );
+    }
+    seenScenes.add(entry.scene);
+    const slug = entry.workSlug;
+    if (slug !== undefined) {
+      if (slug.length === 0) {
+        throw new WorkCarveError(`entryScenes[${index}].workSlug must be a non-empty string`);
+      }
+      if (seenSlugs.has(slug)) {
+        throw new WorkCarveError(
+          `entryScenes[${index}].workSlug "${slug}" duplicates an earlier entry's slug`,
+        );
+      }
+      seenSlugs.add(slug);
+    }
+    return {
+      workId: `${archiveRef}#work:entry:${slug ?? entry.scene}`,
+      optionIndex: index,
+      optionLabel: entry.label ?? "",
+      branchEntryScene: entry.scene,
+      branchMessageCount: scene.messages.length,
+      branchSpeakers: distinctSpeakers(scene.messages),
+    };
+  });
+
+  const labelsPresent = works.every((w) => w.optionLabel.length > 0);
+  const namingSignal: WorkCarveDerivation["namingSignal"] = labelsPresent ? "provided" : "unknown";
+  const nameNote =
+    namingSignal === "provided"
+      ? "Works are named from the operator-supplied entry-scene labels (the operator naming signal)."
+      : "No operator labels supplied: works are named by entry scene only (supply `label` for a base/fandisk naming signal).";
+
+  return {
+    archiveRef,
+    works,
+    derivation: {
+      signal: "operator-entry-scene-override",
+      gameSelectScene: null,
+      gameSelectSelectedBy: "none",
+      selectionControl: "none",
+      namingSignal,
+      notes:
+        `Operator entry-scene override rooted ${String(works.length)} work(s) ` +
+        `deterministically from declared entry scene(s) (${works
+          .map((w) => String(w.branchEntryScene))
+          .join(", ")}), bypassing the decoded game-select. ` +
+        `Each entry scene was validated present in the decode and the entry scenes are distinct. ` +
+        `${nameNote}`,
+    },
+  };
+}
+
+/**
  * Carve the archive into narrative WORKS from its decoded game-select.
  *
  * Deterministic: given the same decoded `NarrativeStructure` it always yields
@@ -153,6 +293,14 @@ export function carveArchiveIntoWorks(
   options: CarveOptions = {},
 ): WorkCarve {
   const archiveRef = options.archiveRef ?? "archive";
+
+  // OPERATOR entry-scene override takes precedence: when the operator pins the
+  // base (and/or fandisk) entry scene(s), carve roots the works directly from
+  // them — the decoded game-select is moot once the work roots are supplied.
+  if (options.entryScenes !== undefined && options.entryScenes.length > 0) {
+    return carveFromOperatorEntryScenes(structure, options.entryScenes, archiveRef);
+  }
+
   const {
     sceneId: gameSelectScene,
     how,
