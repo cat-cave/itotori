@@ -44,6 +44,7 @@ import { buildReviewerTriggeredRerunJobInputs } from "../src/reviewer/repair-rer
 import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionComparisonPort,
+  type WorkspaceCorrectionEditPersistPort,
 } from "../src/workspace/correction-service.js";
 import {
   readyContextFixture,
@@ -218,12 +219,6 @@ class StubEditRepository {
     }
     return record;
   }
-
-  async loadCorrectionEditsByBranch(
-    localeBranchId: string,
-  ): Promise<WorkspaceCorrectionEditRecord[]> {
-    return this.recorded.filter((row) => row.localeBranchId === localeBranchId);
-  }
 }
 
 function buildService(): {
@@ -243,8 +238,6 @@ function buildService(): {
     importPort: manualFeedback,
     editRepository: {
       recordCorrectionEdit: (input) => editRepo.recordCorrectionEdit(input),
-      loadCorrectionEditsByBranch: (localeBranchId) =>
-        editRepo.loadCorrectionEditsByBranch(localeBranchId),
     },
     comparisonPort,
     now: () => new Date("2026-06-30T00:00:00Z"),
@@ -446,8 +439,8 @@ describe("WorkspaceCorrectionService — submit", () => {
       ],
     });
 
-    const en = await editRepo.loadCorrectionEditsByBranch("branch-en");
-    const fr = await editRepo.loadCorrectionEditsByBranch("branch-fr");
+    const en = editRepo.recorded.filter((row) => row.localeBranchId === "branch-en");
+    const fr = editRepo.recorded.filter((row) => row.localeBranchId === "branch-fr");
     expect(en).toHaveLength(1);
     expect(fr).toHaveLength(1);
     expect(en[0]?.localeBranchId).toBe("branch-en");
@@ -545,8 +538,6 @@ describe("WorkspaceCorrectionService — preview", () => {
       importPort: manualFeedback,
       editRepository: {
         recordCorrectionEdit: (input) => editRepo.recordCorrectionEdit(input),
-        loadCorrectionEditsByBranch: (localeBranchId) =>
-          editRepo.loadCorrectionEditsByBranch(localeBranchId),
       },
       comparisonPort: {
         loadComparisonContext: async () => ({
@@ -583,8 +574,6 @@ describe("WorkspaceCorrectionService — preview", () => {
       importPort: manualFeedback,
       editRepository: {
         recordCorrectionEdit: (input) => editRepo.recordCorrectionEdit(input),
-        loadCorrectionEditsByBranch: (localeBranchId) =>
-          editRepo.loadCorrectionEditsByBranch(localeBranchId),
       },
       comparisonPort: {
         loadComparisonContext: async () => readyContextFixture(),
@@ -620,5 +609,31 @@ describe("WorkspaceCorrectionService — preview", () => {
     expect(preview.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
       "workspace_correction_read_permission_denied",
     );
+  });
+});
+
+// ITOTORI-118 — genaudit2-15-workspace-nits-dead-wired-loadcorrecti.
+// Pins the resolution: the `WorkspaceCorrectionEditPersistPort` is write-only;
+// the read path is the DB repository directly. The dead-wired
+// `loadCorrectionEditsByBranch` that previously sat on this port (wired into
+// `database-services.ts` but never called by the service) is dropped, and no
+// dangling reference remains. If the port ever re-gains a read method, this
+// test fails to typecheck.
+describe("WorkspaceCorrectionService — port shape (genaudit2-15 dead-wired pin)", () => {
+  it("accepts an editRepository port that exposes ONLY recordCorrectionEdit (no loadCorrectionEditsByBranch)", () => {
+    const port: WorkspaceCorrectionEditPersistPort = {
+      recordCorrectionEdit: async () => {
+        throw new Error("not used in this pin test");
+      },
+    };
+    // Runtime belt-and-braces: the dead method must not be on the port.
+    expect(
+      (port as unknown as Record<string, unknown>)["loadCorrectionEditsByBranch"],
+    ).toBeUndefined();
+    // Compile-time pin: only the write method is on the type. Assigning any
+    // object literal that names a `loadCorrectionEditsByBranch` would fail to
+    // typecheck against `WorkspaceCorrectionEditPersistPort` — that is the
+    // structural guarantee the fix relies on.
+    expect(typeof port.recordCorrectionEdit).toBe("function");
   });
 });

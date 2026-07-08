@@ -55,10 +55,20 @@ import {
 import type { WorkspaceCorrectionFeedbackLoopPort } from "./correction-feedback-loop.js";
 import type { WorkspaceRuntimeEvidenceLink } from "./read-model.js";
 
-/** Actor-bound persistence port (the DB wiring binds the authorization actor). */
+/**
+ * Actor-bound persistence port (the DB wiring binds the authorization actor).
+ *
+ * Write-only: the correction service records edit-history rows but never reads
+ * them back. Reads of the edit history go through the DB repository directly
+ * (`ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch`); surfacing
+ * those reads to the workspace is a follow-on read-route gap
+ * (ITOTORI-118 / workspace-correction-edits chain). Keeping the service port
+ * write-only means the dead-wired read method that previously sat on this port
+ * — wired into `database-services.ts` but never called by the service — has
+ * been removed. The DB capability is preserved unchanged for any direct caller.
+ */
 export interface WorkspaceCorrectionEditPersistPort {
   recordCorrectionEdit(input: WorkspaceCorrectionEditInput): Promise<WorkspaceCorrectionEditRecord>;
-  loadCorrectionEditsByBranch(localeBranchId: string): Promise<WorkspaceCorrectionEditRecord[]>;
 }
 
 /** Reuses the reviewer detail read-model as the before/after context source. */

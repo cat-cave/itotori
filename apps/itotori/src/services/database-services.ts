@@ -433,11 +433,13 @@ export async function withDatabaseItotoriServices<T>(
     });
     const workspaceCorrectionService = new WorkspaceCorrectionService({
       importPort: manualFeedbackService,
+      // The correction service's edit-history port is write-only; reads of the
+      // edit history bypass the service and hit
+      // `ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch` directly
+      // (follow-on read-route gap; the DB capability is preserved unchanged).
       editRepository: {
         recordCorrectionEdit: (input) =>
           workspaceCorrectionRepository.recordCorrectionEdit(localUserActor, input),
-        loadCorrectionEditsByBranch: (localeBranchId) =>
-          workspaceCorrectionRepository.loadCorrectionEditsByBranch(localUserActor, localeBranchId),
       },
       comparisonPort: {
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),

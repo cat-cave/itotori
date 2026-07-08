@@ -474,10 +474,4 @@ class StubEditRepository {
     }
     return record;
   }
-
-  async loadCorrectionEditsByBranch(
-    localeBranchId: string,
-  ): Promise<WorkspaceCorrectionEditRecord[]> {
-    return this.recorded.filter((row) => row.localeBranchId === localeBranchId);
-  }
 }
