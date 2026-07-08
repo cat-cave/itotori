@@ -303,6 +303,20 @@ impl Xp3ProductionVariant {
     fn expected_member_ids(&self) -> Vec<String> {
         self.members.iter().map(|(id, _)| id.clone()).collect()
     }
+
+    /// Does any registry-held key holder on this variant — the ground-truth
+    /// `archive_key` OR the operator's `resolved_key_evidence` — appear as a
+    /// contiguous window in `haystack`? Used by the production no-leak guard so
+    /// registry-held bytes (claimed AND unclaimed variants) are covered, not
+    /// just the resolver-held copies. Returns only a boolean; the raw bytes
+    /// never leave the [`Xp3CryptKey`] holders.
+    fn any_key_appears_in(&self, haystack: &[u8]) -> bool {
+        self.archive_key.appears_in(haystack)
+            || self
+                .resolved_key_evidence
+                .as_ref()
+                .is_some_and(|key| key.appears_in(haystack))
+    }
 }
 
 impl std::fmt::Debug for Xp3ProductionVariant {
@@ -639,20 +653,33 @@ pub fn run_xp3_production(
     };
 
     // Runtime no-leak guard: the serialized (redacted) report must never carry
-    // any resolved raw key material. The guard scans the registry/resolver-held
-    // bytes (confined to the zeroize-on-drop holders), not just the report — a
-    // hard refusal, not just a test-time check.
+    // any raw key material. The guard scans EVERY key-holding source — confined
+    // to the zeroize-on-drop holders — against the serialized report, not just
+    // the report's own fields. A hard refusal, not just a test-time check.
+    //
+    // It covers (a) the resolver-held resolved-key copies for each claimed
+    // variant, AND (b) every registry-held holder on EVERY variant in the
+    // registry — each variant's ground-truth `archive_key` and its
+    // `resolved_key_evidence`, for CLAIMED and UNCLAIMED variants alike. An
+    // unclaimed variant never enters a resolver, so without (b) its registry-
+    // held archive key could reach the report unguarded.
     let json = report
         .stable_json()
         .map_err(|error| Xp3ProductionError::Internal {
             message: error.to_string(),
         })?;
-    for resolver in &resolvers {
-        if resolver.any_key_appears_in(json.as_bytes()) {
-            return Err(Xp3ProductionError::Internal {
-                message: "refusing to emit a report that leaks raw key material".to_string(),
-            });
-        }
+    let bytes = json.as_bytes();
+    let resolver_leak = resolvers
+        .iter()
+        .any(|resolver| resolver.any_key_appears_in(bytes));
+    let registry_leak = registry
+        .variants
+        .iter()
+        .any(|variant| variant.any_key_appears_in(bytes));
+    if resolver_leak || registry_leak {
+        return Err(Xp3ProductionError::Internal {
+            message: "refusing to emit a report that leaks raw key material".to_string(),
+        });
     }
 
     Ok(report)
@@ -1449,6 +1476,140 @@ mod tests {
                 "registry-held raw key {key} reached the serialized report"
             );
         }
+    }
+
+    /// Rebuild `synthetic::production_registry` but plant, on the UNCLAIMED
+    /// variant, an `archive_key` whose raw bytes are exactly the (non-secret-
+    /// shaped) `variant_id`. An unclaimed variant's `variant_id` is emitted
+    /// verbatim in its NotClaimed report row, and the archive key of an
+    /// unclaimed variant NEVER enters a resolver — so this forces a registry-
+    /// held raw key byte into the serialized report that the resolver-held scan
+    /// alone cannot see. Only a guard that also scans EVERY registry-held holder
+    /// (claimed + unclaimed) can catch it.
+    fn registry_with_unclaimed_archive_key_planted_in_report(
+        planted_id: &str,
+    ) -> Xp3ProductionRegistry {
+        let mut registry = registry();
+        let unclaimed = registry
+            .variants
+            .iter()
+            .position(|variant| !variant.claimed)
+            .expect("the synthetic registry has an unclaimed variant");
+        let original = &registry.variants[unclaimed];
+        // The planted id must pass the report redaction (else it is scrubbed and
+        // never reaches the JSON, defeating the probe). Hyphenated lowercase ids
+        // in the style of the existing variant ids are emitted verbatim.
+        assert_eq!(
+            redact_for_log_or_report(planted_id),
+            planted_id,
+            "planted id must survive report redaction verbatim to exercise the guard"
+        );
+        let planted = Xp3ProductionVariant::new(
+            planted_id.to_string(),
+            original.crypto_profile,
+            original.surface,
+            original.secret_requirement_id.clone(),
+            original.secret_ref.clone(),
+            original.helper_workflow,
+            None,
+            original.members.clone(),
+            original.replacements.clone(),
+            false,
+            // archive_key bytes == the (verbatim-emitted) variant_id → a
+            // registry-held raw key that lands in the report, unseen by any
+            // resolver (this variant is unclaimed, so it is never resolved).
+            planted_id.as_bytes().to_vec(),
+            None,
+        );
+        registry.variants[unclaimed] = planted;
+        registry
+    }
+
+    #[test]
+    fn runtime_guard_scans_unclaimed_registry_held_archive_key() {
+        // PROVES the runtime no-leak guard covers registry-held key holders,
+        // including an UNCLAIMED variant's archive key — not merely the resolver-
+        // held copies. If the guard is narrowed back to resolver-only, the
+        // planted registry-held key byte reaches the report unguarded and this
+        // test fails (the run would succeed instead of refusing).
+        let planted_id = "kaifuu.k057.unclaimed.leak.probe";
+        let registry = registry_with_unclaimed_archive_key_planted_in_report(planted_id);
+
+        // Sanity: the per-variant registry scan primitive sees the planted key.
+        let unclaimed = registry
+            .variants
+            .iter()
+            .find(|variant| !variant.claimed)
+            .expect("unclaimed variant present");
+        assert!(
+            unclaimed.any_key_appears_in(planted_id.as_bytes()),
+            "the variant registry-held scan must see its own archive key bytes"
+        );
+
+        // And the resolver-held scan alone CANNOT see it (no resolver ever holds
+        // an unclaimed variant's archive key), so only the registry scan catches
+        // the leak below.
+        let resolver = FixtureSecretResolver::from_key_refs(vec![]);
+        assert!(
+            !resolver.any_key_appears_in(planted_id.as_bytes()),
+            "a resolver-only scan must NOT see the unclaimed registry-held key"
+        );
+
+        // The runtime guard must refuse loud because the registry-held key byte
+        // now appears in the serialized report.
+        let err = run_xp3_production(&registry, "KAIFUU-057")
+            .expect_err("the guard must refuse a report that carries a registry-held key byte");
+        match err {
+            Xp3ProductionError::Internal { message } => {
+                assert!(
+                    message.contains("leaks raw key material"),
+                    "expected the no-leak refusal, got: {message}"
+                );
+            }
+            other @ Xp3ProductionError::ClaimedVariantFailed { .. } => {
+                panic!("expected the Internal no-leak refusal, got {other}")
+            }
+        }
+
+        // Corroborate the premise: the planted registry-held key byte really is
+        // in the report the guard scanned (proving the guard, not redaction,
+        // is what stopped it).
+        let leaky_report = {
+            let mut registry = registry_with_unclaimed_archive_key_planted_in_report(planted_id);
+            // Drop ALL variants except the planted unclaimed one, then assemble
+            // the same redacted report the guard sees and confirm the byte lands.
+            registry
+                .variants
+                .retain(|variant| variant.variant_id == planted_id);
+            let outcomes = vec![Xp3ProductionOutcome::NotClaimed(
+                Xp3ProductionNotClaimedReport {
+                    variant_id: planted_id.to_string(),
+                    crypto_profile: registry.variants[0].crypto_profile,
+                    helper_workflow: registry.variants[0].helper_workflow,
+                    reason: "out of scope".to_string(),
+                },
+            )];
+            Xp3ProductionReport {
+                schema_version: XP3_PRODUCTION_SCHEMA_VERSION.to_string(),
+                capability_id: XP3_PRODUCTION_CAPABILITY_ID.to_string(),
+                source_node_id: "KAIFUU-057".to_string(),
+                support_boundary: XP3_PRODUCTION_SUPPORT_BOUNDARY.to_string(),
+                registry_id: registry.registry_id.clone(),
+                engine_family: XP3_PRODUCTION_ENGINE_FAMILY.to_string(),
+                container: XP3_PRODUCTION_CONTAINER.to_string(),
+                redaction_status: HelperRedactionStatus::Redacted,
+                claimed_profiles: vec![],
+                claimed_count: 0,
+                not_claimed_count: 1,
+                outcomes,
+                status: OperationStatus::Passed,
+            }
+        };
+        let json = leaky_report.stable_json().expect("stable json");
+        assert!(
+            json.contains(planted_id),
+            "the planted registry-held key byte must actually reach the report JSON"
+        );
     }
 
     #[test]
