@@ -53,6 +53,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import { createHash } from "node:crypto";
 import { AssetDecisionPolicyResolver } from "../asset-decisions/policy-resolver.js";
+import { defaultRepoRoot, resolveNativeCliBin } from "../native-bin/cli-bin-resolver.js";
 import {
   PatchExporter,
   type DraftArtifactBundleLoad,
@@ -68,7 +69,6 @@ import type {
   SourceBridgeView,
 } from "../patch-export/source-bridge-view.js";
 import type { DrivenPatchReport, TranslationScope } from "./project-driven-executor.js";
-import { resolveNativeCli } from "../native-cli.js";
 
 // ---------------------------------------------------------------------------
 // (1) Production DraftArtifactBundle loader — real executor drafts, no fixture
@@ -433,16 +433,22 @@ export function kaifuuScopeToken(scope: TranslationScope): string {
 }
 
 /**
- * Resolve the kaifuu-cli invocation. Prefers a resolved binary (installed
- * artifact / built target) via the SAME order the native-deps doctor uses; in
- * a dev checkout with no built binary it falls back to `cargo run -p
- * kaifuu-cli --quiet --` (what the suite runner uses).
+ * Resolve the kaifuu-cli invocation. Delegates to the shared
+ * `resolveNativeCliBin` so the kaifuu seam, the utsushi seam, and the
+ * native-deps doctor all settle on the SAME bin (env override -> libexec ->
+ * CARGO_TARGET_DIR -> repo target -> PATH), with a `cargo run -p kaifuu-cli`
+ * dev-shell fallback for a fresh checkout with no built bin (what the suite
+ * runner uses).
  */
 export function resolveKaifuuCli(env: NodeJS.ProcessEnv): {
   command: string;
   prefixArgs: string[];
 } {
-  return resolveNativeCli("kaifuu-cli", env);
+  return resolveNativeCliBin(
+    { binName: "kaifuu-cli", envVar: "ITOTORI_KAIFUU_BIN", cargoPackage: "kaifuu-cli" },
+    env,
+    { repoRoot: defaultRepoRoot() },
+  );
 }
 
 function defaultRunProcess(

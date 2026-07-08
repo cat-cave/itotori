@@ -126,7 +126,11 @@ import {
   VisionGateRejectedError,
   type RedactionMode,
 } from "./render-gate/index.js";
-import { runNativeCli, type NativeCliRunner } from "./native-cli.js";
+import {
+  runUtsushiStructureExport,
+  type RunUtsushiStructureResult,
+} from "./structure-export/utsushi-structure-seam.js";
+import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -347,6 +351,9 @@ export async function runItotoriCliCommand(
       break;
     case "vision-inspect":
       await runVisionInspectHandler(args, dependencies);
+      break;
+    case "structure-export":
+      await runStructureExportHandler(args, dependencies);
       break;
     case "reconcile-ledger-cost":
       await runReconcileLedgerCostHandler(args, dependencies);
@@ -703,6 +710,82 @@ async function runVisionInspectHandler(
   if (outcome.status === "rejected") {
     throw new VisionGateRejectedError(outcome.result.gate.failures);
   }
+}
+
+/**
+ * itotori-structure-export — the user-shaped front-door over the UTSUSHI-side
+ * narrative-structure producer (`utsushi structure`). Wraps the utsushi-cli
+ * binary so the structure-informed context the whole-game localize driver
+ * (`itotori localize`) consumes as `utsushi.narrative-structure.v1` is a
+ * first-class itotori command, not a foreign Rust bin.
+ *
+ * Required flags (no defaulting):
+ *   --gameexe <PATH>   Gameexe.ini (resolves `SEEN_START` + `#NAMAE`)
+ *   --seen <PATH>      Seen.txt compressed scene archive
+ *   --output <PATH>    where the structure JSON is written (outside the repo;
+ *                      carries copyrighted script text on real bytes)
+ * Optional:
+ *   --entry-scene <N>  override the `SEEN_START` entry scene (a route-specific
+ *                      opening, etc.); drives the dispatch-order walk from it
+ *   --max-scenes <N>   cap the dispatch-order walk at N crossed scenes
+ *
+ * The producer owns its own JSON write; a non-zero exit surfaces its stderr
+ * verbatim (already prefixed `utsushi.structure.<step>:`) through a typed
+ * `UtsushiStructureExportError`.
+ */
+async function runStructureExportHandler(
+  args: string[],
+  _dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const gameexePath = requiredFlag(args, "--gameexe");
+  const seenPath = requiredFlag(args, "--seen");
+  const outputPath = requiredFlag(args, "--output");
+  const entrySceneRaw = optionalFlag(args, "--entry-scene");
+  const maxScenesRaw = optionalFlag(args, "--max-scenes");
+
+  let entryScene: number | undefined;
+  if (entrySceneRaw !== undefined) {
+    const parsed = Number.parseInt(entrySceneRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0 || String(parsed) !== entrySceneRaw) {
+      throw new Error(
+        `structure-export refused: --entry-scene '${entrySceneRaw}' must be a non-negative integer`,
+      );
+    }
+    entryScene = parsed;
+  }
+
+  let maxScenes: number | undefined;
+  if (maxScenesRaw !== undefined) {
+    const parsed = Number.parseInt(maxScenesRaw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0 || String(parsed) !== maxScenesRaw) {
+      throw new Error(
+        `structure-export refused: --max-scenes '${maxScenesRaw}' must be a positive integer`,
+      );
+    }
+    maxScenes = parsed;
+  }
+
+  const result: RunUtsushiStructureResult = runUtsushiStructureExport({
+    gameexePath,
+    seenPath,
+    outputPath,
+    ...(entryScene !== undefined ? { entryScene } : {}),
+    ...(maxScenes !== undefined ? { maxScenes } : {}),
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        schemaVersion: "utsushi.narrative-structure.v1",
+        outputPath,
+        status: result.status,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 async function runProviderProof(

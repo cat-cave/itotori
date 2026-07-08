@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliDependencies } from "../src/cli-handlers.js";
-import type { NativeCliProcessResult } from "../src/native-cli.js";
+import type { NativeCliProcessResult } from "../src/native-bin/cli-bin-resolver.js";
 
 function depsWithNativeRunner(
   calls: Array<{ command: string; args: string[] }>,
