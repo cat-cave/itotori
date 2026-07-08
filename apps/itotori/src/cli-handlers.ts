@@ -81,6 +81,7 @@ import {
   type LocalizeProjectStageArgs,
 } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
+import { runKaifuuRealliveExtract } from "./extract/kaifuu-extract-seam.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
   parseTelemetrySummaryCliFlags,
@@ -247,6 +248,9 @@ export async function runItotoriCliCommand(
       break;
     case "localize":
       await runLocalizeFullProject(args, dependencies);
+      break;
+    case "extract":
+      await runExtract(args, dependencies);
       break;
     case "provider-proof":
       await runProviderProof(args, dependencies);
@@ -879,6 +883,103 @@ async function runLocalizeFullProject(
       2,
     )}\n`,
   );
+}
+
+/**
+ * itotori-cli-extract-command (P1, user-shaped CLI) — the user-shaped bridge
+ * producer. Wraps `kaifuu-cli extract --engine reallive` so a user/agent
+ * produces the v0.2 BridgeBundle `itotori localize` consumes WITHOUT knowing
+ * about the Rust binary. Both RealLive modes are wired:
+ *
+ *   * per-scene:  `itotori extract --scene <N> ...`
+ *   * whole-game: `itotori extract --whole-seen ...`
+ *
+ * Flags mirror kaifuu-cli extract (MIRROR the invocation shape). Sourcing is
+ * `--vault-canonical-id <ID>` (by-id) OR `--game-root <PATH>` (raw-path helper;
+ * kaifuu-cli also falls back to ITOTORI_REAL_GAME_ROOT). kaifuu writes the
+ * bridge directly to `--bundle-output`; this handler does NOT touch bridge
+ * bytes.
+ */
+async function runExtract(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  // The dispatcher contract is (args, dependencies); extract delegates to a
+  // kaifuu-cli subprocess and does not touch the file store or services, so
+  // `dependencies` is intentionally unused here.
+  void dependencies;
+  const engineRaw = optionalFlag(args, "--engine") ?? "reallive";
+  if (engineRaw !== "reallive") {
+    throw new Error(
+      `extract refused: --engine '${engineRaw}' is not supported (only 'reallive' is wired)`,
+    );
+  }
+  const wholeSeen = args.includes("--whole-seen");
+  const sceneTokenPresent = args.includes("--scene");
+  const sceneRaw = optionalFlag(args, "--scene");
+  // Resolve the extract mode at the CLI dispatch layer (BEFORE delegating to
+  // the seam) so a user-shaped `itotori extract ...` gets a clear, immediate
+  // error. Without this, `--scene --whole-seen` would let `optionalFlag`
+  // swallow `--whole-seen` as the scene value and trip a confusing u16 error
+  // deep in the seam, and a missing mode would only surface at the spawn
+  // boundary. Token presence is tracked separately from the value so an
+  // empty `--scene` is reported as a missing value, not as "no mode given".
+  if (wholeSeen && sceneTokenPresent) {
+    throw new Error(
+      "extract refused: --whole-seen and --scene are mutually exclusive (choose one extract mode)",
+    );
+  }
+  if (sceneTokenPresent && (sceneRaw === undefined || sceneRaw.startsWith("--"))) {
+    throw new Error(
+      "extract refused: --scene requires a numeric value (0..65535, e.g. --scene 6010)",
+    );
+  }
+  if (!wholeSeen && !sceneTokenPresent) {
+    throw new Error(
+      "extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
+    );
+  }
+  const gameRoot = optionalFlag(args, "--game-root");
+  const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
+  const gameId = requiredFlag(args, "--game-id");
+  const gameVersion = requiredFlag(args, "--game-version");
+  const sourceProfileId = requiredFlag(args, "--source-profile-id");
+  const sourceLocale = requiredFlag(args, "--source-locale");
+  const bundleOutputPath = requiredFlag(args, "--bundle-output");
+  const decompileReportOutputPath = optionalFlag(args, "--decompile-report-output");
+
+  const result = runKaifuuRealliveExtract({
+    gameId,
+    gameVersion,
+    sourceProfileId,
+    sourceLocale,
+    bundleOutputPath,
+    ...(wholeSeen ? { wholeSeen: true } : {}),
+    ...(sceneRaw !== undefined ? { scene: parseRealliveSceneId(sceneRaw) } : {}),
+    ...(gameRoot !== undefined ? { gameRoot } : {}),
+    ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
+    ...(decompileReportOutputPath !== undefined ? { decompileReportOutputPath } : {}),
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        engine: "reallive",
+        mode: result.mode,
+        bundleOutputPath: result.bundleOutputPath,
+        status: result.status,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function parseRealliveSceneId(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535 || String(parsed) !== value) {
+    throw new Error(`extract refused: --scene '${value}' must be a u16 (0..65535)`);
+  }
+  return parsed;
 }
 
 async function runExportPatch(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
