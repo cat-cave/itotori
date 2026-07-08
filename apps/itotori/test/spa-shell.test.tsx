@@ -30,6 +30,7 @@ import {
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
+  projectOverviewFixture,
 } from "./api-fixtures.js";
 import { apiJson, reviewerQueueDashboardApiFixture } from "./msw-handlers.js";
 
@@ -46,6 +47,7 @@ const server = setupServer(
     apiJson("projects.decisions", dashboardDecisionsFixture),
   ),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
+  http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
   http.get("*/api/reviewer/queue", () =>
     apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
   ),

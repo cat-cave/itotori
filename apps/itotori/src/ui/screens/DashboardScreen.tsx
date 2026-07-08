@@ -29,6 +29,7 @@ import {
   plural,
 } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
 export function DashboardScreen(): ReactNode {
   const projects = useApiQuery("projects.list", {}, "projects");
@@ -43,6 +44,8 @@ export function DashboardScreen(): ReactNode {
       </ShellHeader>
 
       <PendingDecisionsBand decisions={decisions} />
+
+      <ProgressInstrumentPanel />
 
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />
