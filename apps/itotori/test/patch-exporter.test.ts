@@ -53,8 +53,8 @@ function makeUnit(overrides: Partial<SourceBridgeUnit> = {}): SourceBridgeUnit {
     protectedSpans: [
       {
         spanRef: "span-001",
-        sourceStart: 18,
-        sourceEnd: 26,
+        sourceStart: 5,
+        sourceEnd: 13,
         sourceText: "{player}",
         kind: "variable",
         preservationRule: "verbatim",
@@ -206,8 +206,8 @@ describe("PatchExporter", () => {
     expect(result.drafts[0]?.protectedSpanMappings).toEqual([
       {
         spanRef: "span-001",
-        sourceStart: 18,
-        sourceEnd: 26,
+        sourceStart: 5,
+        sourceEnd: 13,
         draftStart: 7,
         draftEnd: 15,
         kind: "variable",

@@ -24,8 +24,8 @@
       "path": "fixtures/hello-game/source.json",
       "role": "source-game",
       "mediaType": "application/json",
-      "sha256": "0aa0481d69e7c847f706e96df24ac80cfc7ba3118d26f43d61cd220856e40088",
-      "bytes": 10759,
+      "sha256": "7b156e100fbebd6f53cc71a89cd134cc0281a4ddc493486ca291e83a3bd55a5d",
+      "bytes": 10756,
       "redistributable": true
     },
     {

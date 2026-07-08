@@ -31,8 +31,8 @@ function makeSourceBridgeUnit(overrides: Partial<SourceBridgeUnit> = {}): Source
     protectedSpans: [
       {
         spanRef: "span-001",
-        sourceStart: 18,
-        sourceEnd: 26,
+        sourceStart: 5,
+        sourceEnd: 13,
         sourceText: "{player}",
         kind: "variable",
         preservationRule: "verbatim",

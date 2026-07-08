@@ -265,8 +265,8 @@
         {
           "kind": "placeholder",
           "raw": "{player}",
-          "start": 18,
-          "end": 26
+          "start": 6,
+          "end": 14
         }
       ]
     },
@@ -286,8 +286,8 @@
         {
           "kind": "control_markup",
           "raw": "<wait=30>",
-          "start": 27,
-          "end": 36
+          "start": 9,
+          "end": 18
         }
       ]
     },
@@ -321,8 +321,8 @@
         {
           "kind": "placeholder",
           "raw": "{confirm}",
-          "start": 15,
-          "end": 24
+          "start": 5,
+          "end": 14
         }
       ]
     },
