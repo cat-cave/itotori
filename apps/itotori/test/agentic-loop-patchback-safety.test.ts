@@ -328,6 +328,33 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
     expect(bundle.routingSummary.outcome).toBe("accepted");
     expect(bundle.finalDraft.draftText).toBe("【店員】「Welcome, {player}」");
   });
+
+  it("does NOT false-positive on spans OWNED by the re-inject layer (out-of-body caller guard)", async () => {
+    // The catalog carries a markup span for the kidoku marker AND the 【name】
+    // token. Both are stripped OFF the source by splitProtectedSpans and
+    // re-emitted deterministically by reconstructTarget — the model never sees
+    // them. Without the caller-scoped guard (selectSpansForValidation) the
+    // DraftProtectedSpanValidator would false-flag them (span_deleted /
+    // malformed_markup) and the loop could NOT reach `accepted`.
+    const source = "<reallive.kidoku 5>【ユカリ】「こんにちは」";
+    const input = makeInput({
+      unit: makeUnit(source),
+      protectedSpans: [
+        { refId: "span-kidoku", sourceText: "<reallive.kidoku 5>", spanKind: "markup" },
+        { refId: "span-name", sourceText: "【ユカリ】", spanKind: "markup" },
+      ],
+    });
+    const bundle = await runAgenticLoopForUnit(
+      input,
+      DEV_POLICY,
+      makePolicy(),
+      providerFactoryReturning(translationBodyContent("Hello")),
+    );
+    // The re-inject layer guaranteed both spans byte-exact; the guard excluded
+    // them from the validator so no false violation short-circuits / defers.
+    expect(bundle.routingSummary.outcome).toBe("accepted");
+    expect(bundle.finalDraft.draftText).toBe("【ユカリ】「Hello」");
+  });
 });
 
 // Keep the PairPolicy import load-bearing for editors even though DEV_POLICY

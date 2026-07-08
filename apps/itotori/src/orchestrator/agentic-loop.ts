@@ -1815,6 +1815,45 @@ type DeterministicCheckOutcome = {
 
 const SHIFT_JIS_FRIENDLY_RE = /^[ -~　-ヿ一-鿿＀-￯a-zA-Z0-9\s]*$/u;
 
+/**
+ * itotori-guard-out-of-body-protected-span-caller — caller-scoped guard that
+ * excludes spans OWNED by the deterministic re-inject layer from the
+ * DraftProtectedSpanValidator's purview.
+ *
+ * The patchback-safety layer (`splitProtectedSpans` → translate body →
+ * `reconstructTarget`) deterministically owns every control span it strips
+ * OFF the source: the leading 【name】 speaker token, the 「」 quote wrapper,
+ * trailing text, and out-of-band kidoku markers (`<reallive.kidoku …>`). The
+ * model only ever sees `skeleton.body`, so it cannot drop or mutate those
+ * spans — the re-inject guarantees them byte-exact in the final target.
+ * Passing such an out-of-body span to the validator as if the model had to
+ * preserve it is a FALSE POSITIVE: the span's ref is never recomputed against
+ * the reconstructed target (only in-body refs are relocated), so the
+ * validator would report `span_deleted` / `span_moved` / `malformed_markup`
+ * for a span the re-inject layer in fact preserved.
+ *
+ * This guard keeps exactly the spans the validator should score:
+ *   - `glossary` spans — always validated against the reconstructed target
+ *     (`injectGlossaryRefs` locates the expected form in the final text);
+ *   - non-glossary spans whose `sourceText` survived in `skeleton.body` (the
+ *     model genuinely had to preserve these — a drop is a real defect).
+ *
+ * Spans owned by the re-inject layer (non-glossary, sourceText NOT in
+ * `skeleton.body`) are dropped. This mirrors the `inBodySpans` filter the
+ * translation stage uses to build the model's span catalog, so the set of
+ * spans the validator scores stays in lock-step with the set the model was
+ * actually responsible for.
+ */
+export function selectSpansForValidation(
+  protectedSpans: ReadonlyArray<DraftSourceProtectedSpan>,
+  sourceText: string,
+): ReadonlyArray<DraftSourceProtectedSpan> {
+  const body = splitProtectedSpans(sourceText).body;
+  return protectedSpans.filter(
+    (span) => span.spanKind === "glossary" || body.includes(span.sourceText),
+  );
+}
+
 function runDeterministicChecks(args: {
   input: AgenticLoopUnitInput;
   draftText: string;
@@ -1848,7 +1887,10 @@ function runDeterministicChecks(args: {
     },
     draftText: args.draftText,
     draftProtectedSpanRefs,
-    sourceProtectedSpans: args.input.protectedSpans,
+    sourceProtectedSpans: selectSpansForValidation(
+      args.input.protectedSpans,
+      args.input.unit.sourceText,
+    ),
   });
   for (const violation of result.violations) {
     violations.push(violation);
