@@ -84,7 +84,7 @@ rejected by `JobLeaseRevalidationError` is counted as `leaseLost` (neither `succ
 
 ## Tooling
 
-Vite+ and Vite Task provide the TypeScript/web workspace command surface and cached task orchestration. Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
+Vite+ is the TypeScript/web workspace command surface (the `vp` CLI; task graph in `vite.config.ts`). Cached/affected task orchestration — affected-lane selection and the Vite+ task cache policy — is governed by [docs/ci-cache-and-affected.md](docs/ci-cache-and-affected.md) (`scripts/affected.mjs` plus the `vp` task cache). Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
 
 ## Studio SPA — design system, typed API client, app shell
 

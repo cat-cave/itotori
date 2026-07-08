@@ -77,7 +77,7 @@ docs/
   frontend.md              # SPA / @itotori/ds / typed API client notes
 ```
 
-Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo remains the Rust build and test authority. The root `justfile` orchestrates both.
+Vite+ is the high-level TypeScript/web workspace surface (the `vp` CLI; task graph in `vite.config.ts`). Cached/affected task orchestration — affected-lane selection and the Vite+ task cache policy — is governed by [docs/ci-cache-and-affected.md](docs/ci-cache-and-affected.md) (`scripts/affected.mjs` plus the `vp` task cache). Cargo remains the Rust build and test authority. The root `justfile` orchestrates both.
 
 ## Status
 
