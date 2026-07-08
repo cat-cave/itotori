@@ -8,6 +8,7 @@ import {
   DataTable,
   LocalizationProgress,
   NavPills,
+  Pagination,
   Panel,
   ProgressBar,
   StatReadout,
@@ -52,6 +53,7 @@ export function Gallery(): ReactNode {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [lastCommand, setLastCommand] = useState<CommandItem | null>(null);
   const [toasts, setToasts] = useState<ToastData[]>(galleryToasts);
+  const [pagerPage, setPagerPage] = useState(0);
 
   return (
     <div className="gallery">
@@ -146,7 +148,7 @@ export function Gallery(): ReactNode {
         />
       </Section>
 
-      <Section id="navigation" title="navigation — NavPills, CommandPalette (⌘K)">
+      <Section id="navigation" title="navigation — NavPills, CommandPalette (⌘K), Pagination">
         <NavPills
           label="surfaces"
           activeId={pill}
@@ -174,6 +176,14 @@ export function Gallery(): ReactNode {
           onClose={() => setPaletteOpen(false)}
           items={commandItems}
           onSelect={setLastCommand}
+        />
+        <Pagination
+          label="Gallery pager preview"
+          page={pagerPage}
+          pageCount={5}
+          totalItems={120}
+          onPrevious={() => setPagerPage((current) => Math.max(0, current - 1))}
+          onNext={() => setPagerPage((current) => Math.min(4, current + 1))}
         />
       </Section>
 

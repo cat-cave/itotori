@@ -32,6 +32,8 @@ export { NavPills } from "./navigation/NavPills.js";
 export type { NavPillItem, NavPillsProps } from "./navigation/NavPills.js";
 export { CommandPalette, useCommandPaletteShortcut } from "./navigation/CommandPalette.js";
 export type { CommandItem, CommandPaletteProps } from "./navigation/CommandPalette.js";
+export { Pagination } from "./navigation/Pagination.js";
+export type { PaginationProps } from "./navigation/Pagination.js";
 
 // feedback
 export { Toast, ToastViewport } from "./feedback/Toast.js";

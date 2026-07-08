@@ -14,4 +14,5 @@
 @import "./localization/BiText.css";
 @import "./navigation/NavPills.css";
 @import "./navigation/CommandPalette.css";
+@import "./navigation/Pagination.css";
 @import "./feedback/Toast.css";

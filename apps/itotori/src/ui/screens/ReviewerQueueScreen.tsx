@@ -18,12 +18,19 @@
 
 import { useState, type ReactNode } from "react";
 import { reviewerQueueItemKindValues, type ReviewerQueueItemKind } from "@itotori/db";
-import { Badge, DataTable, NavPills, Panel, StatReadout, type NavPillItem } from "@itotori/ds";
+import {
+  Badge,
+  DataTable,
+  NavPills,
+  Pagination,
+  Panel,
+  StatReadout,
+  type NavPillItem,
+} from "@itotori/ds";
 import type { ReviewerQueueDashboardRow } from "../../reviewer/index.js";
 import type { ApiReviewerQueueDashboardResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
-import { plural } from "../format.js";
 
 // ---------------------------------------------------------------------------
 // Route identity — `/reviewer-queue` (bare). `/reviewer-queue/batch` and
@@ -285,10 +292,11 @@ function ReviewerQueueReady({ queue }: { queue: ApiReviewerQueueDashboardRespons
           getRowKey={(row: ReviewerQueueDashboardRow) => row.reviewItemId}
           emptyLabel="No reviewer items in this category."
         />
-        <QueuePager
+        <Pagination
+          label="Reviewer queue pagination"
           page={safePage}
           pageCount={pageCount}
-          totalRows={filteredRows.length}
+          totalItems={filteredRows.length}
           onPrevious={() => setPage((current) => Math.max(0, current - 1))}
           onNext={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
         />
@@ -306,46 +314,6 @@ function AggregateStrip({ queue }: { queue: ApiReviewerQueueDashboardResponse })
       <StatReadout label="Escalated" value={queue.aggregate.escalated} />
       <StatReadout label="Batch applied" value={queue.aggregate.batch_applied} />
     </div>
-  );
-}
-
-function QueuePager({
-  page,
-  pageCount,
-  totalRows,
-  onPrevious,
-  onNext,
-}: {
-  page: number;
-  pageCount: number;
-  totalRows: number;
-  onPrevious: () => void;
-  onNext: () => void;
-}): ReactNode {
-  return (
-    <nav className="itotori-pagination" aria-label="Reviewer queue pagination">
-      <button
-        type="button"
-        className="itotori-pagination__prev"
-        onClick={onPrevious}
-        disabled={page <= 0}
-        aria-label="Previous page"
-      >
-        Previous
-      </button>
-      <span className="itotori-pagination__status" aria-live="polite">
-        Page {page + 1} of {pageCount} · {totalRows} {plural(totalRows, "item")}
-      </span>
-      <button
-        type="button"
-        className="itotori-pagination__next"
-        onClick={onNext}
-        disabled={page >= pageCount - 1}
-        aria-label="Next page"
-      >
-        Next
-      </button>
-    </nav>
   );
 }
 

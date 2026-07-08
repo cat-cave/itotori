@@ -3,6 +3,7 @@ import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "../src/components/navigation/CommandPalette.js";
 import { NavPills } from "../src/components/navigation/NavPills.js";
+import { Pagination } from "../src/components/navigation/Pagination.js";
 import type { CommandItem } from "../src/components/navigation/CommandPalette.js";
 
 const items: CommandItem[] = [
@@ -62,5 +63,88 @@ describe("navigation / CommandPalette", () => {
     render(<CommandPalette open onClose={onClose} items={items} onSelect={() => {}} />);
     await userEvent.type(screen.getByRole("textbox"), "{Escape}");
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("navigation / Pagination", () => {
+  it("renders page-of-N status and reachable prev/next buttons on a middle page", () => {
+    render(
+      <Pagination
+        label="Reviewer queue pagination"
+        page={1}
+        pageCount={3}
+        totalItems={42}
+        onPrevious={() => {}}
+        onNext={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("navigation", { name: "Reviewer queue pagination" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 3 · 42 items")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+  });
+
+  it("disables Previous at the start and Next at the end", () => {
+    const { rerender } = render(
+      <Pagination
+        label="Reviewer queue pagination"
+        page={0}
+        pageCount={3}
+        totalItems={20}
+        onPrevious={() => {}}
+        onNext={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+    expect(screen.getByText("Page 1 of 3 · 20 items")).toBeInTheDocument();
+
+    rerender(
+      <Pagination
+        label="Reviewer queue pagination"
+        page={2}
+        pageCount={3}
+        totalItems={20}
+        onPrevious={() => {}}
+        onNext={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByText("Page 3 of 3 · 20 items")).toBeInTheDocument();
+  });
+
+  it("emits onPrevious / onNext when the buttons are activated", async () => {
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+    render(
+      <Pagination
+        label="Reviewer queue pagination"
+        page={1}
+        pageCount={3}
+        onPrevious={onPrevious}
+        onNext={onNext}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the bare page-of-N form when no total is supplied (OffsetPager alignment)", () => {
+    render(
+      <Pagination
+        label="Cost drilldown pagination"
+        page={0}
+        pageCount={5}
+        onPrevious={() => {}}
+        onNext={() => {}}
+      />,
+    );
+    expect(screen.getByText("Page 1 of 5")).toBeInTheDocument();
+    expect(screen.queryByText(/items/u)).not.toBeInTheDocument();
   });
 });
