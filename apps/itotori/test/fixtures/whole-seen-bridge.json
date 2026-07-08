@@ -1,0 +1,433 @@
+{
+  "assets": [
+    {
+      "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+      "assetKey": "reallive:scene-0001",
+      "assetKind": "script",
+      "path": "REALLIVEDATA/Seen.txt#scene-0001",
+      "sourceHash": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b",
+      "sourceRevision": {
+        "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      }
+    },
+    {
+      "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+      "assetKey": "reallive:scene-0002",
+      "assetKind": "script",
+      "path": "REALLIVEDATA/Seen.txt#scene-0002",
+      "sourceHash": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b",
+      "sourceRevision": {
+        "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      }
+    }
+  ],
+  "bridgeId": "2877b60b-8786-7f82-83c3-d04a695623a9",
+  "extractor": {
+    "name": "kaifuu-reallive-bridge",
+    "version": "0.1.0"
+  },
+  "hashStrategy": {
+    "deltaPackage": {
+      "algorithm": "sha256",
+      "normalization": "utf8-lf-json-stable-v1",
+      "scope": "delta_package"
+    },
+    "patchExport": {
+      "algorithm": "sha256",
+      "normalization": "utf8-lf-json-stable-v1",
+      "scope": "patch_export"
+    },
+    "sourceAsset": {
+      "algorithm": "sha256",
+      "normalization": "bytes",
+      "scope": "source_asset"
+    },
+    "sourceBundle": {
+      "algorithm": "sha256",
+      "normalization": "utf8-lf-json-stable-v1",
+      "scope": "source_bundle"
+    },
+    "sourceProfile": {
+      "algorithm": "sha256",
+      "normalization": "utf8-lf-json-stable-v1",
+      "scope": "source_profile"
+    },
+    "sourceUnit": {
+      "algorithm": "sha256",
+      "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+      "normalization": "utf8-lf-json-stable-v1",
+      "scope": "source_unit"
+    }
+  },
+  "policyRecords": [],
+  "schemaVersion": "0.2.0",
+  "sourceBundleHash": "sha256:3065996aa103c1c827f13998f8d44046d5df0b9d5f30a1f0027544de71be6927",
+  "sourceBundleRevision": {
+    "revisionId": "b2d11bc0-9173-79f1-8fec-3a8e4703c9ab",
+    "revisionKind": "content_hash",
+    "value": "sha256:3065996aa103c1c827f13998f8d44046d5df0b9d5f30a1f0027544de71be6927"
+  },
+  "sourceGame": {
+    "gameId": "kaifuu-reallive-synthetic",
+    "gameVersion": "1.0.0",
+    "sourceProfileId": "kaifuu-reallive-synthetic",
+    "sourceProfileRevision": {
+      "revisionId": "8957b761-5ede-7577-9f81-b8974577b7ac",
+      "revisionKind": "content_hash",
+      "value": "sha256:90be14c2e723195103b4c5aceaaa7084e2a6f3f7697bdb3d4ae500c6624b56c7"
+    }
+  },
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "bridgeUnitId": "a06a6efc-b1f0-7483-b225-40f197a3bc83",
+      "context": {
+        "route": {
+          "position": "line-0000",
+          "sceneKey": "scene-0001"
+        }
+      },
+      "occurrenceId": "scene-0001-occ-0000",
+      "patchRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "sourceRevision": {
+          "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0001#0000",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0001-occ-0000"
+      },
+      "sourceAssetRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "assetKey": "reallive:scene-0001"
+      },
+      "sourceHash": "sha256:f89c308f09ab30d19f71520dfd6b1aa4d64b338933e36832fe0d629a6eef0dc8",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0001",
+        "entryPath": ["scene", "0001", "units", "0000"],
+        "range": {
+          "endByte": 21,
+          "startByte": 17
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "<reallive.kidoku 1>あい",
+      "sourceUnitKey": "reallive:scene-0001#0000",
+      "spans": [
+        {
+          "endByte": 19,
+          "parsedName": "reallive.kidoku",
+          "preserveMode": "exact",
+          "raw": "<reallive.kidoku 1>",
+          "spanId": "d23d8b9f-3f18-74db-a4de-bdf8a5981db4",
+          "spanKind": "control_markup",
+          "startByte": 0
+        }
+      ],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "afebf6ca-3cea-7fc8-9dc5-8cd265748b50",
+      "surfaceKind": "dialogue"
+    },
+    {
+      "bridgeUnitId": "9706a898-f08a-7ba9-99e6-c304e0235874",
+      "context": {
+        "choice": {
+          "choiceGroupId": "c9454e1d-88c8-7051-a930-3819e3ae0282",
+          "choiceId": "48d51ef2-0297-7bb9-be41-67109cf6f926",
+          "optionIndex": 0
+        },
+        "route": {
+          "position": "choice-0-0",
+          "sceneKey": "scene-0001"
+        }
+      },
+      "occurrenceId": "scene-0001-occ-0001",
+      "patchRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "sourceRevision": {
+          "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0001#0001",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0001-occ-0001"
+      },
+      "sourceAssetRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "assetKey": "reallive:scene-0001"
+      },
+      "sourceHash": "sha256:dc5a4d3d82f7e15792959dc661538ae0e541ce66494516f5c9cfd9cd3308494d",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0001",
+        "entryPath": ["scene", "0001", "units", "0001"],
+        "range": {
+          "endByte": 31,
+          "startByte": 29
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "あ",
+      "sourceUnitKey": "reallive:scene-0001#0001",
+      "spans": [],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "ddd752e2-c369-7ed8-845a-f02dddd22c9d",
+      "surfaceKind": "choice_label"
+    },
+    {
+      "bridgeUnitId": "b43c7e66-a03e-713b-89cc-797c5ff9216f",
+      "context": {
+        "choice": {
+          "choiceGroupId": "c9454e1d-88c8-7051-a930-3819e3ae0282",
+          "choiceId": "d58f076b-6a87-70ce-a741-63fa9800ae5d",
+          "optionIndex": 1
+        },
+        "route": {
+          "position": "choice-0-1",
+          "sceneKey": "scene-0001"
+        }
+      },
+      "occurrenceId": "scene-0001-occ-0002",
+      "patchRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "sourceRevision": {
+          "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0001#0002",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0001-occ-0002"
+      },
+      "sourceAssetRef": {
+        "assetId": "df9fc555-e560-7887-a9d1-6c5b0ac311a4",
+        "assetKey": "reallive:scene-0001"
+      },
+      "sourceHash": "sha256:4c6ff2461396974940d832f3f0ce2a7624668028f9bff88ca807b1e9da44a407",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0001",
+        "entryPath": ["scene", "0001", "units", "0002"],
+        "range": {
+          "endByte": 31,
+          "startByte": 29
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "1b53e25c-ef26-7585-b24e-4dc8a4072de9",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "い",
+      "sourceUnitKey": "reallive:scene-0001#0002",
+      "spans": [],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "cdf38bd4-5524-7276-9506-223e744e8512",
+      "surfaceKind": "choice_label"
+    },
+    {
+      "bridgeUnitId": "d04f6e35-621e-78cf-80d0-1a3b0416db78",
+      "context": {
+        "route": {
+          "position": "line-0000",
+          "sceneKey": "scene-0002"
+        }
+      },
+      "occurrenceId": "scene-0002-occ-0000",
+      "patchRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "sourceRevision": {
+          "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0002#0000",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0002-occ-0000"
+      },
+      "sourceAssetRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "assetKey": "reallive:scene-0002"
+      },
+      "sourceHash": "sha256:f89c308f09ab30d19f71520dfd6b1aa4d64b338933e36832fe0d629a6eef0dc8",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0002",
+        "entryPath": ["scene", "0002", "units", "0000"],
+        "range": {
+          "endByte": 21,
+          "startByte": 17
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "<reallive.kidoku 1>あい",
+      "sourceUnitKey": "reallive:scene-0002#0000",
+      "spans": [
+        {
+          "endByte": 19,
+          "parsedName": "reallive.kidoku",
+          "preserveMode": "exact",
+          "raw": "<reallive.kidoku 1>",
+          "spanId": "858e4c74-fe03-717d-b0f3-73c3d9b48fa1",
+          "spanKind": "control_markup",
+          "startByte": 0
+        }
+      ],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "eaadd998-c414-718f-87c5-898ac3163be5",
+      "surfaceKind": "dialogue"
+    },
+    {
+      "bridgeUnitId": "402c8867-cf61-7afa-a110-843c4f9fab53",
+      "context": {
+        "choice": {
+          "choiceGroupId": "e10f4c54-5630-7b67-8ab7-c486795198a5",
+          "choiceId": "d59a0683-2a8e-7e91-b475-12a6c9706bdd",
+          "optionIndex": 0
+        },
+        "route": {
+          "position": "choice-0-0",
+          "sceneKey": "scene-0002"
+        }
+      },
+      "occurrenceId": "scene-0002-occ-0001",
+      "patchRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "sourceRevision": {
+          "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0002#0001",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0002-occ-0001"
+      },
+      "sourceAssetRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "assetKey": "reallive:scene-0002"
+      },
+      "sourceHash": "sha256:dc5a4d3d82f7e15792959dc661538ae0e541ce66494516f5c9cfd9cd3308494d",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0002",
+        "entryPath": ["scene", "0002", "units", "0001"],
+        "range": {
+          "endByte": 31,
+          "startByte": 29
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "あ",
+      "sourceUnitKey": "reallive:scene-0002#0001",
+      "spans": [],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "5445be82-f833-7640-b7c5-5273a7bfed20",
+      "surfaceKind": "choice_label"
+    },
+    {
+      "bridgeUnitId": "84106326-5a71-737e-b369-b6a0ed46bf2a",
+      "context": {
+        "choice": {
+          "choiceGroupId": "e10f4c54-5630-7b67-8ab7-c486795198a5",
+          "choiceId": "ba41132b-55b1-72d6-8ed9-b3dfba5f0efc",
+          "optionIndex": 1
+        },
+        "route": {
+          "position": "choice-0-1",
+          "sceneKey": "scene-0002"
+        }
+      },
+      "occurrenceId": "scene-0002-occ-0002",
+      "patchRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "sourceRevision": {
+          "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+          "revisionKind": "content_hash",
+          "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+        },
+        "sourceUnitKey": "reallive:scene-0002#0002",
+        "writeMode": "replace"
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "scene-0002-occ-0002"
+      },
+      "sourceAssetRef": {
+        "assetId": "ca500bc0-3a3a-74ea-8273-341b123ec2c4",
+        "assetKey": "reallive:scene-0002"
+      },
+      "sourceHash": "sha256:4c6ff2461396974940d832f3f0ce2a7624668028f9bff88ca807b1e9da44a407",
+      "sourceLocale": "ja-JP",
+      "sourceLocation": {
+        "containerKey": "reallive:scene-0002",
+        "entryPath": ["scene", "0002", "units", "0002"],
+        "range": {
+          "endByte": 31,
+          "startByte": 29
+        }
+      },
+      "sourceRevision": {
+        "revisionId": "98b09504-0f09-7b28-bc40-236c70ea5a2d",
+        "revisionKind": "content_hash",
+        "value": "sha256:8f63604e20269fe2c01d07e28dec4ff4d6d80f8faa5aa972f841d205540fe51b"
+      },
+      "sourceText": "い",
+      "sourceUnitKey": "reallive:scene-0002#0002",
+      "spans": [],
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "surfaceId": "2660afb6-33cc-7d47-a862-24be635d4a3f",
+      "surfaceKind": "choice_label"
+    }
+  ]
+}

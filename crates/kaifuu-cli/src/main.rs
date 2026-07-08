@@ -338,9 +338,10 @@ fn run_with_args_and_registry(
 /// `--bundle-output`.
 fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
-        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, compiler_version_uses_xor2,
-        decompress_archive_scenes, decompress_avg32, gameexe::parse_gameexe_inventory,
-        parse_archive, parse_real_bytecode, produce_bundle, recover_and_decrypt_archive,
+        BridgeOpts, BridgeSceneInput, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+        compiler_version_uses_xor2, decompress_archive_scenes, decompress_avg32,
+        gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
+        produce_whole_seen_bundle, recover_and_decrypt_archive,
     };
 
     let game_id = required_reallive_metadata_flag(args, "--game-id")?;
@@ -348,12 +349,18 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     let source_profile_id = required_reallive_metadata_flag(args, "--source-profile-id")?;
     let source_locale = required_reallive_metadata_flag(args, "--source-locale")?;
     let bundle_output = PathBuf::from(flag(args, "--bundle-output")?);
-    let scene_id: u16 =
-        flag(args, "--scene")?
-            .parse()
-            .map_err(|err| -> Box<dyn std::error::Error> {
-                format!("--scene must be a u16: {err}").into()
-            })?;
+    let whole_seen = flag_present(args, "--whole-seen");
+    let scene_id: Option<u16> = if whole_seen {
+        None
+    } else {
+        Some(
+            flag(args, "--scene")?
+                .parse()
+                .map_err(|err| -> Box<dyn std::error::Error> {
+                    format!("--scene must be a u16: {err}").into()
+                })?,
+        )
+    };
     // Alpha sourcing route (production): resolve the corpus BY-ID through the
     // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
     // ITOTORI_REAL_GAME_ROOT is retained only as the env-gated raw-path helper
@@ -392,64 +399,153 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     let index = parse_archive(&seen_bytes).map_err(|err| -> Box<dyn std::error::Error> {
         format!("kaifuu.reallive.archive_parse: {err:?}").into()
     })?;
-    let entry = index
-        .entries
-        .iter()
-        .find(|entry| entry.scene_id == scene_id)
-        .ok_or_else(|| -> Box<dyn std::error::Error> {
-            format!("scene {scene_id} not present in archive directory").into()
-        })?;
-    let blob_start = entry.byte_offset as usize;
-    let blob_end = blob_start + entry.byte_len as usize;
-    if blob_end > seen_bytes.len() {
-        return Err(format!(
-            "scene {scene_id} blob (offset={blob_start}, len={}) runs past archive length",
-            entry.byte_len
-        )
-        .into());
-    }
-    let scene_blob = &seen_bytes[blob_start..blob_end];
 
-    let header = SceneHeader::parse(scene_blob).map_err(|err| -> Box<dyn std::error::Error> {
-        format!("kaifuu.reallive.scene_header_parse: {err}").into()
-    })?;
-    let bytecode_start = header.bytecode_offset as usize;
-    let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
-    if bytecode_end > scene_blob.len() {
-        return Err(format!(
-            "scene {scene_id} declared bytecode_offset={bytecode_start} + size={} past blob end",
-            header.bytecode_compressed_size
-        )
-        .into());
+    let gameexe_path = game_root_gameexe_path(&resolved_game_root);
+    let gameexe_bytes = read_gameexe_inventory_bytes(&gameexe_path)?;
+    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
+
+    let opts = BridgeOpts {
+        game_id,
+        game_version,
+        source_profile_id,
+        source_locale,
+        extractor_name: "kaifuu-reallive-bridge",
+        extractor_version: "0.1.0",
+        scene_kidoku_count: 0,
+    };
+
+    if whole_seen {
+        let mut decoded_scenes = Vec::new();
+        let mut total_opcodes = 0usize;
+        let mut unknown_opcodes = 0usize;
+
+        let mut xor2_corpus = if index.entries.iter().any(|entry| {
+            let Ok((_, _, header)) = reallive_scene_slices(&seen_bytes, entry.scene_id, &index)
+            else {
+                return false;
+            };
+            compiler_version_uses_xor2(header.compiler_version)
+        }) {
+            let mut corpus = decompress_archive_scenes(&seen_bytes, &index);
+            let report = recover_and_decrypt_archive(&mut corpus.scenes);
+            if !report.validated {
+                return Err(format!(
+                    "kaifuu.reallive.xor2.decrypt_failed: whole-SEEN extract found xor_2 scenes \
+                     but no per-game xor_2 key validated over the archive: {}",
+                    report
+                        .finding
+                        .as_deref()
+                        .unwrap_or("no eligible scene reached the xor_2 segment"),
+                )
+                .into());
+            }
+            Some(corpus)
+        } else {
+            None
+        };
+
+        for entry in &index.entries {
+            let (scene_blob, compressed, header) =
+                reallive_scene_slices(&seen_bytes, entry.scene_id, &index)?;
+            let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
+                let corpus = xor2_corpus
+                    .as_mut()
+                    .expect("xor2 corpus must be available for xor2 scene");
+                let idx = corpus.position_of(entry.scene_id).ok_or_else(
+                    || -> Box<dyn std::error::Error> {
+                        format!(
+                            "kaifuu.reallive.whole_seen.scene_missing_after_xor2: scene {} vanished during xor_2 recovery",
+                            entry.scene_id
+                        )
+                        .into()
+                    },
+                )?;
+                corpus.scenes[idx].bytecode.clone()
+            } else {
+                decompress_avg32(compressed, header.bytecode_uncompressed_size as usize).map_err(
+                    |err| -> Box<dyn std::error::Error> {
+                        format!(
+                            "kaifuu.reallive.whole_seen.decompress_failed: scene {}: {err}",
+                            entry.scene_id
+                        )
+                        .into()
+                    },
+                )?
+            };
+            let opcodes = parse_real_bytecode(&decompressed).map_err(
+                |err| -> Box<dyn std::error::Error> {
+                    format!(
+                        "kaifuu.reallive.whole_seen.bytecode_parse_failed: scene {}: {err}",
+                        entry.scene_id
+                    )
+                    .into()
+                },
+            )?;
+            total_opcodes += opcodes.len();
+            unknown_opcodes += opcodes.iter().filter(|op| !op.is_recognized()).count();
+            decoded_scenes.push(DecodedRealliveScene {
+                scene_id: entry.scene_id,
+                scene_blob,
+                decompressed,
+                kidoku_count: header.kidoku_count,
+            });
+        }
+
+        let scene_inputs: Vec<BridgeSceneInput<'_>> = decoded_scenes
+            .iter()
+            .map(|scene| BridgeSceneInput {
+                scene_id: scene.scene_id,
+                scene_bytes: scene.scene_blob,
+                decompressed_bytecode: &scene.decompressed,
+                scene_kidoku_count: scene.kidoku_count,
+            })
+            .collect();
+        let produced =
+            produce_whole_seen_bundle(&seen_bytes, &scene_inputs, &gameexe_inventory, &opts)
+                .map_err(|err| -> Box<dyn std::error::Error> {
+                    format!("kaifuu.reallive.whole_seen.bridge: {err}").into()
+                })?;
+        write_json(&bundle_output, &produced.json)?;
+
+        if let Some(structure_path) = flag_optional(args, "--structure-output") {
+            let structure = build_reallive_whole_structure(&gameexe_bytes, &decoded_scenes)?;
+            write_json(&PathBuf::from(structure_path), &structure)?;
+        } else {
+            return Err(
+                "kaifuu.reallive.whole_seen.structure_output_required: pass --structure-output <PATH>"
+                    .into(),
+            );
+        }
+
+        if let Some(report_path) = flag_optional(args, "--decompile-report-output") {
+            let source_seen_sha256 = sha256_hash_bytes(&seen_bytes);
+            let report = serde_json::json!({
+                "schemaVersion": "itotori.kaifuu.decompile-report.v0",
+                "engine": "reallive",
+                "gameId": opts.game_id,
+                "gameVersion": opts.game_version,
+                "scope": "whole-seen",
+                "sceneCount": decoded_scenes.len(),
+                "totalOpcodes": total_opcodes,
+                "recognizedOpcodes": total_opcodes - unknown_opcodes,
+                "unknownOpcodes": unknown_opcodes,
+                "sourceSeenSha256": source_seen_sha256,
+                "resolvedGameRoot": resolved_game_root.display().to_string(),
+            });
+            write_json(&PathBuf::from(report_path), &report)?;
+        }
+        return Ok(());
     }
-    let compressed = &scene_blob[bytecode_start..bytecode_end];
+
+    let scene_id = scene_id.expect("--scene parsed for per-scene extract");
+    let (scene_blob, compressed, header) = reallive_scene_slices(&seen_bytes, scene_id, &index)?;
     let decompressed = decompress_avg32(compressed, header.bytecode_uncompressed_size as usize)
         .map_err(|err| -> Box<dyn std::error::Error> {
             format!("kaifuu.reallive.decompress: {err}").into()
         })?;
-
-    // Second-level `xor_2` cipher. Titles like Sweetie HD
-    // (compiler_version 110002) encrypt a bounded `[256, 513)` segment of
-    // every scene's decompressed bytecode under a per-game key that is NOT
-    // shipped in the game tree and must be recovered in-process from the
-    // encrypted corpus (a cross-scene known-plaintext attack). Without this
-    // the decompressed bytecode is still ciphertext -> garbage argc ->
-    // `truncated_command_args`. Mirror the decompiler's decompress -> xor_2
-    // -> parse ordering (see kaifuu-reallive `multi_corpus_real_bytes`):
-    // build the full corpus of decompressed scenes, recover + validate the
-    // per-game key over the archive, then take the now-decrypted target
-    // scene. Gated on `compiler_version_uses_xor2`, so non-xor2 titles
-    // (e.g. Kanon's 10002) take the original single-scene path unchanged.
     let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
-        // Build the decompressed corpus through the single shared helper so the
-        // extract and patchback paths cannot diverge on which scenes feed key
-        // recovery (see `decompress_archive_scenes`).
         let mut corpus = decompress_archive_scenes(&seen_bytes, &index);
         let target_index = corpus.position_of(scene_id);
-        // Recover + validate-before-consume the per-game key over the whole
-        // archive; scenes whose compiler_version does not set use_xor_2 are
-        // left untouched. The raw key never crosses this boundary (only a
-        // one-way sha256 commitment is surfaced by the report).
         let report = recover_and_decrypt_archive(&mut corpus.scenes);
         if !report.validated {
             return Err(format!(
@@ -472,10 +568,6 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         decompressed
     };
 
-    let gameexe_path = game_root_gameexe_path(&resolved_game_root);
-    let gameexe_bytes = read_gameexe_inventory_bytes(&gameexe_path)?;
-    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
-
     let opts = BridgeOpts {
         game_id,
         game_version,
@@ -485,7 +577,6 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,
     };
-
     let produced = produce_bundle(
         scene_id,
         scene_blob,
@@ -532,6 +623,312 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         write_json(&PathBuf::from(report_path), &report)?;
     }
     Ok(())
+}
+
+#[derive(Debug)]
+struct DecodedRealliveScene<'a> {
+    scene_id: u16,
+    scene_blob: &'a [u8],
+    decompressed: Vec<u8>,
+    kidoku_count: u32,
+}
+
+fn reallive_scene_slices<'a>(
+    seen_bytes: &'a [u8],
+    scene_id: u16,
+    index: &kaifuu_reallive::RealLiveSceneIndex,
+) -> Result<(&'a [u8], &'a [u8], kaifuu_reallive::SceneHeader), Box<dyn std::error::Error>> {
+    let entry = index
+        .entries
+        .iter()
+        .find(|entry| entry.scene_id == scene_id)
+        .ok_or_else(|| -> Box<dyn std::error::Error> {
+            format!("scene {scene_id} not present in archive directory").into()
+        })?;
+    let blob_start = entry.byte_offset as usize;
+    let blob_end = blob_start + entry.byte_len as usize;
+    if blob_end > seen_bytes.len() {
+        return Err(format!(
+            "scene {scene_id} blob (offset={blob_start}, len={}) runs past archive length",
+            entry.byte_len
+        )
+        .into());
+    }
+    let scene_blob = &seen_bytes[blob_start..blob_end];
+    let header = kaifuu_reallive::SceneHeader::parse(scene_blob).map_err(
+        |err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.reallive.scene_header_parse: scene {scene_id}: {err}").into()
+        },
+    )?;
+    let bytecode_start = header.bytecode_offset as usize;
+    let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+    if bytecode_end > scene_blob.len() {
+        return Err(format!(
+            "scene {scene_id} declared bytecode_offset={bytecode_start} + size={} past blob end",
+            header.bytecode_compressed_size
+        )
+        .into());
+    }
+    Ok((
+        scene_blob,
+        &scene_blob[bytecode_start..bytecode_end],
+        header,
+    ))
+}
+
+fn build_reallive_whole_structure(
+    gameexe_bytes: &[u8],
+    decoded_scenes: &[DecodedRealliveScene<'_>],
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    use std::collections::{BTreeSet, HashMap};
+
+    use utsushi_reallive::{
+        Gameexe, HeadlessChoicePolicy, ReplayOpts, build_scene_store_from_decompressed,
+    };
+
+    const CHOICE_SURFACE_PREFIX: &str = "choice:";
+
+    let gameexe = Gameexe::parse(gameexe_bytes).map_err(|err| -> Box<dyn std::error::Error> {
+        format!("kaifuu.reallive.whole_seen.structure_gameexe_parse: {err}").into()
+    })?;
+    let seen_start = u16::try_from(
+        gameexe
+            .get_int("SEEN_START")
+            .ok_or("kaifuu.reallive.whole_seen.structure_missing_seen_start")?,
+    )
+    .map_err(|err| -> Box<dyn std::error::Error> {
+        format!("kaifuu.reallive.whole_seen.structure_seen_start_range: {err}").into()
+    })?;
+    let resolver = gameexe.namae_resolver();
+
+    let decompressed: Vec<utsushi_reallive::DecompressedScene> = decoded_scenes
+        .iter()
+        .map(|scene| utsushi_reallive::DecompressedScene {
+            scene_id: scene.scene_id,
+            compiler_version: 0,
+            bytecode: scene.decompressed.clone(),
+        })
+        .collect();
+    let selection_control: HashMap<u16, &'static str> = decompressed
+        .iter()
+        .map(|scene| {
+            (
+                scene.scene_id,
+                structure_selection_control_signal(&scene.bytecode),
+            )
+        })
+        .collect();
+    let (store, shift_jis, stats) =
+        build_scene_store_from_decompressed(&decompressed, decompressed.len()).map_err(
+            |err| -> Box<dyn std::error::Error> {
+                format!("kaifuu.reallive.whole_seen.structure_store_build: {err}").into()
+            },
+        )?;
+    if stats.skipped != 0 {
+        return Err(format!(
+            "kaifuu.reallive.whole_seen.structure_decode_skipped: Utsushi decoded {} of {} scene(s); skipped {}",
+            stats.loaded, stats.populated, stats.skipped
+        )
+        .into());
+    }
+    let engine =
+        utsushi_reallive::ReplayEngine::from_store(store, shift_jis).with_namae_resolver(resolver);
+    let opts = ReplayOpts {
+        step_budget: 400_000,
+        stop_at_first_pause: false,
+    };
+
+    let mut scenes = Vec::new();
+    let scene_ids: Vec<u16> = decoded_scenes.iter().map(|scene| scene.scene_id).collect();
+    let scene_id_set: BTreeSet<u16> = scene_ids.iter().copied().collect();
+    // Scene-dispatch graph edges, keyed by source scene. Each scene's edges are
+    // the ordered dispatch targets the play-loop can cross FROM it: the fallthrough
+    // `nextScene` first, then each choice branch's entry scene (in optionIndex
+    // order). This is the real cross-scene graph the play-loop walks — NOT archive
+    // slot order.
+    let mut dispatch_edges: HashMap<u16, Vec<u16>> = HashMap::new();
+    for scene_id in &scene_ids {
+        let obs = engine.observe_for_port(*scene_id, &opts);
+        let messages: Vec<serde_json::Value> = obs
+            .play_order_lines
+            .iter()
+            .enumerate()
+            .map(|(order, line)| {
+                serde_json::json!({
+                    "order": order,
+                    "speaker": line.speaker,
+                    "text": line.text,
+                    "textSurface": line.text_surface,
+                })
+            })
+            .collect();
+
+        let mut choice_indices: BTreeSet<u16> = BTreeSet::new();
+        for line in &obs.play_order_lines {
+            if let Some(surface) = line.text_surface.as_deref()
+                && let Some(rest) = surface.strip_prefix(CHOICE_SURFACE_PREFIX)
+            {
+                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                if let Ok(idx) = digits.parse::<u16>() {
+                    choice_indices.insert(idx);
+                }
+            }
+        }
+
+        // Collect this scene's ordered dispatch targets for the graph walk:
+        // the fallthrough successor first, then each choice branch entry.
+        let mut edges: Vec<u16> = Vec::new();
+        if let Some(next) = obs.first_cross_scene
+            && next != *scene_id
+        {
+            edges.push(next);
+        }
+
+        let mut choices = Vec::new();
+        for idx in choice_indices {
+            let tag = format!("{CHOICE_SURFACE_PREFIX}{idx}");
+            let label = obs
+                .play_order_lines
+                .iter()
+                .find(|line| {
+                    line.text_surface
+                        .as_deref()
+                        .is_some_and(|s| s == tag || s.starts_with(&format!("{tag}/")))
+                })
+                .map(|line| line.text.clone())
+                .unwrap_or_default();
+            let branch = engine.branch_following_observation(
+                *scene_id,
+                &opts,
+                HeadlessChoicePolicy::Fixed(idx),
+            );
+            let branch_messages: Vec<serde_json::Value> = branch
+                .lines
+                .iter()
+                .filter(|line| {
+                    !line
+                        .text_surface
+                        .as_deref()
+                        .is_some_and(|s| s.starts_with(CHOICE_SURFACE_PREFIX))
+                })
+                .enumerate()
+                .map(|(order, line)| {
+                    serde_json::json!({
+                        "order": order,
+                        "speaker": line.speaker,
+                        "text": line.text,
+                        "textSurface": line.text_surface,
+                    })
+                })
+                .collect();
+            if let Some(branch_entry) = branch.first_cross_scene
+                && branch_entry != *scene_id
+            {
+                edges.push(branch_entry);
+            }
+            choices.push(serde_json::json!({
+                "optionIndex": idx,
+                "label": label,
+                "branchEntryScene": branch.first_cross_scene,
+                "branchMessages": branch_messages,
+            }));
+        }
+
+        dispatch_edges.insert(*scene_id, edges);
+
+        scenes.push(serde_json::json!({
+            "sceneId": scene_id,
+            "selectionControl": selection_control.get(scene_id).copied().unwrap_or("none"),
+            "nextScene": obs.first_cross_scene,
+            "messages": messages,
+            "choices": choices,
+        }));
+    }
+
+    // Real dispatch order: the distinct scene ids the play-loop crosses, in the
+    // order it first reaches them, walking the scene-dispatch graph from the
+    // entry scene (`SEEN_START`). We follow each scene's ordered edges
+    // (fallthrough successor, then choice branches) depth-first, first-visit
+    // wins. This is the semantic the TS `sceneDispatchOrder` contract + the
+    // downstream character/context agents rely on — NOT archive slot order.
+    let scene_dispatch_order =
+        compute_scene_dispatch_order(seen_start, &dispatch_edges, &scene_id_set, &scene_ids);
+
+    Ok(serde_json::json!({
+        "schemaVersion": "utsushi.narrative-structure.v1",
+        "entryScene": seen_start,
+        "sceneDispatchOrder": scene_dispatch_order,
+        "scenes": scenes,
+    }))
+}
+
+/// Walk the scene-dispatch graph from `entry_scene` depth-first (following each
+/// scene's ordered outgoing edges), emitting each scene id the first time the
+/// play-loop reaches it. Scenes never reached from the entry (unreferenced
+/// archive slots — e.g. dead/system scenes) are appended afterward in slot order
+/// so the returned order stays a complete permutation of the archive without
+/// silently dropping any scene. `edges` targets and the entry that are not
+/// actually present in the archive (`scene_id_set`) are skipped.
+fn compute_scene_dispatch_order(
+    entry_scene: u16,
+    edges: &std::collections::HashMap<u16, Vec<u16>>,
+    scene_id_set: &std::collections::BTreeSet<u16>,
+    scene_ids: &[u16],
+) -> Vec<u16> {
+    let mut order: Vec<u16> = Vec::new();
+    let mut visited: std::collections::BTreeSet<u16> = std::collections::BTreeSet::new();
+    let mut stack: Vec<u16> = Vec::new();
+    if scene_id_set.contains(&entry_scene) {
+        stack.push(entry_scene);
+    }
+    while let Some(scene) = stack.pop() {
+        if !visited.insert(scene) {
+            continue;
+        }
+        order.push(scene);
+        if let Some(targets) = edges.get(&scene) {
+            // Push in reverse so the first edge is visited first (LIFO stack).
+            for &target in targets.iter().rev() {
+                if scene_id_set.contains(&target) && !visited.contains(&target) {
+                    stack.push(target);
+                }
+            }
+        }
+    }
+    // Append any archive scenes the walk never reached, in slot order, so the
+    // field stays a complete listing (honest: unreachable ≠ dropped).
+    for &scene in scene_ids {
+        if visited.insert(scene) {
+            order.push(scene);
+        }
+    }
+    order
+}
+
+fn structure_selection_control_signal(bytecode: &[u8]) -> &'static str {
+    let Ok(ops) = kaifuu_reallive::parse_scene(bytecode) else {
+        return "none";
+    };
+    let mut has_button_object = false;
+    let mut has_text_choice = false;
+    for op in &ops {
+        match op {
+            kaifuu_reallive::RealLiveOpcode::SelectionControl { opcode }
+                if matches!(*opcode, 4 | 14 | 20) =>
+            {
+                has_button_object = true;
+            }
+            kaifuu_reallive::RealLiveOpcode::Choice { .. } => has_text_choice = true,
+            _ => {}
+        }
+    }
+    if has_button_object {
+        "button-object"
+    } else if has_text_choice {
+        "text-window"
+    } else {
+        "none"
+    }
 }
 
 /// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
@@ -4088,7 +4485,7 @@ mod tests {
         deterministic_id, read_json, sha256_hash_bytes,
     };
     use std::cell::RefCell;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::rc::Rc;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -4105,6 +4502,207 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn build_synthetic_seen_txt_two_scenes() -> Vec<u8> {
+        let one_scene = crate::binary_patch_smoke::build_synthetic_seen_txt();
+        let index = kaifuu_reallive::parse_archive(&one_scene).unwrap();
+        let entry = index
+            .entries
+            .iter()
+            .find(|entry| entry.scene_id == 1)
+            .unwrap();
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        let blob = &one_scene[blob_start..blob_end];
+        let directory_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let mut out = vec![0u8; directory_len + (blob.len() * 2)];
+        let scene1_offset = directory_len as u32;
+        let scene2_offset = (directory_len + blob.len()) as u32;
+        out[8..12].copy_from_slice(&scene1_offset.to_le_bytes());
+        out[12..16].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+        out[16..20].copy_from_slice(&scene2_offset.to_le_bytes());
+        out[20..24].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+        out[directory_len..directory_len + blob.len()].copy_from_slice(blob);
+        out[directory_len + blob.len()..].copy_from_slice(blob);
+        out
+    }
+
+    #[test]
+    fn whole_seen_extract_writes_one_multi_scene_bridge_and_structure() {
+        let root = temp_dir("whole-seen-extract");
+        let game_root = root.join("game");
+        let data_root = game_root.join("REALLIVEDATA");
+        fs::create_dir_all(&data_root).unwrap();
+        let seen_bytes = build_synthetic_seen_txt_two_scenes();
+        fs::write(data_root.join("Seen.txt"), &seen_bytes).unwrap();
+        fs::write(data_root.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
+
+        let bridge_path = root.join("whole-bridge.json");
+        let structure_path = root.join("whole-structure.json");
+        let report_path = root.join("whole-decompile-report.json");
+        run_extract_reallive_bundle(
+            &[
+                "extract",
+                "--engine",
+                "reallive",
+                "--game-root",
+                game_root.to_str().unwrap(),
+                "--game-id",
+                "kaifuu-reallive-synthetic",
+                "--game-version",
+                "1.0.0",
+                "--source-profile-id",
+                "kaifuu-reallive-synthetic",
+                "--source-locale",
+                "ja-JP",
+                "--whole-seen",
+                "--bundle-output",
+                bridge_path.to_str().unwrap(),
+                "--structure-output",
+                structure_path.to_str().unwrap(),
+                "--decompile-report-output",
+                report_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>(),
+        )
+        .unwrap();
+
+        let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
+        let validated = kaifuu_core::BridgeBundleV02::validate_json(&bridge).unwrap();
+        assert_eq!(validated.assets.len(), 2);
+        assert!(
+            validated
+                .units
+                .iter()
+                .any(|unit| unit.source_unit_key.starts_with("reallive:scene-0001#"))
+        );
+        assert!(
+            validated
+                .units
+                .iter()
+                .any(|unit| unit.source_unit_key.starts_with("reallive:scene-0002#"))
+        );
+        assert_eq!(bridge["sourceBundleHash"], sha256_hash_bytes(&seen_bytes));
+
+        // Every whole-SEEN bridge unit carries its numeric scene in
+        // `context.route.sceneKey` (`scene-NNNN`) — the field the whole-game
+        // localize driver's structure resolver parses. Assert both scenes'
+        // units are keyed, so the handoff to the driver is real end-to-end.
+        let unit_scene_keys: BTreeSet<String> = bridge["units"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|unit| unit["context"]["route"]["sceneKey"].as_str())
+            .map(str::to_string)
+            .collect();
+        assert!(
+            unit_scene_keys.contains("scene-0001"),
+            "expected a unit routed to scene-0001; got {unit_scene_keys:?}"
+        );
+        assert!(
+            unit_scene_keys.contains("scene-0002"),
+            "expected a unit routed to scene-0002; got {unit_scene_keys:?}"
+        );
+
+        let structure: serde_json::Value = read_json(&structure_path).unwrap();
+        assert_eq!(structure["schemaVersion"], "utsushi.narrative-structure.v1");
+        let scene_ids: Vec<u64> = structure["scenes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|scene| scene["sceneId"].as_u64().unwrap())
+            .collect();
+        assert_eq!(scene_ids, vec![1, 2]);
+
+        // sceneDispatchOrder is the real play-loop dispatch order derived from
+        // the scene-dispatch graph (walk from entryScene=SEEN_START=1), NOT a
+        // reflection of any specific archive slot ordering. It must be a
+        // complete permutation of every archive scene (unreachable ≠ dropped),
+        // and must lead with the entry scene.
+        let dispatch_order: Vec<u64> = structure["sceneDispatchOrder"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|scene| scene.as_u64().unwrap())
+            .collect();
+        assert_eq!(structure["entryScene"].as_u64().unwrap(), 1);
+        assert_eq!(dispatch_order.first().copied(), Some(1));
+        assert_eq!(
+            dispatch_order.iter().copied().collect::<BTreeSet<u64>>(),
+            [1u64, 2].into_iter().collect::<BTreeSet<u64>>(),
+            "dispatch order must list every archive scene exactly once"
+        );
+
+        let report: serde_json::Value = read_json(&report_path).unwrap();
+        assert_eq!(report["scope"], "whole-seen");
+        assert_eq!(report["sceneCount"], 2);
+        assert_eq!(report["unknownOpcodes"], 0);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// Fixture generator (run manually) — regenerates the committed
+    /// `apps/itotori/test/fixtures/whole-seen-*.json` pair from the SAME
+    /// `--whole-seen` command path the CLI exposes, so the TS whole-game driver
+    /// test can feed the ACTUAL command output (not a hand-built bridge) into
+    /// the driver and prove end-to-end consumability. Regenerate with:
+    ///   `cargo test -p kaifuu-cli --bin kaifuu-cli \
+    ///      regenerate_whole_seen_ts_driver_fixture -- --ignored`
+    #[test]
+    #[ignore = "fixture generator; run manually to regenerate the TS driver fixture"]
+    fn regenerate_whole_seen_ts_driver_fixture() {
+        let root = temp_dir("whole-seen-ts-fixture");
+        let game_root = root.join("game");
+        let data_root = game_root.join("REALLIVEDATA");
+        fs::create_dir_all(&data_root).unwrap();
+        let seen_bytes = build_synthetic_seen_txt_two_scenes();
+        fs::write(data_root.join("Seen.txt"), &seen_bytes).unwrap();
+        fs::write(data_root.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
+
+        // Emit into the crate-relative committed fixtures dir.
+        let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("apps/itotori/test/fixtures");
+        let bridge_path = fixtures_dir.join("whole-seen-bridge.json");
+        let structure_path = fixtures_dir.join("whole-seen-structure.json");
+
+        run_extract_reallive_bundle(
+            &[
+                "extract",
+                "--engine",
+                "reallive",
+                "--game-root",
+                game_root.to_str().unwrap(),
+                "--game-id",
+                "kaifuu-reallive-synthetic",
+                "--game-version",
+                "1.0.0",
+                "--source-profile-id",
+                "kaifuu-reallive-synthetic",
+                "--source-locale",
+                "ja-JP",
+                "--whole-seen",
+                "--bundle-output",
+                bridge_path.to_str().unwrap(),
+                "--structure-output",
+                structure_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>(),
+        )
+        .unwrap();
+
+        // Sanity: the emitted bridge is schema-valid + carries scene route keys.
+        let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
+        kaifuu_core::BridgeBundleV02::validate_json(&bridge).unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

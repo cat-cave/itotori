@@ -429,14 +429,14 @@ export async function runLocalizeFullProjectCommand(
  * decoded structure actually contains that scene; otherwise the loop runs the
  * semantic agents live with no deterministic block (graceful degrade).
  */
-function buildStructureResolver(
+export function buildStructureResolver(
   structure: NarrativeStructure,
   defaultSceneId: number,
 ): DrivenUnitContextResolver {
   const sceneIds = new Set(structure.scenes.map((scene) => scene.sceneId));
   return ({ unit, plannerSceneId }): DrivenUnitContext | undefined => {
     const sceneId =
-      toSceneNumber(readUnitRouteSceneId(unit)) ?? toSceneNumber(plannerSceneId) ?? defaultSceneId;
+      readUnitRouteSceneNumber(unit) ?? toSceneNumber(plannerSceneId) ?? defaultSceneId;
     if (sceneId === undefined || !sceneIds.has(sceneId)) {
       return undefined;
     }
@@ -444,17 +444,29 @@ function buildStructureResolver(
   };
 }
 
-function readUnitRouteSceneId(unit: unknown): unknown {
-  const context = (unit as { context?: { route?: { sceneId?: unknown } } }).context;
-  return context?.route?.sceneId;
+/**
+ * Recover the numeric RealLive scene id from a bridge unit's route context. The
+ * `--whole-seen` bridge emits the scene as `context.route.sceneKey` (a
+ * `"scene-NNNN"` string) — `sceneId` in the v0.2 schema is a UUID7, NOT the
+ * numeric scene index (see RouteContextV02), so the canonical numeric-bearing
+ * field IS `sceneKey`. This parses the `scene-NNNN` form (and a bare-numeric
+ * fallback) to the numeric id the structure's `scenes[].sceneId` uses.
+ */
+function readUnitRouteSceneNumber(unit: unknown): number | undefined {
+  const route = (unit as { context?: { route?: { sceneKey?: unknown } } }).context?.route;
+  return toSceneNumber(route?.sceneKey);
 }
 
 function toSceneNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isInteger(value)) {
     return value;
   }
-  if (typeof value === "string" && /^\d+$/u.test(value)) {
-    return Number.parseInt(value, 10);
+  if (typeof value === "string") {
+    // Accept both the canonical `scene-NNNN` bridge form and a bare-numeric id.
+    const digits = value.match(/^(?:scene-)?(\d+)$/u)?.[1];
+    if (digits !== undefined) {
+      return Number.parseInt(digits, 10);
+    }
   }
   return undefined;
 }

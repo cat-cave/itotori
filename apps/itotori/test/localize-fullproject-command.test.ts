@@ -51,11 +51,13 @@ import {
 } from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DbPassLedger } from "../src/orchestrator/pass-ledger-db-adapter.js";
 import {
+  buildStructureResolver,
   parseLocalizeFullProjectConfig,
   runLocalizeFullProjectCommand,
   type LocalizeFullProjectConfig,
   type LocalizeFullProjectIo,
 } from "../src/orchestrator/localize-fullproject-command.js";
+import { parseNarrativeStructure } from "../src/agents/structure-informed-context/index.js";
 
 // --- ids (text columns; UUID-ish so a shared DB never collides) -------------
 const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
@@ -115,6 +117,65 @@ describe("parseLocalizeFullProjectConfig (game-agnostic config)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// End-to-end handoff: the ACTUAL `kaifuu extract --whole-seen` output feeds
+// the whole-game driver's structure resolver and resolves + drives EVERY scene.
+//
+// The fixtures below are the VERBATIM output of the `--whole-seen` command over
+// a synthetic 2-scene archive (regenerate via the kaifuu-cli
+// `regenerate_whole_seen_ts_driver_fixture` ignored test) — NOT a hand-built
+// bridge. This proves the produced bridge's `context.route.sceneKey` shape is
+// what the driver's `buildStructureResolver` consumes, closing the M1 handoff.
+// ---------------------------------------------------------------------------
+
+describe("whole-game driver consumes the REAL --whole-seen bridge output", () => {
+  const wholeSeenBridge = JSON.parse(
+    readFileSync(new URL("./fixtures/whole-seen-bridge.json", import.meta.url), "utf8"),
+  ) as { units: LocalizationUnitV02[] };
+  const wholeSeenStructure = parseNarrativeStructure(
+    JSON.parse(
+      readFileSync(new URL("./fixtures/whole-seen-structure.json", import.meta.url), "utf8"),
+    ),
+  );
+
+  it("carries a scene route on every unit and resolves each unit to its structure scene", () => {
+    const units = wholeSeenBridge.units;
+    expect(units.length).toBeGreaterThan(0);
+
+    // The command output spans MULTIPLE scenes (multi-scene bridge).
+    const bridgeSceneKeys = new Set(units.map((u) => u.context.route?.sceneKey));
+    expect(bridgeSceneKeys.size).toBeGreaterThanOrEqual(2);
+    // Every unit carries the numeric-bearing `scene-NNNN` route key the resolver reads.
+    for (const unit of units) {
+      expect(unit.context.route?.sceneKey).toMatch(/^scene-\d{4}$/u);
+    }
+
+    // The driver's OWN resolver (buildStructureResolver) — the exact seam the
+    // whole-game localize command uses — resolves EVERY unit to a structure
+    // scene from the ACTUAL command output. No unit falls through to undefined.
+    const resolver = buildStructureResolver(wholeSeenStructure, -1);
+    const resolvedScenes = new Set<number>();
+    units.forEach((unit, unitIndex) => {
+      const resolved = resolver({ unit, unitIndex, plannerSceneId: undefined });
+      expect(resolved, `unit ${unit.bridgeUnitId} must resolve to a scene`).toBeDefined();
+      expect(resolved?.narrativeStructure).toBe(wholeSeenStructure);
+      resolvedScenes.add(resolved!.sceneId);
+    });
+
+    // Every structure scene the play-loop dispatched is driven — the resolved
+    // scenes cover the whole exported dispatch order (end-to-end consumability).
+    expect([...resolvedScenes].sort((a, b) => a - b)).toEqual(
+      [...wholeSeenStructure.sceneDispatchOrder].sort((a, b) => a - b),
+    );
+    // And the numeric scene id each unit resolves to matches its route key.
+    for (const unit of units) {
+      const resolved = resolver({ unit, unitIndex: 0, plannerSceneId: undefined });
+      const keyNum = Number.parseInt(unit.context.route!.sceneKey!.replace("scene-", ""), 10);
+      expect(resolved?.sceneId).toBe(keyNum);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fixtures (mirror project-driven-executor.test.ts / pass-ledger.test.ts)
 // ---------------------------------------------------------------------------
 
@@ -157,7 +218,7 @@ function makeUnit(
     sourceAssetRef: { assetId: ASSET_ID, assetKey: "asset" },
     sourceLocation: { containerKey: "asset" },
     speaker: { knowledgeState: "known", speakerId: SPEAKER_ID, displayName: SPEAKER_NAME },
-    context: { route: { sceneId: String(SCENE_ID) } },
+    context: { route: { sceneKey: `scene-${String(SCENE_ID).padStart(4, "0")}` } },
     spans: [],
     patchRef: {
       assetId: ASSET_ID,

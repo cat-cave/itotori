@@ -144,7 +144,10 @@ pub use ast::{
     DiagnosticSeverity, Instruction, InstructionId, InstructionKind, Operand, ParseOutcome,
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,
 };
-pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle};
+pub use bridge::{
+    BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle, produce_bundle,
+    produce_whole_seen_bundle,
+};
 pub use compressor::{CompressError, compress_avg32_literal};
 pub use decompressor::{AVG32_COMPRESSED_PREAMBLE_LEN, DecompressError, decompress_avg32};
 pub use detector::{

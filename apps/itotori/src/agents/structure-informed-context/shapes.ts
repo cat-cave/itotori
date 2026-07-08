@@ -87,7 +87,14 @@ export type NarrativeScene = {
 export type NarrativeStructure = {
   schemaVersion: "utsushi.narrative-structure.v1";
   entryScene: number;
-  /** The distinct scene ids the play-loop crossed, in dispatch order. */
+  /**
+   * The distinct scene ids in dispatch order: the order the play-loop first
+   * reaches each scene, walking the scene-dispatch graph from `entryScene`
+   * (fallthrough successor, then choice branches), first-visit wins — NOT
+   * archive slot order. Any archive scenes never reached from the entry are
+   * appended afterward in slot order (unreachable ≠ dropped) so this stays a
+   * complete listing of every scene.
+   */
   sceneDispatchOrder: number[];
   scenes: NarrativeScene[];
 };

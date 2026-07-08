@@ -81,6 +81,20 @@ pub struct BridgeOpts<'a> {
     pub scene_kidoku_count: u32,
 }
 
+/// One decoded scene supplied to [`produce_whole_seen_bundle`].
+#[derive(Debug, Clone, Copy)]
+pub struct BridgeSceneInput<'a> {
+    /// Scene id from the 10,000-slot SEEN directory.
+    pub scene_id: u16,
+    /// Raw scene blob (header + compressed bytecode), used for per-asset
+    /// source hashes.
+    pub scene_bytes: &'a [u8],
+    /// Decompressed, post-xor2 scene bytecode.
+    pub decompressed_bytecode: &'a [u8],
+    /// Number of kidoku-table entries declared in this scene's header.
+    pub scene_kidoku_count: u32,
+}
+
 /// Fatal errors raised by [`produce_bundle`].
 #[derive(Debug, Clone, Error)]
 pub enum BridgeProduceError {
@@ -94,6 +108,12 @@ pub enum BridgeProduceError {
         "kaifuu.reallive.bridge.no_text_units: scene {scene_id} decoded to {opcode_count} opcodes but no Textout/TextDisplay/Choice"
     )]
     NoTextUnits { scene_id: u16, opcode_count: usize },
+    /// A whole-SEEN extract decoded every scene but found no translatable
+    /// units anywhere. This is a refusal rather than an empty bridge.
+    #[error(
+        "kaifuu.reallive.bridge.whole_seen_no_text_units: decoded {scene_count} scene(s) but found no Textout/TextDisplay/Choice units"
+    )]
+    WholeSeenNoTextUnits { scene_count: usize },
     /// Wrapped bytecode parse error.
     #[error("kaifuu.reallive.bridge.bytecode_parse: {0}")]
     BytecodeParse(#[from] RealLiveParseError),
@@ -178,6 +198,66 @@ pub fn produce_bundle(
         });
     }
     let json = build_bundle_json(scene_id, scene_bytes, &units, opts)?;
+    let bundle = BridgeBundleV02::validate_json(&json)?;
+    Ok(ProducedBundle { bundle, json })
+}
+
+/// Walk all decoded scenes from one SEEN.TXT archive into one v0.2
+/// BridgeBundle.
+///
+/// The top-level source bundle hash/revision is the whole `Seen.txt`, while
+/// each scene remains a distinct script asset and every unit keeps its
+/// canonical scene-scoped key (`reallive:scene-NNNN#OOOO`). A scene that
+/// decodes but carries no translatable units contributes an asset and no
+/// units; a scene that fails bytecode decode returns a scene-specific error.
+pub fn produce_whole_seen_bundle(
+    seen_bytes: &[u8],
+    scenes: &[BridgeSceneInput<'_>],
+    gameexe_inventory: &GameexeInventoryReport,
+    opts: &BridgeOpts<'_>,
+) -> Result<ProducedBundle, BridgeProduceError> {
+    let mut scene_outputs = Vec::new();
+    let mut total_units = 0usize;
+    for scene in scenes {
+        if scene.decompressed_bytecode.is_empty() {
+            return Err(BridgeProduceError::EmptyScene {
+                scene_id: scene.scene_id,
+            });
+        }
+        let opcode_spans = parse_real_bytecode_spans(scene.decompressed_bytecode)?;
+        if opcode_spans.is_empty() {
+            return Err(BridgeProduceError::EmptyScene {
+                scene_id: scene.scene_id,
+            });
+        }
+        let scene_opts = BridgeOpts {
+            game_id: opts.game_id,
+            game_version: opts.game_version,
+            source_profile_id: opts.source_profile_id,
+            source_locale: opts.source_locale,
+            extractor_name: opts.extractor_name,
+            extractor_version: opts.extractor_version,
+            scene_kidoku_count: scene.scene_kidoku_count,
+        };
+        let units = collect_units(
+            scene.scene_id,
+            &opcode_spans,
+            gameexe_inventory,
+            &scene_opts,
+        );
+        total_units += units.len();
+        scene_outputs.push(SceneBundleParts {
+            scene_id: scene.scene_id,
+            scene_bytes: scene.scene_bytes,
+            units,
+        });
+    }
+    if total_units == 0 {
+        return Err(BridgeProduceError::WholeSeenNoTextUnits {
+            scene_count: scenes.len(),
+        });
+    }
+    let json = build_whole_seen_bundle_json(seen_bytes, &scene_outputs, opts)?;
     let bundle = BridgeBundleV02::validate_json(&json)?;
     Ok(ProducedBundle { bundle, json })
 }
@@ -720,6 +800,12 @@ fn color_table_rgb(index: i32, gameexe_inventory: &GameexeInventoryReport) -> Op
 // JSON bundle assembly
 // ---------------------------------------------------------------------
 
+struct SceneBundleParts<'a> {
+    scene_id: u16,
+    scene_bytes: &'a [u8],
+    units: Vec<ProtoUnit>,
+}
+
 fn build_bundle_json(
     scene_id: u16,
     scene_bytes: &[u8],
@@ -790,6 +876,124 @@ fn build_bundle_json(
             "revisionId": revision_id,
             "revisionKind": "content_hash",
             "value": scene_blob_hash,
+        },
+        "sourceLocale": opts.source_locale,
+        "hashStrategy": {
+            "sourceProfile": {
+                "scope": "source_profile",
+                "algorithm": "sha256",
+                "normalization": "utf8-lf-json-stable-v1",
+            },
+            "sourceBundle": {
+                "scope": "source_bundle",
+                "algorithm": "sha256",
+                "normalization": "utf8-lf-json-stable-v1",
+            },
+            "sourceAsset": {
+                "scope": "source_asset",
+                "algorithm": "sha256",
+                "normalization": "bytes",
+            },
+            "sourceUnit": {
+                "scope": "source_unit",
+                "algorithm": "sha256",
+                "normalization": "utf8-lf-json-stable-v1",
+                "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+            },
+            "patchExport": {
+                "scope": "patch_export",
+                "algorithm": "sha256",
+                "normalization": "utf8-lf-json-stable-v1",
+            },
+            "deltaPackage": {
+                "scope": "delta_package",
+                "algorithm": "sha256",
+                "normalization": "utf8-lf-json-stable-v1",
+            },
+        },
+        "extractor": {
+            "name": opts.extractor_name,
+            "version": opts.extractor_version,
+        },
+        "assets": assets,
+        "units": units_json,
+        "policyRecords": [],
+    }))
+}
+
+fn build_whole_seen_bundle_json(
+    seen_bytes: &[u8],
+    scenes: &[SceneBundleParts<'_>],
+    opts: &BridgeOpts<'_>,
+) -> Result<Value, BridgeProduceError> {
+    let bundle_namespace = format!(
+        "reallive-bridge:game-id={}:source-profile-id={}:whole-seen",
+        opts.game_id, opts.source_profile_id
+    );
+    let seen_hash = sha256_canonical(seen_bytes);
+    let bridge_id = deterministic_uuid7(&bundle_namespace, "bundle");
+    let seen_revision_id = deterministic_uuid7(&bundle_namespace, "seen-revision");
+    let source_profile_revision_id =
+        deterministic_uuid7(&bundle_namespace, "source-profile-revision");
+    let source_profile_hash = sha256_canonical(opts.source_profile_id.as_bytes());
+
+    let mut assets = Vec::new();
+    let mut units_json = Vec::new();
+    for scene in scenes {
+        let scene_namespace = format!(
+            "reallive-bridge:game-id={}:source-profile-id={}:scene={:04}",
+            opts.game_id, opts.source_profile_id, scene.scene_id
+        );
+        let scene_blob_hash = sha256_canonical(scene.scene_bytes);
+        let revision_id = deterministic_uuid7(&scene_namespace, "scene-revision");
+        let asset_id = deterministic_uuid7(&scene_namespace, "scene-asset");
+        let asset_key = format!("reallive:scene-{:04}", scene.scene_id);
+
+        assets.push(json!({
+            "assetId": asset_id,
+            "assetKey": asset_key,
+            "assetKind": "script",
+            "sourceHash": scene_blob_hash,
+            "sourceRevision": {
+                "revisionId": revision_id,
+                "revisionKind": "content_hash",
+                "value": scene_blob_hash,
+            },
+            "path": format!("REALLIVEDATA/Seen.txt#scene-{:04}", scene.scene_id),
+        }));
+
+        for unit in &scene.units {
+            units_json.push(build_unit_json(
+                scene.scene_id,
+                &asset_id,
+                &asset_key,
+                &revision_id,
+                &scene_blob_hash,
+                &scene_namespace,
+                opts,
+                unit,
+            )?);
+        }
+    }
+
+    Ok(json!({
+        "schemaVersion": BRIDGE_SCHEMA_VERSION_V02,
+        "bridgeId": bridge_id,
+        "sourceGame": {
+            "gameId": opts.game_id,
+            "gameVersion": opts.game_version,
+            "sourceProfileId": opts.source_profile_id,
+            "sourceProfileRevision": {
+                "revisionId": source_profile_revision_id,
+                "revisionKind": "content_hash",
+                "value": source_profile_hash,
+            },
+        },
+        "sourceBundleHash": seen_hash,
+        "sourceBundleRevision": {
+            "revisionId": seen_revision_id,
+            "revisionKind": "content_hash",
+            "value": seen_hash,
         },
         "sourceLocale": opts.source_locale,
         "hashStrategy": {
