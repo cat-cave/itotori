@@ -16,10 +16,11 @@
 // ds gallery paints against its neutral fixtures. This panel paints them
 // against the REAL `localizationPassLedger` data via the composed overview.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type { ProjectOverviewReadModel } from "../../project-overview-read-model.js";
+import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 
@@ -102,8 +103,108 @@ export function PassLedgerPanelBody({
       className="itotori-panel--pass-ledger"
       data-panel-state={overview.state}
     >
+      {overview.state === "ready" && (
+        <LaunchPassAction
+          canSteer={overview.data.canSteer}
+          projectId={overview.data.projectId}
+          localeBranchId={overview.data.passLedger.filter.localeBranchId}
+        />
+      )}
       <PassLedgerPanelContent overview={overview} />
     </Panel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ovw-launch-pass-action — the Overview "launch next pass" action. Folds
+// queued corrections + DRIVES the next localization pass via the typed client
+// (`projects.launchPass` → the project-driven-executor / localize-fullproject
+// driver). `canSteer`-GATED: hidden entirely without the steer capability
+// (the server-derived `draft.write` signal on the overview) — mirroring the
+// reviewer detail `DecideActionStrip` (hidden, not disabled, without the
+// capability). A refused / errored launch is surfaced like the reviewer strip:
+// an alert, never a silent success. No game is named; ds tokens only.
+// ---------------------------------------------------------------------------
+
+type LaunchPassOutcome =
+  | { kind: "started"; passNumber: number }
+  | { kind: "refused"; message: string }
+  | { kind: "error"; message: string };
+
+export function LaunchPassAction({
+  canSteer,
+  projectId,
+  localeBranchId,
+}: {
+  canSteer: boolean;
+  projectId: string;
+  localeBranchId: string | null;
+}): ReactNode {
+  const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState<LaunchPassOutcome | null>(null);
+  // Hidden without the steer capability, or when no locale branch is selectable
+  // (nothing to scope the pass to).
+  if (!canSteer || localeBranchId === null) {
+    return null;
+  }
+  async function launch(): Promise<void> {
+    if (pending) {
+      return;
+    }
+    setOutcome(null);
+    setPending(true);
+    const result = await apiClient.request("projects.launchPass", {
+      pathParams: { projectId },
+      body: { localeBranchId: localeBranchId as string },
+    });
+    if (result.state === "ready") {
+      setOutcome(
+        result.data.outcome === "started"
+          ? { kind: "started", passNumber: result.data.passNumber ?? 0 }
+          : { kind: "refused", message: result.data.refusalMessage ?? "refused" },
+      );
+    } else if (result.state === "error") {
+      const code = result.error.code ?? "unavailable";
+      const detail = result.error.message ?? `status ${result.error.status}`;
+      setOutcome({ kind: "error", message: `${code}: ${detail}` });
+    } else {
+      setOutcome({ kind: "error", message: "Unexpected empty response" });
+    }
+    setPending(false);
+  }
+  return (
+    <div
+      className="itotori-launch-pass-action"
+      data-strip="launch-pass"
+      data-busy={pending ? "true" : "false"}
+    >
+      <button
+        type="button"
+        data-action="launch-pass"
+        disabled={pending}
+        aria-disabled={pending}
+        onClick={() => {
+          void launch();
+        }}
+        title="Fold queued corrections and drive the next localization pass"
+      >
+        {pending ? "Launching…" : "Launch next pass"}
+      </button>
+      {outcome?.kind === "started" && (
+        <p role="status" data-launch-pass="started" className="itotori-launch-pass-action__status">
+          Pass {outcome.passNumber} started
+        </p>
+      )}
+      {(outcome?.kind === "refused" || outcome?.kind === "error") && (
+        <p
+          role="alert"
+          data-launch-pass={outcome.kind}
+          className="itotori-launch-pass-action__error"
+        >
+          <Badge status="failed">{outcome.kind}</Badge> {outcome.message}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -159,7 +159,13 @@ export type ItotoriApiRouteId =
   | "findings.record"
   | "decisions.record"
   | "benchmarks.record"
-  | "runtimeEvidence.ingest";
+  | "runtimeEvidence.ingest"
+  // ovw-launch-pass-action — the Overview "launch next pass" mutation: folds
+  // queued corrections and DRIVES the next localization pass via the
+  // project-driven-executor / localize-fullproject driver. `canSteer`-gated
+  // (the `draft.write` steer permission). The HTTP surface is a thin adapter;
+  // the driver itself is unchanged.
+  | "projects.launchPass";
 
 export type ApiErrorResponse = {
   error: string;
@@ -253,6 +259,11 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "costDrilldown",
     "passLedger",
     "benchmarkHeadline",
+    // ovw-launch-pass-action — whether the CALLER may steer the localization
+    // (the `draft.write` steer permission). Sourced server-side so the Overview
+    // launch-pass action gates itself off the composed payload it already reads
+    // (never a client-fabricated capability). See `composeProjectOverviewReadModel`.
+    "canSteer",
   ],
   ApiBenchmarkReportsResponse: ["reports"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
@@ -335,6 +346,10 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "diagnostics",
   ],
   ReviewerBatchActionRequest: ["action", "actorUserId", "selections"],
+  // ovw-launch-pass-action — the typed launch-pass response envelope. The
+  // schemaVersion const pins the wire shape; a renamed / leaked field fails a
+  // contract test instead of silently drifting.
+  ApiLaunchPassResponse: ["schemaVersion", "outcome", "passNumber", "startedAt", "refusalMessage"],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
@@ -478,6 +493,38 @@ export type ApiRuntimeEvidenceRequest = {
 
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
+/**
+ * ovw-launch-pass-action — request body for the launch-pass mutation. The
+ * Overview action wires through the typed client. The body carries the locale
+ * branch the next pass is scoped to; the server VERIFIES it against the
+ * project's server-side ownership set (a forged branch is refused) before the
+ * driver is touched. The project id lives on the URL path.
+ */
+export type ApiLaunchPassRequest = {
+  /** The locale branch the next pass is scoped to (validated server-side). */
+  localeBranchId: string;
+};
+
+/**
+ * ovw-launch-pass-action — response body for the launch-pass mutation. A thin,
+ * driver-agnostic confirmation the UI can render after a click: a typed
+ * `outcome` (`started` / `refused`) plus the launched pass number + start
+ * timestamp (on `started`) or a refusal reason (on `refused`). A refused launch
+ * is surfaced in-band so the Overview strip renders it like any driver
+ * response, never as a silent success.
+ */
+export type ApiLaunchPassResponse = {
+  schemaVersion: "itotori.projects.launch-pass.v0";
+  /** The driver outcome: the pass was started, or the driver refused it. */
+  outcome: "started" | "refused";
+  /** The pass number that was launched (> 0) on `started`; `null` on `refused`. */
+  passNumber: number | null;
+  /** ISO timestamp the pass was started on `started`; `null` on `refused`. */
+  startedAt: string | null;
+  /** Refusal reason (non-empty) on `refused`; `null` on `started`. */
+  refusalMessage: string | null;
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -514,6 +561,7 @@ export type ItotoriApiResponseBody =
   | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
+  | ApiLaunchPassResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -843,6 +891,9 @@ export function assertItotoriApiResponse(
       return;
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
+      return;
+    case "projects.launchPass":
+      assertLaunchPassResponse(value);
       return;
   }
 }
@@ -3658,6 +3709,9 @@ export function assertProjectOverviewReadModel(
   assertProjectCostDrilldownResponse(model.costDrilldown, `${label}.costDrilldown`);
   assertProjectOverviewPassLedgerPage(model.passLedger, `${label}.passLedger`);
   assertProjectOverviewBenchmarkHeadline(model.benchmarkHeadline, `${label}.benchmarkHeadline`);
+  // ovw-launch-pass-action — the server-derived steer capability the Overview
+  // launch-pass action gates itself on.
+  assertBoolean(model.canSteer, `${label}.canSteer`);
 }
 
 function assertProjectOverviewPassLedgerPage(
@@ -4116,6 +4170,49 @@ function assertRuntimeEvidenceResponse(
     assertString(response.patchExportId, "ApiRuntimeEvidenceResponse.patchExportId");
   }
   assertProjectDashboardStatus(response.dashboard, "ApiRuntimeEvidenceResponse.dashboard");
+}
+
+// ovw-launch-pass-action — assert the launch-pass response envelope. The
+// schemaVersion literal pins the wire shape; `outcome` pins to started/refused.
+// A `started` outcome MUST carry a positive pass number + a start timestamp and
+// no refusal; a `refused` outcome MUST carry a non-empty refusal message and
+// null pass/timestamp — so a refused launch can NEVER masquerade as a started
+// one (or as a silent 200 with empty fields).
+function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPassResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiLaunchPassResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.projects.launch-pass.v0",
+    "ApiLaunchPassResponse.schemaVersion",
+  );
+  assertEnum(response.outcome, ["started", "refused"] as const, "ApiLaunchPassResponse.outcome");
+  if (response.outcome === "started") {
+    assertPositiveInteger(response.passNumber, "ApiLaunchPassResponse.passNumber");
+    assertString(response.startedAt, "ApiLaunchPassResponse.startedAt");
+    assertNull(response.refusalMessage, "ApiLaunchPassResponse.refusalMessage");
+    return;
+  }
+  assertNull(response.passNumber, "ApiLaunchPassResponse.passNumber");
+  assertNull(response.startedAt, "ApiLaunchPassResponse.startedAt");
+  assertString(response.refusalMessage, "ApiLaunchPassResponse.refusalMessage");
+}
+
+/**
+ * ovw-launch-pass-action — parse + validate the launch-pass request body. The
+ * locale branch is required (the project id lives on the URL path); the server
+ * additionally verifies the branch against the project's ownership set before
+ * the driver runs.
+ */
+export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
+  return parseRequest("ApiLaunchPassRequest", () => {
+    const request = asRecord(body, "ApiLaunchPassRequest");
+    assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
+    return { localeBranchId: request.localeBranchId };
+  });
 }
 
 export function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {

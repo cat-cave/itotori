@@ -416,6 +416,7 @@ const fixtureServices = {
     recordFinding: vi.fn(unused),
     recordDecision: vi.fn(unused),
     recordBenchmarkReport: vi.fn(unused),
+    launchNextLocalizationPass: vi.fn(unused),
   },
   manualFeedback: {
     importManualFeedback: vi.fn(unused),

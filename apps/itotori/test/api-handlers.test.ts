@@ -184,6 +184,13 @@ const apiMutationPermissionMatrix = [
     }),
     "ingestRuntimeReport",
   ),
+  apiGate(
+    "launchPass",
+    post("/api/projects/project-1/launch-pass", {
+      localeBranchId: "locale-1",
+    }),
+    "launchNextLocalizationPass",
+  ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
 describe("Itotori API handlers", () => {
@@ -3022,6 +3029,13 @@ describe("Itotori API handlers", () => {
           "route": "POST /api/projects/:projectId/runtime-evidence",
           "successFixture": "api-handlers.test.ts runtime evidence ingest success fixture",
         },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "launch pass",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/projects/:projectId/launch-pass",
+          "successFixture": "api-handlers.test.ts launch pass success fixture",
+        },
       ]
     `);
   });
@@ -3047,6 +3061,98 @@ describe("Itotori API handlers", () => {
     expect(response).toMatchObject({
       statusCode: 200,
       body: { status: "hello_world_failed", runtimeReportId: "runtime-1" },
+    });
+  });
+
+  describe("ovw-launch-pass-action launch-pass route", () => {
+    it("drives the next pass via the driver with the SERVER-SIDE branch scope (canSteer)", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", { localeBranchId: "locale-1" }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({
+        schemaVersion: "itotori.projects.launch-pass.v0",
+        outcome: "started",
+        passNumber: 3,
+        startedAt: "2026-07-08T00:00:00.000Z",
+        refusalMessage: null,
+      });
+      // The steer permission (draft.write) was checked BEFORE the driver ran.
+      expect(services.authorization.requirePermission).toHaveBeenCalledWith("draft.write");
+      // The driver is invoked with the AUTHORITATIVE server-side scope.
+      expect(services.projectWorkflow.launchNextLocalizationPass).toHaveBeenCalledWith({
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+      });
+    });
+
+    it("does NOT drive the pass and returns 403 for a non-canSteer user", async () => {
+      const services = serviceFixture();
+      services.authorization.requirePermission.mockRejectedValueOnce(
+        new AuthorizationError(deniedActor, "draft.write"),
+      );
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", { localeBranchId: "locale-1" }),
+        services,
+      );
+
+      assertForbiddenApiMutation(response, { actor: deniedActor, permission: "draft.write" });
+      expect(services.projectWorkflow.launchNextLocalizationPass).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a driver refusal in-band (outcome refused, null pass/timestamp)", async () => {
+      const services = serviceFixture();
+      services.projectWorkflow.launchNextLocalizationPass.mockResolvedValueOnce({
+        outcome: "refused",
+        refusalMessage: "a pass is already running for this branch",
+      });
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", { localeBranchId: "locale-1" }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({
+        schemaVersion: "itotori.projects.launch-pass.v0",
+        outcome: "refused",
+        passNumber: null,
+        startedAt: null,
+        refusalMessage: "a pass is already running for this branch",
+      });
+    });
+
+    it("refuses a launch whose branch is not a server-side branch of the project (forged)", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", {
+          localeBranchId: "locale-owned-by-someone-else",
+        }),
+        services,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.projectWorkflow.launchNextLocalizationPass).not.toHaveBeenCalled();
+    });
+
+    it("rejects a launch-pass body with no locale branch (bad request)", async () => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", {}),
+        services,
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toMatchObject({ code: "bad_request" });
+      expect(services.projectWorkflow.launchNextLocalizationPass).not.toHaveBeenCalled();
     });
   });
 
@@ -3629,6 +3735,13 @@ function serviceFixture(): ItotoriApiServices {
       ingestRuntimeReport: vi.fn(async () => ({
         project: projectFixture,
         result: runtimeIngestResultFixture,
+      })),
+      // ovw-launch-pass-action — the mocked pass driver returns a `started`
+      // outcome so the launch-pass route resolves 200 with a valid envelope.
+      launchNextLocalizationPass: vi.fn(async () => ({
+        outcome: "started" as const,
+        passNumber: 3,
+        startedAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },
     catalogRepository: {

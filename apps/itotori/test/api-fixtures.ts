@@ -1139,6 +1139,7 @@ export const projectOverviewFixture: ProjectOverviewReadModel = {
     reportCount: benchmarkReportsFixture.length,
     latestReport: benchmarkReportsFixture[0] ?? null,
   },
+  canSteer: true,
 };
 
 function readFixture<T>(path: string): T {

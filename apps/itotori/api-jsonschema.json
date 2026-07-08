@@ -92,6 +92,43 @@
       ],
       "type": "object"
     },
+    "ApiLaunchPassRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "localeBranchId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "localeBranchId"
+      ],
+      "type": "object"
+    },
+    "ApiLaunchPassResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "started",
+            "refused"
+          ]
+        },
+        "passNumber": {},
+        "refusalMessage": {},
+        "schemaVersion": {
+          "const": "itotori.projects.launch-pass.v0"
+        },
+        "startedAt": {}
+      },
+      "required": [
+        "outcome",
+        "passNumber",
+        "refusalMessage",
+        "schemaVersion",
+        "startedAt"
+      ],
+      "type": "object"
+    },
     "ApiProjectImportRequest": {
       "additionalProperties": true,
       "properties": {
@@ -633,6 +670,9 @@
         "benchmarkHeadline": {
           "type": "object"
         },
+        "canSteer": {
+          "type": "boolean"
+        },
         "cost": {
           "$ref": "#/definitions/ProjectCostReport"
         },
@@ -660,6 +700,7 @@
       },
       "required": [
         "benchmarkHeadline",
+        "canSteer",
         "cost",
         "costDrilldown",
         "decisions",

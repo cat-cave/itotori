@@ -79,6 +79,15 @@ export type ProjectOverviewReadModel = {
   costDrilldown: CostDrilldownPage;
   passLedger: ProjectOverviewPassLedgerPage;
   benchmarkHeadline: ProjectOverviewBenchmarkHeadline;
+  /**
+   * ovw-launch-pass-action — whether the CALLER may STEER the localization
+   * (drive the next pass). Sourced server-side from the caller's `draft.write`
+   * (steer) permission — the SAME permission that protects the pass ledger —
+   * so the Overview launch-pass action gates itself off this composed payload
+   * (never a client-fabricated capability). Defaults to `true` for trusted
+   * internal (non-HTTP) callers; the API boundary sets it from the permission.
+   */
+  canSteer: boolean;
 };
 
 export type ProjectOverviewPassLedgerPageOptions = {
@@ -101,6 +110,15 @@ export type ProjectOverviewReadModelOptions = {
    * boundary sets it from the caller's `draft.write` permission.
    */
   includePassLedger?: boolean;
+  /**
+   * ovw-launch-pass-action — whether the caller may STEER the localization
+   * (drive the next pass). Surfaced on the composed overview as `canSteer` so
+   * the Overview launch-pass action gates itself off the payload it already
+   * reads. Defaults to `true` for trusted internal callers; the API boundary
+   * sets it from the caller's `draft.write` (steer) permission — the SAME
+   * permission as `includePassLedger`.
+   */
+  canSteer?: boolean;
 };
 
 /**
@@ -173,6 +191,10 @@ export async function composeProjectOverviewReadModel(
       reportCount: input.benchmarkReports.length,
       latestReport: input.benchmarkReports[0] ?? null,
     },
+    // ovw-launch-pass-action — the caller's steer capability. Defaults to true
+    // for trusted internal callers; the API boundary passes the caller's
+    // `draft.write` permission.
+    canSteer: input.options?.canSteer ?? true,
   };
 }
 

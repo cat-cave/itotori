@@ -91,6 +91,43 @@
         ],
         "type": "object"
       },
+      "ApiLaunchPassRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "localeBranchId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "localeBranchId"
+        ],
+        "type": "object"
+      },
+      "ApiLaunchPassResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": [
+              "started",
+              "refused"
+            ]
+          },
+          "passNumber": {},
+          "refusalMessage": {},
+          "schemaVersion": {
+            "const": "itotori.projects.launch-pass.v0"
+          },
+          "startedAt": {}
+        },
+        "required": [
+          "outcome",
+          "passNumber",
+          "refusalMessage",
+          "schemaVersion",
+          "startedAt"
+        ],
+        "type": "object"
+      },
       "ApiProjectImportRequest": {
         "additionalProperties": true,
         "properties": {
@@ -632,6 +669,9 @@
           "benchmarkHeadline": {
             "type": "object"
           },
+          "canSteer": {
+            "type": "boolean"
+          },
           "cost": {
             "$ref": "#/components/schemas/ProjectCostReport"
           },
@@ -659,6 +699,7 @@
         },
         "required": [
           "benchmarkHeadline",
+          "canSteer",
           "cost",
           "costDrilldown",
           "decisions",
@@ -2541,6 +2582,95 @@
         },
         "summary": "Record a QA finding.",
         "x-itotoriRouteId": "findings.record"
+      }
+    },
+    "/api/projects/{projectId}/launch-pass": {
+      "post": {
+        "operationId": "projectsLaunchPass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiLaunchPassRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiLaunchPassResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Launch the next localization pass (folds queued corrections).",
+        "x-itotoriRouteId": "projects.launchPass"
       }
     },
     "/api/projects/{projectId}/locale-branches/{localeBranchId}/asset-decisions": {

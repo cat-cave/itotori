@@ -406,6 +406,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         costDrilldown: ref("CostDrilldownPage"),
         passLedger: obj,
         benchmarkHeadline: obj,
+        canSteer: bool,
       },
       additionalProperties: false,
       schemaVersion: "projects.overview.v0.1",
@@ -634,6 +635,21 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         actorDisplayName: str,
       },
       additionalProperties: true,
+    }),
+
+  // Launch-pass (ovw-launch-pass-action) ----------------------------------
+  ApiLaunchPassRequest: () =>
+    object({
+      required: ["localeBranchId"],
+      properties: { localeBranchId: str },
+      additionalProperties: true,
+    }),
+  ApiLaunchPassResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
+      properties: { outcome: { enum: ["started", "refused"] } },
+      additionalProperties: false,
+      schemaVersion: "itotori.projects.launch-pass.v0",
     }),
 };
 
@@ -964,6 +980,19 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiRuntimeEvidenceRequest",
     responseSchema: "ApiRuntimeEvidenceResponse",
+  },
+  // ovw-launch-pass-action — drive the next localization pass (folds queued
+  // corrections -> pass N+1) via the project-driven-executor /
+  // localize-fullproject driver. The HTTP surface is a thin, `canSteer`-gated
+  // adapter; the driver itself is unchanged.
+  "projects.launchPass": {
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/launch-pass",
+    operationId: "projectsLaunchPass",
+    summary: "Launch the next localization pass (folds queued corrections).",
+    pathParams: ["projectId"],
+    requestSchema: "ApiLaunchPassRequest",
+    responseSchema: "ApiLaunchPassResponse",
   },
 };
 

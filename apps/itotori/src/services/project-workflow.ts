@@ -171,6 +171,63 @@ export class PatchResultIngestionError extends Error {
   }
 }
 
+/**
+ * ovw-launch-pass-action — the authoritative scope a launch-pass drives. The
+ * project + locale branch are resolved SERVER-SIDE (the HTTP boundary verifies
+ * the branch against the project's ownership set) before this reaches the
+ * driver.
+ */
+export type LaunchLocalizationPassInput = {
+  projectId: string;
+  localeBranchId: string;
+};
+
+/**
+ * ovw-launch-pass-action — the driver outcome of a launch. `started` carries
+ * the launched pass number + the start time; `refused` carries a human reason
+ * (e.g. a pass already running, no prior state to fold, a budget cap). A
+ * refusal is a DOMAIN outcome (surfaced in-band), distinct from a thrown error
+ * (misconfiguration / permission).
+ */
+export type LaunchLocalizationPassResult =
+  | { outcome: "started"; passNumber: number; startedAt: Date }
+  | { outcome: "refused"; refusalMessage: string };
+
+/**
+ * ovw-launch-pass-action — the driver seam the launch-pass mutation folds
+ * queued corrections through and DRIVES the next localization pass with (the
+ * project-driven-executor / localize-fullproject driver). It is a PORT so
+ * production binds it to the real driver while a test binds a double (no game
+ * bytes, no live pipeline). The driver itself is unchanged — this is the thin
+ * adapter seam it is invoked behind.
+ */
+export interface LocalizationPassDriverPort {
+  launchNextPass(
+    input: LaunchLocalizationPassInput & { actor: AuthorizationActor },
+  ): Promise<LaunchLocalizationPassResult>;
+}
+
+/**
+ * ovw-launch-pass-action — thrown when the launch-pass workflow is invoked but
+ * no real pass driver is wired (the pure-HTTP install has no game-bytes driver
+ * configured). Mirrors {@link DraftProviderNotConfiguredError}: per the
+ * strict-proof rule "fakes and mocks ONLY belong in tests, NEVER in real code",
+ * the workflow refuses LOUDLY rather than fabricating a fake pass. A deployment
+ * with the driver wired drives a real pass through the SAME handler seam; a
+ * test injects an explicit driver double.
+ */
+export class LocalizationPassDriverNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "launchNextLocalizationPass refused: no localization-pass driver is configured for this " +
+        "workflow. The production launch path must inject a real pass driver (the " +
+        "project-driven-executor / localize-fullproject driver, over real game bytes); refusing " +
+        "to fabricate a fake pass. Tests must inject an explicit driver double.",
+    );
+    this.name = "LocalizationPassDriverNotConfiguredError";
+  }
+}
+
 export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   /**
@@ -231,6 +288,16 @@ export interface ItotoriProjectWorkflowPort {
     projectId: string,
     input: { benchmarkReport: BenchmarkReportV02 },
   ): Promise<BenchmarkRecordResult>;
+  /**
+   * ovw-launch-pass-action — fold queued corrections and DRIVE the next
+   * localization pass for the (server-resolved) project + locale branch via the
+   * injected pass driver. `canSteer`-gated at the HTTP boundary (the
+   * `draft.write` steer permission). Throws
+   * {@link LocalizationPassDriverNotConfiguredError} when no driver is wired.
+   */
+  launchNextLocalizationPass(
+    input: LaunchLocalizationPassInput,
+  ): Promise<LaunchLocalizationPassResult>;
 }
 
 export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort {
@@ -242,6 +309,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
     private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
     private readonly passLedger?: ItotoriLocalizationPassLedgerRepositoryPort,
+    // ovw-launch-pass-action — the real localization-pass driver. Optional: a
+    // pure-HTTP install without a game-bytes driver leaves it undefined, so
+    // `launchNextLocalizationPass` refuses LOUDLY (no fake pass) rather than
+    // fabricating one. Tests inject an explicit driver double.
+    private readonly passDriver?: LocalizationPassDriverPort,
   ) {}
 
   async reset(): Promise<void> {
@@ -808,6 +880,21 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       systemCount: report.systemsCompared.length,
       findingCount: report.findingRecords.length,
     };
+  }
+
+  async launchNextLocalizationPass(
+    input: LaunchLocalizationPassInput,
+  ): Promise<LaunchLocalizationPassResult> {
+    // ovw-launch-pass-action — the workflow is a thin adapter over the injected
+    // pass driver: it folds queued corrections + drives the next pass (the
+    // driver itself consumes the prior pass's accepted state + flagged-unit
+    // feedback through the pass ledger). With no driver wired the install has no
+    // game-bytes pipeline, so it refuses LOUDLY (never a fabricated pass),
+    // mirroring the draft path's provider-not-configured refusal.
+    if (this.passDriver === undefined) {
+      throw new LocalizationPassDriverNotConfiguredError();
+    }
+    return await this.passDriver.launchNextPass({ ...input, actor: this.actor });
   }
 
   private async recordProviderRun(

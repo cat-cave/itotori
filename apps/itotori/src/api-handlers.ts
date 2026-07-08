@@ -57,9 +57,11 @@ import {
   parseReviewerBatchPreviewRequest,
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
+  parseLaunchPassRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
+  type ApiLaunchPassResponse,
   type ApiAssetDecisionsResponse,
   type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
@@ -85,6 +87,7 @@ import type {
   DecisionRecordResult,
   FindingRecordResult,
   ItotoriProjectWorkflowPort,
+  LaunchLocalizationPassResult,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
 import {
@@ -126,6 +129,10 @@ export const apiMutationPermissionGates = {
   decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
   benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
   runtimeEvidenceIngest: apiMutationGate("runtime evidence ingest", "runtimeIngest"),
+  // ovw-launch-pass-action — the `canSteer` steer permission is `draft.write`:
+  // launching the next pass drives the drafting of pass N+1, the same authority
+  // that protects the draft workflow + the pass ledger.
+  launchPass: apiMutationGate("launch pass", "draftWrite"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -237,6 +244,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "recordDecision"
     | "recordBenchmarkReport"
     | "ingestRuntimeReport"
+    | "launchNextLocalizationPass"
   >;
 };
 
@@ -585,7 +593,49 @@ async function routeItotoriApiRequest(
       );
       return ok("runtimeEvidence.ingest", result.result);
     }
+    case "launch-pass": {
+      // ovw-launch-pass-action — fold queued corrections + drive the next pass
+      // via the driver. `canSteer`-gated (draft.write). The locale branch is
+      // VERIFIED server-side against the project's ownership set (a forged
+      // branch is refused before the driver runs — ITOTORI-050), then the
+      // authoritative branch id is handed to the driver.
+      const body = parseLaunchPassRequest(request.body);
+      await requireApiPermission(services, apiMutationPermissionGates.launchPass);
+      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+        projectId: projectRoute.projectId,
+        localeBranchId: body.localeBranchId,
+      });
+      const outcome = await services.projectWorkflow.launchNextLocalizationPass({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+      });
+      return ok("projects.launchPass", launchPassResponseBody(outcome));
+    }
   }
+}
+
+/**
+ * ovw-launch-pass-action — map the driver outcome to the typed wire envelope.
+ * A `refused` outcome is surfaced in-band (null pass/timestamp + the reason) so
+ * the Overview strip renders it like any driver response, never a silent 200.
+ */
+function launchPassResponseBody(outcome: LaunchLocalizationPassResult): ApiLaunchPassResponse {
+  if (outcome.outcome === "started") {
+    return {
+      schemaVersion: "itotori.projects.launch-pass.v0",
+      outcome: "started",
+      passNumber: outcome.passNumber,
+      startedAt: outcome.startedAt.toISOString(),
+      refusalMessage: null,
+    };
+  }
+  return {
+    schemaVersion: "itotori.projects.launch-pass.v0",
+    outcome: "refused",
+    passNumber: null,
+    startedAt: null,
+    refusalMessage: outcome.refusalMessage,
+  };
 }
 
 /**
@@ -626,6 +676,10 @@ async function routeReadOnlyItotoriApiRequest(
     const overview = await services.projectWorkflow.getProjectOverview({
       ...parseProjectOverviewFilter(request.search),
       includePassLedger: canReadPassLedger,
+      // ovw-launch-pass-action — surface the caller's steer capability
+      // (draft.write, the SAME permission that protects the pass ledger) so the
+      // Overview launch-pass action gates itself off the composed payload.
+      canSteer: canReadPassLedger,
     });
     return ok(
       "projects.overview",
@@ -1887,6 +1941,7 @@ function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonRespo
 function ok(routeId: "decisions.record", body: DecisionRecordResult): ApiJsonResponse;
 function ok(routeId: "benchmarks.record", body: BenchmarkRecordResult): ApiJsonResponse;
 function ok(routeId: "runtimeEvidence.ingest", body: RuntimeIngestResult): ApiJsonResponse;
+function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };
@@ -1932,7 +1987,13 @@ function errorBody(
 
 function parseProjectRoute(pathname: string): {
   projectId: string;
-  resource: "branches" | "findings" | "decisions" | "benchmarks" | "runtime-evidence";
+  resource:
+    | "branches"
+    | "findings"
+    | "decisions"
+    | "benchmarks"
+    | "runtime-evidence"
+    | "launch-pass";
 } | null {
   const match = /^\/api\/projects\/([^/]+)\/([^/]+)$/.exec(pathname);
   if (!match) {
@@ -1948,7 +2009,8 @@ function parseProjectRoute(pathname: string): {
     resource !== "findings" &&
     resource !== "decisions" &&
     resource !== "benchmarks" &&
-    resource !== "runtime-evidence"
+    resource !== "runtime-evidence" &&
+    resource !== "launch-pass"
   ) {
     return null;
   }
