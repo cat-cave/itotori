@@ -273,16 +273,25 @@ pub struct G00Image {
     pub width: u32,
     /// Height in pixels, from the `u16 LE` header field at offset 3.
     pub height: u32,
-    /// Decoded pixel buffer in RGBA8 byte order. For every type the
-    /// length is exactly `width * height * 4`: types 0 and 2 pad or
-    /// truncate the LZSS-decoded payload to that flat-canvas size at the
-    /// decode boundary (type 2's region table indexes sub-rectangles
-    /// *into* this flat `width*height` surface — see
-    /// [`G00Image::pixels_rgba_byte_len_full_canvas`]), and type 1
-    /// expands one RGBA tuple per palette index. A short LZSS payload
+    /// Decoded pixel buffer in RGBA8 byte order. For type 0 and type 1
+    /// the length is exactly `width * height * 4` (one RGBA tuple per
+    /// canvas pixel); for type 2 see the canvas-height caveat below.
+    /// Types 0 and 1 zero-pad or truncate the LZSS-decoded payload to the
+    /// declared canvas size at the decode boundary (a short LZSS payload
     /// is zero-padded to the canvas size *and* surfaces a typed
     /// [`G00Warning::PayloadLengthMismatch`], so the size is never a
-    /// silent mismatch.
+    /// silent mismatch). Type-2 — see also
+    /// [`G00Image::pixels_rgba_byte_len_full_canvas`] and
+    /// [`G00Image::pixels_rgba_byte_len_type2_atlas`]: the buffer's
+    /// length is `width * struct.height * 4`, where `struct.height` is
+    /// the *expanded* canvas height the decoder wrote onto `self.height`
+    /// (the on-disk `height` field, multiplied by `regions.len()` when
+    /// every region is the same non-degenerate rectangle — the
+    /// "overlaid image" stacking the reference decoder applies before
+    /// reconstruction). Downstream consumers MUST read the canvas
+    /// height off `self` rather than off the on-disk header; the
+    /// on-disk `width × height` is the per-band size, not the final
+    /// surface size, for stacked type-2 files.
     pub pixels_rgba: Vec<u8>,
     /// Region table from the on-disk type-2 record. Empty for types 0
     /// and 1.
@@ -290,19 +299,28 @@ pub struct G00Image {
 }
 
 impl G00Image {
-    /// Expected pixel-buffer byte length for a type-0 or type-1 image:
-    /// `width * height * 4` (one RGBA tuple per canvas pixel).
+    /// Expected pixel-buffer byte length for the *final* decoded canvas:
+    /// `width * height * 4`. This is the length `pixels_rgba` is sized
+    /// to for type 0 and type 1, and for type 2 *as long as you read
+    /// `height` off this struct* — `self.height` is the canvas height
+    /// the decoder wrote out, which for type-2 stacked regions is the
+    /// on-disk `height` * `regions.len()` (NOT the on-disk `height`
+    /// the input bytes carried). For the per-band layout (sum of the
+    /// original on-disk region rectangles), use
+    /// [`Self::pixels_rgba_byte_len_type2_atlas`] instead.
     pub fn pixels_rgba_byte_len_full_canvas(&self) -> usize {
         (self.width as usize)
             .saturating_mul(self.height as usize)
             .saturating_mul(4)
     }
 
-    /// Expected pixel-buffer byte length for a type-2 atlas:
-    /// `sum(region.width * region.height) * 4`. Returns 0 when the
-    /// image has no regions (which is the well-formed case only for
-    /// types 0/1; a type-2 image with zero regions is a malformed
-    /// header surfaced by [`decode_g00`]).
+    /// Expected pixel-buffer byte length for a type-2 atlas by the
+    /// per-band sum: `sum(region.width * region.height) * 4`. This
+    /// matches the on-disk region rectangles *before* the
+    /// "overlaid image" stack-multiplies the canvas height. Returns 0
+    /// when the image has no regions (which is the well-formed case
+    /// only for types 0/1; a type-2 image with zero regions is a
+    /// malformed header surfaced by [`decode_g00`]).
     pub fn pixels_rgba_byte_len_type2_atlas(&self) -> usize {
         self.regions
             .iter()

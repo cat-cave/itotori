@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::{DispatchOutcome, ExprValue, RLOperation};
-use crate::g00::{G00DecodeError, decode_g00};
+use crate::g00::{G00DecodeError, G00Warning, decode_g00};
 use crate::graphics_objects::{GraphicsObject, GraphicsObjectStack, GraphicsPlane};
 use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
@@ -146,6 +146,20 @@ pub enum GraphicsRuntimeWarning {
         asset_key: String,
         reason: String,
     },
+    /// The g00 decoder returned a non-fatal [`crate::g00::G00Warning`]
+    /// (e.g. a payload-length mismatch) while the dims-probe was reading
+    /// a VFS-opened asset. Distinct from [`Self::G00DecodeFailure`]
+    /// (which is a typed decode error). The dims probe surfaces this
+    /// warning so the audit trail pins the LZSS-variant / length drift
+    /// rather than silently rounding to the canvas size.
+    #[error(
+        "utsushi.reallive.graphics.g00_payload_warning: op={opcode_tag} asset={asset_key} reason={reason}"
+    )]
+    G00PayloadWarning {
+        opcode_tag: &'static str,
+        asset_key: String,
+        reason: String,
+    },
 }
 
 impl GraphicsRuntimeWarning {
@@ -166,6 +180,9 @@ impl GraphicsRuntimeWarning {
                 opcode_tag: tag, ..
             }
             | Self::G00DecodeFailure {
+                opcode_tag: tag, ..
+            }
+            | Self::G00PayloadWarning {
                 opcode_tag: tag, ..
             } => *tag = opcode_tag,
             // Variants that don't carry an opcode tag are unchanged.
@@ -413,10 +430,25 @@ impl GraphicsRuntime {
     /// Resolve `g00/<asset_name>.g00` through the substrate VFS,
     /// decode the bytes, and return the decoded `(width, height)`.
     /// Returns `Ok(None)` when no asset package was set so the caller
-    /// can record the gap observably.
+    /// can record the gap observably. Non-fatal [`crate::g00::G00Warning`]
+    /// entries the decoder returns alongside the image are pushed onto
+    /// the runtime's warning queue (under
+    /// [`GraphicsRuntimeWarning::G00PayloadWarning`]) — they are NOT
+    /// discarded at the dims-probe boundary, so a corpus LZSS drift
+    /// surfaces observably instead of being silently rounded to the
+    /// canvas size. The fatal `Err` arm is unchanged (still returns
+    /// [`GraphicsRuntimeWarning::G00DecodeFailure`] for the caller to
+    /// tag with the dispatch opcode).
+    ///
+    /// `opcode_tag` is stamped on every emitted `G00PayloadWarning` so
+    /// the dims-probe origin is named in the audit trail; pass the
+    /// dispatch op's [`RLOperation::tag`] (or `""` when no dispatch
+    /// context is available). Tests that don't care about the stamp
+    /// may pass `""`.
     pub fn read_g00_through_vfs(
         &self,
         asset_name: &str,
+        opcode_tag: &'static str,
     ) -> Result<Option<(u32, u32)>, GraphicsRuntimeWarning> {
         let package = {
             let guard = self.lock_inner();
@@ -433,7 +465,12 @@ impl GraphicsRuntime {
             .open(&id)
             .map_err(|err| Self::vfs_warning(asset_name, err))?;
         match decode_g00(bytes.as_slice()) {
-            Ok((image, _warnings)) => Ok(Some((image.width, image.height))),
+            Ok((image, warnings)) => {
+                for warning in warnings {
+                    self.push_warning(Self::g00_payload_warning(asset_name, opcode_tag, &warning));
+                }
+                Ok(Some((image.width, image.height)))
+            }
             Err(err) => Err(Self::g00_warning(asset_name, err)),
         }
     }
@@ -451,6 +488,26 @@ impl GraphicsRuntime {
             opcode_tag: "",
             asset_key: asset_name.to_string(),
             reason: err.to_string(),
+        }
+    }
+
+    /// Translate a non-fatal [`crate::g00::G00Warning`] into a
+    /// [`GraphicsRuntimeWarning::G00PayloadWarning`] stamped with the
+    /// dims-probe's asset key AND the dispatcher's `opcode_tag` (so the
+    /// audit trail names both the g00 origin and the rgrop that triggered
+    /// the probe). The `Display` impl of [`crate::g00::G00Warning`]
+    /// renders the diagnostic prefix (`utsushi.reallive.g00.…`) so the
+    /// resulting warning text carries the original stable code plus the
+    /// runtime-owned opcode / asset framing.
+    fn g00_payload_warning(
+        asset_name: &str,
+        opcode_tag: &'static str,
+        warning: &G00Warning,
+    ) -> GraphicsRuntimeWarning {
+        GraphicsRuntimeWarning::G00PayloadWarning {
+            opcode_tag,
+            asset_key: asset_name.to_string(),
+            reason: warning.to_string(),
         }
     }
 

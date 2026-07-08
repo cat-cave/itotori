@@ -291,8 +291,11 @@ impl GrpRenderOp {
         // For the on-screen background (DC0), resolve+decode the g00 through
         // the substrate VFS (when bound) so the audit surface pins the real
         // canvas size; fall back to asset-key-only when no package is set.
+        // The opcode_tag is passed through so any G00PayloadWarning
+        // surfaced by the dims-probe carries the dispatch op's name in
+        // its audit trail (instead of an empty tag).
         if slot == SCREEN_DC_SLOT {
-            match self.runtime.read_g00_through_vfs(&name) {
+            match self.runtime.read_g00_through_vfs(&name, self.op.tag()) {
                 Ok(Some((w, h))) => self.runtime.record_bg_canvas(&name, w, h),
                 Ok(None) => self.runtime.record_bg_asset_only(&name),
                 Err(warning) => self
