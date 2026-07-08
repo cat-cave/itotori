@@ -328,7 +328,7 @@ pub struct WolfHelperBoundaryEntryReport {
 }
 
 impl WolfHelperBoundaryEntryReport {
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             fixture_id: redact_for_log_or_report(&self.fixture_id),
             source_node_id: redact_for_log_or_report(&self.source_node_id),

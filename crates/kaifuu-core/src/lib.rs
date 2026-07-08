@@ -228,6 +228,7 @@ pub mod siglus_static_key;
 pub mod wine_proton_helper;
 pub mod wolf_helper_boundary;
 pub mod wolf_protection_detector;
+pub mod wolf_readiness;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
@@ -248,6 +249,14 @@ pub use wolf_protection_detector::{
     WolfProtectionProfile, WolfSecretRequirement, derive_wolf_capability_tuple,
     derive_wolf_protection_profile, read_wolf_protection_detector_fixture,
     run_wolf_protection_detector, wolf_protection_diagnostic_matrix,
+};
+pub use wolf_readiness::{
+    WOLF_READINESS_REPORT_SCHEMA_VERSION, WOLF_READINESS_SCHEMA_VERSION,
+    WOLF_READINESS_SUPPORT_BOUNDARY, WolfReadinessArtifactKind, WolfReadinessArtifactProof,
+    WolfReadinessCase, WolfReadinessEntryReport, WolfReadinessEvidence, WolfReadinessFinding,
+    WolfReadinessFixture, WolfReadinessLevel, WolfReadinessProvenance, WolfReadinessReport,
+    canonical_wolf_readiness_artifact_hash, derive_wolf_readiness_level,
+    read_wolf_readiness_fixture, run_wolf_readiness,
 };
 
 pub use mv_mz_encrypted_audio::{

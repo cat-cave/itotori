@@ -1,0 +1,184 @@
+{
+  "schemaVersion": "0.1.0",
+  "readinessSetId": "kaifuu-wolf-readiness-fixtures",
+  "sourceNodeId": "KAIFUU-040",
+  "engineFamily": "wolf",
+  "cases": [
+    {
+      "fixtureId": "wolf.readiness.unsupported",
+      "caseId": "wolf-readiness-unsupported",
+      "detector": {
+        "fixtureId": "wolf.readiness.unsupported.detector",
+        "variant": "unrecognized-dx-container",
+        "container": "wolf_archive",
+        "protectionSignal": "unrecognized_protection",
+        "crypto": "unknown",
+        "codec": "unknown",
+        "surface": "unknown",
+        "secretRequirements": [],
+        "expectedProfile": "unknown",
+        "expectedSemanticCodes": ["kaifuu.unknown_engine_variant"]
+      },
+      "expectedLevel": "unsupported"
+    },
+    {
+      "fixtureId": "wolf.readiness.identify",
+      "caseId": "wolf-readiness-identify",
+      "detector": {
+        "fixtureId": "wolf.readiness.identify.detector",
+        "variant": "dxa-static-key-encrypted",
+        "container": "wolf_archive",
+        "protectionSignal": "static_key_protected",
+        "crypto": "fixed_key",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirements": [
+          {
+            "requirementId": "wolf.archive.static-key",
+            "keyRef": "local-secret:wolf-static-key"
+          }
+        ],
+        "expectedProfile": "protected",
+        "expectedSemanticCodes": ["kaifuu.unsupported_layered_transform"]
+      },
+      "expectedLevel": "identify"
+    },
+    {
+      "fixtureId": "wolf.readiness.inventory",
+      "caseId": "wolf-readiness-inventory",
+      "detector": {
+        "fixtureId": "wolf.readiness.inventory.detector",
+        "variant": "dxa-unencrypted",
+        "container": "wolf_archive",
+        "protectionSignal": "unencrypted",
+        "crypto": "null_key",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirements": [],
+        "expectedProfile": "plain",
+        "expectedSemanticCodes": []
+      },
+      "expectedLevel": "inventory"
+    },
+    {
+      "fixtureId": "wolf.readiness.helper-required",
+      "caseId": "wolf-readiness-helper-required",
+      "detector": {
+        "fixtureId": "wolf.readiness.helper-required.detector",
+        "variant": "wolf-pro-dynamic-key",
+        "container": "wolf_archive",
+        "protectionSignal": "dynamic_key_helper_gated",
+        "crypto": "helper_gated",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirements": [
+          {
+            "requirementId": "wolf.archive.dynamic-key",
+            "keyRef": "local-secret:wolf-dynamic-key"
+          }
+        ],
+        "expectedProfile": "helper_required",
+        "expectedSemanticCodes": ["kaifuu.helper_required"]
+      },
+      "helperBoundary": {
+        "fixtureId": "wolf.readiness.helper-required.boundary",
+        "profileId": "wolf-readiness-dynamic-key-helper-required",
+        "boundaryKind": "dynamic_key_local_helper",
+        "keyRequirement": {
+          "requirementId": "wolf-pro-per-game-key",
+          "keyRef": "local-secret:fixture/wolf/pro-per-game-key",
+          "materialKind": "fixedBytes"
+        },
+        "locallyAvailable": true,
+        "expectedOutcome": "helper_required"
+      },
+      "expectedLevel": "helper_required"
+    },
+    {
+      "fixtureId": "wolf.readiness.extract",
+      "caseId": "wolf-readiness-extract",
+      "detector": {
+        "fixtureId": "wolf.readiness.extract.detector",
+        "variant": "dxa-static-key-encrypted",
+        "container": "wolf_archive",
+        "protectionSignal": "static_key_protected",
+        "crypto": "fixed_key",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirements": [
+          {
+            "requirementId": "wolf.archive.static-key",
+            "keyRef": "local-secret:wolf-static-key"
+          }
+        ],
+        "expectedProfile": "protected",
+        "expectedSemanticCodes": ["kaifuu.unsupported_layered_transform"]
+      },
+      "helperBoundary": {
+        "fixtureId": "wolf.readiness.extract.boundary",
+        "profileId": "wolf-readiness-static-key-resolved",
+        "boundaryKind": "static_key_local_import",
+        "keyRequirement": {
+          "requirementId": "wolf-static-archive-key",
+          "keyRef": "local-secret:fixture/wolf/static-archive-key",
+          "materialKind": "archivePassword"
+        },
+        "locallyAvailable": true,
+        "expectedOutcome": "key_resolved"
+      },
+      "extractProof": {
+        "kind": "synthetic_extract_fixture",
+        "artifactId": "wolf.synthetic.extract",
+        "proofHash": "sha256:36ad26497efd7ca2edfdddd1b7865542bc57c13ea9bc6afbd2cd9ae230221395",
+        "provenance": "public_synthetic"
+      },
+      "expectedLevel": "extract"
+    },
+    {
+      "fixtureId": "wolf.readiness.patch",
+      "caseId": "wolf-readiness-patch",
+      "detector": {
+        "fixtureId": "wolf.readiness.patch.detector",
+        "variant": "dxa-static-key-encrypted",
+        "container": "wolf_archive",
+        "protectionSignal": "static_key_protected",
+        "crypto": "fixed_key",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirements": [
+          {
+            "requirementId": "wolf.archive.static-key",
+            "keyRef": "local-secret:wolf-static-key"
+          }
+        ],
+        "expectedProfile": "protected",
+        "expectedSemanticCodes": ["kaifuu.unsupported_layered_transform"]
+      },
+      "helperBoundary": {
+        "fixtureId": "wolf.readiness.patch.boundary",
+        "profileId": "wolf-readiness-static-key-resolved-patch",
+        "boundaryKind": "static_key_local_import",
+        "keyRequirement": {
+          "requirementId": "wolf-static-archive-key",
+          "keyRef": "local-secret:fixture/wolf/static-archive-key",
+          "materialKind": "archivePassword"
+        },
+        "locallyAvailable": true,
+        "expectedOutcome": "key_resolved"
+      },
+      "extractProof": {
+        "kind": "synthetic_extract_fixture",
+        "artifactId": "wolf.synthetic.extract",
+        "proofHash": "sha256:36ad26497efd7ca2edfdddd1b7865542bc57c13ea9bc6afbd2cd9ae230221395",
+        "provenance": "public_synthetic"
+      },
+      "patchProof": {
+        "kind": "synthetic_patch_fixture",
+        "artifactId": "wolf.synthetic.patch",
+        "proofHash": "sha256:e4059bcb577a651e9979d77997234517864b2bf565ad71fcbd4d4562590690db",
+        "provenance": "public_synthetic"
+      },
+      "expectedLevel": "patch"
+    }
+  ]
+}
