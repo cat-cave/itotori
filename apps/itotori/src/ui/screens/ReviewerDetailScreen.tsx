@@ -4,18 +4,43 @@
 // `/api/reviewer/queue/:id/detail` THROUGH the typed client and renders the
 // same panels: the permission-denial UI, a visible diagnostic banner (missing
 // context is never a silent empty panel), the action strip (disabled without
-// queue.manage), and the source / draft / comparison / policy / glossary /
-// branch-reference / QA-findings / runtime-evidence / rationale / transitions
-// panels — all with `@itotori/ds` components.
+// queue.manage), and the source / draft / comparison / draft-history / policy /
+// glossary / branch-reference / QA-findings / runtime-evidence / rationale /
+// transitions panels — all with `@itotori/ds` components.
+//
+// rev-detail-ui — enriches three of those panels from the SAME
+// `reviewer.detail` read-model (no new routes, read-only consumer):
+//   - DraftHistoryPanel: the draft → approved-patch version progression
+//     (v1 draft → patch-v3) with per-version status + attempt metadata,
+//     drawn from `context.draft` (`draftText`, `approvedPatchText`,
+//     `draftStatus`, `attemptCount`). Distinct from the sibling
+//     `RevisionHistoryComparisonPane`, which is the source↔draft↔re-draft
+//     DIFF over `workspace.comparison`.
+//   - PolicyPanel (policy rules): the style-guide policy identity + status
+//     + approval provenance (`context.policy`) folded with the exact
+//     branch policy reference the draft was produced under
+//     (`context.branchReference.branchPolicyRef` / `versionSequence` /
+//     `updateReason`).
+//   - GlossaryPanel: the referenced terms + the branch glossary reference
+//     provenance (`context.branchReference.glossaryRef` / `versionSequence`),
+//     client-paginated with the ds `Pagination` primitive.
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import {
   reviewerQueueActionValues,
   reviewerQueueItemKindValues,
   type ReviewerQueueAction,
   type ReviewerQueueItemKind,
 } from "@itotori/db";
-import { Badge, ComparisonPane, DataTable, Panel } from "@itotori/ds";
+import {
+  Badge,
+  BiText,
+  ComparisonPane,
+  DataTable,
+  Pagination,
+  Panel,
+  StatReadout,
+} from "@itotori/ds";
 import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -103,6 +128,7 @@ function ReadyView({ context }: { context: ReviewerDetailContext }): ReactNode {
         <SourcePanel context={context} />
         <DraftPanel context={context} />
         <ComparisonPanel context={context} />
+        <DraftHistoryPanel context={context} />
         <RevisionHistoryComparisonPane reviewItemId={context.reviewItemId} />
         <PolicyPanel context={context} />
         <GlossaryPanel context={context} />
@@ -250,42 +276,171 @@ function ComparisonPanel({ context }: { context: ReviewerDetailContext }): React
   );
 }
 
-function PolicyPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+// The draft-history panel renders the version PROGRESSION for the unit under
+// review from the `reviewer.detail` draft record: the draft (v1/v2 — the loop
+// may have iterated it to `attemptCount`) and the approved patch (patch-v3).
+// A `BiText` carries the source ↔ draft version; a `ComparisonPane` carries the
+// draft → approved-patch delta once a patch exists. The attempt counter and
+// status badge make the iteration visible without leaving the panel.
+function DraftHistoryPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  const draft = context.draft;
   return (
-    <Panel title="Style-guide policy" eyebrow="Policy">
-      {context.policy === null ? (
-        <MissingContext label="No policy" />
-      ) : (
-        <p>
-          <Badge status={context.policy.styleGuidePolicyStatus} /> {context.policy.policyLabel} ·{" "}
-          <code>{context.policy.styleGuidePolicyVersionId}</code>
-        </p>
-      )}
+    <Panel
+      title="Draft history"
+      eyebrow="Draft → approved patch"
+      className="itotori-panel--draft-history"
+    >
+      <div className="itotori-draft-history" data-panel-id="draft-history">
+        {draft === null ? (
+          <MissingContext label="No draft history" />
+        ) : (
+          <>
+            <div className="itotori-metric-row" aria-label="Draft progression">
+              <StatReadout label="Target locale" value={<code>{draft.targetLocale}</code>} />
+              <StatReadout label="Attempt" value={draft.attemptCount} unit="of draft loop" />
+              <StatReadout label="Draft status" value={<Badge status={draft.draftStatus} />} />
+            </div>
+            <ol className="itotori-draft-history__steps" aria-label="Draft version progression">
+              <li className="itotori-draft-history__step" data-draft-stage="draft">
+                <BiText
+                  source={context.source?.sourceText ?? ""}
+                  translation={draft.draftText}
+                  sourceLocale={context.source?.sourceLocale ?? "source"}
+                  targetLocale={draft.targetLocale}
+                  speaker={
+                    <span className="itotori-draft-history__version">
+                      Draft · attempt {draft.attemptCount}
+                    </span>
+                  }
+                />
+              </li>
+              <li className="itotori-draft-history__step" data-draft-stage="patch">
+                {draft.approvedPatchText === null ? (
+                  <p className="itotori-empty-copy">
+                    No approved patch yet — draft awaiting review.
+                  </p>
+                ) : (
+                  <ComparisonPane
+                    source={draft.draftText}
+                    draft={draft.approvedPatchText}
+                    sourceLabel={`Draft · ${draft.targetLocale}`}
+                    draftLabel={`Approved patch · ${draft.targetLocale}`}
+                    draftMeta={<Badge status={draft.draftStatus} />}
+                  />
+                )}
+              </li>
+            </ol>
+          </>
+        )}
+      </div>
     </Panel>
   );
 }
 
+// The policy panel surfaces the style-guide POLICY the draft was measured
+// against: the policy identity + status + approval provenance from
+// `context.policy`, folded with the EXACT branch policy reference the draft was
+// produced under (`context.branchReference`). The read-model references the
+// policy by version identity — it does not decompose it into an enumerated rule
+// list — so this is the policy's identity + provenance, not a per-rule table.
+function PolicyPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  const policy = context.policy;
+  const reference = context.branchReference;
+  return (
+    <Panel title="Style-guide policy" eyebrow="Policy rules">
+      <div className="itotori-policy-rules" data-panel-id="policy-rules">
+        {policy === null ? (
+          <MissingContext label="No policy" />
+        ) : (
+          <>
+            <p className="itotori-policy-rules__label">
+              <Badge status={policy.styleGuidePolicyStatus} /> {policy.policyLabel}
+            </p>
+            <div className="itotori-metric-row" aria-label="Policy provenance">
+              <StatReadout
+                label="Policy version"
+                value={<code>{policy.styleGuidePolicyVersionId}</code>}
+                mono
+              />
+              <StatReadout
+                label="Approved"
+                value={policy.approvedAt === null ? "unapproved" : String(policy.approvedAt)}
+              />
+              <StatReadout label="Approver" value={policy.approverUserId ?? "none"} />
+              {reference !== null && (
+                <>
+                  <StatReadout
+                    label="Branch policy ref"
+                    value={<code>{reference.branchPolicyRef ?? "none"}</code>}
+                    mono
+                  />
+                  <StatReadout label="Reference version" value={reference.versionSequence} />
+                  <StatReadout label="Update reason" value={reference.updateReason} />
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+const GLOSSARY_PAGE_SIZE = 8;
+
+// The glossary panel renders the referenced terms the reviewer must confirm the
+// draft honoured, plus the branch glossary reference PROVENANCE (which exact
+// glossary snapshot the draft was produced under). Client-paginated with the ds
+// `Pagination` primitive when the referenced term list exceeds one page.
 function GlossaryPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  const entries = context.glossary;
+  const reference = context.branchReference;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(entries.length / GLOSSARY_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const windowStart = safePage * GLOSSARY_PAGE_SIZE;
+  const windowed = entries.slice(windowStart, windowStart + GLOSSARY_PAGE_SIZE);
   return (
     <Panel title="Glossary" eyebrow="Terminology">
-      {context.glossary.length === 0 ? (
-        <MissingContext label="No glossary entries" />
-      ) : (
-        <DataTable
-          caption="Glossary entries"
-          columns={[
-            { key: "term", header: "Term", render: (g) => g.sourceTerm },
-            { key: "preferred", header: "Preferred", render: (g) => g.preferredTranslation },
-            {
-              key: "status",
-              header: "Status",
-              render: (g) => <Badge status={g.glossaryEntryStatus} />,
-            },
-          ]}
-          rows={context.glossary}
-          getRowKey={(g) => g.termId}
-        />
-      )}
+      <div className="itotori-glossary" data-panel-id="glossary">
+        {reference !== null && (
+          <div className="itotori-metric-row" aria-label="Glossary provenance">
+            <StatReadout label="Glossary ref" value={<code>{reference.glossaryRef}</code>} mono />
+            <StatReadout label="Reference version" value={reference.versionSequence} />
+          </div>
+        )}
+        {entries.length === 0 ? (
+          <MissingContext label="No glossary entries" />
+        ) : (
+          <>
+            <DataTable
+              caption="Glossary entries"
+              columns={[
+                { key: "term", header: "Term", render: (g) => g.sourceTerm },
+                { key: "preferred", header: "Preferred", render: (g) => g.preferredTranslation },
+                {
+                  key: "status",
+                  header: "Status",
+                  render: (g) => <Badge status={g.glossaryEntryStatus} />,
+                },
+              ]}
+              rows={windowed}
+              getRowKey={(g) => g.termId}
+            />
+            {entries.length > GLOSSARY_PAGE_SIZE && (
+              <Pagination
+                page={safePage}
+                pageCount={pageCount}
+                onPrevious={() => setPage((p) => Math.max(0, p - 1))}
+                onNext={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                label="Glossary pages"
+                totalItems={entries.length}
+                itemName="term"
+              />
+            )}
+          </>
+        )}
+      </div>
     </Panel>
   );
 }
