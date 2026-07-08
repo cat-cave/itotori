@@ -2221,10 +2221,77 @@ describe("repository permission gate matrix", () => {
     );
 
     expect(sourceGates.map(sourceGateKey)).toEqual([
-      "probe-repository.ts:unregisteredMutation:draftWrite",
+      "ItotoriProbeRepository:probe-repository.ts:unregisteredMutation:draftWrite",
     ]);
     expect(() => expectRepositoryPermissionGateMatrixMatches([], sourceGates)).toThrow(
       /probe-repository\.ts:unregisteredMutation:draftWrite/u,
+    );
+    expect(() => expectRepositoryPermissionGateMatrixMatches([], sourceGates)).toThrow(
+      /repository ItotoriProbeRepository method unregisteredMutation/u,
+    );
+  });
+
+  it("distinguishes two repositories that share a method name and permission key by repository identity (SHARED-029)", () => {
+    // Two repository classes in one source file both gate a method with the
+    // same name on the same permission. Repository identity must keep the two
+    // gates as distinct source-alignment keys so neither can mask the other.
+    const sourceGates = sourcePermissionGatesFromSource(
+      "shared-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriProbeRepositoryA {
+          async sharedMutation(actor) {
+            await requirePermission(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+
+        class ItotoriProbeRepositoryB {
+          async sharedMutation(actor) {
+            await requirePermission(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+
+    expect(sourceGates.map(sourceGateKey)).toEqual([
+      "ItotoriProbeRepositoryA:shared-probe-repository.ts:sharedMutation:draftWrite",
+      "ItotoriProbeRepositoryB:shared-probe-repository.ts:sharedMutation:draftWrite",
+    ]);
+
+    // Registering both repositories' gates aligns with the source gates.
+    expect(() =>
+      expectRepositoryPermissionGateMatrixMatches(
+        [
+          {
+            repository: "ItotoriProbeRepositoryA",
+            sourceFile: "shared-probe-repository.ts",
+            mutation: "sharedMutation",
+            permissionKey: "draftWrite" as PermissionKey,
+          },
+          {
+            repository: "ItotoriProbeRepositoryB",
+            sourceFile: "shared-probe-repository.ts",
+            mutation: "sharedMutation",
+            permissionKey: "draftWrite" as PermissionKey,
+          },
+        ],
+        sourceGates,
+      ),
+    ).not.toThrow();
+
+    // A matrix that registers only one repository's gate fails: the collision
+    // is caught and the diagnostic names the missing repository identity.
+    const partialMatrix = [
+      {
+        repository: "ItotoriProbeRepositoryA",
+        sourceFile: "shared-probe-repository.ts",
+        mutation: "sharedMutation",
+        permissionKey: "draftWrite" as PermissionKey,
+      },
+    ];
+    expect(() => expectRepositoryPermissionGateMatrixMatches(partialMatrix, sourceGates)).toThrow(
+      /repository ItotoriProbeRepositoryB method sharedMutation/u,
     );
   });
 });
@@ -2796,10 +2863,12 @@ function repositoryGate(
 
 function sourcePermissionGates(): Pick<
   RepositoryPermissionGateCase,
-  "sourceFile" | "mutation" | "permissionKey"
+  "repository" | "sourceFile" | "mutation" | "permissionKey"
 >[] {
-  const gates: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[] =
-    [];
+  const gates: Pick<
+    RepositoryPermissionGateCase,
+    "repository" | "sourceFile" | "mutation" | "permissionKey"
+  >[] = [];
   const repositorySourceDir = new URL("../src/repositories/", import.meta.url);
 
   for (const sourceFile of readdirSync(repositorySourceDir).filter((file) =>
@@ -2817,7 +2886,10 @@ function sourcePermissionGatesFromSource(
   sourceFileName: string,
   source: string,
   parsedSourceFileName = sourceFileName,
-): Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[] {
+): Pick<
+  RepositoryPermissionGateCase,
+  "repository" | "sourceFile" | "mutation" | "permissionKey"
+>[] {
   const parsedSource = ts.createSourceFile(
     parsedSourceFileName,
     source,
@@ -2825,8 +2897,10 @@ function sourcePermissionGatesFromSource(
     true,
   );
   const requirePermissionAliases = permissionHelperAliases(parsedSource, "requirePermission");
-  const gates: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[] =
-    [];
+  const gates: Pick<
+    RepositoryPermissionGateCase,
+    "repository" | "sourceFile" | "mutation" | "permissionKey"
+  >[] = [];
 
   function visit(node: ts.Node): void {
     if (
@@ -2842,6 +2916,7 @@ function sourcePermissionGatesFromSource(
         );
       }
       gates.push({
+        repository: gateAnnotation?.repository ?? requiredSourceMethod(sourceMethod).repository,
         sourceFile: sourceFileName,
         mutation: gateAnnotation?.mutation ?? requiredSourceMethod(sourceMethod).method,
         permissionKey,
@@ -2856,20 +2931,52 @@ function sourcePermissionGatesFromSource(
 }
 
 function expectRepositoryPermissionGateMatrixMatches(
-  matrix: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[],
-  sourceGates: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[],
+  matrix: Pick<
+    RepositoryPermissionGateCase,
+    "repository" | "sourceFile" | "mutation" | "permissionKey"
+  >[],
+  sourceGates: Pick<
+    RepositoryPermissionGateCase,
+    "repository" | "sourceFile" | "mutation" | "permissionKey"
+  >[],
 ): void {
   const matrixKeys = matrix.map(sourceGateKey).sort();
   const sourceKeys = sourceGates.map(sourceGateKey).sort();
-  if (JSON.stringify(matrixKeys) !== JSON.stringify(sourceKeys)) {
-    throw new Error(
-      [
-        "repository permission matrix does not match source gates",
-        `matrix: ${JSON.stringify(matrixKeys)}`,
-        `source: ${JSON.stringify(sourceKeys)}`,
-      ].join("\n"),
-    );
+  if (JSON.stringify(matrixKeys) === JSON.stringify(sourceKeys)) {
+    return;
   }
+  // Set-equality failed. Produce a repository-identity-naming diff (SHARED-029)
+  // so the diagnostic calls out WHICH repository is missing or extra instead of
+  // only dumping the two key lists.
+  const matrixByKey = new Map(matrix.map((gate) => [sourceGateKey(gate), gate]));
+  const sourceByKey = new Map(sourceGates.map((gate) => [sourceGateKey(gate), gate]));
+  const missingMatrixEntries = sourceKeys
+    .filter((key, index) => sourceKeys.indexOf(key) === index && !matrixByKey.has(key))
+    .sort();
+  const extraMatrixEntries = matrixKeys
+    .filter((key, index) => matrixKeys.indexOf(key) === index && !sourceByKey.has(key))
+    .sort();
+  const duplicateMatrixEntries = matrixKeys.filter(
+    (key, index) => matrixKeys.indexOf(key) !== index,
+  );
+  const duplicateSourceEntries = sourceKeys.filter(
+    (key, index) => sourceKeys.indexOf(key) !== index,
+  );
+  throw new Error(
+    [
+      "repository permission matrix does not match source gates",
+      ...missingMatrixEntries.map(
+        (key) =>
+          `missing matrix entry for source gate — ${describeRepositoryGate(sourceByKey.get(key)!)} [${key}]`,
+      ),
+      ...extraMatrixEntries.map(
+        (key) =>
+          `extra matrix entry without source gate — ${describeRepositoryGate(matrixByKey.get(key)!)} [${key}]`,
+      ),
+      ...duplicateMatrixEntries.map((key) => `duplicate matrix entry — ${key}`),
+      ...duplicateSourceEntries.map((key) => `duplicate source gate — ${key}`),
+    ].join("\n"),
+  );
 }
 
 type RepositorySourceMethod = {
@@ -3028,11 +3135,30 @@ function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
 }
 
 function sourceGateKey({
+  repository,
   sourceFile,
   mutation,
   permissionKey,
-}: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">): string {
-  return `${sourceFile}:${mutation}:${permissionKey}`;
+}: Pick<
+  RepositoryPermissionGateCase,
+  "repository" | "sourceFile" | "mutation" | "permissionKey"
+>): string {
+  return `${repository}:${sourceFile}:${mutation}:${permissionKey}`;
+}
+
+/**
+ * Human-readable diagnostic for a matrix/source gate mismatch that names the
+ * repository identity (SHARED-029), so two shared repository files with the
+ * same method name + permission key cannot collapse/mask one another without
+ * the diagnostic calling out WHICH repository is missing or extra.
+ */
+function describeRepositoryGate(
+  gate: Pick<
+    RepositoryPermissionGateCase,
+    "repository" | "sourceFile" | "mutation" | "permissionKey"
+  >,
+): string {
+  return `repository ${gate.repository} method ${gate.mutation} (${gate.sourceFile}) requires ${gate.permissionKey}`;
 }
 
 function requiredContext(context: DatabaseContext | undefined): DatabaseContext {
