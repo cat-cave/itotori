@@ -52,6 +52,11 @@ import {
   type TranslationScope,
 } from "./project-driven-executor.js";
 import {
+  buildPipelineFailureDiagnostic,
+  PipelineFailureDiagnosticError,
+  runPipelineStepWithDiagnostic,
+} from "./pipeline-failure-diagnostic.js";
+import {
   runLocalizationPass,
   type LocalizationPassRecord,
   type PassLedgerPort,
@@ -167,27 +172,118 @@ export async function runLocalizeFullProjectCommand(
   const { deps } = args;
   const log = deps.log ?? (() => {});
 
-  const config = parseLocalizeFullProjectConfig(deps.io.readJson(args.configPath));
+  // itotori-agent-facing-pipeline-failure-diagnostics — each pipeline step is
+  // wrapped so a thrown error becomes a structured diagnostic naming the step,
+  // the failing unit/scene (when applicable), the inputs (redaction-safe), and
+  // a minimal repro pointer. An agent driving the pipeline reads ONE
+  // diagnostic, not a bare `Error: <message>` it has to guess at.
+  const baseInputs: Record<string, unknown> = {
+    configPath: args.configPath,
+    runSummaryPath: args.runSummaryPath,
+  };
+
+  const config = await runPipelineStepWithDiagnostic<LocalizeFullProjectConfig>({
+    step: "localize.parse-config",
+    code: "refused",
+    message: `localize.parse-config refused: config JSON at '${args.configPath}' is invalid`,
+    repro: { configPath: args.configPath },
+    inputs: baseInputs,
+    actor: deps.actor,
+    now: deps.now,
+    run: () => parseLocalizeFullProjectConfig(deps.io.readJson(args.configPath)),
+  });
   const targetLocale = config.targetLocale ?? "en-US";
   const translationScope = config.translationScope ?? "dialogue-only";
 
-  const rawBridge = deps.io.readJson(config.bridgePath);
-  const bridge = assertBridgeBundleV02Shape(rawBridge);
+  const rawBridge = await runPipelineStepWithDiagnostic({
+    step: "localize.read-bridge",
+    code: "io-error",
+    message: `localize.read-bridge failed: could not read bridge at '${config.bridgePath}'`,
+    repro: { configPath: args.configPath, bridgePath: config.bridgePath },
+    inputs: { ...baseInputs, bridgePath: config.bridgePath },
+    actor: deps.actor,
+    now: deps.now,
+    run: () => deps.io.readJson(config.bridgePath),
+  });
+  const bridge = await runPipelineStepWithDiagnostic({
+    step: "localize.read-bridge",
+    code: "refused",
+    message: `localize.read-bridge refused: bridge file at '${config.bridgePath}' is not a v0.2 bridge`,
+    repro: { configPath: args.configPath, bridgePath: config.bridgePath },
+    inputs: { ...baseInputs, bridgePath: config.bridgePath },
+    actor: deps.actor,
+    now: deps.now,
+    run: () => assertBridgeBundleV02Shape(rawBridge),
+  });
   if (bridge.units.length === 0) {
-    throw new Error("localize: refused — bridge has zero units");
+    throw new PipelineFailureDiagnosticError(
+      buildPipelineFailureDiagnostic({
+        step: "localize.read-bridge",
+        code: "refused",
+        message: "localize.read-bridge refused: bridge has zero units",
+        error: new Error("localize: refused — bridge has zero units"),
+        repro: { configPath: args.configPath, bridgePath: config.bridgePath },
+        inputs: { ...baseInputs, bridgePath: config.bridgePath },
+        actor: deps.actor,
+        now: deps.now,
+      }),
+    );
   }
 
   const {
     pair,
     pairPolicy,
     sceneId: defaultSceneId,
-  } = parseLocalizeProjectPairPolicy(deps.io.readJson(config.pairPolicyPath));
+  } = await runPipelineStepWithDiagnostic({
+    step: "localize.read-pair-policy",
+    code: "refused",
+    message: `localize.read-pair-policy refused: pair-policy at '${config.pairPolicyPath}' is invalid`,
+    repro: {
+      configPath: args.configPath,
+      bridgePath: config.bridgePath,
+      pairPolicyPath: config.pairPolicyPath,
+    },
+    inputs: { ...baseInputs, pairPolicyPath: config.pairPolicyPath },
+    actor: deps.actor,
+    now: deps.now,
+    run: () => parseLocalizeProjectPairPolicy(deps.io.readJson(config.pairPolicyPath)),
+  });
 
   // Optional decoded structure -> per-unit structure-informed context resolver.
-  const structure =
-    config.structureJsonPath !== undefined
-      ? parseNarrativeStructure(deps.io.readJson(config.structureJsonPath))
-      : undefined;
+  let structure: NarrativeStructure | undefined;
+  if (config.structureJsonPath !== undefined) {
+    const structureJsonPath: string = config.structureJsonPath;
+    const structureJson = await runPipelineStepWithDiagnostic({
+      step: "localize.read-structure",
+      code: "io-error",
+      message: `localize.read-structure failed: could not read structure at '${structureJsonPath}'`,
+      repro: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+        structureJsonPath,
+      },
+      inputs: { ...baseInputs, structureJsonPath },
+      actor: deps.actor,
+      now: deps.now,
+      run: () => deps.io.readJson(structureJsonPath),
+    });
+    structure = await runPipelineStepWithDiagnostic({
+      step: "localize.read-structure",
+      code: "refused",
+      message: `localize.read-structure refused: structure JSON at '${structureJsonPath}' is invalid`,
+      repro: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+        structureJsonPath,
+      },
+      inputs: { ...baseInputs, structureJsonPath },
+      actor: deps.actor,
+      now: deps.now,
+      run: () => parseNarrativeStructure(structureJson),
+    });
+  }
   const resolveUnitContext =
     structure === undefined ? undefined : buildStructureResolver(structure, defaultSceneId);
 
@@ -239,13 +335,43 @@ export async function runLocalizeFullProjectCommand(
   // Run ONE localization pass through the ledger: pass N+1 consumes the
   // persisted pass N; the executor persists drafts + reviewer items + exports
   // the patch; the ledger records the pass (real usage.cost + ZDR verbatim).
-  const { result, record, prior } = await runLocalizationPass({
-    ledger: deps.passLedger,
+  const { result, record, prior } = await runPipelineStepWithDiagnostic({
+    step: "localize.run-pass",
+    code: "unknown",
+    message: `localize.run-pass failed: the driven executor / pass-ledger step aborted`,
+    repro: {
+      configPath: args.configPath,
+      bridgePath: config.bridgePath,
+      pairPolicyPath: config.pairPolicyPath,
+      ...(config.structureJsonPath !== undefined
+        ? { structureJsonPath: config.structureJsonPath }
+        : {}),
+    },
+    inputs: {
+      ...baseInputs,
+      bridgePath: config.bridgePath,
+      pairPolicyPath: config.pairPolicyPath,
+      ...(config.structureJsonPath !== undefined
+        ? { structureJsonPath: config.structureJsonPath }
+        : {}),
+      projectId: config.projectId,
+      localeBranchId: config.localeBranchId,
+      sourceRevisionId: config.sourceRevisionId,
+      translationScope,
+      targetLocale,
+      pair,
+    },
     actor: deps.actor,
-    executorInput,
-    ...(feedbackNotesByUnit !== undefined ? { feedbackNotesByUnit } : {}),
-    ...(deps.now !== undefined ? { now: deps.now } : {}),
-    ...(deps.log !== undefined ? { log: deps.log } : {}),
+    now: deps.now,
+    run: () =>
+      runLocalizationPass({
+        ledger: deps.passLedger,
+        actor: deps.actor,
+        executorInput,
+        ...(feedbackNotesByUnit !== undefined ? { feedbackNotesByUnit } : {}),
+        ...(deps.now !== undefined ? { now: deps.now } : {}),
+        ...(deps.log !== undefined ? { log: deps.log } : {}),
+      }),
   });
 
   const runSummary = {
@@ -274,7 +400,17 @@ export async function runLocalizeFullProjectCommand(
     zdrConfirmed: result.zdrConfirmed,
     budgetStopped: result.budgetStopped,
   };
-  deps.io.writeJson(args.runSummaryPath, runSummary);
+  await runPipelineStepWithDiagnostic({
+    step: "localize.write-run-summary",
+    code: "io-error",
+    message: `localize.write-run-summary failed: could not write run summary to '${args.runSummaryPath}'`,
+    inputs: { ...baseInputs, runSummaryPath: args.runSummaryPath, passNumber: record.passNumber },
+    actor: deps.actor,
+    now: deps.now,
+    run: async () => {
+      deps.io.writeJson(args.runSummaryPath, runSummary);
+    },
+  });
   log(
     `localize: pass ${record.passNumber} recorded — ${result.unitsRun} unit(s), ` +
       `${result.acceptedDraftCount} accepted / ${result.deferredCount} deferred / ${result.failures.length} failed; ` +

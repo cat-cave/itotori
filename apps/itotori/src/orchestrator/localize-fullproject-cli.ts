@@ -45,6 +45,10 @@ import {
   type LocalizeFullProjectIo,
   type LocalizeFullProjectResult,
 } from "./localize-fullproject-command.js";
+import {
+  PipelineFailureDiagnosticError,
+  runPipelineStepWithDiagnostic,
+} from "./pipeline-failure-diagnostic.js";
 
 export type RunLocalizeFullProjectLiveArgs = {
   configPath: string;
@@ -61,6 +65,13 @@ export type RunLocalizeFullProjectLiveArgs = {
  * Asserts the account ZDR posture, stands up the repositories, and drives the
  * whole project through the multi-pass ledger. Tears the DB context down in a
  * `finally` so a failure never leaks a connection.
+ *
+ * itotori-agent-facing-pipeline-failure-diagnostics — every step failure here
+ * is wrapped in a `PipelineFailureDiagnosticError` so the CLI surfaces a
+ * structured diagnostic (step + inputs + repro) instead of a bare `Error`. The
+ * top-level try/catch rethrows any NON-diagnostic error as a structured
+ * diagnostic tagged `localize.run-pass` so a driving agent never sees an
+ * unstructured throw.
  */
 export async function runLocalizeFullProjectLive(
   args: RunLocalizeFullProjectLiveArgs,
@@ -70,8 +81,33 @@ export async function runLocalizeFullProjectLive(
 
   // The pair + identity are read from the config + pair-policy so the DB
   // persistence adapter records the SAME pinned pair the executor drives with.
-  const config = parseLocalizeFullProjectConfig(args.io.readJson(args.configPath));
-  const { pair } = parseLocalizeProjectPairPolicy(args.io.readJson(config.pairPolicyPath));
+  // Each pre-parse step is wrapped so a malformed config / pair-policy yields
+  // a structured diagnostic naming the failing step (not a bare `Error`).
+  const config = await runPipelineStepWithDiagnostic({
+    step: "localize.parse-config",
+    code: "refused",
+    message: `localize-live: parse-config refused: config JSON at '${args.configPath}' is invalid`,
+    inputs: { configPath: args.configPath, runDir: args.runDir },
+    repro: { configPath: args.configPath },
+    run: () => parseLocalizeFullProjectConfig(args.io.readJson(args.configPath)),
+  });
+  const { pair } = await runPipelineStepWithDiagnostic({
+    step: "localize.read-pair-policy",
+    code: "refused",
+    message: `localize-live: read-pair-policy refused: pair-policy at '${config.pairPolicyPath}' is invalid`,
+    inputs: {
+      configPath: args.configPath,
+      bridgePath: config.bridgePath,
+      pairPolicyPath: config.pairPolicyPath,
+      runDir: args.runDir,
+    },
+    repro: {
+      configPath: args.configPath,
+      bridgePath: config.bridgePath,
+      pairPolicyPath: config.pairPolicyPath,
+    },
+    run: () => parseLocalizeProjectPairPolicy(args.io.readJson(config.pairPolicyPath)),
+  });
 
   const databaseUrl = databaseUrlFromEnv();
   const context = createDatabaseContext(databaseUrl);
@@ -99,17 +135,67 @@ export async function runLocalizeFullProjectLive(
       artifactRecorder,
     });
 
-    return await runLocalizeFullProjectCommand({
-      configPath: args.configPath,
-      runSummaryPath: join(args.runDir, "run-summary.json"),
-      deps: {
-        io: args.io,
-        actor,
-        providerFactory,
-        sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-        passLedger: new DbPassLedger(passLedgerRepo),
-        reviewerQueue: { repository: reviewerQueueRepo },
-        ...(args.log !== undefined ? { log: args.log } : {}),
+    return await runPipelineStepWithDiagnostic({
+      step: "localize.run-pass",
+      code: "unknown",
+      message: `localize-live: run-pass failed: the driven executor / pass-ledger step aborted`,
+      inputs: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+        runDir: args.runDir,
+        projectId: config.projectId,
+        localeBranchId: config.localeBranchId,
+        pair,
+      },
+      repro: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+      },
+      actor,
+      run: () =>
+        runLocalizeFullProjectCommand({
+          configPath: args.configPath,
+          runSummaryPath: join(args.runDir, "run-summary.json"),
+          deps: {
+            io: args.io,
+            actor,
+            providerFactory,
+            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            passLedger: new DbPassLedger(passLedgerRepo),
+            reviewerQueue: { repository: reviewerQueueRepo },
+            ...(args.log !== undefined ? { log: args.log } : {}),
+          },
+        }),
+    });
+  } catch (error) {
+    // Already a structured diagnostic → rethrow untouched (upstream has the
+    // more specific step + context).
+    if (error instanceof PipelineFailureDiagnosticError) {
+      throw error;
+    }
+    // Anything else (a Postgres bootstrap error, a transport drop, a missing
+    // env var) is wrapped as a structured diagnostic so the CLI never emits a
+    // bare `Error`. Step is the most general one — the message preserves the
+    // original error class + scrubbed message for triage.
+    throw await runPipelineStepWithDiagnostic({
+      step: "localize.run-pass",
+      code: "unknown",
+      message: `localize-live: run-pass failed: ${error instanceof Error ? error.message : String(error)}`,
+      inputs: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+        runDir: args.runDir,
+      },
+      repro: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        pairPolicyPath: config.pairPolicyPath,
+      },
+      run: () => {
+        throw error;
       },
     });
   } finally {

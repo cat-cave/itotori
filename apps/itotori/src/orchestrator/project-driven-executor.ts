@@ -68,6 +68,8 @@ import {
   bracketWrapForRealLive,
   stripOutOfBandControlMarkup,
 } from "./localize-project-stage-command.js";
+import { buildPipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
+import type { PipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
 
 // ---------------------------------------------------------------------------
 // Config-driven translation scope
@@ -249,6 +251,15 @@ export type DrivenUnitFailure = {
   sourceUnitKey: string;
   errorClass: string;
   errorMessage: string;
+  /**
+   * itotori-agent-facing-pipeline-failure-diagnostics — the structured
+   * diagnostic for this per-unit failure (canonical step + failing unit/scene
+   * id + redacted inputs + a minimal repro pointer). Optional so existing
+   * call sites that read the four legacy fields keep working; the runner
+   * populates it when the `executor.drive-unit` step catches a thrown
+   * error.
+   */
+  diagnostic?: PipelineUnitFailureDiagnostic;
 };
 
 // ---------------------------------------------------------------------------
@@ -671,13 +682,16 @@ async function runSingleDrivenUnit(args: {
 }): Promise<UnitRunResult> {
   const { enumeratedUnit, input, policy, targetLocale, engineProfile, log } = args;
   const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
+  // Resolve the per-unit structure-informed context OUTSIDE the try block so
+  // the failure path can surface it in the diagnostic (itotori-agent-facing-
+  // pipeline-failure-diagnostics — scene id helps the driving agent reproduce
+  // the failing slice). The resolver is a pure function that never throws.
+  const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
   try {
-    const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
-
     // Buffer the loop's reviewer-queue writes so they persist in CANONICAL unit
     // order after the concurrent phase — completion interleaving must not
     // reorder them. `loadItemsByBranch` still delegates to the real repository
-    // so the bridge's idempotency pre-check sees already-persisted rows.
+    // so the bridge's idempotency pre-check still sees persisted rows.
     const queueCaptures: CapturedReviewerQueueCreate[] = [];
     const bufferedQueue =
       input.reviewerQueue !== undefined
@@ -762,16 +776,68 @@ async function runSingleDrivenUnit(args: {
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // itotori-agent-facing-pipeline-failure-diagnostics — turn the bare throw
+    // into a structured per-unit diagnostic so a driving agent gets the step,
+    // failing unit/scene, redacted inputs, and a repro pointer — not just a
+    // class + message. The diagnostic is optional on `DrivenUnitFailure` so
+    // existing call sites that read the four legacy fields keep working.
+    const unitInputs = redactUnitInputsForDiagnostic(unit, policy);
+    const diagnostic = buildPipelineUnitFailureDiagnostic({
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceUnitKey: unit.sourceUnitKey,
+      ...(context?.sceneId !== undefined ? { sceneId: context.sceneId } : {}),
+      unitInputs,
+      error,
+      pair: input.pairPolicy.translation.primary.pair,
+      stage: "translation",
+      agentLabel: "translation-primary",
+    });
     return {
       status: "failure",
       failure: {
         bridgeUnitId: unit.bridgeUnitId,
         sourceUnitKey: unit.sourceUnitKey,
-        errorClass: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorClass: diagnostic.errorClass,
+        errorMessage: diagnostic.errorMessage,
+        diagnostic,
       },
     };
   }
+}
+
+/**
+ * Build the redacted input view for a per-unit failure diagnostic. The view
+ * carries the unit's identifying fields + the policy / pair (the surface that
+ * drove the agentic loop) but NO raw game text — `sourceText` is scrubbed by
+ * the redaction helper, and any nested span / patchRef fields are scrubbed the
+ * same way. The point: an agent reading the diagnostic sees the unit it was
+ * processing without ever seeing the game line itself.
+ */
+function redactUnitInputsForDiagnostic(
+  unit: LocalizationUnitV02,
+  policy: AgenticLoopPolicy,
+): Record<string, unknown> {
+  return {
+    unit: {
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceUnitKey: unit.sourceUnitKey,
+      surfaceKind: unit.surfaceKind,
+      sourceLocale: unit.sourceLocale,
+      targetLocale: policy.targetLocale,
+      // The closed redaction taxonomy scrubs `sourceText` (game text) +
+      // every nested span's `sourceText` / `expectedTargetForm`.
+      sourceText: unit.sourceText,
+      spans: unit.spans,
+      patchRef: unit.patchRef,
+    },
+    policy: {
+      projectId: policy.projectId,
+      localeBranchId: policy.localeBranchId,
+      sourceLocale: policy.sourceLocale,
+      targetLocale: policy.targetLocale,
+      maxRepairAttempts: policy.maxRepairAttempts,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
