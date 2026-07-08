@@ -3040,6 +3040,32 @@ describe("Itotori API handlers", () => {
     `);
   });
 
+  it("discovers aliased API permission helpers and rejects aliased raw permission calls", () => {
+    expect(
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            const requireMutationPermission = requireApiPermission;
+            await requireMutationPermission(services, apiMutationPermissionGates.bridgeImport);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toEqual(["bridgeImport"]);
+
+    expect(() =>
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            const checkPermission = services.authorization.requirePermission;
+            await checkPermission(permissionValues.draftWrite);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toThrow(/undeclared API permission call/u);
+  });
+
   it("allows failed runtime evidence ingest results with validation findings", async () => {
     const services = serviceFixture();
     services.projectWorkflow.ingestRuntimeReport.mockResolvedValueOnce({
@@ -3424,17 +3450,25 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
 function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
   const sourceUrl = new URL("../src/api-handlers.ts", import.meta.url);
   const source = readFileSync(sourceUrl, "utf8");
-  const sourceFile = ts.createSourceFile(sourceUrl.pathname, source, ts.ScriptTarget.Latest, true);
+  return sourceApiPermissionGateIdsFromSource(source, sourceUrl.pathname);
+}
+
+function sourceApiPermissionGateIdsFromSource(
+  source: string,
+  fileName: string,
+): ApiMutationPermissionGateId[] {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const requireApiPermissionAliases = permissionHelperAliases(sourceFile, "requireApiPermission");
+  const requirePermissionAliases = permissionHelperAliases(sourceFile, "requirePermission");
   const gateIds: ApiMutationPermissionGateId[] = [];
 
   function visit(node: ts.Node): void {
     if (ts.isCallExpression(node)) {
-      const callName = callExpressionName(node.expression);
-      if (callName === "requireApiPermission") {
+      if (permissionHelperCallName(node.expression, requireApiPermissionAliases) !== undefined) {
         gateIds.push(apiGateIdFromCall(node));
       }
       if (
-        callName === "requirePermission" &&
+        permissionHelperCallName(node.expression, requirePermissionAliases) !== undefined &&
         !isInsideFunction(node, "requireApiPermission") &&
         !isInsideFunction(node, "tryApiPermission")
       ) {
@@ -3625,27 +3659,27 @@ function assertNoUndeclaredAppPermissionCalls(): void {
       continue;
     }
     const source = readFileSync(sourceUrl, "utf8");
-    const sourceFile = ts.createSourceFile(
-      sourceUrl.pathname,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-
-    function visit(node: ts.Node): void {
-      if (
-        ts.isCallExpression(node) &&
-        callExpressionName(node.expression) === "requirePermission"
-      ) {
-        throw new Error(
-          `undeclared app permission call at ${sourceLocation(sourceFile, node)}; app mutation gates must be represented by apiMutationPermissionGates or a documented follow-up`,
-        );
-      }
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    assertNoUndeclaredAppPermissionCallsInSource(source, sourceUrl.pathname);
   }
+}
+
+function assertNoUndeclaredAppPermissionCallsInSource(source: string, fileName: string): void {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const requirePermissionAliases = permissionHelperAliases(sourceFile, "requirePermission");
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      permissionHelperCallName(node.expression, requirePermissionAliases) !== undefined
+    ) {
+      throw new Error(
+        `undeclared app permission call at ${sourceLocation(sourceFile, node)}; app mutation gates must be represented by apiMutationPermissionGates or a documented follow-up`,
+      );
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
 }
 
 function appSourceFiles(directory: URL): URL[] {
@@ -3666,6 +3700,55 @@ function callExpressionName(expression: ts.Expression): string | undefined {
     return expression.name.text;
   }
   return undefined;
+}
+
+function permissionHelperCallName(
+  expression: ts.Expression,
+  aliases: ReadonlySet<string>,
+): string | undefined {
+  const name = callExpressionName(expression);
+  return name !== undefined && aliases.has(name) ? name : undefined;
+}
+
+function permissionHelperAliases(sourceFile: ts.SourceFile, helperName: string): Set<string> {
+  const aliases = new Set([helperName]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    function addAlias(alias: string | undefined): void {
+      if (alias !== undefined && !aliases.has(alias)) {
+        aliases.add(alias);
+        changed = true;
+      }
+    }
+
+    function visit(node: ts.Node): void {
+      if (
+        ts.isImportSpecifier(node) &&
+        node.propertyName?.text === helperName &&
+        node.name.text !== helperName
+      ) {
+        addAlias(node.name.text);
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const initializerName = callExpressionName(node.initializer);
+        if (initializerName !== undefined && aliases.has(initializerName)) {
+          addAlias(node.name.text);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  return aliases;
 }
 
 function isInsideFunction(node: ts.Node, functionName: string): boolean {

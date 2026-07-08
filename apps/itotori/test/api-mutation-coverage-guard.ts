@@ -64,12 +64,13 @@ export function findUncoveredProjectWorkflowMutations(
   fileName: string,
 ): UncoveredApiMutation[] {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const apiPermissionGateAliases = permissionHelperAliases(sourceFile, API_PERMISSION_GATE_HELPER);
   const uncovered: UncoveredApiMutation[] = [];
 
   function visit(node: ts.Node): void {
     if (ts.isCallExpression(node)) {
       const method = mutatingProjectWorkflowMethod(node.expression);
-      if (method !== undefined && !isCoveredByPrecedingGate(node)) {
+      if (method !== undefined && !isCoveredByPrecedingGate(node, apiPermissionGateAliases)) {
         uncovered.push({ method, location: sourceLocation(sourceFile, node) });
       }
     }
@@ -105,13 +106,16 @@ function mutatingProjectWorkflowMethod(expression: ts.Expression): string | unde
  * directly holds the mutation statement); a gate belonging to a sibling route
  * handler never counts.
  */
-function isCoveredByPrecedingGate(mutation: ts.Node): boolean {
+function isCoveredByPrecedingGate(
+  mutation: ts.Node,
+  apiPermissionGateAliases: ReadonlySet<string>,
+): boolean {
   const enclosing = enclosingStatementList(mutation);
   if (enclosing === undefined) {
     return false;
   }
   for (let index = 0; index < enclosing.index; index += 1) {
-    if (containsApiPermissionGateCall(enclosing.list[index]!)) {
+    if (containsApiPermissionGateCall(enclosing.list[index]!, apiPermissionGateAliases)) {
       return true;
     }
   }
@@ -155,7 +159,10 @@ function statementListOf(node: ts.Node): readonly ts.Statement[] | undefined {
   return undefined;
 }
 
-function containsApiPermissionGateCall(node: ts.Node): boolean {
+function containsApiPermissionGateCall(
+  node: ts.Node,
+  apiPermissionGateAliases: ReadonlySet<string>,
+): boolean {
   let found = false;
   function visit(current: ts.Node): void {
     if (found) {
@@ -163,7 +170,7 @@ function containsApiPermissionGateCall(node: ts.Node): boolean {
     }
     if (
       ts.isCallExpression(current) &&
-      callExpressionName(current.expression) === API_PERMISSION_GATE_HELPER
+      permissionHelperCallName(current.expression, apiPermissionGateAliases) !== undefined
     ) {
       found = true;
       return;
@@ -182,6 +189,55 @@ function callExpressionName(expression: ts.Expression): string | undefined {
     return expression.name.text;
   }
   return undefined;
+}
+
+function permissionHelperCallName(
+  expression: ts.Expression,
+  aliases: ReadonlySet<string>,
+): string | undefined {
+  const name = callExpressionName(expression);
+  return name !== undefined && aliases.has(name) ? name : undefined;
+}
+
+function permissionHelperAliases(sourceFile: ts.SourceFile, helperName: string): Set<string> {
+  const aliases = new Set([helperName]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    function addAlias(alias: string | undefined): void {
+      if (alias !== undefined && !aliases.has(alias)) {
+        aliases.add(alias);
+        changed = true;
+      }
+    }
+
+    function visit(node: ts.Node): void {
+      if (
+        ts.isImportSpecifier(node) &&
+        node.propertyName?.text === helperName &&
+        node.name.text !== helperName
+      ) {
+        addAlias(node.name.text);
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const initializerName = callExpressionName(node.initializer);
+        if (initializerName !== undefined && aliases.has(initializerName)) {
+          addAlias(node.name.text);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  return aliases;
 }
 
 function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {

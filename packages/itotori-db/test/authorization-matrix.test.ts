@@ -2124,8 +2124,32 @@ describe("repository permission gate matrix", () => {
   });
 
   it("matches every repository source permission gate", () => {
-    expect(repositoryPermissionGateMatrix.map(sourceGateKey).sort()).toEqual(
-      sourcePermissionGates().map(sourceGateKey).sort(),
+    expectRepositoryPermissionGateMatrixMatches(
+      repositoryPermissionGateMatrix,
+      sourcePermissionGates(),
+    );
+  });
+
+  it("fails matrix coverage when a repository aliases requirePermission for an unregistered gate", () => {
+    const sourceGates = sourcePermissionGatesFromSource(
+      "probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriProbeRepository {
+          async unregisteredMutation(actor) {
+            const checkPermission = requirePermission;
+            await checkPermission(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+
+    expect(sourceGates.map(sourceGateKey)).toEqual([
+      "probe-repository.ts:unregisteredMutation:draftWrite",
+    ]);
+    expect(() => expectRepositoryPermissionGateMatrixMatches([], sourceGates)).toThrow(
+      /probe-repository\.ts:unregisteredMutation:draftWrite/u,
     );
   });
 });
@@ -2676,40 +2700,69 @@ function sourcePermissionGates(): Pick<
   )) {
     const sourceUrl = new URL(sourceFile, repositorySourceDir);
     const source = readFileSync(sourceUrl, "utf8");
-    const parsedSource = ts.createSourceFile(
-      sourceUrl.pathname,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-
-    function visit(node: ts.Node): void {
-      if (
-        ts.isCallExpression(node) &&
-        callExpressionName(node.expression) === "requirePermission"
-      ) {
-        const gateAnnotation = repositoryGateAnnotation(source, parsedSource, node);
-        const permissionKey = permissionKeyFromRepositoryCall(node, gateAnnotation);
-        const sourceMethod = enclosingRepositoryMethod(node);
-        if (sourceMethod === undefined && gateAnnotation === undefined) {
-          throw new Error(
-            `repository permission call at ${sourceLocation(parsedSource, node)} must be inside a repository method or declare @repository-permission-gate <Repository>.<mutation> <permissionKey>`,
-          );
-        }
-        gates.push({
-          sourceFile,
-          mutation: gateAnnotation?.mutation ?? requiredSourceMethod(sourceMethod).method,
-          permissionKey,
-        });
-      }
-
-      ts.forEachChild(node, visit);
-    }
-
-    visit(parsedSource);
+    gates.push(...sourcePermissionGatesFromSource(sourceFile, source, sourceUrl.pathname));
   }
 
   return gates;
+}
+
+function sourcePermissionGatesFromSource(
+  sourceFileName: string,
+  source: string,
+  parsedSourceFileName = sourceFileName,
+): Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[] {
+  const parsedSource = ts.createSourceFile(
+    parsedSourceFileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const requirePermissionAliases = permissionHelperAliases(parsedSource, "requirePermission");
+  const gates: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[] =
+    [];
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      permissionHelperCallName(node.expression, requirePermissionAliases) !== undefined
+    ) {
+      const gateAnnotation = repositoryGateAnnotation(source, parsedSource, node);
+      const permissionKey = permissionKeyFromRepositoryCall(node, gateAnnotation);
+      const sourceMethod = enclosingRepositoryMethod(node);
+      if (sourceMethod === undefined && gateAnnotation === undefined) {
+        throw new Error(
+          `repository permission call at ${sourceLocation(parsedSource, node)} must be inside a repository method or declare @repository-permission-gate <Repository>.<mutation> <permissionKey>`,
+        );
+      }
+      gates.push({
+        sourceFile: sourceFileName,
+        mutation: gateAnnotation?.mutation ?? requiredSourceMethod(sourceMethod).method,
+        permissionKey,
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(parsedSource);
+  return gates;
+}
+
+function expectRepositoryPermissionGateMatrixMatches(
+  matrix: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[],
+  sourceGates: Pick<RepositoryPermissionGateCase, "sourceFile" | "mutation" | "permissionKey">[],
+): void {
+  const matrixKeys = matrix.map(sourceGateKey).sort();
+  const sourceKeys = sourceGates.map(sourceGateKey).sort();
+  if (JSON.stringify(matrixKeys) !== JSON.stringify(sourceKeys)) {
+    throw new Error(
+      [
+        "repository permission matrix does not match source gates",
+        `matrix: ${JSON.stringify(matrixKeys)}`,
+        `source: ${JSON.stringify(sourceKeys)}`,
+      ].join("\n"),
+    );
+  }
 }
 
 type RepositorySourceMethod = {
@@ -2811,6 +2864,55 @@ function callExpressionName(expression: ts.Expression): string | undefined {
     return expression.name.text;
   }
   return undefined;
+}
+
+function permissionHelperCallName(
+  expression: ts.Expression,
+  aliases: ReadonlySet<string>,
+): string | undefined {
+  const name = callExpressionName(expression);
+  return name !== undefined && aliases.has(name) ? name : undefined;
+}
+
+function permissionHelperAliases(sourceFile: ts.SourceFile, helperName: string): Set<string> {
+  const aliases = new Set([helperName]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    function addAlias(alias: string | undefined): void {
+      if (alias !== undefined && !aliases.has(alias)) {
+        aliases.add(alias);
+        changed = true;
+      }
+    }
+
+    function visit(node: ts.Node): void {
+      if (
+        ts.isImportSpecifier(node) &&
+        node.propertyName?.text === helperName &&
+        node.name.text !== helperName
+      ) {
+        addAlias(node.name.text);
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        const initializerName = callExpressionName(node.initializer);
+        if (initializerName !== undefined && aliases.has(initializerName)) {
+          addAlias(node.name.text);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  return aliases;
 }
 
 function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {

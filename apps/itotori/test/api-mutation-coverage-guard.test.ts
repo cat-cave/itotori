@@ -56,6 +56,16 @@ async function routeItotoriApiRequest(request, services) {
 }
 `;
 
+const aliasedRequireApiPermissionCovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    const requireMutationPermission = requireApiPermission;
+    await requireMutationPermission(services, apiMutationPermissionGates.bridgeImport);
+    return services.projectWorkflow.importBridge(request.body.bridge);
+  }
+}
+`;
+
 // Form 2 — SWITCH ON A DIFFERENT DISCRIMINANT. The legacy scan hard-codes
 // `switch (projectRoute.resource)`; a switch over any other value slips past.
 const otherSwitchUncovered = `
@@ -127,6 +137,7 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
     { form: "route-table entry", source: routeTableCovered },
     { form: "switch on a non-projectRoute discriminant", source: otherSwitchCovered },
     { form: "helper-predicate if", source: helperPredicateCovered },
+    { form: "aliased requireApiPermission helper", source: aliasedRequireApiPermissionCovered },
   ])(
     "passes the same $form once a requireApiPermission gate precedes the mutation",
     ({ source }) => {
