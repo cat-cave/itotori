@@ -1,0 +1,41 @@
+{
+  "slot": {
+    "slotId": "duplicate-raw-token-extra",
+    "encoding": "utf_8",
+    "byteRange": { "start": 0, "end": 64 },
+    "layout": { "kind": "fixed_width" },
+    "protectedSpans": [
+      {
+        "raw": "{name}",
+        "sourceSpanId": "source-span-1",
+        "sourceStartByte": 0,
+        "sourceEndByte": 6
+      },
+      {
+        "raw": "{name}",
+        "sourceSpanId": "source-span-2",
+        "sourceStartByte": 13,
+        "sourceEndByte": 19
+      }
+    ]
+  },
+  "targetText": "{name} and {name} and {name}",
+  "protectedSpanMappings": [
+    {
+      "raw": "{name}",
+      "sourceSpanId": "source-span-1",
+      "sourceStartByte": 0,
+      "sourceEndByte": 6,
+      "targetStart": 0,
+      "targetEnd": 6
+    },
+    {
+      "raw": "{name}",
+      "sourceSpanId": "source-span-2",
+      "sourceStartByte": 13,
+      "sourceEndByte": 19,
+      "targetStart": 11,
+      "targetEnd": 17
+    }
+  ]
+}

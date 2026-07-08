@@ -368,6 +368,17 @@ impl EncodedStringSlot {
         EncodedStringSlotPreflightReport::from_diagnostics(diagnostics)
     }
 
+    /// Multiset protected-token validation (KAIFUU-150).
+    ///
+    /// Source `protected_spans` are grouped by raw token. Each raw is a multiset
+    /// entry: N identical source tokens require EXACTLY N distinct valid target
+    /// mappings (distinct `(target_start, target_end)` ranges that match
+    /// `target_text` and bind source identity when the raw is duplicated) AND
+    /// EXACTLY N non-overlapping occurrences of that raw in `target_text`.
+    /// Collapsing two source tokens onto one target range, omitting a mapping
+    /// for a repeated token, or introducing an EXTRA target occurrence (N+1),
+    /// fails loudly with `STRING_SLOT_PROTECTED_SPAN_MUTATION`, the slot id, and
+    /// protected-span diagnostics — never a silent pass.
     fn validate_protected_spans(
         &self,
         target_text: &str,
@@ -409,23 +420,33 @@ impl EncodedStringSlot {
         for (raw, source_spans) in required_spans {
             let required_count = source_spans.len();
             let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
+            let actual_count = count_protected_token_occurrences(target_text, raw);
             if mapped_count == 0 {
+                let message = if required_count > 1 {
+                    format!(
+                        "protected span {raw:?} is missing from protectedSpanMappings (expected {required_count} distinct target mapping(s) for repeated source token)"
+                    )
+                } else {
+                    format!("protected span {raw:?} is missing from protectedSpanMappings")
+                };
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
-                    format!("protected span {raw:?} is missing from protectedSpanMappings"),
+                    message,
                     "restore_protected_span",
                     "preserve the protected token and include a matching protectedSpanMappings entry",
                 ));
                 continue;
             }
-            if mapped_count < required_count {
+            // Exact multiplicity: reject under-count (collapsed/missing) AND
+            // over-count (extra target occurrence or extra distinct mapping).
+            if mapped_count != required_count || actual_count != required_count {
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
                     format!(
-                        "protected span {raw:?} has {mapped_count} target mapping(s), expected {required_count}"
+                        "protected span {raw:?} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
                     ),
                     "restore_protected_span",
-                    "map each duplicate protected token to a distinct targetText byte range",
+                    "map each duplicate protected token to a distinct targetText byte range and preserve exact multiplicity",
                 ));
             }
         }
@@ -491,6 +512,15 @@ impl EncodedStringSlotProtectedSpan {
         self.source_end_byte = Some(source_end_byte);
         self
     }
+}
+
+/// Count non-overlapping literal occurrences of `raw` in `target_text`.
+/// Empty needles contribute zero (callers already skip empty protected spans).
+fn count_protected_token_occurrences(target_text: &str, raw: &str) -> usize {
+    if raw.is_empty() {
+        return 0;
+    }
+    target_text.match_indices(raw).count()
 }
 
 fn protected_span_source_identity_matches(
@@ -2211,12 +2241,14 @@ fn encode_relocated_slot(
     for (raw, source_spans) in required_spans {
         let required_count = source_spans.len();
         let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
-        if mapped_count < required_count {
+        let actual_count = count_protected_token_occurrences(&replacement.target_text, raw);
+        // Exact multiplicity both directions (under- and over-count).
+        if mapped_count != required_count || actual_count != required_count {
             return Err(Box::new(relocated_slot_diagnostic(
                 slot,
                 STRING_SLOT_PROTECTED_SPAN_MUTATION,
                 format!(
-                    "protected span {raw:?} has {mapped_count} target mapping(s), expected {required_count}"
+                    "protected span {raw:?} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
                 ),
                 "restore_protected_span",
                 "preserve protected tokens and align protectedSpanMappings before relocation",
@@ -2595,6 +2627,18 @@ mod tests {
             "protected_token" => {
                 include_str!("../fixtures/encoded-string-slot/protected-token.json")
             }
+            "protected_token_duplicate" => {
+                include_str!("../fixtures/encoded-string-slot/protected-token-duplicate.json")
+            }
+            "protected_token_duplicate_collapsed" => include_str!(
+                "../fixtures/encoded-string-slot/protected-token-duplicate-collapsed.json"
+            ),
+            "protected_token_duplicate_missing" => include_str!(
+                "../fixtures/encoded-string-slot/protected-token-duplicate-missing.json"
+            ),
+            "protected_token_duplicate_extra" => {
+                include_str!("../fixtures/encoded-string-slot/protected-token-duplicate-extra.json")
+            }
             _ => unreachable!(),
         })
         .unwrap()
@@ -2823,10 +2867,95 @@ mod tests {
             "shift_jis_fixed",
             "shift_jis_null",
             "protected_token",
+            "protected_token_duplicate",
         ] {
             let report = run_string_slot_fixture(name);
             assert_eq!(report.status, OperationStatus::Passed, "{name}: {report:?}");
         }
+    }
+
+    /// KAIFUU-150: two identical source protected tokens require EXACTLY two
+    /// valid target mappings and occurrences. Under-count (collapsed/missing)
+    /// and over-count (extra target occurrence) both fail loud. Distinct-token
+    /// fixture still passes.
+    #[test]
+    fn encoded_string_slot_duplicate_raw_token_fixture_requires_multiplicity() {
+        let pass = run_string_slot_fixture("protected_token_duplicate");
+        assert_eq!(pass.status, OperationStatus::Passed, "{pass:?}");
+
+        let distinct = run_string_slot_fixture("protected_token");
+        assert_eq!(distinct.status, OperationStatus::Passed, "{distinct:?}");
+
+        let collapsed = run_string_slot_fixture("protected_token_duplicate_collapsed");
+        assert_eq!(collapsed.status, OperationStatus::Failed);
+        assert_eq!(
+            collapsed.diagnostics[0].code,
+            STRING_SLOT_PROTECTED_SPAN_MUTATION
+        );
+        assert_eq!(
+            collapsed.diagnostics[0].slot_id,
+            "duplicate-raw-token-collapsed"
+        );
+        assert!(
+            collapsed.diagnostics[0].message.contains("expected 2"),
+            "{collapsed:?}"
+        );
+        assert!(
+            collapsed.diagnostics[0].message.contains("{name}"),
+            "{collapsed:?}"
+        );
+        assert_eq!(
+            collapsed.diagnostics[0].remediation_code,
+            "restore_protected_span"
+        );
+
+        let missing = run_string_slot_fixture("protected_token_duplicate_missing");
+        assert_eq!(missing.status, OperationStatus::Failed);
+        assert_eq!(
+            missing.diagnostics[0].code,
+            STRING_SLOT_PROTECTED_SPAN_MUTATION
+        );
+        assert_eq!(
+            missing.diagnostics[0].slot_id,
+            "duplicate-raw-token-missing"
+        );
+        assert!(
+            missing.diagnostics[0].message.contains("expected 2"),
+            "{missing:?}"
+        );
+        assert!(
+            missing.diagnostics[0].message.contains("{name}"),
+            "{missing:?}"
+        );
+        assert_eq!(
+            missing.diagnostics[0].remediation_code,
+            "restore_protected_span"
+        );
+
+        // Over-count: two required source tokens, three target occurrences, two
+        // otherwise-valid mappings — must fail loud (exact multiplicity).
+        let extra = run_string_slot_fixture("protected_token_duplicate_extra");
+        assert_eq!(extra.status, OperationStatus::Failed);
+        assert_eq!(
+            extra.diagnostics[0].code,
+            STRING_SLOT_PROTECTED_SPAN_MUTATION
+        );
+        assert_eq!(extra.diagnostics[0].slot_id, "duplicate-raw-token-extra");
+        assert!(
+            extra.diagnostics[0].message.contains("expected 2"),
+            "{extra:?}"
+        );
+        assert!(extra.diagnostics[0].message.contains("{name}"), "{extra:?}");
+        assert!(
+            extra.diagnostics[0]
+                .message
+                .contains("3 target occurrence(s)"),
+            "{extra:?}"
+        );
+        assert_eq!(
+            extra.diagnostics[0].remediation_code,
+            "restore_protected_span"
+        );
     }
 
     #[test]
