@@ -197,12 +197,12 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     // The exact opcode catalogue for Sweetie HD scene 1 may not include
     // a recognised VoicePlay (the scene 1 prologue is largely meta +
     // text). Per the spec we record the count rather than fail
-    // outright; the recognition-rate guard below catches any general
+    // outright; the strict zero-unknown pin below catches any general
     // dispatch regression.
     if voice_play_count == 0 {
         eprintln!(
             "scene 1 produced no VoicePlay opcodes — recording as a follow-up data \
-             point; the recognition-rate guard below is the harder check"
+             point; the strict zero-unknown pin below is the harder check"
         );
     }
 
