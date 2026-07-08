@@ -19,7 +19,8 @@ import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
-import { RedactionGovernor, RedactionToggle } from "./redaction-governor.js";
+import { RedactionGovernor } from "./redaction-governor.js";
+import { ShellFrame, defaultNavigate } from "./shell-frame.js";
 
 export type AppLocation = { pathname: string; search: string };
 
@@ -30,26 +31,28 @@ function currentLocation(): AppLocation {
   return { pathname: window.location.pathname, search: window.location.search };
 }
 
-// shell-redaction-toggle — the global redaction governor wraps EVERY routed
-// screen so the cap-gated reveal toggle + share/export redaction govern ALL
-// frame/screenshot rendering across the SPA from one shell-level context.
-// `revealSensitive` is the cap (the revealSensitive capability); the
-// downstream `fnd-caps-context` node will lift this onto a real caps context,
-// until then the shell (and tests) pass it explicitly — the same pattern
-// `ReviewerDetailScreen.canDecide` uses.
+// shell-frame-ui — the persistent shell frame (nav + status bar) wraps EVERY
+// routed screen so the app chrome (Project+branch context, ZDR posture,
+// source->branch, live cost) is consistent across surfaces. `revealSensitive`
+// is the cap (the revealSensitive capability); the downstream `fnd-caps-
+// context` node will lift this onto a real caps context, until then the shell
+// (and tests) pass it explicitly — the same pattern `ReviewerDetailScreen.
+// canDecide` uses.
 export function App({
   location = currentLocation(),
   revealSensitive = false,
+  navigate,
 }: {
   location?: AppLocation;
   revealSensitive?: boolean;
+  /** Navigation handler for the shell nav (defaults to window.location.assign). */
+  navigate?: (path: string) => void;
 }): ReactNode {
   return (
     <RedactionGovernor revealSensitive={revealSensitive}>
-      <div className="itotori-shell-toolbar" data-shell-toolbar="true">
-        <RedactionToggle />
-      </div>
-      <RoutedScreen location={location} />
+      <ShellFrame location={location} navigate={navigate ?? defaultNavigate}>
+        <RoutedScreen location={location} />
+      </ShellFrame>
     </RedactionGovernor>
   );
 }
