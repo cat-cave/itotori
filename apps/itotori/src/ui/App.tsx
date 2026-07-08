@@ -15,6 +15,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
+import {
+  PlayScenePickerScreen,
+  parsePlayScenePickerRoute,
+} from "./screens/PlayScenePickerScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
@@ -73,6 +77,13 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const reviewerQueue = parseReviewerQueueRoute(location.pathname, location.search);
   if (reviewerQueue !== null) {
     return <ReviewerQueueScreen route={reviewerQueue} />;
+  }
+
+  // `/play` — the Play scene picker (translated-summary navigation + source ↔
+  // draft BiText). Rendered inside the shell frame like every other screen.
+  const playScenePicker = parsePlayScenePickerRoute(location.pathname, location.search);
+  if (playScenePicker !== null) {
+    return <PlayScenePickerScreen route={playScenePicker} />;
   }
 
   const reviewerDetail = parseReviewerDetailRoute(location.pathname);
