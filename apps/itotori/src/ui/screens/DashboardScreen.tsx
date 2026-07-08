@@ -22,6 +22,7 @@ import type {
 import { useApiQuery } from "../use-api-resource.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { DecisionsBand } from "./DecisionsBand.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
@@ -44,6 +45,8 @@ export function DashboardScreen(): ReactNode {
       <ProgressInstrumentPanel />
 
       <PassLedgerPanel />
+
+      <BenchmarkHeadlineTile />
 
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />
