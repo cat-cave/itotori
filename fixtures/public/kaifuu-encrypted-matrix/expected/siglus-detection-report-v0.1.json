@@ -1046,10 +1046,24 @@
           },
           {
             "evidenceType": "file_magic",
+            "pattern": "BGI compressed container marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic BGI/Ethornell compressed-container marker count"
+          },
+          {
+            "evidenceType": "file_magic",
             "pattern": "BGI encrypted container marker",
             "status": "missing",
             "count": 0,
             "detail": "Synthetic BGI/Ethornell encrypted-container marker count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "BGI layered transform marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic BGI/Ethornell layered-transform marker count"
           },
           {
             "evidenceType": "file_magic",
@@ -1068,7 +1082,7 @@
             "limitation": null
           }
         ],
-        "supportBoundary": "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted container handling, and repacking are not claimed by this matrix."
+        "supportBoundary": "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted/compressed/layered container handling, and repacking are not claimed by this matrix."
       },
       {
         "rowId": "renpy-packed-inputs",

@@ -54,7 +54,6 @@
       "engineFamily": "bgi_ethornell",
       "detected": true,
       "signals": [
-        "crypto_unsupported",
         "encrypted",
         "packed",
         "unknown_variant"

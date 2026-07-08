@@ -48,8 +48,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "628e514964691f4aba5d40607584ce909749f7a130af607d335e023f3f4f45df",
-      "bytes": 38738,
+      "sha256": "88de17cd051f2096e92e6de7374e1f6e37ebd72c1d147de9bc8c432cd245053c",
+      "bytes": 39279,
       "redistributable": true
     },
     {
