@@ -58,6 +58,7 @@ import {
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
+  jobsRunTableFixture,
   projectOverviewFixture,
   projectFixture,
   runtimeStatusFixture,
@@ -449,6 +450,9 @@ const fixtureServices = {
   },
   queueHealth: {
     loadQueueHealth: vi.fn(unused),
+  },
+  jobs: {
+    loadRunTable: vi.fn(async () => jobsRunTableFixture),
   },
 } as const;
 

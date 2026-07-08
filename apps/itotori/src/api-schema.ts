@@ -25,6 +25,7 @@ import type {
   BenchmarkReportSummary,
   CostDrilldownPage,
   DashboardDecisionReadModel,
+  JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   QueueHealthReadModel,
@@ -150,6 +151,7 @@ export type ItotoriApiRouteId =
   | "projects.cost"
   | "projects.costDrilldown"
   | "projects.benchmarks"
+  | "jobs.runTable"
   | "runtime.status"
   | "queue.health"
   | "imports.bridge"
@@ -240,6 +242,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ReviewerBatchExecuteResult: ["request", "preview", "applied", "refusedAll", "appliedAll"],
   ReviewerSingleActionResult: ["request", "preview", "outcome", "applied", "refused"],
   CostDrilldownPage: ["filter", "pagination", "rows"],
+  JobsRunTableReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "rows"],
   ProjectOverviewReadModel: [
     "schemaVersion",
     "generatedAt",
@@ -362,6 +365,8 @@ export type ApiProjectCostResponse = ProjectCostReport;
 export type ApiProjectCostDrilldownResponse = CostDrilldownPage;
 
 export type ApiProjectOverviewResponse = ProjectOverviewReadModel;
+
+export type ApiJobsRunTableResponse = JobsRunTableReadModel;
 
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
@@ -500,6 +505,7 @@ export type ItotoriApiResponseBody =
   | ApiProjectCostResponse
   | ApiProjectCostDrilldownResponse
   | ApiBenchmarkReportsResponse
+  | ApiJobsRunTableResponse
   | ApiQueueHealthResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
@@ -810,6 +816,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.benchmarks":
       assertApiBenchmarkReportsResponse(value);
+      return;
+    case "jobs.runTable":
+      assertJobsRunTableReadModel(value);
       return;
     case "queue.health":
       assertQueueHealthReadModel(value);
@@ -3534,6 +3543,105 @@ function assertCostDrilldownProviderMetadata(value: unknown, label: string): voi
   // (sanitizeAdapterMetadata is default-deny); the API schema only asserts
   // the surviving value is an object.
   asRecord(provider.adapterMetadata, `${label}.adapterMetadata`);
+}
+
+export function assertJobsRunTableReadModel(
+  value: unknown,
+  label = "JobsRunTableReadModel",
+): asserts value is ApiJobsRunTableResponse {
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel);
+  assertLiteral(model.schemaVersion, "jobs.run_table.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  const filter = asStrictRecord(model.filter, `${label}.filter`, ["projectId"]);
+  assertNullableString(filter.projectId, `${label}.filter.projectId`);
+  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
+  const rows = asArray(model.rows, `${label}.rows`);
+  if (rows.length > Number((model.pagination as { limit: unknown }).limit)) {
+    throw new Error(`${label}.rows must not exceed pagination.limit`);
+  }
+  for (const [index, row] of rows.entries()) {
+    assertJobsRunTableRow(row, `${label}.rows[${index}]`);
+  }
+}
+
+function assertJobsRunTableRow(value: unknown, label: string): void {
+  const row = asStrictRecord(value, label, [
+    "runId",
+    "ledgerEntryId",
+    "draftJobId",
+    "draftJobAttemptId",
+    "providerRunId",
+    "jobId",
+    "projectId",
+    "localeBranchId",
+    "task",
+    "status",
+    "servedModel",
+    "servedProvider",
+    "zdr",
+    "cost",
+    "tokens",
+    "fallback",
+    "createdAt",
+  ]);
+  assertString(row.runId, `${label}.runId`);
+  assertString(row.ledgerEntryId, `${label}.ledgerEntryId`);
+  assertString(row.draftJobId, `${label}.draftJobId`);
+  assertString(row.draftJobAttemptId, `${label}.draftJobAttemptId`);
+  assertNullableString(row.providerRunId, `${label}.providerRunId`);
+  assertNullableString(row.jobId, `${label}.jobId`);
+  assertString(row.projectId, `${label}.projectId`);
+  assertString(row.localeBranchId, `${label}.localeBranchId`);
+  assertString(row.task, `${label}.task`);
+  assertString(row.status, `${label}.status`);
+  assertNullableString(row.servedModel, `${label}.servedModel`);
+  assertString(row.servedProvider, `${label}.servedProvider`);
+  if (row.zdr !== null) {
+    assertBoolean(row.zdr, `${label}.zdr`);
+  }
+  assertJobsRunTableCost(row.cost, `${label}.cost`);
+  assertJobsRunTableTokens(row.tokens, `${label}.tokens`);
+  assertJobsRunTableFallback(row.fallback, `${label}.fallback`);
+  assertDateLike(row.createdAt, `${label}.createdAt`);
+}
+
+function assertJobsRunTableCost(value: unknown, label: string): void {
+  const cost = asStrictRecord(value, label, ["unit", "amount"]);
+  assertString(cost.unit, `${label}.unit`);
+  assertString(cost.amount, `${label}.amount`);
+}
+
+function assertJobsRunTableTokens(value: unknown, label: string): void {
+  const tokens = asStrictRecord(value, label, ["in", "out", "total"]);
+  if (tokens.in !== null) {
+    assertNonNegativeInteger(tokens.in, `${label}.in`);
+  }
+  if (tokens.out !== null) {
+    assertNonNegativeInteger(tokens.out, `${label}.out`);
+  }
+  if (tokens.total !== null) {
+    assertNonNegativeInteger(tokens.total, `${label}.total`);
+  }
+}
+
+function assertJobsRunTableFallback(value: unknown, label: string): void {
+  const fallback = asStrictRecord(value, label, ["used", "plan", "chain"]);
+  assertBoolean(fallback.used, `${label}.used`);
+  for (const [index, entry] of asArray(fallback.plan, `${label}.plan`).entries()) {
+    assertString(entry, `${label}.plan[${index}]`);
+  }
+  for (const [index, entryValue] of asArray(fallback.chain, `${label}.chain`).entries()) {
+    const entry = asStrictRecord(entryValue, `${label}.chain[${index}]`, [
+      "modelProviderFamily",
+      "modelId",
+      "failureReason",
+      "attemptedAt",
+    ]);
+    assertString(entry.modelProviderFamily, `${label}.chain[${index}].modelProviderFamily`);
+    assertString(entry.modelId, `${label}.chain[${index}].modelId`);
+    assertString(entry.failureReason, `${label}.chain[${index}].failureReason`);
+    assertDateLike(entry.attemptedAt, `${label}.chain[${index}].attemptedAt`);
+  }
 }
 
 export function assertProjectOverviewReadModel(

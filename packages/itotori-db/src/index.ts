@@ -812,11 +812,22 @@ export type {
 export {
   DraftAttemptProviderLedgerRepositoryError,
   ItotoriDraftAttemptProviderLedgerRepository,
+  JOBS_RUN_TABLE_DEFAULT_LIMIT,
+  JOBS_RUN_TABLE_MAX_LIMIT,
+  JOBS_RUN_TABLE_SCHEMA_VERSION,
 } from "./repositories/draft-attempt-provider-ledger-repository.js";
 export type {
   DraftAttemptProviderLedgerEntry,
   ItotoriDraftAttemptProviderLedgerRepositoryPort,
+  JobsRunTableCost,
+  JobsRunTableFallback,
+  JobsRunTableFilter,
+  JobsRunTablePagination,
+  JobsRunTableReadModel,
+  JobsRunTableRow,
+  JobsRunTableTokens,
   LedgerPairAggregateRow,
+  LoadJobsRunTableOptions,
   RecordLedgerEntryInput,
   SumByPairAndDayOptions,
   SumCostByProjectOptions,

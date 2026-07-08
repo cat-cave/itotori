@@ -46,6 +46,7 @@ import {
   type ApiProjectImportRequest,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
+  type ApiJobsRunTableResponse,
   type ApiQueueHealthResponse,
   type ApiRecordBenchmarkRequest,
   type ApiRecordBenchmarkResponse,
@@ -190,6 +191,10 @@ interface ItotoriApiRouteTypeMap {
   "projects.benchmarks": {
     response: ApiBenchmarkReportsResponse;
     collectionKey: "reports";
+  };
+  "jobs.runTable": {
+    response: ApiJobsRunTableResponse;
+    collectionKey: "rows";
   };
   "runtime.status": {
     response: RuntimeDashboardStatus;
@@ -343,6 +348,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "projects.decisions": "pendingDecisions",
   "projects.costDrilldown": "rows",
   "projects.benchmarks": "reports",
+  "jobs.runTable": "rows",
 };
 
 function defaultIsEmpty(routeId: ItotoriApiRouteId, data: unknown): boolean {
@@ -510,7 +516,7 @@ export class ItotoriApiClient {
 
 // ---------------------------------------------------------------------------
 // Pagination primitives. The api-schema currently carries ONE pagination
-// shape — the offset-based `CostDrilldownPagination` on `projects.costDrilldown`
+// shape — the offset-based pagination used by cost drilldown and jobs run-table
 // (`{ total, limit, offset, page, pageCount, hasMore, nextOffset }`). The
 // `OffsetPager` walks those pages, advancing the offset from each response's
 // `nextOffset` until `hasMore` is false. A cursor-based primitive is the
@@ -526,7 +532,7 @@ export type OffsetCursor = {
 /**
  * Route ids whose response carries an offset `pagination` field. Computed
  * from the api-schema response types, so `OffsetPager` is only callable for a
- * genuinely offset-paginated route (currently `projects.costDrilldown`).
+ * genuinely offset-paginated route.
  */
 export type OffsetPaginatedRouteId = {
   [R in ItotoriApiRouteId]: ApiRouteResponse<R> extends { pagination: CostDrilldownPagination }

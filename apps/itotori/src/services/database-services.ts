@@ -39,6 +39,8 @@ import {
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
   type LoadQueueHealthOptions,
+  type LoadJobsRunTableOptions,
+  type JobsRunTableReadModel,
   type QueueHealthReadModel,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
@@ -181,6 +183,9 @@ export type ItotoriApplicationServices = {
    */
   queueHealth: {
     loadQueueHealth(options?: LoadQueueHealthOptions): Promise<QueueHealthReadModel>;
+  };
+  jobs: {
+    loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
   };
 };
 
@@ -567,6 +572,10 @@ export async function withDatabaseItotoriServices<T>(
       },
       queueHealth: {
         loadQueueHealth: (options) => eventQueueRepository.loadQueueHealth(localUserActor, options),
+      },
+      jobs: {
+        loadRunTable: (options) =>
+          draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, options),
       },
     });
   } finally {

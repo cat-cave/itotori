@@ -318,6 +318,7 @@ describe("fnd-api-client: compile-time type-safety", () => {
 
     // OffsetPager is only constructable for an offset-paginated route.
     expectTypeOf<"projects.costDrilldown">().toMatchTypeOf<OffsetPaginatedRouteId>();
+    expectTypeOf<"jobs.runTable">().toMatchTypeOf<OffsetPaginatedRouteId>();
     expectTypeOf<"projects.benchmarks">().not.toMatchTypeOf<OffsetPaginatedRouteId>();
 
     // The error state carries the typed code enum (or null).

@@ -7,6 +7,7 @@ import type {
   CatalogOpportunityRankingReadModel,
   CostDrilldownPage,
   DashboardDecisionReadModel,
+  JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
@@ -181,6 +182,42 @@ export const costReportFixture: ProjectCostReport = {
       },
     ],
   },
+};
+
+export const jobsRunTableFixture: JobsRunTableReadModel = {
+  schemaVersion: "jobs.run_table.v0.1",
+  generatedAt: "2026-07-07T00:00:00.000Z",
+  filter: { projectId: "project-1" },
+  pagination: {
+    total: 1,
+    limit: 20,
+    offset: 0,
+    page: 1,
+    pageCount: 1,
+    hasMore: false,
+    nextOffset: null,
+  },
+  rows: [
+    {
+      runId: "provider-run-1",
+      ledgerEntryId: "draft-attempt-provider-ledger-1",
+      draftJobId: "draft-job-1",
+      draftJobAttemptId: "draft-job-attempt-1",
+      providerRunId: "provider-run-1",
+      jobId: "job-draft-1",
+      projectId: "project-1",
+      localeBranchId: "locale-branch-1",
+      task: "Draft translation",
+      status: "succeeded",
+      servedModel: "openai/gpt-4.1-mini",
+      servedProvider: "openai",
+      zdr: true,
+      cost: { unit: "usd", amount: "0.00218000" },
+      tokens: { in: 22, out: 14, total: 36 },
+      fallback: { used: false, plan: ["openai/gpt-4.1-mini"], chain: [] },
+      createdAt: "2026-07-07T00:00:00.000Z",
+    },
+  ],
 };
 
 // ITOTORI-053 — cost drilldown fixture. Carries all three DISTINCT cost

@@ -29,7 +29,7 @@
 // for ANY strict route (the reviewer / workspace / queue-health / asset-decision
 // routes that previously lacked a parity fixture included). The loose
 // (`additionalProperties:true`) bodies keep their guard<->schema parity proven
-// by real response fixtures. The parity suite adds per-route teeth for all 34
+// by real response fixtures. The parity suite adds per-route teeth for all 35
 // routes (a dropped required key or a leaked strict field fails).
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
@@ -440,6 +440,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { filter: obj, pagination: obj, rows: arr },
       additionalProperties: false,
     }),
+  JobsRunTableReadModel: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel,
+      properties: { generatedAt: str, filter: obj, pagination: obj, rows: arr },
+      additionalProperties: false,
+      schemaVersion: "jobs.run_table.v0.1",
+    }),
   ApiBenchmarkReportsResponse: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiBenchmarkReportsResponse,
@@ -722,6 +729,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "Benchmark report summaries.",
     pathParams: [],
     responseSchema: "ApiBenchmarkReportsResponse",
+  },
+  "jobs.runTable": {
+    method: "GET",
+    pathTemplate: "/api/jobs/run-table",
+    operationId: "jobsRunTable",
+    summary: "Paged jobs run table with served model/provider ledger rows.",
+    pathParams: [],
+    responseSchema: "JobsRunTableReadModel",
   },
   "runtime.status": {
     method: "GET",

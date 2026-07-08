@@ -31,6 +31,8 @@ import {
   type CostDrilldownFilter,
   type CostDrilldownPage,
   type DashboardDecisionReadModel,
+  type JobsRunTableReadModel,
+  type LoadJobsRunTableOptions,
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
@@ -64,6 +66,7 @@ import {
   type ApiProjectOverviewResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
+  type ApiJobsRunTableResponse,
   type ApiQueueHealthResponse,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
@@ -203,6 +206,9 @@ export type ItotoriReadOnlyApiServices = {
   queueHealth: {
     loadQueueHealth(options?: LoadQueueHealthOptions): Promise<QueueHealthReadModel>;
   };
+  jobs: {
+    loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
+  };
 };
 
 /**
@@ -287,6 +293,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     queueHealth: {
       loadQueueHealth: (options) => services.queueHealth.loadQueueHealth(options),
+    },
+    jobs: {
+      loadRunTable: (options) => services.jobs.loadRunTable(options),
     },
   };
 }
@@ -658,6 +667,12 @@ async function routeReadOnlyItotoriApiRequest(
     });
   }
 
+  if (request.method === "GET" && request.pathname === "/api/jobs/run-table") {
+    const canRead = await resolveProjectReadPermission(services);
+    const page = await services.jobs.loadRunTable(parseJobsRunTableQuery(request.search));
+    return ok("jobs.runTable", canRead ? page : redactJobsRunTable(page));
+  }
+
   if (
     request.method === "GET" &&
     (request.pathname === "/api/hello/status" || request.pathname === "/api/runtime/v0.2/status")
@@ -885,6 +900,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/projects/cost" ||
     request.pathname === "/api/projects/cost/drilldown" ||
     request.pathname === "/api/projects/benchmarks" ||
+    request.pathname === "/api/jobs/run-table" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
@@ -1013,6 +1029,13 @@ function redactCostDrilldownPage(page: CostDrilldownPage): CostDrilldownPage {
   };
 }
 
+function redactJobsRunTable(page: JobsRunTableReadModel): JobsRunTableReadModel {
+  return {
+    ...page,
+    rows: [],
+  };
+}
+
 /**
  * gate-project-status-and-cost-reads — the redacted PUBLIC dashboard
  * summary. Every top-level field is a safe aggregate (project identity,
@@ -1092,6 +1115,28 @@ function parseCostDrilldownFilter(search = ""): CostDrilldownFilter {
     "cost drilldown",
   );
   return parseCostDrilldownParams(params);
+}
+
+function parseJobsRunTableQuery(search = ""): LoadJobsRunTableOptions {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["projectId", "limit", "offset"], "jobs run table");
+  const options: LoadJobsRunTableOptions = {};
+  const projectId = params.get("projectId");
+  if (projectId !== null) {
+    options.projectId = nonEmptyParam(projectId, "projectId");
+  }
+  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
+  if (limit !== undefined) {
+    if (limit < 1) {
+      throw new ApiValidationError("limit must be a positive integer");
+    }
+    options.limit = limit;
+  }
+  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
+  if (offset !== undefined) {
+    options.offset = offset;
+  }
+  return options;
 }
 
 function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOptions {
@@ -1827,6 +1872,7 @@ function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): Ap
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
 function ok(routeId: "projects.costDrilldown", body: CostDrilldownPage): ApiJsonResponse;
 function ok(routeId: "projects.benchmarks", body: ApiBenchmarkReportsResponse): ApiJsonResponse;
+function ok(routeId: "jobs.runTable", body: ApiJobsRunTableResponse): ApiJsonResponse;
 function ok(routeId: "queue.health", body: ApiQueueHealthResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;

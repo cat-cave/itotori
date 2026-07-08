@@ -6,6 +6,8 @@ import {
   draftAttemptProviderLedger,
   draftJobAttempts,
   draftJobs,
+  jobQueue,
+  providerRuns,
   type DraftAttemptFallbackChainEntry,
   type DraftAttemptProviderLedgerContextRef,
   type DraftAttemptProviderLedgerPolicyVersions,
@@ -229,6 +231,76 @@ export type SumByPairAndDayOptions = {
   groupByDay?: boolean | undefined;
 };
 
+export const JOBS_RUN_TABLE_SCHEMA_VERSION = "jobs.run_table.v0.1";
+export const JOBS_RUN_TABLE_DEFAULT_LIMIT = 20;
+export const JOBS_RUN_TABLE_MAX_LIMIT = 100;
+
+export type JobsRunTablePagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
+export type JobsRunTableFilter = {
+  projectId: string | null;
+};
+
+export type JobsRunTableTokens = {
+  in: number | null;
+  out: number | null;
+  total: number | null;
+};
+
+export type JobsRunTableCost = {
+  unit: string;
+  amount: string;
+};
+
+export type JobsRunTableFallback = {
+  used: boolean;
+  plan: string[];
+  chain: DraftAttemptFallbackChainEntry[];
+};
+
+export type JobsRunTableRow = {
+  runId: string;
+  ledgerEntryId: string;
+  draftJobId: string;
+  draftJobAttemptId: string;
+  providerRunId: string | null;
+  jobId: string | null;
+  projectId: string;
+  localeBranchId: string;
+  task: string;
+  status: string;
+  servedModel: string | null;
+  servedProvider: string;
+  zdr: boolean | null;
+  cost: JobsRunTableCost;
+  tokens: JobsRunTableTokens;
+  fallback: JobsRunTableFallback;
+  createdAt: string;
+};
+
+export type JobsRunTableReadModel = {
+  schemaVersion: typeof JOBS_RUN_TABLE_SCHEMA_VERSION;
+  generatedAt: string;
+  filter: JobsRunTableFilter;
+  pagination: JobsRunTablePagination;
+  rows: JobsRunTableRow[];
+};
+
+export type LoadJobsRunTableOptions = {
+  projectId?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  generatedAt?: Date | undefined;
+};
+
 export class DraftAttemptProviderLedgerRepositoryError extends Error {
   constructor(
     readonly code:
@@ -277,6 +349,10 @@ export interface ItotoriDraftAttemptProviderLedgerRepositoryPort {
     window: SumCostByProjectWindow,
     opts?: SumByPairAndDayOptions,
   ): Promise<LedgerPairAggregateRow[]>;
+  loadJobsRunTable(
+    actor: AuthorizationActor,
+    options?: LoadJobsRunTableOptions,
+  ): Promise<JobsRunTableReadModel>;
 }
 
 export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepositoryPort {
@@ -554,6 +630,83 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
     return rows.map((row) => parseAggregateRow(row));
   }
 
+  async loadJobsRunTable(
+    actor: AuthorizationActor,
+    options: LoadJobsRunTableOptions = {},
+  ): Promise<JobsRunTableReadModel> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+
+    const limit = normalizeJobsRunTableLimit(options.limit);
+    const offset = normalizeJobsRunTableOffset(options.offset);
+    const projectId = options.projectId ?? null;
+    const conditions = projectId === null ? sql`true` : sql`${draftJobs.projectId} = ${projectId}`;
+
+    const totalResult = await this.db
+      .select({ total: sql<string>`count(*)::text` })
+      .from(draftAttemptProviderLedger)
+      .innerJoin(
+        draftJobAttempts,
+        eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
+      )
+      .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
+      .where(conditions);
+    const total = Number.parseInt(totalResult[0]?.total ?? "0", 10);
+
+    const rows = await this.db
+      .select({
+        ledgerEntryId: draftAttemptProviderLedger.ledgerEntryId,
+        draftJobId: draftJobs.draftJobId,
+        draftJobAttemptId: draftJobAttempts.draftJobAttemptId,
+        providerRunId: draftJobAttempts.providerRunId,
+        jobId: providerRuns.jobId,
+        projectId: draftJobs.projectId,
+        localeBranchId: draftJobs.localeBranchId,
+        task: sql<string>`coalesce(${jobQueue.jobName}, ${providerRuns.taskKind}, 'draft')`,
+        status: sql<string>`coalesce(${providerRuns.status}, ${draftJobAttempts.status}, ${draftJobs.status})`,
+        servedModel: sql<
+          string | null
+        >`coalesce(${providerRuns.actualModelId}, ${draftAttemptProviderLedger.modelId})`,
+        servedProvider: sql<string>`coalesce(${providerRuns.upstreamProvider}, ${draftAttemptProviderLedger.providerId})`,
+        zdr: sql<boolean | null>`case
+          when ${providerRuns.routingPosture}->>'zdr' = 'true' then true
+          when ${providerRuns.routingPosture}->>'zdr' = 'false' then false
+          else null
+        end`,
+        costUnit: draftAttemptProviderLedger.costUnit,
+        costAmount: sql<string>`${draftAttemptProviderLedger.costAmount}::text`,
+        tokensIn: draftAttemptProviderLedger.tokensIn,
+        tokensOut: draftAttemptProviderLedger.tokensOut,
+        providerTotalTokens: providerRuns.totalTokens,
+        fallbackUsed: sql<boolean>`coalesce(${providerRuns.fallbackUsed}, jsonb_array_length(${draftAttemptProviderLedger.fallbackChain}) > 0)`,
+        fallbackPlan: providerRuns.fallbackPlan,
+        fallbackChain: draftAttemptProviderLedger.fallbackChain,
+        createdAt: draftAttemptProviderLedger.createdAt,
+      })
+      .from(draftAttemptProviderLedger)
+      .innerJoin(
+        draftJobAttempts,
+        eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
+      )
+      .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
+      .leftJoin(providerRuns, eq(draftJobAttempts.providerRunId, providerRuns.providerRunId))
+      .leftJoin(jobQueue, eq(providerRuns.jobId, jobQueue.jobId))
+      .where(conditions)
+      .orderBy(
+        desc(draftAttemptProviderLedger.createdAt),
+        desc(draftAttemptProviderLedger.ledgerEntryId),
+      )
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      schemaVersion: JOBS_RUN_TABLE_SCHEMA_VERSION,
+      generatedAt: (options.generatedAt ?? new Date()).toISOString(),
+      filter: { projectId },
+      pagination: jobsRunTablePagination(total, limit, offset),
+      rows: rows.map(jobsRunTableRowFromRow),
+    };
+  }
+
   private async fetchByLedgerEntryId(
     ledgerEntryId: string,
   ): Promise<DraftAttemptProviderLedgerEntry | null> {
@@ -568,6 +721,103 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
     }
     return ledgerRowToEntry(row);
   }
+}
+
+type JobsRunTableSqlRow = {
+  ledgerEntryId: string;
+  draftJobId: string;
+  draftJobAttemptId: string;
+  providerRunId: string | null;
+  jobId: string | null;
+  projectId: string;
+  localeBranchId: string;
+  task: string;
+  status: string;
+  servedModel: string | null;
+  servedProvider: string;
+  zdr: boolean | null;
+  costUnit: string;
+  costAmount: string;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  providerTotalTokens: number | null;
+  fallbackUsed: boolean;
+  fallbackPlan: string[] | null;
+  fallbackChain: DraftAttemptFallbackChainEntry[];
+  createdAt: Date;
+};
+
+function jobsRunTableRowFromRow(row: JobsRunTableSqlRow): JobsRunTableRow {
+  const total =
+    row.providerTotalTokens ??
+    (row.tokensIn === null && row.tokensOut === null
+      ? null
+      : (row.tokensIn ?? 0) + (row.tokensOut ?? 0));
+  return {
+    runId: row.providerRunId ?? row.draftJobAttemptId,
+    ledgerEntryId: row.ledgerEntryId,
+    draftJobId: row.draftJobId,
+    draftJobAttemptId: row.draftJobAttemptId,
+    providerRunId: row.providerRunId,
+    jobId: row.jobId,
+    projectId: row.projectId,
+    localeBranchId: row.localeBranchId,
+    task: row.task,
+    status: row.status,
+    servedModel: row.servedModel,
+    servedProvider: row.servedProvider,
+    zdr: row.zdr,
+    cost: {
+      unit: row.costUnit,
+      amount: row.costAmount,
+    },
+    tokens: {
+      in: row.tokensIn,
+      out: row.tokensOut,
+      total,
+    },
+    fallback: {
+      used: row.fallbackUsed,
+      plan: row.fallbackPlan ?? row.fallbackChain.map((entry) => entry.modelId),
+      chain: row.fallbackChain,
+    },
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function normalizeJobsRunTableLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return JOBS_RUN_TABLE_DEFAULT_LIMIT;
+  }
+  if (!Number.isInteger(limit) || limit < 1) {
+    return JOBS_RUN_TABLE_DEFAULT_LIMIT;
+  }
+  return Math.min(limit, JOBS_RUN_TABLE_MAX_LIMIT);
+}
+
+function normalizeJobsRunTableOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isInteger(offset) || offset < 0) {
+    return 0;
+  }
+  return offset;
+}
+
+function jobsRunTablePagination(
+  total: number,
+  limit: number,
+  offset: number,
+): JobsRunTablePagination {
+  const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+  const hasMore = offset + limit < total;
+  return {
+    total,
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    pageCount,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
+  };
 }
 
 /**

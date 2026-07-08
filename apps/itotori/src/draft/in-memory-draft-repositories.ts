@@ -25,8 +25,10 @@ import type {
   DraftJobStatus,
   ItotoriDraftAttemptProviderLedgerRepositoryPort,
   ItotoriDraftJobRepositoryPort,
+  JobsRunTableReadModel,
   LedgerPairAggregateRow,
   LoadDraftJobsByProjectOptions,
+  LoadJobsRunTableOptions,
   RecordDraftJobAttemptInput,
   RecordLedgerEntryInput,
   SumByPairAndDayOptions,
@@ -336,6 +338,55 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
     return this.entries.find((e) => e.providerProofId === providerProofId) ?? null;
   }
 
+  async loadJobsRunTable(
+    _actor: AuthorizationActor,
+    options: LoadJobsRunTableOptions = {},
+  ): Promise<JobsRunTableReadModel> {
+    const limit = normalizeRunTableLimit(options.limit);
+    const offset = normalizeRunTableOffset(options.offset);
+    const rows = this.entries
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(offset, offset + limit)
+      .map((entry) => ({
+        runId: entry.draftJobAttemptId,
+        ledgerEntryId: entry.ledgerEntryId,
+        draftJobId: entry.draftJobAttemptId,
+        draftJobAttemptId: entry.draftJobAttemptId,
+        providerRunId: null,
+        jobId: null,
+        projectId: options.projectId ?? "in-memory-project",
+        localeBranchId: "in-memory-locale-branch",
+        task: entry.promptTemplateVersion ?? "draft",
+        status: "succeeded",
+        servedModel: entry.modelId,
+        servedProvider: entry.providerId,
+        zdr: null,
+        cost: { unit: entry.costUnit, amount: entry.costAmount },
+        tokens: {
+          in: entry.tokensIn,
+          out: entry.tokensOut,
+          total:
+            entry.tokensIn === null && entry.tokensOut === null
+              ? null
+              : (entry.tokensIn ?? 0) + (entry.tokensOut ?? 0),
+        },
+        fallback: {
+          used: entry.fallbackChain.length > 0,
+          plan: entry.fallbackChain.map((fallback) => fallback.modelId),
+          chain: entry.fallbackChain,
+        },
+        createdAt: entry.createdAt.toISOString(),
+      }));
+    return {
+      schemaVersion: "jobs.run_table.v0.1",
+      generatedAt: (options.generatedAt ?? new Date()).toISOString(),
+      filter: { projectId: options.projectId ?? null },
+      pagination: runTablePagination(this.entries.length, limit, offset),
+      rows,
+    };
+  }
+
   async sumCostByProject(
     _actor: AuthorizationActor,
     _projectId: string,
@@ -495,6 +546,34 @@ function computeP95LinearInterp(sorted: ReadonlyArray<number>): number {
   }
   const frac = rank - lower;
   return sorted[lower]! + (sorted[upper]! - sorted[lower]!) * frac;
+}
+
+function normalizeRunTableLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isInteger(limit) || limit < 1) {
+    return 20;
+  }
+  return Math.min(limit, 100);
+}
+
+function normalizeRunTableOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isInteger(offset) || offset < 0) {
+    return 0;
+  }
+  return offset;
+}
+
+function runTablePagination(total: number, limit: number, offset: number) {
+  const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+  const hasMore = offset + limit < total;
+  return {
+    total,
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    pageCount,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
+  };
 }
 
 export type OrchestratorDraftRepositories = {

@@ -491,6 +491,34 @@
       ],
       "type": "object"
     },
+    "JobsRunTableReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "pagination": {
+          "type": "object"
+        },
+        "rows": {
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "jobs.run_table.v0.1"
+        }
+      },
+      "required": [
+        "filter",
+        "generatedAt",
+        "pagination",
+        "rows",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ProjectCostReport": {
       "additionalProperties": true,
       "properties": {

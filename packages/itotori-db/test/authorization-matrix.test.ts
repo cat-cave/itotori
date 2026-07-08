@@ -832,6 +832,12 @@ const repositoryPermissionGateMatrix = [
         to: new Date(0),
       }),
   ),
+  draftAttemptProviderLedgerGate(
+    "loadJobsRunTable",
+    "catalogRead",
+    "jobs-run-table-read-model.test.ts jobs run table coverage",
+    (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
+  ),
   assetLocalizationDecisionGate(
     "recordDecision",
     "draftWrite",
@@ -1878,6 +1884,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumByPairAndDay",
           "requiredPermission": "catalog.read",
           "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum by pair and day coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadJobsRunTable",
+          "requiredPermission": "catalog.read",
+          "successFixture": "jobs-run-table-read-model.test.ts jobs run table coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
