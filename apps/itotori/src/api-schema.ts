@@ -29,6 +29,8 @@ import type {
   ProjectCostReport,
   ProjectDashboardStatus,
   QueueHealthReadModel,
+  MemberInvitationRecord,
+  MemberRecord,
   ReviewerQueueAction,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
@@ -172,6 +174,10 @@ export type ItotoriApiRouteId =
   | "benchmarks.record"
   | "runtimeEvidence.ingest"
   | "auth.ssoSettings.configure"
+  | "auth.members.list"
+  | "auth.members.invite"
+  | "auth.members.accept"
+  | "auth.members.remove"
   // ovw-launch-pass-action — the Overview "launch next pass" mutation: folds
   // queued corrections and DRIVES the next localization pass via the
   // project-driven-executor / localize-fullproject driver. `canSteer`-gated
@@ -309,6 +315,48 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "sessionPolicy",
     "updatedAt",
   ],
+  ApiInviteMemberRequest: [
+    "accountId",
+    "email",
+    "initialPermissionSetIds",
+    "expiresAt",
+    "reason",
+    "requestId",
+  ],
+  ApiMemberInvitationResponse: [
+    "schemaVersion",
+    "invitationId",
+    "accountId",
+    "email",
+    "initialPermissionSetIds",
+    "expiresAt",
+    "acceptedAt",
+    "revokedAt",
+    "createdAt",
+  ],
+  ApiAcceptMemberInvitationRequest: [
+    "userId",
+    "principalId",
+    "displayName",
+    "email",
+    "externalIdentity",
+    "reason",
+    "requestId",
+  ],
+  ApiMemberRecord: [
+    "membershipId",
+    "accountId",
+    "userId",
+    "principalId",
+    "email",
+    "displayName",
+    "permissionSetIds",
+    "createdAt",
+  ],
+  ApiMemberResponse: ["schemaVersion", "member"],
+  ApiMembersListResponse: ["schemaVersion", "accountId", "members"],
+  ApiRemoveMemberRequest: ["reason", "requestId"],
+  ApiRemoveMemberResponse: ["schemaVersion", "removedMember"],
   WorkspaceProjectBrowseReadModel: [
     "schemaVersion",
     "generatedAt",
@@ -589,6 +637,66 @@ export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsReq
   updatedAt: string;
 };
 
+export type ApiInviteMemberRequest = {
+  accountId: string;
+  email: string;
+  initialPermissionSetIds: readonly string[];
+  expiresAt: string;
+  reason: string | null;
+  requestId: string | null;
+};
+
+export type ApiMemberInvitationResponse = Omit<
+  MemberInvitationRecord,
+  "expiresAt" | "acceptedAt" | "revokedAt" | "createdAt"
+> & {
+  schemaVersion: "itotori.auth.member-invitation.v0";
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type ApiExternalIdentityLinkRequest = {
+  provider: string;
+  subject: string;
+};
+
+export type ApiAcceptMemberInvitationRequest = {
+  userId: string;
+  principalId: string;
+  displayName: string;
+  email: string;
+  externalIdentity: ApiExternalIdentityLinkRequest | null;
+  reason: string | null;
+  requestId: string | null;
+};
+
+export type ApiMemberRecord = Omit<MemberRecord, "createdAt"> & {
+  createdAt: string;
+};
+
+export type ApiMemberResponse = {
+  schemaVersion: "itotori.auth.member.v0";
+  member: ApiMemberRecord;
+};
+
+export type ApiMembersListResponse = {
+  schemaVersion: "itotori.auth.members.v0";
+  accountId: string;
+  members: ApiMemberRecord[];
+};
+
+export type ApiRemoveMemberRequest = {
+  reason: string | null;
+  requestId: string | null;
+};
+
+export type ApiRemoveMemberResponse = {
+  schemaVersion: "itotori.auth.member-removed.v0";
+  removedMember: ApiMemberRecord;
+};
+
 /**
  * ovw-launch-pass-action — request body for the launch-pass mutation. The
  * Overview action wires through the typed client. The body carries the locale
@@ -658,6 +766,10 @@ export type ItotoriApiResponseBody =
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
   | ApiConfigureAuthSsoSettingsResponse
+  | ApiMemberInvitationResponse
+  | ApiMemberResponse
+  | ApiMembersListResponse
+  | ApiRemoveMemberResponse
   | ApiLaunchPassResponse
   | ApiErrorResponse;
 
@@ -774,6 +886,80 @@ export function parseConfigureAuthSsoSettingsRequest(
         "ApiConfigureAuthSsoSettingsRequest.sessionPolicy",
       ),
     };
+  });
+}
+
+export function parseInviteMemberRequest(body: unknown): ApiInviteMemberRequest {
+  return parseRequest("ApiInviteMemberRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiInviteMemberRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
+    );
+    assertString(request.accountId, "ApiInviteMemberRequest.accountId");
+    assertString(request.email, "ApiInviteMemberRequest.email");
+    assertStringArray(
+      request.initialPermissionSetIds,
+      "ApiInviteMemberRequest.initialPermissionSetIds",
+    );
+    assertDateLike(request.expiresAt, "ApiInviteMemberRequest.expiresAt");
+    assertNullableString(request.reason, "ApiInviteMemberRequest.reason");
+    assertNullableString(request.requestId, "ApiInviteMemberRequest.requestId");
+    const expiresAt =
+      request.expiresAt instanceof Date
+        ? request.expiresAt.toISOString()
+        : String(request.expiresAt);
+    return {
+      accountId: request.accountId,
+      email: request.email,
+      initialPermissionSetIds: request.initialPermissionSetIds as string[],
+      expiresAt,
+      reason: request.reason,
+      requestId: request.requestId,
+    };
+  });
+}
+
+export function parseAcceptMemberInvitationRequest(
+  body: unknown,
+): ApiAcceptMemberInvitationRequest {
+  return parseRequest("ApiAcceptMemberInvitationRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiAcceptMemberInvitationRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
+    );
+    assertString(request.userId, "ApiAcceptMemberInvitationRequest.userId");
+    assertString(request.principalId, "ApiAcceptMemberInvitationRequest.principalId");
+    assertString(request.displayName, "ApiAcceptMemberInvitationRequest.displayName");
+    assertString(request.email, "ApiAcceptMemberInvitationRequest.email");
+    assertNullableString(request.reason, "ApiAcceptMemberInvitationRequest.reason");
+    assertNullableString(request.requestId, "ApiAcceptMemberInvitationRequest.requestId");
+    return {
+      userId: request.userId,
+      principalId: request.principalId,
+      displayName: request.displayName,
+      email: request.email,
+      externalIdentity: parseNullableExternalIdentityLink(
+        request.externalIdentity,
+        "ApiAcceptMemberInvitationRequest.externalIdentity",
+      ),
+      reason: request.reason,
+      requestId: request.requestId,
+    };
+  });
+}
+
+export function parseRemoveMemberRequest(body: unknown): ApiRemoveMemberRequest {
+  return parseRequest("ApiRemoveMemberRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiRemoveMemberRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
+    );
+    assertNullableString(request.reason, "ApiRemoveMemberRequest.reason");
+    assertNullableString(request.requestId, "ApiRemoveMemberRequest.requestId");
+    return { reason: request.reason, requestId: request.requestId };
   });
 }
 
@@ -1019,6 +1205,18 @@ export function assertItotoriApiResponse(
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
+      return;
+    case "auth.members.list":
+      assertMembersListResponse(value);
+      return;
+    case "auth.members.invite":
+      assertMemberInvitationResponse(value);
+      return;
+    case "auth.members.accept":
+      assertMemberResponse(value);
+      return;
+    case "auth.members.remove":
+      assertRemoveMemberResponse(value);
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
@@ -4323,6 +4521,90 @@ function assertConfigureAuthSsoSettingsResponse(
   assertDateLike(response.updatedAt, "ApiConfigureAuthSsoSettingsResponse.updatedAt");
 }
 
+function assertMemberInvitationResponse(
+  value: unknown,
+): asserts value is ApiMemberInvitationResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiMemberInvitationResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.member-invitation.v0",
+    "ApiMemberInvitationResponse.schemaVersion",
+  );
+  assertString(response.invitationId, "ApiMemberInvitationResponse.invitationId");
+  assertString(response.accountId, "ApiMemberInvitationResponse.accountId");
+  assertString(response.email, "ApiMemberInvitationResponse.email");
+  assertStringArray(
+    response.initialPermissionSetIds,
+    "ApiMemberInvitationResponse.initialPermissionSetIds",
+  );
+  assertDateLike(response.expiresAt, "ApiMemberInvitationResponse.expiresAt");
+  assertNullableDateLike(response.acceptedAt, "ApiMemberInvitationResponse.acceptedAt");
+  assertNullableDateLike(response.revokedAt, "ApiMemberInvitationResponse.revokedAt");
+  assertDateLike(response.createdAt, "ApiMemberInvitationResponse.createdAt");
+}
+
+function assertMemberResponse(value: unknown): asserts value is ApiMemberResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiMemberResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiMemberResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.member.v0",
+    "ApiMemberResponse.schemaVersion",
+  );
+  assertMemberRecord(response.member, "ApiMemberResponse.member");
+}
+
+function assertMembersListResponse(value: unknown): asserts value is ApiMembersListResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiMembersListResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiMembersListResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.members.v0",
+    "ApiMembersListResponse.schemaVersion",
+  );
+  assertString(response.accountId, "ApiMembersListResponse.accountId");
+  const members = asArray(response.members, "ApiMembersListResponse.members");
+  for (const [index, member] of members.entries()) {
+    assertMemberRecord(member, `ApiMembersListResponse.members[${index}]`);
+  }
+}
+
+function assertRemoveMemberResponse(value: unknown): asserts value is ApiRemoveMemberResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiRemoveMemberResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.member-removed.v0",
+    "ApiRemoveMemberResponse.schemaVersion",
+  );
+  assertMemberRecord(response.removedMember, "ApiRemoveMemberResponse.removedMember");
+}
+
+function assertMemberRecord(value: unknown, label: string): asserts value is ApiMemberRecord {
+  const member = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiMemberRecord);
+  assertString(member.membershipId, `${label}.membershipId`);
+  assertString(member.accountId, `${label}.accountId`);
+  assertString(member.userId, `${label}.userId`);
+  assertString(member.principalId, `${label}.principalId`);
+  assertNullableString(member.email, `${label}.email`);
+  assertString(member.displayName, `${label}.displayName`);
+  assertStringArray(member.permissionSetIds, `${label}.permissionSetIds`);
+  assertDateLike(member.createdAt, `${label}.createdAt`);
+}
+
 // ovw-launch-pass-action — assert the launch-pass response envelope. The
 // schemaVersion literal pins the wire shape; `outcome` pins to started/refused.
 // A `started` outcome MUST carry a positive pass number + a start timestamp and
@@ -4414,6 +4696,19 @@ function parseAuthSsoProviderConfig(value: unknown, label: string): ApiAuthSsoPr
     samlProvider.certificateFingerprint = provider.certificateFingerprint;
   }
   return samlProvider;
+}
+
+function parseNullableExternalIdentityLink(
+  value: unknown,
+  label: string,
+): ApiExternalIdentityLinkRequest | null {
+  if (value === null) {
+    return null;
+  }
+  const link = asStrictRecord(value, label, ["provider", "subject"]);
+  assertString(link.provider, `${label}.provider`);
+  assertString(link.subject, `${label}.subject`);
+  return { provider: link.provider, subject: link.subject };
 }
 
 function parseAccountSecuritySettings(value: unknown, label: string): ApiAccountSecuritySettings {

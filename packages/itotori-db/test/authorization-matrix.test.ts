@@ -6,6 +6,7 @@ import {
   type AuthorizationActor,
   type Permission,
 } from "../src/authorization.js";
+import { ItotoriAuthMemberManagementRepository } from "../src/repositories/auth-member-management-repository.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
 import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run-repository.js";
@@ -1112,6 +1113,30 @@ const repositoryPermissionGateMatrix = [
     "auth-sso-settings-repository.test.ts configure settings coverage",
     (repo) => repo.configureSettings(deniedActor, undefined as never),
   ),
+  authMemberManagementGate(
+    "inviteMember",
+    "authMembersManage",
+    "auth-member-management-repository.test.ts invite member coverage",
+    (repo) => repo.inviteMember(deniedActor, undefined as never),
+  ),
+  authMemberManagementGate(
+    "acceptInvitation",
+    "authMembersManage",
+    "auth-member-management-repository.test.ts accept invitation coverage",
+    (repo) => repo.acceptInvitation(deniedActor, undefined as never),
+  ),
+  authMemberManagementGate(
+    "listMembers",
+    "authMembersManage",
+    "auth-member-management-repository.test.ts list members coverage",
+    (repo) => repo.listMembers(deniedActor, "account-denied"),
+  ),
+  authMemberManagementGate(
+    "removeMember",
+    "authMembersManage",
+    "auth-member-management-repository.test.ts remove member coverage",
+    (repo) => repo.removeMember(deniedActor, undefined as never),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 /**
@@ -2194,6 +2219,30 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "auth.sso.manage",
           "successFixture": "auth-sso-settings-repository.test.ts configure settings coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthMemberManagementRepository.inviteMember",
+          "requiredPermission": "auth.members.manage",
+          "successFixture": "auth-member-management-repository.test.ts invite member coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthMemberManagementRepository.acceptInvitation",
+          "requiredPermission": "auth.members.manage",
+          "successFixture": "auth-member-management-repository.test.ts accept invitation coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthMemberManagementRepository.listMembers",
+          "requiredPermission": "auth.members.manage",
+          "successFixture": "auth-member-management-repository.test.ts list members coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthMemberManagementRepository.removeMember",
+          "requiredPermission": "auth.members.manage",
+          "successFixture": "auth-member-management-repository.test.ts remove member coverage",
+        },
       ]
     `);
   });
@@ -2848,6 +2897,22 @@ function authSsoSettingsGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuthSsoSettingsRepository(db)),
+  });
+}
+
+function authMemberManagementGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAuthMemberManagementRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAuthMemberManagementRepository",
+    sourceFile: "auth-member-management-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAuthMemberManagementRepository(db)),
   });
 }
 

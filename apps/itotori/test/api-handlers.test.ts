@@ -43,6 +43,9 @@ import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
   assertRedactedRuntimeDashboardStatus,
   type ApiConfigureAuthSsoSettingsRequest,
+  type ApiAcceptMemberInvitationRequest,
+  type ApiInviteMemberRequest,
+  type ApiRemoveMemberRequest,
 } from "../src/api-schema.js";
 import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
@@ -127,7 +130,11 @@ type ApiMutationPermissionCase = {
 
 type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
-  | { surface: "authSsoSettings"; method: "configureSettings" };
+  | { surface: "authSsoSettings"; method: "configureSettings" }
+  | {
+      surface: "authMembers";
+      method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
+    };
 
 type ApiMutationRoute = {
   route: string;
@@ -151,6 +158,9 @@ const readOnlyPostApiRoutes = new Set([
   // service (gated on queue.manage), not via a projectWorkflow call.
   "POST /api/workspace/corrections",
   "POST /api/settings/security/sso",
+  "POST /api/auth/members/invitations",
+  "POST /api/auth/members/invitations/invitation-api/accept",
+  "POST /api/auth/members/membership-api/remove",
 ]);
 
 const authSsoSettingsRequestFixture = {
@@ -174,6 +184,30 @@ const authSsoSettingsRequestFixture = {
     absoluteTimeoutMinutes: 480,
   },
 } satisfies ApiConfigureAuthSsoSettingsRequest;
+
+const inviteMemberRequestFixture = {
+  accountId: "account-local",
+  email: "member@example.test",
+  initialPermissionSetIds: ["permission-set-account-local-reviewer"],
+  expiresAt: "2026-07-09T00:00:00.000Z",
+  reason: "onboarding",
+  requestId: "req-api-invite",
+} satisfies ApiInviteMemberRequest;
+
+const acceptMemberInvitationRequestFixture = {
+  userId: "user-api-member",
+  principalId: "principal-api-member",
+  displayName: "API Member",
+  email: "member@example.test",
+  externalIdentity: { provider: "zitadel", subject: "subject-api-member" },
+  reason: "accepted",
+  requestId: "req-api-accept",
+} satisfies ApiAcceptMemberInvitationRequest;
+
+const removeMemberRequestFixture = {
+  reason: "offboarding",
+  requestId: "req-api-remove",
+} satisfies ApiRemoveMemberRequest;
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -227,6 +261,29 @@ const apiMutationPermissionMatrix = [
     "ssoSettingsConfigure",
     post("/api/settings/security/sso", authSsoSettingsRequestFixture),
     { surface: "authSsoSettings", method: "configureSettings" },
+  ),
+  apiGateForService(
+    "membersList",
+    { method: "GET", pathname: "/api/auth/members", search: "?accountId=account-local" },
+    { surface: "authMembers", method: "listMembers" },
+  ),
+  apiGateForService(
+    "membersInvite",
+    post("/api/auth/members/invitations", inviteMemberRequestFixture),
+    { surface: "authMembers", method: "inviteMember" },
+  ),
+  apiGateForService(
+    "membersAccept",
+    post(
+      "/api/auth/members/invitations/invitation-api/accept",
+      acceptMemberInvitationRequestFixture,
+    ),
+    { surface: "authMembers", method: "acceptInvitation" },
+  ),
+  apiGateForService(
+    "membersRemove",
+    post("/api/auth/members/membership-api/remove", removeMemberRequestFixture),
+    { surface: "authMembers", method: "removeMember" },
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
@@ -2685,6 +2742,59 @@ describe("Itotori API handlers", () => {
     );
   });
 
+  it("routes member invite, accept, list, and remove through typed auth member handlers", async () => {
+    const services = serviceFixture();
+
+    const invite = await handleItotoriApiRequest(
+      post("/api/auth/members/invitations", inviteMemberRequestFixture),
+      services,
+    );
+    const accept = await handleItotoriApiRequest(
+      post(
+        "/api/auth/members/invitations/invitation-api/accept",
+        acceptMemberInvitationRequestFixture,
+      ),
+      services,
+    );
+    const list = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/auth/members", search: "?accountId=account-local" },
+      services,
+    );
+    const remove = await handleItotoriApiRequest(
+      post("/api/auth/members/membership-api/remove", removeMemberRequestFixture),
+      services,
+    );
+
+    expect(invite.body).toMatchObject({
+      schemaVersion: "itotori.auth.member-invitation.v0",
+      invitationId: "invitation-api",
+      email: "member@example.test",
+    });
+    expect(accept.body).toMatchObject({
+      schemaVersion: "itotori.auth.member.v0",
+      member: { membershipId: "membership-api", userId: "user-api-member" },
+    });
+    expect(list.body).toMatchObject({
+      schemaVersion: "itotori.auth.members.v0",
+      accountId: "account-local",
+      members: [{ membershipId: "membership-api" }],
+    });
+    expect(remove.body).toMatchObject({
+      schemaVersion: "itotori.auth.member-removed.v0",
+      removedMember: { membershipId: "membership-api" },
+    });
+    expect(services.authMembers.inviteMember).toHaveBeenCalledWith(inviteMemberRequestFixture);
+    expect(services.authMembers.acceptInvitation).toHaveBeenCalledWith(
+      "invitation-api",
+      acceptMemberInvitationRequestFixture,
+    );
+    expect(services.authMembers.listMembers).toHaveBeenCalledWith("account-local");
+    expect(services.authMembers.removeMember).toHaveBeenCalledWith(
+      "membership-api",
+      removeMemberRequestFixture,
+    );
+  });
+
   it.skipIf(!process.env.DATABASE_URL)(
     "configures SSO settings against Postgres and denies a non-admin",
     async () => {
@@ -3171,6 +3281,34 @@ describe("Itotori API handlers", () => {
           "route": "POST /api/settings/security/sso",
           "successFixture": "api-handlers.test.ts SSO settings configure success fixture",
         },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "members list",
+          "requiredPermission": "auth.members.manage",
+          "route": "GET /api/auth/members",
+          "successFixture": "api-handlers.test.ts members list success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "members invite",
+          "requiredPermission": "auth.members.manage",
+          "route": "POST /api/auth/members/invitations",
+          "successFixture": "api-handlers.test.ts members invite success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "members accept",
+          "requiredPermission": "auth.members.manage",
+          "route": "POST /api/auth/members/invitations/invitation-api/accept",
+          "successFixture": "api-handlers.test.ts members accept success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "members remove",
+          "requiredPermission": "auth.members.manage",
+          "route": "POST /api/auth/members/membership-api/remove",
+          "successFixture": "api-handlers.test.ts members remove success fixture",
+        },
       ]
     `);
   });
@@ -3583,20 +3721,18 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "projectWorkflow") {
     return services.projectWorkflow[service.method];
   }
+  if (service.surface === "authMembers") {
+    return services.authMembers[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
 function apiMutationRouteId(request: ItotoriApiRequest): string {
-  if (request.method !== "POST") {
-    throw new Error(
-      `API mutation matrix entry must use POST: ${request.method} ${request.pathname}`,
-    );
-  }
   const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
-  if (projectRoute?.[1]) {
+  if (request.method === "POST" && projectRoute?.[1]) {
     return `POST /api/projects/:projectId/${projectRoute[1]}`;
   }
-  return `POST ${request.pathname}`;
+  return `${request.method} ${request.pathname}`;
 }
 
 function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
@@ -4100,6 +4236,52 @@ function serviceFixture(): ItotoriApiServices {
       configureSettings: vi.fn(async (input) => ({
         ...input,
         updatedAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    authMembers: {
+      listMembers: vi.fn(async (accountId: string) => [
+        {
+          membershipId: "membership-api",
+          accountId,
+          userId: "user-api-member",
+          principalId: "principal-api-member",
+          email: "member@example.test",
+          displayName: "API Member",
+          permissionSetIds: ["permission-set-account-local-reviewer"],
+          createdAt: new Date("2026-07-08T00:00:00.000Z"),
+        },
+      ]),
+      inviteMember: vi.fn(async (input: ApiInviteMemberRequest) => ({
+        invitationId: "invitation-api",
+        accountId: input.accountId,
+        email: input.email,
+        initialPermissionSetIds: [...input.initialPermissionSetIds],
+        expiresAt: new Date(input.expiresAt),
+        acceptedAt: null,
+        revokedAt: null,
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+      acceptInvitation: vi.fn(
+        async (_invitationId: string, input: ApiAcceptMemberInvitationRequest) => ({
+          membershipId: "membership-api",
+          accountId: "account-local",
+          userId: input.userId,
+          principalId: input.principalId,
+          email: input.email,
+          displayName: input.displayName,
+          permissionSetIds: ["permission-set-account-local-reviewer"],
+          createdAt: new Date("2026-07-08T00:00:00.000Z"),
+        }),
+      ),
+      removeMember: vi.fn(async (membershipId: string, _input: ApiRemoveMemberRequest) => ({
+        membershipId,
+        accountId: "account-local",
+        userId: "user-api-member",
+        principalId: "principal-api-member",
+        email: "member@example.test",
+        displayName: "API Member",
+        permissionSetIds: ["permission-set-account-local-reviewer"],
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },
   };

@@ -1,6 +1,63 @@
 {
   "components": {
     "schemas": {
+      "ApiAcceptMemberInvitationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "externalIdentity": {
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "displayName",
+          "email",
+          "externalIdentity",
+          "principalId",
+          "reason",
+          "requestId",
+          "userId"
+        ],
+        "type": "object"
+      },
       "ApiAssetDecisionsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -147,6 +204,55 @@
         ],
         "type": "object"
       },
+      "ApiInviteMemberRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "initialPermissionSetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "email",
+          "expiresAt",
+          "initialPermissionSetIds",
+          "reason",
+          "requestId"
+        ],
+        "type": "object"
+      },
       "ApiLaunchPassRequest": {
         "additionalProperties": true,
         "properties": {
@@ -181,6 +287,156 @@
           "refusalMessage",
           "schemaVersion",
           "startedAt"
+        ],
+        "type": "object"
+      },
+      "ApiMemberInvitationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "initialPermissionSetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "invitationId": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.member-invitation.v0"
+          }
+        },
+        "required": [
+          "acceptedAt",
+          "accountId",
+          "createdAt",
+          "email",
+          "expiresAt",
+          "initialPermissionSetIds",
+          "invitationId",
+          "revokedAt",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiMemberRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "membershipId": {
+            "type": "string"
+          },
+          "permissionSetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "createdAt",
+          "displayName",
+          "email",
+          "membershipId",
+          "permissionSetIds",
+          "principalId",
+          "userId"
+        ],
+        "type": "object"
+      },
+      "ApiMemberResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/ApiMemberRecord"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.member.v0"
+          }
+        },
+        "required": [
+          "member",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiMembersListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/ApiMemberRecord"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.members.v0"
+          }
+        },
+        "required": [
+          "accountId",
+          "members",
+          "schemaVersion"
         ],
         "type": "object"
       },
@@ -342,6 +598,52 @@
         "required": [
           "findingId",
           "status"
+        ],
+        "type": "object"
+      },
+      "ApiRemoveMemberRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "ApiRemoveMemberResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "removedMember": {
+            "$ref": "#/components/schemas/ApiMemberRecord"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.member-removed.v0"
+          }
+        },
+        "required": [
+          "removedMember",
+          "schemaVersion"
         ],
         "type": "object"
       },
@@ -1480,6 +1782,332 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/members": {
+      "get": {
+        "operationId": "authMembersList",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMembersListResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "List account members and granted permission sets.",
+        "x-itotoriRouteId": "auth.members.list"
+      }
+    },
+    "/api/auth/members/invitations": {
+      "post": {
+        "operationId": "authMembersInvite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiInviteMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMemberInvitationResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Invite a member with optional initial permission sets.",
+        "x-itotoriRouteId": "auth.members.invite"
+      }
+    },
+    "/api/auth/members/invitations/{invitationId}/accept": {
+      "post": {
+        "operationId": "authMembersAcceptInvitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiAcceptMemberInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMemberResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Accept a member invitation, creating membership and initial grants transactionally.",
+        "x-itotoriRouteId": "auth.members.accept"
+      }
+    },
+    "/api/auth/members/{membershipId}/remove": {
+      "post": {
+        "operationId": "authMembersRemove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membershipId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRemoveMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiRemoveMemberResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Remove a member and revoke account-scoped permission-set grants.",
+        "x-itotoriRouteId": "auth.members.remove"
+      }
+    },
     "/api/catalog/benchmark-seeds": {
       "get": {
         "operationId": "catalogBenchmarkSeeds",

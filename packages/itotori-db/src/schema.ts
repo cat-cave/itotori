@@ -4780,6 +4780,9 @@ export type AuthProviderClaimKind =
 export const authAuditEventActionValues = {
   granted: "granted",
   revoked: "revoked",
+  invited: "invited",
+  accepted: "accepted",
+  removed: "removed",
 } as const;
 
 export type AuthAuditEventAction =
@@ -5165,9 +5168,10 @@ export const authPrincipalPermissionSetGrants = pgTable(
 );
 
 /**
- * Append-only audit trail of authorization changes: which actor granted/revoked
- * which permission or permission-set to/from which target principal, why, and
- * under which request id.
+ * Append-only audit trail of authorization changes and member lifecycle events:
+ * which actor granted/revoked which permission or permission-set to/from which
+ * target principal, invited which email, accepted which invitation, or removed
+ * which member, why, and under which request id.
  */
 export const authAuditEvents = pgTable(
   "itotori_auth_audit_events",
@@ -5176,9 +5180,16 @@ export const authAuditEvents = pgTable(
     actorPrincipalId: text("actor_principal_id")
       .notNull()
       .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
-    targetPrincipalId: text("target_principal_id")
-      .notNull()
-      .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
+    targetPrincipalId: text("target_principal_id").references(() => authPrincipals.principalId, {
+      onDelete: "restrict",
+    }),
+    accountId: text("account_id").references(() => authAccounts.accountId, {
+      onDelete: "set null",
+    }),
+    invitationId: text("invitation_id").references(() => authInvitations.invitationId, {
+      onDelete: "set null",
+    }),
+    targetEmail: text("target_email"),
     action: text("action").notNull().$type<AuthAuditEventAction>(),
     permission: text("permission").$type<Permission>(),
     permissionSetId: text("permission_set_id").references(

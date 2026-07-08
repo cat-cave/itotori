@@ -38,6 +38,8 @@ import {
   type ProjectDashboardStatus,
   type QueueHealthReadModel,
   type LoadQueueHealthOptions,
+  type MemberInvitationRecord,
+  type MemberRecord,
   type RuntimeDashboardStatus,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
@@ -58,6 +60,9 @@ import {
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
   parseConfigureAuthSsoSettingsRequest,
+  parseAcceptMemberInvitationRequest,
+  parseInviteMemberRequest,
+  parseRemoveMemberRequest,
   parseLaunchPassRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
@@ -65,14 +70,22 @@ import {
   type ApiLaunchPassResponse,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiConfigureAuthSsoSettingsResponse,
+  type ApiAcceptMemberInvitationRequest,
   type ApiAssetDecisionsResponse,
   type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
+  type ApiInviteMemberRequest,
   type ApiProjectOverviewResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
   type ApiJobsRunTableResponse,
   type ApiQueueHealthResponse,
+  type ApiMemberInvitationResponse,
+  type ApiMemberRecord,
+  type ApiMemberResponse,
+  type ApiMembersListResponse,
+  type ApiRemoveMemberRequest,
+  type ApiRemoveMemberResponse,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -137,6 +150,10 @@ export const apiMutationPermissionGates = {
   // that protects the draft workflow + the pass ledger.
   launchPass: apiMutationGate("launch pass", "draftWrite"),
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
+  membersList: apiMutationGate("members list", "authMembersManage"),
+  membersInvite: apiMutationGate("members invite", "authMembersManage"),
+  membersAccept: apiMutationGate("members accept", "authMembersManage"),
+  membersRemove: apiMutationGate("members remove", "authMembersManage"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -220,6 +237,9 @@ export type ItotoriReadOnlyApiServices = {
   jobs: {
     loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
   };
+  authMembers: {
+    listMembers(accountId: string): Promise<readonly MemberRecord[]>;
+  };
 };
 
 /**
@@ -258,6 +278,15 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       sessionPolicy: ApiConfigureAuthSsoSettingsRequest["sessionPolicy"];
       updatedAt: Date;
     }>;
+  };
+  authMembers: {
+    listMembers(accountId: string): Promise<readonly MemberRecord[]>;
+    inviteMember(input: ApiInviteMemberRequest): Promise<MemberInvitationRecord>;
+    acceptInvitation(
+      invitationId: string,
+      input: ApiAcceptMemberInvitationRequest,
+    ): Promise<MemberRecord>;
+    removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
 };
 
@@ -317,6 +346,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     jobs: {
       loadRunTable: (options) => services.jobs.loadRunTable(options),
+    },
+    authMembers: {
+      listMembers: (accountId) => services.authMembers.listMembers(accountId),
     },
   };
 }
@@ -396,6 +428,13 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     return methodNotAllowed(["POST"]);
   }
   if (request.pathname === "/api/settings/security/sso") {
+    return methodNotAllowed(["POST"]);
+  }
+  if (
+    request.pathname === "/api/auth/members/invitations" ||
+    parseAuthMemberAcceptRoute(request.pathname) !== null ||
+    parseAuthMemberRemoveRoute(request.pathname) !== null
+  ) {
     return methodNotAllowed(["POST"]);
   }
   if (parseProjectRoute(request.pathname) !== null) {
@@ -518,6 +557,51 @@ async function routeItotoriApiRequest(
   }
 
   if (request.pathname === "/api/settings/security/sso") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/auth/members/invitations") {
+    const body = parseInviteMemberRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.membersInvite);
+    return ok(
+      "auth.members.invite",
+      memberInvitationResponseBody(await services.authMembers.inviteMember(body)),
+    );
+  }
+
+  const memberAcceptRoute = parseAuthMemberAcceptRoute(request.pathname);
+  if (request.method === "POST" && memberAcceptRoute !== null) {
+    const body = parseAcceptMemberInvitationRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.membersAccept);
+    return ok(
+      "auth.members.accept",
+      memberResponseBody(
+        memberRecordBody(
+          await services.authMembers.acceptInvitation(memberAcceptRoute.invitationId, body),
+        ),
+      ),
+    );
+  }
+
+  const memberRemoveRoute = parseAuthMemberRemoveRoute(request.pathname);
+  if (request.method === "POST" && memberRemoveRoute !== null) {
+    const body = parseRemoveMemberRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.membersRemove);
+    return ok(
+      "auth.members.remove",
+      removeMemberResponseBody(
+        memberRecordBody(
+          await services.authMembers.removeMember(memberRemoveRoute.membershipId, body),
+        ),
+      ),
+    );
+  }
+
+  if (
+    request.pathname === "/api/auth/members/invitations" ||
+    memberAcceptRoute !== null ||
+    memberRemoveRoute !== null
+  ) {
     return methodNotAllowed(["POST"]);
   }
 
@@ -682,6 +766,59 @@ function authSsoSettingsResponseBody(input: {
   };
 }
 
+function memberInvitationResponseBody(input: {
+  invitationId: string;
+  accountId: string;
+  email: string;
+  initialPermissionSetIds: readonly string[];
+  expiresAt: Date;
+  acceptedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}): ApiMemberInvitationResponse {
+  return {
+    schemaVersion: "itotori.auth.member-invitation.v0",
+    invitationId: input.invitationId,
+    accountId: input.accountId,
+    email: input.email,
+    initialPermissionSetIds: [...input.initialPermissionSetIds],
+    expiresAt: input.expiresAt.toISOString(),
+    acceptedAt: input.acceptedAt?.toISOString() ?? null,
+    revokedAt: input.revokedAt?.toISOString() ?? null,
+    createdAt: input.createdAt.toISOString(),
+  };
+}
+
+function memberRecordBody(input: {
+  membershipId: string;
+  accountId: string;
+  userId: string;
+  principalId: string;
+  email: string | null;
+  displayName: string;
+  permissionSetIds: readonly string[];
+  createdAt: Date | string;
+}): ApiMemberRecord {
+  return {
+    membershipId: input.membershipId,
+    accountId: input.accountId,
+    userId: input.userId,
+    principalId: input.principalId,
+    email: input.email,
+    displayName: input.displayName,
+    permissionSetIds: [...input.permissionSetIds],
+    createdAt: input.createdAt instanceof Date ? input.createdAt.toISOString() : input.createdAt,
+  };
+}
+
+function memberResponseBody(input: ApiMemberRecord): ApiMemberResponse {
+  return { schemaVersion: "itotori.auth.member.v0", member: input };
+}
+
+function removeMemberResponseBody(input: ApiMemberRecord): ApiRemoveMemberResponse {
+  return { schemaVersion: "itotori.auth.member-removed.v0", removedMember: input };
+}
+
 /**
  * ITOTORI-043 — the READ-ONLY (query) route handler. It receives ONLY the
  * read-only dependency surface, so it is structurally unable to reach a
@@ -769,6 +906,16 @@ async function routeReadOnlyItotoriApiRequest(
     const canRead = await resolveProjectReadPermission(services);
     const page = await services.jobs.loadRunTable(parseJobsRunTableQuery(request.search));
     return ok("jobs.runTable", canRead ? page : redactJobsRunTable(page));
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/auth/members") {
+    const accountId = parseAuthMembersListQuery(request.search);
+    await requireApiPermission(services, apiMutationPermissionGates.membersList);
+    return ok("auth.members.list", {
+      schemaVersion: "itotori.auth.members.v0",
+      accountId,
+      members: (await services.authMembers.listMembers(accountId)).map(memberRecordBody),
+    });
   }
 
   if (
@@ -999,6 +1146,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/projects/cost/drilldown" ||
     request.pathname === "/api/projects/benchmarks" ||
     request.pathname === "/api/jobs/run-table" ||
+    request.pathname === "/api/auth/members" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
@@ -1241,6 +1389,16 @@ function parseJobsRunTableQuery(search = ""): LoadJobsRunTableOptions {
     options.offset = offset;
   }
   return options;
+}
+
+function parseAuthMembersListQuery(search = ""): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["accountId"], "auth members list");
+  const accountId = params.get("accountId");
+  if (accountId === null || accountId.length === 0) {
+    throw new ApiValidationError("accountId is required");
+  }
+  return accountId;
 }
 
 function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOptions {
@@ -1503,6 +1661,22 @@ function parseReviewerSingleActionApiRoute(pathname: string): { reviewItemId: st
     return null;
   }
   return { reviewItemId: decodeURIComponent(match[1]) };
+}
+
+function parseAuthMemberAcceptRoute(pathname: string): { invitationId: string } | null {
+  const match = /^\/api\/auth\/members\/invitations\/([^/]+)\/accept$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[1].length === 0) {
+    return null;
+  }
+  return { invitationId: decodeURIComponent(match[1]) };
+}
+
+function parseAuthMemberRemoveRoute(pathname: string): { membershipId: string } | null {
+  const match = /^\/api\/auth\/members\/([^/]+)\/remove$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[1].length === 0) {
+    return null;
+  }
+  return { membershipId: decodeURIComponent(match[1]) };
 }
 
 /**
@@ -1989,6 +2163,10 @@ function ok(
   routeId: "auth.ssoSettings.configure",
   body: ApiConfigureAuthSsoSettingsResponse,
 ): ApiJsonResponse;
+function ok(routeId: "auth.members.list", body: ApiMembersListResponse): ApiJsonResponse;
+function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): ApiJsonResponse;
+function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
+function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);

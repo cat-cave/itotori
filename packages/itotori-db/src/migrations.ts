@@ -324,6 +324,10 @@ export const migrations = [
     id: "0066_auth_sso_settings",
     file: "0066_auth_sso_settings.sql",
   },
+  {
+    id: "0067_auth_members_manage_permission",
+    file: "0067_auth_members_manage_permission.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

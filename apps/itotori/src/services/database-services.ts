@@ -1,6 +1,7 @@
 import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
+  ItotoriAuthMemberManagementRepository,
   ItotoriAuthSsoSettingsRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriEventQueueRepository,
@@ -27,6 +28,7 @@ import {
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
+  localOperatorPrincipalId,
   migrate,
   type ItotoriCatalogExactExternalIdLinkerPort,
   type ItotoriCatalogFuzzyCandidateGeneratorPort,
@@ -56,7 +58,14 @@ import {
   type CandidateAssetRecord,
   type ConfigureAuthSsoSettingsInput,
   type AuthSsoSettingsRecord,
+  type MemberInvitationRecord,
+  type MemberRecord,
 } from "@itotori/db";
+import type {
+  ApiAcceptMemberInvitationRequest,
+  ApiInviteMemberRequest,
+  ApiRemoveMemberRequest,
+} from "../api-schema.js";
 import {
   EngineCapabilityReportService,
   type EngineCapabilityReportPort,
@@ -192,6 +201,15 @@ export type ItotoriApplicationServices = {
   };
   authSsoSettings: {
     configureSettings(input: ConfigureAuthSsoSettingsInput): Promise<AuthSsoSettingsRecord>;
+  };
+  authMembers: {
+    listMembers(accountId: string): Promise<MemberRecord[]>;
+    inviteMember(input: ApiInviteMemberRequest): Promise<MemberInvitationRecord>;
+    acceptInvitation(
+      invitationId: string,
+      input: ApiAcceptMemberInvitationRequest,
+    ): Promise<MemberRecord>;
+    removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
 };
 
@@ -364,6 +382,7 @@ export async function withDatabaseItotoriServices<T>(
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
+    const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
     );
@@ -589,6 +608,40 @@ export async function withDatabaseItotoriServices<T>(
       authSsoSettings: {
         configureSettings: (input) =>
           authSsoSettingsRepository.configureSettings(localUserActor, input),
+      },
+      authMembers: {
+        listMembers: (accountId) =>
+          authMemberManagementRepository.listMembers(localUserActor, accountId),
+        inviteMember: (input) => {
+          const { reason, requestId, ...required } = input;
+          return authMemberManagementRepository.inviteMember(localUserActor, {
+            ...required,
+            actorPrincipalId: localOperatorPrincipalId,
+            expiresAt: new Date(input.expiresAt),
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+        },
+        acceptInvitation: (invitationId, input) => {
+          const { externalIdentity, reason, requestId, ...required } = input;
+          return authMemberManagementRepository.acceptInvitation(localUserActor, {
+            ...required,
+            invitationId,
+            actorPrincipalId: localOperatorPrincipalId,
+            ...(externalIdentity === null ? {} : { externalIdentity }),
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+        },
+        removeMember: (membershipId, input) => {
+          const { reason, requestId } = input;
+          return authMemberManagementRepository.removeMember(localUserActor, {
+            membershipId,
+            actorPrincipalId: localOperatorPrincipalId,
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+        },
       },
     });
   } finally {

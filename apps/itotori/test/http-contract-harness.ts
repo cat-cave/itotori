@@ -455,6 +455,67 @@ const fixtureServices = {
   jobs: {
     loadRunTable: vi.fn(async () => jobsRunTableFixture),
   },
+  authMembers: {
+    listMembers: vi.fn(async (accountId: string) => [
+      {
+        membershipId: "membership-contract",
+        accountId,
+        userId: "user-contract-member",
+        principalId: "principal-contract-member",
+        email: "member@example.test",
+        displayName: "Contract Member",
+        permissionSetIds: ["permission-set-account-local-reviewer"],
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      },
+    ]),
+    inviteMember: vi.fn(
+      async (input: {
+        accountId: string;
+        email: string;
+        initialPermissionSetIds: readonly string[];
+        expiresAt: string;
+      }) => ({
+        invitationId: "invitation-contract",
+        accountId: input.accountId,
+        email: input.email,
+        initialPermissionSetIds: [...input.initialPermissionSetIds],
+        expiresAt: new Date(input.expiresAt),
+        acceptedAt: null,
+        revokedAt: null,
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      }),
+    ),
+    acceptInvitation: vi.fn(
+      async (
+        _invitationId: string,
+        input: {
+          userId: string;
+          principalId: string;
+          email: string;
+          displayName: string;
+        },
+      ) => ({
+        membershipId: "membership-contract",
+        accountId: "account-local",
+        userId: input.userId,
+        principalId: input.principalId,
+        email: input.email,
+        displayName: input.displayName,
+        permissionSetIds: ["permission-set-account-local-reviewer"],
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      }),
+    ),
+    removeMember: vi.fn(async (membershipId: string) => ({
+      membershipId,
+      accountId: "account-local",
+      userId: "user-contract-member",
+      principalId: "principal-contract-member",
+      email: "member@example.test",
+      displayName: "Contract Member",
+      permissionSetIds: ["permission-set-account-local-reviewer"],
+      createdAt: new Date("2026-07-08T00:00:00.000Z"),
+    })),
+  },
 } as const;
 
 type FixtureServices = import("../src/services/database-services.js").ItotoriApplicationServices;

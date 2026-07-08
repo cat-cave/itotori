@@ -2,6 +2,63 @@
   "$id": "https://itotori.dev/api/json-schema/v0.1.0",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "ApiAcceptMemberInvitationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "externalIdentity": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "principalId": {
+          "type": "string"
+        },
+        "reason": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "displayName",
+        "email",
+        "externalIdentity",
+        "principalId",
+        "reason",
+        "requestId",
+        "userId"
+      ],
+      "type": "object"
+    },
     "ApiAssetDecisionsResponse": {
       "additionalProperties": false,
       "properties": {
@@ -148,6 +205,55 @@
       ],
       "type": "object"
     },
+    "ApiInviteMemberRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string"
+        },
+        "initialPermissionSetIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "accountId",
+        "email",
+        "expiresAt",
+        "initialPermissionSetIds",
+        "reason",
+        "requestId"
+      ],
+      "type": "object"
+    },
     "ApiLaunchPassRequest": {
       "additionalProperties": true,
       "properties": {
@@ -182,6 +288,156 @@
         "refusalMessage",
         "schemaVersion",
         "startedAt"
+      ],
+      "type": "object"
+    },
+    "ApiMemberInvitationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptedAt": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "accountId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string"
+        },
+        "initialPermissionSetIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "invitationId": {
+          "type": "string"
+        },
+        "revokedAt": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.member-invitation.v0"
+        }
+      },
+      "required": [
+        "acceptedAt",
+        "accountId",
+        "createdAt",
+        "email",
+        "expiresAt",
+        "initialPermissionSetIds",
+        "invitationId",
+        "revokedAt",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiMemberRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "membershipId": {
+          "type": "string"
+        },
+        "permissionSetIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "principalId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accountId",
+        "createdAt",
+        "displayName",
+        "email",
+        "membershipId",
+        "permissionSetIds",
+        "principalId",
+        "userId"
+      ],
+      "type": "object"
+    },
+    "ApiMemberResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "member": {
+          "$ref": "#/definitions/ApiMemberRecord"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.member.v0"
+        }
+      },
+      "required": [
+        "member",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiMembersListResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/definitions/ApiMemberRecord"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.members.v0"
+        }
+      },
+      "required": [
+        "accountId",
+        "members",
+        "schemaVersion"
       ],
       "type": "object"
     },
@@ -343,6 +599,52 @@
       "required": [
         "findingId",
         "status"
+      ],
+      "type": "object"
+    },
+    "ApiRemoveMemberRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reason",
+        "requestId"
+      ],
+      "type": "object"
+    },
+    "ApiRemoveMemberResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "removedMember": {
+          "$ref": "#/definitions/ApiMemberRecord"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.member-removed.v0"
+        }
+      },
+      "required": [
+        "removedMember",
+        "schemaVersion"
       ],
       "type": "object"
     },

@@ -197,7 +197,7 @@ describe("fe-api-openapi-emit: schema/guard parity (no fork)", () => {
 //       guard passes to `asStrictRecord`. The "no fork" block asserts the
 //       emitted envelope equals that guard authority key-list, so a strict body
 //       cannot drift from its guard even without a fixture.
-//   (2) ALL 35 routes (request + response bodies): a schema-driven teeth block
+//   (2) ALL routes (request + response bodies): a schema-driven teeth block
 //       builds a minimal instance FROM the emitted schema, then proves the
 //       schema rejects a body that drops any single required top-level key, and
 //       (for strict bodies) rejects a leaked top-level field.
@@ -236,6 +236,9 @@ function minimalInstance(schema: JsonValue): unknown {
   }
   if (Array.isArray(s.enum) && s.enum.length > 0) {
     return s.enum[0];
+  }
+  if (Array.isArray(s.oneOf) && s.oneOf.length > 0) {
+    return minimalInstance(s.oneOf[0]);
   }
   switch (s.type) {
     case "array":
@@ -276,7 +279,7 @@ describe("fe-openapi-parity-all-routes: strict envelope == guard authority (no f
   }
 });
 
-describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request + response)", () => {
+describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + response)", () => {
   let bodyCount = 0;
   for (const routeId of ITOTORI_API_ROUTE_IDS) {
     const route = ITOTORI_API_ROUTES[routeId];
@@ -324,8 +327,8 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request 
     }
   }
 
-  it("covers a body for every one of the 39 routes (no route left un-teethed)", () => {
-    // 39 routes: each has a response body; the mutation + reviewer/workspace
+  it("covers a body for every one of the 43 routes (no route left un-teethed)", () => {
+    // 43 routes: each has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass`) add a
     // request body. The bmk-cockpit read-model added `projects.bmkCockpit` +
     // `projects.bmkCockpitHistory` (both GET, response-only). This asserts the
@@ -333,7 +336,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request 
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(39);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(43);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

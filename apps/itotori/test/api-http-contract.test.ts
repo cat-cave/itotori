@@ -64,6 +64,7 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "catalog.completeness" },
   { routeId: "catalog.benchmarkSeeds" },
   { routeId: "catalog.opportunities" },
+  { routeId: "auth.members.list", init: { query: { accountId: "account-local" } } },
   {
     routeId: "terminology.search",
     init: { query: { q: "Hero", localeBranchId: "locale-1" } },

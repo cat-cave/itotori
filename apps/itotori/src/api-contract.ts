@@ -29,7 +29,7 @@
 // for ANY strict route (the reviewer / workspace / queue-health / asset-decision
 // routes that previously lacked a parity fixture included). The loose
 // (`additionalProperties:true`) bodies keep their guard<->schema parity proven
-// by real response fixtures. The parity suite adds per-route teeth for all 35
+// by real response fixtures. The parity suite adds per-route teeth for all
 // routes (a dropped required key or a leaked strict field fails).
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
@@ -560,6 +560,97 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.auth.sso-settings.v0",
     }),
+  ApiInviteMemberRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiInviteMemberRequest,
+      properties: {
+        accountId: str,
+        email: str,
+        initialPermissionSetIds: { type: "array", items: str },
+        expiresAt: str,
+        reason: { oneOf: [str, { type: "null" }] },
+        requestId: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiMemberInvitationResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberInvitationResponse,
+      properties: {
+        invitationId: str,
+        accountId: str,
+        email: str,
+        initialPermissionSetIds: { type: "array", items: str },
+        expiresAt: str,
+        acceptedAt: { oneOf: [str, { type: "null" }] },
+        revokedAt: { oneOf: [str, { type: "null" }] },
+        createdAt: str,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.member-invitation.v0",
+    }),
+  ApiAcceptMemberInvitationRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAcceptMemberInvitationRequest,
+      properties: {
+        userId: str,
+        principalId: str,
+        displayName: str,
+        email: str,
+        externalIdentity: { oneOf: [obj, { type: "null" }] },
+        reason: { oneOf: [str, { type: "null" }] },
+        requestId: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiMemberRecord: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberRecord,
+      properties: {
+        membershipId: str,
+        accountId: str,
+        userId: str,
+        principalId: str,
+        email: { oneOf: [str, { type: "null" }] },
+        displayName: str,
+        permissionSetIds: { type: "array", items: str },
+        createdAt: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiMemberResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMemberResponse,
+      properties: { member: ref("ApiMemberRecord") },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.member.v0",
+    }),
+  ApiMembersListResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiMembersListResponse,
+      properties: {
+        accountId: str,
+        members: { type: "array", items: ref("ApiMemberRecord") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.members.v0",
+    }),
+  ApiRemoveMemberRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,
+      properties: {
+        reason: { oneOf: [str, { type: "null" }] },
+        requestId: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiRemoveMemberResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,
+      properties: { removedMember: ref("ApiMemberRecord") },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.member-removed.v0",
+    }),
 
   // Mutations --------------------------------------------------------------
   ApiProjectImportResponse: () =>
@@ -1071,6 +1162,41 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     requestSchema: "ApiConfigureAuthSsoSettingsRequest",
     responseSchema: "ApiConfigureAuthSsoSettingsResponse",
+  },
+  "auth.members.list": {
+    method: "GET",
+    pathTemplate: "/api/auth/members",
+    operationId: "authMembersList",
+    summary: "List account members and granted permission sets.",
+    pathParams: [],
+    responseSchema: "ApiMembersListResponse",
+  },
+  "auth.members.invite": {
+    method: "POST",
+    pathTemplate: "/api/auth/members/invitations",
+    operationId: "authMembersInvite",
+    summary: "Invite a member with optional initial permission sets.",
+    pathParams: [],
+    requestSchema: "ApiInviteMemberRequest",
+    responseSchema: "ApiMemberInvitationResponse",
+  },
+  "auth.members.accept": {
+    method: "POST",
+    pathTemplate: "/api/auth/members/invitations/{invitationId}/accept",
+    operationId: "authMembersAcceptInvitation",
+    summary: "Accept a member invitation, creating membership and initial grants transactionally.",
+    pathParams: ["invitationId"],
+    requestSchema: "ApiAcceptMemberInvitationRequest",
+    responseSchema: "ApiMemberResponse",
+  },
+  "auth.members.remove": {
+    method: "POST",
+    pathTemplate: "/api/auth/members/{membershipId}/remove",
+    operationId: "authMembersRemove",
+    summary: "Remove a member and revoke account-scoped permission-set grants.",
+    pathParams: ["membershipId"],
+    requestSchema: "ApiRemoveMemberRequest",
+    responseSchema: "ApiRemoveMemberResponse",
   },
   // ovw-launch-pass-action — drive the next localization pass (folds queued
   // corrections -> pass N+1) via the project-driven-executor /

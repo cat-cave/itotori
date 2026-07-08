@@ -951,6 +951,19 @@ export type {
   ItotoriAuthSsoSettingsRepositoryPort,
 } from "./repositories/auth-sso-settings-repository.js";
 export {
+  authMembersManagePermission,
+  ItotoriAuthMemberManagementRepository,
+  ItotoriAuthMemberManagementRepositoryError,
+} from "./repositories/auth-member-management-repository.js";
+export type {
+  AcceptMemberInvitationInput,
+  InviteMemberInput,
+  ItotoriAuthMemberManagementRepositoryPort,
+  MemberInvitationRecord,
+  MemberRecord,
+  RemoveMemberInput,
+} from "./repositories/auth-member-management-repository.js";
+export {
   authAuditEventActionValues,
   authPermissionSetAuditActionValues,
   authPrincipalKindValues,
