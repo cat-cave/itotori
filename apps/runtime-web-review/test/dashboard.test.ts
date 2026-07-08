@@ -313,7 +313,7 @@ function runtimeFixture(
     fidelityTier: "layout_probe",
     evidenceTier: "E2",
     textEventCount: 1,
-    frameCaptureCount: 1,
+    frameCaptureCount: 0,
     screenshotArtifactCount: 1,
     recordingArtifactCount: 0,
     validationFindingCount: 0,

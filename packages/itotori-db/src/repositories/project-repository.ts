@@ -1918,6 +1918,28 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           )
         order by created_at desc
         limit 1
+      ),
+      runtime_capture_kind_counts as (
+        -- DAG-node-runtime-status-double-counted-capture-scalars-on-wire:
+        -- The frame-capture vs screenshot API scalars are the REAL distinct
+        -- per-artifactKind counts of the persisted runtime artifacts (each
+        -- capture produces exactly one row, keyed either as the
+        -- frame_capture artifact_kind for legacy RuntimeVerificationReport
+        -- frame captures or as the screenshot artifact_kind for
+        -- RuntimeEvidenceReportV02 captures). Counting from the artifacts
+        -- table avoids double-counting that arose when the single
+        -- capture_count column on itotori_runtime_evidence_runs was reused
+        -- for both scalars.
+        select
+          a.metadata->>'runtimeReportId' as runtime_report_id,
+          count(*) filter (where a.artifact_kind = 'frame_capture')::int
+            as frame_capture_kind_count,
+          count(*) filter (where a.artifact_kind = 'screenshot')::int
+            as screenshot_kind_count
+        from ${artifacts} a
+        where a.artifact_kind in ('frame_capture', 'screenshot')
+          and a.metadata->>'runtimeReportId' is not null
+        group by a.metadata->>'runtimeReportId'
       )
       select
         coalesce(
@@ -1951,10 +1973,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           as evidence_tier,
         coalesce(selected_runtime_run.text_event_count::text, selected_runtime_report.metadata->>'textEventCount')
           as text_event_count,
-        coalesce(selected_runtime_run.capture_count::text, selected_runtime_report.metadata->>'frameCaptureCount')
-          as frame_capture_count,
-        coalesce(selected_runtime_run.capture_count::text, selected_runtime_report.metadata->>'screenshotArtifactCount')
-          as screenshot_artifact_count,
+        coalesce(
+          rckc.frame_capture_kind_count::text,
+          selected_runtime_report.metadata->>'frameCaptureCount',
+          '0'
+        ) as frame_capture_count,
+        coalesce(
+          rckc.screenshot_kind_count::text,
+          selected_runtime_report.metadata->>'screenshotArtifactCount',
+          '0'
+        ) as screenshot_artifact_count,
         coalesce(selected_runtime_run.recording_count::text, selected_runtime_report.metadata->>'recordingArtifactCount')
           as recording_artifact_count,
         coalesce(selected_runtime_run.validation_finding_count::text, selected_runtime_report.metadata->>'validationFindingCount')
@@ -1963,6 +1991,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       left join selected_runtime_run on true
       left join selected_runtime_report on true
       left join selected_patch_result on true
+      left join runtime_capture_kind_counts rckc
+        on rckc.runtime_report_id = coalesce(
+          selected_runtime_run.runtime_report_artifact_id,
+          selected_runtime_report.artifact_id
+        )
     `);
 
     const first = result.rows[0] as Record<string, unknown> | undefined;
@@ -3192,11 +3225,22 @@ function runtimeBranchEventCount(report: RuntimeReportInput): number {
 }
 
 function runtimeFrameCaptureCount(report: RuntimeReportInput): number {
-  return isRuntimeEvidenceReportV02(report) ? report.captures.length : report.frameCaptures.length;
+  if (!isRuntimeEvidenceReportV02(report)) {
+    return report.frameCaptures.length;
+  }
+  // V02 captures are persisted as `screenshot` artifacts (see
+  // localization-bridge-schema assertRuntimeArtifactRefV02(capture.artifactRef,
+  // ..., "screenshot")), so a V02 run contributes ZERO frame_capture
+  // artifacts — its captures are screenshots. Legacy runtime verification
+  // reports persist their frameCaptures as `frame_capture` artifacts only.
+  return 0;
 }
 
 function runtimeScreenshotArtifactCount(report: RuntimeReportInput): number {
-  return isRuntimeEvidenceReportV02(report) ? report.captures.length : report.frameCaptures.length;
+  if (!isRuntimeEvidenceReportV02(report)) {
+    return 0;
+  }
+  return report.captures.length;
 }
 
 function runtimeRecordingArtifactCount(report: RuntimeReportInput): number {
