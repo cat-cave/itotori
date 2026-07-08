@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn detector_fixture_set_passes_and_records_kaifuu_085_fields() {
         let report = run();
-        assert_eq!(report.status, OperationStatus::Passed, "{:#?}", report);
+        assert_eq!(report.status, OperationStatus::Passed, "{report:#?}");
         assert_eq!(report.engine_family, BGI_ENGINE_FAMILY);
         assert_eq!(report.source_node_id, "KAIFUU-126");
         assert_eq!(report.entries.len(), 6);
