@@ -86,6 +86,37 @@ rejected by `JobLeaseRevalidationError` is counted as `leaseLost` (neither `succ
 
 Vite+ and Vite Task provide the TypeScript/web workspace command surface and cached task orchestration. Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
 
+## Studio SPA — design system, typed API client, app shell
+
+The Studio SPA replaced the deleted HTML-string `dashboard.ts` /
+`reviewer/detail-view.ts` / `workspace/view.ts` renderers with a single React
+app served by `apps/itotori/src/server.ts`. It is the surface every downstream
+Studio screen node inherits, so the patterns below are the precedent:
+
+- **Dusk Observatory design system — `@itotori/ds`** (`packages/itotori-ds/`).
+  React components + CSS tokens. The canonical CSS entry
+  (`@itotori/ds/styles.css`) is consumed once at the SPA shell.
+- **Typed API client — `fnd-api-client`** (`apps/itotori/src/api-client.ts`).
+  Framework-agnostic; every route is generated from `api-schema.ts` (the
+  `ItotoriApiRouteId` union + the route / response / error types) and
+  `api-contract.ts` (the `ITOTORI_API_ROUTES` registry). Every response is
+  validated by the same `assertItotoriApiResponse` guard the server uses; the
+  error state carries the typed `ApiErrorResponse` (`{ code, error }`).
+  Consumers read a discriminated `{ loading | ready | empty | error }` state;
+  the shared singleton lives at `apps/itotori/src/ui/client.ts`.
+- **React app shell — `fnd-spa-shell`** (`apps/itotori/src/ui/`). `App.tsx`
+  client-routes off `window.location` and renders a parity-ported React
+  screen; `use-api-resource.ts` adapts the stateful `ApiResource` to React via
+  `useSyncExternalStore`. Routes this node does not port (asset-decisions /
+  reviewer-batch / style-guide-builder) are bridged to their existing
+  renderers via `LegacyRoute` (an honest, temporary mount — each is a tracked
+  follow-on screen, not a dual path for a replaced view).
+
+The full set of patterns (typed-query example, deleted predecessors,
+downstream-screen patterns) lives in [frontend.md](frontend.md); the
+design ↔ repo alignment for the hi-fi Studio epic lives in
+[`design/hifi/README.md`](design/hifi/README.md).
+
 ## Current Alpha Proof
 
 The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.

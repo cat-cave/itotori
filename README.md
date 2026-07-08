@@ -60,11 +60,13 @@ For the full DB-backed test suite and Rust gates, run `just ci` (which starts an
 
 ```txt
 apps/
-  itotori/                 # TypeScript CLI and web shell
+  itotori/                 # TypeScript CLI + React SPA on @itotori/ds (fnd-spa-shell)
   runtime-web-review/      # Runtime evidence dashboard
 packages/
   localization-bridge-schema/
   itotori-db/
+  itotori-ds/              # Dusk Observatory design system (React + CSS tokens)
+  spec-dag-dashboard/      # Self-contained browsable spec-DAG dashboard
 crates/
   kaifuu-*/
   utsushi-*/
@@ -72,6 +74,7 @@ docs/
   architecture.md
   alpha-proof.md
   spec-dag.md
+  frontend.md              # SPA / @itotori/ds / typed API client notes
 ```
 
 Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo remains the Rust build and test authority. The root `justfile` orchestrates both.

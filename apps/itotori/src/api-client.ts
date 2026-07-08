@@ -18,9 +18,11 @@
 // `ready | empty | error` states). PAGINATION primitives (`OffsetPager`) walk
 // the offset-paginated route(s) per the api-schema `pagination` shape.
 //
-// This is the CLIENT CORE, independent of the SPA shell (fnd-spa-shell,
-// downstream). A minimal type-safe consumption example lives in
-// `api-client-example.ts`; the shell-wiring is a follow-on.
+// This is the CLIENT CORE, independent of the SPA shell (fnd-spa-shell).
+// A minimal type-safe consumption example lives in `api-client-example.ts`;
+// the shell binding lives at `ui/use-api-resource.ts` (`useApiQuery` /
+// `useApiResource` — the React `useSyncExternalStore` adapter for
+// `ApiResource`).
 
 import type {
   CostDrilldownPagination,

@@ -1,17 +1,17 @@
 // fnd-api-client — minimal TYPE-SAFE CONSUMPTION example.
 //
-// This is NOT the SPA shell (that's fnd-spa-shell, downstream). It proves a
-// consumer can drive the client through the discriminated `loading | ready |
-// empty | error` states type-safely, and sketches the hook + renderer shape
-// the Studio shell will wire. The discriminated-union `switch` narrows
-// `state.data` (only on `ready`) and `state.error` (only on `error`) at
-// compile time — that is the type-safety guarantee the client exports.
+// This is NOT the SPA shell (that's fnd-spa-shell — the React app shell at
+// `apps/itotori/src/ui/`). It proves a consumer can drive the client through
+// the discriminated `loading | ready | empty | error` states type-safely, and
+// sketches the hook + renderer shape the Studio shell wires. The
+// discriminated-union `switch` narrows `state.data` (only on `ready`) and
+// `state.error` (only on `error`) at compile time — that is the type-safety
+// guarantee the client exports.
 //
-// Shell-wiring follow-on: fnd-spa-shell will bind `createApiQueryHook` to a
-// real framework lifecycle (React `useSyncExternalStore`, Solid, Svelte, or
-// the vanilla-DOM pattern `dashboard.ts` already uses) and feed
-// `renderApiResourceState` into the screen renderers. No framework is pinned
-// here so the data layer stays framework-agnostic.
+// The SPA shell binding lives at `ui/use-api-resource.ts` (`useApiQuery` /
+// `useApiResource` — the React `useSyncExternalStore` adapter for
+// `ApiResource`). No framework is pinned here so the data layer stays
+// framework-agnostic.
 
 import {
   ItotoriApiClient,

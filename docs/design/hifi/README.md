@@ -4,7 +4,7 @@ The **hi-fi mockup** of the Itotori Studio UI lives in the Claude Design project
 **"Itotori repository"** (`claude.ai/design`, project id
 `93c04f61-7707-4b94-95c0-079e5875f8c2`, owner Trevor). It designs the layout,
 workflow, cross-surface interaction, and cohesion of the product — the destination
-for the (currently flat HTML-string) dashboards.
+for the (now-ported React SPA) Studio screens.
 
 It builds on the **Itotori Design System** project
 (`428be6c4-a1db-41d2-954f-b50ff2e38353`, embedded here as `studio/_ds/…`) — see
@@ -51,14 +51,23 @@ The mockup's features are decomposed into the **hi-fi Studio epic** in
 `roadmap/spec-dag.json` (nodes: `fnd-*` foundation, then `shell-*`, `ovw-*`,
 `play-*`, `rev-*`, `wiki-*`, `mem-*`, `np-*`, `set-*`, `xs-*`, `bmk-*`).
 
-Key facts from the analysis (2026-07-06):
+Key facts from the analysis (2026-07-06), updated to reflect the
+foundation landing:
 
 - The **backend is far more built than the mockup implies** (~90 Postgres tables,
-  ~32 API routes). The dominant gap is the **UI track**: there is no repo React app
-  or design-system port yet — the shipped UI is HTML-string dashboards
-  (`apps/itotori/src/dashboard.ts` etc.). So the foundation track (design-system
-  port → React SPA host → addressable-id routing → typed API client → capability
-  context) precedes every screen.
+  ~32 API routes). The foundation track landed end-to-end: the **Dusk Observatory
+  design system** (`@itotori/ds` at `packages/itotori-ds/`) ported the design
+  language into React + CSS tokens; the **`fnd-api-client`** typed API client
+  (`apps/itotori/src/api-client.ts`) drives the SPA off the existing `/api/*`
+  routes with discriminated `loading | ready | empty | error` states; and the
+  **`fnd-spa-shell`** React app shell (`apps/itotori/src/ui/`) replaced the
+  deleted HTML-string `dashboard.ts` / `reviewer/detail-view.ts` /
+  `workspace/view.ts` renderers with React screens composing
+  `useApiQuery` + `@itotori/ds`. Addressable-id routing and the capability
+  context also shipped. The deleted string renderers are NOT in the tree
+  (`dashboard.ts` was deleted by `fnd-spa-shell`; downstream screens parity-port
+  from the deleted originals). Remaining work is the ~50 screen nodes that
+  inherit this foundation.
 - **Highest-leverage first surface: Review** — its backend is complete end-to-end,
   and building it forces the whole foundation into existence for every other surface.
 - **Org / multi-user / Members** is owned by the **auth epic** (`auth-*` nodes);
