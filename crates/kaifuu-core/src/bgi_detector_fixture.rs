@@ -4,9 +4,9 @@
 //! container/profile evidence in the KAIFUU-085 compat-evidence shape: engine
 //! family, variant, container, crypto, codec, surface, fixture id, secret
 //! requirement ids, proof hashes, and diagnostics. It deliberately does not
-//! infer key requirements for BSE/DSC/CompressedBG markers; those variants are
-//! represented as `none_or_unknown_variant` crypto until a concrete profile
-//! proves otherwise.
+//! infer key requirements for BSE/DSC/CompressedBG markers or claim compressed
+//! / layered support; those variants are represented as unknown/unsupported
+//! negatives until concrete public profiles prove otherwise.
 
 use std::path::Path;
 
@@ -21,7 +21,7 @@ use crate::{
 pub const BGI_DETECTOR_FIXTURE_SCHEMA_VERSION: &str = "0.1.0";
 pub const BGI_DETECTOR_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 pub const BGI_ENGINE_FAMILY: &str = "bgi";
-pub const BGI_DETECTOR_SUPPORT_BOUNDARY: &str = "BGI/Ethornell detector fixtures identify synthetic Buriko ARC20 / BSE / DSC / CompressedBG profile variants only. They do not parse archives, decompress payloads, decrypt assets, extract text, or claim patch-back support. Unknown encrypted/compressed/layered variants stay crypto=none_or_unknown_variant with empty secret requirement ids until concrete key evidence exists.";
+pub const BGI_DETECTOR_SUPPORT_BOUNDARY: &str = "BGI/Ethornell detector fixtures identify synthetic Buriko ARC20 / BSE / DSC / CompressedBG profile variants only. They do not parse archives, decompress payloads, decrypt assets, extract text, or claim patch-back support. Encrypted/compressed/layered variants report unknown_variant, missing_capability, or unsupported diagnostics with crypto=none_or_unknown_variant and empty secret requirement ids until concrete public support evidence exists.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -349,6 +349,13 @@ fn derive_diagnostics(profile: BgiDetectorProfile) -> Vec<BgiDetectorDiagnostic>
                 SemanticErrorCode::UnknownEngineVariant,
             ),
             diagnostic(
+                "bgi.detector.bse_encrypted_unsupported",
+                PartialDiagnosticSeverity::P1,
+                "variant",
+                "BSE encrypted BGI input is detected, but decryption/extraction support is not claimed",
+                SemanticErrorCode::UnsupportedVariantEncrypted,
+            ),
+            diagnostic(
                 "bgi.detector.bse_missing_crypto_capability",
                 PartialDiagnosticSeverity::P1,
                 "crypto",
@@ -356,14 +363,30 @@ fn derive_diagnostics(profile: BgiDetectorProfile) -> Vec<BgiDetectorDiagnostic>
                 SemanticErrorCode::MissingCryptoCapability,
             ),
         ],
-        BgiDetectorProfile::DscCompressedContainer => vec![diagnostic(
-            "bgi.detector.dsc_missing_codec_capability",
-            PartialDiagnosticSeverity::P1,
-            "codec",
-            "DSC compressed BGI variant has no claimed decompression codec",
-            SemanticErrorCode::MissingCodecCapability,
-        )],
+        BgiDetectorProfile::DscCompressedContainer => vec![
+            diagnostic(
+                "bgi.detector.dsc_unknown_variant",
+                PartialDiagnosticSeverity::P1,
+                "variant",
+                "DSC compressed BGI variant is recognized only as an unknown detector profile",
+                SemanticErrorCode::UnknownEngineVariant,
+            ),
+            diagnostic(
+                "bgi.detector.dsc_missing_codec_capability",
+                PartialDiagnosticSeverity::P1,
+                "codec",
+                "DSC compressed BGI variant has no claimed decompression codec",
+                SemanticErrorCode::MissingCodecCapability,
+            ),
+        ],
         BgiDetectorProfile::CompressedBgLayeredTransform => vec![
+            diagnostic(
+                "bgi.detector.compressed_bg_unknown_variant",
+                PartialDiagnosticSeverity::P1,
+                "variant",
+                "CompressedBG layered transform is recognized only as an unknown detector profile",
+                SemanticErrorCode::UnknownEngineVariant,
+            ),
             diagnostic(
                 "bgi.detector.compressed_bg_layered_transform",
                 PartialDiagnosticSeverity::P1,
@@ -569,22 +592,43 @@ mod tests {
         let bse_codes: Vec<SemanticErrorCode> =
             bse.diagnostics.iter().map(|d| d.semantic_code).collect();
         assert!(bse_codes.contains(&SemanticErrorCode::UnknownEngineVariant));
+        assert!(bse_codes.contains(&SemanticErrorCode::UnsupportedVariantEncrypted));
         assert!(bse_codes.contains(&SemanticErrorCode::MissingCryptoCapability));
+        assert!(bse.secret_requirement_ids.is_empty());
 
         let dsc = report.entry("bgi.dsc-compressed-container").unwrap();
         assert!(
             dsc.diagnostics
                 .iter()
+                .any(|d| d.semantic_code == SemanticErrorCode::UnknownEngineVariant)
+        );
+        assert!(
+            dsc.diagnostics
+                .iter()
                 .any(|d| d.semantic_code == SemanticErrorCode::MissingCodecCapability)
         );
+        assert!(dsc.secret_requirement_ids.is_empty());
 
         let layered = report.entry("bgi.compressed-bg-layered-transform").unwrap();
         assert!(
             layered
                 .diagnostics
                 .iter()
+                .any(|d| d.semantic_code == SemanticErrorCode::UnknownEngineVariant)
+        );
+        assert!(
+            layered
+                .diagnostics
+                .iter()
                 .any(|d| d.semantic_code == SemanticErrorCode::UnsupportedLayeredTransform)
         );
+        assert!(
+            layered
+                .diagnostics
+                .iter()
+                .any(|d| d.semantic_code == SemanticErrorCode::MissingCodecCapability)
+        );
+        assert!(layered.secret_requirement_ids.is_empty());
     }
 
     #[test]

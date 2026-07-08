@@ -1807,7 +1807,11 @@ fn has_orphaned_archive_subtype_marker(extension: Option<&str>, header: &[u8]) -
     let xp3_primary = extension == Some("xp3") || header.starts_with(b"XP3");
 
     let bgi_marker = header_contains_ascii(header, "bgi-encrypted")
-        || header_contains_ascii(header, "ethornell-encrypted");
+        || header_contains_ascii(header, "ethornell-encrypted")
+        || header_contains_ascii(header, "dsc-compressed")
+        || header_contains_ascii(header, "bgi-compressed")
+        || header_contains_ascii(header, "compressedbg")
+        || header_contains_ascii(header, "compressed-bg");
     let bgi_primary = header_contains_ascii(header, "BURIKO ARC20");
 
     let wolf_marker = header_contains_ascii(header, "wolf-protected")
@@ -2916,6 +2920,12 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let buriko_header_count = scan.header_count("BURIKO ARC20");
     let encrypted_marker_count =
         scan.header_count("bgi-encrypted") + scan.header_count("ethornell-encrypted");
+    let compressed_marker_count = scan.header_count("dsc-compressed")
+        + scan.header_count("bgi-compressed")
+        + scan.header_count("compressedbg")
+        + scan.header_count("compressed-bg");
+    let layered_marker_count =
+        scan.header_count("compressedbg") + scan.header_count("compressed-bg");
     let detected = buriko_header_count > 0;
     let mut signals = if detected {
         vec![
@@ -2928,15 +2938,23 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     if encrypted_marker_count > 0 {
         signals.push(ArchiveDetectionSignal::Encrypted);
     }
+    if compressed_marker_count > 0 {
+        signals.push(ArchiveDetectionSignal::Compressed);
+    }
+    let detected_variant = if layered_marker_count > 0 {
+        "buriko-arc20-compressed-bg-layered-transform"
+    } else if compressed_marker_count > 0 {
+        "buriko-arc20-dsc-compressed-container"
+    } else if encrypted_marker_count > 0 {
+        "buriko-arc20-encrypted-container"
+    } else {
+        "buriko-arc20-container"
+    };
     archive_row(ArchiveRowInput {
         row_id: "bgi-ethornell-containers",
         engine_family: ArchiveEngineFamily::BgiEthornell,
         detected,
-        detected_variant: if encrypted_marker_count > 0 {
-            "buriko-arc20-encrypted-container"
-        } else {
-            "buriko-arc20-container"
-        },
+        detected_variant,
         signals,
         surfaces: vec![],
         evidence: vec![
@@ -2958,9 +2976,21 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
                 encrypted_marker_count,
                 "Synthetic BGI/Ethornell encrypted-container marker count",
             ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "BGI compressed container marker",
+                compressed_marker_count,
+                "Synthetic BGI/Ethornell compressed-container marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "BGI layered transform marker",
+                layered_marker_count,
+                "Synthetic BGI/Ethornell layered-transform marker count",
+            ),
         ],
         requirements: vec![],
-        support_boundary: "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted container handling, and repacking are not claimed by this matrix.",
+        support_boundary: "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted/compressed/layered container handling, and repacking are not claimed by this matrix.",
     })
 }
 
@@ -23419,6 +23449,76 @@ mod tests {
         assert!(kirikiri.evidence.iter().any(|evidence| {
             evidence.pattern == "synthetic XP3 compression marker" && evidence.count == 0
         }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_bgi_negative_variants_emit_unknown_and_missing_capability_diagnostics() {
+        let root = temp_dir("bgi-negative-variants");
+        write_fixture_file(
+            &root,
+            "bse.arc",
+            b"BURIKO ARC20\0BGI-ENCRYPTED synthetic BSE marker",
+        );
+        write_fixture_file(
+            &root,
+            "dsc.arc",
+            b"BURIKO ARC20\0DSC-COMPRESSED synthetic compressed marker",
+        );
+        write_fixture_file(
+            &root,
+            "layer.arc",
+            b"BURIKO ARC20\0CompressedBG synthetic layered transform marker",
+        );
+
+        let report = ArchiveDetectionReport::scan(&root);
+        let bgi = detected_archive_row(&report, "bgi-ethornell-containers");
+
+        assert_eq!(
+            bgi.detected_variant,
+            "buriko-arc20-compressed-bg-layered-transform"
+        );
+        assert_eq!(bgi.requirements, vec![]);
+        assert!(
+            bgi.signals
+                .contains(&ArchiveDetectionSignal::UnknownVariant)
+        );
+        assert!(bgi.signals.contains(&ArchiveDetectionSignal::Encrypted));
+        assert!(bgi.signals.contains(&ArchiveDetectionSignal::Compressed));
+        assert!(bgi.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnknownEngineVariant
+                && diagnostic.required_capability == Some(Capability::Detection)
+        }));
+        assert!(bgi.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
+                && diagnostic.required_capability == Some(Capability::EncryptedInput)
+        }));
+        assert!(bgi.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::MissingCodecCapability
+                && diagnostic.required_capability == Some(Capability::CodecAccess)
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::EncryptedInput
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::CodecAccess
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Patching
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains("BGI-ENCRYPTED"));
+        assert!(!serialized.contains("DSC-COMPRESSED"));
+        assert!(!serialized.contains("CompressedBG"));
+
         let _ = fs::remove_dir_all(root);
     }
 

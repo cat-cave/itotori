@@ -25,8 +25,12 @@
       "codec": "binary_table",
       "surface": "archive_entry",
       "secretRequirementIds": [],
-      "proofHashes": ["sha256:8e6f802ccba2e25ebc56ba2081047c24e7090fc4402b50e5ba7ba8885be98d04"],
-      "expectedSemanticCodes": ["kaifuu.unknown_engine_variant", "kaifuu.missing_capability.crypto"]
+      "proofHashes": ["sha256:9262990c48461951bb68a99fb44af7c0e8edce1470c2d942733ad48be722568f"],
+      "expectedSemanticCodes": [
+        "kaifuu.unknown_engine_variant",
+        "kaifuu.unsupported_variant.encrypted",
+        "kaifuu.missing_capability.crypto"
+      ]
     },
     {
       "fixtureId": "bgi.dsc-compressed-container",
@@ -37,8 +41,8 @@
       "codec": "binary_table",
       "surface": "archive_entry",
       "secretRequirementIds": [],
-      "proofHashes": ["sha256:c40b1f56501ec5b04e0251773e4b4e5b5a226900b928a656c1e8c935e2148ee0"],
-      "expectedSemanticCodes": ["kaifuu.missing_capability.codec"]
+      "proofHashes": ["sha256:9480e683f0462de837e0f7ca6b8ab96ac6bb5e85297f25039960bfca0a01b821"],
+      "expectedSemanticCodes": ["kaifuu.unknown_engine_variant", "kaifuu.missing_capability.codec"]
     },
     {
       "fixtureId": "bgi.compressed-bg-layered-transform",
@@ -49,8 +53,9 @@
       "codec": "binary_table",
       "surface": "binary_offset",
       "secretRequirementIds": [],
-      "proofHashes": ["sha256:2d2ac110b8e33e4b176d67cd5692c8335c97228161012241f447266b47d83e1a"],
+      "proofHashes": ["sha256:e33e91e985057ea90a701efcffe6aebca31e9772e05d5505bd10e1670178af37"],
       "expectedSemanticCodes": [
+        "kaifuu.unknown_engine_variant",
         "kaifuu.unsupported_layered_transform",
         "kaifuu.missing_capability.codec"
       ]
