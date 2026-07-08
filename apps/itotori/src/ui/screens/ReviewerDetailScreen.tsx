@@ -43,10 +43,30 @@ import {
 } from "@itotori/ds";
 import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { apiClient } from "../client.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
 
-export function ReviewerDetailScreen({ reviewItemId }: { reviewItemId: string }): ReactNode {
+// ITOTORI-082 → HI-FI STUDIO EPIC · Review
+// (`spec/rev-decide`) — the decide action.
+//
+// `canDecide` is the hi-fi Studio capability gate for "this user can decide
+// a reviewer queue item" (approve-as-is / queue a correction for the next
+// pass). The downstream `fnd-caps-context` node will lift this onto a real
+// React context; until it lands, callers (incl. tests + future wiring in
+// the SPA shell) pass `canDecide` as an explicit prop. When the prop is
+// undefined we fall back to the existing `context.permission.canManageQueue`
+// so the existing /reviewer-queue/:id route keeps behaving like the action
+// strip already expects when the `queue.manage` permission is held. Wiring
+// this prop from a real context is noted as the follow-on to
+// fnd-caps-context.
+export function ReviewerDetailScreen({
+  reviewItemId,
+  canDecide,
+}: {
+  reviewItemId: string;
+  canDecide?: boolean;
+}): ReactNode {
   const detail = useApiQuery(
     "reviewer.detail",
     { pathParams: { reviewItemId } },
@@ -81,7 +101,7 @@ export function ReviewerDetailScreen({ reviewItemId }: { reviewItemId: string })
   if (!context.permission.canReadQueue) {
     return <DeniedView context={context} />;
   }
-  return <ReadyView context={context} />;
+  return <ReadyView context={context} canDecide={canDecide ?? null} />;
 }
 
 function DeniedView({ context }: { context: ReviewerDetailContext }): ReactNode {
@@ -107,8 +127,19 @@ function DeniedView({ context }: { context: ReviewerDetailContext }): ReactNode 
   );
 }
 
-function ReadyView({ context }: { context: ReviewerDetailContext }): ReactNode {
+function ReadyView({
+  context,
+  canDecide,
+}: {
+  context: ReviewerDetailContext;
+  canDecide: boolean | null;
+}): ReactNode {
   const item = context.item;
+  // `null` → fall back to the existing manage permission so the legacy
+  // route still shows the action strip whenever `queue.manage` is held.
+  // `true` / `false` → an explicit capability decision from the caller
+  // (today: the test or a future caps-context wiring).
+  const resolvedCanDecide = canDecide ?? context.permission.canManageQueue;
   return (
     <main
       className="itotori-shell reviewer-detail"
@@ -116,12 +147,13 @@ function ReadyView({ context }: { context: ReviewerDetailContext }): ReactNode {
       data-state="ready"
       data-review-item-id={context.reviewItemId}
       data-can-manage={context.permission.canManageQueue ? "true" : "false"}
+      data-can-decide={resolvedCanDecide ? "true" : "false"}
     >
       <ShellHeader
         eyebrow="Reviewer detail"
         title={item === null ? context.reviewItemId : item.summary}
       >
-        <ActionStrip context={context} />
+        <ActionStrip context={context} canDecide={resolvedCanDecide} />
       </ShellHeader>
       <DiagnosticBanner context={context} />
       <section className="itotori-section-grid" aria-label="Reviewer detail panels">
@@ -174,11 +206,23 @@ function actionButtonsForKind(
   return base;
 }
 
-function ActionStrip({ context }: { context: ReviewerDetailContext }): ReactNode {
+function ActionStrip({
+  context,
+  canDecide,
+}: {
+  context: ReviewerDetailContext;
+  canDecide: boolean;
+}): ReactNode {
   if (context.item === null) {
     return null;
   }
-  const allowed = context.permission.canManageQueue;
+  // The legacy per-kind buttons stay disabled unless `queue.manage` is held;
+  // the new functional decide-action buttons (in `DecideActionStrip`) are
+  // gated strictly on the passed-down `canDecide` capability (approve +
+  // queue-correction fire the typed single-action API). Both surfaces share
+  // the `canDecide` prop so an actor without the capability sees nothing
+  // actionable in the strip at all.
+  const allowedManage = context.permission.canManageQueue;
   return (
     <div className="itotori-action-strip" aria-label="Reviewer actions">
       {actionButtonsForKind(context.item.itemKind).map(({ action, label }) => (
@@ -186,13 +230,152 @@ function ActionStrip({ context }: { context: ReviewerDetailContext }): ReactNode
           key={action}
           type="button"
           data-action={action}
-          disabled={!allowed}
-          aria-disabled={!allowed}
-          title={allowed ? undefined : "queue.manage permission required to take action"}
+          disabled={!allowedManage}
+          aria-disabled={!allowedManage}
+          title={allowedManage ? undefined : "queue.manage permission required to take action"}
         >
           {label}
         </button>
       ))}
+      <DecideActionStrip context={context} canDecide={canDecide} />
+    </div>
+  );
+}
+
+// HI-FI STUDIO EPIC · Review — the DECIDE action.
+// The two buttons a `canDecide` reviewer uses on the detail page:
+//
+//   - "Approve"            → POST /api/reviewer/queue/:id/action
+//                             { action: "approve" } — item becomes accepted
+//                             (the "proven" state).
+//   - "Queue correction"   → POST /api/reviewer/queue/:id/action
+//                             { action: "request_repair", repairHint }
+//                             the item is moved to `repair_requested` and
+//                             enqueued for the next repair pass (the "next
+//                             pass" state) by the SAME action service path
+//                             the batch route consumes (ITOTORI-082).
+//
+// Both fire THROUGH `apiClient.request("reviewer.itemAction", ...)` — the
+// typed single-item seam that already exists in the API contract, NOT an
+// ad-hoc fetch and NOT a new api-contract route. Without `canDecide` the
+// strip renders empty (hidden, not disabled, per the brief).
+function DecideActionStrip({
+  context,
+  canDecide,
+}: {
+  context: ReviewerDetailContext;
+  canDecide: boolean;
+}): ReactNode {
+  const [pending, setPending] = useState<null | "approve" | "queue_correction">(null);
+  const [error, setError] = useState<{
+    action: "approve" | "queue_correction";
+    message: string;
+  } | null>(null);
+  if (!canDecide) {
+    return null;
+  }
+  if (context.item === null) {
+    return null;
+  }
+  const item = context.item;
+  const reviewerUserId = context.permission.actorUserId;
+  async function fire(action: "approve" | "queue_correction"): Promise<void> {
+    if (pending !== null) {
+      return;
+    }
+    setError(null);
+    setPending(action);
+    // Wire body — matches the `ApiReviewerSingleActionRequest` schema
+    // exactly (no `reviewItemId`; the item id lives on the URL path).
+    type DecideRequestBody =
+      | { action: "approve"; actorUserId: string; expectedSourceRevisionId: string }
+      | {
+          action: "request_repair";
+          actorUserId: string;
+          expectedSourceRevisionId: string;
+          repairHint: string;
+        };
+    const body: DecideRequestBody =
+      action === "approve"
+        ? {
+            action: "approve",
+            actorUserId: reviewerUserId,
+            expectedSourceRevisionId: item.sourceRevisionId,
+          }
+        : {
+            action: "request_repair",
+            actorUserId: reviewerUserId,
+            expectedSourceRevisionId: item.sourceRevisionId,
+            repairHint: `Reviewer queued for next pass from /reviewer-queue/${context.reviewItemId}`,
+          };
+    const result = await apiClient.request("reviewer.itemAction", {
+      pathParams: { reviewItemId: context.reviewItemId },
+      // The wire shape matches `body`; the typed contract includes
+      // `reviewItemId` even though the parser takes the id from the URL
+      // path — fold it in so the typed client stays in lock-step with the
+      // server-side parser without requiring an api-contract edit.
+      body: { reviewItemId: context.reviewItemId, ...body },
+    });
+    if (result.state === "ready" && result.data.applied) {
+      setPending(null);
+      return;
+    }
+    if (result.state === "ready" && !result.data.applied) {
+      setError({
+        action,
+        message: result.data.outcome.kind === "refused" ? result.data.outcome.message : "refused",
+      });
+    } else if (result.state === "error") {
+      const code = result.error.code ?? "unavailable";
+      const detail = result.error.message ?? `status ${result.error.status}`;
+      setError({ action, message: `${code}: ${detail}` });
+    } else {
+      setError({ action, message: "Unexpected empty response" });
+    }
+    setPending(null);
+  }
+  const busy = pending !== null;
+  return (
+    <div
+      className="itotori-decide-action-strip"
+      data-strip="decide-action"
+      data-busy={busy ? "true" : "false"}
+    >
+      <button
+        type="button"
+        data-action="decide-approve"
+        data-decide="approve"
+        disabled={busy}
+        aria-disabled={busy}
+        onClick={() => {
+          void fire("approve");
+        }}
+        title="Approve the item — marks the unit as proven"
+      >
+        {pending === "approve" ? "Approving…" : "Approve"}
+      </button>
+      <button
+        type="button"
+        data-action="decide-queue-correction"
+        data-decide="queue_correction"
+        disabled={busy}
+        aria-disabled={busy}
+        onClick={() => {
+          void fire("queue_correction");
+        }}
+        title="Queue a correction — sends the item to the next repair pass"
+      >
+        {pending === "queue_correction" ? "Queueing…" : "Queue correction"}
+      </button>
+      {error !== null && (
+        <p
+          role="alert"
+          data-decide-error={error.action}
+          className="itotori-decide-action-strip__error"
+        >
+          <Badge status="failed">{error.action}</Badge> {error.message}
+        </p>
+      )}
     </div>
   );
 }
