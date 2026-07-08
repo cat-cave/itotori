@@ -62,14 +62,22 @@
 //     "No endpoints found that can handle the requested parameters"
 //     because no ZDR-allow-list provider for deepseek/deepseek-v4-flash
 //     advertises json_schema and `require_parameters: true` narrows the
-//     routable pool to empty. The proven-routable deterministic structured
-//     mode is `json_object` (HTTP 200 via Fireworks, billed $0.00001708).
-//     The capability sheet below therefore marks jsonSchema `unsupported`
-//     and jsonObject `supported`; the agentic loop selects json_object via
-//     selectStructuredOutputRequest. `provider.require_parameters: true`
-//     is still set on every structured request (including json_object,
-//     ITOTORI-241) so any ZDR fallback is confined to providers that
-//     honour `response_format` (openrouter-integration.md §4.2).
+//     routable pool to empty. Two follow-up live runs (at-scale-v2 +
+//     structure-informed-context) extended the same HTTP 404 to
+//     `response_format: { type: "json_object" }`: the ZDR allow-list
+//     ∩ providers that advertise a structured `response_format` is
+//     EMPTY for deepseek/deepseek-v4-flash, so `require_parameters:
+//     true` empties the routable pool for EITHER response_format. The
+//     capability sheet below therefore marks BOTH `jsonSchema` AND
+//     `jsonObject` `unsupported` for this (ZDR-routed) pair; the only
+//     ZDR-routable deterministic mode is a PLAIN completion
+//     (`plain_json`) — no `response_format` / no `require_parameters`,
+//     so the pool is not narrowed (verified HTTP 200, served by
+//     Fireworks). The agentic loop selects it via
+//     selectStructuredOutputRequest; the schema is enforced by the
+//     caller's bounded-repair + strict post-parse validation. See
+//     itotori-structured-output-plain-json-fallback-under-zdr and the
+//     ZDR-fallback audit 2026-07-04.
 //
 // Other entries in the table cover the two production-tier pairs we
 // reach for when DEV_PAIR isn't appropriate (e.g. high-stakes manual
