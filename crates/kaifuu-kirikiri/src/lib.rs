@@ -48,6 +48,7 @@ pub mod xp3_crypt;
 pub mod xp3_crypt_chain;
 pub mod xp3_patch;
 pub mod xp3_private_local_summary;
+pub mod xp3_private_local_validation;
 pub mod xp3_production;
 
 pub use parse::{
@@ -80,6 +81,17 @@ pub use xp3_private_local_summary::{
     Xp3PrivateLocalRedactionSummary, Xp3PrivateLocalSummary, Xp3PrivateLocalSummaryDiagnostic,
     Xp3PrivateLocalSummaryInput, Xp3SupportTupleRow, Xp3SupportTupleSummaryFixture,
     render_xp3_private_local_summary,
+};
+pub use xp3_private_local_validation::{
+    Xp3PrivateLocalAlphaProofs, Xp3PrivateLocalRegressionSummary,
+    Xp3PrivateLocalValidationDiagnostic, Xp3PrivateLocalValidationInput,
+    Xp3PrivateLocalValidationManifest, Xp3PrivateLocalValidationManifestEntry,
+    Xp3PrivateLocalValidationRedactionSummary, Xp3PrivateLocalValidationReport,
+    Xp3PrivateLocalValidationRow, Xp3PrivateLocalValidationStage,
+    Xp3PrivateLocalValidationStageBins, Xp3PrivateLocalValidationStageOutcome,
+    Xp3PrivateLocalValidationState, Xp3PrivateLocalValidationStateCounts,
+    Xp3RetailValidationPosture, canonical_xp3_round_trip_proof_hash_from_workflow,
+    run_xp3_private_local_validation,
 };
 pub use xp3_production::{
     Xp3HelperWorkflow, Xp3ProductionError, Xp3ProductionMemberDelta, Xp3ProductionMemberOperation,
