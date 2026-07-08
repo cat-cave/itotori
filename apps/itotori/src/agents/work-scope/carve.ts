@@ -27,17 +27,22 @@
 //     routes to 6 INTRA-scene labels whose non-loop branches `jump`/`farcall`
 //     cross-scene to MENU/config scenes (scene 3 = config/gallery, scene 10 =
 //     the extra sub-menu) and the New-Game routine (farcall scene 9996,
-//     op (0,1,18)) — NOT to two disjoint story roots. The New-Game path
-//     (scene 9996) FAILS TO DECODE in BOTH kaifuu (`MalformedExpression`
-//     @~offset 271) and utsushi (`MalformedElement` @~259), so the story entry
-//     the New-Game button leads into is unreachable statically; and even were
-//     it decodable, the base-vs-fandisk pick is store-relative RUNTIME menu
-//     state (which objbtn button was pressed), not a static 2-way branch.
+//     op (0,1,18)) — NOT to two disjoint story roots. The New-Game routine
+//     (scene 9996) — like every menu/boot/system scene in the archive — now
+//     DECODES to zero unknown opcodes in kaifuu (the earlier
+//     `MalformedExpression @~offset 271` was resolved by the completed
+//     ExpressionPiece grammar + semantic command catalogue + second-level
+//     `xor_2` decryptor; proven by the
+//     `every_menu_boot_system_scene_decodes_to_zero_unknown` real-bytes pin).
+//     But the base-vs-fandisk pick is still store-relative RUNTIME menu state
+//     (which objbtn button was pressed), not a static 2-way branch, so the
+//     dispatch target the New-Game button leads into remains runtime-dependent.
 //     Gameexe.ini carries NO per-work entry-scene list either (option (a)).
 //     The carve therefore still IDENTIFIES the game-select (button-object
 //     marker) but reports `game-select-unresolved-options` — the archive is
-//     known-multi-work, but the works CANNOT be rooted from the decode: the
-//     split needs the undecodable New-Game routine + runtime title-menu state.
+//     known-multi-work, but the works CANNOT be rooted from the decode: even
+//     with the New-Game routine now fully decoded, the split needs the runtime
+//     title-menu state (which objbtn button was pressed).
 //     (Traced 2026-07-04 with the `boot_dispatch_scan` example over the real
 //     Seen.txt; scene-ids/opcode-ids only, no copyrighted text.)
 //   * It never gives a SEMANTIC "this is the base game / that is the fandisk".

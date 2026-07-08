@@ -118,6 +118,17 @@ struct CoverageReport {
     /// command (generic `Command` and `Unknown` alike) with frequencies, so a
     /// regression names the exact un-catalogued tuples.
     unrecognised_signatures: BTreeMap<(u8, u8, u16), usize>,
+    /// Per-scene decode verdict keyed by the 10,000-slot directory scene id.
+    /// `true` iff the scene reached the decoder AND decoded with zero
+    /// un-recognised opcodes (its full byte stream tiled into typed elements).
+    /// A scene that never reaches the decoder (envelope / header / decompress /
+    /// parse failure) is absent from the map. The
+    /// `every_menu_boot_system_scene_decodes_to_zero_unknown` pin keys on this
+    /// so a regression that DROPS or mis-decodes a specific hard scene (the
+    /// New-Game routine 9996, boot 8507, a title / menu / config / system
+    /// scene) turns the gate red by NAME, not just by an aggregate count — the
+    /// "true 100% coverage, no skipped hard scenes" directive.
+    per_scene_clean: BTreeMap<u16, bool>,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -165,12 +176,18 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         total_unknown_desync: 0,
         histogram: BTreeMap::new(),
         unrecognised_signatures: BTreeMap::new(),
+        per_scene_clean: BTreeMap::new(),
     };
 
     // --- Stage 1: envelope -> header -> AVG32 decompress (first-level). ---
     // Any failure before the decompressed bytecode exists is a hard parse
-    // failure (it can never reach the decoder).
+    // failure (it can never reach the decoder). The scene id is carried
+    // alongside every decompressed scene so the per-scene decode verdict
+    // (Stage 3) can be keyed by id for the hard-scene pin — a scene that fails
+    // before the decoder is simply absent from `per_scene_clean` (which the
+    // pin treats as a HARD miss, catching a silently-dropped menu/boot scene).
     let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(populated_scenes);
+    let mut scene_ids: Vec<u16> = Vec::with_capacity(populated_scenes);
     for entry in &index.entries {
         let off = entry.byte_offset as usize;
         let end = off + entry.byte_len as usize;
@@ -198,6 +215,7 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
             compiler_version: header.compiler_version,
             bytecode: decompressed,
         });
+        scene_ids.push(entry.scene_id);
     }
 
     // --- Stage 2: second-level xor_2 decryption (per-game key recovered ---
@@ -206,11 +224,12 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
     report.xor2 = recover_and_decrypt_archive(&mut scenes);
 
     // --- Stage 3: decode every (now-decrypted) scene. ---
-    for scene in &scenes {
+    for (scene, scene_id) in scenes.iter().zip(scene_ids.iter()) {
         let opcodes = match parse_real_bytecode(&scene.bytecode) {
             Ok(opcodes) => opcodes,
             Err(err) => {
                 report.parse_failures += 1;
+                report.per_scene_clean.insert(*scene_id, false);
                 if matches!(err, RealLiveParseError::MalformedExpression { .. }) {
                     report.malformed_expression_scenes += 1;
                 }
@@ -222,6 +241,7 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         let unknown = opcodes.iter().filter(|op| !op.is_recognized()).count();
         report.total_opcodes += total;
         report.total_unknown += unknown;
+        report.per_scene_clean.insert(*scene_id, unknown == 0);
         if unknown == 0 {
             report.clean_scenes += 1;
         } else {
@@ -517,6 +537,114 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
             },
         );
     }
+}
+
+/// The Sweetie HD menu / boot / system scenes that the earlier `work-scope`
+/// carve trace (`apps/itotori/src/agents/work-scope/carve.ts`, 2026-07-04)
+/// recorded as UNDECODABLE before the ExpressionPiece grammar
+/// (`reallive-expr-eval-bank-refs`), the semantic command catalogue
+/// (`reallive-semantic-command-cataloguing`) and the second-level `xor_2`
+/// decryptor (`reallive-xor2-sukara-decryptor`) landed:
+///
+/// - **9996** — the New-Game routine (`farcall` (0,1,18) target from the title
+///   menu's `goto_case($store)`). The carve trace recorded it FAILING with
+///   `MalformedExpression @~offset 271`; the completed expression grammar now
+///   decodes it to zero unknowns.
+/// - **8507** — a boot / system scene in the `8500..=8516` block.
+/// - **2 / 3 / 10** — the first-screen title menu (`select_objbtn` game-select),
+///   the config / gallery scene, and the extra sub-menu the title dispatch
+///   `jump`/`farcall`s into.
+/// - **8500 / 8600 / 9999** — further boot / system / menu scenes.
+///
+/// These are the exact "menu/boot/system scenes not strictly needed for
+/// dialogue" the true-100%-coverage directive names: they must NOT be dropped
+/// from the archive index AND must each decode to zero unknown opcodes. The
+/// aggregate `clean_scenes == populated_scenes` gate above already forbids ANY
+/// unclean scene, but this pin makes a regression that DROPS or mis-decodes one
+/// of these specific hard scenes fail by NAME (rather than being masked by the
+/// aggregate count) — closing the "skip the hard scenes" hole strictly.
+const SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] = &[2, 3, 10, 8500, 8507, 8600, 9996, 9999];
+
+/// alpha true-100%-coverage: every Sweetie HD menu / boot / system scene the
+/// earlier carve trace flagged as undecodable now decodes to ZERO unknown
+/// opcodes on real bytes — proven by NAME, not just in the aggregate.
+///
+/// The `reallive-boot-menu-system-scene-decode-gap` directive is "true 100%
+/// coverage even for scenes not strictly needed for dialogue" — decode the
+/// menu/boot/system scenes (New-Game 9996, boot 8507, title/menu 2/3/10, …),
+/// no skipped scenes. This test resolves the real Sweetie HD corpus, runs the
+/// full envelope -> header -> AVG32 -> xor_2 -> decode chain, and asserts each
+/// named hard scene both (a) reached the decoder (is present in
+/// `per_scene_clean` — a silently-dropped scene is absent and fails HERE) and
+/// (b) decoded to zero unknown opcodes. No raw copyrighted bytes/text — scene
+/// ids and the clean/unclean verdict only.
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
+    let Some(corpus) = real_corpus::corpus_1() else {
+        real_corpus::require_real_bytes(
+            "every_menu_boot_system_scene_decodes_to_zero_unknown \
+             (set ITOTORI_REAL_GAME_ROOT to Sweetie HD)",
+        );
+        return;
+    };
+
+    let report = decompile_corpus(&corpus);
+    print_report(&report);
+
+    // The corpus must actually be Sweetie HD (the title carrying these
+    // menu/boot/system scene ids). A second-level xor_2 corpus with these
+    // exact ids IS Sweetie HD; guard against an accidentally-repointed root.
+    assert!(
+        report.xor2.scenes_eligible > 0,
+        "[{}] expected Sweetie HD (xor_2 title) for the menu/boot/system pin; \
+         got a non-xor2 corpus",
+        report.label
+    );
+
+    let mut missing: Vec<u16> = Vec::new();
+    let mut unclean: Vec<u16> = Vec::new();
+    for &scene_id in SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES {
+        match report.per_scene_clean.get(&scene_id) {
+            None => missing.push(scene_id),
+            Some(true) => {}
+            Some(false) => unclean.push(scene_id),
+        }
+    }
+
+    eprintln!(
+        "[{}] MENU/BOOT/SYSTEM hard-scene pin: checked {:?} -> missing(dropped/pre-decode-fail)={:?} \
+         unclean(unknown-opcode)={:?}",
+        report.label, SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES, missing, unclean
+    );
+
+    // (a) None of the named hard scenes may be DROPPED before the decoder
+    // (silently omitted from the index, or lost to an envelope/header/
+    // decompress/parse failure). "Skip the hard scenes" is forbidden.
+    assert!(
+        missing.is_empty(),
+        "[{}] menu/boot/system scene(s) {:?} never reached the decoder \
+         (dropped from the index or failed before decode) — the true-100% \
+         directive forbids skipping the hard scenes",
+        report.label,
+        missing
+    );
+    // (b) Each named hard scene must decode to ZERO unknown opcodes.
+    assert!(
+        unclean.is_empty(),
+        "[{}] menu/boot/system scene(s) {:?} decoded with un-recognised opcodes \
+         (the New-Game routine 9996 / boot 8507 / title menu 2,3,10 / system \
+         scenes must each decode to zero unknowns)",
+        report.label,
+        unclean
+    );
+
+    eprintln!(
+        "[{}] MENU/BOOT/SYSTEM PROVEN: all {} named hard scenes (incl. New-Game 9996, \
+         boot 8507, title menu 2/3/10) decode to zero unknown opcodes on real bytes.",
+        report.label,
+        SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES.len(),
+    );
 }
 
 /// Known Sweetie HD (`ITOTORI_REAL_GAME_ROOT`, corpus-1) SEEN sha256, recorded
