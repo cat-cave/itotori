@@ -73,8 +73,6 @@ import {
   type ApiWorkspaceProjectBrowseResponse,
   type ApiWorkspaceSceneBrowseResponse,
   type ApiWorkspaceSearchResponse,
-  type ApiDraftBranchRequest,
-  type ApiDraftBranchResponse,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
 
@@ -205,11 +203,6 @@ interface ItotoriApiRouteTypeMap {
   "imports.bridge": {
     response: ApiProjectImportResponse;
     request: ApiProjectImportRequest;
-  };
-  "branches.draft": {
-    response: ApiDraftBranchResponse;
-    pathParams: { projectId: string };
-    request: ApiDraftBranchRequest;
   };
   "findings.record": {
     response: ApiRecordFindingResponse;

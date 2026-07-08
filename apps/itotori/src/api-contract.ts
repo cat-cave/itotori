@@ -508,12 +508,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { project: obj, status: obj },
       additionalProperties: true,
     }),
-  ApiDraftBranchResponse: () =>
-    object({
-      required: ["project", "status"],
-      properties: { project: obj, status: obj },
-      additionalProperties: true,
-    }),
   ApiRecordFindingResponse: () =>
     object({
       required: ["findingId", "status"],
@@ -563,12 +557,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Request bodies ---------------------------------------------------------
   ApiProjectImportRequest: () =>
     object({ required: ["bridge"], properties: { bridge: obj }, additionalProperties: true }),
-  ApiDraftBranchRequest: () =>
-    object({
-      required: ["project", "targetLocale"],
-      properties: { project: obj, targetLocale: str },
-      additionalProperties: true,
-    }),
   ApiRecordFindingRequest: () =>
     object({
       required: ["finding"],
@@ -919,15 +907,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     requestSchema: "ApiProjectImportRequest",
     responseSchema: "ApiProjectImportResponse",
-  },
-  "branches.draft": {
-    method: "POST",
-    pathTemplate: "/api/projects/{projectId}/branches",
-    operationId: "branchesDraft",
-    summary: "Draft a locale branch.",
-    pathParams: ["projectId"],
-    requestSchema: "ApiDraftBranchRequest",
-    responseSchema: "ApiDraftBranchResponse",
   },
   "findings.record": {
     method: "POST",

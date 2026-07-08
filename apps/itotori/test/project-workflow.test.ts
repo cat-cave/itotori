@@ -1,14 +1,8 @@
 import { readFileSync } from "node:fs";
 import {
   AuthorizationError,
-  ItotoriModelLedgerRepository,
-  ItotoriProjectRepository,
-  ItotoriTranslationMemoryRepository,
-  ItotoriTranslationMemoryService,
   localUserId,
   permissionValues,
-  translationMemoryMatchKindValues,
-  translationMemoryReuseStatusValues,
   type AuthorizationActor,
   type CostDrilldownPage,
   type DashboardDecisionReadModel,
@@ -19,7 +13,6 @@ import {
   type ProjectDashboardStatus,
   type RuntimeDashboardStatus,
 } from "@itotori/db";
-import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import type {
   BenchmarkReportV02,
   BridgeBundle,
@@ -27,23 +20,28 @@ import type {
   RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
-import { FakeModelProvider } from "../src/providers/fake.js";
 import {
-  ModelProviderError,
-  type ModelInvocationRequest,
-  type ModelProvider,
-  type ProviderRunRecord,
-} from "../src/providers/index.js";
-import {
-  DraftProviderNotConfiguredError,
   ItotoriProjectWorkflowService,
+  type ItotoriProjectWorkflowPort,
   type ProjectState,
 } from "../src/services/project-workflow.js";
+import { ITOTORI_API_ROUTE_IDS } from "../src/api-contract.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
-const dbBackedIt = process.env.DATABASE_URL ? it : it.skip;
 
 describe("ItotoriProjectWorkflowService", () => {
+  it("does not expose the retired projects.draft route or draftProject method", () => {
+    // The dead refusal-only projects.draft route (branches.draft HTTP +
+    // CLI `draft`) was retired — real drafting is done by the
+    // localize-fullproject driver. This test proves the retire is complete:
+    // the route id is gone from the API contract, and the draftProject method
+    // is gone from the workflow port (type-level @ts-expect-error).
+    expect(ITOTORI_API_ROUTE_IDS).not.toContain("branches.draft");
+    // @ts-expect-error — draftProject was removed from the port; the
+    // property access is a type error, proving the method is gone.
+    void ({} as ItotoriProjectWorkflowPort).draftProject;
+  });
+
   it("imports source bundles through the repository boundary", async () => {
     const repository = repositoryFixture();
     const service = new ItotoriProjectWorkflowService(repository, actor);
@@ -68,60 +66,6 @@ describe("ItotoriProjectWorkflowService", () => {
     );
   });
 
-  it("refuses to draft with a typed error when no real provider is configured", async () => {
-    // itotori-purge-fakemodelprovider-from-production — the production wiring
-    // no longer silently defaults to a zero-cost FakeModelProvider. With no
-    // provider injected, draftProject must refuse LOUDLY rather than draft a
-    // fake translation. It must refuse BEFORE touching the repository.
-    const repository = repositoryFixture();
-    const service = new ItotoriProjectWorkflowService(repository, actor);
-    const project = projectFixture({ drafts: {} });
-
-    await expect(service.draftProject(project, "fr-FR")).rejects.toBeInstanceOf(
-      DraftProviderNotConfiguredError,
-    );
-    expect(repository.saveDrafts).not.toHaveBeenCalled();
-  });
-
-  it("drafts deterministic translations before saving drafts", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    // itotori-purge-fakemodelprovider-from-production — the service no longer
-    // defaults to a fake; the test injects the test double explicitly.
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider(),
-      ledger,
-    );
-    const project = projectFixture({ drafts: {} });
-
-    const drafted = await service.draftProject(project, "fr-FR");
-
-    expect(drafted.targetLocale).toBe("fr-FR");
-    expect(drafted.drafts["bridge-unit-test"]).toBe("Hello, {player}.");
-    expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        projectId: "project-test",
-        localeBranchId: "locale-en-us",
-        provider: expect.objectContaining({
-          providerFamily: "fake",
-          requestedModelId: "itotori-fake-draft-v0",
-          actualModelId: "itotori-fake-draft-v0",
-        }),
-        prompt: expect.objectContaining({
-          promptPresetId: "itotori-draft-default-v1",
-          promptTemplateVersion: "1.0.0",
-          promptHash: expect.stringMatching(/^sha256:/u),
-        }),
-        cost: expect.objectContaining({ costKind: "zero" }),
-      }),
-    );
-    expect(project.drafts).toEqual({});
-  });
-
   it("threads the workflow actor into the ledger cost read and propagates a denial (defense in depth)", async () => {
     const repository = repositoryFixture();
     // A ledger that only serves the cost report to an actor holding the
@@ -138,12 +82,7 @@ describe("ItotoriProjectWorkflowService", () => {
       getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
     };
 
-    const authorizedService = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider(),
-      gatedLedger,
-    );
+    const authorizedService = new ItotoriProjectWorkflowService(repository, actor, gatedLedger);
     await expect(authorizedService.getCostReport("project-test")).resolves.toMatchObject({
       projectId: costReportFixture.projectId,
     });
@@ -154,7 +93,6 @@ describe("ItotoriProjectWorkflowService", () => {
     const unprivilegedService = new ItotoriProjectWorkflowService(
       repository,
       { userId: "workflow-actor-without-catalog-read" },
-      new FakeModelProvider(),
       gatedLedger,
     );
     await expect(unprivilegedService.getCostReport("project-test")).rejects.toMatchObject({
@@ -180,11 +118,7 @@ describe("ItotoriProjectWorkflowService", () => {
       getRuntimeStatus: gatedRuntimeRead,
     };
 
-    const authorizedService = new ItotoriProjectWorkflowService(
-      gatedRepository,
-      actor,
-      new FakeModelProvider(),
-    );
+    const authorizedService = new ItotoriProjectWorkflowService(gatedRepository, actor);
     await expect(authorizedService.getRuntimeStatus("runtime-1")).resolves.toMatchObject({
       runtimeRunId: runtimeStatusFixture.runtimeRunId,
     });
@@ -193,531 +127,13 @@ describe("ItotoriProjectWorkflowService", () => {
     // An internal caller running as an unprivileged actor is rejected at the
     // read site, not silently served the evidence-text previews / finding
     // free text / artifact URIs.
-    const unprivilegedService = new ItotoriProjectWorkflowService(
-      gatedRepository,
-      { userId: "workflow-actor-without-catalog-read" },
-      new FakeModelProvider(),
-    );
+    const unprivilegedService = new ItotoriProjectWorkflowService(gatedRepository, {
+      userId: "workflow-actor-without-catalog-read",
+    });
     await expect(unprivilegedService.getRuntimeStatus("runtime-1")).rejects.toMatchObject({
       name: "AuthorizationError",
       permission: permissionValues.catalogRead,
     });
-  });
-
-  it("uses translation memory prefill results to skip provider calls for reused units", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const bridge = repeatedLineBridgeFixture();
-    const prefillDrafts = vi.fn(async () => ({
-      status: "completed" as const,
-      diagnostics: [],
-      appliedCount: 1,
-      suggestedCount: 0,
-      skippedCount: 1,
-      reuses: [
-        {
-          target: {
-            projectId: "project-test",
-            localeBranchId: "locale-en-us",
-            targetLocale: "en-US",
-            bridgeUnitId: "bridge-unit-repeat",
-            sourceRevisionId: "revision-test",
-            sourceUnitKey: "hello.scene.001.line.002",
-            sourceOccurrenceId: "occurrence-repeat",
-            sourceHash: "source-hash-repeat",
-            sourceText: "こんにちは、{player}。",
-            currentTargetText: null,
-          },
-          match: {} as never,
-          event: {
-            reuseEventId: "tm-reuse-test",
-            projectId: "project-test",
-            localeBranchId: "locale-en-us",
-            targetBridgeUnitId: "bridge-unit-repeat",
-            sourceRevisionId: "revision-test",
-            memorySegmentId: "tm-bridge-unit-memory",
-            matchKind: translationMemoryMatchKindValues.exact,
-            matchScore: 1000,
-            reuseStatus: translationMemoryReuseStatusValues.applied,
-            sourceHash: "source-hash-repeat",
-            candidateSourceHash: "source-hash-repeat",
-            targetText: "Hello, {player}.",
-            provenance: {
-              requestId: "draft:project-test:locale-en-us:en-US",
-              selectedMemorySegmentId: "tm-bridge-unit-memory",
-            },
-            costImpact: {
-              providerCallAvoided: true,
-              estimatedPromptTokensSaved: 5,
-              estimatedCompletionTokensSaved: 4,
-              estimatedTotalTokensSaved: 9,
-              estimatedCostUsdSaved: null,
-              calculation: "deterministic_character_estimate_v1",
-            },
-            createdAt: "2026-06-17T00:00:00.000Z",
-          },
-        },
-      ],
-      skipped: [],
-    }));
-    const generate = vi.fn(() => "Provider draft");
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider({ generate }),
-      ledger,
-      { prefillDrafts } as Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
-    );
-
-    const drafted = await service.draftProject(projectFixture({ bridge, drafts: {} }), "en-US");
-
-    expect(prefillDrafts).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        projectId: "project-test",
-        localeBranchId: "locale-en-us",
-        requestedTargetLocale: "en-US",
-        bridgeUnitIds: ["bridge-unit-memory", "bridge-unit-repeat"],
-        applyDrafts: true,
-        includeFuzzy: false,
-        requestId: "draft:project-test:locale-en-us:en-US",
-      }),
-    );
-    expect(generate).toHaveBeenCalledTimes(1);
-    expect(drafted.drafts).toEqual({
-      "bridge-unit-memory": "Provider draft",
-      "bridge-unit-repeat": "Hello, {player}.",
-    });
-    expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
-    expect(ledger.recordProviderRun).toHaveBeenCalledTimes(1);
-  });
-
-  dbBackedIt(
-    "prefills repeated exact lines from translation memory before provider drafting",
-    async () => {
-      const context = await isolatedMigratedContext();
-      try {
-        const projectRepository = new ItotoriProjectRepository(context.db);
-        const modelLedger = new ItotoriModelLedgerRepository(context.db);
-        const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
-        const translationMemory = new ItotoriTranslationMemoryService(translationMemoryRepository);
-        const bridge = repeatedLineBridgeFixture();
-        const importedProject = projectFixture({
-          bridge,
-          drafts: {
-            "bridge-unit-memory": "Hello, {player}.",
-          },
-        });
-        await projectRepository.importSourceBundle(actor, importedProject);
-        await translationMemoryRepository.upsertSegment(actor, {
-          projectId: importedProject.projectId,
-          localeBranchId: importedProject.localeBranchId,
-          sourceBridgeUnitId: "bridge-unit-memory",
-          memorySegmentId: "tm-bridge-unit-memory",
-          targetText: "Hello, {player}.",
-          expectedSourceHash: "source-hash-repeat",
-          expectedTargetLocale: "en-US",
-          provenance: { source: "approved_draft" },
-        });
-
-        const generate = vi.fn(() => "Provider draft");
-        const service = new ItotoriProjectWorkflowService(
-          projectRepository,
-          actor,
-          new FakeModelProvider({ generate }),
-          modelLedger,
-          translationMemory,
-        );
-        const drafted = await service.draftProject(
-          { ...importedProject, drafts: {}, importStatus: importStatusFixture },
-          "en-US",
-        );
-
-        expect(generate).toHaveBeenCalledTimes(1);
-        expect(drafted.drafts["bridge-unit-repeat"]).toBe("Hello, {player}.");
-        expect(drafted.drafts["bridge-unit-memory"]).toBe("Provider draft");
-
-        const events = await translationMemoryRepository.listReuseEvents({
-          projectId: importedProject.projectId,
-          localeBranchId: importedProject.localeBranchId,
-          targetBridgeUnitId: "bridge-unit-repeat",
-        });
-        expect(events).toHaveLength(1);
-        expect(events[0]).toMatchObject({
-          memorySegmentId: "tm-bridge-unit-memory",
-          matchKind: translationMemoryMatchKindValues.exact,
-          matchScore: 1000,
-          reuseStatus: translationMemoryReuseStatusValues.applied,
-          targetText: "Hello, {player}.",
-          provenance: expect.objectContaining({
-            requestId: "draft:project-test:locale-en-us:en-US",
-            selectedMemorySegmentId: "tm-bridge-unit-memory",
-            targetSourceUnitKey: "hello.scene.001.line.002",
-          }),
-          costImpact: expect.objectContaining({
-            providerCallAvoided: true,
-            calculation: "deterministic_character_estimate_v1",
-          }),
-        });
-
-        const costReport = await modelLedger.getProjectCostReport(actor, importedProject.projectId);
-        expect(costReport.translationMemoryReuse).toMatchObject({
-          reuseEventCount: 1,
-          appliedCount: 1,
-          providerCallAvoidedCount: 1,
-          estimatedTotalTokensSaved: events[0]?.costImpact.estimatedTotalTokensSaved,
-        });
-        expect(costReport.translationMemoryReuse.recentEvents[0]).toMatchObject({
-          targetBridgeUnitId: "bridge-unit-repeat",
-          memorySegmentId: "tm-bridge-unit-memory",
-          providerCallAvoided: true,
-          calculation: "deterministic_character_estimate_v1",
-        });
-      } finally {
-        await context.close();
-      }
-    },
-  );
-
-  dbBackedIt(
-    "does not reuse old-locale memory when drafting a different requested target locale",
-    async () => {
-      const context = await isolatedMigratedContext();
-      try {
-        const projectRepository = new ItotoriProjectRepository(context.db);
-        const modelLedger = new ItotoriModelLedgerRepository(context.db);
-        const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
-        const translationMemory = new ItotoriTranslationMemoryService(translationMemoryRepository);
-        const bridge = repeatedLineBridgeFixture();
-        const importedProject = projectFixture({
-          bridge,
-          targetLocale: "en-US",
-          drafts: {
-            "bridge-unit-memory": "Hello, {player}.",
-          },
-        });
-        await projectRepository.importSourceBundle(actor, importedProject);
-        await translationMemoryRepository.upsertSegment(actor, {
-          projectId: importedProject.projectId,
-          localeBranchId: importedProject.localeBranchId,
-          sourceBridgeUnitId: "bridge-unit-memory",
-          memorySegmentId: "tm-bridge-unit-memory",
-          targetText: "Hello, {player}.",
-          expectedSourceHash: "source-hash-repeat",
-          expectedTargetLocale: "en-US",
-          provenance: { source: "approved_draft" },
-        });
-
-        const generate = vi.fn((request: ModelInvocationRequest) => {
-          const message = request.messages.findLast((candidate) => candidate.role === "user");
-          const body = JSON.parse(String(message?.content)) as {
-            targetLocale: string;
-            sourceText: string;
-          };
-          return `[${body.targetLocale}] ${body.sourceText}`;
-        });
-        const service = new ItotoriProjectWorkflowService(
-          projectRepository,
-          actor,
-          new FakeModelProvider({ generate }),
-          modelLedger,
-          translationMemory,
-        );
-        const drafted = await service.draftProject(
-          { ...importedProject, drafts: {}, importStatus: importStatusFixture },
-          "fr-FR",
-        );
-
-        expect(generate).toHaveBeenCalledTimes(2);
-        expect(drafted.targetLocale).toBe("fr-FR");
-        expect(drafted.drafts["bridge-unit-repeat"]).toBe("[fr-FR] こんにちは、{player}。");
-        expect(drafted.drafts["bridge-unit-memory"]).toBe("[fr-FR] こんにちは、{player}。");
-
-        const requestBodies = generate.mock.calls.map((call) => {
-          const message = call[0].messages.findLast((candidate) => candidate.role === "user");
-          return JSON.parse(String(message?.content)) as {
-            targetLocale: string;
-            sourceText: string;
-          };
-        });
-        expect(requestBodies).toEqual([
-          expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
-          expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
-        ]);
-        await expect(
-          translationMemoryRepository.listReuseEvents({
-            projectId: importedProject.projectId,
-            localeBranchId: importedProject.localeBranchId,
-            targetBridgeUnitId: "bridge-unit-repeat",
-          }),
-        ).resolves.toHaveLength(0);
-      } finally {
-        await context.close();
-      }
-    },
-  );
-
-  it("drafts explicit non-Japanese-to-English locale pairs", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const provider = new FakeModelProvider({
-      generate: (request) => {
-        const message = request.messages.findLast((candidate) => candidate.role === "user");
-        const body = JSON.parse(String(message?.content)) as {
-          sourceLocale: string;
-          targetLocale: string;
-          sourceText: string;
-        };
-        expect(body.sourceLocale).toBe("de-DE");
-        expect(body.targetLocale).toBe("en-US");
-        return `[${body.targetLocale}] ${body.sourceText}`;
-      },
-    });
-    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
-    const project = nonJapaneseSourceProjectFixture({ drafts: {} });
-
-    const drafted = await service.draftProject(project, "en-US");
-
-    expect(drafted.targetLocale).toBe("en-US");
-    expect(drafted.drafts["bridge-unit-test"]).toBe("[en-US] Guten Tag, {player}.");
-    expect(repository.saveDrafts).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        targetLocale: "en-US",
-        bridge: expect.objectContaining({ sourceLocale: "de-DE" }),
-      }),
-    );
-  });
-
-  it("uses distinct provider run ids when drafts are rerun", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider(),
-      ledger,
-    );
-    const project = projectFixture({ drafts: {} });
-
-    await service.draftProject(project, "fr-FR");
-    await service.draftProject(project, "fr-FR");
-
-    const runIds = vi.mocked(ledger.recordProviderRun).mock.calls.map((call) => {
-      return call[1].providerRunId;
-    });
-    expect(runIds).toHaveLength(2);
-    expect(new Set(runIds).size).toBe(2);
-  });
-
-  it("records failed provider runs before rethrowing invocation errors", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const provider = failingProvider();
-    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
-
-    await expect(
-      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
-    ).rejects.toMatchObject({
-      code: "provider_http_error",
-    });
-
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        providerRunId: "provider-run-failed",
-        status: "failed",
-        errorClasses: ["http_500"],
-        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
-      }),
-    );
-    expect(repository.saveDrafts).not.toHaveBeenCalled();
-  });
-
-  it("records failed provider runs for invocation errors without embedded run records", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const provider = failingProviderWithoutRun();
-    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
-
-    await expect(
-      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
-    ).rejects.toMatchObject({
-      code: "provider_response_invalid",
-    });
-
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        status: "failed",
-        errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
-        provider: expect.objectContaining({
-          providerFamily: "fake",
-          requestedModelId: "itotori-fake-draft-v0",
-          actualModelId: "itotori-fake-draft-v0",
-        }),
-        prompt: expect.objectContaining({
-          promptPresetId: "itotori-draft-default-v1",
-        }),
-      }),
-    );
-    expect(repository.saveDrafts).not.toHaveBeenCalled();
-  });
-
-  // ITOTORI-227 — the per-pair `policy_blocked` failure mode was
-  // deleted along with the rest of itotori's reinvented privacy
-  // registry. Privacy posture is enforced account-wide
-  // (assertOpenRouterZdrAccount at process startup) plus per-request
-  // (`provider.zdr=true` for non-public input); failures surface as the
-  // ZDR account-assertion error at construction or as the OpenRouter
-  // 404 "No endpoints found matching your data policy" envelope from
-  // the wire. Neither requires a workflow-level gate, so the test that
-  // used to assert the gate is gone.
-
-  it("records null draft content as a failed zero-cost provider run", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const provider = nullContentProvider();
-    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
-
-    await expect(
-      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
-    ).rejects.toMatchObject({
-      code: "provider_response_invalid",
-    });
-
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        providerRunId: "provider-run-null-content",
-        status: "failed",
-        errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
-      }),
-    );
-    expect(repository.saveDrafts).not.toHaveBeenCalled();
-  });
-
-  it("drafts two target locales with ledger-enabled immutable prompt presets", async () => {
-    const repository = repositoryFixture();
-    const ledger = driftDetectingLedgerFixture();
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider(),
-      ledger,
-    );
-    const project = projectFixture({ drafts: {} });
-
-    await service.draftProject(project, "fr-FR");
-    await service.draftProject(project, "es-ES");
-
-    const prompts = vi.mocked(ledger.recordProviderRun).mock.calls.map((call) => call[1].prompt);
-    expect(prompts).toHaveLength(2);
-    expect(prompts[0]).toMatchObject({
-      promptPresetId: "itotori-draft-default-v1",
-      promptTemplateVersion: "1.0.0",
-    });
-    expect(prompts[1]).toMatchObject({
-      promptPresetId: prompts[0]?.promptPresetId,
-      promptTemplateVersion: prompts[0]?.promptTemplateVersion,
-      promptHash: prompts[0]?.promptHash,
-      configSnapshot: prompts[0]?.configSnapshot,
-    });
-    expect(JSON.stringify(prompts[0]?.configSnapshot)).not.toContain("fr-FR");
-    expect(JSON.stringify(prompts[1]?.configSnapshot)).not.toContain("es-ES");
-  });
-
-  it("drafts through the provider-neutral model boundary when one is supplied", async () => {
-    const repository = repositoryFixture();
-    const generate = vi.fn(() => "Bonjour, {player}.");
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider({ modelId: "fixture-provider-model", generate }),
-    );
-    const project = projectFixture({ drafts: {} });
-
-    const drafted = await service.draftProject(project, "fr-FR");
-
-    expect(drafted.drafts["bridge-unit-test"]).toBe("Bonjour, {player}.");
-    expect(generate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskKind: "draft_translation",
-        modelId: "fixture-provider-model",
-        inputClassification: "private_corpus",
-      }),
-    );
-  });
-
-  it("drafts v0.2 bridges using normalized protected span raws", async () => {
-    const repository = repositoryFixture();
-    const seenProtectedSpans: string[][] = [];
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider({
-        generate: (request) => {
-          const message = request.messages.findLast((candidate) => candidate.role === "user");
-          const payload = JSON.parse(String(message?.content)) as {
-            sourceText: string;
-            protectedSpans: string[];
-          };
-          seenProtectedSpans.push(payload.protectedSpans);
-          return payload.sourceText;
-        },
-      }),
-    );
-    const project = projectFixture({ bridge: bridgeV02Fixture(), drafts: {} });
-
-    const drafted = await service.draftProject(project, "fr-FR");
-
-    expect(seenProtectedSpans).toContainEqual(["{player}"]);
-    expect(drafted.drafts["019ed001-0000-7000-8000-000000000201"]).toBe("Hello, {player}.");
-    expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
-  });
-
-  // SHARED-020 — the Itotori-side normalization must carry each expanded
-  // surface kind into the draft request WITHOUT collapsing it to generic
-  // dialogue. Regression guard: if the request builder dropped surfaceKind or
-  // reduced every unit to "dialogue", this fails.
-  it("carries the expanded surface kind through draft normalization (no collapse)", async () => {
-    const repository = repositoryFixture();
-    const seen: Array<{ sourceText: string; surfaceKind: string }> = [];
-    const service = new ItotoriProjectWorkflowService(
-      repository,
-      actor,
-      new FakeModelProvider({
-        generate: (request) => {
-          const message = request.messages.findLast((candidate) => candidate.role === "user");
-          const payload = JSON.parse(String(message?.content)) as {
-            sourceText: string;
-            surfaceKind: string;
-          };
-          seen.push({ sourceText: payload.sourceText, surfaceKind: payload.surfaceKind });
-          return payload.sourceText;
-        },
-      }),
-    );
-    const bridge = bridgeV02Fixture();
-    await service.draftProject(projectFixture({ bridge, drafts: {} }), "fr-FR");
-
-    // Every request carried a surface kind (never undefined/collapsed away).
-    expect(
-      seen.every((entry) => typeof entry.surfaceKind === "string" && entry.surfaceKind.length > 0),
-    ).toBe(true);
-    // The full expanded vocabulary the fixture exercises survives to the request.
-    const seenKinds = new Set(seen.map((entry) => entry.surfaceKind));
-    const expectedKinds = new Set(bridge.units.map((unit) => unit.surfaceKind));
-    expect(seenKinds).toEqual(expectedKinds);
-    // A non-dialogue surface must NOT be reduced to dialogue: the count of
-    // "dialogue" requests equals the count of genuinely-dialogue units.
-    const dialogueUnits = bridge.units.filter((unit) => unit.surfaceKind === "dialogue").length;
-    expect(seen.filter((entry) => entry.surfaceKind === "dialogue")).toHaveLength(dialogueUnits);
-    // Spot-check a specific expanded kind rode through intact.
-    const choiceUnit = bridge.units.find((unit) => unit.surfaceKind === "choice_label")!;
-    expect(seen).toContainEqual({ sourceText: choiceUnit.sourceText, surfaceKind: "choice_label" });
   });
 
   it("validates protected spans before writing patch exports", async () => {
@@ -1168,137 +584,6 @@ function ledgerFixture(): ItotoriModelLedgerRepositoryPort {
   };
 }
 
-function driftDetectingLedgerFixture(): ItotoriModelLedgerRepositoryPort {
-  const snapshots = new Map<string, string>();
-  return {
-    recordProviderRun: vi.fn(async (_actor, input) => {
-      const key = `${input.prompt.promptPresetId}@${input.prompt.promptTemplateVersion}`;
-      const snapshot = JSON.stringify({
-        presetSchemaVersion: input.prompt.presetSchemaVersion,
-        promptHash: input.prompt.promptHash,
-        configSnapshot: input.prompt.configSnapshot ?? {},
-      });
-      const existing = snapshots.get(key);
-      if (existing !== undefined && existing !== snapshot) {
-        throw new Error(`prompt preset ${key} is immutable`);
-      }
-      snapshots.set(key, snapshot);
-      return {
-        ...costReportFixture.recentRuns[0]!,
-        providerRunId: input.providerRunId,
-        status: input.status,
-        promptPresetId: input.prompt.promptPresetId,
-        promptTemplateVersion: input.prompt.promptTemplateVersion,
-        promptHash: input.prompt.promptHash,
-        structuredOutputMode: input.structuredOutputMode,
-        retryCount: input.retryCount,
-        errorClasses: input.errorClasses,
-        costKind: input.cost.costKind,
-        amountMicrosUsd: input.cost.amountMicrosUsd ?? null,
-        tokenCountSource: input.tokenUsage.tokenCountSource,
-        promptTokens: input.tokenUsage.promptTokens ?? null,
-        completionTokens: input.tokenUsage.completionTokens ?? null,
-        reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
-        cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
-        totalTokens: input.tokenUsage.totalTokens ?? null,
-        routingPosture: input.routingPosture,
-      };
-    }),
-    getProjectCostReport: vi.fn(async () => costReportFixture),
-    getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
-  };
-}
-
-function failingProvider(): ModelProvider {
-  const descriptor = new FakeModelProvider().descriptor;
-  return {
-    descriptor,
-    invoke: vi.fn(async (request: ModelInvocationRequest) => {
-      throw new ModelProviderError(
-        "fixture provider failure",
-        "provider_http_error",
-        true,
-        failedProviderRun(request, descriptor.defaultModelId),
-      );
-    }),
-  };
-}
-
-function failingProviderWithoutRun(): ModelProvider {
-  const descriptor = new FakeModelProvider().descriptor;
-  return {
-    descriptor,
-    invoke: vi.fn(async () => {
-      throw new ModelProviderError("fixture invalid response", "provider_response_invalid", false);
-    }),
-  };
-}
-
-function nullContentProvider(): ModelProvider {
-  const descriptor = new FakeModelProvider().descriptor;
-  return {
-    descriptor,
-    invoke: vi.fn(async (request: ModelInvocationRequest) => {
-      const run = failedProviderRun(request, descriptor.defaultModelId);
-      run.runId = "provider-run-null-content";
-      run.status = "succeeded";
-      run.errorClasses = [];
-      run.tokenUsage = {
-        tokenCountSource: "deterministic_counter",
-        promptTokens: 10,
-        completionTokens: 0,
-        totalTokens: 10,
-      };
-      run.cost = {
-        costKind: "zero",
-        currency: "USD",
-        amountUsd: "0",
-        amountMicrosUsd: 0,
-      };
-      return {
-        content: null,
-        toolCalls: [],
-        finishReason: "stop",
-        providerRun: run,
-      };
-    }),
-  };
-}
-
-function failedProviderRun(request: ModelInvocationRequest, modelId: string): ProviderRunRecord {
-  return {
-    runId: "provider-run-failed",
-    taskKind: request.taskKind,
-    startedAt: "2026-06-17T00:00:00.000Z",
-    completedAt: "2026-06-17T00:00:01.000Z",
-    latencyMs: 1000,
-    status: "failed",
-    provider: {
-      providerFamily: "fake",
-      endpointFamily: "chat-completions",
-      providerName: "itotori-fixture",
-      requestedModelId: modelId,
-      actualModelId: modelId,
-    },
-    structuredOutputMode: "none",
-    retryCount: 0,
-    errorClasses: ["http_500"],
-    fallbackUsed: false,
-    fallbackPlan: [modelId],
-    tokenUsage: {
-      tokenCountSource: "unknown",
-    },
-    // ITOTORI-225 — failed runs incur no upstream charge.
-    cost: {
-      costKind: "zero",
-      currency: "USD",
-      amountUsd: "0",
-      amountMicrosUsd: 0,
-    },
-    prompt: request.prompt,
-  };
-}
-
 function projectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
   return {
     projectId: "project-test",
@@ -1338,53 +623,6 @@ function bridgeFixture(): BridgeBundle {
       },
     ],
   };
-}
-
-function repeatedLineBridgeFixture(): BridgeBundle {
-  const bridge = bridgeFixture();
-  const baseUnit = bridge.units[0]!;
-  return {
-    ...bridge,
-    units: [
-      {
-        ...baseUnit,
-        bridgeUnitId: "bridge-unit-memory",
-        sourceUnitKey: "hello.scene.001.line.001",
-        occurrenceId: "occurrence-memory",
-        sourceHash: "source-hash-repeat",
-        protectedSpans: [],
-      },
-      {
-        ...baseUnit,
-        bridgeUnitId: "bridge-unit-repeat",
-        sourceUnitKey: "hello.scene.001.line.002",
-        occurrenceId: "occurrence-repeat",
-        sourceHash: "source-hash-repeat",
-        protectedSpans: [],
-      },
-    ],
-  };
-}
-
-function nonJapaneseSourceProjectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
-  return projectFixture({
-    targetLocale: "en-US",
-    bridge: {
-      ...bridgeFixture(),
-      sourceLocale: "de-DE",
-      units: [
-        {
-          ...bridgeFixture().units[0]!,
-          sourceLocale: "de-DE",
-          sourceText: "Guten Tag, {player}.",
-          protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 11, end: 19, preserveMode: "exact" },
-          ],
-        },
-      ],
-    },
-    ...overrides,
-  });
 }
 
 function bridgeV02Fixture(): BridgeBundleV02 {

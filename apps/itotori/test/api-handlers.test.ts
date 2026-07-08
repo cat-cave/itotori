@@ -73,7 +73,6 @@ import {
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
-  nonJapaneseTargetProjectFixture,
   projectOverviewFixture,
   projectFixture,
   runtimeIngestResultFixture,
@@ -145,14 +144,6 @@ const readOnlyPostApiRoutes = new Set([
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
-  apiGate(
-    "branchDraft",
-    post("/api/projects/project-1/branches", {
-      project: projectFixture,
-      targetLocale: "fr-FR",
-    }),
-    "draftProject",
-  ),
   apiGate(
     "findingRecord",
     post("/api/projects/project-1/findings", {
@@ -2616,201 +2607,6 @@ describe("Itotori API handlers", () => {
     },
   );
 
-  it("passes explicit non-Japanese-to-English draft locale pairs through the API", async () => {
-    const services = serviceFixture();
-
-    const response = await handleItotoriApiRequest(
-      post("/api/projects/project-de-en/branches", {
-        project: nonJapaneseTargetProjectFixture,
-        targetLocale: "en-US",
-      }),
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
-      { ...nonJapaneseTargetProjectFixture, localeBranchId: "locale-de-en-us" },
-      "en-US",
-    );
-  });
-
-  describe("ITOTORI-050 server-side project/branch ownership scoping", () => {
-    it("drafts an in-scope branch and writes with the SERVER-SIDE branch id", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/branches", {
-          project: projectFixture,
-          targetLocale: "fr-FR",
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(200);
-      // The write is keyed on the server-side authoritative branch, not the
-      // client's copy — proving the client cannot smuggle a foreign branch.
-      expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: "project-1", localeBranchId: "locale-1" }),
-        "fr-FR",
-      );
-      expect(services.projectWorkflow.listLocaleBranchIdentities).toHaveBeenCalledWith("project-1");
-    });
-
-    it("refuses a branch draft whose client-supplied ProjectState carries a FORGED branch id", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/branches", {
-          // Attacker keeps the owned projectId (passes assertPathProject) but
-          // forges a branch id the server does not attribute to project-1.
-          project: { ...projectFixture, localeBranchId: "locale-owned-by-someone-else" },
-          targetLocale: "fr-FR",
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
-    });
-
-    it("refuses a branch draft against an UNKNOWN / out-of-scope project", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-not-owned/branches", {
-          project: {
-            ...projectFixture,
-            projectId: "project-not-owned",
-            localeBranchId: "locale-1",
-          },
-          targetLocale: "fr-FR",
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
-    });
-
-    it("refuses runtime-evidence ingest whose ProjectState carries a foreign branch id", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/runtime-evidence", {
-          project: { ...projectFixture, localeBranchId: "locale-forged" },
-          runtimeReport: runtimeReportFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.ingestRuntimeReport).not.toHaveBeenCalled();
-    });
-
-    it("ingests in-scope runtime-evidence with the server-side branch id", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/runtime-evidence", {
-          project: projectFixture,
-          runtimeReport: runtimeReportFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(200);
-      expect(services.projectWorkflow.ingestRuntimeReport).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: "project-1", localeBranchId: "locale-1" }),
-        runtimeReportFixture,
-      );
-    });
-
-    it("refuses a finding record naming a foreign branch id", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/findings", {
-          localeBranchId: "locale-forged",
-          finding: findingRecordFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.recordFinding).not.toHaveBeenCalled();
-    });
-
-    it("records a project-scoped finding (no branch id) once the project is server-side verified", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/findings", { finding: findingRecordFixture }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(200);
-      expect(services.projectWorkflow.recordFinding).toHaveBeenCalledTimes(1);
-    });
-
-    it("refuses a decision record against an unknown project", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-not-owned/decisions", {
-          localeBranchId: "locale-1",
-          event: decisionEventFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.recordDecision).not.toHaveBeenCalled();
-    });
-
-    it("refuses a benchmark whose (real) branch is not owned by the project in the path", async () => {
-      const services = serviceFixture();
-
-      // The report's branch (019ed006-…-b1) is a real branch of project-1, but
-      // it is submitted under project-de-en, which does NOT own it. The
-      // server-side ownership check refuses it before recording.
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-de-en/benchmarks", {
-          benchmarkReport: benchmarkReportFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.recordBenchmarkReport).not.toHaveBeenCalled();
-    });
-
-    it("checks the ownership scope only AFTER the permission gate", async () => {
-      const services = serviceFixture();
-      services.authorization.requirePermission.mockRejectedValueOnce(
-        new AuthorizationError(deniedActor, permissionValues.draftWrite),
-      );
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-1/branches", {
-          project: { ...projectFixture, localeBranchId: "locale-forged" },
-          targetLocale: "fr-FR",
-        }),
-        services,
-      );
-
-      // A missing permission is refused before the scope lookup runs at all.
-      expect(response.statusCode).toBe(403);
-      expect(services.projectWorkflow.listLocaleBranchIdentities).not.toHaveBeenCalled();
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
-    });
-  });
-
   it("rejects malformed request bodies before checking permissions", async () => {
     const services = serviceFixture();
 
@@ -2851,13 +2647,6 @@ describe("Itotori API handlers", () => {
       {
         name: "imports.bridge",
         request: post("/api/imports/bridge", { bridge: bridgeFixture }),
-      },
-      {
-        name: "branches.draft",
-        request: post("/api/projects/project-1/branches", {
-          project: projectFixture,
-          targetLocale: "fr-FR",
-        }),
       },
     ] as const;
 
@@ -2986,13 +2775,6 @@ describe("Itotori API handlers", () => {
           "requiredPermission": "project.import",
           "route": "POST /api/imports/bridge",
           "successFixture": "api-handlers.test.ts bridge import success fixture",
-        },
-        {
-          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
-          "mutation": "branch draft",
-          "requiredPermission": "draft.write",
-          "route": "POST /api/projects/:projectId/branches",
-          "successFixture": "api-handlers.test.ts branch draft success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
@@ -3609,7 +3391,6 @@ function serviceFixture(): ItotoriApiServices {
       getCostDrilldown: vi.fn(async () => costDrilldownFixture),
       getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
       importBridge: vi.fn(async () => projectFixture),
-      draftProject: vi.fn(async () => projectFixture),
       recordFinding: vi.fn(async () => ({
         findingId: findingRecordFixture.findingId,
         status: "open" as const,
@@ -4154,7 +3935,6 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
       service: "projectWorkflow",
       methods: [
         "importBridge",
-        "draftProject",
         "recordFinding",
         "recordDecision",
         "recordBenchmarkReport",
@@ -4216,8 +3996,6 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
 
   it("excludes mutation methods from the read-only surface at the TYPE level", () => {
     const readOnly = readOnlyApiServices(serviceFixture());
-    // @ts-expect-error draftProject is a mutation excluded from the read-only surface
-    void readOnly.projectWorkflow.draftProject;
     // @ts-expect-error executeBatch is a mutation excluded from the read-only surface
     void readOnly.reviewerQueue.executeBatch;
     // @ts-expect-error submitCorrections is a mutation excluded from the read-only surface

@@ -2,8 +2,8 @@
 //
 // ITOTORI-051 — the project MUTATION contract test suite.
 //
-// The dashboard SPA mutation layer POSTs to six project mutation routes
-// (`imports.bridge`, `branches.draft`, `findings.record`, `decisions.record`,
+// The dashboard SPA mutation layer POSTs to five project mutation routes
+// (`imports.bridge`, `findings.record`, `decisions.record`,
 // `benchmarks.record`, `runtimeEvidence.ingest`). Before ITOTORI-051 the MSW
 // handler suite covered only the READ routes + the import workflow fixtures;
 // a mutation API shape change (a renamed response field, a narrowed enum, a
@@ -34,7 +34,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import {
   assertItotoriApiResponse,
-  parseDraftBranchRequest,
   parseProjectImportRequest,
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
@@ -47,8 +46,6 @@ import {
   apiMutationForbiddenResponseFixture,
   bridgeImportRequestFixture,
   bridgeImportResponseFixture,
-  draftBranchRequestFixture,
-  draftBranchResponseFixture,
   recordBenchmarkRequestFixture,
   recordBenchmarkResponseFixture,
   recordDecisionRequestFixture,
@@ -86,12 +83,6 @@ function mutationCase(routeId: ApiMutationContractEntry["routeId"]): MutationCas
         request: bridgeImportRequestFixture,
         response: bridgeImportResponseFixture,
         parser: parseProjectImportRequest,
-      };
-    case "branches.draft":
-      return {
-        request: draftBranchRequestFixture,
-        response: draftBranchResponseFixture,
-        parser: parseDraftBranchRequest,
       };
     case "findings.record":
       return {

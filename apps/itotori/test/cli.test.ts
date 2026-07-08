@@ -918,7 +918,6 @@ function servicesFixture(): ItotoriCliServices {
         limitations: [],
       })),
       importBridge: vi.fn(async (_bridge: BridgeBundle | BridgeBundleV02) => projectFixture()),
-      draftProject: vi.fn(async (project: ProjectState) => project),
       exportPatch: vi.fn(async (project: ProjectState) => ({
         project,
         patchExport: {

@@ -148,7 +148,7 @@ describe("fe-http-contract-harness: typed error wire contract", () => {
   });
 
   it("answers a GET on a POST-only project mutation path with 405 method_not_allowed", async () => {
-    const result = await harness.httpRequest("/api/projects/project-1/branches");
+    const result = await harness.httpRequest("/api/projects/project-1/findings");
 
     assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
   });

@@ -45,7 +45,6 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   projectOverviewFixture,
-  draftBranchResponseFixture,
   jobsRunTableFixture,
   recordBenchmarkResponseFixture,
   recordDecisionResponseFixture,
@@ -104,7 +103,6 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "catalog.opportunities": catalogOpportunitiesFixture,
   "terminology.search": terminologySearchFixture,
   "imports.bridge": bridgeImportResponseFixture,
-  "branches.draft": draftBranchResponseFixture,
   "findings.record": recordFindingResponseFixture,
   "decisions.record": recordDecisionResponseFixture,
   "benchmarks.record": recordBenchmarkResponseFixture,
@@ -197,7 +195,7 @@ describe("fe-api-openapi-emit: schema/guard parity (no fork)", () => {
 //       guard passes to `asStrictRecord`. The "no fork" block asserts the
 //       emitted envelope equals that guard authority key-list, so a strict body
 //       cannot drift from its guard even without a fixture.
-//   (2) ALL 35 routes (request + response bodies): a schema-driven teeth block
+//   (2) ALL 34 routes (request + response bodies): a schema-driven teeth block
 //       builds a minimal instance FROM the emitted schema, then proves the
 //       schema rejects a body that drops any single required top-level key, and
 //       (for strict bodies) rejects a leaked top-level field.
@@ -276,7 +274,7 @@ describe("fe-openapi-parity-all-routes: strict envelope == guard authority (no f
   }
 });
 
-describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request + response)", () => {
+describe("fe-openapi-parity-all-routes: per-route teeth (all 34 routes, request + response)", () => {
   let bodyCount = 0;
   for (const routeId of ITOTORI_API_ROUTE_IDS) {
     const route = ITOTORI_API_ROUTES[routeId];
@@ -324,14 +322,14 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request 
     }
   }
 
-  it("covers a body for every one of the 35 routes (no route left un-teethed)", () => {
-    // 35 routes: each has a response body; the 8 mutation + reviewer/workspace
+  it("covers a body for every one of the 34 routes (no route left un-teethed)", () => {
+    // 34 routes: each has a response body; the 9 mutation + reviewer/workspace
     // POST routes add a request body. This asserts the loop above actually
     // iterated a body per route so no route is silently skipped.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(35);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(34);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

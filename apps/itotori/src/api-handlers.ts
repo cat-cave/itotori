@@ -48,7 +48,6 @@ import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
   assertItotoriApiResponse,
   assertRedactedRuntimeDashboardStatus,
-  parseDraftBranchRequest,
   parseProjectImportRequest,
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
@@ -58,7 +57,6 @@ import {
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
   parseWorkspaceCorrectionSubmitRequest,
-  type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiAssetDecisionsResponse,
   type ApiBenchmarkReportsResponse,
@@ -121,7 +119,6 @@ export type ApiMutationPermissionGate = {
 
 export const apiMutationPermissionGates = {
   bridgeImport: apiMutationGate("bridge import", "projectImport"),
-  branchDraft: apiMutationGate("branch draft", "draftWrite"),
   findingRecord: apiMutationGate("finding record", "runtimeIngest"),
   decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
   benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
@@ -146,7 +143,7 @@ export type ItotoriApiRequest = {
  * the read methods of each shared service, so a query handler that receives an
  * {@link ItotoriReadOnlyApiServices} is *structurally* (type-level) unable to
  * reach a mutation — `reviewerQueue.executeBatch`,
- * `workspaceCorrections.submitCorrections`, `projectWorkflow.draftProject`,
+ * `workspaceCorrections.submitCorrections`, `projectWorkflow.recordFinding`,
  * etc. are not on the type. The default read-only factory
  * (`readOnlyApiServices` / `withDatabaseReadOnlyApiServices` in
  * `services/database-services.ts`) additionally narrows at RUNTIME (the
@@ -217,7 +214,7 @@ export type ItotoriReadOnlyApiServices = {
  * mutation methods the write (POST) handlers need. The intersection keeps the
  * read picks and adds the mutation picks, so `reviewerQueue` /
  * `workspaceCorrections` resolve to their full ports and `projectWorkflow`
- * gains the record/draft/ingest writes.
+ * gains the record/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   reviewerQueue: ReviewerQueueApiServicePort;
@@ -232,7 +229,6 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "getCostDrilldown"
     | "getBenchmarkReports"
     | "importBridge"
-    | "draftProject"
     | "recordFinding"
     | "recordDecision"
     | "recordBenchmarkReport"
@@ -329,7 +325,7 @@ export async function handleItotoriApiRequest(
  * transport-level READ-ONLY entrypoint for GET requests. It receives ONLY
  * the {@link ItotoriReadOnlyApiServices} surface, so a GET served through
  * this entrypoint is STRUCTURALLY unable to reach a mutation service
- * (`draftProject`, `executeBatch`, `submitCorrections`, …): the dependency
+ * (`recordFinding`, `executeBatch`, `submitCorrections`, …): the dependency
  * object literally has no mutation methods. The server transport
  * (`server.ts`) constructs GET requests through the read-only DB factory
  * (`withDatabaseReadOnlyApiServices`) and dispatches them here, so the
@@ -496,31 +492,6 @@ async function routeItotoriApiRequest(
   }
 
   switch (projectRoute.resource) {
-    case "branches": {
-      const body = parseDraftBranchRequest(request.body);
-      assertPathProject(projectRoute.projectId, body.project.projectId);
-      await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
-      // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
-      // lookup and write with the authoritative branch id; a client-supplied
-      // ProjectState carrying a foreign/forged localeBranchId is refused here
-      // before draftProject touches the repository.
-      const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        localeBranchId: body.project.localeBranchId,
-      });
-      const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
-      const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
-      const status = await services.projectWorkflow.getDashboardStatus();
-      // gate-mutation-route-status-echo — see POST /api/imports/bridge: the
-      // success body echoes the full dashboard status, so the same
-      // catalog.read gate + redaction applies (recentRuns / recentEvents
-      // stripped for a non-holder).
-      const canReadStatus = await resolveProjectReadPermission(services);
-      return ok("branches.draft", {
-        project,
-        status: canReadStatus ? status : redactProjectDashboardStatus(status),
-      });
-    }
     case "findings": {
       const body = parseRecordFindingRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
@@ -1882,7 +1853,6 @@ function ok(routeId: "jobs.runTable", body: ApiJobsRunTableResponse): ApiJsonRes
 function ok(routeId: "queue.health", body: ApiQueueHealthResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
-function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;
 function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonResponse;
 function ok(routeId: "decisions.record", body: DecisionRecordResult): ApiJsonResponse;
 function ok(routeId: "benchmarks.record", body: BenchmarkRecordResult): ApiJsonResponse;
@@ -1932,7 +1902,7 @@ function errorBody(
 
 function parseProjectRoute(pathname: string): {
   projectId: string;
-  resource: "branches" | "findings" | "decisions" | "benchmarks" | "runtime-evidence";
+  resource: "findings" | "decisions" | "benchmarks" | "runtime-evidence";
 } | null {
   const match = /^\/api\/projects\/([^/]+)\/([^/]+)$/.exec(pathname);
   if (!match) {
@@ -1944,7 +1914,6 @@ function parseProjectRoute(pathname: string): {
     return null;
   }
   if (
-    resource !== "branches" &&
     resource !== "findings" &&
     resource !== "decisions" &&
     resource !== "benchmarks" &&

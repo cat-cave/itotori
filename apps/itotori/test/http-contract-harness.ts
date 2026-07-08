@@ -408,7 +408,6 @@ const fixtureServices = {
     getCostDrilldown: vi.fn(async () => costDrilldownFixture),
     getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
     importBridge: vi.fn(async () => projectFixture),
-    draftProject: vi.fn(unused),
     exportPatch: vi.fn(unused),
     ingestRuntimeReport: vi.fn(unused),
     ingestPatchResult: vi.fn(unused),

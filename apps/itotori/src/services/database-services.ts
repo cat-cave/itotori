@@ -20,7 +20,6 @@ import {
   ItotoriTerminologyRepository,
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
-  ItotoriTranslationMemoryService,
   ItotoriWorkspaceCorrectionRepository,
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
@@ -197,7 +196,7 @@ export type ItotoriServiceFactory = <T>(
  * ITOTORI-043 — the least-privilege factory for the read-only (query) API
  * handlers. A callback wired through this factory receives ONLY the read/query
  * dependency surface ({@link ItotoriReadOnlyApiServices}); it is structurally
- * unable to reach a mutation service (`draftProject`, `recordFinding`,
+ * unable to reach a mutation service (`recordFinding`,
  * `executeBatch`, `submitCorrections`, …). The narrowed services are PROJECTED
  * from the same shared {@link ItotoriApplicationServices} the full factory
  * builds (`readOnlyApiServices` copies only the read methods, delegating to the
@@ -350,9 +349,6 @@ export async function withDatabaseItotoriServices<T>(
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
     const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
     const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
-    const translationMemoryService = new ItotoriTranslationMemoryService(
-      translationMemoryRepository,
-    );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
@@ -442,21 +438,7 @@ export async function withDatabaseItotoriServices<T>(
       projectWorkflow: new ItotoriProjectWorkflowService(
         projectRepository,
         localUserActor,
-        // itotori-purge-fakemodelprovider-from-production — the draft
-        // model provider slot. The old wiring left this `undefined`, which
-        // silently defaulted to a zero-cost FakeModelProvider so the shipped
-        // `projects.draft` route + CLI `draft` drafted REAL translations with
-        // a FAKE at zero cost. The fake default is gone: when no real
-        // provider is configured, `draftProject` now refuses LOUDLY with a
-        // typed `DraftProviderNotConfiguredError` (never a fake draft). A
-        // live draft requires injecting an `OpenRouterModelProvider` here
-        // (real call, real cost); that live wiring — API key + provider-run
-        // artifact recorder + cost cap threaded through `withServices` — is
-        // not yet built for the DB-backed single-shot draft path, so the
-        // honest shipped behavior is the typed refusal.
-        undefined,
         modelLedgerRepository,
-        translationMemoryService,
         undefined,
         passLedgerRepository,
       ),
