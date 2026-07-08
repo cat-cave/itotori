@@ -19,6 +19,7 @@ import { Badge, ComparisonPane, DataTable, Panel } from "@itotori/ds";
 import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
 
 export function ReviewerDetailScreen({ reviewItemId }: { reviewItemId: string }): ReactNode {
   const detail = useApiQuery(
@@ -102,6 +103,7 @@ function ReadyView({ context }: { context: ReviewerDetailContext }): ReactNode {
         <SourcePanel context={context} />
         <DraftPanel context={context} />
         <ComparisonPanel context={context} />
+        <RevisionHistoryComparisonPane reviewItemId={context.reviewItemId} />
         <PolicyPanel context={context} />
         <GlossaryPanel context={context} />
         <BranchReferencePanel context={context} />
