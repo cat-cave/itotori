@@ -15,7 +15,6 @@ kaifuu-reallive = { path = "../kaifuu-reallive" }
 kaifuu-rpgmaker = { path = "../kaifuu-rpgmaker" }
 kaifuu-vault-source = { path = "../kaifuu-vault-source" }
 serde_json.workspace = true
-utsushi-reallive = { path = "../utsushi-reallive" }
 
 [features]
 # Test/debug-only failure-injection seam for the `binary-patch-smoke`

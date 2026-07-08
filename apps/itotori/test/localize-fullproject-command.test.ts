@@ -117,17 +117,30 @@ describe("parseLocalizeFullProjectConfig (game-agnostic config)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end handoff: the ACTUAL `kaifuu extract --whole-seen` output feeds
-// the whole-game driver's structure resolver and resolves + drives EVERY scene.
+// End-to-end handoff (SPLIT producers): the whole-game driver joins the ACTUAL
+// `kaifuu extract --whole-seen` BRIDGE output to the ACTUAL `utsushi structure`
+// STRUCTURE output via `context.route.sceneKey`, and resolves every unit whose
+// scene the driven playthrough crossed.
 //
-// The fixtures below are the VERBATIM output of the `--whole-seen` command over
-// a synthetic 2-scene archive (regenerate via the kaifuu-cli
-// `regenerate_whole_seen_ts_driver_fixture` ignored test) — NOT a hand-built
-// bridge. This proves the produced bridge's `context.route.sceneKey` shape is
-// what the driver's `buildStructureResolver` consumes, closing the M1 handoff.
+// The two fixtures are the VERBATIM output of two SEPARATE, correctly-layered
+// producers (deps flow utsushi → kaifuu, never back):
+//   - whole-seen-bridge.json    ← `kaifuu extract --whole-seen` (pure decode;
+//       no utsushi dependency). Regenerate via the kaifuu-cli
+//       `regenerate_whole_seen_ts_driver_fixture` ignored test.
+//   - whole-seen-structure.json ← `utsushi structure` (replay-driven; owns the
+//       real scene-dispatch order). Regenerate by running `utsushi structure`
+//       over the same synthetic archive (kaifuu-cli
+//       `materialize_synthetic_two_scene_archive_to_scratch` probe).
+//
+// This proves the produced bridge's `context.route.sceneKey` shape is exactly
+// what the driver's `buildStructureResolver` consumes to join the independently
+// -produced structure — closing the M1 handoff WITHOUT kaifuu depending on
+// utsushi. Units routed to a scene the playthrough did NOT cross graceful-
+// degrade (resolver → undefined), the documented whole-game behavior; the
+// strong multi-scene proof is the env-gated real-Sweetie test.
 // ---------------------------------------------------------------------------
 
-describe("whole-game driver consumes the REAL --whole-seen bridge output", () => {
+describe("whole-game driver joins the REAL bridge + REAL structure by sceneKey", () => {
   const wholeSeenBridge = JSON.parse(
     readFileSync(new URL("./fixtures/whole-seen-bridge.json", import.meta.url), "utf8"),
   ) as { units: LocalizationUnitV02[] };
@@ -137,41 +150,55 @@ describe("whole-game driver consumes the REAL --whole-seen bridge output", () =>
     ),
   );
 
-  it("carries a scene route on every unit and resolves each unit to its structure scene", () => {
+  it("resolves every unit whose scene the structure's real dispatch order crossed", () => {
     const units = wholeSeenBridge.units;
     expect(units.length).toBeGreaterThan(0);
 
-    // The command output spans MULTIPLE scenes (multi-scene bridge).
-    const bridgeSceneKeys = new Set(units.map((u) => u.context.route?.sceneKey));
-    expect(bridgeSceneKeys.size).toBeGreaterThanOrEqual(2);
-    // Every unit carries the numeric-bearing `scene-NNNN` route key the resolver reads.
+    // Every bridge unit carries the numeric-bearing `scene-NNNN` route key the
+    // resolver reads — the join key between the two producers.
     for (const unit of units) {
       expect(unit.context.route?.sceneKey).toMatch(/^scene-\d{4}$/u);
     }
 
-    // The driver's OWN resolver (buildStructureResolver) — the exact seam the
-    // whole-game localize command uses — resolves EVERY unit to a structure
-    // scene from the ACTUAL command output. No unit falls through to undefined.
-    const resolver = buildStructureResolver(wholeSeenStructure, -1);
+    // The structure is the UTSUSHI-produced narrative structure whose
+    // `sceneDispatchOrder` is the REAL play-loop dispatch order (the order
+    // `observe_playthrough` crossed scenes), NOT archive slot order.
+    const structureScenes = new Set(wholeSeenStructure.sceneDispatchOrder);
+    expect(structureScenes.size).toBeGreaterThan(0);
+
+    // The driver's OWN resolver — the exact seam the whole-game localize command
+    // uses — joins each bridge unit to the structure by parsing its sceneKey.
+    // `defaultSceneId` is set to a scene NOT in the structure so the join is
+    // proven to come from the unit's OWN route key, never a blanket fallback.
+    const resolver = buildStructureResolver(wholeSeenStructure, -999);
+    const sceneNum = (unit: LocalizationUnitV02): number =>
+      Number.parseInt(unit.context.route!.sceneKey!.replace("scene-", ""), 10);
+
     const resolvedScenes = new Set<number>();
     units.forEach((unit, unitIndex) => {
       const resolved = resolver({ unit, unitIndex, plannerSceneId: undefined });
-      expect(resolved, `unit ${unit.bridgeUnitId} must resolve to a scene`).toBeDefined();
-      expect(resolved?.narrativeStructure).toBe(wholeSeenStructure);
-      resolvedScenes.add(resolved!.sceneId);
+      const scene = sceneNum(unit);
+      if (structureScenes.has(scene)) {
+        // Scene the playthrough crossed → resolves to THAT scene's structure.
+        expect(resolved, `unit ${unit.bridgeUnitId} (scene ${scene}) must resolve`).toBeDefined();
+        expect(resolved?.narrativeStructure).toBe(wholeSeenStructure);
+        expect(resolved?.sceneId).toBe(scene);
+        resolvedScenes.add(resolved!.sceneId);
+      } else {
+        // Scene the playthrough did NOT cross → documented graceful-degrade.
+        expect(resolved, `unit ${unit.bridgeUnitId} (scene ${scene}) degrades`).toBeUndefined();
+      }
     });
 
-    // Every structure scene the play-loop dispatched is driven — the resolved
-    // scenes cover the whole exported dispatch order (end-to-end consumability).
-    expect([...resolvedScenes].sort((a, b) => a - b)).toEqual(
-      [...wholeSeenStructure.sceneDispatchOrder].sort((a, b) => a - b),
+    // Every scene in the real dispatch order that the bridge carries units for
+    // was resolved end-to-end (the join is complete over the crossed scenes).
+    const bridgeScenesInStructure = new Set(
+      units.map(sceneNum).filter((s) => structureScenes.has(s)),
     );
-    // And the numeric scene id each unit resolves to matches its route key.
-    for (const unit of units) {
-      const resolved = resolver({ unit, unitIndex: 0, plannerSceneId: undefined });
-      const keyNum = Number.parseInt(unit.context.route!.sceneKey!.replace("scene-", ""), 10);
-      expect(resolved?.sceneId).toBe(keyNum);
-    }
+    expect(bridgeScenesInStructure.size).toBeGreaterThan(0);
+    expect([...resolvedScenes].sort((a, b) => a - b)).toEqual(
+      [...bridgeScenesInStructure].sort((a, b) => a - b),
+    );
   });
 });
 

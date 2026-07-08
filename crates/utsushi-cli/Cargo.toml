@@ -31,6 +31,9 @@ utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 # asserts the engine's OBSERVED TextLine bodies decode the real translated
 # text (not mojibake).
 encoding_rs.workspace = true
+# `structure_real_sweetie_hd.rs` drives the `utsushi structure` binary over the
+# real Sweetie HD archive into a temp output path.
+tempfile = { workspace = true }
 # Engine-port capability parity gate (tests/engine_parity_gate.rs): the CLI
 # is the crate that can see EVERY registered engine port, so the cross-engine
 # parity conformance gate lives here as an integration test. These three ports

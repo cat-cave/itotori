@@ -116,16 +116,20 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
 
 /// Env-gated whole-SEEN real-bytes proof (M1 bridge). Runs
 /// `extract --whole-seen` over the ENTIRE real Sweetie HD SEEN archive — every
-/// populated scene decodes (decode-100), producing ONE multi-scene v0.2 bridge
-/// plus the narrative-structure export. Asserts the bridge is schema-valid and
-/// spans many scenes, that every unit carries its numeric scene in
-/// `context.route.sceneKey` (the field the whole-game localize driver's
-/// structure resolver parses), and that the structure's `sceneDispatchOrder`
-/// is a complete, entry-scene-led permutation of the exported scenes (real
-/// dispatch order from the scene-dispatch graph, not archive slot order).
+/// populated scene decodes (decode-100), producing ONE multi-scene v0.2 BRIDGE.
+///
+/// `kaifuu extract --whole-seen` produces the BRIDGE only — NOT the replay
+/// -derived narrative structure. Deriving the structure / `sceneDispatchOrder`
+/// needs the Utsushi replay runtime and kaifuu must never depend on utsushi
+/// (deps flow utsushi → kaifuu). The real-Sweetie STRUCTURE proof lives on the
+/// utsushi side (`utsushi-cli` `structure_real_sweetie_hd.rs`).
+///
+/// Asserts the bridge is schema-valid, spans many scenes, and that every unit
+/// carries its numeric scene in `context.route.sceneKey` — the field the
+/// whole-game localize driver joins to the utsushi-produced structure.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure() {
+fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge() {
     let Some(game_root) = real_corpus::game_root() else {
         eprintln!(
             "{}",
@@ -136,8 +140,9 @@ fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure()
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let bundle_out = tmp_dir.path().join("sweetie-hd-whole.bridge.json");
-    let structure_out = tmp_dir.path().join("sweetie-hd-whole.structure.json");
-    let report_out = tmp_dir.path().join("sweetie-hd-whole.decompile-report.json");
+    let report_out = tmp_dir
+        .path()
+        .join("sweetie-hd-whole.decompile-report.json");
 
     let mut cmd = Command::new(kaifuu_cli_binary());
     cmd.arg("extract")
@@ -146,8 +151,6 @@ fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure()
         .arg("--whole-seen")
         .arg("--bundle-output")
         .arg(&bundle_out)
-        .arg("--structure-output")
-        .arg(&structure_out)
         .arg("--decompile-report-output")
         .arg(&report_out)
         .arg("--game-root")
@@ -180,7 +183,7 @@ fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure()
         "whole-SEEN bridge must carry ≥1 unit"
     );
 
-    // Every unit must carry a `scene-NNNN` route key (the driver resolver input).
+    // Every unit must carry a `scene-NNNN` route key (the driver join key).
     let unrouted = bundle_value["units"]
         .as_array()
         .unwrap()
@@ -191,43 +194,26 @@ fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure()
                 .is_none_or(|s| !s.starts_with("scene-"))
         })
         .count();
-    assert_eq!(unrouted, 0, "every whole-SEEN unit must carry a scene route key");
+    assert_eq!(
+        unrouted, 0,
+        "every whole-SEEN unit must carry a scene route key"
+    );
 
-    // --- structure: complete, entry-led dispatch order over many scenes -----
-    let structure_bytes = std::fs::read(&structure_out).expect("structure file must exist");
-    let structure: Value =
-        serde_json::from_slice(&structure_bytes).expect("structure must be valid JSON");
-    assert_eq!(structure["schemaVersion"], "utsushi.narrative-structure.v1");
-    let scene_ids: std::collections::BTreeSet<u64> = structure["scenes"]
+    // The bridge spans many scenes (whole-SEEN, not a single scene).
+    let bridge_scenes: std::collections::BTreeSet<String> = bundle_value["units"]
         .as_array()
-        .expect("scenes array")
+        .unwrap()
         .iter()
-        .map(|scene| scene["sceneId"].as_u64().expect("sceneId"))
+        .filter_map(|unit| {
+            unit["context"]["route"]["sceneKey"]
+                .as_str()
+                .map(str::to_string)
+        })
         .collect();
     assert!(
-        scene_ids.len() >= 100,
-        "expected ≥100 populated Sweetie scenes (decode-100); got {}",
-        scene_ids.len()
-    );
-
-    let entry_scene = structure["entryScene"].as_u64().expect("entryScene");
-    let dispatch_order: Vec<u64> = structure["sceneDispatchOrder"]
-        .as_array()
-        .expect("sceneDispatchOrder array")
-        .iter()
-        .map(|scene| scene.as_u64().expect("scene id"))
-        .collect();
-    // Complete permutation of the exported scenes (unreachable ≠ dropped).
-    assert_eq!(
-        dispatch_order.iter().copied().collect::<std::collections::BTreeSet<u64>>(),
-        scene_ids,
-        "sceneDispatchOrder must list every exported scene exactly once"
-    );
-    // Leads with the entry scene (real dispatch order from the graph walk).
-    assert_eq!(
-        dispatch_order.first().copied(),
-        Some(entry_scene),
-        "dispatch order must begin at the entry scene (SEEN_START)"
+        bridge_scenes.len() >= 50,
+        "expected the whole-SEEN bridge to span many scenes; got {}",
+        bridge_scenes.len()
     );
 
     let report_bytes = std::fs::read(&report_out).expect("report file must exist");
@@ -240,9 +226,8 @@ fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge_and_structure()
     );
 
     eprintln!(
-        "M1 whole-SEEN real bytes: scenes={}, units={}, dispatchOrder[0]={}",
-        scene_ids.len(),
+        "M1 whole-SEEN bridge real bytes: bridgeScenes={}, units={}",
+        bridge_scenes.len(),
         bundle.units.len(),
-        dispatch_order.first().copied().unwrap_or_default(),
     );
 }

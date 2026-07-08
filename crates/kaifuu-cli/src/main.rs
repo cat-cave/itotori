@@ -507,15 +507,12 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
                 })?;
         write_json(&bundle_output, &produced.json)?;
 
-        if let Some(structure_path) = flag_optional(args, "--structure-output") {
-            let structure = build_reallive_whole_structure(&gameexe_bytes, &decoded_scenes)?;
-            write_json(&PathBuf::from(structure_path), &structure)?;
-        } else {
-            return Err(
-                "kaifuu.reallive.whole_seen.structure_output_required: pass --structure-output <PATH>"
-                    .into(),
-            );
-        }
+        // `kaifuu extract --whole-seen` produces the BRIDGE only (pure kaifuu
+        // decode). The replay-derived narrative structure / `sceneDispatchOrder`
+        // is NOT kaifuu's concern — deriving it needs the Utsushi replay runtime,
+        // and kaifuu must never depend on utsushi (deps flow utsushi → kaifuu).
+        // That artifact is produced on the Utsushi side (`utsushi-cli structure`)
+        // and fed to the whole-game localize driver as a SEPARATE input.
 
         if let Some(report_path) = flag_optional(args, "--decompile-report-output") {
             let source_seen_sha256 = sha256_hash_bytes(&seen_bytes);
@@ -674,261 +671,6 @@ fn reallive_scene_slices<'a>(
         &scene_blob[bytecode_start..bytecode_end],
         header,
     ))
-}
-
-fn build_reallive_whole_structure(
-    gameexe_bytes: &[u8],
-    decoded_scenes: &[DecodedRealliveScene<'_>],
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    use std::collections::{BTreeSet, HashMap};
-
-    use utsushi_reallive::{
-        Gameexe, HeadlessChoicePolicy, ReplayOpts, build_scene_store_from_decompressed,
-    };
-
-    const CHOICE_SURFACE_PREFIX: &str = "choice:";
-
-    let gameexe = Gameexe::parse(gameexe_bytes).map_err(|err| -> Box<dyn std::error::Error> {
-        format!("kaifuu.reallive.whole_seen.structure_gameexe_parse: {err}").into()
-    })?;
-    let seen_start = u16::try_from(
-        gameexe
-            .get_int("SEEN_START")
-            .ok_or("kaifuu.reallive.whole_seen.structure_missing_seen_start")?,
-    )
-    .map_err(|err| -> Box<dyn std::error::Error> {
-        format!("kaifuu.reallive.whole_seen.structure_seen_start_range: {err}").into()
-    })?;
-    let resolver = gameexe.namae_resolver();
-
-    let decompressed: Vec<utsushi_reallive::DecompressedScene> = decoded_scenes
-        .iter()
-        .map(|scene| utsushi_reallive::DecompressedScene {
-            scene_id: scene.scene_id,
-            compiler_version: 0,
-            bytecode: scene.decompressed.clone(),
-        })
-        .collect();
-    let selection_control: HashMap<u16, &'static str> = decompressed
-        .iter()
-        .map(|scene| {
-            (
-                scene.scene_id,
-                structure_selection_control_signal(&scene.bytecode),
-            )
-        })
-        .collect();
-    let (store, shift_jis, stats) =
-        build_scene_store_from_decompressed(&decompressed, decompressed.len()).map_err(
-            |err| -> Box<dyn std::error::Error> {
-                format!("kaifuu.reallive.whole_seen.structure_store_build: {err}").into()
-            },
-        )?;
-    if stats.skipped != 0 {
-        return Err(format!(
-            "kaifuu.reallive.whole_seen.structure_decode_skipped: Utsushi decoded {} of {} scene(s); skipped {}",
-            stats.loaded, stats.populated, stats.skipped
-        )
-        .into());
-    }
-    let engine =
-        utsushi_reallive::ReplayEngine::from_store(store, shift_jis).with_namae_resolver(resolver);
-    let opts = ReplayOpts {
-        step_budget: 400_000,
-        stop_at_first_pause: false,
-    };
-
-    let mut scenes = Vec::new();
-    let scene_ids: Vec<u16> = decoded_scenes.iter().map(|scene| scene.scene_id).collect();
-    let scene_id_set: BTreeSet<u16> = scene_ids.iter().copied().collect();
-    // Scene-dispatch graph edges, keyed by source scene. Each scene's edges are
-    // the ordered dispatch targets the play-loop can cross FROM it: the fallthrough
-    // `nextScene` first, then each choice branch's entry scene (in optionIndex
-    // order). This is the real cross-scene graph the play-loop walks — NOT archive
-    // slot order.
-    let mut dispatch_edges: HashMap<u16, Vec<u16>> = HashMap::new();
-    for scene_id in &scene_ids {
-        let obs = engine.observe_for_port(*scene_id, &opts);
-        let messages: Vec<serde_json::Value> = obs
-            .play_order_lines
-            .iter()
-            .enumerate()
-            .map(|(order, line)| {
-                serde_json::json!({
-                    "order": order,
-                    "speaker": line.speaker,
-                    "text": line.text,
-                    "textSurface": line.text_surface,
-                })
-            })
-            .collect();
-
-        let mut choice_indices: BTreeSet<u16> = BTreeSet::new();
-        for line in &obs.play_order_lines {
-            if let Some(surface) = line.text_surface.as_deref()
-                && let Some(rest) = surface.strip_prefix(CHOICE_SURFACE_PREFIX)
-            {
-                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-                if let Ok(idx) = digits.parse::<u16>() {
-                    choice_indices.insert(idx);
-                }
-            }
-        }
-
-        // Collect this scene's ordered dispatch targets for the graph walk:
-        // the fallthrough successor first, then each choice branch entry.
-        let mut edges: Vec<u16> = Vec::new();
-        if let Some(next) = obs.first_cross_scene
-            && next != *scene_id
-        {
-            edges.push(next);
-        }
-
-        let mut choices = Vec::new();
-        for idx in choice_indices {
-            let tag = format!("{CHOICE_SURFACE_PREFIX}{idx}");
-            let label = obs
-                .play_order_lines
-                .iter()
-                .find(|line| {
-                    line.text_surface
-                        .as_deref()
-                        .is_some_and(|s| s == tag || s.starts_with(&format!("{tag}/")))
-                })
-                .map(|line| line.text.clone())
-                .unwrap_or_default();
-            let branch = engine.branch_following_observation(
-                *scene_id,
-                &opts,
-                HeadlessChoicePolicy::Fixed(idx),
-            );
-            let branch_messages: Vec<serde_json::Value> = branch
-                .lines
-                .iter()
-                .filter(|line| {
-                    !line
-                        .text_surface
-                        .as_deref()
-                        .is_some_and(|s| s.starts_with(CHOICE_SURFACE_PREFIX))
-                })
-                .enumerate()
-                .map(|(order, line)| {
-                    serde_json::json!({
-                        "order": order,
-                        "speaker": line.speaker,
-                        "text": line.text,
-                        "textSurface": line.text_surface,
-                    })
-                })
-                .collect();
-            if let Some(branch_entry) = branch.first_cross_scene
-                && branch_entry != *scene_id
-            {
-                edges.push(branch_entry);
-            }
-            choices.push(serde_json::json!({
-                "optionIndex": idx,
-                "label": label,
-                "branchEntryScene": branch.first_cross_scene,
-                "branchMessages": branch_messages,
-            }));
-        }
-
-        dispatch_edges.insert(*scene_id, edges);
-
-        scenes.push(serde_json::json!({
-            "sceneId": scene_id,
-            "selectionControl": selection_control.get(scene_id).copied().unwrap_or("none"),
-            "nextScene": obs.first_cross_scene,
-            "messages": messages,
-            "choices": choices,
-        }));
-    }
-
-    // Real dispatch order: the distinct scene ids the play-loop crosses, in the
-    // order it first reaches them, walking the scene-dispatch graph from the
-    // entry scene (`SEEN_START`). We follow each scene's ordered edges
-    // (fallthrough successor, then choice branches) depth-first, first-visit
-    // wins. This is the semantic the TS `sceneDispatchOrder` contract + the
-    // downstream character/context agents rely on — NOT archive slot order.
-    let scene_dispatch_order =
-        compute_scene_dispatch_order(seen_start, &dispatch_edges, &scene_id_set, &scene_ids);
-
-    Ok(serde_json::json!({
-        "schemaVersion": "utsushi.narrative-structure.v1",
-        "entryScene": seen_start,
-        "sceneDispatchOrder": scene_dispatch_order,
-        "scenes": scenes,
-    }))
-}
-
-/// Walk the scene-dispatch graph from `entry_scene` depth-first (following each
-/// scene's ordered outgoing edges), emitting each scene id the first time the
-/// play-loop reaches it. Scenes never reached from the entry (unreferenced
-/// archive slots — e.g. dead/system scenes) are appended afterward in slot order
-/// so the returned order stays a complete permutation of the archive without
-/// silently dropping any scene. `edges` targets and the entry that are not
-/// actually present in the archive (`scene_id_set`) are skipped.
-fn compute_scene_dispatch_order(
-    entry_scene: u16,
-    edges: &std::collections::HashMap<u16, Vec<u16>>,
-    scene_id_set: &std::collections::BTreeSet<u16>,
-    scene_ids: &[u16],
-) -> Vec<u16> {
-    let mut order: Vec<u16> = Vec::new();
-    let mut visited: std::collections::BTreeSet<u16> = std::collections::BTreeSet::new();
-    let mut stack: Vec<u16> = Vec::new();
-    if scene_id_set.contains(&entry_scene) {
-        stack.push(entry_scene);
-    }
-    while let Some(scene) = stack.pop() {
-        if !visited.insert(scene) {
-            continue;
-        }
-        order.push(scene);
-        if let Some(targets) = edges.get(&scene) {
-            // Push in reverse so the first edge is visited first (LIFO stack).
-            for &target in targets.iter().rev() {
-                if scene_id_set.contains(&target) && !visited.contains(&target) {
-                    stack.push(target);
-                }
-            }
-        }
-    }
-    // Append any archive scenes the walk never reached, in slot order, so the
-    // field stays a complete listing (honest: unreachable ≠ dropped).
-    for &scene in scene_ids {
-        if visited.insert(scene) {
-            order.push(scene);
-        }
-    }
-    order
-}
-
-fn structure_selection_control_signal(bytecode: &[u8]) -> &'static str {
-    let Ok(ops) = kaifuu_reallive::parse_scene(bytecode) else {
-        return "none";
-    };
-    let mut has_button_object = false;
-    let mut has_text_choice = false;
-    for op in &ops {
-        match op {
-            kaifuu_reallive::RealLiveOpcode::SelectionControl { opcode }
-                if matches!(*opcode, 4 | 14 | 20) =>
-            {
-                has_button_object = true;
-            }
-            kaifuu_reallive::RealLiveOpcode::Choice { .. } => has_text_choice = true,
-            _ => {}
-        }
-    }
-    if has_button_object {
-        "button-object"
-    } else if has_text_choice {
-        "text-window"
-    } else {
-        "none"
-    }
 }
 
 /// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
@@ -4529,7 +4271,13 @@ mod tests {
     }
 
     #[test]
-    fn whole_seen_extract_writes_one_multi_scene_bridge_and_structure() {
+    fn whole_seen_extract_writes_one_multi_scene_bridge() {
+        // `kaifuu extract --whole-seen` produces the BRIDGE (pure kaifuu decode)
+        // — NOT the replay-derived narrative structure. Deriving the structure /
+        // `sceneDispatchOrder` needs the Utsushi replay runtime and kaifuu must
+        // never depend on utsushi (deps flow utsushi → kaifuu); the structure is
+        // produced separately by `utsushi-cli structure` and fed to the driver as
+        // its own input. So this test asserts ONLY the bridge + decompile report.
         let root = temp_dir("whole-seen-extract");
         let game_root = root.join("game");
         let data_root = game_root.join("REALLIVEDATA");
@@ -4539,7 +4287,6 @@ mod tests {
         fs::write(data_root.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
 
         let bridge_path = root.join("whole-bridge.json");
-        let structure_path = root.join("whole-structure.json");
         let report_path = root.join("whole-decompile-report.json");
         run_extract_reallive_bundle(
             &[
@@ -4559,8 +4306,6 @@ mod tests {
                 "--whole-seen",
                 "--bundle-output",
                 bridge_path.to_str().unwrap(),
-                "--structure-output",
-                structure_path.to_str().unwrap(),
                 "--decompile-report-output",
                 report_path.to_str().unwrap(),
             ]
@@ -4590,7 +4335,8 @@ mod tests {
         // Every whole-SEEN bridge unit carries its numeric scene in
         // `context.route.sceneKey` (`scene-NNNN`) — the field the whole-game
         // localize driver's structure resolver parses. Assert both scenes'
-        // units are keyed, so the handoff to the driver is real end-to-end.
+        // units are keyed, so the bridge→driver handoff is real end-to-end
+        // (the driver joins this route key to the utsushi-produced structure).
         let unit_scene_keys: BTreeSet<String> = bridge["units"]
             .as_array()
             .unwrap()
@@ -4607,35 +4353,6 @@ mod tests {
             "expected a unit routed to scene-0002; got {unit_scene_keys:?}"
         );
 
-        let structure: serde_json::Value = read_json(&structure_path).unwrap();
-        assert_eq!(structure["schemaVersion"], "utsushi.narrative-structure.v1");
-        let scene_ids: Vec<u64> = structure["scenes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|scene| scene["sceneId"].as_u64().unwrap())
-            .collect();
-        assert_eq!(scene_ids, vec![1, 2]);
-
-        // sceneDispatchOrder is the real play-loop dispatch order derived from
-        // the scene-dispatch graph (walk from entryScene=SEEN_START=1), NOT a
-        // reflection of any specific archive slot ordering. It must be a
-        // complete permutation of every archive scene (unreachable ≠ dropped),
-        // and must lead with the entry scene.
-        let dispatch_order: Vec<u64> = structure["sceneDispatchOrder"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|scene| scene.as_u64().unwrap())
-            .collect();
-        assert_eq!(structure["entryScene"].as_u64().unwrap(), 1);
-        assert_eq!(dispatch_order.first().copied(), Some(1));
-        assert_eq!(
-            dispatch_order.iter().copied().collect::<BTreeSet<u64>>(),
-            [1u64, 2].into_iter().collect::<BTreeSet<u64>>(),
-            "dispatch order must list every archive scene exactly once"
-        );
-
         let report: serde_json::Value = read_json(&report_path).unwrap();
         assert_eq!(report["scope"], "whole-seen");
         assert_eq!(report["sceneCount"], 2);
@@ -4645,14 +4362,17 @@ mod tests {
     }
 
     /// Fixture generator (run manually) — regenerates the committed
-    /// `apps/itotori/test/fixtures/whole-seen-*.json` pair from the SAME
+    /// `apps/itotori/test/fixtures/whole-seen-bridge.json` from the SAME
     /// `--whole-seen` command path the CLI exposes, so the TS whole-game driver
-    /// test can feed the ACTUAL command output (not a hand-built bridge) into
-    /// the driver and prove end-to-end consumability. Regenerate with:
+    /// test can feed the ACTUAL bridge output (not a hand-built bridge) into the
+    /// driver and prove end-to-end consumability. The matching structure fixture
+    /// (`whole-seen-structure.json`) is regenerated on the UTSUSHI side (kaifuu
+    /// no longer produces structure), by the `utsushi-cli` structure fixture
+    /// generator. Regenerate with:
     ///   `cargo test -p kaifuu-cli --bin kaifuu-cli \
     ///      regenerate_whole_seen_ts_driver_fixture -- --ignored`
     #[test]
-    #[ignore = "fixture generator; run manually to regenerate the TS driver fixture"]
+    #[ignore = "fixture generator; run manually to regenerate the TS driver bridge fixture"]
     fn regenerate_whole_seen_ts_driver_fixture() {
         let root = temp_dir("whole-seen-ts-fixture");
         let game_root = root.join("game");
@@ -4670,7 +4390,6 @@ mod tests {
             .unwrap()
             .join("apps/itotori/test/fixtures");
         let bridge_path = fixtures_dir.join("whole-seen-bridge.json");
-        let structure_path = fixtures_dir.join("whole-seen-structure.json");
 
         run_extract_reallive_bundle(
             &[
@@ -4690,8 +4409,6 @@ mod tests {
                 "--whole-seen",
                 "--bundle-output",
                 bridge_path.to_str().unwrap(),
-                "--structure-output",
-                structure_path.to_str().unwrap(),
             ]
             .iter()
             .map(std::string::ToString::to_string)
@@ -4703,6 +4420,19 @@ mod tests {
         let bridge: serde_json::Value = read_json(&bridge_path).unwrap();
         kaifuu_core::BridgeBundleV02::validate_json(&bridge).unwrap();
         let _ = fs::remove_dir_all(root);
+    }
+
+    /// Probe helper (run manually) — materialize the synthetic 2-scene
+    /// Seen.txt + Gameexe.ini to a STABLE scratch path so the utsushi-side
+    /// `structure` command / fixture generator can run over the SAME archive
+    /// the kaifuu bridge fixture is built from. Not part of any gate.
+    #[test]
+    #[ignore = "probe helper; materializes the synthetic archive to /tmp for manual utsushi runs"]
+    fn materialize_synthetic_two_scene_archive_to_scratch() {
+        let dir = PathBuf::from("/tmp/itotori-synth-archive/REALLIVEDATA");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Seen.txt"), build_synthetic_seen_txt_two_scenes()).unwrap();
+        fs::write(dir.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "entryScene": 1,
-  "sceneDispatchOrder": [1, 2],
+  "sceneDispatchOrder": [1],
   "scenes": [
     {
       "choices": [
@@ -53,59 +53,6 @@
       ],
       "nextScene": null,
       "sceneId": 1,
-      "selectionControl": "text-window"
-    },
-    {
-      "choices": [
-        {
-          "branchEntryScene": null,
-          "branchMessages": [
-            {
-              "order": 0,
-              "speaker": null,
-              "text": "あい",
-              "textSurface": "text_window:default"
-            }
-          ],
-          "label": "あ",
-          "optionIndex": 0
-        },
-        {
-          "branchEntryScene": null,
-          "branchMessages": [
-            {
-              "order": 0,
-              "speaker": null,
-              "text": "あい",
-              "textSurface": "text_window:default"
-            }
-          ],
-          "label": "い",
-          "optionIndex": 1
-        }
-      ],
-      "messages": [
-        {
-          "order": 0,
-          "speaker": null,
-          "text": "あい",
-          "textSurface": "text_window:default"
-        },
-        {
-          "order": 1,
-          "speaker": null,
-          "text": "あ",
-          "textSurface": "choice:0"
-        },
-        {
-          "order": 2,
-          "speaker": null,
-          "text": "い",
-          "textSurface": "choice:1"
-        }
-      ],
-      "nextScene": null,
-      "sceneId": 2,
       "selectionControl": "text-window"
     }
   ],
