@@ -184,10 +184,16 @@ impl fmt::Debug for WolfEncryptedArchiveKey {
     }
 }
 
-/// Fixture resolver: maps the reportable secret ref to fixture-safe key bytes.
-#[derive(Debug, Clone)]
+/// Fixture resolver: maps the reportable secret ref to fixture-safe key
+/// material. The raw key bytes are never stored bare: each entry holds the
+/// material inside a zeroize-on-drop [`WolfEncryptedArchiveKey`], and
+/// [`WolfEncryptedFixtureSecretResolver::resolve`] hands the key back BY REF so
+/// no raw key is ever copied out, re-stored, or emitted. `Debug` is safe because
+/// the key holder redacts its bytes. Deliberately not `Clone`: the resolved key
+/// must not be duplicated past this boundary.
+#[derive(Debug)]
 pub struct WolfEncryptedFixtureSecretResolver {
-    entries: Vec<(String, Vec<u8>)>,
+    entries: Vec<(String, WolfEncryptedArchiveKey)>,
 }
 
 impl WolfEncryptedFixtureSecretResolver {
@@ -195,20 +201,24 @@ impl WolfEncryptedFixtureSecretResolver {
         Self {
             entries: vec![(
                 WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF.to_string(),
-                SYNTHETIC_FIXTURE_KEY.to_vec(),
+                WolfEncryptedArchiveKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec()),
             )],
         }
     }
 
+    /// Resolve `secret_ref` to fixture-safe key material BY REF, or a typed
+    /// missing-secret error citing the requirement id. Never returns or copies
+    /// the raw key bytes: the borrow keeps the material inside the resolver's
+    /// zeroize-on-drop holder.
     fn resolve(
         &self,
         requirement_id: &str,
         secret_ref: &SecretRef,
-    ) -> Result<WolfEncryptedArchiveKey, WolfEncryptedSmokeError> {
+    ) -> Result<&WolfEncryptedArchiveKey, WolfEncryptedSmokeError> {
         self.entries
             .iter()
             .find(|(candidate, _)| candidate == secret_ref.as_str())
-            .map(|(_, bytes)| WolfEncryptedArchiveKey::from_resolved_bytes(bytes.clone()))
+            .map(|(_, key)| key)
             .ok_or_else(|| WolfEncryptedSmokeError::MissingSecret {
                 requirement_id: requirement_id.to_string(),
                 secret_ref_scheme: secret_ref.scheme(),
@@ -422,19 +432,24 @@ pub struct WolfEncryptedSmokeReport {
 
 impl WolfEncryptedSmokeReport {
     fn redacted_for_report(&self) -> Self {
+        // Mirror KAIFUU-072 (`Xp3CryptReport::redacted_for_report`): every
+        // free-text id/label string is scrubbed through
+        // `redact_for_log_or_report` at the serialization boundary. Hashes,
+        // counts, enums, the reportable `secret_ref`, and the schema version pass
+        // through unchanged; the raw key never enters this struct at all.
         Self {
             schema_version: self.schema_version.clone(),
-            capability_id: self.capability_id.clone(),
-            source_node_id: self.source_node_id.clone(),
-            support_boundary: self.support_boundary.clone(),
+            capability_id: redact_for_log_or_report(&self.capability_id),
+            source_node_id: redact_for_log_or_report(&self.source_node_id),
+            support_boundary: redact_for_log_or_report(&self.support_boundary),
             fixture_id: redact_for_log_or_report(&self.fixture_id),
-            engine_family: self.engine_family.clone(),
-            container: self.container.clone(),
+            engine_family: redact_for_log_or_report(&self.engine_family),
+            container: redact_for_log_or_report(&self.container),
             protection_profile: self.protection_profile,
             crypto_profile: self.crypto_profile,
             codec: self.codec,
             surface: self.surface,
-            secret_requirement_id: self.secret_requirement_id.clone(),
+            secret_requirement_id: redact_for_log_or_report(&self.secret_requirement_id),
             secret_ref: self.secret_ref.clone(),
             key_material_hash: self.key_material_hash.clone(),
             key_bytes: self.key_bytes,
@@ -448,7 +463,7 @@ impl WolfEncryptedSmokeReport {
                 .map(|stage| WolfEncryptedSmokeStageOutcome {
                     stage: stage.stage,
                     status: stage.status.clone(),
-                    detail: stage.detail.clone(),
+                    detail: redact_for_log_or_report(&stage.detail),
                 })
                 .collect(),
             extract_manifest: self
@@ -458,7 +473,7 @@ impl WolfEncryptedSmokeReport {
                 .collect(),
             patch_proof: self.patch_proof.redacted_for_report(),
             verify_proof: self.verify_proof.clone(),
-            delta_package_id: self.delta_package_id.clone(),
+            delta_package_id: redact_for_log_or_report(&self.delta_package_id),
             status: self.status.clone(),
         }
     }
@@ -496,7 +511,7 @@ pub fn run_wolf_encrypted_smoke_from_fixture(
     let key_material_hash = key.material_hash()?;
     let key_bytes = u32::try_from(key.byte_len()).unwrap_or(u32::MAX);
 
-    let extracted = decrypt_archive_members(&source_archive, &key)?;
+    let extracted = decrypt_archive_members(&source_archive, key)?;
     let extracted_ids: Vec<&str> = extracted
         .iter()
         .map(|member| member.member_id.as_str())
@@ -512,9 +527,9 @@ pub fn run_wolf_encrypted_smoke_from_fixture(
         .collect::<Result<Vec<_>, _>>()?;
 
     let patched = apply_trivial_patch(&extracted)?;
-    let rebuilt_archive = pack_encrypted_archive(&patched, &key)?;
+    let rebuilt_archive = pack_encrypted_archive(&patched, key)?;
     let rebuilt_archive_hash = proof_hash(&rebuilt_archive)?;
-    let verified = decrypt_archive_members(&rebuilt_archive, &key)?;
+    let verified = decrypt_archive_members(&rebuilt_archive, key)?;
     let patch_proof = verify_patch(&extracted, &verified)?;
     let verify_proof = build_verify_proof(&verified)?;
 
@@ -614,7 +629,10 @@ fn resolve_archive_bytes(
         WolfEncryptedArchiveSource::SyntheticStub => Ok(build_synthetic_wolf_encrypted_archive()),
         WolfEncryptedArchiveSource::LocalFile { path } => std::fs::read(fixture_dir.join(path))
             .map_err(|error| WolfEncryptedSmokeError::ContainerRead {
-                detail: error.to_string(),
+                // The OS error string embeds the joined local path. Redact at the
+                // boundary so the detail is scrubbed even before it reaches
+                // `Display`, never carrying a local path into any diagnostic.
+                detail: redact_for_log_or_report(&format!("read local Wolf archive: {error}")),
             }),
     }
 }
@@ -960,10 +978,10 @@ mod tests {
             )
             .expect("fixture key resolves");
         let source = build_synthetic_wolf_encrypted_archive();
-        let extracted = decrypt_archive_members(&source, &key).expect("source decrypts");
+        let extracted = decrypt_archive_members(&source, key).expect("source decrypts");
         let patched = apply_trivial_patch(&extracted).expect("patch applies");
-        let rebuilt = pack_encrypted_archive(&patched, &key).expect("repack succeeds");
-        let verified = decrypt_archive_members(&rebuilt, &key).expect("rebuilt decrypts");
+        let rebuilt = pack_encrypted_archive(&patched, key).expect("repack succeeds");
+        let verified = decrypt_archive_members(&rebuilt, key).expect("rebuilt decrypts");
         let patched_member = verified
             .iter()
             .find(|member| member.member_id == PATCH_MEMBER_ID)
@@ -1006,5 +1024,30 @@ mod tests {
         let debug = format!("{key:?}");
         assert!(debug.contains("[REDACTED:kaifuu.secret_redacted]"));
         assert!(!debug.contains("K073-WOLF-FIXTURE"));
+    }
+
+    #[test]
+    fn resolver_holds_key_ref_only_and_never_emits_raw_bytes() {
+        // The resolver now stores the key material inside a zeroize-on-drop
+        // holder, so even its own `Debug` must not leak the raw bytes.
+        let resolver = WolfEncryptedFixtureSecretResolver::fixture_default();
+        let debug = format!("{resolver:?}");
+        assert!(debug.contains("[REDACTED:kaifuu.secret_redacted]"));
+        assert!(!debug.contains("K073-WOLF-FIXTURE"));
+
+        // Resolution returns a borrow of the held key; the raw bytes are never
+        // copied out or serialized. The no-leak guard proves the material does
+        // not appear in the emitted report.
+        let key = resolver
+            .resolve(
+                WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID,
+                &SecretRef::new(WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF).unwrap(),
+            )
+            .expect("fixture key resolves");
+        let report =
+            run_wolf_encrypted_smoke_from_fixture(&fixture(), Path::new(".")).expect("smoke runs");
+        let json = report.stable_json().expect("stable json");
+        assert!(!key.appears_in(json.as_bytes()));
+        assert!(!json.contains("K073-WOLF-FIXTURE"));
     }
 }
