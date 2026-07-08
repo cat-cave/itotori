@@ -965,19 +965,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiRuntimeEvidenceRequest",
     responseSchema: "ApiRuntimeEvidenceResponse",
   },
-  // ovw-launch-pass-action — UI action that drives the next localization
-  // pass (folds queued corrections -> pass N+1) via the existing
-  // project-driven-executor / localize-fullproject-command driver. The HTTP
-  // surface is a thin adapter; the driver itself is unchanged.
-  "projects.launchPass": {
-    method: "POST",
-    pathTemplate: "/api/projects/launch-pass",
-    operationId: "projectsLaunchPass",
-    summary: "Launch the next localization pass (folds queued corrections).",
-    pathParams: [],
-    requestSchema: "ApiLaunchPassRequest",
-    responseSchema: "ApiLaunchPassResponse",
-  },
 };
 
 /** Stable, sorted list of every route id (deterministic iteration order). */

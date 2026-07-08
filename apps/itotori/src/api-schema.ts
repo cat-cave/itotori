@@ -159,12 +159,7 @@ export type ItotoriApiRouteId =
   | "findings.record"
   | "decisions.record"
   | "benchmarks.record"
-  | "runtimeEvidence.ingest"
-  // ovw-launch-pass-action — UI action that drives the next localization pass
-  // (folds queued corrections -> pass N+1) via the existing
-  // project-driven-executor / localize-fullproject-command driver. The HTTP
-  // surface is a thin adapter; the driver itself is unchanged.
-  | "projects.launchPass";
+  | "runtimeEvidence.ingest";
 
 export type ApiErrorResponse = {
   error: string;
@@ -340,10 +335,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "diagnostics",
   ],
   ReviewerBatchActionRequest: ["action", "actorUserId", "selections"],
-  // ovw-launch-pass-action — the typed launch-pass response envelope. The
-  // schemaVersion const pins the wire shape so a renamed / leaked field
-  // fails a contract test instead of silently drifting.
-  ApiLaunchPassResponse: ["schemaVersion", "passNumber", "startedAt", "outcome", "refusalMessage"],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
@@ -487,41 +478,6 @@ export type ApiRuntimeEvidenceRequest = {
 
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
-/**
- * ovw-launch-pass-action — request body for the launch-pass mutation. The UI
- * action wires through the typed client; the body carries the locale branch
- * the next pass is scoped to (the project / branch scope the driver uses) and
- * an optional caller-supplied actor. The actor field is optional because the
- * server boundary derives the canonical actor from the session, mirroring
- * `reviewer.itemAction`'s accept-the-server-derived-actor shape.
- */
-export type ApiLaunchPassRequest = {
-  /** The locale branch the next pass is scoped to (optional — the server
-   * falls back to the project's selected branch when omitted). */
-  localeBranchId?: string;
-  /** Caller-supplied actor user id (the server boundary re-derives it). */
-  actorUserId?: string;
-};
-
-/**
- * ovw-launch-pass-action — response body for the launch-pass mutation. A
- * thin, driver-agnostic confirmation the UI can render after a click: the
- * next pass number, the pass start timestamp, and a typed outcome
- * (`started` / `refused`) so the in-strip error surface can render a refused
- * launch identically to a network error.
- */
-export type ApiLaunchPassResponse = {
-  schemaVersion: "itotori.projects.launch-pass.v0";
-  /** The pass number that was launched (always > 0 on `started`). */
-  passNumber: number;
-  /** ISO timestamp the pass was started (always present on `started`). */
-  startedAt: string;
-  /** Outcome the server returned. */
-  outcome: "started" | "refused";
-  /** Refusal reason when `outcome === "refused"`; `null` on `started`. */
-  refusalMessage: string | null;
-};
-
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -558,7 +514,6 @@ export type ItotoriApiResponseBody =
   | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
-  | ApiLaunchPassResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -888,9 +843,6 @@ export function assertItotoriApiResponse(
       return;
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
-      return;
-    case "projects.launchPass":
-      assertLaunchPassResponse(value);
       return;
   }
 }
@@ -4164,50 +4116,6 @@ function assertRuntimeEvidenceResponse(
     assertString(response.patchExportId, "ApiRuntimeEvidenceResponse.patchExportId");
   }
   assertProjectDashboardStatus(response.dashboard, "ApiRuntimeEvidenceResponse.dashboard");
-}
-
-// ovw-launch-pass-action — assert the launch-pass response envelope. The
-// schemaVersion literal pins the wire shape; outcome pins to started/refused
-// (the in-strip error surface renders a refused outcome identically to a
-// network error so a refused launch is NEVER a silent 200).
-function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPassResponse {
-  const response = asStrictRecord(
-    value,
-    "ApiLaunchPassResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
-  );
-  assertLiteral(
-    response.schemaVersion,
-    "itotori.projects.launch-pass.v0",
-    "ApiLaunchPassResponse.schemaVersion",
-  );
-  assertPositiveInteger(response.passNumber, "ApiLaunchPassResponse.passNumber");
-  assertString(response.startedAt, "ApiLaunchPassResponse.startedAt");
-  assertEnum(response.outcome, ["started", "refused"] as const, "ApiLaunchPassResponse.outcome");
-  assertNullableString(response.refusalMessage, "ApiLaunchPassResponse.refusalMessage");
-  if (response.outcome === "refused") {
-    if (response.refusalMessage === null || response.refusalMessage.length === 0) {
-      throw new Error(
-        "ApiLaunchPassResponse.refusalMessage must be a non-empty string when outcome is 'refused'",
-      );
-    }
-  }
-}
-
-export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
-  return parseRequest("ApiLaunchPassRequest", () => {
-    const request = asRecord(body, "ApiLaunchPassRequest");
-    const result: ApiLaunchPassRequest = {};
-    if (request.localeBranchId !== undefined) {
-      assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
-      result.localeBranchId = request.localeBranchId;
-    }
-    if (request.actorUserId !== undefined) {
-      assertString(request.actorUserId, "ApiLaunchPassRequest.actorUserId");
-      result.actorUserId = request.actorUserId;
-    }
-    return result;
-  });
 }
 
 export function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {
