@@ -1754,6 +1754,44 @@ describe("ItotoriProjectRepository", () => {
       const repo = new ItotoriProjectRepository(context.db);
       await repo.reset(localActor);
       const project = projectFixture();
+      project.drafts = {
+        ...project.drafts,
+        "bridge-unit-branch-label": "Stay",
+        "bridge-unit-branch-target": "Stayed route starts.",
+      };
+      project.bridge.units = [
+        ...project.bridge.units,
+        {
+          bridgeUnitId: "bridge-unit-branch-label",
+          sourceUnitKey: "hello.scene.001.choice.001.label",
+          occurrenceId: "occurrence-branch-label",
+          sourceHash: "source-hash-branch-label",
+          sourceLocale: "ja-JP",
+          sourceText: "Stay label source.",
+          textSurface: "dialogue",
+          protectedSpans: [],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "hello.scene.001.choice.001.label",
+          },
+        },
+        {
+          bridgeUnitId: "bridge-unit-branch-target",
+          sourceUnitKey: "hello.scene.001.route.stay.001",
+          occurrenceId: "occurrence-branch-target",
+          sourceHash: "source-hash-branch-target",
+          sourceLocale: "ja-JP",
+          sourceText: "Stayed route source.",
+          textSurface: "dialogue",
+          protectedSpans: [],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "hello.scene.001.route.stay.001",
+          },
+        },
+      ];
       await repo.importSourceBundle(localActor, project);
 
       await repo.saveRuntimeReport(
@@ -1869,13 +1907,13 @@ describe("ItotoriProjectRepository", () => {
                   optionId: "019ed003-0000-7000-8000-000000000211",
                   label: "Stay",
                   labelBridgeUnitRef: {
-                    bridgeUnitId: "bridge-unit-test",
-                    sourceUnitKey: "hello.scene.001.line.001",
+                    bridgeUnitId: "bridge-unit-branch-label",
+                    sourceUnitKey: "hello.scene.001.choice.001.label",
                   },
                   targetRouteKey: "hello.stay",
                   targetBridgeUnitRef: {
-                    bridgeUnitId: "bridge-unit-test",
-                    sourceUnitKey: "hello.scene.001.line.001",
+                    bridgeUnitId: "bridge-unit-branch-target",
+                    sourceUnitKey: "hello.scene.001.route.stay.001",
                   },
                 },
               ],
@@ -2026,6 +2064,75 @@ describe("ItotoriProjectRepository", () => {
       `,
       );
       expect(evidenceArtifacts.rows).toEqual([]);
+
+      const branchEventEvidence = await context.pool.query<{
+        metadata: {
+          event?: unknown;
+        };
+      }>("select metadata from itotori_runtime_evidence_items where runtime_evidence_id = $1", [
+        "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
+      ]);
+      expect(branchEventEvidence.rows[0]?.metadata.event).toEqual({
+        branchEventId: "019ed003-0000-7000-8000-000000000201",
+        bridgeUnitRef: {
+          bridgeUnitId: "bridge-unit-test",
+          sourceUnitKey: "hello.scene.001.line.001",
+        },
+        frame: 2,
+        branchPointKey: "hello.choice.001",
+        promptText: "Choose a route",
+        selectedOptionId: "019ed003-0000-7000-8000-000000000211",
+        options: [
+          {
+            optionId: "019ed003-0000-7000-8000-000000000211",
+            label: "Stay",
+            labelBridgeUnitRef: {
+              bridgeUnitId: "bridge-unit-branch-label",
+              sourceUnitKey: "hello.scene.001.choice.001.label",
+            },
+            targetRouteKey: "hello.stay",
+            targetBridgeUnitRef: {
+              bridgeUnitId: "bridge-unit-branch-target",
+              sourceUnitKey: "hello.scene.001.route.stay.001",
+            },
+          },
+        ],
+      });
+
+      const branchUnitRefs = await context.pool.query<{
+        ref_role: string;
+        bridge_unit_id: string;
+        source_unit_key: string;
+        metadata: Record<string, unknown>;
+      }>(
+        `
+        select ref_role, bridge_unit_id, source_unit_key, metadata
+        from itotori_runtime_evidence_bridge_unit_refs
+        where runtime_evidence_id = $1
+        order by ref_role
+      `,
+        ["019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201"],
+      );
+      expect(branchUnitRefs.rows).toEqual([
+        {
+          ref_role: "branch_label",
+          bridge_unit_id: "bridge-unit-branch-label",
+          source_unit_key: "hello.scene.001.choice.001.label",
+          metadata: { optionId: "019ed003-0000-7000-8000-000000000211" },
+        },
+        {
+          ref_role: "branch_target",
+          bridge_unit_id: "bridge-unit-branch-target",
+          source_unit_key: "hello.scene.001.route.stay.001",
+          metadata: { optionId: "019ed003-0000-7000-8000-000000000211" },
+        },
+        {
+          ref_role: "primary",
+          bridge_unit_id: "bridge-unit-test",
+          source_unit_key: "hello.scene.001.line.001",
+          metadata: {},
+        },
+      ]);
     } finally {
       await context.close();
     }
