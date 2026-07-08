@@ -63,7 +63,7 @@
       "category": "acceptance_criteria",
       "locations": [
         {
-          "path": "docs/audit-playbook.md"
+          "path": "docs/dev/audit-playbook.md"
         }
       ],
       "description": "A finding without explicit repair criteria is not actionable by the implementation worker.",
@@ -142,7 +142,7 @@
       "category": "documentation",
       "locations": [
         {
-          "path": "docs/audit-playbook.md"
+          "path": "docs/dev/audit-playbook.md"
         }
       ],
       "description": "The playbook could eventually include more examples for downgrade decisions and duplicate findings.",

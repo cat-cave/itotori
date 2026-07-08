@@ -121,8 +121,8 @@ Five rules, sourced from
   output.
 - **`project_no_timeline`** — no eng-month/week/year estimates.
 
-Authoritative anti-pattern enforcement:
-[`orchestration-operating-model.md`](orchestration-operating-model.md).
+Authoritative anti-pattern enforcement: the dev doc
+[`orchestration-operating-model.md`](dev/orchestration-operating-model.md).
 
 ## Where To Drill In
 

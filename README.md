@@ -71,13 +71,14 @@ crates/
   kaifuu-*/
   utsushi-*/
 docs/
-  architecture.md
   alpha-proof.md
-  spec-dag.md
+  alpha-readiness.md
+  install.md
   frontend.md              # SPA / @itotori/ds / typed API client notes
+  dev/                     # contributor / developer-oriented docs (see CONTRIBUTING.md)
 ```
 
-Vite+ is the high-level TypeScript/web workspace surface (the `vp` CLI; task graph in `vite.config.ts`). Cached/affected task orchestration — affected-lane selection and the Vite+ task cache policy — is governed by [docs/ci-cache-and-affected.md](docs/ci-cache-and-affected.md) (`scripts/affected.mjs` plus the `vp` task cache). Cargo remains the Rust build and test authority. The root `justfile` orchestrates both.
+Vite+ is the high-level TypeScript/web workspace surface (the `vp` CLI; task graph in `vite.config.ts`). Cargo remains the Rust build and test authority. The root `justfile` orchestrates both. The contributor / developer docs (dev toolchain, internal architecture, qd DAG workflow, worktree lifecycle, testing standard, CI policy, audit playbook) live under [`docs/dev/`](docs/dev/README.md); start at [`CONTRIBUTING.md`](CONTRIBUTING.md) if you are going to change code.
 
 ## Status
 

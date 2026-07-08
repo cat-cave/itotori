@@ -19,7 +19,7 @@ Rust and Node versions the CI uses.
 Inside the dev shell the toolchain is fixed: Rust (`rust-toolchain.toml`) and
 Node (`.node-version`). You do **not** need a system-wide Rust/Node install if
 you use the flake. Toolchain-bump policy lives in
-[`toolchain-policy.md`](toolchain-policy.md).
+[`docs/dev/toolchain-policy.md`](dev/toolchain-policy.md).
 
 If you are not using direnv, prefix commands with `nix develop -c` (or
 `direnv exec .`) so they run inside the dev shell.

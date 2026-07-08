@@ -514,7 +514,7 @@ structurally needs.
 1. **No real-corpus test gate.** The repo declares the policy of
    "private local corpora can support local benchmark work, but
    committed tests must not point at them"
-   (`docs/testing-standard.md:108-110`). The test infrastructure has no
+   ( `docs/dev/testing-standard.md:108-110`). The test infrastructure has no
    counterpart that lets a developer say "this test SHOULD run when
    `/scratch/itotori-research/sweetie-hd/` exists and skip otherwise."
    Closure: add an `env-gated test` helper that skips with a clear
@@ -670,7 +670,7 @@ archive_bytes.len()`). Currently `entries.len() == 0`. Closes the
 ---
 
 Filed by the test-quality subagent, no code changes attached.
-Cross-references: `docs/testing-standard.md`,
+Cross-references: `docs/dev/testing-standard.md`,
 `docs/audits/dag-critique.md`,
 `roadmap/audits/AUDIT-ITOTORI-015-20260624T032727Z.json`,
 `roadmap/audits/AUDIT-ITOTORI-016-20260624T032727Z.json`,

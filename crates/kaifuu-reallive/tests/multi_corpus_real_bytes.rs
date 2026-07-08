@@ -1,6 +1,6 @@
 //! FIX-4 multi-game-validation real-bytes harness.
 //!
-//! Project law (`docs/orchestration-operating-model.md`,
+//! Project law (`docs/dev/orchestration-operating-model.md`,
 //! multi-game-validation): RealLive engine-family behaviour must validate
 //! against **>= 2 real RealLive games**. On main only Oshioki Sweetie HD was
 //! staged; FIX-4 sources a second genuine RealLive title (Kanon, a 1.2.6.8

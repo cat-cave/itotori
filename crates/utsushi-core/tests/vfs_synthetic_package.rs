@@ -362,7 +362,7 @@ fn fixture_package() -> Arc<FixturePolicyPackage> {
 // synthetic fixture exercises the `AssetPackage` boundary directly. The
 // composite path is exercised by `composite_asset_package.rs` and the
 // real-bytes integration suite. See
-// `docs/orchestration-operating-model.md` "Legacy-path preservation"
+// `docs/dev/orchestration-operating-model.md` "Legacy-path preservation"
 // (2026-06-24) for the no-shim rule.
 
 #[test]

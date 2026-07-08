@@ -21,7 +21,7 @@ encode.
 ## Milestone Framework
 
 Authoritative tier definitions and per-tier acceptance criteria live in
-[`docs/project-readiness.md`](project-readiness.md). This project has **no
+[`docs/project-readiness.md`](../project-readiness.md). This project has **no
 external timeline**; eng-month/week/year cost framing is off-shape and must not
 appear in orchestrator outputs.
 
@@ -37,7 +37,7 @@ definition; beta requires ≥2 games per engine.
 
 The detailed provider boundary, secret handling, OpenRouter routing, local
 endpoint, prompt logging, structured-output fallback, and recorded-fixture rules
-are defined in [ADR 0002](adrs/0002-provider-routing-and-recording.md).
+are defined in [ADR 0002](../adrs/0002-provider-routing-and-recording.md).
 itotori-specific rules:
 
 - Every model invocation declares an explicit **(model id, provider id) pair** —

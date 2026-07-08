@@ -9,7 +9,7 @@ orchestrator operating contract and itotori's DAG quality bars live in
 page keeps only the itotori-specific roadmap facts.
 
 > **Alpha definition.** The redefined alpha gates live at the top of
-> [`project-readiness.md`](project-readiness.md). The alpha gate is that 6-item
+> [`project-readiness.md`](../project-readiness.md). The alpha gate is that 6-item
 > list, not the totality of nodes labelled `ALPHA-*` in the DAG.
 
 ## Committed Export And Validation

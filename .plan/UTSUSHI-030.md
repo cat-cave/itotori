@@ -611,7 +611,7 @@ the new `statePath` and `runtimeArtifact` evidence ref shapes.
 
 ## 7. Test plan
 
-Tests follow `docs/testing-standard.md` — falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md` — falsifiable, behavior-named,
 synthetic fixtures only, no live providers.
 
 ### 7.1 Bridge schema (`packages/localization-bridge-schema/test/schema.test.ts`, additive block)

@@ -246,7 +246,7 @@ declared_in_manifest: false }`. The smoke constructs this outcome
 ## 7. Test plan
 
 Tests live in `crates/utsushi-core/tests/recording_metadata.rs`.
-Tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline fixtures only, no live providers, no host paths.
 
 ### 7.1 Happy path

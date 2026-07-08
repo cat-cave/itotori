@@ -1,7 +1,7 @@
 # Testing Standard
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](../project-readiness.md).
 > "Alpha proof" mentions below refer to the `ALPHA-009` workflow and the
 > SHARED-025 manifest contract — mechanisms that support the redefined
 > dogfood point, not the alpha gate itself. Per the multi-game and
@@ -86,16 +86,16 @@ near the end of this document.
 
 The root `justfile` is the shared command surface:
 
-| Command                  | Purpose                                                                                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.                    |
-| `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                          |
-| `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                                |
-| `just browser-e2e`       | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `docs/ci-lanes.md`. |
-| `just periodic-strict`   | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `docs/ci-lanes.md`.                                          |
-| `just fixtures-validate` | Validates committed public fixture manifests and hashes.                                                                                                                                |
-| `just roadmap-validate`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                                      |
-| `just test-ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.        |
+| Command                  | Purpose                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just check`             | Fast local gate: Vite+ metadata, roadmap validation, public fixture manifest validation, toolchain policy, TypeScript typecheck, Rust format check, and Cargo check.               |
+| `just test`              | Runs TypeScript Vitest suites through Vite+ and Rust `cargo test --workspace`.                                                                                                     |
+| `just ci`                | Full CI gate: check, build, DB migration, tests, clippy, and cargo-deny.                                                                                                           |
+| `just browser-e2e`       | STRICT/PERIODIC browser lane: runs the runtime-web review Playwright e2e in the nix-provided Chromium. OUTSIDE per-gate CI. Fails LOUD if no runnable Chromium. See `ci-lanes.md`. |
+| `just periodic-strict`   | Periodic/strict lane entry point: `browser-e2e` + `real-bytes-oracle`. OUTSIDE per-gate CI (nightly cron + on-demand). See `ci-lanes.md`.                                          |
+| `just fixtures-validate` | Validates committed public fixture manifests and hashes.                                                                                                                           |
+| `just roadmap-validate`  | Validates the machine-readable spec DAG and audit report examples.                                                                                                                 |
+| `just test-ratio`        | Prints the test-seam classifier report: behavior-vs-internal ratio by seam (real-bytes / real-http / dom / real-db vs internal-handler / mocked / internal). Report, not a gate.   |
 
 Package-level commands are allowed for tight loops, but PR verification should
 name the root command that protects the changed behavior.
@@ -104,7 +104,7 @@ CI is split into two lanes — a fast, deterministic, browser-free per-gate lane
 (`just ci` / `qd-full-ci`: synthetic + real-HTTP `/api` contract tests + the
 OpenAPI drift test + the jsdom UI unit lane) and a periodic/strict lane
 (`just periodic-strict`: the real-browser Playwright e2e + the real-bytes
-oracle). `docs/ci-lanes.md` is the canonical map of which tests run where and
+oracle). `ci-lanes.md` is the canonical map of which tests run where and
 why; the browser/real-bytes proofs are deliberately kept OUT of the per-gate
 lane so it stays fast and deterministic.
 
@@ -447,7 +447,7 @@ machine-local runtime details.
 
 Localization quality tests and benchmark fixtures use the `itotori-lqa-1`
 taxonomy from
-[ADR 0003](adrs/0003-localization-quality-taxonomy.md) and
+[ADR 0003](../adrs/0003-localization-quality-taxonomy.md) and
 [localization-quality-taxonomy.json](localization-quality-taxonomy.json).
 
 Do not use DAG or audit `P0`-`P3` values as translation quality severities.
@@ -544,7 +544,7 @@ Not allowed in CI:
   payloads into committed paths.
 
 Live provider experiments are opt-in local work under the provider policy in
-`docs/orchestration-operating-model.md`. They may use credentials already loaded
+`orchestration-operating-model.md`. They may use credentials already loaded
 by the user or explicitly loaded from approved local-only env sources, record
 provider/model/cost metadata in ignored artifacts, and commit only sanitized
 summaries or public fixtures.

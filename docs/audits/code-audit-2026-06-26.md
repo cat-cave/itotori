@@ -32,7 +32,7 @@ rlop/module_str.rs` at 1,758, `openrouter.ts` at 1,738,
   orchestration ledger (per `.qd/config.toml`, `.qd/agents.md`, and
   `qd-dag` skill), but ZERO files under `docs/` mention `qd` — 51
   invocations of `node scripts/spec-dag.mjs ...` survive in
-  `docs/spec-dag.md`, `docs/orchestration-operating-model.md`, and
+  `docs/dev/spec-dag.md`, `docs/dev/orchestration-operating-model.md`, and
   `docs/kaifuu-engine-playbook.md`. P2.
 - **Two small doc-vs-code lies** introduced by ITOTORI-226 + ITOTORI-231:
   `openrouter.ts:1580` says the DEV_PAIR is `deepseek-v3.2-exp`, but
@@ -95,7 +95,7 @@ roadmap-pop` (legacy `spec-dag.mjs`) and `qd-import` (qdcli). Neither
 ### F-002 — P2 — Docs reference deleted orchestration tooling (`spec-dag.mjs` instead of `qd`)
 
 - **Evidence.** `rg -c "node scripts/spec-dag\\.mjs" docs/` returns 51
-  hits across `docs/spec-dag.md`, `docs/orchestration-operating-model.md`,
+  hits across `docs/dev/spec-dag.md`, `docs/dev/orchestration-operating-model.md`,
   `docs/kaifuu-engine-playbook.md`, and several proposal docs.
   `rg -c "qd " docs/` returns 0 — no doc file even mentions the new
   ledger. Yet `.qd/config.toml`, `.qd/agents.md`, `.qd/skills/qd-dag/
@@ -117,13 +117,13 @@ roadmap:issues / roadmap:ready / roadmap:test / roadmap:validate`
   the lifecycle commands (`claim`, `worktree`, `complete`,
   `ingest-audit`), drop the corresponding `justfile` recipes
   (`roadmap-pop`, `roadmap-ready` if redundant with qd), drop the
-  `package.json` scripts, and rewrite `docs/spec-dag.md` +
-  `docs/orchestration-operating-model.md` + the playbook to teach
+  `package.json` scripts, and rewrite `docs/dev/spec-dag.md` +
+  `docs/dev/orchestration-operating-model.md` + the playbook to teach
   `qd` — or (b) explicitly document that the two surfaces co-exist
   during a transition window. Today neither path is chosen.
 - **Suggested mint.** `ITOTORI-300` — "Adopt qdcli as the sole
   orchestration surface; delete `spec-dag.mjs` lifecycle commands and
-  rewrite `docs/spec-dag.md` + `orchestration-operating-model.md` +
+  rewrite `docs/dev/spec-dag.md` + `docs/dev/orchestration-operating-model.md` +
   `kaifuu-engine-playbook.md` to teach `qd`".
 
 ### F-003 — P3 — Comment-level doc-vs-code lies (`DEV_PAIR` model id and cost cap)

@@ -570,7 +570,7 @@ Semantic-code naming follows the `kaifuu.*` shape used throughout
 
 ## 10. Test Plan
 
-All tests use behaviour-claim names per `docs/testing-standard.md` §Behavior
+All tests use behaviour-claim names per `docs/dev/testing-standard.md` §Behavior
 Naming. Each test name is a falsifiable claim.
 
 ### Unit-level (per-module `#[cfg(test)] mod tests`)

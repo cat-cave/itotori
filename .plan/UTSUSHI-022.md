@@ -551,7 +551,7 @@ unsupported semantics.
 
 ## 9. Test plan
 
-All tests follow `docs/testing-standard.md`: behavior-named, falsifiable,
+All tests follow `docs/dev/testing-standard.md`: behavior-named, falsifiable,
 no live providers, synthetic/inline fixtures only. Tests live under
 `crates/utsushi-core/src/sink/` (`#[cfg(test)] mod tests`) and
 `crates/utsushi-core/tests/sink_contracts.rs` (integration).

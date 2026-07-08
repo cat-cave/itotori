@@ -586,7 +586,7 @@ contract.
 
 Tests live in `crates/kaifuu-reallive/tests/smoke.rs` and use synthetic
 fixtures under `crates/kaifuu-reallive/tests/fixtures/`. Test naming follows
-`docs/testing-standard.md` — falsifiable behavior names, no
+`docs/dev/testing-standard.md` — falsifiable behavior names, no
 `works`/`handles_data` placeholders.
 
 ### 9.1 Fixture set
@@ -620,7 +620,7 @@ golden as a regression guard.
 A new entry is added to `fixtures/public/manifest.schema.json` coverage by
 adding a `crates/kaifuu-reallive/tests/fixtures/` manifest. **OR**: per the
 testing-standard fixture-layering policy
-(`docs/testing-standard.md:97-110`), crate-local synthetic fixtures inside a
+(`docs/dev/testing-standard.md:97-110`), crate-local synthetic fixtures inside a
 crate's `tests/fixtures/` directory may stay outside the
 `fixtures/public/` manifest pipeline. Decision: **keep these fixtures
 crate-local**, since they are KAIFUU-173-internal smoke artifacts and never
@@ -825,7 +825,7 @@ checks them off as the implementation lands.
 | **Per-scene header variability** — real-game SEEN.TXT scene blobs may carry per-scene headers that the synthetic fixture omits.                                                            | The smoke treats `entry.offset` as bytecode start (§3.1 row 4). Real-game discovery is ALPHA-006 territory. When evidence surfaces, a separate node adds per-scene header decoding; until then, unexpected headers emit `kaifuu.reallive.invalid_archive_envelope` Fatal.                                                         |
 | **Operand-shape variability for named opcodes** — a real-game `TextDisplay` may carry an unexpected operand shape.                                                                         | Covered by `kaifuu.reallive.unrecognized_operand_shape` (Warning). AST is still emitted with verbatim operand bytes; KAIFUU-174 deduces what to do with them.                                                                                                                                                                     |
 | **Endianness assumption** — RealLive is little-endian (Windows-native). The parser assumes LE throughout.                                                                                  | Documented assumption; the synthetic fixture is LE. No big-endian RealLive variants are documented.                                                                                                                                                                                                                               |
-| **JSON golden brittleness** — semantic JSON goldens may need updates when field ordering or schema changes.                                                                                | Goldens are reviewed under the testing-standard golden policy (`docs/testing-standard.md:112-131`). Each update gets a justification in the PR body. Field-by-field assertions run **before** the JSON comparison so the failure mode is informative.                                                                             |
+| **JSON golden brittleness** — semantic JSON goldens may need updates when field ordering or schema changes.                                                                                | Goldens are reviewed under the testing-standard golden policy (`docs/dev/testing-standard.md:112-131`). Each update gets a justification in the PR body. Field-by-field assertions run **before** the JSON comparison so the failure mode is informative.                                                                         |
 | **Worker accidentally consults rlvm during implementation and forgets to log it** — the rlvm clean-room checklist's "if a future worker reads rlvm" item is left unchecked in KAIFUU-172.  | Plan requires the worker to either (a) not consult rlvm at all, or (b) check the box and log the file path + confirmed hypothesis in the readiness-record addendum. Auditor rejects if rlvm was consulted but the box stays unchecked.                                                                                            |
 
 ---
@@ -911,7 +911,7 @@ kaifuu-reallive` succeeds.
   rules.
 - `docs/kaifuu-fixture-policy.md` — public-fixture layering, license
   review, semantic capability errors.
-- `docs/testing-standard.md` — falsifiable test names, fixture layering,
+- `docs/dev/testing-standard.md` — falsifiable test names, fixture layering,
   golden-fixture policy.
 - `docs/kaifuu-adapters/reallive.md` — KAIFUU-172 readiness record;
   KAIFUU-173 addendum is appended.

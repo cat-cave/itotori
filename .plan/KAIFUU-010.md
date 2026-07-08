@@ -471,7 +471,7 @@ The synthetic baseline pipeline already emits the expected file. After regenerat
 
 ### 9.5 Documentation
 
-`docs/subprojects-kaifuu.md` v0.2 patch result section: append a short subsection citing the new categories and the output-hash rollup formula. `docs/subprojects-itotori.md` ingestion section: append the new `ingest-patch-result` command. `docs/testing-standard.md` is **not** modified (the standard already covers negative fixtures; this slice adds four more without changing the standard).
+`docs/subprojects-kaifuu.md` v0.2 patch result section: append a short subsection citing the new categories and the output-hash rollup formula. `docs/subprojects-itotori.md` ingestion section: append the new `ingest-patch-result` command. `docs/dev/testing-standard.md` is **not** modified (the standard already covers negative fixtures; this slice adds four more without changing the standard).
 
 ---
 

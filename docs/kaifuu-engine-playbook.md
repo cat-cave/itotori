@@ -11,10 +11,10 @@ adapter worker. It complements:
   classes, encrypted corpus handling, and redaction rules.
 - [kaifuu-patch-safety.md](kaifuu-patch-safety.md) for encoding, path,
   rollback, and atomic output rules.
-- [testing-standard.md](testing-standard.md) for adapter tests and fixture
-  round-trips.
-- [worktree-lifecycle.md](worktree-lifecycle.md) for agent branch and worktree
-  ownership.
+- the dev doc [testing-standard.md](dev/testing-standard.md) for adapter
+  tests and fixture round-trips.
+- the dev doc [worktree-lifecycle.md](dev/worktree-lifecycle.md) for agent
+  branch and worktree ownership.
 - [subprojects-kaifuu.md](subprojects-kaifuu.md) for the current fixture
   adapter CLI surface.
 
@@ -28,9 +28,9 @@ tests, helper boundaries, and semantic errors prove that exact scope.
 An implementation agent may start adapter code only after these gates are true:
 
 1. The roadmap node, branch, and worktree are owned by the worker that is making
-   the change. Use the canonical lifecycle in
-   [worktree-lifecycle.md](worktree-lifecycle.md); do not work from chat memory
-   or an unclaimed branch.
+   the change. Use the canonical lifecycle in the dev doc
+   [worktree-lifecycle.md](dev/worktree-lifecycle.md); do not work from chat
+   memory or an unclaimed branch.
 2. A tracked adapter readiness record exists or is added in the first slice. Use
    the template below. The record may live in the adapter README, a future
    `docs/kaifuu-adapters/<engine>.md`, or another tracked document.
@@ -70,7 +70,8 @@ the claim cannot be made durable, return the node to `ready` before further
 work.
 
 For parallel adapter workers, use disjoint worker branches and worktrees as
-defined in [worktree-lifecycle.md](worktree-lifecycle.md). Before editing, check
+defined in the dev doc
+[worktree-lifecycle.md](dev/worktree-lifecycle.md). Before editing, check
 the branch and dirty state from inside the assigned worktree. If unrelated
 changes are present, leave them alone and keep the adapter slice scoped to the
 claimed files.
@@ -553,8 +554,8 @@ Record skipped commands with the reason.
 
 ## Adapter PR Checklist
 
-- [ ] Roadmap node, branch, and worktree match
-      [worktree-lifecycle.md](worktree-lifecycle.md).
+- [ ] Roadmap node, branch, and worktree match the dev doc
+      [worktree-lifecycle.md](dev/worktree-lifecycle.md).
 - [ ] Readiness record is tracked and complete enough for the initial support
       boundary.
 - [ ] Public fixture manifest validates and includes provenance, license,

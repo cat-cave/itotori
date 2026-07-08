@@ -826,7 +826,7 @@ inflation"; the generic schema-level check is the backstop.
 
 ## 10. Test plan
 
-All tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+All tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline / file fixtures only, no live providers, no private
 corpora. Unit tests live with their modules; integration tests under
 `crates/utsushi-core/tests/conformance_trace_branch.rs`.

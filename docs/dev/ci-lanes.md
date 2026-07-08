@@ -2,7 +2,7 @@
 
 Itotori's CI is split into two lanes with different determinism, cost, and
 provisioning contracts. This document is the canonical map of **which tests run
-where and why**. See also `docs/testing-standard.md` (test-shape rules) and
+where and why**. See also `testing-standard.md` (test-shape rules) and
 `docs/real-bytes-periodic-oracle.md` (the real-bytes ground-truth anchor).
 
 ## Why two lanes

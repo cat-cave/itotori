@@ -1,7 +1,7 @@
 # Architecture
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](../project-readiness.md).
 > References below to "alpha proof" describe the SHARED-025 manifest contract
 > and the post-alpha dogfood vertical (the configured alpha corpus on
 > RealLive), not the alpha gate. Alpha-ready means the architecture-proven
@@ -14,7 +14,7 @@ subprojects remain independent at runtime, but they evolve against the same
 catalog, bridge, patch, delta, readiness, and runtime evidence schemas. Itotori
 reads owned-game bytes from the configured corpus vault — managed by the sibling
 vault-curation project — strictly read-only through the contract in
-[itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
+[itotori-vault-source-adapter.md](../itotori-vault-source-adapter.md).
 
 ## Boundaries
 
@@ -35,7 +35,7 @@ vault-curation project — strictly read-only through the contract in
 - **Utsushi** consumes patched game directories and emits runtime traces, captures, and smoke reports.
 
 Search and indexing infrastructure is governed by
-[ADR 0004](adrs/0004-search-and-indexing-infrastructure.md). Exact Postgres
+[ADR 0004](../adrs/0004-search-and-indexing-infrastructure.md). Exact Postgres
 indexes are the required baseline; semantic retrieval is an optional capability
 with deterministic exact fallback when pgvector or embeddings are unavailable.
 
@@ -84,7 +84,7 @@ rejected by `JobLeaseRevalidationError` is counted as `leaseLost` (neither `succ
 
 ## Tooling
 
-Vite+ is the TypeScript/web workspace command surface (the `vp` CLI; task graph in `vite.config.ts`). Cached/affected task orchestration — affected-lane selection and the Vite+ task cache policy — is governed by [docs/ci-cache-and-affected.md](docs/ci-cache-and-affected.md) (`scripts/affected.mjs` plus the `vp` task cache). Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
+Vite+ is the TypeScript/web workspace command surface (the `vp` CLI; task graph in `vite.config.ts`). Cached/affected task orchestration — affected-lane selection and the Vite+ task cache policy — is governed by [ci-cache-and-affected.md](ci-cache-and-affected.md) (`scripts/affected.mjs` plus the `vp` task cache). Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
 
 ## Studio SPA — design system, typed API client, app shell
 
@@ -113,9 +113,9 @@ Studio screen node inherits, so the patterns below are the precedent:
   follow-on screen, not a dual path for a replaced view).
 
 The full set of patterns (typed-query example, deleted predecessors,
-downstream-screen patterns) lives in [frontend.md](frontend.md); the
+downstream-screen patterns) lives in [frontend.md](../frontend.md); the
 design ↔ repo alignment for the hi-fi Studio epic lives in
-[`design/hifi/README.md`](design/hifi/README.md).
+[`design/hifi/README.md`](../design/hifi/README.md).
 
 ## Current Alpha Proof
 
@@ -134,4 +134,4 @@ the literal "Hello World" workflow. The first real-engine vertical is `ALPHA-006
 per the vault-source adapter contract). There is no second,
 weaker Hello World source of truth: `just hello` survives only as a compatibility
 alias that delegates to `just alpha-proof` and cannot diverge. See
-[alpha-proof.md](alpha-proof.md).
+[alpha-proof.md](../alpha-proof.md).

@@ -714,7 +714,7 @@ declared_in_manifest: false }`.
 
 ## 7. Test plan
 
-Tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline fixtures only, no live providers.
 
 ### 7.1 Frame check (`capture_recording/frame_check.rs::tests`)

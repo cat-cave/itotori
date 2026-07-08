@@ -17,6 +17,8 @@ These docs describe the monorepo as a three-project suite:
 - Kaifuu: extraction, patching, verification, and delta packages.
 - Utsushi: runtime validation evidence.
 
+## User-facing docs (start here)
+
 New users start with [alpha-readiness.md](alpha-readiness.md) (the checked alpha
 readiness README) and [install.md](install.md) (fresh-clone setup + the
 public-fixture demo), then [security-and-limitations.md](security-and-limitations.md)
@@ -26,30 +28,22 @@ readiness checklist command
 `just alpha-readiness-checklist`) re-derives those readiness claims from the
 generated capability + benchmark artifacts so the docs cannot drift.
 
-Then read [alpha-proof.md](alpha-proof.md) and [architecture.md](architecture.md).
-The alpha localization project readiness definition and tier matrix live in
-[project-readiness.md](project-readiness.md).
-The current spec dashboard is documented in
-[`packages/spec-dag-dashboard/README.md`](../packages/spec-dag-dashboard/README.md),
-and the current runtime evidence dashboard is documented in
-[`apps/runtime-web-review/README.md`](../apps/runtime-web-review/README.md).
-The Studio SPA — the React app shell at
-[`apps/itotori/src/ui/`](../apps/itotori/src/ui/), the Dusk Observatory
-design system at
+Then read [alpha-proof.md](alpha-proof.md) and
+[project-readiness.md](project-readiness.md). The Studio SPA — the React
+app shell at [`apps/itotori/src/ui/`](../apps/itotori/src/ui/), the Dusk
+Observatory design system at
 [`packages/itotori-ds/`](../packages/itotori-ds/), and the typed API
 client (`fnd-api-client`) at
 [`apps/itotori/src/api-client.ts`](../apps/itotori/src/api-client.ts) — is
 documented in [frontend.md](frontend.md). The design ↔ repo alignment for the
 hi-fi Studio epic lives in
 [`docs/design/hifi/README.md`](design/hifi/README.md).
-Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 The product SEMVER, the publishable surface, and the relation between the
 product version and the format-level `schemaVersion` markers are documented in
 [versioning-and-release-policy.md](versioning-and-release-policy.md). The
 per-format stability tiers, the backward-compatibility / version-negotiation
 policy, and the cross-version compatibility pin are documented in
 [format-stability-and-compatibility-policy.md](format-stability-and-compatibility-policy.md).
-Testing conventions live in [testing-standard.md](testing-standard.md).
 Itotori permission gates and the alpha/local bootstrap actor model are documented in
 [permissions.md](permissions.md).
 Localization quality claims, benchmark taxonomy, seeded-defect protocol, and
@@ -76,17 +70,18 @@ The repeatable workflow for adding new Kaifuu engine adapters lives in
 Kaifuu encoding, normalization, atomic output, traversal, rollback, and
 partial-write safety rules live in
 [kaifuu-patch-safety.md](kaifuu-patch-safety.md).
-Affected detection and CI cache rules live in
-[ci-cache-and-affected.md](ci-cache-and-affected.md).
-The implementation roadmap lives in [spec-dag.md](spec-dag.md) and
-`roadmap/spec-dag.json`. Agent-led implementation should also follow
-[orchestration-operating-model.md](orchestration-operating-model.md) and the
-[agent worktree lifecycle](worktree-lifecycle.md).
 `SHARED-025` has landed the alpha proof manifest contract. `ALPHA-006` is the
 explicit first real-engine alpha proof target, sourced from `/archive/vault/`
 via the vault-source adapter. `ALPHA-007` is the public generic alpha-proof
 workflow command, and `ALPHA-009` retires the hello-world fixture gate in favor
 of that alpha proof.
+Affected detection and CI cache rules live in the dev doc
+[`docs/dev/ci-cache-and-affected.md`](dev/ci-cache-and-affected.md).
+The implementation roadmap lives in
+[`docs/dev/spec-dag.md`](dev/spec-dag.md) and `roadmap/spec-dag.json`.
+Agent-led implementation should also follow the dev doc
+[`docs/dev/orchestration-operating-model.md`](dev/orchestration-operating-model.md)
+and the [agent worktree lifecycle](dev/worktree-lifecycle.md).
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
 Search and indexing infrastructure, including exact indexes, pgvector handling,
@@ -101,3 +96,12 @@ Research recommendations are historical evidence unless mapped to live DAG
 nodes. The current research-to-DAG mapping lives in
 [research/research-to-dag-crosswalk.md](research/research-to-dag-crosswalk.md);
 the research index is [research/README.md](research/README.md).
+
+## Developer / contributor docs
+
+The **developer / contributor surface** lives under
+[`docs/dev/`](dev/README.md): dev toolchain policy, internal architecture,
+the qd DAG / orchestration workflow, worktree lifecycle, testing standard,
+CI / dependency policy, and the audit playbook. If you are going to change
+code, start with [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root
+and follow its pointer into [`docs/dev/`](dev/README.md).

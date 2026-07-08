@@ -24,7 +24,7 @@ The product workflow consumes these existing contracts:
 - [ADR 0002](adrs/0002-provider-routing-and-recording.md): provider routing,
   fake/recorded provider defaults, cost recording, privacy, prompt/output
   logging, and live-call opt-in rules.
-- [Orchestration operating model](orchestration-operating-model.md): durable
+- [Orchestration operating model](dev/orchestration-operating-model.md): durable
   audit disposition, P0/P1 blocking behavior, P2/P3 follow-up handling, and
   offline CI expectations.
 

@@ -7,7 +7,7 @@
 // rendered DOM node) over WHITE-BOX / mocked / implementation-coupled tests
 // that assert on internal call shape or stubbed return values. This is a BIAS,
 // not a ban: a pure model-logic unit test (no boundary to observe) is fine.
-// See docs/testing-standard.md § "Behavior-First Principle".
+// See docs/dev/testing-standard.md § "Behavior-First Principle".
 //
 // This script makes drift VISIBLE. It scans the tracked test suites
 // (apps/*/test, packages/*/test, crates/) and classifies each test FILE into
@@ -335,7 +335,7 @@ function runScan() {
 
   const out = process.stdout;
   out.write("fe-test-behavior-standard: test-seam classifier (behavior-first bias)\n");
-  out.write("see docs/testing-standard.md § Behavior-First Principle\n");
+  out.write("see docs/dev/testing-standard.md § Behavior-First Principle\n");
   out.write(`scanned: ${tsFiles.length} TS test files + ${rustFiles.length} Rust test files `);
   out.write(
     "(apps/*/test, packages/*/test, crates/; dev-harness suites under scripts/ + suite/scripts/ are excluded)\n\n",

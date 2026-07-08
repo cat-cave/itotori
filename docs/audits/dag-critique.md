@@ -445,7 +445,7 @@ diagnostics." UTSUSHI-146d/e/f drafted in §A.1 use this pattern.
 
 ### H.1 Audit reviewer must reject single-node engine ports
 
-Add to `docs/audit-playbook.md`: "An engine runtime port must not be
+Add to `docs/dev/audit-playbook.md`: "An engine runtime port must not be
 audited as a single node. If a node's deliverables include both a VM
 dispatch loop and substrate sink wiring, the audit must return a P1
 finding requesting a split. Reference UTSUSHI-146 as the prior

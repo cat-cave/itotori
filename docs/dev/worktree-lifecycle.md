@@ -62,7 +62,7 @@ real per-worktree offline install is the reliable approach.
 `nix develop` sets a per-worktree `CARGO_TARGET_DIR` under
 `/scratch/cache/itotori/` so two worktrees never overwrite each other's Rust
 build. The convention, the hashing scheme, and the stale-target cleanup command
-are documented in [`AGENTS.md`](../AGENTS.md). Run cargo and `just` commands
+are documented in [`AGENTS.md`](../../AGENTS.md). Run cargo and `just` commands
 through `nix develop --command bash -lc '...'` so this isolation applies.
 
 ## `.env` And Secret Handling

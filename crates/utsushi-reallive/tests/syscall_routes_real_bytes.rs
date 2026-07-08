@@ -525,7 +525,7 @@ fn wbcall_slot_count_is_corpus_observed_not_engine_validated() {
 }
 
 /// BETA-GATE regression guard (multi-game-validation law,
-/// `docs/orchestration-operating-model.md`): [`WBCALL_SLOT_COUNT`] may only be
+/// `docs/dev/orchestration-operating-model.md`): [`WBCALL_SLOT_COUNT`] may only be
 /// promoted from CORPUS-OBSERVED (Sweetie HD) to engine-validated once a 2nd
 /// RealLive title itself declares WBCALL routes that corroborate (or revise)
 /// the 8-slot cap.

@@ -297,7 +297,7 @@ The validation test (`jump_target_round_trip.rs`) constructs these inline
 
 ## 7. Test plan
 
-Tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline fixtures only, no live providers, no host paths.
 
 ### 7.1 Loader round-trip (`jump_target_round_trip.rs`)

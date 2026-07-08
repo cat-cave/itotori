@@ -585,7 +585,7 @@ informational here and becomes a hard contract for the runner template
 
 ## 9. Test plan
 
-Behavior-first names per `docs/testing-standard.md`. Unit tests live under
+Behavior-first names per `docs/dev/testing-standard.md`. Unit tests live under
 `crates/utsushi-core/src/{input,clock,replay}.rs` with `#[cfg(test)] mod tests`.
 Integration tests live under `crates/utsushi-core/tests/replay_*.rs`.
 
