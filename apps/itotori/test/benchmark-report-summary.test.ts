@@ -72,4 +72,57 @@ describe("summarizeBenchmarkReportMetadata", () => {
       },
     ]);
   });
+
+  // ITOTORI-027 — the harness excludes unscorable findings from the FP count
+  // (`evaluateQaAgents`: `else if (recorded.unscorable !== true) { ... push FP ... }`).
+  // `buildLlmQaFinding` persists `unscorable: true` on the finding record,
+  // so `summarizeQaAgents` can replay that exclusion from the persisted
+  // data alone — the dashboard does NOT have to re-run the harness.
+  it("excludes persisted unscorable findings from the false-positive count", () => {
+    const report = {
+      findingRecords: [
+        { findingId: "f1", seededDefectId: "s1" },
+        // unscorable finding on an un-seeded unit — must be excluded from FP
+        { findingId: "f2", unscorable: true },
+        // normal finding on an un-seeded unit — is a false positive
+        { findingId: "f3" },
+      ],
+      seededDefectOracle: [
+        { seededDefectId: "s1", matchedFindingIds: ["f1"] },
+        { seededDefectId: "s2", matchedFindingIds: [] },
+      ],
+      qaAgentEvaluations: [
+        {
+          qaAgentId: "agent-a",
+          qaAgentVersion: "1.0.0",
+          evaluatedSystemId: "sys",
+          findingIds: ["f1", "f2", "f3"],
+          metrics: {
+            seededPrecision: 1,
+            seededRecall: 0.5,
+            f1: 1 / 1.5,
+            findingsEmitted: 3,
+            scorableFindings: 2,
+          },
+        },
+      ],
+    } as unknown as BenchmarkReportV02;
+
+    expect(summarizeQaAgents(report)).toEqual([
+      {
+        qaAgentId: "agent-a",
+        qaAgentVersion: "1.0.0",
+        evaluatedSystemId: "sys",
+        // f1 TP, f2 unscorable (NOT counted), f3 FP
+        truePositives: 1,
+        falsePositives: 1,
+        falseNegatives: 1,
+        seededPrecision: 1,
+        seededRecall: 0.5,
+        f1: 1 / 1.5,
+        findingsEmitted: 3,
+        scorableFindings: 2,
+      },
+    ]);
+  });
 });

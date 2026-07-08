@@ -234,6 +234,56 @@ describe("qa-agent-evaluation stage", () => {
     expect(evaluateQaAgents(input())).toEqual(evaluateQaAgents(input()));
   });
 
+  // ITOTORI-027 — the harness EXCLUDES unscorable findings from the
+  // false-positive count, and `buildLlmQaFinding` MUST persist the unscorable
+  // flag onto the finding record so the dashboard's `summarizeQaAgents`
+  // reproduces the same exclusion from the persisted data (without
+  // re-running the harness). The persisted flag is the durable signal.
+  it("persists the unscorable flag on the emitted finding record", () => {
+    const agent: QaAgentRecordedRun = {
+      qaAgentId: "terminology-qa-agent",
+      qaAgentVersion: "0.2.0",
+      evaluatedSystemId: "itotori-draft",
+      limitations: ["smoke"],
+      providerRun: providerRun(),
+      recordedFindings: [
+        // matched finding on a seeded unit — unscorable flag is absent
+        recordedFinding(U2, "terminology", "major"),
+        // un-seeded unit — not unscorable, would be a false positive
+        recordedFinding(U4, "style", "major"),
+        // unscorable finding on an un-seeded unit — must be PERSISTED as
+        // `unscorable: true` so downstream can exclude it from FP without
+        // re-running the harness.
+        { ...recordedFinding(U4, "accuracy", "major"), unscorable: true },
+      ],
+    };
+    const result = evaluateQaAgents({
+      agents: [agent],
+      seededDefectOracle: [
+        seed("seed-A", U2, "terminology", "major"),
+        seed("seed-B", U3, "accuracy", "critical"),
+      ],
+    });
+
+    // The matched finding carries no unscorable flag (it was a real match).
+    const matched = result.findings.find((f) => f.affectedRefs[0].subjectId === U2);
+    expect(matched?.unscorable).toBeUndefined();
+    expect(matched?.seededDefectId).toBe("seed-A");
+
+    // The unscorable finding on U4 carries `unscorable: true` on the
+    // PERSISTED record. The harness also excludes it from the FP count
+    // (falsePositiveUnitIds), keeping internal + persisted signals aligned.
+    const unscorablePersist = result.findings.find((f) => f.unscorable === true);
+    expect(unscorablePersist?.affectedRefs[0].subjectId).toBe(U4);
+    expect(unscorablePersist?.seededDefectId).toBeUndefined();
+    expect(result.calibration[0].falsePositives).toBe(1);
+    expect(result.calibration[0].falsePositiveUnitIds).toEqual([U4]);
+    // The harness also surfaces the unscorable count separately so the
+    // scorableFindings metric stays coherent.
+    expect(result.evaluations[0].metrics.scorableFindings).toBe(2);
+    expect(result.evaluations[0].metrics.unscorableRate).toBeCloseTo(1 / 3, 6);
+  });
+
   it("refuses when there are no agents to evaluate", () => {
     expect(() => evaluateQaAgents({ ...input(), agents: [] })).toThrow(QaAgentEvaluationError);
   });

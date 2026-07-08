@@ -56,11 +56,18 @@ export function summarizeBenchmarkReportMetadata(
  * Per-(qa agent, evaluated system) calibration derived from the
  * report's oracle + finding records:
  *   - truePositives  : the agent's findings that matched a seeded defect
- *   - falsePositives : the agent's findings on an un-seeded location
+ *   - falsePositives : the agent's findings on an un-seeded location that
+ *                      COULD be scored against the oracle (eligible). Findings
+ *                      stamped `unscorable: true` by the harness are EXCLUDED
+ *                      from the false-positive count — same exclusion the
+ *                      in-memory harness applies (`recorded.unscorable !== true`
+ *                      before counting the unit as a FP).
  *   - falseNegatives : seeded defects no finding of the agent covered
  * This mirrors the harness's location-based matching (a finding carries
  * `seededDefectId` when the harness matched it to the oracle) so the
- * dashboard's FP/FN representation is faithful to the recorded run.
+ * dashboard's FP/FN representation is faithful to the recorded run —
+ * `summarizeQaAgents` can be derived purely from the persisted findings
+ * + oracle without re-running the harness (ITOTORI-027).
  */
 export function summarizeQaAgents(report: BenchmarkReportV02): BenchmarkQaAgentSummary[] {
   const findingById = new Map<string, BenchmarkFindingRecordV02>(
@@ -77,7 +84,13 @@ export function summarizeQaAgents(report: BenchmarkReportV02): BenchmarkQaAgentS
       }
       if (finding.seededDefectId !== undefined) {
         truePositives += 1;
-      } else {
+      } else if (finding.unscorable !== true) {
+        // ITOTORI-027 — mirror the harness's `else if (recorded.unscorable !==
+        // true)` branch: a finding the harness classified as unscorable is
+        // intentionally NOT counted as a false positive here. The harness
+        // stamps `unscorable: true` on the persisted record (see
+        // `buildLlmQaFinding`), so this exclusion is reproducible from the
+        // persisted data alone.
         falsePositives += 1;
       }
     }

@@ -302,6 +302,13 @@ function buildLlmQaFinding(
     qualitySeverity: recorded.qualitySeverity,
     rootCause: recorded.rootCause,
     adjudicationState: recorded.adjudicationState,
+    // ITOTORI-027 — stamp the unscorable flag when the harness classified this
+    // finding as unscorable against the oracle. The calibration counter
+    // excludes these from the FP count (mirroring the in-memory `else if
+    // (recorded.unscorable !== true)` branch above); the persisted flag
+    // keeps that exclusion reproducible from the recorded data alone, so the
+    // dashboard's `summarizeQaAgents` does not have to re-derive it.
+    ...(recorded.unscorable === true ? { unscorable: true } : {}),
     affectedRefs: [
       {
         subjectKind: "bridge_unit",

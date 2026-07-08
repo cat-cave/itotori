@@ -1558,6 +1558,19 @@ export type BenchmarkFindingRecordV02 = {
   affectedRefs: TriageSubjectRefV02[];
   evidence: EvidenceRecordV02[];
   provenance: ProvenanceRecordV02[];
+  /**
+   * ITOTORI-027 — when the recording harness determined the finding could not
+   * be scored against the seeded-defect oracle at all (e.g. the QA agent's
+   * evidence was incomplete / off-target), the LLM QA evaluation stage
+   * (`evaluateQaAgents` / `buildLlmQaFinding`) STAMPS this on the persisted
+   * finding so downstream calibration (`summarizeQaAgents`) can EXCLUDE the
+   * finding from the false-positive count — matching the in-memory harness
+   * behavior (`recorded.unscorable !== true` → counted as FP).
+   *
+   * `true` means the finding is intentionally excluded from FP counting;
+   * `false` / absent means it IS eligible for FP counting on un-seeded units.
+   */
+  unscorable?: boolean;
   seededDefectId?: string;
   reviewerRationale?: string;
 };
@@ -6653,6 +6666,11 @@ function assertBenchmarkFindingRecordV02(
   assertBenchmarkFindingEvidenceProvenanceV02(finding as BenchmarkFindingRecordV02, label);
   assertOptionalString(finding.seededDefectId, `${label}.seededDefectId`);
   assertOptionalString(finding.reviewerRationale, `${label}.reviewerRationale`);
+  // ITOTORI-027 — the LLM QA evaluation stage stamps unscorable findings so
+  // downstream calibration can mirror the in-memory harness and exclude them
+  // from the false-positive count. Optional on the wire; when present, must
+  // be a boolean.
+  assertOptionalBoolean(finding.unscorable, `${label}.unscorable`);
   if (
     finding.rootCause === "unknown_unadjudicated" &&
     finding.adjudicationState !== "unreviewed" &&
@@ -7333,6 +7351,15 @@ function assertHashStringV02(value: unknown, label: string): asserts value is st
 function assertOptionalString(value: unknown, label: string): asserts value is string | undefined {
   if (value !== undefined) {
     assertString(value, label);
+  }
+}
+
+function assertOptionalBoolean(
+  value: unknown,
+  label: string,
+): asserts value is boolean | undefined {
+  if (value !== undefined) {
+    assertBoolean(value, label);
   }
 }
 
