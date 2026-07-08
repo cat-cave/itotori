@@ -3,10 +3,14 @@ import * as ts from "typescript";
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  ItotoriAuthSsoSettingsRepository,
   ItotoriProjectRepository,
   assetLocalizationDecisionAssetKindValues,
+  bootstrapDefaultAccountPrincipal,
+  bootstrapLocalUser,
   localUserId,
   permissionValues,
+  requirePermission,
   reviewerQueueActionValues,
   type CandidateAssetRecord,
   type CatalogCompletenessPool,
@@ -38,6 +42,7 @@ import type { ProjectOverviewReadModelOptions } from "../src/project-overview-re
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
   assertRedactedRuntimeDashboardStatus,
+  type ApiConfigureAuthSsoSettingsRequest,
 } from "../src/api-schema.js";
 import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
@@ -115,10 +120,14 @@ type ApiMutationPermissionCase = {
   route: string;
   permissionKey: ApiMutationPermissionGate["permissionKey"];
   permission: Permission;
-  service: MutatingProjectWorkflowService;
+  service: ApiMutationService;
   successFixture: string;
   denialFixture: string;
 };
+
+type ApiMutationService =
+  | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
+  | { surface: "authSsoSettings"; method: "configureSettings" };
 
 type ApiMutationRoute = {
   route: string;
@@ -141,7 +150,30 @@ const readOnlyPostApiRoutes = new Set([
   // ITOTORI-118 — the correction submit mutates via the workspace correction
   // service (gated on queue.manage), not via a projectWorkflow call.
   "POST /api/workspace/corrections",
+  "POST /api/settings/security/sso",
 ]);
+
+const authSsoSettingsRequestFixture = {
+  accountId: "account-local",
+  provider: {
+    protocol: "oidc",
+    providerId: "okta-main",
+    displayName: "Okta",
+    enabled: true,
+    issuer: "https://idp.example.test/oauth2/default",
+    clientId: "itotori-settings",
+    scopes: ["openid", "email", "profile"],
+  },
+  security: {
+    requireSso: true,
+    requireMfa: true,
+    allowPasswordLogin: false,
+  },
+  sessionPolicy: {
+    idleTimeoutMinutes: 30,
+    absoluteTimeoutMinutes: 480,
+  },
+} satisfies ApiConfigureAuthSsoSettingsRequest;
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -190,6 +222,11 @@ const apiMutationPermissionMatrix = [
       localeBranchId: "locale-1",
     }),
     "launchNextLocalizationPass",
+  ),
+  apiGateForService(
+    "ssoSettingsConfigure",
+    post("/api/settings/security/sso", authSsoSettingsRequestFixture),
+    { surface: "authSsoSettings", method: "configureSettings" },
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
@@ -2619,7 +2656,98 @@ describe("Itotori API handlers", () => {
 
       expect(response.statusCode).toBe(200);
       expect(services.authorization.requirePermission).toHaveBeenCalledWith(permission);
-      expect(services.projectWorkflow[service]).toHaveBeenCalledTimes(1);
+      expect(apiMutationServiceMock(services, service)).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("configures SSO/security/session settings through the typed auth settings route", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      post("/api/settings/security/sso", authSsoSettingsRequestFixture),
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      schemaVersion: "itotori.auth.sso-settings.v0",
+      accountId: "account-local",
+      provider: { protocol: "oidc", providerId: "okta-main" },
+      security: { requireSso: true, requireMfa: true, allowPasswordLogin: false },
+      sessionPolicy: { idleTimeoutMinutes: 30, absoluteTimeoutMinutes: 480 },
+      updatedAt: "2026-07-08T00:00:00.000Z",
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.authSsoManage,
+    );
+    expect(services.authSsoSettings.configureSettings).toHaveBeenCalledWith(
+      authSsoSettingsRequestFixture,
+    );
+  });
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "configures SSO settings against Postgres and denies a non-admin",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await bootstrapLocalUser(context.db);
+        await bootstrapDefaultAccountPrincipal(context.db);
+        const repository = new ItotoriAuthSsoSettingsRepository(context.db);
+        const adminServices = {
+          ...serviceFixture(),
+          authorization: {
+            requirePermission: vi.fn<[Permission], Promise<void>>((permission) =>
+              requirePermission(context.db, { userId: localUserId }, permission),
+            ),
+          },
+          authSsoSettings: {
+            configureSettings: vi.fn((input: ApiConfigureAuthSsoSettingsRequest) =>
+              repository.configureSettings({ userId: localUserId }, input),
+            ),
+          },
+        };
+
+        const success = await handleItotoriApiRequest(
+          post("/api/settings/security/sso", authSsoSettingsRequestFixture),
+          adminServices,
+        );
+
+        expect(success.statusCode).toBe(200);
+        expect(success.body).toMatchObject({
+          schemaVersion: "itotori.auth.sso-settings.v0",
+          accountId: "account-local",
+          provider: { protocol: "oidc", providerId: "okta-main" },
+          security: { requireSso: true, requireMfa: true, allowPasswordLogin: false },
+          sessionPolicy: { idleTimeoutMinutes: 30, absoluteTimeoutMinutes: 480 },
+        });
+
+        const deniedServices = {
+          ...adminServices,
+          authorization: {
+            requirePermission: vi.fn<[Permission], Promise<void>>((permission) =>
+              requirePermission(context.db, deniedActor, permission),
+            ),
+          },
+          authSsoSettings: {
+            configureSettings: vi.fn((input: ApiConfigureAuthSsoSettingsRequest) =>
+              repository.configureSettings(deniedActor, input),
+            ),
+          },
+        };
+
+        const denied = await handleItotoriApiRequest(
+          post("/api/settings/security/sso", authSsoSettingsRequestFixture),
+          deniedServices,
+        );
+
+        assertForbiddenApiMutation(denied, {
+          actor: deniedActor,
+          permission: permissionValues.authSsoManage,
+        });
+        expect(deniedServices.authSsoSettings.configureSettings).not.toHaveBeenCalled();
+      } finally {
+        await context.close();
+      }
     },
   );
 
@@ -2947,7 +3075,7 @@ describe("Itotori API handlers", () => {
       const response = await handleItotoriApiRequest(request, services);
 
       assertForbiddenApiMutation(response, { actor: deniedActor, permission });
-      expect(services.projectWorkflow[service]).not.toHaveBeenCalled();
+      expect(apiMutationServiceMock(services, service)).not.toHaveBeenCalled();
     },
   );
 
@@ -3035,6 +3163,13 @@ describe("Itotori API handlers", () => {
           "requiredPermission": "draft.write",
           "route": "POST /api/projects/:projectId/launch-pass",
           "successFixture": "api-handlers.test.ts launch pass success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "SSO settings configure",
+          "requiredPermission": "auth.sso.manage",
+          "route": "POST /api/settings/security/sso",
+          "successFixture": "api-handlers.test.ts SSO settings configure success fixture",
         },
       ]
     `);
@@ -3414,6 +3549,14 @@ function apiGate(
   request: ItotoriApiRequest,
   service: MutatingProjectWorkflowService,
 ): ApiMutationPermissionCase {
+  return apiGateForService(gateId, request, { surface: "projectWorkflow", method: service });
+}
+
+function apiGateForService(
+  gateId: ApiMutationPermissionGateId,
+  request: ItotoriApiRequest,
+  service: ApiMutationService,
+): ApiMutationPermissionCase {
   const gate = apiMutationPermissionGates[gateId];
   return {
     gateId,
@@ -3430,8 +3573,17 @@ function apiGate(
 
 function matrixMutationRoutes(): ApiMutationRoute[] {
   return apiMutationPermissionMatrix
-    .map(({ route, service }) => ({ route, service }))
+    .flatMap(({ route, service }) =>
+      service.surface === "projectWorkflow" ? [{ route, service: service.method }] : [],
+    )
     .sort(compareApiMutationRoutes);
+}
+
+function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutationService) {
+  if (service.surface === "projectWorkflow") {
+    return services.projectWorkflow[service.method];
+  }
+  return services.authSsoSettings[service.method];
 }
 
 function apiMutationRouteId(request: ItotoriApiRequest): string {
@@ -3942,6 +4094,12 @@ function serviceFixture(): ItotoriApiServices {
                 message: "Workspace correction blocked: queue.manage missing",
               },
             ],
+      })),
+    },
+    authSsoSettings: {
+      configureSettings: vi.fn(async (input) => ({
+        ...input,
+        updatedAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },
   };

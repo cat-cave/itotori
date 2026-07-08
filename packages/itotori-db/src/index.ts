@@ -67,6 +67,7 @@ export {
   outboxStatusValues,
   providerCostKindValues,
   authProviderClaimKindValues,
+  authSsoProviderProtocolValues,
   providerRunStatusValues,
   runtimeBridgeUnitRefRoleValues,
   runtimeEvidenceKindValues,
@@ -114,6 +115,7 @@ export {
   terminologyTermStatusValues,
 } from "./schema.js";
 export type {
+  AuthSsoProviderProtocol,
   CatalogConfidence,
   CatalogConflictKind,
   CatalogConflictStatus,
@@ -935,6 +937,19 @@ export type {
   RemovePermissionFromSetInput,
   RenamePermissionSetInput,
 } from "./repositories/principal-repository.js";
+export {
+  authSsoManagePermission,
+  ItotoriAuthSsoSettingsRepository,
+  ItotoriAuthSsoSettingsRepositoryError,
+} from "./repositories/auth-sso-settings-repository.js";
+export type {
+  AuthAccountSecuritySettingsInput,
+  AuthSessionPolicyInput,
+  AuthSsoProviderConfigInput,
+  AuthSsoSettingsRecord,
+  ConfigureAuthSsoSettingsInput,
+  ItotoriAuthSsoSettingsRepositoryPort,
+} from "./repositories/auth-sso-settings-repository.js";
 export {
   authAuditEventActionValues,
   authPermissionSetAuditActionValues,

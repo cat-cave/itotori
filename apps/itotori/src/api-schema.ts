@@ -171,6 +171,7 @@ export type ItotoriApiRouteId =
   | "decisions.record"
   | "benchmarks.record"
   | "runtimeEvidence.ingest"
+  | "auth.ssoSettings.configure"
   // ovw-launch-pass-action — the Overview "launch next pass" mutation: folds
   // queued corrections and DRIVES the next localization pass via the
   // project-driven-executor / localize-fullproject driver. `canSteer`-gated
@@ -299,6 +300,15 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   // itotori-bmk-cockpit-history — paged run-history rows envelope.
   BmkCockpitRunHistoryPage: ["filter", "pagination", "rows"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
+  ApiConfigureAuthSsoSettingsRequest: ["accountId", "provider", "security", "sessionPolicy"],
+  ApiConfigureAuthSsoSettingsResponse: [
+    "schemaVersion",
+    "accountId",
+    "provider",
+    "security",
+    "sessionPolicy",
+    "updatedAt",
+  ],
   WorkspaceProjectBrowseReadModel: [
     "schemaVersion",
     "generatedAt",
@@ -536,6 +546,49 @@ export type ApiRuntimeEvidenceRequest = {
 
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
+export type ApiAuthSsoProviderConfig =
+  | {
+      protocol: "oidc";
+      providerId: string;
+      displayName: string;
+      enabled: boolean;
+      issuer: string;
+      clientId: string;
+      scopes: readonly string[];
+    }
+  | {
+      protocol: "saml";
+      providerId: string;
+      displayName: string;
+      enabled: boolean;
+      ssoUrl: string;
+      entityId: string;
+      certificateFingerprint?: string;
+    };
+
+export type ApiAccountSecuritySettings = {
+  requireSso: boolean;
+  requireMfa: boolean;
+  allowPasswordLogin: boolean;
+};
+
+export type ApiAuthSessionPolicy = {
+  idleTimeoutMinutes: number;
+  absoluteTimeoutMinutes: number;
+};
+
+export type ApiConfigureAuthSsoSettingsRequest = {
+  accountId: string;
+  provider: ApiAuthSsoProviderConfig;
+  security: ApiAccountSecuritySettings;
+  sessionPolicy: ApiAuthSessionPolicy;
+};
+
+export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsRequest & {
+  schemaVersion: "itotori.auth.sso-settings.v0";
+  updatedAt: string;
+};
+
 /**
  * ovw-launch-pass-action — request body for the launch-pass mutation. The
  * Overview action wires through the typed client. The body carries the locale
@@ -604,6 +657,7 @@ export type ItotoriApiResponseBody =
   | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
+  | ApiConfigureAuthSsoSettingsResponse
   | ApiLaunchPassResponse
   | ApiErrorResponse;
 
@@ -692,6 +746,34 @@ export function parseRuntimeEvidenceRequest(body: unknown): ApiRuntimeEvidenceRe
     assertProjectState(request.project, "ApiRuntimeEvidenceRequest.project");
     assertRuntimeReport(request.runtimeReport);
     return { project: request.project, runtimeReport: request.runtimeReport };
+  });
+}
+
+export function parseConfigureAuthSsoSettingsRequest(
+  body: unknown,
+): ApiConfigureAuthSsoSettingsRequest {
+  return parseRequest("ApiConfigureAuthSsoSettingsRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiConfigureAuthSsoSettingsRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
+    );
+    assertString(request.accountId, "ApiConfigureAuthSsoSettingsRequest.accountId");
+    return {
+      accountId: request.accountId,
+      provider: parseAuthSsoProviderConfig(
+        request.provider,
+        "ApiConfigureAuthSsoSettingsRequest.provider",
+      ),
+      security: parseAccountSecuritySettings(
+        request.security,
+        "ApiConfigureAuthSsoSettingsRequest.security",
+      ),
+      sessionPolicy: parseAuthSessionPolicy(
+        request.sessionPolicy,
+        "ApiConfigureAuthSsoSettingsRequest.sessionPolicy",
+      ),
+    };
   });
 }
 
@@ -934,6 +1016,9 @@ export function assertItotoriApiResponse(
       return;
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
+      return;
+    case "auth.ssoSettings.configure":
+      assertConfigureAuthSsoSettingsResponse(value);
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
@@ -4215,6 +4300,29 @@ function assertRuntimeEvidenceResponse(
   assertProjectDashboardStatus(response.dashboard, "ApiRuntimeEvidenceResponse.dashboard");
 }
 
+function assertConfigureAuthSsoSettingsResponse(
+  value: unknown,
+): asserts value is ApiConfigureAuthSsoSettingsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiConfigureAuthSsoSettingsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.sso-settings.v0",
+    "ApiConfigureAuthSsoSettingsResponse.schemaVersion",
+  );
+  assertString(response.accountId, "ApiConfigureAuthSsoSettingsResponse.accountId");
+  parseAuthSsoProviderConfig(response.provider, "ApiConfigureAuthSsoSettingsResponse.provider");
+  parseAccountSecuritySettings(response.security, "ApiConfigureAuthSsoSettingsResponse.security");
+  parseAuthSessionPolicy(
+    response.sessionPolicy,
+    "ApiConfigureAuthSsoSettingsResponse.sessionPolicy",
+  );
+  assertDateLike(response.updatedAt, "ApiConfigureAuthSsoSettingsResponse.updatedAt");
+}
+
 // ovw-launch-pass-action — assert the launch-pass response envelope. The
 // schemaVersion literal pins the wire shape; `outcome` pins to started/refused.
 // A `started` outcome MUST carry a positive pass number + a start timestamp and
@@ -4256,6 +4364,83 @@ export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
     assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
     return { localeBranchId: request.localeBranchId };
   });
+}
+
+function parseAuthSsoProviderConfig(value: unknown, label: string): ApiAuthSsoProviderConfig {
+  const base = asRecord(value, label);
+  assertEnum(base.protocol, ["oidc", "saml"] as const, `${label}.protocol`);
+  const allowedKeys =
+    base.protocol === "oidc"
+      ? ["protocol", "providerId", "displayName", "enabled", "issuer", "clientId", "scopes"]
+      : [
+          "protocol",
+          "providerId",
+          "displayName",
+          "enabled",
+          "ssoUrl",
+          "entityId",
+          "certificateFingerprint",
+        ];
+  const provider = asStrictRecord(value, label, allowedKeys);
+  assertString(provider.providerId, `${label}.providerId`);
+  assertString(provider.displayName, `${label}.displayName`);
+  assertBoolean(provider.enabled, `${label}.enabled`);
+  if (provider.protocol === "oidc") {
+    assertString(provider.issuer, `${label}.issuer`);
+    assertString(provider.clientId, `${label}.clientId`);
+    assertStringArray(provider.scopes, `${label}.scopes`);
+    return {
+      protocol: "oidc",
+      providerId: provider.providerId,
+      displayName: provider.displayName,
+      enabled: provider.enabled,
+      issuer: provider.issuer,
+      clientId: provider.clientId,
+      scopes: provider.scopes as string[],
+    };
+  }
+  assertString(provider.ssoUrl, `${label}.ssoUrl`);
+  assertString(provider.entityId, `${label}.entityId`);
+  const samlProvider: ApiAuthSsoProviderConfig = {
+    protocol: "saml",
+    providerId: provider.providerId,
+    displayName: provider.displayName,
+    enabled: provider.enabled,
+    ssoUrl: provider.ssoUrl,
+    entityId: provider.entityId,
+  };
+  if (provider.certificateFingerprint !== undefined) {
+    assertString(provider.certificateFingerprint, `${label}.certificateFingerprint`);
+    samlProvider.certificateFingerprint = provider.certificateFingerprint;
+  }
+  return samlProvider;
+}
+
+function parseAccountSecuritySettings(value: unknown, label: string): ApiAccountSecuritySettings {
+  const settings = asStrictRecord(value, label, ["requireSso", "requireMfa", "allowPasswordLogin"]);
+  assertBoolean(settings.requireSso, `${label}.requireSso`);
+  assertBoolean(settings.requireMfa, `${label}.requireMfa`);
+  assertBoolean(settings.allowPasswordLogin, `${label}.allowPasswordLogin`);
+  return {
+    requireSso: settings.requireSso,
+    requireMfa: settings.requireMfa,
+    allowPasswordLogin: settings.allowPasswordLogin,
+  };
+}
+
+function parseAuthSessionPolicy(value: unknown, label: string): ApiAuthSessionPolicy {
+  const policy = asStrictRecord(value, label, ["idleTimeoutMinutes", "absoluteTimeoutMinutes"]);
+  assertPositiveInteger(policy.idleTimeoutMinutes, `${label}.idleTimeoutMinutes`);
+  assertPositiveInteger(policy.absoluteTimeoutMinutes, `${label}.absoluteTimeoutMinutes`);
+  if (policy.absoluteTimeoutMinutes < policy.idleTimeoutMinutes) {
+    throw new ApiValidationError(
+      `${label}.absoluteTimeoutMinutes must be greater than or equal to idleTimeoutMinutes`,
+    );
+  }
+  return {
+    idleTimeoutMinutes: policy.idleTimeoutMinutes,
+    absoluteTimeoutMinutes: policy.absoluteTimeoutMinutes,
+  };
 }
 
 export function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {

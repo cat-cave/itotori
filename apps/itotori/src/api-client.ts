@@ -70,6 +70,8 @@ import {
   type ApiReviewerSingleActionResponse,
   type ApiRuntimeEvidenceRequest,
   type ApiRuntimeEvidenceResponse,
+  type ApiConfigureAuthSsoSettingsRequest,
+  type ApiConfigureAuthSsoSettingsResponse,
   type ApiTerminologySearchResponse,
   type ApiWorkspaceAssetBrowseResponse,
   type ApiWorkspaceComparisonResponse,
@@ -244,6 +246,10 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRuntimeEvidenceResponse;
     pathParams: { projectId: string };
     request: ApiRuntimeEvidenceRequest;
+  };
+  "auth.ssoSettings.configure": {
+    response: ApiConfigureAuthSsoSettingsResponse;
+    request: ApiConfigureAuthSsoSettingsRequest;
   };
   // ovw-launch-pass-action — drive the next localization pass via the driver.
   // Project-scoped (path param); the body carries the locale branch the pass is

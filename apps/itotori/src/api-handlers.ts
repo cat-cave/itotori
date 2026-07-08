@@ -57,11 +57,14 @@ import {
   parseReviewerBatchPreviewRequest,
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
+  parseConfigureAuthSsoSettingsRequest,
   parseLaunchPassRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
+  type ApiConfigureAuthSsoSettingsRequest,
+  type ApiConfigureAuthSsoSettingsResponse,
   type ApiAssetDecisionsResponse,
   type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
@@ -133,6 +136,7 @@ export const apiMutationPermissionGates = {
   // launching the next pass drives the drafting of pass N+1, the same authority
   // that protects the draft workflow + the pass ledger.
   launchPass: apiMutationGate("launch pass", "draftWrite"),
+  ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -246,6 +250,15 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "ingestRuntimeReport"
     | "launchNextLocalizationPass"
   >;
+  authSsoSettings: {
+    configureSettings(input: ApiConfigureAuthSsoSettingsRequest): Promise<{
+      accountId: string;
+      provider: ApiConfigureAuthSsoSettingsRequest["provider"];
+      security: ApiConfigureAuthSsoSettingsRequest["security"];
+      sessionPolicy: ApiConfigureAuthSsoSettingsRequest["sessionPolicy"];
+      updatedAt: Date;
+    }>;
+  };
 };
 
 /**
@@ -382,6 +395,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   ) {
     return methodNotAllowed(["POST"]);
   }
+  if (request.pathname === "/api/settings/security/sso") {
+    return methodNotAllowed(["POST"]);
+  }
   if (parseProjectRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
   }
@@ -492,6 +508,17 @@ async function routeItotoriApiRequest(
       project,
       status: canReadStatus ? status : redactProjectDashboardStatus(status),
     });
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/settings/security/sso") {
+    const body = parseConfigureAuthSsoSettingsRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.ssoSettingsConfigure);
+    const result = await services.authSsoSettings.configureSettings(body);
+    return ok("auth.ssoSettings.configure", authSsoSettingsResponseBody(result));
+  }
+
+  if (request.pathname === "/api/settings/security/sso") {
+    return methodNotAllowed(["POST"]);
   }
 
   const projectRoute = parseProjectRoute(request.pathname);
@@ -635,6 +662,23 @@ function launchPassResponseBody(outcome: LaunchLocalizationPassResult): ApiLaunc
     passNumber: null,
     startedAt: null,
     refusalMessage: outcome.refusalMessage,
+  };
+}
+
+function authSsoSettingsResponseBody(input: {
+  accountId: string;
+  provider: ApiConfigureAuthSsoSettingsRequest["provider"];
+  security: ApiConfigureAuthSsoSettingsRequest["security"];
+  sessionPolicy: ApiConfigureAuthSsoSettingsRequest["sessionPolicy"];
+  updatedAt: Date;
+}): ApiConfigureAuthSsoSettingsResponse {
+  return {
+    schemaVersion: "itotori.auth.sso-settings.v0",
+    accountId: input.accountId,
+    provider: input.provider,
+    security: input.security,
+    sessionPolicy: input.sessionPolicy,
+    updatedAt: input.updatedAt.toISOString(),
   };
 }
 
@@ -1941,6 +1985,10 @@ function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonRespo
 function ok(routeId: "decisions.record", body: DecisionRecordResult): ApiJsonResponse;
 function ok(routeId: "benchmarks.record", body: BenchmarkRecordResult): ApiJsonResponse;
 function ok(routeId: "runtimeEvidence.ingest", body: RuntimeIngestResult): ApiJsonResponse;
+function ok(
+  routeId: "auth.ssoSettings.configure",
+  body: ApiConfigureAuthSsoSettingsResponse,
+): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);

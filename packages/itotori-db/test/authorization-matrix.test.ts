@@ -9,6 +9,7 @@ import {
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
 import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run-repository.js";
+import { ItotoriAuthSsoSettingsRepository } from "../src/repositories/auth-sso-settings-repository.js";
 import { ItotoriReviewerQueueRepository } from "../src/repositories/reviewer-queue-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
@@ -1105,6 +1106,12 @@ const repositoryPermissionGateMatrix = [
     "principal-repository.test.ts resolve principal permissions coverage",
     (repo) => repo.resolvePrincipalPermissions(deniedActor, "principal-x"),
   ),
+  authSsoSettingsGate(
+    "configureSettings",
+    "authSsoManage",
+    "auth-sso-settings-repository.test.ts configure settings coverage",
+    (repo) => repo.configureSettings(deniedActor, undefined as never),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 /**
@@ -2181,6 +2188,12 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts resolve principal permissions coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthSsoSettingsRepository.configureSettings",
+          "requiredPermission": "auth.sso.manage",
+          "successFixture": "auth-sso-settings-repository.test.ts configure settings coverage",
+        },
       ]
     `);
   });
@@ -2752,6 +2765,22 @@ function principalGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriPrincipalRepository(db)),
+  });
+}
+
+function authSsoSettingsGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAuthSsoSettingsRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAuthSsoSettingsRepository",
+    sourceFile: "auth-sso-settings-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAuthSsoSettingsRepository(db)),
   });
 }
 

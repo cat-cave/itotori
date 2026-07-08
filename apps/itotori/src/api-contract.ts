@@ -536,6 +536,30 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.queue_health.v0.1",
     }),
+  ApiConfigureAuthSsoSettingsRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,
+      properties: {
+        accountId: str,
+        provider: obj,
+        security: obj,
+        sessionPolicy: obj,
+      },
+      additionalProperties: false,
+    }),
+  ApiConfigureAuthSsoSettingsResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsResponse,
+      properties: {
+        accountId: str,
+        provider: obj,
+        security: obj,
+        sessionPolicy: obj,
+        updatedAt: str,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.sso-settings.v0",
+    }),
 
   // Mutations --------------------------------------------------------------
   ApiProjectImportResponse: () =>
@@ -1038,6 +1062,15 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiRuntimeEvidenceRequest",
     responseSchema: "ApiRuntimeEvidenceResponse",
+  },
+  "auth.ssoSettings.configure": {
+    method: "POST",
+    pathTemplate: "/api/settings/security/sso",
+    operationId: "authSsoSettingsConfigure",
+    summary: "Configure account SSO provider and security/session policy.",
+    pathParams: [],
+    requestSchema: "ApiConfigureAuthSsoSettingsRequest",
+    responseSchema: "ApiConfigureAuthSsoSettingsResponse",
   },
   // ovw-launch-pass-action — drive the next localization pass (folds queued
   // corrections -> pass N+1) via the project-driven-executor /

@@ -320,6 +320,10 @@ export const migrations = [
     id: "0065_auth_provider_claim_quarantine",
     file: "0065_auth_provider_claim_quarantine.sql",
   },
+  {
+    id: "0066_auth_sso_settings",
+    file: "0066_auth_sso_settings.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

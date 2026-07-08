@@ -36,6 +36,7 @@ export const permissionValues = {
   auditWrite: "audit.write",
   styleGuideApprove: "style_guide.approve",
   authAdmin: "auth.admin",
+  authSsoManage: "auth.sso.manage",
   systemReset: "system.reset",
 } as const;
 
@@ -54,6 +55,7 @@ export const allPermissions = [
   permissionValues.auditWrite,
   permissionValues.styleGuideApprove,
   permissionValues.authAdmin,
+  permissionValues.authSsoManage,
   permissionValues.systemReset,
 ] as const satisfies readonly Permission[];
 

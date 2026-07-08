@@ -119,6 +119,7 @@ after the database has been migrated.
 | `audit.write`         | Record and resolve audit findings                                               |
 | `style_guide.approve` | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
 | `auth.admin`          | Administer principals, accounts, permission sets, and grants (multi-user auth)  |
+| `auth.sso.manage`     | Configure account OIDC/SAML providers, security settings, and session policy    |
 | `system.reset`        | Reset local hello-world persisted state                                         |
 
 Project dashboard reads do not currently require a permission gate. Catalog

@@ -1,6 +1,7 @@
 import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
+  ItotoriAuthSsoSettingsRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriEventQueueRepository,
   ItotoriFeedbackRepository,
@@ -53,6 +54,8 @@ import {
   type AssetDecisionRecord,
   type AssetLocalizationDecisionAssetKind,
   type CandidateAssetRecord,
+  type ConfigureAuthSsoSettingsInput,
+  type AuthSsoSettingsRecord,
 } from "@itotori/db";
 import {
   EngineCapabilityReportService,
@@ -186,6 +189,9 @@ export type ItotoriApplicationServices = {
   };
   jobs: {
     loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
+  };
+  authSsoSettings: {
+    configureSettings(input: ConfigureAuthSsoSettingsInput): Promise<AuthSsoSettingsRecord>;
   };
 };
 
@@ -357,6 +363,7 @@ export async function withDatabaseItotoriServices<T>(
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
+    const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
     );
@@ -576,6 +583,10 @@ export async function withDatabaseItotoriServices<T>(
       jobs: {
         loadRunTable: (options) =>
           draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, options),
+      },
+      authSsoSettings: {
+        configureSettings: (input) =>
+          authSsoSettingsRepository.configureSettings(localUserActor, input),
       },
     });
   } finally {

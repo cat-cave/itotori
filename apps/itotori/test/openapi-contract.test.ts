@@ -324,8 +324,8 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request 
     }
   }
 
-  it("covers a body for every one of the 38 routes (no route left un-teethed)", () => {
-    // 38 routes: each has a response body; the mutation + reviewer/workspace
+  it("covers a body for every one of the 39 routes (no route left un-teethed)", () => {
+    // 39 routes: each has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass`) add a
     // request body. The bmk-cockpit read-model added `projects.bmkCockpit` +
     // `projects.bmkCockpitHistory` (both GET, response-only). This asserts the
@@ -333,7 +333,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all 35 routes, request 
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(38);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(39);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

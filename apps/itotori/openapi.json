@@ -37,6 +37,62 @@
         ],
         "type": "object"
       },
+      "ApiConfigureAuthSsoSettingsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "object"
+          },
+          "security": {
+            "type": "object"
+          },
+          "sessionPolicy": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accountId",
+          "provider",
+          "security",
+          "sessionPolicy"
+        ],
+        "type": "object"
+      },
+      "ApiConfigureAuthSsoSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "object"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.sso-settings.v0"
+          },
+          "security": {
+            "type": "object"
+          },
+          "sessionPolicy": {
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "provider",
+          "schemaVersion",
+          "security",
+          "sessionPolicy",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "ApiDraftBranchRequest": {
         "additionalProperties": true,
         "properties": {
@@ -3728,6 +3784,85 @@
         },
         "summary": "Runtime dashboard status.",
         "x-itotoriRouteId": "runtime.status"
+      }
+    },
+    "/api/settings/security/sso": {
+      "post": {
+        "operationId": "authSsoSettingsConfigure",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiConfigureAuthSsoSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiConfigureAuthSsoSettingsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Configure account SSO provider and security/session policy.",
+        "x-itotoriRouteId": "auth.ssoSettings.configure"
       }
     },
     "/api/terminology/search": {

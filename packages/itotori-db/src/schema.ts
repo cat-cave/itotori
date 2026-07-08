@@ -4804,6 +4804,15 @@ export const authPermissionSetAuditActionValues = {
 export type AuthPermissionSetAuditAction =
   (typeof authPermissionSetAuditActionValues)[keyof typeof authPermissionSetAuditActionValues];
 
+/** External SSO provider protocol configured by an account admin. */
+export const authSsoProviderProtocolValues = {
+  oidc: "oidc",
+  saml: "saml",
+} as const;
+
+export type AuthSsoProviderProtocol =
+  (typeof authSsoProviderProtocolValues)[keyof typeof authSsoProviderProtocolValues];
+
 /** The org / workspace tenant that owns memberships, permission sets, etc. */
 export const authAccounts = pgTable("itotori_auth_accounts", {
   accountId: text("account_id").primaryKey(),
@@ -4898,6 +4907,81 @@ export const authExternalIdentities = pgTable(
       table.subject,
     ),
     index("itotori_auth_external_identities_user_idx").on(table.userId),
+  ],
+);
+
+/** Admin-managed OIDC / SAML provider configuration for an account. */
+export const authSsoProviderConfigs = pgTable(
+  "itotori_auth_sso_provider_configs",
+  {
+    accountId: text("account_id")
+      .notNull()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    protocol: text("protocol").notNull().$type<AuthSsoProviderProtocol>(),
+    displayName: text("display_name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    oidcIssuer: text("oidc_issuer"),
+    oidcClientId: text("oidc_client_id"),
+    oidcScopes: jsonb("oidc_scopes")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    samlSsoUrl: text("saml_sso_url"),
+    samlEntityId: text("saml_entity_id"),
+    samlCertificateFingerprint: text("saml_certificate_fingerprint"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.providerId] }),
+    check(
+      "itotori_auth_sso_provider_configs_protocol_check",
+      sql`${table.protocol} in ('oidc', 'saml')`,
+    ),
+    check(
+      "itotori_auth_sso_provider_configs_provider_id_check",
+      sql`length(${table.providerId}) > 0`,
+    ),
+    check(
+      "itotori_auth_sso_provider_configs_display_name_check",
+      sql`length(${table.displayName}) > 0`,
+    ),
+    check(
+      "itotori_auth_sso_provider_configs_oidc_check",
+      sql`${table.protocol} <> 'oidc' or (${table.oidcIssuer} is not null and ${table.oidcClientId} is not null)`,
+    ),
+    check(
+      "itotori_auth_sso_provider_configs_saml_check",
+      sql`${table.protocol} <> 'saml' or (${table.samlSsoUrl} is not null and ${table.samlEntityId} is not null)`,
+    ),
+    index("itotori_auth_sso_provider_configs_account_idx").on(table.accountId),
+  ],
+);
+
+/** Account-wide security and session policy backing Settings > Account security. */
+export const authAccountSecuritySettings = pgTable(
+  "itotori_auth_account_security_settings",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    requireSso: boolean("require_sso").notNull().default(false),
+    requireMfa: boolean("require_mfa").notNull().default(false),
+    allowPasswordLogin: boolean("allow_password_login").notNull().default(true),
+    sessionIdleTimeoutMinutes: integer("session_idle_timeout_minutes").notNull(),
+    sessionAbsoluteTimeoutMinutes: integer("session_absolute_timeout_minutes").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "itotori_auth_account_security_settings_idle_timeout_check",
+      sql`${table.sessionIdleTimeoutMinutes} > 0`,
+    ),
+    check(
+      "itotori_auth_account_security_settings_absolute_timeout_check",
+      sql`${table.sessionAbsoluteTimeoutMinutes} >= ${table.sessionIdleTimeoutMinutes}`,
+    ),
   ],
 );
 
