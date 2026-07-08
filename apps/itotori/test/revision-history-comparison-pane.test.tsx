@@ -161,6 +161,24 @@ describe("RevisionHistoryComparisonPane — source ↔ draft ↔ re-draft", () =
     expect(screen.getByText("Loading revision history…")).toBeInTheDocument();
   });
 
+  it("stamps the root <Panel> with data-pane-id / data-pane-state / data-review-item-id", async () => {
+    // The pane forwards these structured markers to the underlying Panel's
+    // root DOM element so e2e selectors + the a11y tree can observe the
+    // scoped pane without inspecting the panel's className.
+    handleHistory();
+    render(<RevisionHistoryComparisonPane reviewItemId={REVIEW_ITEM_ID} />);
+    // Wait for the read-model to settle (the source↔draft step mounts once
+    // the fetch resolves and the pane paints the ready branch).
+    const steps = await screen.findAllByRole("listitem");
+    const sourceStep = steps.find((step) => step.getAttribute("data-step") === "source-to-draft");
+    expect(sourceStep).toBeDefined();
+    const panel = document.querySelector(".itotori-panel");
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveAttribute("data-pane-id", "rev-history-comparison");
+    expect(panel).toHaveAttribute("data-pane-state", "ready");
+    expect(panel).toHaveAttribute("data-review-item-id", REVIEW_ITEM_ID);
+  });
+
   it("renders the empty state when the comparison has no cells", async () => {
     server.use(
       http.get(COMPARISON_PATH, ({ request }) => {

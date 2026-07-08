@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../../cx.js";
 
-export interface PanelProps {
+export interface PanelProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   /** Panel title, rendered in the VN config-window title bar. */
   title?: ReactNode;
   /** Small pixel eyebrow kicker above/inside the title bar. */
@@ -15,13 +15,17 @@ export interface PanelProps {
   /** Add a hover lift (for panels that act as a link/target). */
   hoverable?: boolean;
   children?: ReactNode;
-  className?: string;
 }
 
 /**
  * Panel — the VN config-menu window. A title bar (vertical sheen + a leading
  * amber tick), a night body, a soft shadow, and a 1px inset top-highlight bevel.
  * This is the primary layout container for every surface.
+ *
+ * Unknown HTML attributes (`data-*`, `aria-*`, `id`, …) are forwarded to the
+ * root `<section>` so callers can stamp the panel with structured markers
+ * (pane id / state / review-item-id, test ids, …) without a per-prop contract
+ * in `PanelProps`.
  */
 export function Panel({
   title,
@@ -32,9 +36,11 @@ export function Panel({
   hoverable = false,
   children,
   className,
+  ...rest
 }: PanelProps): ReactNode {
   return (
     <section
+      {...rest}
       className={cx(
         "itotori-panel",
         frame && "itotori-panel--frame",
