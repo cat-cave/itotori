@@ -638,8 +638,34 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
 
     const limit = normalizeJobsRunTableLimit(options.limit);
     const offset = normalizeJobsRunTableOffset(options.offset);
-    const projectId = options.projectId ?? null;
-    const conditions = projectId === null ? sql`true` : sql`${draftJobs.projectId} = ${projectId}`;
+
+    // SECURITY (jobs-run-table cross-project leak, P1) — the run table is a
+    // PROJECT-SCOPED read. A missing/empty projectId FAILS CLOSED here: there
+    // is no all-projects path (the previous `sql`true`` branch is deleted).
+    // Every base row is therefore an attempt of one of THIS project's draft
+    // jobs (`draft_jobs.project_id = projectId`).
+    const projectId = options.projectId;
+    if (projectId === undefined || projectId.length === 0) {
+      throw new DraftAttemptProviderLedgerRepositoryError(
+        "ledger_entry_invalid_input",
+        "loadJobsRunTable requires a non-empty projectId scope (fail closed — the run table is never read across all projects)",
+      );
+    }
+    const projectCondition = eq(draftJobs.projectId, projectId);
+
+    // SECURITY (cross-project provider_runs leak, P1) — `provider_run_id` on a
+    // draft attempt is PLAIN TEXT with NO foreign key (schema.ts), so an
+    // attempt in this project could carry a provider_run_id that resolves to
+    // ANOTHER project's `itotori_provider_runs` row. The join is therefore
+    // scoped to the SAME project as the attempt's draft job: a run belonging
+    // to a different project never matches and is treated as absent (NULL), so
+    // its served model/provider/ZDR/job/task/status/fallback can NEVER surface
+    // in this project's run table. This is the ONLY path from attempts →
+    // provider_runs in this read model, so the leak is closed at the join.
+    const providerRunJoin = and(
+      eq(draftJobAttempts.providerRunId, providerRuns.providerRunId),
+      eq(providerRuns.projectId, draftJobs.projectId),
+    );
 
     const totalResult = await this.db
       .select({ total: sql<string>`count(*)::text` })
@@ -649,7 +675,7 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
         eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
       )
       .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
-      .where(conditions);
+      .where(projectCondition);
     const total = Number.parseInt(totalResult[0]?.total ?? "0", 10);
 
     const rows = await this.db
@@ -657,26 +683,50 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
         ledgerEntryId: draftAttemptProviderLedger.ledgerEntryId,
         draftJobId: draftJobs.draftJobId,
         draftJobAttemptId: draftJobAttempts.draftJobAttemptId,
-        providerRunId: draftJobAttempts.providerRunId,
+        // Surface the SCOPED provider_run id (NULL when the attempt's
+        // provider_run_id resolves to a foreign-project / absent run), never
+        // the raw attempt column — so a foreign run identifier does not leak.
+        providerRunId: providerRuns.providerRunId,
         jobId: providerRuns.jobId,
         projectId: draftJobs.projectId,
         localeBranchId: draftJobs.localeBranchId,
         task: sql<string>`coalesce(${jobQueue.jobName}, ${providerRuns.taskKind}, 'draft')`,
         status: sql<string>`coalesce(${providerRuns.status}, ${draftJobAttempts.status}, ${draftJobs.status})`,
-        servedModel: sql<
-          string | null
-        >`coalesce(${providerRuns.actualModelId}, ${draftAttemptProviderLedger.modelId})`,
-        servedProvider: sql<string>`coalesce(${providerRuns.upstreamProvider}, ${draftAttemptProviderLedger.providerId})`,
+        // RECONCILED SERVED ROW (single-attempt sourcing, P1) — the served
+        // (model, provider) pair is chosen as a UNIT from ONE source, never a
+        // per-field stitch of a model from the run and a provider from the
+        // ledger. When a project-scoped provider_run is present it is the run
+        // recorded on THIS very attempt (`draft_job_attempts.provider_run_id`),
+        // so the served model AND provider both come from that one run row
+        // (upstream_provider, falling back to the run's own provider_id when
+        // the upstream is unrecorded — still the SAME run). When no in-project
+        // run is present the pair falls back to the ledger row's own
+        // self-describing (model_id, provider_id). Because the run and the
+        // ledger row share the SAME draft_job_attempt_id, the served pair, the
+        // ZDR posture, and the cost/tokens all describe the SAME attempt.
+        servedModel: sql<string | null>`case
+          when ${providerRuns.providerRunId} is not null then ${providerRuns.actualModelId}
+          else ${draftAttemptProviderLedger.modelId}
+        end`,
+        servedProvider: sql<string>`case
+          when ${providerRuns.providerRunId} is not null
+            then coalesce(${providerRuns.upstreamProvider}, ${providerRuns.providerId})
+          else ${draftAttemptProviderLedger.providerId}
+        end`,
         zdr: sql<boolean | null>`case
           when ${providerRuns.routingPosture}->>'zdr' = 'true' then true
           when ${providerRuns.routingPosture}->>'zdr' = 'false' then false
           else null
         end`,
+        // Cost AND tokens are single-sourced from the SAME ledger row (the
+        // billed record for this attempt) — previously `tokens.total`
+        // preferred the run's `total_tokens` while cost came from the ledger,
+        // two sources that could disagree. Now they always describe one
+        // attempt's ledger entry.
         costUnit: draftAttemptProviderLedger.costUnit,
         costAmount: sql<string>`${draftAttemptProviderLedger.costAmount}::text`,
         tokensIn: draftAttemptProviderLedger.tokensIn,
         tokensOut: draftAttemptProviderLedger.tokensOut,
-        providerTotalTokens: providerRuns.totalTokens,
         fallbackUsed: sql<boolean>`coalesce(${providerRuns.fallbackUsed}, jsonb_array_length(${draftAttemptProviderLedger.fallbackChain}) > 0)`,
         fallbackPlan: providerRuns.fallbackPlan,
         fallbackChain: draftAttemptProviderLedger.fallbackChain,
@@ -688,9 +738,9 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
         eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
       )
       .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
-      .leftJoin(providerRuns, eq(draftJobAttempts.providerRunId, providerRuns.providerRunId))
+      .leftJoin(providerRuns, providerRunJoin)
       .leftJoin(jobQueue, eq(providerRuns.jobId, jobQueue.jobId))
-      .where(conditions)
+      .where(projectCondition)
       .orderBy(
         desc(draftAttemptProviderLedger.createdAt),
         desc(draftAttemptProviderLedger.ledgerEntryId),
@@ -740,7 +790,6 @@ type JobsRunTableSqlRow = {
   costAmount: string;
   tokensIn: number | null;
   tokensOut: number | null;
-  providerTotalTokens: number | null;
   fallbackUsed: boolean;
   fallbackPlan: string[] | null;
   fallbackChain: DraftAttemptFallbackChainEntry[];
@@ -748,11 +797,12 @@ type JobsRunTableSqlRow = {
 };
 
 function jobsRunTableRowFromRow(row: JobsRunTableSqlRow): JobsRunTableRow {
+  // Tokens are sourced from the SAME ledger row as the cost (single billed
+  // record for the attempt), so cost and tokens never describe different runs.
   const total =
-    row.providerTotalTokens ??
-    (row.tokensIn === null && row.tokensOut === null
+    row.tokensIn === null && row.tokensOut === null
       ? null
-      : (row.tokensIn ?? 0) + (row.tokensOut ?? 0));
+      : (row.tokensIn ?? 0) + (row.tokensOut ?? 0);
   return {
     runId: row.providerRunId ?? row.draftJobAttemptId,
     ledgerEntryId: row.ledgerEntryId,

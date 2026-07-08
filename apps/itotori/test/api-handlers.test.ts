@@ -506,6 +506,21 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.getCostDrilldown).not.toHaveBeenCalled();
   });
 
+  it("rejects a jobs run-table request without a projectId scope (fail closed, P1)", async () => {
+    const services = serviceFixture();
+
+    // SECURITY (jobs-run-table cross-project leak, P1) — an omitted projectId
+    // must fail closed at the route boundary with a 400, never fall through to
+    // an all-projects read.
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/jobs/run-table" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+  });
+
   it("redacts cost drilldown rows without catalog.read but keeps pagination totals", async () => {
     const services = serviceFixture();
     vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {

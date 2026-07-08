@@ -1121,10 +1121,16 @@ function parseJobsRunTableQuery(search = ""): LoadJobsRunTableOptions {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(params, ["projectId", "limit", "offset"], "jobs run table");
   const options: LoadJobsRunTableOptions = {};
+  // SECURITY (jobs-run-table cross-project leak, P1) — the run table is a
+  // PROJECT-SCOPED read. `projectId` is REQUIRED: an omitted projectId must
+  // NOT fall through to an all-projects read. We fail closed at the route
+  // boundary with a 400 before the service is ever consulted; the read model
+  // itself also refuses a missing/empty scope (defense in depth).
   const projectId = params.get("projectId");
-  if (projectId !== null) {
-    options.projectId = nonEmptyParam(projectId, "projectId");
+  if (projectId === null) {
+    throw new ApiValidationError("projectId is required");
   }
+  options.projectId = nonEmptyParam(projectId, "projectId");
   const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
   if (limit !== undefined) {
     if (limit < 1) {
