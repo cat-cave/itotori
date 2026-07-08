@@ -204,6 +204,7 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 pub mod alpha_encrypted_readiness;
 pub mod alpha_readiness_profile;
 pub mod asset_ocr;
+pub mod bgi_bytecode_fixture;
 pub mod bgi_detector_fixture;
 pub mod compat_evidence;
 pub mod compat_profile;
@@ -232,6 +233,15 @@ pub mod wolf_protection_detector;
 pub mod wolf_readiness;
 pub mod xp3_capability_profile;
 
+pub use bgi_bytecode_fixture::{
+    BGI_BYTECODE_FIXTURE_SCHEMA_VERSION, BGI_BYTECODE_REPORT_SCHEMA_VERSION,
+    BGI_BYTECODE_SUPPORT_BOUNDARY, BgiBytecodeCodec, BgiBytecodeContainer, BgiBytecodeCrypto,
+    BgiBytecodeDiagnostic, BgiBytecodeEntryReport, BgiBytecodeFixture, BgiBytecodeFixtureEntry,
+    BgiBytecodeNegativeCase, BgiBytecodeNegativeCaseReport, BgiBytecodeParseError,
+    BgiBytecodeParserSurface, BgiBytecodeProfile, BgiBytecodeReport, BgiBytecodeStringReference,
+    BgiBytecodeSurface, BgiBytecodeTextSurface, BgiBytecodeVariant, parse_bgi_bytecode_entry,
+    read_bgi_bytecode_fixture, run_bgi_bytecode_fixture,
+};
 pub use bgi_detector_fixture::{
     BGI_DETECTOR_FIXTURE_SCHEMA_VERSION, BGI_DETECTOR_REPORT_SCHEMA_VERSION,
     BGI_DETECTOR_SUPPORT_BOUNDARY, BGI_ENGINE_FAMILY, BgiDetectorCrypto, BgiDetectorDiagnostic,

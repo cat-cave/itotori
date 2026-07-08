@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileSetId": "bgi/bytecode-parser-profiles",
+  "sourceNodeId": "KAIFUU-127",
+  "engineFamily": "bgi",
+  "entries": [
+    {
+      "fixtureId": "bgi.bytecode.header",
+      "variant": "header",
+      "profile": "header_bytecode",
+      "container": "bytecode",
+      "crypto": "none",
+      "codec": "shift_jis",
+      "surface": "string_reference",
+      "parserSurface": {
+        "surfaceTransform": "binary_offset",
+        "entryPointByte": 32,
+        "headerMagic": "BurikoCompiledScriptVer1.00\\0",
+        "headerSizeBytes": 32,
+        "codeStartByte": 32,
+        "codeEndSentinelHex": "1b000000",
+        "pointerBase": "code_size_relative_text_offset",
+        "stringTerminatorHex": "00"
+      },
+      "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+      "expectedStringReferences": [
+        {
+          "referenceId": "bgi.header.name.001",
+          "textSurface": "character_name",
+          "parserOpcode": "bgi.string_ref.text_function.name",
+          "pointerOffsetByte": 36,
+          "pointerValue": 24,
+          "stringStartByte": 56,
+          "stringEndByte": 62,
+          "terminatorByte": 62,
+          "decodedText": "\u30a2\u30ea\u30b9"
+        },
+        {
+          "referenceId": "bgi.header.dialogue.001",
+          "textSurface": "dialogue",
+          "parserOpcode": "bgi.string_ref.text_function.dialogue",
+          "pointerOffsetByte": 44,
+          "pointerValue": 31,
+          "stringStartByte": 63,
+          "stringEndByte": 73,
+          "terminatorByte": 73,
+          "decodedText": "\u3053\u3093\u306b\u3061\u306f"
+        }
+      ],
+      "negativeCases": [
+        {
+          "caseId": "bgi.header.missing-magic",
+          "description": "Header profile must start with the BurikoCompiledScriptVer1.00 NUL-terminated magic.",
+          "sourceBytesHex": "437572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "malformed_header"
+        },
+        {
+          "caseId": "bgi.header.header-size-out-of-bounds",
+          "description": "Header profile rejects an additional-header-size word that moves code start beyond EOF.",
+          "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000ffffffff0300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "malformed_header"
+        },
+        {
+          "caseId": "bgi.header.missing-code-terminator",
+          "description": "Header profile rejects code sections without the BGI 1b000000 terminal dword.",
+          "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f00000040010000000000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "missing_code_terminator"
+        }
+      ],
+      "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+    },
+    {
+      "fixtureId": "bgi.bytecode.no-header",
+      "variant": "no_header",
+      "profile": "no_header_bytecode",
+      "container": "bytecode",
+      "crypto": "none",
+      "codec": "shift_jis",
+      "surface": "string_reference",
+      "parserSurface": {
+        "surfaceTransform": "binary_offset",
+        "entryPointByte": 0,
+        "headerMagic": null,
+        "headerSizeBytes": 0,
+        "codeStartByte": 0,
+        "codeEndSentinelHex": "1b000000",
+        "pointerBase": "code_size_relative_text_offset",
+        "stringTerminatorHex": "00"
+      },
+      "sourceBytesHex": "030000003f0000000300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+      "expectedStringReferences": [
+        {
+          "referenceId": "bgi.no_header.dialogue.001",
+          "textSurface": "dialogue",
+          "parserOpcode": "bgi.string_ref.text_function.dialogue",
+          "pointerOffsetByte": 4,
+          "pointerValue": 63,
+          "stringStartByte": 63,
+          "stringEndByte": 73,
+          "terminatorByte": 73,
+          "decodedText": "\u3053\u3093\u306b\u3061\u306f"
+        },
+        {
+          "referenceId": "bgi.no_header.name.001",
+          "textSurface": "character_name",
+          "parserOpcode": "bgi.string_ref.text_function.name",
+          "pointerOffsetByte": 12,
+          "pointerValue": 56,
+          "stringStartByte": 56,
+          "stringEndByte": 62,
+          "terminatorByte": 62,
+          "decodedText": "\u30a2\u30ea\u30b9"
+        },
+        {
+          "referenceId": "bgi.no_header.other.001",
+          "textSurface": "other",
+          "parserOpcode": "bgi.string_ref.other",
+          "pointerOffsetByte": 20,
+          "pointerValue": 74,
+          "stringStartByte": 74,
+          "stringEndByte": 80,
+          "terminatorByte": 80,
+          "decodedText": "\u9078\u629e\u80a2"
+        }
+      ],
+      "negativeCases": [
+        {
+          "caseId": "bgi.no_header.unexpected-header",
+          "description": "No-header profile rejects bytes that carry the header-only BurikoCompiledScriptVer1.00 marker.",
+          "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "malformed_header"
+        },
+        {
+          "caseId": "bgi.no_header.string-pointer-out-of-bounds",
+          "description": "No-header profile rejects a string-reference dword that cannot land in the string section.",
+          "sourceBytesHex": "03000000ffffffff0300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "string_pointer_out_of_bounds"
+        },
+        {
+          "caseId": "bgi.no_header.invalid-shift-jis",
+          "description": "No-header profile rejects a referenced NUL-terminated string that is not valid Shift-JIS.",
+          "sourceBytesHex": "030000003f0000000300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008200838a83580082b182f182c982bf82cd00914991f08e8800",
+          "expectedDiagnosticCode": "invalid_shift_jis"
+        }
+      ],
+      "proofHashes": ["sha256:5e428e85890961568710fadc0e0c8faef8b08c6adbc8a9cdf11e6f56bdeac30f"]
+    }
+  ]
+}
