@@ -1577,7 +1577,16 @@ pub enum ArchiveEngineFamily {
 pub enum ArchiveDetectionSignal {
     Compressed,
     Encrypted,
+    /// Encrypted input was recognized but no reusable crypto capability is
+    /// claimed; distinct from `Encrypted` so the detector can emit the
+    /// `missing_capability.crypto` diagnostic alongside the encrypted-variant
+    /// one (encrypted markers prove detection, not a decryptor).
+    CryptoUnsupported,
     Packed,
+    /// A layered container/decompression/surface transform (e.g. BGI
+    /// CompressedBG) was recognized; handling it needs stacked container +
+    /// codec + surface work that lives outside the detection matrix.
+    LayeredTransform,
     Protected,
     MissingKey,
     HelperRequired,
@@ -2936,10 +2945,23 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         vec![]
     };
     if encrypted_marker_count > 0 {
+        // Encrypted BGI/Ethornell (BSE) markers prove the container is
+        // encrypted, but Kaifuu claims no decryptor. Emit BOTH the
+        // encrypted-variant signal AND the missing-crypto-capability signal so
+        // the live detector agrees with the KAIFUU-128 detector fixtures
+        // (BSE profile => unsupported_variant.encrypted + missing_capability.crypto).
         signals.push(ArchiveDetectionSignal::Encrypted);
+        signals.push(ArchiveDetectionSignal::CryptoUnsupported);
     }
     if compressed_marker_count > 0 {
         signals.push(ArchiveDetectionSignal::Compressed);
+    }
+    if layered_marker_count > 0 {
+        // CompressedBG is a layered container/codec/surface transform; Kaifuu
+        // recognizes it but does not unwrap it. Emit the layered-transform
+        // signal so the live detector agrees with the KAIFUU-128 fixtures
+        // (CompressedBG profile => unsupported_layered_transform).
+        signals.push(ArchiveDetectionSignal::LayeredTransform);
     }
     let detected_variant = if layered_marker_count > 0 {
         "buriko-arc20-compressed-bg-layered-transform"
@@ -3202,10 +3224,22 @@ fn capabilities_for_archive_row(
             "encrypted input was detected, but decryption support is not claimed by the matrix",
         ));
     }
+    if signals.contains(&ArchiveDetectionSignal::CryptoUnsupported) {
+        capabilities.push(CapabilityReport::unsupported(
+            Capability::CryptoAccess,
+            "encrypted input was recognized, but no reusable crypto capability is claimed by the matrix",
+        ));
+    }
     if signals.contains(&ArchiveDetectionSignal::Compressed) {
         capabilities.push(CapabilityReport::unsupported(
             Capability::CodecAccess,
             "compressed archive payloads were detected, but decompression support is not claimed by the matrix",
+        ));
+    }
+    if signals.contains(&ArchiveDetectionSignal::LayeredTransform) {
+        capabilities.push(CapabilityReport::unsupported(
+            Capability::ContainerAccess,
+            "a layered container/codec/surface transform was detected, but unwrapping it is not claimed by the matrix",
         ));
     }
     if signals.contains(&ArchiveDetectionSignal::MissingKey)
@@ -3239,6 +3273,20 @@ fn diagnostics_for_signals(
                 Some(Capability::EncryptedInput),
                 support_boundary,
                 "provide a supported key profile only after an adapter explicitly supports this encrypted variant",
+            )),
+            ArchiveDetectionSignal::CryptoUnsupported => diagnostics.push(diagnostic(
+                SemanticErrorCode::MissingCryptoCapability,
+                ArchiveDetectionSignal::CryptoUnsupported,
+                Some(Capability::CryptoAccess),
+                support_boundary,
+                "do not request key material until a decrypting adapter claims this crypto profile; the marker proves detection only",
+            )),
+            ArchiveDetectionSignal::LayeredTransform => diagnostics.push(diagnostic(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                ArchiveDetectionSignal::LayeredTransform,
+                Some(Capability::ContainerAccess),
+                support_boundary,
+                "use already-unwrapped plaintext sources or wait for an adapter that claims this layered container/codec/surface transform",
             )),
             ArchiveDetectionSignal::Packed => diagnostics.push(diagnostic(
                 SemanticErrorCode::UnsupportedVariantPacked,
@@ -23484,7 +23532,15 @@ mod tests {
                 .contains(&ArchiveDetectionSignal::UnknownVariant)
         );
         assert!(bgi.signals.contains(&ArchiveDetectionSignal::Encrypted));
+        assert!(
+            bgi.signals
+                .contains(&ArchiveDetectionSignal::CryptoUnsupported)
+        );
         assert!(bgi.signals.contains(&ArchiveDetectionSignal::Compressed));
+        assert!(
+            bgi.signals
+                .contains(&ArchiveDetectionSignal::LayeredTransform)
+        );
         assert!(bgi.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == SemanticErrorCode::UnknownEngineVariant
                 && diagnostic.required_capability == Some(Capability::Detection)
@@ -23493,16 +23549,36 @@ mod tests {
             diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
                 && diagnostic.required_capability == Some(Capability::EncryptedInput)
         }));
+        // KAIFUU-128 fixture parity: an encrypted (BSE) BGI archive must emit
+        // the missing_capability.crypto diagnostic the detector fixtures claim.
+        assert!(bgi.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::MissingCryptoCapability
+                && diagnostic.required_capability == Some(Capability::CryptoAccess)
+        }));
         assert!(bgi.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == SemanticErrorCode::MissingCodecCapability
                 && diagnostic.required_capability == Some(Capability::CodecAccess)
+        }));
+        // KAIFUU-128 fixture parity: a CompressedBG/layered BGI archive must
+        // emit the unsupported layered-transform diagnostic the fixtures claim.
+        assert!(bgi.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedLayeredTransform
+                && diagnostic.required_capability == Some(Capability::ContainerAccess)
         }));
         assert!(bgi.capabilities.iter().any(|capability| {
             capability.capability == Capability::EncryptedInput
                 && capability.status == CapabilityStatus::Unsupported
         }));
         assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::CryptoAccess
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
             capability.capability == Capability::CodecAccess
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(bgi.capabilities.iter().any(|capability| {
+            capability.capability == Capability::ContainerAccess
                 && capability.status == CapabilityStatus::Unsupported
         }));
         assert!(bgi.capabilities.iter().any(|capability| {
@@ -23518,6 +23594,75 @@ mod tests {
         assert!(!serialized.contains("BGI-ENCRYPTED"));
         assert!(!serialized.contains("DSC-COMPRESSED"));
         assert!(!serialized.contains("CompressedBG"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    // KAIFUU-128 strict-proof: the KAIFUU-128 detector fixtures
+    // (`fixtures/kaifuu/bgi/detector.profiles.json`) claim, per profile, the
+    // semantic diagnostics BGI containers produce (BSE encrypted =>
+    // missing_capability.crypto; CompressedBG layered => unsupported_layered_transform,
+    // etc.). This test proves the LIVE archive detector actually EMITS every
+    // semantic code those fixtures claim for a synthetic encrypted + compressed
+    // + layered BGI archive — so the fixtures never claim a diagnostic the live
+    // detector does not emit (no fixture-vs-detector drift).
+    #[test]
+    fn archive_detection_bgi_live_detector_agrees_with_kaifuu_128_fixture_claims() {
+        // What the KAIFUU-128 detector fixtures CLAIM, per profile.
+        let fixture = read_bgi_detector_fixture(
+            &test_manifest_dir()
+                .join("../..")
+                .join("fixtures/kaifuu/bgi/detector.profiles.json"),
+        )
+        .expect("KAIFUU-128 BGI detector fixture must parse");
+        let fixture_report = run_bgi_detector_fixture(&fixture);
+        assert_eq!(fixture_report.status, OperationStatus::Passed);
+
+        let claimed_codes = |fixture_id: &str| -> Vec<SemanticErrorCode> {
+            fixture_report
+                .entry(fixture_id)
+                .unwrap_or_else(|| panic!("missing fixture entry {fixture_id}"))
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.semantic_code)
+                .collect()
+        };
+        let encrypted_claims = claimed_codes("bgi.bse-encrypted-container");
+        let layered_claims = claimed_codes("bgi.compressed-bg-layered-transform");
+        // Guard the drift class directly: the fixtures must genuinely CLAIM the
+        // two codes the audit found missing from the live detector.
+        assert!(encrypted_claims.contains(&SemanticErrorCode::MissingCryptoCapability));
+        assert!(layered_claims.contains(&SemanticErrorCode::UnsupportedLayeredTransform));
+
+        // What the LIVE archive detector EMITS for the same profiles combined.
+        let root = temp_dir("bgi-live-vs-fixture");
+        write_fixture_file(
+            &root,
+            "bse.arc",
+            b"BURIKO ARC20\0BGI-ENCRYPTED synthetic BSE marker",
+        );
+        write_fixture_file(
+            &root,
+            "dsc.arc",
+            b"BURIKO ARC20\0DSC-COMPRESSED synthetic compressed marker",
+        );
+        write_fixture_file(
+            &root,
+            "layer.arc",
+            b"BURIKO ARC20\0CompressedBG synthetic layered transform marker",
+        );
+        let report = ArchiveDetectionReport::scan(&root);
+        let bgi = detected_archive_row(&report, "bgi-ethornell-containers");
+        let live_codes: Vec<SemanticErrorCode> = bgi.diagnostics.iter().map(|d| d.code).collect();
+
+        // Every semantic code the fixtures claim for the encrypted + layered
+        // profiles must be emitted by the live detector: fixture ⊆ detector.
+        for claimed in encrypted_claims.iter().chain(layered_claims.iter()) {
+            assert!(
+                live_codes.contains(claimed),
+                "fixture claims {claimed:?} but the live BGI detector did not emit it (drift); live emitted {live_codes:?}"
+            );
+        }
 
         let _ = fs::remove_dir_all(root);
     }
