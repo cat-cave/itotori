@@ -2148,12 +2148,14 @@ export const jobQueue = pgTable(
       table.queueName,
       table.status,
       table.availableAt,
-      table.priority,
+      table.priority.desc(),
+      table.createdAt,
     ),
     index("itotori_jobs_project_type_status_idx").on(table.projectId, table.jobType, table.status),
     index("itotori_jobs_trigger_outbox_event_idx").on(table.triggerOutboxEventId),
     index("itotori_jobs_source_event_idx").on(table.sourceEventId),
     index("itotori_jobs_correlation_idx").on(table.correlationId),
+    index("itotori_jobs_depends_on_job_ids_gin_idx").using("gin", table.dependsOnJobIds),
   ],
 );
 

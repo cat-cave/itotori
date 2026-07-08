@@ -27,8 +27,20 @@ runRequiredCommand(
 
 runRequiredCommand(
   process.execPath,
+  ["--test", path.join(packageRoot, "scripts/verify-event-queue-index-alignment.test.mjs")],
+  "event queue index alignment regression tests",
+);
+
+runRequiredCommand(
+  process.execPath,
   [path.join(packageRoot, "scripts/verify-permission-constraints.mjs")],
   "permission verifier",
+);
+
+runRequiredCommand(
+  process.execPath,
+  [path.join(packageRoot, "scripts/verify-event-queue-index-alignment.mjs")],
+  "event queue index alignment verifier",
 );
 
 if (!process.env[requiredEnv]) {

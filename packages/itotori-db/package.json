@@ -13,7 +13,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "verify:permissions": "node scripts/verify-permission-constraints.mjs",
+    "verify:event-queue-indexes": "node scripts/verify-event-queue-index-alignment.mjs",
     "test:verify-permissions": "node --test scripts/verify-permission-constraints.test.mjs",
+    "test:verify-event-queue-indexes": "node --test scripts/verify-event-queue-index-alignment.test.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:db": "node scripts/run-tests.mjs --require-database",
     "build": "tsc -p tsconfig.json"
