@@ -61,6 +61,16 @@ test("catches a hardcoded non-zero amountMicrosUsd literal", () => {
   assert.deepEqual(hits, ["hardcoded non-zero amountMicrosUsd literal"]);
 });
 
+test("catches a hardcoded non-zero amountMicrosUsd literal split ACROSS multiple lines", () => {
+  const multiline = ["amountMicrosUsd:", "  12_500,"].join("\n");
+  const hits = findViolations(PROD_PATH, multiline);
+  assert.deepEqual(
+    hits.map((v) => v.pattern),
+    ["hardcoded non-zero amountMicrosUsd literal"],
+  );
+  assert.equal(hits[0].line, 1);
+});
+
 test("catches a hardcoded non-zero amountUsd string literal (the authoritative ledger cost)", () => {
   // amountUsd is the full-precision decimal the ledger persists as cost_amount
   // (assertBilledCostDecimal returns it verbatim; migration 0041 1e-9 CHECK).
@@ -208,6 +218,16 @@ test("CLI exits 1 on a crafted file with a multi-line costUsd object", () => {
 test("catches a bare non-zero cost numeric literal", () => {
   const hits = labels(PROD_PATH, "      cost: 0.0125,");
   assert.deepEqual(hits, ["hardcoded non-zero bare cost numeric literal"]);
+});
+
+test("catches a bare non-zero cost numeric literal split ACROSS multiple lines", () => {
+  const multiline = ["cost:", "  0.0125,"].join("\n");
+  const hits = findViolations(PROD_PATH, multiline);
+  assert.deepEqual(
+    hits.map((v) => v.pattern),
+    ["hardcoded non-zero bare cost numeric literal"],
+  );
+  assert.equal(hits[0].line, 1);
 });
 
 test("catches a JSON-quoted amountMicrosUsd literal", () => {
@@ -410,6 +430,29 @@ test("CLI exits 1 on a crafted file containing amountMicrosUsd: 12_500", () => {
   const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
   assert.match(stderr, /ITOTORI-225 audit failed/u);
+});
+
+test("CLI exits 1 on a crafted file containing multi-line amountMicrosUsd and bare cost literals", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
+  const probe = join(dir, "probe-multiline-cost.ts");
+  writeFileSync(
+    probe,
+    [
+      "export const run = {",
+      "  amountMicrosUsd:",
+      "    12_500,",
+      "  usageResponseJson: {",
+      "    cost:",
+      "      0.0125,",
+      "  },",
+      "};",
+      "",
+    ].join("\n"),
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /hardcoded non-zero amountMicrosUsd literal/u);
+  assert.match(stderr, /hardcoded non-zero bare cost numeric literal/u);
 });
 
 test("CLI exits 0 on a crafted file with only ZERO_COST shapes", () => {

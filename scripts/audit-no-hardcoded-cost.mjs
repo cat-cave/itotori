@@ -243,9 +243,14 @@ const FORBIDDEN_PATTERNS = [
   {
     // `amountMicrosUsd: 12_500` — the primary integer-micros cost field
     // (ProviderCost.amountMicrosUsd). Non-zero only; `: 0` is ZERO_COST.
+    // `keyValueForm: true` diverts this pattern into the multi-line-aware
+    // keyed-value scanner below so `amountMicrosUsd:\n  12_500` cannot escape
+    // the guard when a formatter or fixture splits the property value.
     label: "hardcoded non-zero amountMicrosUsd literal",
     regex: /\b["'`]?amountMicrosUsd["'`]?\s*:\s*(?=[\d_]*[1-9])[\d_]/u,
     costLiteral: true,
+    keyValueForm: true,
+    keyOpenRegex: /\b["'`]?amountMicrosUsd["'`]?\s*:/u,
   },
   {
     // `amountUsd: "0.00000602"` / `amountUsd: 0.00157` — the AUTHORITATIVE
@@ -271,9 +276,13 @@ const FORBIDDEN_PATTERNS = [
     // Bare `cost: 0.0125` — the upstream `usage.cost` shape mirrored into a
     // usageResponseJson literal. Non-zero only; `cost: { ... }` object
     // forms and `cost: 0` are not matched (no digit / a zero number).
+    // Routed through the keyed-value scanner so `cost:\n  0.0125` is covered
+    // alongside the single-line shape.
     label: "hardcoded non-zero bare cost numeric literal",
     regex: /\b["'`]?cost["'`]?\s*:\s*(?=[\d_.]*[1-9])[\d_.]/u,
     costLiteral: true,
+    keyValueForm: true,
+    keyOpenRegex: /\b["'`]?cost["'`]?\s*:/u,
   },
   {
     // general-audit-1 (genaudit1-00): token-count fabrication. The
@@ -315,7 +324,7 @@ const FORBIDDEN_PATTERNS = [
 ];
 
 // The per-line comment prefixes that mark a line as commentary rather than
-// real code/data. Shared by the per-line pass and the costUsd block scanner.
+// real code/data. Shared by the per-line pass and the block scanners.
 function isCommentLine(trimmed) {
   return (
     trimmed.startsWith("//") ||
@@ -327,9 +336,56 @@ function isCommentLine(trimmed) {
 }
 
 // The per-line audit-allow escape hatch: `// itotori-225-audit-allow: <reason>`
-// with a non-empty reason. Shared by both passes.
+// with a non-empty reason. Shared by all passes.
 function hasAuditAllowMarker(line) {
   return /itotori-225-audit-allow:\s*\S/u.test(line);
+}
+
+// Multi-line-aware scan for keyed numeric cost literals.
+//
+// The per-line loop cannot see a formatter-split property like:
+//     amountMicrosUsd:
+//       12_500,
+// or:
+//     cost:
+//       0.0125,
+// because the key and numeric literal live on different physical lines. For
+// these value forms we locate the key opener, join a small continuation window
+// into one logical line, then apply the same regex the per-line pass used.
+// This subsumes the single-line case, so keyed-value patterns are removed from
+// the per-line loop via `keyValueForm` to avoid double-reporting. Reported
+// against the line the key opens on.
+function findKeyedValueViolations(path, lines, pattern, costLiteralAllowed) {
+  if (costLiteralAllowed) return [];
+  const found = [];
+  const openRe = pattern.keyOpenRegex;
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+    if (isCommentLine(trimmed)) continue;
+    const opener = openRe.exec(lines[i]);
+    if (!opener) continue;
+
+    let markerSeen = false;
+    let joined = "";
+    for (let j = i; j < lines.length && j <= i + 4; j += 1) {
+      if (hasAuditAllowMarker(lines[j])) markerSeen = true;
+      const seg = j === i ? lines[j].slice(opener.index) : lines[j];
+      if (j > i && isCommentLine(seg.trim())) continue;
+      joined += ` ${seg}`;
+      if (j > i && /\S/u.test(seg)) break;
+    }
+
+    if (markerSeen) continue;
+    if (pattern.regex.test(joined)) {
+      found.push({
+        file: path,
+        line: i + 1,
+        pattern: pattern.label,
+        excerpt: trimmed.slice(0, 200),
+      });
+    }
+  }
+  return found;
 }
 
 // Multi-line-aware scan for object-form `costUsd` cost literals.
@@ -462,9 +518,10 @@ export function findViolations(path, contents) {
       continue;
     }
     for (const pattern of FORBIDDEN_PATTERNS) {
-      // Object-form costUsd is handled by the multi-line-aware block scanner
-      // below, not the per-line pass (see `objectForm` on the pattern).
+      // Multi-line-aware forms are handled by block scanners below, not the
+      // per-line pass (see `objectForm` / `keyValueForm` on the patterns).
       if (pattern.objectForm) continue;
+      if (pattern.keyValueForm) continue;
       if (pattern.costLiteral && costLiteralAllowed) continue;
       if (pattern.legacyEnum && legacyEnumAllowed) continue;
       if (pattern.regex.test(line)) {
@@ -476,6 +533,11 @@ export function findViolations(path, contents) {
         });
       }
     }
+  }
+  // Multi-line-aware keyed-value scan (subsumes the single-line case).
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (!pattern.keyValueForm) continue;
+    found.push(...findKeyedValueViolations(path, lines, pattern, costLiteralAllowed));
   }
   // Multi-line-aware object-form costUsd scan (subsumes the single-line case).
   for (const pattern of FORBIDDEN_PATTERNS) {
