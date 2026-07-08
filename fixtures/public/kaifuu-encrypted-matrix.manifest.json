@@ -15,7 +15,7 @@
     },
     "provenance": {
       "author": "Kaifuu fixture authors",
-      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector and parser-boundary expected outputs.",
+      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, preserved XP3/RPG Maker expected outputs, and command-regenerated Siglus detector/profile/inventory/parser-boundary expected outputs.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -56,8 +56,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-detector-profile-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "962f28d577ce78890b84b9dec12e563625d27996c58480a1fec349c91a3c9ffe",
-      "bytes": 6759,
+      "sha256": "5abf1475a3acb56cabfeb0055b06f522485c523a627da54b7a08f4085a78e50f",
+      "bytes": 6719,
       "redistributable": true
     },
     {
@@ -304,8 +304,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/README.md",
       "role": "metadata",
       "mediaType": "text/markdown",
-      "sha256": "33ec36591632a0496cdb747a29babfe037fc3c548da755203877db5301174d1d",
-      "bytes": 1302,
+      "sha256": "1ec1a981e6daf91877b3fec1dcac2bcafc50f53e10dbcca82f7b9d4e3219fda1",
+      "bytes": 1609,
       "redistributable": true
     },
     {
