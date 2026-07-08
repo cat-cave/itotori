@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "0.1.0",
+  "detectorSetId": "bgi/detector-profiles",
+  "sourceNodeId": "KAIFUU-126",
+  "engineFamily": "bgi",
+  "entries": [
+    {
+      "fixtureId": "bgi.buriko-arc20-container",
+      "variant": "buriko-arc20-container",
+      "profile": "buriko_arc20_container",
+      "container": "archive",
+      "crypto": "none_or_unknown_variant",
+      "codec": "shift_jis_text",
+      "surface": "archive_entry",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+      "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
+    },
+    {
+      "fixtureId": "bgi.bse-encrypted-container",
+      "variant": "bse-encrypted-container",
+      "profile": "bse_encrypted_container",
+      "container": "archive",
+      "crypto": "none_or_unknown_variant",
+      "codec": "binary_table",
+      "surface": "archive_entry",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:8e6f802ccba2e25ebc56ba2081047c24e7090fc4402b50e5ba7ba8885be98d04"],
+      "expectedSemanticCodes": ["kaifuu.unknown_engine_variant", "kaifuu.missing_capability.crypto"]
+    },
+    {
+      "fixtureId": "bgi.dsc-compressed-container",
+      "variant": "dsc-compressed-container",
+      "profile": "dsc_compressed_container",
+      "container": "archive",
+      "crypto": "none_or_unknown_variant",
+      "codec": "binary_table",
+      "surface": "archive_entry",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:c40b1f56501ec5b04e0251773e4b4e5b5a226900b928a656c1e8c935e2148ee0"],
+      "expectedSemanticCodes": ["kaifuu.missing_capability.codec"]
+    },
+    {
+      "fixtureId": "bgi.compressed-bg-layered-transform",
+      "variant": "compressed-bg-layered-transform",
+      "profile": "compressed_bg_layered_transform",
+      "container": "archive",
+      "crypto": "none_or_unknown_variant",
+      "codec": "binary_table",
+      "surface": "binary_offset",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:2d2ac110b8e33e4b176d67cd5692c8335c97228161012241f447266b47d83e1a"],
+      "expectedSemanticCodes": [
+        "kaifuu.unsupported_layered_transform",
+        "kaifuu.missing_capability.codec"
+      ]
+    },
+    {
+      "fixtureId": "bgi.no-header-arc",
+      "variant": "no-header-arc",
+      "profile": "no_header_arc",
+      "container": "archive",
+      "crypto": "none_or_unknown_variant",
+      "codec": "unknown",
+      "surface": "unknown",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:0f5b04d12206c96e4ac1d84eb39c0d9e45a9dac5fd4e082a6d4beba39d70b5df"],
+      "expectedSemanticCodes": [
+        "kaifuu.unknown_engine_variant",
+        "kaifuu.missing_capability.container"
+      ]
+    },
+    {
+      "fixtureId": "bgi.unknown-container",
+      "variant": "unknown-container",
+      "profile": "unknown_container",
+      "container": "unknown",
+      "crypto": "none_or_unknown_variant",
+      "codec": "unknown",
+      "surface": "unknown",
+      "secretRequirementIds": [],
+      "proofHashes": ["sha256:a85d7e68db9f5891fea56f90d9f419c3b563ead13da97bf843e6a708548e9461"],
+      "expectedSemanticCodes": [
+        "kaifuu.unknown_engine_variant",
+        "kaifuu.missing_capability.container"
+      ]
+    }
+  ]
+}

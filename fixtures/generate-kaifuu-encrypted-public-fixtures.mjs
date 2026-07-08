@@ -113,15 +113,6 @@ writeJson(
         publicKeyMaterial: "fixture-only-wolf-archive-key-v1",
         validates: ["raw/wolf/Data.wolf"],
       },
-      {
-        keyId: "fixture/bgi/container-key",
-        requirementId: "bgi-ethornell-container-key",
-        engineFamily: "bgi_ethornell",
-        materialKind: "fixedBytes",
-        bytes: 16,
-        publicKeyMaterial: "fixture-only-bgi-container-key-v1",
-        validates: ["raw/bgi/pack.arc"],
-      },
     ],
     notes: [
       "Key labels are committed only because every payload is generated in-repository.",
@@ -406,13 +397,13 @@ writeJson(
     redactedLogHash: sha256Ref("kaifuu051-validation-failed-log"),
     secretRefs: [
       {
-        requirementId: "bgi-ethornell-container-key",
-        secretRef: "local-secret:fixture/bgi/container-key",
+        requirementId: "siglus-secondary-key",
+        secretRef: "local-secret:fixture/siglus/secondary-key",
         materialKind: "fixedBytes",
         bytes: 16,
         validation: {
           method: "fixtureRoundTripProof",
-          proofHash: sha256Ref("kaifuu051-bgi-bad-key-proof"),
+          proofHash: sha256Ref("kaifuu051-siglus-bad-key-proof"),
         },
       },
     ],
@@ -483,7 +474,7 @@ writeJson(
         rowId: "bgi-ethornell-containers",
         engineFamily: "bgi_ethornell",
         detected: true,
-        signals: ["encrypted", "missing_key", "packed", "unknown_variant"],
+        signals: ["encrypted", "packed", "unknown_variant"],
       },
       {
         rowId: "unknown-archive-variant",

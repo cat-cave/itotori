@@ -204,6 +204,7 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 pub mod alpha_encrypted_readiness;
 pub mod alpha_readiness_profile;
 pub mod asset_ocr;
+pub mod bgi_detector_fixture;
 pub mod compat_evidence;
 pub mod compat_profile;
 pub mod compat_regression;
@@ -231,6 +232,12 @@ pub mod wolf_protection_detector;
 pub mod wolf_readiness;
 pub mod xp3_capability_profile;
 
+pub use bgi_detector_fixture::{
+    BGI_DETECTOR_FIXTURE_SCHEMA_VERSION, BGI_DETECTOR_REPORT_SCHEMA_VERSION,
+    BGI_DETECTOR_SUPPORT_BOUNDARY, BGI_ENGINE_FAMILY, BgiDetectorCrypto, BgiDetectorDiagnostic,
+    BgiDetectorEntryReport, BgiDetectorFixture, BgiDetectorFixtureEntry, BgiDetectorProfile,
+    BgiDetectorReport, read_bgi_detector_fixture, run_bgi_detector_fixture,
+};
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
 pub use wolf_helper_boundary::{
     WOLF_HELPER_BOUNDARY_REPORT_SCHEMA_VERSION, WOLF_HELPER_BOUNDARY_SCHEMA_VERSION,
@@ -2909,10 +2916,7 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         vec![]
     };
     if encrypted_marker_count > 0 {
-        signals.extend([
-            ArchiveDetectionSignal::Encrypted,
-            ArchiveDetectionSignal::MissingKey,
-        ]);
+        signals.push(ArchiveDetectionSignal::Encrypted);
     }
     archive_row(ArchiveRowInput {
         row_id: "bgi-ethornell-containers",
@@ -2945,15 +2949,7 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
                 "Synthetic BGI/Ethornell encrypted-container marker count",
             ),
         ],
-        requirements: if encrypted_marker_count > 0 {
-            vec![secret_requirement(
-                "bgi-ethornell-container-key",
-                "encrypted BGI/Ethornell containers require local key/profile evidence",
-                "KAIFUU_BGI_CONTAINER_KEY",
-            )]
-        } else {
-            vec![]
-        },
+        requirements: vec![],
         support_boundary: "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted container handling, and repacking are not claimed by this matrix.",
     })
 }

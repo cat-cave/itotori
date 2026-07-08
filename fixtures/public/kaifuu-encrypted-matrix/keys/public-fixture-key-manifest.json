@@ -49,17 +49,6 @@
       "validates": [
         "raw/wolf/Data.wolf"
       ]
-    },
-    {
-      "keyId": "fixture/bgi/container-key",
-      "requirementId": "bgi-ethornell-container-key",
-      "engineFamily": "bgi_ethornell",
-      "materialKind": "fixedBytes",
-      "bytes": 16,
-      "publicKeyMaterial": "fixture-only-bgi-container-key-v1",
-      "validates": [
-        "raw/bgi/pack.arc"
-      ]
     }
   ],
   "notes": [

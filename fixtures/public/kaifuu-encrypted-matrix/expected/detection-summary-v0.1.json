@@ -55,7 +55,6 @@
       "detected": true,
       "signals": [
         "encrypted",
-        "missing_key",
         "packed",
         "unknown_variant"
       ]

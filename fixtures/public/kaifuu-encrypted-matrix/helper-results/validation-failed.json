@@ -28,13 +28,13 @@
   },
   "secretRefs": [
     {
-      "requirementId": "bgi-ethornell-container-key",
-      "secretRef": "local-secret:fixture/bgi/container-key",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
       "materialKind": "fixedBytes",
       "bytes": 16,
       "validation": {
         "method": "fixtureRoundTripProof",
-        "proofHash": "sha256:7cab06728c9b4dcb1413c9ecdf2aae317378f2c7d40bd675daac9df4601607dc"
+        "proofHash": "sha256:cc0511a6793023519d54b071d050393028c94db08a7cc0a14ad8fca31ff4ddba"
       }
     }
   ],
