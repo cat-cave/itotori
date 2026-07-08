@@ -399,7 +399,20 @@
             "expectedDiagnosticCode": "missing_code_terminator"
           }
         ],
-        "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+        "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"],
+        "claimsPatchSupport": true,
+        "patchCases": [
+          {
+            "patchId": "bgi.header.patch.name.001",
+            "referenceId": "bgi.header.name.001",
+            "replacementText": "MARISA"
+          },
+          {
+            "patchId": "bgi.header.patch.dialogue.001",
+            "referenceId": "bgi.header.dialogue.001",
+            "replacementText": "HELLOTHERE"
+          }
+        ]
       },
       "extractProof": {
         "kind": "synthetic_extract_fixture",

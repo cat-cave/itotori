@@ -38,7 +38,9 @@
 //! - `extract` — an explicit synthetic EXTRACT fixture proves member extraction
 //!   AND the outer container gate is open.
 //! - `patch` — an explicit synthetic PATCH fixture proves patch-back AND
-//!   extraction is proven AND the outer container gate is open.
+//!   extraction is proven AND the outer container gate is open AND the embedded
+//!   bytecode profile carries a verified extract-to-patch round-trip
+//!   (`patch_reports` non-empty and verified).
 //!
 //! The single source of truth is [`derive_bgi_readiness_level`]: a pure, total
 //! function of the detector-derived profile, whether a bytecode profile actually
@@ -97,7 +99,7 @@ pub const BGI_READINESS_DETECTOR_PROVENANCE_NODE: &str = "KAIFUU-126";
 pub const BGI_READINESS_BYTECODE_PROVENANCE_NODE: &str = "KAIFUU-127";
 
 /// The support boundary surfaced in every BGI readiness report.
-pub const BGI_READINESS_SUPPORT_BOUNDARY: &str = "The BGI/Ethornell readiness proof COMBINES the KAIFUU-126 archive/container detector evidence (identify + honest missing_capability boundaries for encrypted/compressed/layered/unknown variants) with the KAIFUU-127 scenario-bytecode parser evidence (inventory of Shift-JIS string-reference surfaces) into ONE per-capability-level readiness report. It reports the ACHIEVED level (unsupported, identify, inventory, extract, or patch) mechanically per the fixture evidence and NEVER claims a level beyond it: an encrypted (BSE), compressed (DSC), layered (CompressedBG), header-less, or unrecognized container is unsupported; identify recognizes a Buriko ARC20 container; inventory enumerates the parser/profile string-reference surfaces; extract and patch are claimed ONLY where an explicit synthetic fixture proves them (retail BGI archive decryption/decompression/extraction/patch-back is later adapter work and is never claimed here). Evidence is synthetic and redacted — synthetic ids and sha256 hashes only, never raw keys, paths, or retail bytes.";
+pub const BGI_READINESS_SUPPORT_BOUNDARY: &str = "The BGI/Ethornell readiness proof COMBINES the KAIFUU-126 archive/container detector evidence (identify + honest missing_capability boundaries for encrypted/compressed/layered/unknown variants) with the KAIFUU-127 scenario-bytecode parser evidence (inventory of Shift-JIS string-reference surfaces plus verified extract-to-patch round-trips) into ONE per-capability-level readiness report. It reports the ACHIEVED level (unsupported, identify, inventory, extract, or patch) mechanically per the fixture evidence and NEVER claims a level beyond it: an encrypted (BSE), compressed (DSC), layered (CompressedBG), header-less, or unrecognized container is unsupported; identify recognizes a Buriko ARC20 container; inventory enumerates the parser/profile string-reference surfaces; extract is claimed ONLY where an explicit synthetic fixture proves it; patch additionally requires a verified bytecode extract-to-patch round-trip (non-empty verified patch_reports) plus an explicit synthetic patch fixture (retail BGI archive decryption/decompression/extraction/patch-back is later adapter work and is never claimed here). Evidence is synthetic and redacted — synthetic ids and sha256 hashes only, never raw keys, paths, or retail bytes.";
 
 // ---------------------------------------------------------------------------
 // The achieved readiness level (the five-rung honest ladder)
@@ -123,7 +125,8 @@ pub enum BgiReadinessLevel {
     /// container gate is open.
     Extract,
     /// An explicit synthetic patch fixture proves patch-back, extraction proven,
-    /// the outer container gate is open.
+    /// the outer container gate is open, and the embedded bytecode profile
+    /// verified an extract-to-patch round-trip.
     Patch,
 }
 
@@ -624,6 +627,25 @@ fn resolve_case(
         });
         patch_proven = false;
     }
+    // Patch readiness also requires a VERIFIED bytecode extract-to-patch
+    // round-trip: non-empty patch_reports whose patched text + untouched bytes
+    // actually verified. A bare synthetic patchProof hash alone is not enough.
+    let bytecode_patch_verified = bytecode_entry.as_ref().is_some_and(|entry| {
+        entry.status == OperationStatus::Passed
+            && !entry.patch_reports.is_empty()
+            && entry
+                .patch_reports
+                .iter()
+                .all(|report| report.patched_text_verified && report.untouched_bytes_identical)
+    });
+    if patch_proven && !bytecode_patch_verified {
+        findings.push(BgiReadinessFinding {
+            code: "bgi.readiness.bytecode_patch_proof_missing".to_string(),
+            field: "bytecode.patchCases".to_string(),
+            message: "a patch readiness level requires a verified bytecode extract-to-patch round-trip (non-empty verified patch_reports from the embedded bytecode profile)".to_string(),
+        });
+        patch_proven = false;
+    }
 
     // --- Combine the evidence into the achieved level (source of truth). -----
     let evidence = BgiReadinessEvidence {
@@ -751,7 +773,9 @@ fn build_claim_basis(
         String::new()
     };
     let proofs = match (evidence.extract_proven, evidence.patch_proven) {
-        (true, true) => "; synthetic extract + patch fixtures proven",
+        (true, true) => {
+            "; synthetic extract + patch fixtures proven with verified bytecode extract-to-patch"
+        }
         (true, false) => "; synthetic extract fixture proven",
         _ => "",
     };
@@ -996,6 +1020,67 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- Patch level requires a verified bytecode extract-to-patch proof. -----
+
+    #[test]
+    fn patch_level_requires_verified_bytecode_patch_report() {
+        let mut fixture = load();
+        let case = fixture
+            .cases
+            .iter_mut()
+            .find(|c| c.fixture_id == "bgi.readiness.patch")
+            .unwrap();
+        // Keep the synthetic patchProof hash, but strip the real bytecode
+        // extract-to-patch cases so the round-trip never ran.
+        let bytecode = case.bytecode.as_mut().unwrap();
+        bytecode.claims_patch_support = false;
+        bytecode.patch_cases.clear();
+
+        let report = run_bgi_readiness(&fixture);
+        let entry = report.entry("bgi.readiness.patch").unwrap();
+        assert_eq!(entry.status, OperationStatus::Failed);
+        assert!(
+            entry
+                .findings
+                .iter()
+                .any(|f| f.code == "bgi.readiness.bytecode_patch_proof_missing"),
+            "missing bytecode patch proof must be a finding: {:?}",
+            entry.findings
+        );
+        // Does NOT reach Patch — falls back to Extract (extract proof still honored).
+        assert_eq!(entry.readiness_level, BgiReadinessLevel::Extract);
+        assert!(
+            entry
+                .bytecode
+                .as_ref()
+                .is_some_and(|bc| bc.patch_reports.is_empty())
+        );
+    }
+
+    #[test]
+    fn committed_patch_case_composes_bytecode_extract_to_patch_proof() {
+        let report = run();
+        let entry = report.entry("bgi.readiness.patch").unwrap();
+        assert_eq!(
+            entry.status,
+            OperationStatus::Passed,
+            "{:?}",
+            entry.findings
+        );
+        assert_eq!(entry.readiness_level, BgiReadinessLevel::Patch);
+        let bytecode = entry.bytecode.as_ref().expect("patch case embeds bytecode");
+        assert!(
+            !bytecode.patch_reports.is_empty(),
+            "committed patch readiness case must embed a real bytecode patch proof"
+        );
+        assert!(
+            bytecode
+                .patch_reports
+                .iter()
+                .all(|report| { report.patched_text_verified && report.untouched_bytes_identical })
+        );
     }
 
     // --- A fabricated extract proof (wrong hash) is refused. ------------------

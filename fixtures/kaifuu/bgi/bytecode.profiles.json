@@ -33,7 +33,7 @@
           "stringStartByte": 56,
           "stringEndByte": 62,
           "terminatorByte": 62,
-          "decodedText": "\u30a2\u30ea\u30b9"
+          "decodedText": "アリス"
         },
         {
           "referenceId": "bgi.header.dialogue.001",
@@ -44,7 +44,19 @@
           "stringStartByte": 63,
           "stringEndByte": 73,
           "terminatorByte": 73,
-          "decodedText": "\u3053\u3093\u306b\u3061\u306f"
+          "decodedText": "こんにちは"
+        }
+      ],
+      "patchCases": [
+        {
+          "patchId": "bgi.header.patch.name.001",
+          "referenceId": "bgi.header.name.001",
+          "replacementText": "MARISA"
+        },
+        {
+          "patchId": "bgi.header.patch.dialogue.001",
+          "referenceId": "bgi.header.dialogue.001",
+          "replacementText": "HELLOTHERE"
         }
       ],
       "negativeCases": [
@@ -67,7 +79,8 @@
           "expectedDiagnosticCode": "missing_code_terminator"
         }
       ],
-      "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+      "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"],
+      "claimsPatchSupport": true
     },
     {
       "fixtureId": "bgi.bytecode.no-header",
@@ -98,7 +111,7 @@
           "stringStartByte": 63,
           "stringEndByte": 73,
           "terminatorByte": 73,
-          "decodedText": "\u3053\u3093\u306b\u3061\u306f"
+          "decodedText": "こんにちは"
         },
         {
           "referenceId": "bgi.no_header.name.001",
@@ -109,7 +122,7 @@
           "stringStartByte": 56,
           "stringEndByte": 62,
           "terminatorByte": 62,
-          "decodedText": "\u30a2\u30ea\u30b9"
+          "decodedText": "アリス"
         },
         {
           "referenceId": "bgi.no_header.other.001",
@@ -120,7 +133,24 @@
           "stringStartByte": 74,
           "stringEndByte": 80,
           "terminatorByte": 80,
-          "decodedText": "\u9078\u629e\u80a2"
+          "decodedText": "選択肢"
+        }
+      ],
+      "patchCases": [
+        {
+          "patchId": "bgi.no_header.patch.dialogue.001",
+          "referenceId": "bgi.no_header.dialogue.001",
+          "replacementText": "HELLOTHERE"
+        },
+        {
+          "patchId": "bgi.no_header.patch.name.001",
+          "referenceId": "bgi.no_header.name.001",
+          "replacementText": "MARISA"
+        },
+        {
+          "patchId": "bgi.no_header.patch.other.001",
+          "referenceId": "bgi.no_header.other.001",
+          "replacementText": "CHOICE"
         }
       ],
       "negativeCases": [
@@ -141,9 +171,16 @@
           "description": "No-header profile rejects a referenced NUL-terminated string that is not valid Shift-JIS.",
           "sourceBytesHex": "030000003f0000000300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008200838a83580082b182f182c982bf82cd00914991f08e8800",
           "expectedDiagnosticCode": "invalid_shift_jis"
+        },
+        {
+          "caseId": "bgi.no_header.false-positive-code-pointer",
+          "description": "No-header profile rejects a reference-shaped dword pair whose pointer lands inside the code section rather than the text pool.",
+          "sourceBytesHex": "03000000080000001b000000",
+          "expectedDiagnosticCode": "string_pointer_out_of_bounds"
         }
       ],
-      "proofHashes": ["sha256:5e428e85890961568710fadc0e0c8faef8b08c6adbc8a9cdf11e6f56bdeac30f"]
+      "proofHashes": ["sha256:5e428e85890961568710fadc0e0c8faef8b08c6adbc8a9cdf11e6f56bdeac30f"],
+      "claimsPatchSupport": true
     }
   ]
 }

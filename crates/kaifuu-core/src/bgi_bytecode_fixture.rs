@@ -4,8 +4,9 @@
 //! separate from the KAIFUU-126 archive detector fixtures. It covers the two
 //! public parser shapes: the `BurikoCompiledScriptVer1.00\0` header variant
 //! and the no-header variant. The parser records code-size-relative
-//! Shift-JIS string references only; it does not claim opcode execution,
-//! archive parsing, encryption, compression, or patch-back.
+//! Shift-JIS string references and proves length-preserving patch-back over
+//! those references; it does not claim opcode execution, archive parsing,
+//! encryption, compression, or relocated string storage.
 
 use std::path::Path;
 
@@ -13,13 +14,13 @@ use encoding_rs::SHIFT_JIS;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    KaifuuResult, OperationStatus, PartialDiagnosticSeverity, ProofHash, SurfaceTransform,
-    read_json, redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    KaifuuResult, OperationStatus, PartialDiagnosticSeverity, PatchBackTransform, ProofHash,
+    SurfaceTransform, read_json, redact_for_log_or_report, sha256_hash_bytes, stable_json,
 };
 
 pub const BGI_BYTECODE_FIXTURE_SCHEMA_VERSION: &str = "0.1.0";
 pub const BGI_BYTECODE_REPORT_SCHEMA_VERSION: &str = "0.1.0";
-pub const BGI_BYTECODE_SUPPORT_BOUNDARY: &str = "BGI/Ethornell bytecode parser-surface fixtures are synthetic extensionless scenario bytecode only. They record header and no-header profile variants plus Shift-JIS string-reference surfaces. They do not parse BURIKO ARC20 archives, decrypt/compress payloads, execute opcodes, or claim patch-back.";
+pub const BGI_BYTECODE_SUPPORT_BOUNDARY: &str = "BGI/Ethornell bytecode parser-surface fixtures are synthetic extensionless scenario bytecode only. They record header and no-header profile variants plus Shift-JIS string-reference surfaces, then prove length-preserving extract-to-patch round-trips over those references. They do not parse BURIKO ARC20 archives, decrypt/compress payloads, execute opcodes, relocate string storage, or claim production adapter coverage.";
 
 const BGI_HEADER_MAGIC: &[u8] = b"BurikoCompiledScriptVer1.00\0";
 const BGI_HEADER_BASE_SIZE: usize = 0x1c;
@@ -151,6 +152,13 @@ pub struct BgiBytecodeFixtureEntry {
     pub parser_surface: BgiBytecodeParserSurface,
     pub source_bytes_hex: String,
     pub expected_string_references: Vec<BgiBytecodeStringReference>,
+    /// When true, this entry claims extract-to-patch support and empty
+    /// [`Self::patch_cases`] is a loud claimed-support failure (not a silent skip).
+    /// Parse / negative-only entries leave this false and may omit patch cases.
+    #[serde(default)]
+    pub claims_patch_support: bool,
+    #[serde(default)]
+    pub patch_cases: Vec<BgiBytecodePatchCase>,
     #[serde(default)]
     pub negative_cases: Vec<BgiBytecodeNegativeCase>,
     pub proof_hashes: Vec<ProofHash>,
@@ -198,6 +206,14 @@ impl BgiBytecodeStringReference {
             decoded_text: redact_for_log_or_report(&self.decoded_text),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BgiBytecodePatchCase {
+    pub patch_id: String,
+    pub reference_id: String,
+    pub replacement_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,6 +270,7 @@ pub struct BgiBytecodeEntryReport {
     pub source_hash: ProofHash,
     pub proof_hashes: Vec<ProofHash>,
     pub string_references: Vec<BgiBytecodeStringReference>,
+    pub patch_reports: Vec<BgiBytecodePatchReport>,
     pub negative_cases: Vec<BgiBytecodeNegativeCaseReport>,
     pub diagnostics: Vec<BgiBytecodeDiagnostic>,
     pub status: OperationStatus,
@@ -279,6 +296,11 @@ impl BgiBytecodeEntryReport {
                 .iter()
                 .map(BgiBytecodeStringReference::redacted_for_report)
                 .collect(),
+            patch_reports: self
+                .patch_reports
+                .iter()
+                .map(BgiBytecodePatchReport::redacted_for_report)
+                .collect(),
             negative_cases: self
                 .negative_cases
                 .iter()
@@ -290,6 +312,40 @@ impl BgiBytecodeEntryReport {
                 .map(BgiBytecodeDiagnostic::redacted_for_report)
                 .collect(),
             status: self.status.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BgiBytecodePatchReport {
+    pub patch_id: String,
+    pub reference_id: String,
+    pub patch_back: PatchBackTransform,
+    pub original_text: String,
+    pub replacement_text: String,
+    pub original_byte_len: u64,
+    pub replacement_byte_len: u64,
+    pub source_hash: ProofHash,
+    pub patched_hash: ProofHash,
+    pub patched_text_verified: bool,
+    pub untouched_bytes_identical: bool,
+}
+
+impl BgiBytecodePatchReport {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            patch_id: redact_for_log_or_report(&self.patch_id),
+            reference_id: redact_for_log_or_report(&self.reference_id),
+            patch_back: self.patch_back,
+            original_text: redact_for_log_or_report(&self.original_text),
+            replacement_text: redact_for_log_or_report(&self.replacement_text),
+            original_byte_len: self.original_byte_len,
+            replacement_byte_len: self.replacement_byte_len,
+            source_hash: self.source_hash.clone(),
+            patched_hash: self.patched_hash.clone(),
+            patched_text_verified: self.patched_text_verified,
+            untouched_bytes_identical: self.untouched_bytes_identical,
         }
     }
 }
@@ -383,6 +439,23 @@ impl std::fmt::Display for BgiBytecodeParseError {
 
 impl std::error::Error for BgiBytecodeParseError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BgiBytecodePatchError {
+    pub diagnostic: BgiBytecodeDiagnostic,
+}
+
+impl std::fmt::Display for BgiBytecodePatchError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} at {}: {}",
+            self.diagnostic.code, self.diagnostic.field, self.diagnostic.message
+        )
+    }
+}
+
+impl std::error::Error for BgiBytecodePatchError {}
+
 pub fn read_bgi_bytecode_fixture(path: &Path) -> KaifuuResult<BgiBytecodeFixture> {
     read_json(path)
 }
@@ -419,6 +492,15 @@ pub fn parse_bgi_bytecode_entry(
     let bytes = decode_hex(&entry.source_bytes_hex)
         .map_err(|message| parse_error("invalid_source_bytes_hex", "sourceBytesHex", message))?;
     parse_bgi_bytecode(&bytes, entry.variant)
+}
+
+pub fn patch_bgi_bytecode_entry(
+    entry: &BgiBytecodeFixtureEntry,
+    patch_cases: &[BgiBytecodePatchCase],
+) -> Result<(Vec<u8>, Vec<BgiBytecodePatchReport>), BgiBytecodePatchError> {
+    let bytes = decode_hex(&entry.source_bytes_hex)
+        .map_err(|message| patch_error("invalid_source_bytes_hex", "sourceBytesHex", message))?;
+    patch_bgi_bytecode(&bytes, entry.variant, patch_cases)
 }
 
 fn run_entry(
@@ -500,6 +582,28 @@ fn run_entry(
         }
     };
 
+    // Claimed-support honesty: an entry that claims patch support with no
+    // patchCases must fail loud. A genuine parse/negative-only entry
+    // (`claims_patch_support == false`) may omit patch cases without error.
+    let patch_reports = if entry.claims_patch_support && entry.patch_cases.is_empty() {
+        diagnostics.push(BgiBytecodeDiagnostic::new(
+            "claimed_patch_cases_missing",
+            "patchCases",
+            "entry claims patch support but declares no patchCases (claimed-support failures must fail loud, not silently skip)",
+        ));
+        Vec::new()
+    } else if source_bytes.is_empty() || entry.patch_cases.is_empty() {
+        Vec::new()
+    } else {
+        match patch_bgi_bytecode(&source_bytes, entry.variant, &entry.patch_cases) {
+            Ok((_, reports)) => reports,
+            Err(error) => {
+                diagnostics.push(error.diagnostic);
+                Vec::new()
+            }
+        }
+    };
+
     let negative_cases = entry
         .negative_cases
         .iter()
@@ -529,10 +633,160 @@ fn run_entry(
         source_hash,
         proof_hashes: entry.proof_hashes.clone(),
         string_references,
+        patch_reports,
         negative_cases,
         diagnostics,
         status,
     }
+}
+
+fn patch_bgi_bytecode(
+    source_bytes: &[u8],
+    variant: BgiBytecodeVariant,
+    patch_cases: &[BgiBytecodePatchCase],
+) -> Result<(Vec<u8>, Vec<BgiBytecodePatchReport>), BgiBytecodePatchError> {
+    let references =
+        parse_bgi_bytecode(source_bytes, variant).map_err(|error| BgiBytecodePatchError {
+            diagnostic: error.diagnostic,
+        })?;
+    let mut patched = source_bytes.to_vec();
+    let mut touched = vec![false; source_bytes.len()];
+    let mut reports = Vec::with_capacity(patch_cases.len());
+    let source_hash = proof_hash_for_bytes(source_bytes);
+
+    for patch in patch_cases {
+        let reference = references
+            .iter()
+            .find(|reference| reference.reference_id == patch.reference_id)
+            .ok_or_else(|| {
+                patch_error(
+                    "patch_reference_not_found",
+                    format!("patchCases.{}", patch.patch_id),
+                    format!(
+                        "patch case referenced unknown BGI string reference {}",
+                        patch.reference_id
+                    ),
+                )
+            })?;
+        let string_start = usize::try_from(reference.string_start_byte).map_err(|_| {
+            patch_error(
+                "patch_range_out_of_bounds",
+                format!("patchCases.{}", patch.patch_id),
+                "BGI string start offset does not fit in memory",
+            )
+        })?;
+        let string_end = usize::try_from(reference.string_end_byte).map_err(|_| {
+            patch_error(
+                "patch_range_out_of_bounds",
+                format!("patchCases.{}", patch.patch_id),
+                "BGI string end offset does not fit in memory",
+            )
+        })?;
+        if string_start > string_end || string_end > source_bytes.len() {
+            return Err(patch_error(
+                "patch_range_out_of_bounds",
+                format!("patchCases.{}", patch.patch_id),
+                "BGI string-reference byte range is outside the source buffer",
+            ));
+        }
+        if touched[string_start..string_end]
+            .iter()
+            .any(|touched| *touched)
+        {
+            return Err(patch_error(
+                "patch_overlaps_previous_patch",
+                format!("patchCases.{}", patch.patch_id),
+                "BGI patch cases must not target overlapping string ranges",
+            ));
+        }
+
+        let replacement = encode_shift_jis(&patch.replacement_text).map_err(|message| {
+            patch_error(
+                "patch_replacement_not_shift_jis",
+                format!("patchCases.{}", patch.patch_id),
+                message,
+            )
+        })?;
+        if replacement.contains(&0) {
+            return Err(patch_error(
+                "patch_replacement_contains_nul",
+                format!("patchCases.{}", patch.patch_id),
+                "BGI replacement strings must not contain embedded NUL bytes",
+            ));
+        }
+        let original_len = string_end - string_start;
+        if replacement.len() != original_len {
+            return Err(patch_error(
+                "patch_replacement_byte_length_mismatch",
+                format!("patchCases.{}", patch.patch_id),
+                format!(
+                    "length-preserving BGI proof requires {} encoded bytes, got {}",
+                    original_len,
+                    replacement.len()
+                ),
+            ));
+        }
+
+        patched[string_start..string_end].copy_from_slice(&replacement);
+        for byte in &mut touched[string_start..string_end] {
+            *byte = true;
+        }
+        reports.push(BgiBytecodePatchReport {
+            patch_id: patch.patch_id.clone(),
+            reference_id: patch.reference_id.clone(),
+            patch_back: PatchBackTransform::RecompileBytecode,
+            original_text: reference.decoded_text.clone(),
+            replacement_text: patch.replacement_text.clone(),
+            original_byte_len: original_len as u64,
+            replacement_byte_len: replacement.len() as u64,
+            source_hash: source_hash.clone(),
+            patched_hash: proof_hash_for_bytes(&patched),
+            patched_text_verified: false,
+            untouched_bytes_identical: false,
+        });
+    }
+
+    if !source_bytes
+        .iter()
+        .zip(&patched)
+        .zip(&touched)
+        .all(|((source, patched), touched)| *touched || source == patched)
+    {
+        return Err(patch_error(
+            "patch_untouched_bytes_changed",
+            "patchCases",
+            "BGI patch changed bytes outside declared string-reference ranges",
+        ));
+    }
+
+    let reparsed =
+        parse_bgi_bytecode(&patched, variant).map_err(|error| BgiBytecodePatchError {
+            diagnostic: error.diagnostic,
+        })?;
+    for report in &mut reports {
+        let reparsed_reference = reparsed
+            .iter()
+            .find(|reference| reference.reference_id == report.reference_id)
+            .ok_or_else(|| {
+                patch_error(
+                    "patched_reference_missing_after_reparse",
+                    format!("patchCases.{}", report.patch_id),
+                    "patched BGI bytecode no longer exposes the target string reference",
+                )
+            })?;
+        report.patched_text_verified = reparsed_reference.decoded_text == report.replacement_text;
+        report.untouched_bytes_identical = true;
+        report.patched_hash = proof_hash_for_bytes(&patched);
+        if !report.patched_text_verified {
+            return Err(patch_error(
+                "patched_text_not_verified",
+                format!("patchCases.{}", report.patch_id),
+                "patched BGI bytecode did not reparse to the requested replacement text",
+            ));
+        }
+    }
+
+    Ok((patched, reports))
 }
 
 fn run_negative_case(
@@ -846,6 +1100,14 @@ fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn encode_shift_jis(text: &str) -> Result<Vec<u8>, String> {
+    let (encoded, _, had_errors) = SHIFT_JIS.encode(text);
+    if had_errors {
+        return Err("replacement text is not encodable as Shift-JIS".to_string());
+    }
+    Ok(encoded.into_owned())
+}
+
 fn proof_hash_for_bytes(bytes: &[u8]) -> ProofHash {
     ProofHash::new(sha256_hash_bytes(bytes)).expect("sha256 hash is canonical")
 }
@@ -856,6 +1118,16 @@ fn parse_error(
     message: impl Into<String>,
 ) -> BgiBytecodeParseError {
     BgiBytecodeParseError {
+        diagnostic: BgiBytecodeDiagnostic::new(code, field, message),
+    }
+}
+
+fn patch_error(
+    code: impl Into<String>,
+    field: impl Into<String>,
+    message: impl Into<String>,
+) -> BgiBytecodePatchError {
+    BgiBytecodePatchError {
         diagnostic: BgiBytecodeDiagnostic::new(code, field, message),
     }
 }
@@ -906,7 +1178,12 @@ mod tests {
             );
             assert_eq!(entry.proof_hashes, vec![entry.source_hash.clone()]);
             assert!(!entry.string_references.is_empty());
-            assert_eq!(entry.negative_cases.len(), 3);
+            assert!(!entry.patch_reports.is_empty());
+            assert!(entry.patch_reports.iter().all(|patch| patch.patch_back
+                == PatchBackTransform::RecompileBytecode
+                && patch.patched_text_verified
+                && patch.untouched_bytes_identical));
+            assert!(entry.negative_cases.len() >= 3);
             assert!(
                 entry.negative_cases.iter().all(|case| case.rejected),
                 "{entry:#?}"
@@ -922,6 +1199,7 @@ mod tests {
         assert_eq!(header.parser_surface.header_size_bytes, 32);
         assert_eq!(header.parser_surface.code_start_byte, 32);
         assert_eq!(header.string_references.len(), 2);
+        assert_eq!(header.patch_reports.len(), 2);
         assert!(header.string_references.iter().any(|reference| {
             reference.reference_id == "bgi.header.name.001"
                 && reference.text_surface == BgiBytecodeTextSurface::CharacterName
@@ -942,6 +1220,7 @@ mod tests {
         assert_eq!(no_header.parser_surface.header_size_bytes, 0);
         assert_eq!(no_header.parser_surface.code_start_byte, 0);
         assert_eq!(no_header.string_references.len(), 3);
+        assert_eq!(no_header.patch_reports.len(), 3);
         assert!(no_header.string_references.iter().any(|reference| {
             reference.reference_id == "bgi.no_header.other.001"
                 && reference.text_surface == BgiBytecodeTextSurface::Other
@@ -964,6 +1243,11 @@ mod tests {
                 );
             }
         }
+        let no_header = report.entry("bgi.bytecode.no-header").unwrap();
+        assert!(no_header.negative_cases.iter().any(|case| {
+            case.case_id == "bgi.no_header.false-positive-code-pointer"
+                && case.observed_diagnostic_code.as_deref() == Some("string_pointer_out_of_bounds")
+        }));
     }
 
     #[test]
@@ -978,6 +1262,119 @@ mod tests {
                 entry.fixture_id
             );
         }
+    }
+
+    #[test]
+    fn patch_cases_round_trip_and_leave_untouched_bytes_identical() {
+        let fixture = load();
+        for entry in &fixture.entries {
+            let source = decode_hex(&entry.source_bytes_hex).expect("fixture source hex");
+            let (patched, reports) = patch_bgi_bytecode_entry(entry, &entry.patch_cases)
+                .unwrap_or_else(|error| panic!("{} patch proof failed: {error}", entry.fixture_id));
+            assert_eq!(
+                reports.len(),
+                entry.patch_cases.len(),
+                "{}",
+                entry.fixture_id
+            );
+            assert!(reports.iter().all(|report| {
+                report.patched_text_verified && report.untouched_bytes_identical
+            }));
+
+            let mut touched = vec![false; source.len()];
+            let original_refs = parse_bgi_bytecode_entry(entry).expect("source parses");
+            for patch in &entry.patch_cases {
+                let reference = original_refs
+                    .iter()
+                    .find(|reference| reference.reference_id == patch.reference_id)
+                    .expect("patch target reference exists");
+                for byte in &mut touched
+                    [reference.string_start_byte as usize..reference.string_end_byte as usize]
+                {
+                    *byte = true;
+                }
+            }
+            for (index, (before, after)) in source.iter().zip(&patched).enumerate() {
+                if !touched[index] {
+                    assert_eq!(
+                        before, after,
+                        "{} changed untouched byte {index}",
+                        entry.fixture_id
+                    );
+                }
+            }
+
+            let reparsed = parse_bgi_bytecode(&patched, entry.variant).expect("patched parses");
+            for patch in &entry.patch_cases {
+                let reference = reparsed
+                    .iter()
+                    .find(|reference| reference.reference_id == patch.reference_id)
+                    .expect("patched target reference exists");
+                assert_eq!(reference.decoded_text, patch.replacement_text);
+            }
+        }
+    }
+
+    #[test]
+    fn claimed_patch_support_failures_are_loud() {
+        let mut fixture = load();
+        fixture.entries[0].patch_cases = vec![BgiBytecodePatchCase {
+            patch_id: "bgi.header.patch.bad-length".to_string(),
+            reference_id: "bgi.header.name.001".to_string(),
+            replacement_text: "TOO-LONG".to_string(),
+        }];
+
+        let report = run_bgi_bytecode_fixture(&fixture);
+        let header = report.entry("bgi.bytecode.header").unwrap();
+        assert_eq!(header.status, OperationStatus::Failed);
+        assert!(header.patch_reports.is_empty());
+        assert!(
+            header
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "patch_replacement_byte_length_mismatch" })
+        );
+    }
+
+    #[test]
+    fn claimed_patch_with_empty_patch_cases_fails_loud() {
+        let mut fixture = load();
+        assert!(
+            fixture.entries[0].claims_patch_support,
+            "committed bytecode profiles claim extract-to-patch support"
+        );
+        fixture.entries[0].patch_cases.clear();
+
+        let report = run_bgi_bytecode_fixture(&fixture);
+        let header = report.entry("bgi.bytecode.header").unwrap();
+        assert_eq!(header.status, OperationStatus::Failed);
+        assert!(header.patch_reports.is_empty());
+        assert!(
+            header.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "claimed_patch_cases_missing" && diagnostic.field == "patchCases"
+            }),
+            "empty patchCases on a claimed-patch entry must fail loud: {header:#?}"
+        );
+    }
+
+    #[test]
+    fn non_patch_entry_may_omit_patch_cases() {
+        let mut fixture = load();
+        // A parse/negative-only entry does not claim patch support: empty
+        // patchCases is a silent (and correct) skip, not a failure.
+        fixture.entries[0].claims_patch_support = false;
+        fixture.entries[0].patch_cases.clear();
+
+        let report = run_bgi_bytecode_fixture(&fixture);
+        let header = report.entry("bgi.bytecode.header").unwrap();
+        assert_eq!(header.status, OperationStatus::Passed, "{header:#?}");
+        assert!(header.patch_reports.is_empty());
+        assert!(
+            header
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != "claimed_patch_cases_missing")
+        );
     }
 
     #[test]
