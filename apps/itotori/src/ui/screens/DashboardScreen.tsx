@@ -26,9 +26,9 @@ import {
   formatMicrosUsd,
   formatSignedMicrosUsd,
   groupedBranchDecisions,
-  plural,
 } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { DecisionsBand } from "./DecisionsBand.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
 export function DashboardScreen(): ReactNode {
@@ -43,7 +43,7 @@ export function DashboardScreen(): ReactNode {
         <StatusStrip status={status} decisions={decisions} />
       </ShellHeader>
 
-      <PendingDecisionsBand decisions={decisions} />
+      <DecisionsBand />
 
       <ProgressInstrumentPanel />
 
@@ -323,84 +323,8 @@ function CostReport({ cost }: { cost: ProjectCostReport }): ReactNode {
 }
 
 // ---------------------------------------------------------------------------
-// Pending decisions (band + QA findings panel)
+// QA findings panel (the pending-decisions band lives in DecisionsBand.tsx)
 // ---------------------------------------------------------------------------
-
-type DecisionRow = { decision: string; area: string; signal: string };
-
-function decisionRows(decisions: ApiDashboardDecisionsResponse): DecisionRow[] {
-  const rows: DecisionRow[] = [];
-  const projectCount = decisions.counts.projectFindingDecisionCount;
-  if (projectCount > 0) {
-    rows.push({
-      decision: `${projectCount} project-level finding ${plural(projectCount, "decision")} pending`,
-      area: "Project",
-      signal: decisionGroupSignal(decisions.pendingDecisions, "project_finding"),
-    });
-  }
-  for (const branch of groupedBranchDecisions(decisions.pendingDecisions)) {
-    rows.push({
-      decision: `${branch.count} locale branch finding ${plural(branch.count, "decision")} pending`,
-      area: branch.area,
-      signal: branch.signal,
-    });
-  }
-  const runtimeCount = decisions.counts.runtimeValidationDecisionCount;
-  if (runtimeCount > 0) {
-    rows.push({
-      decision: `${runtimeCount} runtime validation ${plural(runtimeCount, "decision")} pending`,
-      area: "Runtime evidence",
-      signal: decisionGroupSignal(decisions.pendingDecisions, "runtime_validation"),
-    });
-  }
-  return rows;
-}
-
-function PendingDecisionsBand({
-  decisions,
-}: {
-  decisions: ApiCallState<ApiDashboardDecisionsResponse>;
-}): ReactNode {
-  const headline =
-    decisions.state === "ready"
-      ? decisions.data.counts.pendingDecisionCount === 0
-        ? "No pending decisions"
-        : `${decisions.data.counts.pendingDecisionCount} pending ${plural(
-            decisions.data.counts.pendingDecisionCount,
-            "decision",
-          )}`
-      : "Pending decisions";
-  const rows = decisions.state === "ready" ? decisionRows(decisions.data) : [];
-  return (
-    <section
-      className="itotori-decision-band"
-      aria-label="Pending decisions"
-      id="pending-decisions"
-    >
-      <Panel title={headline} eyebrow="Pending decisions" tone="mint">
-        {decisions.state === "loading" && <LoadingState label="Loading decisions…" />}
-        {decisions.state === "error" && (
-          <ErrorState title="Pending decisions" error={decisions.error} />
-        )}
-        {(decisions.state === "ready" || decisions.state === "empty") &&
-          (rows.length === 0 ? (
-            <p className="itotori-empty-copy">No pending decisions returned.</p>
-          ) : (
-            <DataTable
-              caption="Pending decisions"
-              columns={[
-                { key: "decision", header: "Decision", render: (r) => r.decision },
-                { key: "area", header: "Area", render: (r) => r.area },
-                { key: "signal", header: "Signal", render: (r) => <Badge status={r.signal} /> },
-              ]}
-              rows={rows}
-              getRowKey={(_r, i) => String(i)}
-            />
-          ))}
-      </Panel>
-    </section>
-  );
-}
 
 function QaFindingsPanel({
   decisions,
