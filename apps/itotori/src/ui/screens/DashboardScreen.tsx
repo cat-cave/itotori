@@ -11,8 +11,8 @@
 // bespoke HTML strings.
 
 import type { ReactNode } from "react";
-import type { ProjectCostReport, ProjectDashboardStatus } from "@itotori/db";
-import { Badge, DataTable, Panel, ProgressBar, StatReadout } from "@itotori/ds";
+import type { ProjectDashboardStatus } from "@itotori/db";
+import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type {
   ApiDashboardDecisionsResponse,
@@ -20,14 +20,9 @@ import type {
   ApiReviewerQueueDashboardResponse,
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
-import {
-  INDIE_LOCALIZATION_COST_TARGET_MICROS_USD,
-  decisionGroupSignal,
-  formatMicrosUsd,
-  formatSignedMicrosUsd,
-  groupedBranchDecisions,
-} from "../format.js";
+import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { DecisionsBand } from "./DecisionsBand.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
@@ -50,7 +45,7 @@ export function DashboardScreen(): ReactNode {
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />
         <ReviewerQueuePanel status={status} />
-        <CostPanel cost={cost} />
+        <CostDrilldownPanel cost={cost} />
         <QaFindingsPanel decisions={decisions} />
       </section>
     </main>
@@ -246,81 +241,10 @@ function ReviewerQueueContent({ queue }: { queue: ApiReviewerQueueDashboardRespo
 }
 
 // ---------------------------------------------------------------------------
-// Model cost panel + the empirical $25 indie cost target
+// Model cost — the CostDrilldownPanel (summary + ledger drilldown) lives in
+// its own module so the cost surface is one cohesive, independently testable
+// panel group. Hosted here with the dashboard's shared `projects.cost` read.
 // ---------------------------------------------------------------------------
-
-function CostPanel({ cost }: { cost: ApiCallState<ProjectCostReport> }): ReactNode {
-  return (
-    <Panel title="Model cost" eyebrow="Spend" data-panel-state={cost.state}>
-      {cost.state === "loading" && <LoadingState label="Loading cost report…" />}
-      {cost.state === "empty" && (
-        <EmptyState title="Model cost" message="No cost report was returned by the API." />
-      )}
-      {cost.state === "error" && <ErrorState title="Model cost" error={cost.error} />}
-      {cost.state === "ready" && <CostReport cost={cost.data} />}
-    </Panel>
-  );
-}
-
-function CostReport({ cost }: { cost: ProjectCostReport }): ReactNode {
-  const target = INDIE_LOCALIZATION_COST_TARGET_MICROS_USD;
-  const spent = cost.billedMicrosUsd;
-  const percentage = target <= 0 ? 0 : Math.round((spent / target) * 100);
-  const remaining = target - spent;
-  const overBudget = remaining < 0;
-  return (
-    <>
-      <div className="itotori-cost-target" aria-label="Indie localization cost target">
-        <StatReadout label="Spent (real)" value={formatMicrosUsd(spent)} mono />
-        <StatReadout label="Target" value={formatMicrosUsd(target)} mono />
-        <StatReadout
-          label={overBudget ? "Over budget" : "Remaining"}
-          value={formatSignedMicrosUsd(remaining)}
-          deltaTone={overBudget ? "critical" : "ok"}
-          mono
-        />
-        <StatReadout label="Used" value={`${percentage}%`} />
-      </div>
-      <ProgressBar
-        value={Math.max(0, Math.min(100, percentage))}
-        max={100}
-        tone={overBudget ? "amber" : "mint"}
-        label={`${percentage}% of $25 target used`}
-        showValue
-      />
-      <div className="itotori-metric-row" aria-label="Cost totals">
-        <StatReadout label="Billed" value={formatMicrosUsd(cost.billedMicrosUsd)} mono />
-        <StatReadout label="Runs" value={cost.runCount} />
-        <StatReadout label="Zero-cost runs" value={cost.zeroRunCount} />
-        <StatReadout
-          label="TM avoided"
-          value={cost.translationMemoryReuse.providerCallAvoidedCount}
-        />
-        <StatReadout
-          label="TM tokens saved"
-          value={cost.translationMemoryReuse.estimatedTotalTokensSaved}
-        />
-      </div>
-      <DataTable
-        caption="Cost by kind"
-        columns={[
-          { key: "kind", header: "Kind", render: (e) => e.costKind },
-          { key: "runs", header: "Runs", align: "end", render: (e) => e.runCount },
-          {
-            key: "amount",
-            header: "Amount",
-            align: "end",
-            render: (e) => formatMicrosUsd(e.amountMicrosUsd),
-          },
-          { key: "tokens", header: "Tokens", align: "end", render: (e) => e.totalTokens },
-        ]}
-        rows={cost.totalsByCostKind}
-        getRowKey={(e) => e.costKind}
-        emptyLabel="No recorded cost by kind."
-      />
-    </>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // QA findings panel (the pending-decisions band lives in DecisionsBand.tsx)

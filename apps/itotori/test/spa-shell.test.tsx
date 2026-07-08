@@ -27,6 +27,7 @@ import { App } from "../src/ui/App.js";
 import { readyContextFixture } from "../src/reviewer/index.js";
 import { workspaceProjectBrowseFixture } from "../src/workspace/index.js";
 import {
+  costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -47,6 +48,9 @@ const server = setupServer(
     apiJson("projects.decisions", dashboardDecisionsFixture),
   ),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
+  http.get("*/api/projects/cost/drilldown", () =>
+    apiJson("projects.costDrilldown", costDrilldownFixture),
+  ),
   http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
   http.get("*/api/reviewer/queue", () =>
     apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
