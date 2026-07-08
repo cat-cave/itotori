@@ -36,7 +36,14 @@ pub const WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID: &str = "kaifuu-wolf-encrypted-arch
 /// Synthetic container family label.
 pub const WOLF_ENCRYPTED_SMOKE_CONTAINER: &str = "wolf-like-encrypted-archive";
 /// Stable secret requirement id for the synthetic archive key.
-pub const WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID: &str = "kaifuu-k073-wolf-archive-key";
+///
+/// The value is deliberately redaction-SAFE: it must survive
+/// [`redact_for_log_or_report`] unchanged so it can appear in reports and in the
+/// KAIFUU-085 helper-result diagnostic messages (which are validated to be
+/// redaction-clean). A digit-bearing token like `...-k073-...` reads as
+/// base64url key material to the raw-key heuristic and would be redacted,
+/// silently degrading the evidence — so the node reference is spelled out.
+pub const WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID: &str = "kaifuu-wolf-encrypted-archive-key";
 /// Valid local secret ref. The ref is reportable; the raw bytes are not.
 pub const WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF: &str =
     "local-secret:kaifuu-wolf-archive-fixture-key";

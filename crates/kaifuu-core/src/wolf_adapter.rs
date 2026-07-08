@@ -16,9 +16,9 @@
 //! - **Codec (layer 3)** — this node adds the Wolf text-table codec: a binary
 //!   string-table layout (record/field cells addressed by (offset,len) into a
 //!   Shift-JIS string blob) that [`decode_wolf_text_table`] extracts into text
-//!   cells and [`encode_wolf_text_table`] reconstructs. Patching a cell rewrites
-//!   every downstream string offset — a real binary-layout change (the
-//!   "String table reconstruction" audit focus).
+//!   cells and [`encode_wolf_text_table`] reconstructs. Patching a cell to a
+//!   different byte length rewrites every downstream string offset — a real
+//!   binary-layout change (the "String table reconstruction" audit focus).
 //! - **Patch-back (layer 4)** — a configurable patch engine applies a LIST of
 //!   [`WolfTextPatchRequest`]s by (table, record, field) coordinate, re-encodes
 //!   the affected tables, and repacks/re-encrypts through the same container+
@@ -194,6 +194,39 @@ pub fn encode_wolf_text_table(table: &WolfTextTable) -> Result<Vec<u8>, WolfAdap
     }
     out.extend_from_slice(&blob);
     Ok(out)
+}
+
+/// Read just the `(offset,len)` string-table index from an encoded Wolf
+/// text-table member. This is the layout skeleton: the per-cell offsets and
+/// lengths every downstream string is addressed by. Comparing two members'
+/// indexes proves whether a patch actually REWROTE the layout (offsets shifted
+/// or lengths changed) versus merely swapped equal-length bytes in place.
+fn read_offset_index(bytes: &[u8]) -> Result<Vec<(u32, u32)>, WolfAdapterError> {
+    let mut cursor = TableCursor::new(bytes);
+    let magic = cursor.take(WOLF_TEXT_TABLE_MAGIC.len())?;
+    if magic != WOLF_TEXT_TABLE_MAGIC {
+        return Err(WolfAdapterError::TableFormat {
+            detail: "Wolf text-table magic did not match".to_string(),
+        });
+    }
+    let name_len = cursor.read_u32()? as usize;
+    let record_count = cursor.read_u32()? as usize;
+    let field_count = cursor.read_u32()? as usize;
+    let _blob_len = cursor.read_u32()?;
+    let _name = cursor.take(name_len)?;
+    let cell_total =
+        record_count
+            .checked_mul(field_count)
+            .ok_or_else(|| WolfAdapterError::TableFormat {
+                detail: "record_count * field_count overflowed".to_string(),
+            })?;
+    let mut cells = Vec::with_capacity(cell_total);
+    for _ in 0..cell_total {
+        let offset = cursor.read_u32()?;
+        let len = cursor.read_u32()?;
+        cells.push((offset, len));
+    }
+    Ok(cells)
 }
 
 /// Decode a Wolf text-table binary layout back into its text-cell view.
@@ -417,6 +450,16 @@ impl WolfTextTableAdapterFixture {
                     vec!["synthetic-menu=load".to_string()],
                 ],
             },
+            // An UNCHANGED table: no patch targets it, so the round-trip must
+            // leave it byte-identical (exercised by the byte-identical test).
+            WolfTextTable {
+                table_name: "MenuStrings".to_string(),
+                field_count: 1,
+                records: vec![
+                    vec!["synthetic-title=start".to_string()],
+                    vec!["synthetic-title=config".to_string()],
+                ],
+            },
         ];
         let patches = vec![
             WolfTextPatchRequest {
@@ -544,7 +587,7 @@ pub struct WolfAdapterPatchCoordinate {
 }
 
 /// A deterministic per-table patch report: byte-length + hash before/after, plus
-/// whether the string-table layout changed (offsets rewritten).
+/// whether the string-table offset index was rewritten by the patch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WolfAdapterTablePatchReport {
@@ -554,7 +597,11 @@ pub struct WolfAdapterTablePatchReport {
     pub patched_member_hash: ProofHash,
     pub source_member_byte_len: u64,
     pub patched_member_byte_len: u64,
-    /// True iff the binary layout changed (the patched member differs in bytes).
+    /// True iff the patch REWROTE the string-table offset index — the per-cell
+    /// `(offset,len)` table differs after repack (a downstream offset shifted or
+    /// a cell length changed). A same-length in-place edit leaves the layout
+    /// untouched and keeps this false, even though the member bytes differ (which
+    /// is proven separately by `source_member_hash` != `patched_member_hash`).
     pub layout_changed: bool,
     /// True iff every patched cell decoded to its requested text after repack.
     pub patched_text_verified: bool,
@@ -717,7 +764,11 @@ pub fn run_wolf_text_table_adapter(
     let protection_profile = detector_entry.profile;
 
     // --- Gate half 2: the KAIFUU-121 helper boundary. ------------------------
-    let helper_outcome = fixture.helper_boundary.as_ref().map(|profile| {
+    // Capture the FULL boundary posture — the derived outcome PLUS the boundary's
+    // own validation status and findings. The gate consumes all three, so a
+    // failed or finding-bearing posture can never be waved through to
+    // extract/patch on the strength of its outcome alone.
+    let helper_posture = fixture.helper_boundary.as_ref().map(|profile| {
         let report = run_wolf_helper_boundary(&WolfHelperBoundaryFixture {
             schema_version: crate::wolf_helper_boundary::WOLF_HELPER_BOUNDARY_SCHEMA_VERSION
                 .to_string(),
@@ -726,18 +777,23 @@ pub fn run_wolf_text_table_adapter(
             engine_family: fixture.engine_family.clone(),
             profiles: vec![profile.clone()],
         });
-        report
+        let entry = report
             .entries
             .into_iter()
             .next()
-            .expect("single-profile helper-boundary fixture yields exactly one entry")
-            .outcome
+            .expect("single-profile helper-boundary fixture yields exactly one entry");
+        HelperBoundaryPosture {
+            outcome: entry.outcome,
+            status: entry.status,
+            finding_count: entry.findings.len(),
+        }
     });
+    let helper_outcome = helper_posture.as_ref().map(|posture| posture.outcome);
 
     match classify_gate(
         &fixture.engine_family,
         protection_profile,
-        helper_outcome,
+        helper_posture.as_ref(),
         detector_entry.status,
     ) {
         None => run_supported(
@@ -783,12 +839,32 @@ fn supported_claimed_support() -> WolfCapabilityTuple {
     }
 }
 
+/// The gate-relevant view of the KAIFUU-121 helper boundary: the mechanically
+/// derived outcome PLUS whether the boundary evidence is itself trustworthy
+/// (it PASSED its own KAIFUU-121 validation and raised no findings). The gate
+/// requires the success posture on ALL of these — a `key_resolved` outcome
+/// carried by a failed/finding-bearing boundary is refused, so the gate cannot
+/// be bypassed by an outcome alone.
+struct HelperBoundaryPosture {
+    outcome: WolfHelperBoundaryOutcome,
+    status: OperationStatus,
+    finding_count: usize,
+}
+
+impl HelperBoundaryPosture {
+    /// True iff the boundary evidence itself is trustworthy: it passed its own
+    /// KAIFUU-121 validation and raised no findings. Independent of the outcome.
+    fn evidence_is_trustworthy(&self) -> bool {
+        self.status == OperationStatus::Passed && self.finding_count == 0
+    }
+}
+
 /// Decide whether the layered pipeline may run, or emit the unsupported-variant
 /// diagnostic with the claimed-support tuple context.
 fn classify_gate(
     engine_family: &str,
     protection_profile: WolfProtectionProfile,
-    helper_outcome: Option<WolfHelperBoundaryOutcome>,
+    helper_posture: Option<&HelperBoundaryPosture>,
     detector_status: OperationStatus,
 ) -> Option<WolfAdapterCapabilityDiagnostic> {
     // The detector's own claimed-support tuple is the honest floor for an
@@ -816,31 +892,14 @@ fn classify_gate(
     }
 
     match protection_profile {
-        WolfProtectionProfile::Protected => match helper_outcome {
-            Some(WolfHelperBoundaryOutcome::KeyResolved) => None,
-            Some(WolfHelperBoundaryOutcome::KeyMissing) => {
-                Some(WolfAdapterCapabilityDiagnostic {
-                    semantic_code: SemanticErrorCode::MissingKeyMaterial.as_str().to_string(),
-                    field: "helperBoundary".to_string(),
-                    message: "the static container key is not present in the local key store; extract/patch refused".to_string(),
-                    claimed_support,
-                })
-            }
-            Some(
-                WolfHelperBoundaryOutcome::HelperRequired
-                | WolfHelperBoundaryOutcome::HelperUnavailable,
-            ) => Some(WolfAdapterCapabilityDiagnostic {
-                semantic_code: SemanticErrorCode::HelperRequired.as_str().to_string(),
-                field: "helperBoundary".to_string(),
-                message: "the container key is behind an unrun dynamic-key helper; extract/patch refused".to_string(),
-                claimed_support,
-            }),
+        WolfProtectionProfile::Protected => match helper_posture {
             None => Some(WolfAdapterCapabilityDiagnostic {
                 semantic_code: SemanticErrorCode::MissingKeyProfile.as_str().to_string(),
                 field: "helperBoundary".to_string(),
                 message: "a protected container needs a keyRef-bound helper-boundary profile; none supplied".to_string(),
                 claimed_support,
             }),
+            Some(posture) => classify_protected_helper_posture(posture, claimed_support),
         },
         WolfProtectionProfile::HelperRequired => {
             Some(WolfAdapterCapabilityDiagnostic {
@@ -865,6 +924,42 @@ fn classify_gate(
                 claimed_support,
             })
         }
+    }
+}
+
+/// Classify a `protected` container's helper-boundary posture. The gate is
+/// non-bypassable: BEFORE trusting the derived outcome, the boundary evidence
+/// itself must be trustworthy (it PASSED its own KAIFUU-121 validation with no
+/// findings). A `key_resolved` outcome carried by a failed/finding-bearing
+/// boundary is refused with a key-validation diagnostic — it never reaches
+/// extract/patch. Only a trustworthy `key_resolved` posture clears the gate.
+fn classify_protected_helper_posture(
+    posture: &HelperBoundaryPosture,
+    claimed_support: WolfCapabilityTuple,
+) -> Option<WolfAdapterCapabilityDiagnostic> {
+    if !posture.evidence_is_trustworthy() {
+        return Some(WolfAdapterCapabilityDiagnostic {
+            semantic_code: SemanticErrorCode::KeyValidationFailed.as_str().to_string(),
+            field: "helperBoundary".to_string(),
+            message: "the KAIFUU-121 helper-boundary evidence failed its own validation or raised blocking findings; extract/patch refused regardless of the reported outcome".to_string(),
+            claimed_support,
+        });
+    }
+    match posture.outcome {
+        WolfHelperBoundaryOutcome::KeyResolved => None,
+        WolfHelperBoundaryOutcome::KeyMissing => Some(WolfAdapterCapabilityDiagnostic {
+            semantic_code: SemanticErrorCode::MissingKeyMaterial.as_str().to_string(),
+            field: "helperBoundary".to_string(),
+            message: "the static container key is not present in the local key store; extract/patch refused".to_string(),
+            claimed_support,
+        }),
+        WolfHelperBoundaryOutcome::HelperRequired
+        | WolfHelperBoundaryOutcome::HelperUnavailable => Some(WolfAdapterCapabilityDiagnostic {
+            semantic_code: SemanticErrorCode::HelperRequired.as_str().to_string(),
+            field: "helperBoundary".to_string(),
+            message: "the container key is behind an unrun dynamic-key helper; extract/patch refused".to_string(),
+            claimed_support,
+        }),
     }
 }
 
@@ -1064,6 +1159,13 @@ fn apply_patches(
         }
 
         let patched_bytes = encode_wolf_text_table(&table)?;
+        // `layout_changed` proves EXACTLY the offset-table rewrite it claims: the
+        // (offset,len) string-table index differs after repack (a downstream
+        // offset shifted or a cell length changed). A same-length patch that only
+        // swaps blob bytes in place changes the member (hashes differ) but NOT the
+        // layout — this stays honestly false for it.
+        let layout_changed =
+            read_offset_index(&member.plaintext)? != read_offset_index(&patched_bytes)?;
         reports.push(WolfAdapterTablePatchReport {
             table_name: table.table_name.clone(),
             coordinates,
@@ -1071,7 +1173,7 @@ fn apply_patches(
             patched_member_hash: proof_hash(&patched_bytes)?,
             source_member_byte_len: member.plaintext.len() as u64,
             patched_member_byte_len: patched_bytes.len() as u64,
-            layout_changed: patched_bytes != member.plaintext,
+            layout_changed,
             // Filled in during verification.
             patched_text_verified: false,
         });
@@ -1294,21 +1396,61 @@ mod tests {
             Some(WolfHelperBoundaryOutcome::KeyResolved)
         );
 
-        // Both tables extracted.
-        assert_eq!(report.extract_manifest.len(), 2);
-        // Two tables patched, each with its patched text verified + layout change.
+        // All three tables extracted.
+        assert_eq!(report.extract_manifest.len(), 3);
+        // Two tables patched (CharacterDB + SystemStrings); MenuStrings untouched.
         assert_eq!(report.patch_reports.len(), 2);
         for patch in &report.patch_reports {
             assert!(patch.patched_text_verified);
-            assert!(patch.layout_changed);
-            // The binary layout genuinely changed (offsets rewritten).
+            // Every patch changed the member bytes (hashes differ).
             assert_ne!(
                 patch.source_member_hash.as_str(),
                 patch.patched_member_hash.as_str()
             );
         }
-        // No unchanged tables here (both were patched); the archive changed.
-        assert_eq!(report.unchanged_tables_verified, 0);
+
+        // `layout_changed` proves EXACTLY the offset-table rewrite it claims —
+        // not merely that bytes differ. The CharacterDB patch lengthens a cell, so
+        // downstream offsets are rewritten (true). The SystemStrings patch is a
+        // same-length swap ("=start" -> "=begin"): the member bytes differ but the
+        // (offset,len) index is untouched, so it is honestly false.
+        let character = report
+            .patch_reports
+            .iter()
+            .find(|report| report.table_name == "CharacterDB")
+            .expect("CharacterDB was patched");
+        let system = report
+            .patch_reports
+            .iter()
+            .find(|report| report.table_name == "SystemStrings")
+            .expect("SystemStrings was patched");
+        assert!(
+            character.layout_changed,
+            "a length-changing patch must rewrite the offset table"
+        );
+        assert_eq!(
+            character
+                .source_member_byte_len
+                .cmp(&character.patched_member_byte_len),
+            std::cmp::Ordering::Less,
+            "the CharacterDB member grew (its cell got longer)"
+        );
+        assert!(
+            !system.layout_changed,
+            "a same-length patch must NOT be reported as an offset-table rewrite"
+        );
+        assert_eq!(
+            system.source_member_byte_len, system.patched_member_byte_len,
+            "the same-length patch keeps the member byte length"
+        );
+        assert_ne!(
+            system.source_member_hash.as_str(),
+            system.patched_member_hash.as_str(),
+            "the same-length patch still changed the member bytes"
+        );
+
+        // One unchanged table (MenuStrings) is verified byte-identical.
+        assert_eq!(report.unchanged_tables_verified, 1);
         assert_ne!(
             report.source_archive_hash.as_ref().unwrap().as_str(),
             report.rebuilt_archive_hash.as_ref().unwrap().as_str()
@@ -1327,8 +1469,9 @@ mod tests {
             .retain(|patch| patch.table_name == "CharacterDB");
         let report = run_wolf_text_table_adapter(&fixture).expect("adapter runs");
         assert_eq!(report.patch_reports.len(), 1);
-        // The untouched SystemStrings table is verified byte-identical.
-        assert_eq!(report.unchanged_tables_verified, 1);
+        // The untouched SystemStrings + MenuStrings tables are verified
+        // byte-identical after repack.
+        assert_eq!(report.unchanged_tables_verified, 2);
     }
 
     // --- Engine-general: a different data-driven fixture round-trips too. ----
@@ -1414,6 +1557,60 @@ mod tests {
         assert!(report.key_material_hash.is_none());
     }
 
+    // --- The KAIFUU-121 gate is NON-BYPASSABLE: a failed helper posture is -----
+    // --- refused even though its DERIVED outcome is key_resolved. -------------
+
+    #[test]
+    fn failed_helper_posture_is_unsupported_and_not_bypassable() {
+        let mut fixture = fixture();
+        // A helper-boundary profile whose derived outcome is `key_resolved`
+        // (static-key import, key locally available) but which FAILS its own
+        // KAIFUU-121 validation: the declared expectation lies about the outcome,
+        // so the boundary raises a finding and reports status=Failed. A gate that
+        // only read the outcome would wave this straight through to extract/patch.
+        let mut profile = synthetic_helper_profile(&fixture.secret_ref, true);
+        profile.expected_outcome = WolfHelperBoundaryOutcome::HelperUnavailable;
+        fixture.helper_boundary = Some(profile.clone());
+
+        // Bait check: the boundary itself STILL derives `key_resolved` (the value
+        // a bypassable gate would have trusted) even though its status is Failed.
+        let boundary = run_wolf_helper_boundary(&WolfHelperBoundaryFixture {
+            schema_version: crate::wolf_helper_boundary::WOLF_HELPER_BOUNDARY_SCHEMA_VERSION
+                .to_string(),
+            boundary_set_id: "wolf-adapter/gate-test/helper-boundary".to_string(),
+            source_node_id: fixture.source_node_id.clone(),
+            engine_family: fixture.engine_family.clone(),
+            profiles: vec![profile],
+        });
+        let entry = &boundary.entries[0];
+        assert_eq!(entry.outcome, WolfHelperBoundaryOutcome::KeyResolved);
+        assert_eq!(entry.status, OperationStatus::Failed);
+        assert!(!entry.findings.is_empty());
+
+        // The honest gate refuses: Unsupported, no extract/patch, no key material.
+        let report = run_wolf_text_table_adapter(&fixture).expect("adapter runs (unsupported)");
+        assert_eq!(report.outcome, WolfAdapterOutcome::Unsupported);
+        assert!(report.extract_manifest.is_empty());
+        assert!(report.patch_reports.is_empty());
+        assert!(report.key_material_hash.is_none());
+        assert!(report.source_archive_hash.is_none());
+        // The report still records the derived outcome for provenance...
+        assert_eq!(
+            report.helper_outcome,
+            Some(WolfHelperBoundaryOutcome::KeyResolved)
+        );
+        // ...proving the gate refused DESPITE a key_resolved outcome: the diagnostic
+        // is a key-validation failure, and the tuple never claims extract/patch.
+        assert_eq!(report.capability_diagnostics.len(), 1);
+        let diagnostic = &report.capability_diagnostics[0];
+        assert_eq!(
+            diagnostic.semantic_code,
+            SemanticErrorCode::KeyValidationFailed.as_str()
+        );
+        assert!(diagnostic.claimed_support.extract.is_unsupported());
+        assert!(diagnostic.claimed_support.patch.is_unsupported());
+    }
+
     // --- Unsupported variant: an unknown protection variant is refused. ------
 
     #[test]
@@ -1473,7 +1670,12 @@ mod tests {
             .join("fixtures/kaifuu/wolf/adapter.text-table.json");
         let report = run_wolf_text_table_adapter_from_path(&path).expect("adapter runs from path");
         assert_eq!(report.outcome, WolfAdapterOutcome::Supported);
-        assert_eq!(report.extract_manifest.len(), 2);
+        assert_eq!(report.extract_manifest.len(), 3);
+        // The disk fixture carries an UNCHANGED table (MenuStrings) with no patch
+        // request, so the byte-identical property is genuinely exercised: exactly
+        // one unchanged table is verified byte-identical after repack.
+        assert_eq!(report.patch_reports.len(), 2);
+        assert_eq!(report.unchanged_tables_verified, 1);
     }
 
     // --- The secret ref must be a local scheme (mirrors the substrate). ------

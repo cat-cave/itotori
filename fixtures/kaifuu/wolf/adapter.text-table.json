@@ -13,7 +13,7 @@
     "surface": "table_record",
     "secretRequirements": [
       {
-        "requirementId": "kaifuu-k073-wolf-archive-key",
+        "requirementId": "kaifuu-wolf-encrypted-archive-key",
         "keyRef": "local-secret:kaifuu-wolf-archive-fixture-key"
       }
     ],
@@ -25,7 +25,7 @@
     "profileId": "wolf.adapter.static-key",
     "boundaryKind": "static_key_local_import",
     "keyRequirement": {
-      "requirementId": "kaifuu-k073-wolf-archive-key",
+      "requirementId": "kaifuu-wolf-encrypted-archive-key",
       "keyRef": "local-secret:kaifuu-wolf-archive-fixture-key",
       "materialKind": "fixedBytes"
     },
@@ -46,6 +46,11 @@
       "tableName": "SystemStrings",
       "fieldCount": 1,
       "records": [["synthetic-menu=start"], ["synthetic-menu=load"]]
+    },
+    {
+      "tableName": "MenuStrings",
+      "fieldCount": 1,
+      "records": [["synthetic-title=start"], ["synthetic-title=config"]]
     }
   ],
   "patches": [
