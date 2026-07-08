@@ -8,6 +8,7 @@ import {
 } from "../src/authorization.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
+import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run-repository.js";
 import { ItotoriReviewerQueueRepository } from "../src/repositories/reviewer-queue-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
@@ -877,6 +878,30 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "asset-localization-decision-repository.test.ts load decisions by policy coverage",
     (repo) => repo.loadDecisionsByPolicy(deniedActor, "project", "locale", "keep_original"),
+  ),
+  benchmarkRunGate(
+    "recordRun",
+    "runtimeIngest",
+    "benchmark-run-repository.test.ts record run coverage",
+    (repo) => repo.recordRun(deniedActor, undefined as never),
+  ),
+  benchmarkRunGate(
+    "loadRun",
+    "catalogRead",
+    "benchmark-run-repository.test.ts load run coverage",
+    (repo) => repo.loadRun(deniedActor, "bmk-run-x"),
+  ),
+  benchmarkRunGate(
+    "loadLatestRunForProject",
+    "catalogRead",
+    "benchmark-run-repository.test.ts load latest run for project coverage",
+    (repo) => repo.loadLatestRunForProject(deniedActor, "project"),
+  ),
+  benchmarkRunGate(
+    "loadRunsForProject",
+    "catalogRead",
+    "benchmark-run-repository.test.ts load runs for project coverage",
+    (repo) => repo.loadRunsForProject(deniedActor, "project"),
   ),
   auditFindingGate(
     "recordFinding",
@@ -1929,6 +1954,30 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBenchmarkRunRepository.recordRun",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "benchmark-run-repository.test.ts record run coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBenchmarkRunRepository.loadRun",
+          "requiredPermission": "catalog.read",
+          "successFixture": "benchmark-run-repository.test.ts load run coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBenchmarkRunRepository.loadLatestRunForProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "benchmark-run-repository.test.ts load latest run for project coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBenchmarkRunRepository.loadRunsForProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "benchmark-run-repository.test.ts load runs for project coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuditFindingRepository.recordFinding",
           "requiredPermission": "audit.write",
           "successFixture": "audit-finding-repository.test.ts record finding coverage",
@@ -2594,6 +2643,22 @@ function assetLocalizationDecisionGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAssetLocalizationDecisionRepository(db)),
+  });
+}
+
+function benchmarkRunGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriBenchmarkRunRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriBenchmarkRunRepository",
+    sourceFile: "benchmark-run-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriBenchmarkRunRepository(db)),
   });
 }
 
