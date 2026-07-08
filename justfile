@@ -405,6 +405,7 @@ db-wait:
 db-cli-build:
     pnpm --filter @itotori/localization-bridge-schema build
     pnpm --filter @itotori/db build
+    pnpm --filter @itotori/ds build
     pnpm --filter @itotori/app build
 
 db-migrate: db-cli-build
