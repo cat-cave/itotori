@@ -39,6 +39,7 @@ import {
 import { withDatabaseReadOnlyApiServices } from "../src/services/database-services.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
 import type { ProjectOverviewReadModelOptions } from "../src/project-overview-read-model.js";
+import { SceneCoverageServiceError } from "../src/play/scene-coverage-service.js";
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
   assertRedactedRuntimeDashboardStatus,
@@ -3321,6 +3322,28 @@ describe("Itotori API handlers", () => {
       expect(response.statusCode).toBe(403);
       expect(response.body).toMatchObject({ code: "forbidden" });
       expect(services.sceneCoverage.setSceneCoverage).not.toHaveBeenCalled();
+    });
+
+    it("POST returns 400 when the sceneId is not on the branch route map", async () => {
+      const services = serviceFixture();
+      vi.mocked(services.sceneCoverage.setSceneCoverage).mockRejectedValueOnce(
+        new SceneCoverageServiceError(
+          "unknown_scene",
+          "sceneId 'scene-phantom' is not on the active route map for branch locale-1",
+        ),
+      );
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
+          sceneId: "scene-phantom",
+          coverageState: "validated",
+        }),
+        services,
+      );
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toMatchObject({
+        code: "bad_request",
+        error: expect.stringContaining("scene-phantom"),
+      });
     });
   });
 

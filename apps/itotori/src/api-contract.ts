@@ -712,6 +712,42 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // play-mark-validated — scene coverage read/write envelopes --------------
+  // Nested node/edge/counts shapes are named components so OpenAPI consumers
+  // can enforce coverageState + counts fields (not bare array/object stubs).
+  ApiPlaySceneCoverageNode: () =>
+    object({
+      required: ["sceneId", "label", "coverageState", "routeKey", "routeMapId"],
+      properties: {
+        sceneId: str,
+        label: str,
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+        routeKey: { type: ["string", "null"] },
+        routeMapId: { type: ["string", "null"] },
+      },
+      additionalProperties: false,
+    }),
+  ApiPlaySceneCoverageEdge: () =>
+    object({
+      required: ["fromSceneId", "toSceneId", "choiceKey", "label"],
+      properties: {
+        fromSceneId: str,
+        toSceneId: str,
+        choiceKey: str,
+        label: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlaySceneCoverageCounts: () =>
+    object({
+      required: ["needsCheck", "flagged", "validated", "total"],
+      properties: {
+        needsCheck: num,
+        flagged: num,
+        validated: num,
+        total: num,
+      },
+      additionalProperties: false,
+    }),
   ApiPlaySetSceneCoverageRequest: () =>
     object({
       required: ["sceneId", "coverageState"],
@@ -721,13 +757,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: true,
     }),
-  ApiPlaySceneCoverageResponse: () =>
+  ApiPlaySceneCoverageResponse: (ref) =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
       properties: {
-        nodes: arr,
-        edges: arr,
-        counts: obj,
+        nodes: { type: "array", items: ref("ApiPlaySceneCoverageNode") },
+        edges: { type: "array", items: ref("ApiPlaySceneCoverageEdge") },
+        counts: ref("ApiPlaySceneCoverageCounts"),
       },
       additionalProperties: false,
       schemaVersion: "itotori.play.scene-coverage.v0",

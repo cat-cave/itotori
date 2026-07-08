@@ -184,18 +184,110 @@
         ],
         "type": "object"
       },
+      "ApiPlaySceneCoverageCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "flagged": {
+            "type": "number"
+          },
+          "needsCheck": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "validated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "flagged",
+          "needsCheck",
+          "total",
+          "validated"
+        ],
+        "type": "object"
+      },
+      "ApiPlaySceneCoverageEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "choiceKey": {
+            "type": "string"
+          },
+          "fromSceneId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "toSceneId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "choiceKey",
+          "fromSceneId",
+          "label",
+          "toSceneId"
+        ],
+        "type": "object"
+      },
+      "ApiPlaySceneCoverageNode": {
+        "additionalProperties": false,
+        "properties": {
+          "coverageState": {
+            "enum": [
+              "needs_check",
+              "flagged",
+              "validated"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "routeKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routeMapId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sceneId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "coverageState",
+          "label",
+          "routeKey",
+          "routeMapId",
+          "sceneId"
+        ],
+        "type": "object"
+      },
       "ApiPlaySceneCoverageResponse": {
         "additionalProperties": false,
         "properties": {
           "counts": {
-            "type": "object"
+            "$ref": "#/components/schemas/ApiPlaySceneCoverageCounts"
           },
           "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlaySceneCoverageEdge"
+            },
             "type": "array"
           },
           "generatedAt": {},
           "localeBranchId": {},
           "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlaySceneCoverageNode"
+            },
             "type": "array"
           },
           "projectId": {},

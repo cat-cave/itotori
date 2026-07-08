@@ -7,10 +7,16 @@ import type {
   AuthorizationActor,
   ItotoriRouteChoiceMapRepositoryPort,
   ItotoriSceneCoverageRepositoryPort,
+  RouteChoiceRecord,
+  RouteMapRecord,
   SceneCoverageRecord,
   SceneLocalizationCoverageState,
 } from "@itotori/db";
-import { sceneLocalizationCoverageStateValues } from "@itotori/db";
+import {
+  routeChoiceStatusValues,
+  routeMapStatusValues,
+  sceneLocalizationCoverageStateValues,
+} from "@itotori/db";
 
 export const SCENE_COVERAGE_READ_SCHEMA_VERSION = "itotori.play.scene-coverage.v0" as const;
 export const SCENE_COVERAGE_SET_SCHEMA_VERSION = "itotori.play.set-scene-coverage.v0" as const;
@@ -57,6 +63,23 @@ export type PlaySetSceneCoverageResult = {
   updatedByUserId: string;
 };
 
+export type SceneCoverageServiceErrorCode = "unknown_scene";
+
+/**
+ * Typed service error for play-mark-validated. `unknown_scene` is raised when
+ * setSceneCoverage targets a sceneId that is not on the branch's active route
+ * graph — fail-loud so phantom coverage never persists.
+ */
+export class SceneCoverageServiceError extends Error {
+  readonly code: SceneCoverageServiceErrorCode;
+
+  constructor(code: SceneCoverageServiceErrorCode, message: string) {
+    super(message);
+    this.name = "SceneCoverageServiceError";
+    this.code = code;
+  }
+}
+
 export type SceneCoverageServicePort = {
   loadRouteMapCoverage(input: {
     actor: AuthorizationActor;
@@ -90,84 +113,31 @@ export class SceneCoverageService implements SceneCoverageServicePort {
     projectId: string;
     localeBranchId: string;
   }): Promise<PlaySceneCoverageReadModel> {
-    const [coverageRows, routeMaps, routeChoices] = await Promise.all([
-      this.deps.coverage.loadCoverageForBranch(input.actor, {
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-      }),
-      this.deps.routeMaps.loadRouteMapsByProject(input.actor, {
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-      }),
-      this.deps.routeMaps.loadRouteChoicesByProject(input.actor, {
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-      }),
-    ]);
+    const coverageRows = await this.deps.coverage.loadCoverageForBranch(input.actor, {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+    });
+    const { routeMaps, routeChoices } = await this.loadActiveRouteGraph(input.actor, {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+    });
 
     const coverageByScene = new Map<string, SceneCoverageRecord>();
     for (const row of coverageRows) {
       coverageByScene.set(row.sceneId, row);
     }
 
-    // Prefer Fresh route maps; fall back to any status so a stale map still
-    // paints. When multiple versions exist for one routeKey, keep the latest
-    // generatedAt (deterministic: sort by generatedAt desc then routeMapId).
-    const routeByKey = new Map<
-      string,
-      { routeMapId: string; routeKey: string; routeTitle: string; generatedAt: Date }
-    >();
-    const sortedMaps = [...routeMaps].sort((a, b) => {
-      const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
-      if (byTime !== 0) return byTime;
-      return a.routeMapId.localeCompare(b.routeMapId);
-    });
-    for (const route of sortedMaps) {
-      if (!routeByKey.has(route.routeKey)) {
-        routeByKey.set(route.routeKey, {
-          routeMapId: route.routeMapId,
-          routeKey: route.routeKey,
-          routeTitle: route.routeTitle,
-          generatedAt: route.generatedAt,
-        });
-      }
-    }
+    // Active graph only (Fresh preferred, Stale fallback). Within that set,
+    // when multiple versions share a routeKey keep the latest generatedAt
+    // (deterministic: generatedAt desc then routeMapId).
+    const routeByKey = selectLatestRoutesByKey(routeMaps);
 
-    const edges: PlaySceneCoverageEdge[] = [];
-    const seenEdge = new Set<string>();
-    for (const choice of routeChoices) {
-      const from = choice.fromRouteKey;
-      if (from === null || from.length === 0) {
-        continue;
-      }
-      for (const option of choice.options) {
-        const to = option.targetRouteKey;
-        if (to === null || to.length === 0) {
-          continue;
-        }
-        const edgeKey = `${from}\0${to}\0${choice.choiceKey}\0${option.optionId}`;
-        if (seenEdge.has(edgeKey)) {
-          continue;
-        }
-        seenEdge.add(edgeKey);
-        edges.push({
-          fromSceneId: from,
-          toSceneId: to,
-          choiceKey: choice.choiceKey,
-          label: option.optionLabel,
-        });
-      }
-    }
-    edges.sort((a, b) => {
-      const byFrom = a.fromSceneId.localeCompare(b.fromSceneId);
-      if (byFrom !== 0) return byFrom;
-      const byTo = a.toSceneId.localeCompare(b.toSceneId);
-      if (byTo !== 0) return byTo;
-      return a.choiceKey.localeCompare(b.choiceKey);
-    });
+    const edges = buildEdgesFromChoices(routeChoices);
 
+    // Nodes come ONLY from the active route graph (maps + edge endpoints) —
+    // coverage rows for scenes outside the graph are not surfaced (no phantom
+    // nodes / count skew from orphan coverage).
     const sceneIds = new Set<string>([
-      ...coverageByScene.keys(),
       ...routeByKey.keys(),
       ...edges.flatMap((edge) => [edge.fromSceneId, edge.toSceneId]),
     ]);
@@ -226,10 +196,22 @@ export class SceneCoverageService implements SceneCoverageServicePort {
     coverageState: SceneLocalizationCoverageState;
     updatedByUserId: string;
   }): Promise<PlaySetSceneCoverageResult> {
+    const sceneId = input.sceneId.trim();
+    const knownScenes = await this.loadActiveSceneIds(input.actor, {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+    });
+    if (!knownScenes.has(sceneId)) {
+      throw new SceneCoverageServiceError(
+        "unknown_scene",
+        `sceneId '${sceneId}' is not on the active route map for branch ${input.localeBranchId}`,
+      );
+    }
+
     const record = await this.deps.coverage.setCoverage(input.actor, {
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
-      sceneId: input.sceneId,
+      sceneId,
       coverageState: input.coverageState,
       updatedByUserId: input.updatedByUserId,
     });
@@ -243,4 +225,129 @@ export class SceneCoverageService implements SceneCoverageServicePort {
       updatedByUserId: record.updatedByUserId,
     };
   }
+
+  /**
+   * Scene ids that belong to the branch's active route graph (route map keys +
+   * choice edge endpoints). Used to reject setSceneCoverage writes for scenes
+   * that would become phantom RouteMap nodes.
+   */
+  private async loadActiveSceneIds(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string },
+  ): Promise<Set<string>> {
+    const { routeMaps, routeChoices } = await this.loadActiveRouteGraph(actor, query);
+    const sceneIds = new Set<string>();
+    for (const route of routeMaps) {
+      sceneIds.add(route.routeKey);
+    }
+    for (const edge of buildEdgesFromChoices(routeChoices)) {
+      sceneIds.add(edge.fromSceneId);
+      sceneIds.add(edge.toSceneId);
+    }
+    return sceneIds;
+  }
+
+  /**
+   * Prefer Fresh (active) route maps + choices. Fall back to Stale only when
+   * the branch has no Fresh rows, so a still-valid invalidated map can paint
+   * without mixing stale edges into a Fresh graph.
+   */
+  private async loadActiveRouteGraph(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string },
+  ): Promise<{ routeMaps: RouteMapRecord[]; routeChoices: RouteChoiceRecord[] }> {
+    const [freshMaps, freshChoices] = await Promise.all([
+      this.deps.routeMaps.loadRouteMapsByProject(actor, {
+        projectId: query.projectId,
+        localeBranchId: query.localeBranchId,
+        status: routeMapStatusValues.fresh,
+      }),
+      this.deps.routeMaps.loadRouteChoicesByProject(actor, {
+        projectId: query.projectId,
+        localeBranchId: query.localeBranchId,
+        status: routeChoiceStatusValues.fresh,
+      }),
+    ]);
+    if (freshMaps.length > 0 || freshChoices.length > 0) {
+      return { routeMaps: freshMaps, routeChoices: freshChoices };
+    }
+
+    const [staleMaps, staleChoices] = await Promise.all([
+      this.deps.routeMaps.loadRouteMapsByProject(actor, {
+        projectId: query.projectId,
+        localeBranchId: query.localeBranchId,
+        status: routeMapStatusValues.stale,
+      }),
+      this.deps.routeMaps.loadRouteChoicesByProject(actor, {
+        projectId: query.projectId,
+        localeBranchId: query.localeBranchId,
+        status: routeChoiceStatusValues.stale,
+      }),
+    ]);
+    return { routeMaps: staleMaps, routeChoices: staleChoices };
+  }
+}
+
+function selectLatestRoutesByKey(
+  routeMaps: RouteMapRecord[],
+): Map<string, { routeMapId: string; routeKey: string; routeTitle: string; generatedAt: Date }> {
+  const routeByKey = new Map<
+    string,
+    { routeMapId: string; routeKey: string; routeTitle: string; generatedAt: Date }
+  >();
+  const sortedMaps = [...routeMaps].sort((a, b) => {
+    const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
+    if (byTime !== 0) return byTime;
+    return a.routeMapId.localeCompare(b.routeMapId);
+  });
+  for (const route of sortedMaps) {
+    if (!routeByKey.has(route.routeKey)) {
+      routeByKey.set(route.routeKey, {
+        routeMapId: route.routeMapId,
+        routeKey: route.routeKey,
+        routeTitle: route.routeTitle,
+        generatedAt: route.generatedAt,
+      });
+    }
+  }
+  return routeByKey;
+}
+
+function buildEdgesFromChoices(routeChoices: RouteChoiceRecord[]): PlaySceneCoverageEdge[] {
+  const edges: PlaySceneCoverageEdge[] = [];
+  const seenEdge = new Set<string>();
+  for (const choice of routeChoices) {
+    const from = choice.fromRouteKey;
+    if (from === null || from.length === 0) {
+      continue;
+    }
+    for (const option of choice.options) {
+      const to = option.targetRouteKey;
+      if (to === null || to.length === 0) {
+        continue;
+      }
+      // Dedupe by graph identity (from/to/choiceKey). Option ids can differ
+      // across re-generations of the same edge; collapse to one edge so stale
+      // duplicates cannot fan out the RouteMap.
+      const edgeKey = `${from}\0${to}\0${choice.choiceKey}`;
+      if (seenEdge.has(edgeKey)) {
+        continue;
+      }
+      seenEdge.add(edgeKey);
+      edges.push({
+        fromSceneId: from,
+        toSceneId: to,
+        choiceKey: choice.choiceKey,
+        label: option.optionLabel,
+      });
+    }
+  }
+  edges.sort((a, b) => {
+    const byFrom = a.fromSceneId.localeCompare(b.fromSceneId);
+    if (byFrom !== 0) return byFrom;
+    const byTo = a.toSceneId.localeCompare(b.toSceneId);
+    if (byTo !== 0) return byTo;
+    return a.choiceKey.localeCompare(b.choiceKey);
+  });
+  return edges;
 }

@@ -84,7 +84,10 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import type { SceneCoverageServicePort } from "./play/scene-coverage-service.js";
+import {
+  SceneCoverageServiceError,
+  type SceneCoverageServicePort,
+} from "./play/scene-coverage-service.js";
 import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
@@ -2104,6 +2107,11 @@ function errorResponse(error: unknown): ApiJsonResponse {
     error.code === "asset_decision_not_found"
   ) {
     return errorBody(404, "not_found", error.message);
+  }
+  // play-mark-validated — setSceneCoverage rejects sceneIds that are not on
+  // the branch's active route graph so phantom RouteMap nodes never persist.
+  if (error instanceof SceneCoverageServiceError && error.code === "unknown_scene") {
+    return errorBody(400, "bad_request", error.message);
   }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
 }
