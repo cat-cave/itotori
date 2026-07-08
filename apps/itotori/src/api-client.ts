@@ -42,6 +42,8 @@ import {
   type ApiDashboardDecisionsResponse,
   type ApiErrorResponse,
   type ApiBenchmarkReportsResponse,
+  type ApiLaunchPassRequest,
+  type ApiLaunchPassResponse,
   type ApiProjectCostDrilldownResponse,
   type ApiProjectCostResponse,
   type ApiProjectOverviewResponse,
@@ -232,6 +234,13 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRuntimeEvidenceResponse;
     pathParams: { projectId: string };
     request: ApiRuntimeEvidenceRequest;
+  };
+  // ovw-launch-pass-action — UI action that drives the next localization
+  // pass via the typed client (no path params; the server derives scope
+  // from the session + the selected locale branch).
+  "projects.launchPass": {
+    response: ApiLaunchPassResponse;
+    request: ApiLaunchPassRequest;
   };
 }
 
