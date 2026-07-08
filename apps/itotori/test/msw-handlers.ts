@@ -23,6 +23,7 @@ import {
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
+  projectOverviewFixture,
   draftBranchRequestFixture,
   draftBranchResponseFixture,
   recordBenchmarkRequestFixture,
@@ -154,6 +155,9 @@ export const itotoriProjectMutationPermissionDeniedMswHandlers = [
 export const itotoriApiMswHandlers = [
   http.get("http://itotori.test/api/projects/status", () =>
     apiJson("projects.status", dashboardStatusFixture),
+  ),
+  http.get("http://itotori.test/api/projects/overview", () =>
+    apiJson("projects.overview", projectOverviewFixture),
   ),
   http.get("http://itotori.test/api/projects/decisions", () =>
     apiJson("projects.decisions", dashboardDecisionsFixture),

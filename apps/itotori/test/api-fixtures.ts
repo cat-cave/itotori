@@ -37,6 +37,7 @@ import type {
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type { ProjectState, RuntimeIngestResult } from "../src/services/project-workflow.js";
+import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
 
 export const costReportFixture: ProjectCostReport = {
   projectId: "project-1",
@@ -1057,6 +1058,48 @@ export const benchmarkReportSummaryFixture: BenchmarkReportSummary = {
 };
 
 export const benchmarkReportsFixture: BenchmarkReportSummary[] = [benchmarkReportSummaryFixture];
+
+export const projectOverviewFixture: ProjectOverviewReadModel = {
+  schemaVersion: "projects.overview.v0.1",
+  generatedAt: "2026-07-07T00:00:00.000Z",
+  projectId: dashboardStatusFixture.projectId,
+  progress: dashboardStatusFixture,
+  decisions: dashboardDecisionsFixture,
+  cost: costReportFixture,
+  costDrilldown: costDrilldownFixture,
+  passLedger: {
+    filter: {
+      projectId: dashboardStatusFixture.projectId,
+      localeBranchId: dashboardStatusFixture.selectedLocaleBranchId,
+    },
+    pagination: {
+      total: 1,
+      limit: 10,
+      offset: 0,
+      page: 1,
+      pageCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    },
+    rows: [
+      {
+        passLedgerId: "localization-pass-fixture-1",
+        projectId: dashboardStatusFixture.projectId,
+        localeBranchId: dashboardStatusFixture.selectedLocaleBranchId ?? "locale-branch-1",
+        sourceRevisionId: dashboardStatusFixture.sourceBundleRevisionId,
+        passNumber: 1,
+        priorPassNumber: null,
+        totalUsageCostUsd: 0.0123,
+        zdrConfirmed: true,
+        recordedAt: "2026-07-07T00:00:00.000Z",
+      },
+    ],
+  },
+  benchmarkHeadline: {
+    reportCount: benchmarkReportsFixture.length,
+    latestReport: benchmarkReportsFixture[0] ?? null,
+  },
+};
 
 function readFixture<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;

@@ -73,6 +73,7 @@ import {
   decisionEventFixture,
   findingRecordFixture,
   nonJapaneseTargetProjectFixture,
+  projectOverviewFixture,
   projectFixture,
   runtimeIngestResultFixture,
   runtimeReportFixture,
@@ -196,6 +197,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/projects/status" },
       services,
     );
+    const projectOverview = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/overview" },
+      services,
+    );
     const runtimeStatus = await handleItotoriApiRequest(
       { method: "GET", pathname: "/api/hello/status" },
       services,
@@ -243,6 +248,7 @@ describe("Itotori API handlers", () => {
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
+    expect(projectOverview).toEqual({ statusCode: 200, body: projectOverviewFixture });
     expect(projects.body.projects[0]?.localeBranches).toEqual([
       expect.objectContaining({ localeBranchId: "locale-1", targetLocale: "en-US" }),
       expect.objectContaining({
@@ -290,6 +296,7 @@ describe("Itotori API handlers", () => {
     expect(catalogOpportunities).toEqual({ statusCode: 200, body: catalogOpportunitiesFixture });
     expect(terminologySearch).toEqual({ statusCode: 200, body: terminologySearchFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
+    expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(1, undefined);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(2, undefined);
@@ -309,11 +316,11 @@ describe("Itotori API handlers", () => {
     // gate-runtime-status-reads-and-redact-evidence-previews — the two
     // runtime status reads (/api/hello/status + /api/runtime/v0.2/status)
     // additionally resolve the same catalog.read gate for the detailed
-    // evidence report. 3 project reads + 2 runtime reads = 5 gate checks.
+    // evidence report. 4 project reads + 2 runtime reads = 6 gate checks.
     expect(services.authorization.requirePermission).toHaveBeenCalledWith(
       permissionValues.catalogRead,
     );
-    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(5);
+    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(6);
   });
 
   it("returns full project/cost detail to a caller holding catalog.read", async () => {
@@ -3519,6 +3526,7 @@ function serviceFixture(): ItotoriApiServices {
         ownedLocaleBranchIdentitiesFixture(projectId),
       ),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
+      getProjectOverview: vi.fn(async () => projectOverviewFixture),
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),

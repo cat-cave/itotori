@@ -6,6 +6,7 @@ import type {
   CostDrilldownPage,
   DashboardDecisionReadModel,
   ItotoriConformanceRepositoryPort,
+  ItotoriLocalizationPassLedgerRepositoryPort,
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
@@ -57,6 +58,11 @@ import {
   DeterministicPreExportQaError,
   runDeterministicPreExportQa,
 } from "./deterministic-pre-export-qa.js";
+import {
+  composeProjectOverviewReadModel,
+  type ProjectOverviewReadModel,
+  type ProjectOverviewReadModelOptions,
+} from "../project-overview-read-model.js";
 
 export type ProjectState = ItotoriProjectRecord;
 export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
@@ -178,6 +184,7 @@ export interface ItotoriProjectWorkflowPort {
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
+  getProjectOverview(options?: ProjectOverviewReadModelOptions): Promise<ProjectOverviewReadModel>;
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
   getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
@@ -234,6 +241,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
     private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
     private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
+    private readonly passLedger?: ItotoriLocalizationPassLedgerRepositoryPort,
   ) {}
 
   async reset(): Promise<void> {
@@ -263,6 +271,35 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {
     return await this.repository.getDashboardDecisions(projectId);
+  }
+
+  async getProjectOverview(
+    options: ProjectOverviewReadModelOptions = {},
+  ): Promise<ProjectOverviewReadModel> {
+    const status = await this.repository.getDashboardStatus();
+    const projectId = options.projectId ?? status.projectId;
+    const costDrilldownFilter: CostDrilldownFilter = {
+      ...options.costDrilldown,
+      ...(options.projectId !== undefined && options.costDrilldown?.projectId === undefined
+        ? { projectId }
+        : {}),
+    };
+    const [decisions, cost, costDrilldown, benchmarkReports] = await Promise.all([
+      this.getDashboardDecisions(projectId),
+      this.getCostReport(projectId),
+      this.getCostDrilldown(costDrilldownFilter),
+      this.getBenchmarkReports(projectId),
+    ]);
+    return await composeProjectOverviewReadModel({
+      actor: this.actor,
+      status,
+      decisions,
+      cost,
+      costDrilldown,
+      benchmarkReports,
+      ...(this.passLedger !== undefined ? { passLedgerRepository: this.passLedger } : {}),
+      options: { ...options, projectId },
+    });
   }
 
   async getCostReport(projectId?: string): Promise<ProjectCostReport> {

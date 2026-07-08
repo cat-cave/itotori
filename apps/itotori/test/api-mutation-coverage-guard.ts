@@ -33,6 +33,7 @@ export const READ_ONLY_PROJECT_WORKFLOW_METHODS: ReadonlySet<string> = new Set([
   // the mutation scoping policy. A read, never a mutation.
   "listLocaleBranchIdentities",
   "getDashboardStatus",
+  "getProjectOverview",
   "getDashboardDecisions",
   "getRuntimeStatus",
   "getCostReport",

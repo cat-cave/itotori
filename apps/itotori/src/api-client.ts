@@ -42,6 +42,7 @@ import {
   type ApiBenchmarkReportsResponse,
   type ApiProjectCostDrilldownResponse,
   type ApiProjectCostResponse,
+  type ApiProjectOverviewResponse,
   type ApiProjectImportRequest,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
@@ -171,6 +172,9 @@ interface ItotoriApiRouteTypeMap {
   };
   "projects.status": {
     response: ProjectDashboardStatus;
+  };
+  "projects.overview": {
+    response: ApiProjectOverviewResponse;
   };
   "projects.decisions": {
     response: ApiDashboardDecisionsResponse;

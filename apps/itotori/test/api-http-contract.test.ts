@@ -52,6 +52,7 @@ type ReadModelCase = {
 // across the mock, the direct-handler, and the REAL-HTTP seams.
 const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "projects.list" },
+  { routeId: "projects.overview" },
   { routeId: "projects.status" },
   { routeId: "projects.decisions" },
   { routeId: "projects.cost" },

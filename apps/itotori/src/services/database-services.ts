@@ -10,6 +10,7 @@ import {
   ItotoriCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
+  ItotoriLocalizationPassLedgerRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
@@ -337,6 +338,7 @@ export async function withDatabaseItotoriServices<T>(
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
+    const passLedgerRepository = new ItotoriLocalizationPassLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
@@ -450,6 +452,8 @@ export async function withDatabaseItotoriServices<T>(
         undefined,
         modelLedgerRepository,
         translationMemoryService,
+        undefined,
+        passLedgerRepository,
       ),
       manualFeedback: manualFeedbackService,
       draftFeedbackBatch: new DraftFeedbackBatchService(manualFeedbackService),

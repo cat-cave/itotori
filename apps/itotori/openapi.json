@@ -598,6 +598,50 @@
         ],
         "type": "object"
       },
+      "ProjectOverviewReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmarkHeadline": {
+            "type": "object"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/ProjectCostReport"
+          },
+          "costDrilldown": {
+            "$ref": "#/components/schemas/CostDrilldownPage"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/DashboardDecisionReadModel"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "passLedger": {
+            "type": "object"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProjectDashboardStatus"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "projects.overview.v0.1"
+          }
+        },
+        "required": [
+          "benchmarkHeadline",
+          "cost",
+          "costDrilldown",
+          "decisions",
+          "generatedAt",
+          "passLedger",
+          "progress",
+          "projectId",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "QueueHealthReadModel": {
         "additionalProperties": false,
         "properties": {
@@ -1906,6 +1950,75 @@
         },
         "summary": "Dashboard decision read model.",
         "x-itotoriRouteId": "projects.decisions"
+      }
+    },
+    "/api/projects/overview": {
+      "get": {
+        "operationId": "projectsOverview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOverviewReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Composed project overview cockpit read model.",
+        "x-itotoriRouteId": "projects.overview"
       }
     },
     "/api/projects/status": {

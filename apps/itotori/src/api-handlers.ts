@@ -61,6 +61,7 @@ import {
   type ApiAssetDecisionsResponse,
   type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
+  type ApiProjectOverviewResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
   type ApiQueueHealthResponse,
@@ -72,6 +73,10 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
+import {
+  redactProjectOverviewReadModel,
+  type ProjectOverviewReadModelOptions,
+} from "./project-overview-read-model.js";
 import type {
   BenchmarkRecordResult,
   DecisionRecordResult,
@@ -184,6 +189,7 @@ export type ItotoriReadOnlyApiServices = {
     | "listLocaleBranchIdentities"
     | "getDashboardStatus"
     | "getDashboardDecisions"
+    | "getProjectOverview"
     | "getRuntimeStatus"
     | "getCostReport"
     | "getCostDrilldown"
@@ -271,6 +277,7 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
       listLocaleBranchIdentities: (projectId) =>
         services.projectWorkflow.listLocaleBranchIdentities(projectId),
       getDashboardStatus: () => services.projectWorkflow.getDashboardStatus(),
+      getProjectOverview: (options) => services.projectWorkflow.getProjectOverview(options),
       getDashboardDecisions: (projectId) =>
         services.projectWorkflow.getDashboardDecisions(projectId),
       getRuntimeStatus: (runtimeRunId) => services.projectWorkflow.getRuntimeStatus(runtimeRunId),
@@ -595,6 +602,23 @@ async function routeReadOnlyItotoriApiRequest(
     const canRead = await resolveProjectReadPermission(services);
     const status = await services.projectWorkflow.getDashboardStatus();
     return ok("projects.status", canRead ? status : redactProjectDashboardStatus(status));
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/projects/overview") {
+    const canRead = await resolveProjectReadPermission(services);
+    const overview = await services.projectWorkflow.getProjectOverview(
+      parseProjectOverviewFilter(request.search),
+    );
+    return ok(
+      "projects.overview",
+      canRead
+        ? overview
+        : redactProjectOverviewReadModel(overview, {
+            progress: redactProjectDashboardStatus(overview.progress),
+            cost: redactProjectCostReport(overview.cost),
+            costDrilldown: redactCostDrilldownPage(overview.costDrilldown),
+          }),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/decisions") {
@@ -1043,6 +1067,51 @@ function parseCostDrilldownFilter(search = ""): CostDrilldownFilter {
     ["projectId", "systemId", "from", "to", "limit", "offset"],
     "cost drilldown",
   );
+  return parseCostDrilldownParams(params);
+}
+
+function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOptions {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    [
+      "systemId",
+      "from",
+      "to",
+      "limit",
+      "offset",
+      "passLedgerLocaleBranchId",
+      "passLedgerLimit",
+      "passLedgerOffset",
+    ],
+    "project overview",
+  );
+  const costDrilldown = parseCostDrilldownParams(params);
+  const passLedgerLocaleBranchId = params.get("passLedgerLocaleBranchId");
+  const passLedgerLimit = parseNonNegativeIntParam(
+    params.get("passLedgerLimit"),
+    "passLedgerLimit",
+  );
+  if (passLedgerLimit !== undefined && passLedgerLimit < 1) {
+    throw new ApiValidationError("passLedgerLimit must be a positive integer");
+  }
+  const passLedgerOffset = parseNonNegativeIntParam(
+    params.get("passLedgerOffset"),
+    "passLedgerOffset",
+  );
+  return {
+    costDrilldown,
+    passLedger: {
+      ...(passLedgerLocaleBranchId !== null
+        ? { localeBranchId: nonEmptyParam(passLedgerLocaleBranchId, "passLedgerLocaleBranchId") }
+        : {}),
+      ...(passLedgerLimit !== undefined ? { limit: passLedgerLimit } : {}),
+      ...(passLedgerOffset !== undefined ? { offset: passLedgerOffset } : {}),
+    },
+  };
+}
+
+function parseCostDrilldownParams(params: URLSearchParams): CostDrilldownFilter {
   const filter: CostDrilldownFilter = {};
   const projectId = params.get("projectId");
   if (projectId !== null) {
@@ -1081,6 +1150,13 @@ function parseCostDrilldownFilter(search = ""): CostDrilldownFilter {
     filter.offset = offset;
   }
   return filter;
+}
+
+function nonEmptyParam(value: string, label: string): string {
+  if (value.trim().length === 0) {
+    throw new ApiValidationError(`${label} must be non-empty`);
+  }
+  return value;
 }
 
 function parseIsoDateParam(raw: string | null, label: string): Date | undefined {
@@ -1722,6 +1798,7 @@ function ok(
   body: ApiWorkspaceCorrectionSubmitResponse,
 ): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
+function ok(routeId: "projects.overview", body: ApiProjectOverviewResponse): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
 function ok(routeId: "projects.costDrilldown", body: CostDrilldownPage): ApiJsonResponse;

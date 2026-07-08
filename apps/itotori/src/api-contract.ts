@@ -29,7 +29,7 @@
 // for ANY strict route (the reviewer / workspace / queue-health / asset-decision
 // routes that previously lacked a parity fixture included). The loose
 // (`additionalProperties:true`) bodies keep their guard<->schema parity proven
-// by real response fixtures. The parity suite adds per-route teeth for all 33
+// by real response fixtures. The parity suite adds per-route teeth for all 34
 // routes (a dropped required key or a leaked strict field fails).
 import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
@@ -394,6 +394,22 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { projectId: str, counts: obj, pendingDecisions: arr },
       additionalProperties: true,
     }),
+  ProjectOverviewReadModel: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ProjectOverviewReadModel,
+      properties: {
+        generatedAt: str,
+        projectId: str,
+        progress: ref("ProjectDashboardStatus"),
+        decisions: ref("DashboardDecisionReadModel"),
+        cost: ref("ProjectCostReport"),
+        costDrilldown: ref("CostDrilldownPage"),
+        passLedger: obj,
+        benchmarkHeadline: obj,
+      },
+      additionalProperties: false,
+      schemaVersion: "projects.overview.v0.1",
+    }),
   ProjectCostReport: () =>
     object({
       required: [
@@ -666,6 +682,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "Project dashboard status.",
     pathParams: [],
     responseSchema: "ProjectDashboardStatus",
+  },
+  "projects.overview": {
+    method: "GET",
+    pathTemplate: "/api/projects/overview",
+    operationId: "projectsOverview",
+    summary: "Composed project overview cockpit read model.",
+    pathParams: [],
+    responseSchema: "ProjectOverviewReadModel",
   },
   "projects.decisions": {
     method: "GET",

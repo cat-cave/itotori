@@ -599,6 +599,50 @@
       ],
       "type": "object"
     },
+    "ProjectOverviewReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "benchmarkHeadline": {
+          "type": "object"
+        },
+        "cost": {
+          "$ref": "#/definitions/ProjectCostReport"
+        },
+        "costDrilldown": {
+          "$ref": "#/definitions/CostDrilldownPage"
+        },
+        "decisions": {
+          "$ref": "#/definitions/DashboardDecisionReadModel"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "passLedger": {
+          "type": "object"
+        },
+        "progress": {
+          "$ref": "#/definitions/ProjectDashboardStatus"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "projects.overview.v0.1"
+        }
+      },
+      "required": [
+        "benchmarkHeadline",
+        "cost",
+        "costDrilldown",
+        "decisions",
+        "generatedAt",
+        "passLedger",
+        "progress",
+        "projectId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "QueueHealthReadModel": {
       "additionalProperties": false,
       "properties": {

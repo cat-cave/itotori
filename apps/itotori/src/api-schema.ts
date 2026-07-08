@@ -115,6 +115,13 @@ import type {
   SubmitWorkspaceCorrectionsInput,
   WorkspaceCorrectionSubmission,
 } from "./workspace/correction-service.js";
+import type {
+  ProjectOverviewBenchmarkHeadline,
+  ProjectOverviewPassLedgerPage,
+  ProjectOverviewPassLedgerRow,
+  ProjectOverviewReadModel,
+} from "./project-overview-read-model.js";
+import { PROJECT_OVERVIEW_SCHEMA_VERSION } from "./project-overview-read-model.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -137,6 +144,7 @@ export type ItotoriApiRouteId =
   | "workspace.correctionPreview"
   | "workspace.correctionSubmit"
   | "projects.list"
+  | "projects.overview"
   | "projects.status"
   | "projects.decisions"
   | "projects.cost"
@@ -232,6 +240,17 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ReviewerBatchExecuteResult: ["request", "preview", "applied", "refusedAll", "appliedAll"],
   ReviewerSingleActionResult: ["request", "preview", "outcome", "applied", "refused"],
   CostDrilldownPage: ["filter", "pagination", "rows"],
+  ProjectOverviewReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "progress",
+    "decisions",
+    "cost",
+    "costDrilldown",
+    "passLedger",
+    "benchmarkHeadline",
+  ],
   ApiBenchmarkReportsResponse: ["reports"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
   WorkspaceProjectBrowseReadModel: [
@@ -341,6 +360,8 @@ export type ApiProjectsResponse = {
 export type ApiProjectCostResponse = ProjectCostReport;
 
 export type ApiProjectCostDrilldownResponse = CostDrilldownPage;
+
+export type ApiProjectOverviewResponse = ProjectOverviewReadModel;
 
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
@@ -473,6 +494,7 @@ export type ItotoriApiResponseBody =
   | ApiWorkspaceCorrectionPreviewResponse
   | ApiWorkspaceCorrectionSubmitResponse
   | ApiProjectsResponse
+  | ApiProjectOverviewResponse
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
   | ApiProjectCostResponse
@@ -770,6 +792,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.list":
       assertProjectsResponse(value);
+      return;
+    case "projects.overview":
+      assertProjectOverviewReadModel(value);
       return;
     case "projects.status":
       assertProjectDashboardStatus(value);
@@ -3509,6 +3534,103 @@ function assertCostDrilldownProviderMetadata(value: unknown, label: string): voi
   // (sanitizeAdapterMetadata is default-deny); the API schema only asserts
   // the surviving value is an object.
   asRecord(provider.adapterMetadata, `${label}.adapterMetadata`);
+}
+
+export function assertProjectOverviewReadModel(
+  value: unknown,
+  label = "ProjectOverviewReadModel",
+): asserts value is ProjectOverviewReadModel {
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ProjectOverviewReadModel);
+  assertLiteral(model.schemaVersion, PROJECT_OVERVIEW_SCHEMA_VERSION, `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertString(model.projectId, `${label}.projectId`);
+  assertProjectDashboardStatus(model.progress, `${label}.progress`);
+  assertDashboardDecisionReadModel(model.decisions, `${label}.decisions`);
+  assertProjectCostReport(model.cost, `${label}.cost`);
+  assertProjectCostDrilldownResponse(model.costDrilldown, `${label}.costDrilldown`);
+  assertProjectOverviewPassLedgerPage(model.passLedger, `${label}.passLedger`);
+  assertProjectOverviewBenchmarkHeadline(model.benchmarkHeadline, `${label}.benchmarkHeadline`);
+}
+
+function assertProjectOverviewPassLedgerPage(
+  value: unknown,
+  label: string,
+): asserts value is ProjectOverviewPassLedgerPage {
+  const page = asStrictRecord(value, label, ["filter", "pagination", "rows"]);
+  const filter = asStrictRecord(page.filter, `${label}.filter`, ["projectId", "localeBranchId"]);
+  assertString(filter.projectId, `${label}.filter.projectId`);
+  assertNullableString(filter.localeBranchId, `${label}.filter.localeBranchId`);
+  assertProjectOverviewPagination(page.pagination, `${label}.pagination`);
+  const rows = asArray(page.rows, `${label}.rows`);
+  if (rows.length > Number((page.pagination as { limit: unknown }).limit)) {
+    throw new Error(`${label}.rows must not exceed pagination.limit`);
+  }
+  for (const [index, row] of rows.entries()) {
+    assertProjectOverviewPassLedgerRow(row, `${label}.rows[${index}]`);
+  }
+}
+
+function assertProjectOverviewPagination(value: unknown, label: string): void {
+  const pagination = asStrictRecord(value, label, [
+    "total",
+    "limit",
+    "offset",
+    "page",
+    "pageCount",
+    "hasMore",
+    "nextOffset",
+  ]);
+  assertNonNegativeInteger(pagination.total, `${label}.total`);
+  assertPositiveInteger(pagination.limit, `${label}.limit`);
+  assertNonNegativeInteger(pagination.offset, `${label}.offset`);
+  assertPositiveInteger(pagination.page, `${label}.page`);
+  assertNonNegativeInteger(pagination.pageCount, `${label}.pageCount`);
+  assertBoolean(pagination.hasMore, `${label}.hasMore`);
+  if (pagination.nextOffset !== null) {
+    assertNonNegativeInteger(pagination.nextOffset, `${label}.nextOffset`);
+  }
+  if (pagination.hasMore === (pagination.nextOffset === null)) {
+    throw new Error(`${label}.hasMore must agree with nextOffset`);
+  }
+}
+
+function assertProjectOverviewPassLedgerRow(
+  value: unknown,
+  label: string,
+): asserts value is ProjectOverviewPassLedgerRow {
+  const row = asStrictRecord(value, label, [
+    "passLedgerId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "passNumber",
+    "priorPassNumber",
+    "totalUsageCostUsd",
+    "zdrConfirmed",
+    "recordedAt",
+  ]);
+  assertString(row.passLedgerId, `${label}.passLedgerId`);
+  assertString(row.projectId, `${label}.projectId`);
+  assertString(row.localeBranchId, `${label}.localeBranchId`);
+  assertString(row.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertPositiveInteger(row.passNumber, `${label}.passNumber`);
+  if (row.priorPassNumber !== null) {
+    assertPositiveInteger(row.priorPassNumber, `${label}.priorPassNumber`);
+  }
+  assertNonNegativeNumber(row.totalUsageCostUsd, `${label}.totalUsageCostUsd`);
+  assertBoolean(row.zdrConfirmed, `${label}.zdrConfirmed`);
+  assertDateLike(row.recordedAt, `${label}.recordedAt`);
+}
+
+function assertProjectOverviewBenchmarkHeadline(
+  value: unknown,
+  label: string,
+): asserts value is ProjectOverviewBenchmarkHeadline {
+  const headline = asStrictRecord(value, label, ["reportCount", "latestReport"]);
+  assertNonNegativeInteger(headline.reportCount, `${label}.reportCount`);
+  if (headline.latestReport !== null) {
+    assertBenchmarkReportSummary(headline.latestReport, `${label}.latestReport`);
+  }
 }
 
 export function assertDashboardDecisionReadModel(

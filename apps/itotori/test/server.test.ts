@@ -18,6 +18,7 @@ import {
   decisionEventFixture,
   findingRecordFixture,
   projectFixture,
+  projectOverviewFixture,
   runtimeIngestResultFixture,
   runtimeStatusFixture,
 } from "./api-fixtures.js";
@@ -29,6 +30,7 @@ const getCostReport = vi.fn(async () => costReportFixture);
 const getCostDrilldown = vi.fn(async () => costDrilldownFixture);
 const getBenchmarkReports = vi.fn(async () => benchmarkReportsFixture);
 const getDashboardDecisions = vi.fn(async () => dashboardDecisionsFixture);
+const getProjectOverview = vi.fn(async () => projectOverviewFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
 const { createItotoriServer, startItotoriServer } = await import("../src/server.js");
@@ -532,6 +534,7 @@ async function serviceFactory<T>(
       getDashboardStatus,
       getRuntimeStatus,
       getDashboardDecisions,
+      getProjectOverview,
       getCostReport,
       getCostDrilldown,
       getBenchmarkReports,
