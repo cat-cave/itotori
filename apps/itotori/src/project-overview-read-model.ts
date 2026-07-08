@@ -73,7 +73,36 @@ export type ProjectOverviewReadModelOptions = {
   generatedAt?: Date;
   costDrilldown?: CostDrilldownFilter;
   passLedger?: ProjectOverviewPassLedgerPageOptions;
+  /**
+   * SECURITY (redaction/permission boundary) — whether the caller is permitted
+   * to see the `draft.write`-protected pass ledger. When `false`, the pass
+   * ledger is NEVER read from the repository; an empty page is composed inside
+   * the boundary so no protected rows are ever assembled for an unpermitted
+   * caller. Defaults to `true` for trusted internal (non-HTTP) callers; the API
+   * boundary sets it from the caller's `draft.write` permission.
+   */
+  includePassLedger?: boolean;
 };
+
+/**
+ * SECURITY — refuses to compose a MIXED-PROJECT overview. The composed
+ * `progress` (and the locale-branch set that scopes the pass ledger) is taken
+ * from `status`; if a caller targets `projectId` A while handing in project B's
+ * status, the overview would splice B's progress + branches onto A's cost /
+ * decisions. This error makes that impossible at the composition seam.
+ */
+export class ProjectOverviewProjectMismatchError extends Error {
+  constructor(
+    readonly requestedProjectId: string,
+    readonly statusProjectId: string,
+  ) {
+    super(
+      `refusing to compose a mixed-project overview: requested projectId ${requestedProjectId} ` +
+        `but the supplied dashboard status is for ${statusProjectId}`,
+    );
+    this.name = "ProjectOverviewProjectMismatchError";
+  }
+}
 
 export type ComposeProjectOverviewInput = {
   actor: AuthorizationActor;
@@ -92,11 +121,22 @@ const MAX_PASS_LEDGER_LIMIT = 100;
 export async function composeProjectOverviewReadModel(
   input: ComposeProjectOverviewInput,
 ): Promise<ProjectOverviewReadModel> {
+  // P2 — the target project is authoritative. When a `projectId` is requested
+  // it MUST equal the supplied status' project; otherwise progress + the
+  // locale-branch set (which scopes the pass ledger) would come from a
+  // different project than cost / decisions / benchmarks.
+  if (
+    input.options?.projectId !== undefined &&
+    input.options.projectId !== input.status.projectId
+  ) {
+    throw new ProjectOverviewProjectMismatchError(input.options.projectId, input.status.projectId);
+  }
   const projectId = input.options?.projectId ?? input.status.projectId;
   const passLedger = await loadProjectOverviewPassLedgerPage({
     actor: input.actor,
     projectId,
     status: input.status,
+    includePassLedger: input.options?.includePassLedger ?? true,
     ...(input.passLedgerRepository !== undefined ? { repository: input.passLedgerRepository } : {}),
     ...(input.options?.passLedger !== undefined ? { options: input.options.passLedger } : {}),
   });
@@ -121,6 +161,7 @@ export async function loadProjectOverviewPassLedgerPage(input: {
   actor: AuthorizationActor;
   projectId: string;
   status: ProjectDashboardStatus;
+  includePassLedger?: boolean;
   repository?: ItotoriLocalizationPassLedgerRepositoryPort;
   options?: ProjectOverviewPassLedgerPageOptions;
 }): Promise<ProjectOverviewPassLedgerPage> {
@@ -128,7 +169,16 @@ export async function loadProjectOverviewPassLedgerPage(input: {
   const limit = normalizePassLedgerLimit(input.options?.limit);
   const offset = normalizePassLedgerOffset(input.options?.offset);
 
-  if (input.repository === undefined || localeBranchId === null) {
+  // The pass ledger is read (and its rows composed) ONLY inside the
+  // permission boundary and ONLY for a branch this project owns:
+  //   - `includePassLedger === false` — the caller lacks the `draft.write`
+  //     permission that protects the ledger; never read it.
+  //   - `localeBranchId === null` — either no branch is selectable or the
+  //     caller supplied a branch that does NOT belong to this project (see
+  //     `selectedPassLedgerLocaleBranchId`); refusing here closes the
+  //     cross-project pass-ledger leak.
+  const includePassLedger = input.includePassLedger ?? true;
+  if (!includePassLedger || input.repository === undefined || localeBranchId === null) {
     return emptyPassLedgerPage(input.projectId, localeBranchId, limit, offset);
   }
 
@@ -165,8 +215,19 @@ function selectedPassLedgerLocaleBranchId(
   status: ProjectDashboardStatus,
   options: ProjectOverviewPassLedgerPageOptions | undefined,
 ): string | null {
-  if (options?.localeBranchId !== undefined) {
-    return options.localeBranchId;
+  const requested = options?.localeBranchId;
+  if (requested !== undefined) {
+    // SECURITY (cross-project leak) — a caller-supplied locale-branch id is
+    // TRUSTED only after confirming it belongs to the TARGET project.
+    // `status.localeBranches` is the target project's own branch set (the
+    // status is scoped to the target project), so a branch id from ANOTHER
+    // project is not present here and is refused (→ null → empty page). This
+    // is what makes it impossible to read another project's pass ledger by
+    // passing its branch id.
+    const projectOwnsBranch = status.localeBranches.some(
+      (branch) => branch.localeBranchId === requested,
+    );
+    return projectOwnsBranch ? requested : null;
   }
   return status.selectedLocaleBranchId ?? status.localeBranches[0]?.localeBranchId ?? null;
 }

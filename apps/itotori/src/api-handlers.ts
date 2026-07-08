@@ -606,9 +606,18 @@ async function routeReadOnlyItotoriApiRequest(
 
   if (request.method === "GET" && request.pathname === "/api/projects/overview") {
     const canRead = await resolveProjectReadPermission(services);
-    const overview = await services.projectWorkflow.getProjectOverview(
-      parseProjectOverviewFilter(request.search),
-    );
+    // gate — the composed overview is only as strong as its parts. The pass
+    // ledger is a `draft.write`-protected read (see the pass-ledger
+    // repository), so it must NOT ride the weaker `catalog.read` gate the rest
+    // of the overview uses. Resolve the caller's pass-ledger permission and
+    // pass it INTO the composition so the ledger is never even read for an
+    // unpermitted caller (read within the permission boundary), rather than
+    // reading it and stripping it afterward.
+    const canReadPassLedger = await resolvePassLedgerReadPermission(services);
+    const overview = await services.projectWorkflow.getProjectOverview({
+      ...parseProjectOverviewFilter(request.search),
+      includePassLedger: canReadPassLedger,
+    });
     return ok(
       "projects.overview",
       canRead
@@ -954,6 +963,21 @@ async function resolveProjectReadPermission(
   services: ApiAuthorizationDependency,
 ): Promise<boolean> {
   const [canRead] = await tryApiPermission(services, permissionValues.catalogRead);
+  return canRead;
+}
+
+/**
+ * SECURITY — the localization pass ledger is a `draft.write`-protected read
+ * (the pass-ledger repository requires `draft.write` for every load). The
+ * composed `projects.overview` embeds the ledger, so it must honor that SAME
+ * permission — a `catalog.read`-only caller must NOT receive pass-ledger rows
+ * through the overview. Threaded into `getProjectOverview` as
+ * `includePassLedger` so the ledger is only READ when the caller may see it.
+ */
+async function resolvePassLedgerReadPermission(
+  services: ApiAuthorizationDependency,
+): Promise<boolean> {
+  const [canRead] = await tryApiPermission(services, permissionValues.draftWrite);
   return canRead;
 }
 

@@ -386,7 +386,14 @@ export interface ItotoriProjectRepositoryPort {
   ): Promise<void>;
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
   listBenchmarkReports(projectId: string): Promise<BenchmarkReportSummary[]>;
-  getDashboardStatus(): Promise<ProjectDashboardStatus>;
+  /**
+   * Returns the dashboard status for the given project, or the globally-latest
+   * project when `projectId` is omitted. Scoping to a project is required by
+   * composed read models (e.g. `projects.overview`) so progress + the locale
+   * branch set do not come from a different project than the rest of the
+   * payload.
+   */
+  getDashboardStatus(projectId?: string): Promise<ProjectDashboardStatus>;
   /**
    * gate-runtime-status-reads-and-redact-evidence-previews — the runtime
    * status read requires the actor to hold the project/ledger read
@@ -1444,11 +1451,20 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     );
   }
 
-  async getDashboardStatus(): Promise<ProjectDashboardStatus> {
+  async getDashboardStatus(targetProjectId?: string): Promise<ProjectDashboardStatus> {
+    // Scope the "which project" CTE to the requested project when supplied.
+    // Composed read models pass an explicit projectId so the status they embed
+    // (progress + locale-branch set) belongs to the SAME project as the rest of
+    // the composition; a bad/foreign projectId selects no project and the read
+    // fails closed ("no Itotori project state found") rather than falling back
+    // to another project's data.
+    const projectScope =
+      targetProjectId === undefined ? sql`` : sql`where project_id = ${targetProjectId}`;
     const result = await this.db.execute(sql`
       with latest_project as (
         select project_id
         from ${projects}
+        ${projectScope}
         order by updated_at desc
         limit 1
       ),

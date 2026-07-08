@@ -276,8 +276,15 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   async getProjectOverview(
     options: ProjectOverviewReadModelOptions = {},
   ): Promise<ProjectOverviewReadModel> {
-    const status = await this.repository.getDashboardStatus();
-    const projectId = options.projectId ?? status.projectId;
+    // P2 — scope the dashboard status to the SAME target project as every
+    // other composed piece. `getDashboardStatus()` with no argument returns the
+    // globally-latest project, which would splice ANOTHER project's progress +
+    // locale-branch set (the set that scopes the pass ledger) into this
+    // overview. Passing the requested projectId keeps the whole payload
+    // single-project.
+    const requestedProjectId = options.projectId;
+    const status = await this.repository.getDashboardStatus(requestedProjectId);
+    const projectId = requestedProjectId ?? status.projectId;
     const costDrilldownFilter: CostDrilldownFilter = {
       ...options.costDrilldown,
       ...(options.projectId !== undefined && options.costDrilldown?.projectId === undefined

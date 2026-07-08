@@ -34,6 +34,7 @@ import {
 } from "../src/api-handlers.js";
 import { withDatabaseReadOnlyApiServices } from "../src/services/database-services.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
+import type { ProjectOverviewReadModelOptions } from "../src/project-overview-read-model.js";
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
   assertRedactedRuntimeDashboardStatus,
@@ -316,11 +317,16 @@ describe("Itotori API handlers", () => {
     // gate-runtime-status-reads-and-redact-evidence-previews — the two
     // runtime status reads (/api/hello/status + /api/runtime/v0.2/status)
     // additionally resolve the same catalog.read gate for the detailed
-    // evidence report. 4 project reads + 2 runtime reads = 6 gate checks.
+    // evidence report. 4 project reads + 2 runtime reads = 6 catalog.read
+    // checks, plus the overview route's additional draft.write check that
+    // gates the pass ledger = 7 gate checks.
     expect(services.authorization.requirePermission).toHaveBeenCalledWith(
       permissionValues.catalogRead,
     );
-    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(6);
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(7);
   });
 
   it("returns full project/cost detail to a caller holding catalog.read", async () => {
@@ -408,6 +414,51 @@ describe("Itotori API handlers", () => {
     // Non-sensitive dashboard identity/counts remain visible.
     expect(status.body.projectId).toBe(dashboardStatusFixture.projectId);
     expect(status.body.unitCount).toBe(dashboardStatusFixture.unitCount);
+  });
+
+  it("gates the overview pass ledger on draft.write, not the weaker catalog.read", async () => {
+    // SECURITY (redaction/permission boundary) — the overview embeds the
+    // draft.write-protected pass ledger. A caller who holds catalog.read but
+    // NOT draft.write must NOT receive pass-ledger rows through the overview.
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.draftWrite) {
+        throw new AuthorizationError({ userId: "api-user-without-draft-write" }, permission);
+      }
+      // catalog.read (and anything else) is granted.
+    });
+
+    const overview = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/overview" },
+      services,
+    );
+
+    expect(overview.statusCode).toBe(200);
+    // The pass ledger was composed WITHIN the boundary with includePassLedger
+    // set from the caller's (absent) draft.write permission.
+    expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ includePassLedger: false }),
+    );
+    // No pass-ledger rows cross the boundary to a caller without draft.write,
+    // even though catalog.read is granted (so the rest of the overview is full).
+    expect(overview.body.passLedger.rows).toEqual([]);
+    expect(overview.body.cost.recentRuns.length).toBeGreaterThan(0);
+    expect(JSON.stringify(overview.body.passLedger.rows)).not.toContain("localization-pass");
+  });
+
+  it("serves the full overview pass ledger to a caller holding draft.write", async () => {
+    const services = serviceFixture();
+
+    const overview = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/overview" },
+      services,
+    );
+
+    expect(overview.statusCode).toBe(200);
+    expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ includePassLedger: true }),
+    );
+    expect(overview.body.passLedger.rows.length).toBeGreaterThan(0);
   });
 
   it("serves the cost drilldown with parsed project/system/time filters + pagination", async () => {
@@ -3526,7 +3577,17 @@ function serviceFixture(): ItotoriApiServices {
         ownedLocaleBranchIdentitiesFixture(projectId),
       ),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
-      getProjectOverview: vi.fn(async () => projectOverviewFixture),
+      // Mirror the real service's permission boundary: when the caller is not
+      // permitted to read the draft.write-protected pass ledger the composition
+      // never assembles its rows.
+      getProjectOverview: vi.fn(async (options?: ProjectOverviewReadModelOptions) =>
+        options?.includePassLedger === false
+          ? {
+              ...projectOverviewFixture,
+              passLedger: { ...projectOverviewFixture.passLedger, rows: [] },
+            }
+          : projectOverviewFixture,
+      ),
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
