@@ -8,6 +8,15 @@
 :root {
   --ito-glow-amber: 0 0 0 1px rgba(255, 182, 72, 0.35), 0 0 18px -6px rgba(255, 182, 72, 0.6);
   --ito-glow-mint: 0 0 14px -6px rgba(69, 230, 173, 0.7);
+
+  /* Redaction overlay (MISSING-TOKENS.md §4 — frame/render overlay + redaction).
+   * Per [[feedback_redaction_is_a_toggle]]: redaction is a TOGGLE, default on
+   * for committed/shared frames, OFF-able only for cap-gated private reveal.
+   * shareRedaction (share/export) ALWAYS wins — even if canReveal is true. */
+  --ito-redact-blur: 18px;
+  --ito-redact-overlay: rgba(21, 16, 31, 0.78);
+  --ito-redact-fg: var(--ito-color-amber);
+  --ito-redact-border: var(--ito-tone-critical-border);
 }
 
 /* Faint CRT scanlines. */
@@ -113,6 +122,30 @@
 .itotori-frame {
   outline: 1px solid var(--ito-color-border);
   outline-offset: -1px;
+}
+
+/* Redacted media — blurs + scrims a frame/screenshot in committed/shared views.
+ * Pair with the redaction tokens above. The component layer (.itotori-redaction-frame)
+ * is the canonical frame wrapper; this utility is the raw escape hatch for
+ * surfaces that already have their own frame slot but still need the blur+scrim. */
+.itotori-redacted {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.itotori-redacted > img,
+.itotori-redacted > video,
+.itotori-redacted > .itotori-redacted__media {
+  filter: blur(var(--ito-redact-blur));
+  transform: scale(1.04);
+  transform-origin: center;
+}
+.itotori-redacted::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ito-redact-overlay);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

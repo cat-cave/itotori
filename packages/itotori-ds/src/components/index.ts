@@ -20,6 +20,8 @@ export { LocalizationProgress } from "./data/LocalizationProgress.js";
 export type { LocalizationProgressProps, LocalizationStage } from "./data/LocalizationProgress.js";
 export { StatReadout } from "./data/StatReadout.js";
 export type { StatReadoutProps } from "./data/StatReadout.js";
+export { RedactionFrame, shouldRedactFrame } from "./data/RedactionFrame.js";
+export type { RedactionFrameProps, RedactionDecision } from "./data/RedactionFrame.js";
 
 // localization
 export { BiText } from "./localization/BiText.js";

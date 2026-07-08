@@ -1,0 +1,46 @@
+.itotori-redaction-frame {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-code-well);
+  outline: 1px solid var(--ito-color-border);
+  outline-offset: -1px;
+}
+
+.itotori-redaction-frame__media {
+  display: block;
+}
+
+/* The blur + scrim layer for a redacted frame. Pulls all values from the
+ * redaction-overlay tokens in effects.css — NO ad-hoc CSS. */
+.itotori-redaction-frame[data-redacted="true"] .itotori-redaction-frame__media {
+  filter: blur(var(--ito-redact-blur));
+  transform: scale(1.04);
+  transform-origin: center;
+}
+
+.itotori-redaction-frame__overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--ito-redact-overlay);
+  pointer-events: none;
+}
+
+.itotori-redaction-frame__label {
+  position: absolute;
+  bottom: var(--ito-space-10);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-redact-fg);
+  background: var(--ito-tone-critical-bg);
+  border: 1px solid var(--ito-redact-border);
+  border-radius: var(--ito-radius-pill);
+  padding: var(--ito-space-1) var(--ito-space-10);
+  pointer-events: none;
+  white-space: nowrap;
+}

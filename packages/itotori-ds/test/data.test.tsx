@@ -5,6 +5,7 @@ import { ComparisonPane } from "../src/components/data/ComparisonPane.js";
 import { DataTable } from "../src/components/data/DataTable.js";
 import { LocalizationProgress } from "../src/components/data/LocalizationProgress.js";
 import { ProgressBar } from "../src/components/data/ProgressBar.js";
+import { RedactionFrame, shouldRedactFrame } from "../src/components/data/RedactionFrame.js";
 import { StatReadout } from "../src/components/data/StatReadout.js";
 
 interface Row {
@@ -113,5 +114,109 @@ describe("data / StatReadout", () => {
     expect(screen.getByText("$0.51")).toBeInTheDocument();
     expect(screen.getByText("USD")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "trend" })).toBeInTheDocument();
+  });
+});
+
+describe("data / RedactionFrame (pure rule)", () => {
+  it("never redacts a non-sensitive frame, regardless of canReveal / shareRedaction", () => {
+    expect(shouldRedactFrame({ sensitive: false })).toBe(false);
+    expect(shouldRedactFrame({ sensitive: false, canReveal: false })).toBe(false);
+    expect(shouldRedactFrame({ sensitive: false, canReveal: true })).toBe(false);
+    expect(shouldRedactFrame({ sensitive: false, canReveal: true, shareRedaction: true })).toBe(
+      false,
+    );
+  });
+
+  it("redacts a sensitive frame by default (no canReveal, no shareRedaction)", () => {
+    expect(shouldRedactFrame({ sensitive: true })).toBe(true);
+    expect(shouldRedactFrame({ sensitive: true, canReveal: false, shareRedaction: false })).toBe(
+      true,
+    );
+  });
+
+  it("reveals a sensitive frame only when canReveal AND NOT shareRedaction", () => {
+    expect(shouldRedactFrame({ sensitive: true, canReveal: true, shareRedaction: false })).toBe(
+      false,
+    );
+  });
+
+  it("shareRedaction ALWAYS forces the blur, even when canReveal is true", () => {
+    expect(shouldRedactFrame({ sensitive: true, canReveal: true, shareRedaction: true })).toBe(
+      true,
+    );
+    expect(shouldRedactFrame({ sensitive: true, canReveal: false, shareRedaction: true })).toBe(
+      true,
+    );
+  });
+});
+
+describe("data / RedactionFrame (component)", () => {
+  it("renders a sensitive frame BLURRED by default", () => {
+    render(
+      <RedactionFrame sensitive>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    const frame = document.querySelector(".itotori-redaction-frame");
+    expect(frame).toBeInTheDocument();
+    expect(frame).toHaveAttribute("data-redacted", "true");
+    expect(frame).toHaveClass("itotori-redacted");
+    expect(screen.getByText("sensitive — redacted")).toBeInTheDocument();
+  });
+
+  it("UNBLURS a sensitive frame when canReveal is true AND shareRedaction is false", () => {
+    render(
+      <RedactionFrame sensitive canReveal shareRedaction={false}>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    const frame = document.querySelector(".itotori-redaction-frame");
+    expect(frame).toHaveAttribute("data-redacted", "false");
+    expect(frame).not.toHaveClass("itotori-redacted");
+    expect(screen.queryByText("sensitive — redacted")).not.toBeInTheDocument();
+  });
+
+  it("shareRedaction FORCES the blur even when canReveal is true", () => {
+    render(
+      <RedactionFrame sensitive canReveal shareRedaction>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    const frame = document.querySelector(".itotori-redaction-frame");
+    expect(frame).toHaveAttribute("data-redacted", "true");
+    expect(frame).toHaveClass("itotori-redacted");
+    expect(screen.getByText("sensitive — redacted")).toBeInTheDocument();
+  });
+
+  it("never redacts a non-sensitive frame (toggle only governs sensitive content)", () => {
+    render(
+      <RedactionFrame>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    const frame = document.querySelector(".itotori-redaction-frame");
+    expect(frame).toHaveAttribute("data-redacted", "false");
+    expect(frame).not.toHaveClass("itotori-redacted");
+  });
+
+  it("exposes shareRedaction as a data attribute for downstream styling/audit", () => {
+    const { rerender } = render(
+      <RedactionFrame sensitive canReveal>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    expect(document.querySelector(".itotori-redaction-frame")).toHaveAttribute(
+      "data-share-redaction",
+      "false",
+    );
+    rerender(
+      <RedactionFrame sensitive canReveal shareRedaction>
+        <img alt="scene" />
+      </RedactionFrame>,
+    );
+    expect(document.querySelector(".itotori-redaction-frame")).toHaveAttribute(
+      "data-share-redaction",
+      "true",
+    );
   });
 });
