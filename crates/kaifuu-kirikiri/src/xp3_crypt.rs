@@ -80,6 +80,11 @@ pub const XP3_CRYPT_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3-crypt smoke is
 /// profile. Part of the declared algorithm, NOT part of the secret key.
 pub const XP3_CRYPT_FIRST_BYTE_XOR: u8 = 0x5A;
 
+/// The public (non-secret) first-byte XOR parameter of the second
+/// (position-dependent) fixture crypt profile. Part of the declared algorithm,
+/// NOT part of the secret key.
+pub const XP3_CRYPT_POSITION_FIRST_BYTE_XOR: u8 = 0x3C;
+
 // --- Fixture-safe (clearly-fake) secret material ----------------------------
 //
 // These live ONLY here and inside [`Xp3CryptKey`]. They are fixture constants,
@@ -122,7 +127,24 @@ const FIXTURE_MEMBERS: &[(&str, &str)] = &[
 
 // --- Declared profile enums -------------------------------------------------
 
-/// The crypt filter / cipher a fixture declares.
+/// The **public, data-driven** parameters of a fixture crypt scheme. These are
+/// the *declared algorithm knobs*, NOT the secret key: a profile selects its
+/// scheme purely from this data, so adding a new crypt variant is config, never
+/// a per-title code branch. Every scheme is its own inverse (all-XOR), so
+/// encipher and decipher are the same operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3CryptScheme {
+    /// XOR applied to the first byte (a public marker byte of the algorithm).
+    pub first_byte_xor: u8,
+    /// When `true`, each byte is additionally XOR'd with its `(position & 0xff)`,
+    /// giving a genuinely position-dependent transform. Still self-inverse.
+    pub position_xor: bool,
+}
+
+/// The crypt filter / cipher a fixture declares. The concrete byte transform is
+/// a pure function of [`Xp3CryptoProfile::scheme`] (public data), so the engine
+/// handles every profiled variant from data with no per-game branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
@@ -131,6 +153,12 @@ pub enum Xp3CryptoProfile {
     /// modelled on the KiriKiri byte-XOR "simplecrypt" family — NOT a real
     /// per-title CxDec/TVP filter.
     XorSimpleCryptFixture,
+    /// Keyed byte-cycled XOR + a **position-dependent** byte XOR + a distinct
+    /// first-byte XOR. A second, genuinely-different fixture crypt scheme (its
+    /// ciphertext differs from [`Self::XorSimpleCryptFixture`] for the same key),
+    /// proving the extract/patch path is engine-general: the scheme is DATA, not
+    /// a per-title code path. Still NOT a real per-title CxDec/TVP filter.
+    XorPositionCryptFixture,
 }
 
 impl Xp3CryptoProfile {
@@ -138,6 +166,24 @@ impl Xp3CryptoProfile {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::XorSimpleCryptFixture => "xor-simple-crypt-fixture",
+            Self::XorPositionCryptFixture => "xor-position-crypt-fixture",
+        }
+    }
+
+    /// The public, data-driven crypt scheme this profile selects. This is the
+    /// single point where a profiled variant maps to its byte transform — the
+    /// crypt scheme is DATA, so the extract/patch path never branches per game.
+    #[must_use]
+    pub fn scheme(self) -> Xp3CryptScheme {
+        match self {
+            Self::XorSimpleCryptFixture => Xp3CryptScheme {
+                first_byte_xor: XP3_CRYPT_FIRST_BYTE_XOR,
+                position_xor: false,
+            },
+            Self::XorPositionCryptFixture => Xp3CryptScheme {
+                first_byte_xor: XP3_CRYPT_POSITION_FIRST_BYTE_XOR,
+                position_xor: true,
+            },
         }
     }
 }
@@ -186,19 +232,26 @@ impl Xp3CryptKey {
             .map_err(|message| Xp3CryptError::Internal { message })
     }
 
-    /// Apply the fixture crypt filter. The filter is its own inverse, so this
+    /// Apply the fixture crypt filter for a declared, data-driven crypt
+    /// [`Xp3CryptScheme`]. Every scheme is its own inverse (all-XOR), so this
     /// both enciphers and deciphers.
-    pub(crate) fn apply_filter(&self, data: &[u8]) -> Vec<u8> {
+    pub(crate) fn apply_filter(&self, scheme: Xp3CryptScheme, data: &[u8]) -> Vec<u8> {
         if self.bytes.is_empty() {
             return data.to_vec();
         }
         let mut out: Vec<u8> = data
             .iter()
             .enumerate()
-            .map(|(index, byte)| byte ^ self.bytes[index % self.bytes.len()])
+            .map(|(index, byte)| {
+                let mut transformed = byte ^ self.bytes[index % self.bytes.len()];
+                if scheme.position_xor {
+                    transformed ^= index as u8;
+                }
+                transformed
+            })
             .collect();
         if let Some(first) = out.first_mut() {
-            *first ^= XP3_CRYPT_FIRST_BYTE_XOR;
+            *first ^= scheme.first_byte_xor;
         }
         out
     }
@@ -262,6 +315,14 @@ impl FixtureSecretResolver {
                 ),
             ],
         }
+    }
+
+    /// Build a resolver from explicit `(secret-ref, fixture-safe bytes)` entries.
+    /// The production variant registry uses this to bind each profiled variant's
+    /// declared secret ref to its fixture-safe key material — still never a raw
+    /// key past the [`Xp3CryptKey`] boundary.
+    pub(crate) fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
+        Self { entries }
     }
 
     /// Resolve `secret_ref` to fixture-safe key material, or a typed
@@ -351,7 +412,11 @@ pub fn build_synthetic_crypt_xp3() -> Vec<u8> {
         .iter()
         .map(|(path, text)| ((*path).to_string(), text.as_bytes().to_vec()))
         .collect();
-    encode_encrypted_xp3(&members, &key)
+    encode_encrypted_xp3(
+        &members,
+        &key,
+        Xp3CryptoProfile::XorSimpleCryptFixture.scheme(),
+    )
 }
 
 /// Encode an encrypted XP3 container from `(member id, plaintext)` pairs and a
@@ -363,12 +428,16 @@ pub fn build_synthetic_crypt_xp3() -> Vec<u8> {
 /// patch-back rebuild both go through, so `encode(decrypt(x))` with no change
 /// is byte-identical and a trivial replacement recomputes member sizes / index
 /// offsets through the same deterministic encoder.
-pub(crate) fn encode_encrypted_xp3(members: &[(String, Vec<u8>)], key: &Xp3CryptKey) -> Vec<u8> {
+pub(crate) fn encode_encrypted_xp3(
+    members: &[(String, Vec<u8>)],
+    key: &Xp3CryptKey,
+    scheme: Xp3CryptScheme,
+) -> Vec<u8> {
     let entries: Vec<PlainXp3ArchiveEntry> = members
         .iter()
         .map(|(path, plaintext)| {
             let plaintext_adler = compute_adler32(plaintext);
-            let ciphertext = key.apply_filter(plaintext);
+            let ciphertext = key.apply_filter(scheme, plaintext);
             let size = ciphertext.len() as u64;
             PlainXp3ArchiveEntry {
                 path: path.clone(),
@@ -437,6 +506,7 @@ pub(crate) struct Xp3DecryptedMember {
 pub(crate) fn decrypt_members(
     container: &[u8],
     key: &Xp3CryptKey,
+    scheme: Xp3CryptScheme,
 ) -> Result<Vec<Xp3DecryptedMember>, Xp3CryptError> {
     let archive =
         read_plain_xp3_archive(container).map_err(|error| Xp3CryptError::ContainerRead {
@@ -450,7 +520,7 @@ pub(crate) fn decrypt_members(
             .ok_or_else(|| Xp3CryptError::MissingIntegrity {
                 member_id: entry.path.clone(),
             })?;
-        let plaintext = key.apply_filter(&entry.payload);
+        let plaintext = key.apply_filter(scheme, &entry.payload);
         if compute_adler32(&plaintext) != stored_adler {
             return Err(Xp3CryptError::IntegrityCheckFailed {
                 member_id: entry.path.clone(),
@@ -472,8 +542,9 @@ pub(crate) fn decrypt_members(
 pub(crate) fn decrypt_and_extract(
     container: &[u8],
     key: &Xp3CryptKey,
+    scheme: Xp3CryptScheme,
 ) -> Result<Xp3CryptManifest, Xp3CryptError> {
-    let members = decrypt_members(container, key)?
+    let members = decrypt_members(container, key, scheme)?
         .into_iter()
         .map(|member| {
             Ok(Xp3CryptExtractedMember {
@@ -762,9 +833,12 @@ pub fn run_xp3_crypt_smoke_from_fixture(
 
     let resolver = FixtureSecretResolver::fixture_default();
 
+    // The crypt scheme is DATA: the declared profile selects the byte transform.
+    let scheme = fixture.crypto_profile.scheme();
+
     // (1) Valid secret ref → key → decrypt + extract + verify integrity.
     let key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
-    let manifest = decrypt_and_extract(&container, &key)?;
+    let manifest = decrypt_and_extract(&container, &key, scheme)?;
 
     // Declared expectation: the decrypted member set matches.
     let extracted_ids: Vec<&str> = manifest
@@ -783,7 +857,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
     let wrong_ref = SecretRef::new(XP3_CRYPT_WRONG_SECRET_REF)
         .map_err(|message| Xp3CryptError::Internal { message })?;
     let wrong_key = resolver.resolve(&fixture.secret_requirement_id, &wrong_ref)?;
-    let wrong_key_report = match decrypt_and_extract(&container, &wrong_key) {
+    let wrong_key_report = match decrypt_and_extract(&container, &wrong_key, scheme) {
         Err(Xp3CryptError::IntegrityCheckFailed { member_id }) => Xp3CryptWrongKeyReport {
             attempted_secret_ref: wrong_ref,
             typed_error: true,
@@ -946,9 +1020,29 @@ mod tests {
     fn filter_is_its_own_inverse() {
         let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
         let plaintext = b"the quick brown fox\x00\x01\xff";
-        let cipher = key.apply_filter(plaintext);
-        assert_ne!(cipher, plaintext);
-        assert_eq!(key.apply_filter(&cipher), plaintext);
+        for profile in [
+            Xp3CryptoProfile::XorSimpleCryptFixture,
+            Xp3CryptoProfile::XorPositionCryptFixture,
+        ] {
+            let scheme = profile.scheme();
+            let cipher = key.apply_filter(scheme, plaintext);
+            assert_ne!(cipher, plaintext);
+            assert_eq!(key.apply_filter(scheme, &cipher), plaintext);
+        }
+    }
+
+    #[test]
+    fn distinct_profiles_produce_distinct_ciphertext() {
+        // Two profiled crypt schemes, same key → different ciphertext. Proves the
+        // scheme is genuinely data-driven, not a single hard-coded transform.
+        let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let plaintext = b"synthetic-kirikiri-profiled-crypt-sample-0123456789";
+        let simple = key.apply_filter(Xp3CryptoProfile::XorSimpleCryptFixture.scheme(), plaintext);
+        let position = key.apply_filter(
+            Xp3CryptoProfile::XorPositionCryptFixture.scheme(),
+            plaintext,
+        );
+        assert_ne!(simple, position);
     }
 
     #[test]
@@ -978,8 +1072,12 @@ mod tests {
         let wrong_key = resolver
             .resolve(XP3_CRYPT_REQUIREMENT_ID, &wrong_ref)
             .expect("wrong ref resolves to (wrong) material");
-        let err = decrypt_and_extract(&container, &wrong_key)
-            .expect_err("wrong key must fail integrity, not silently pass");
+        let err = decrypt_and_extract(
+            &container,
+            &wrong_key,
+            Xp3CryptoProfile::XorSimpleCryptFixture.scheme(),
+        )
+        .expect_err("wrong key must fail integrity, not silently pass");
         assert!(matches!(err, Xp3CryptError::IntegrityCheckFailed { .. }));
         assert!(err.to_string().starts_with(XP3_CRYPT_MARKER));
     }

@@ -505,6 +505,9 @@ pub fn run_xp3_crypt_chain_smoke_from_fixture(
     // (1) DETECT the engine/container by magic-byte signature.
     let detect = detect_xp3_container(&container, fixture.crypto_profile)?;
 
+    // The crypt scheme is DATA: the declared profile selects the byte transform.
+    let scheme = fixture.crypto_profile.scheme();
+
     // (2) PROFILE/KEY RESOLVE through the keyRef-bound crypt profile.
     let resolver = FixtureSecretResolver::fixture_default();
     let key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
@@ -519,7 +522,7 @@ pub fn run_xp3_crypt_chain_smoke_from_fixture(
     };
 
     // (3) EXTRACT: decrypt + integrity-verify every member (hash-based manifest).
-    let extract = decrypt_and_extract(&container, &key)?;
+    let extract = decrypt_and_extract(&container, &key, scheme)?;
     let extract_manifest: Vec<Xp3CryptMemberDigest> = extract
         .members
         .iter()
@@ -540,12 +543,12 @@ pub fn run_xp3_crypt_chain_smoke_from_fixture(
     // (7) DELTA: recompute the source + patched plaintexts and the rebuilt
     //     container through the SAME deterministic primitives, then emit a
     //     redacted, hash-based delta package (secret refs only).
-    let source_pairs: Vec<(String, Vec<u8>)> = decrypt_members(&container, &key)?
+    let source_pairs: Vec<(String, Vec<u8>)> = decrypt_members(&container, &key, scheme)?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
         .collect();
     let (patched_pairs, _changed_ids) = apply_replacements(&source_pairs, manifest)?;
-    let rebuilt = encode_encrypted_xp3(&patched_pairs, &key);
+    let rebuilt = encode_encrypted_xp3(&patched_pairs, &key, scheme);
     let delta = build_delta_evidence(&container, &rebuilt, &source_pairs, &patched_pairs, fixture)?;
 
     // The stage ledger: every stage ran, in order.

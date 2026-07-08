@@ -48,6 +48,7 @@ pub mod xp3_crypt;
 pub mod xp3_crypt_chain;
 pub mod xp3_patch;
 pub mod xp3_private_local_summary;
+pub mod xp3_production;
 
 pub use parse::{
     KsDocument, KsEncoding, KsFinding, KsFindingKind, KsUnit, TextRole, parse_ks,
@@ -59,8 +60,9 @@ pub use patch::{
 pub use xp3_crypt::{
     FixtureSecretResolver, KirikiriXp3Surface, Xp3CryptContainerSource, Xp3CryptError,
     Xp3CryptExtractedMember, Xp3CryptFixture, Xp3CryptManifest, Xp3CryptMemberDigest,
-    Xp3CryptMissingKeyReport, Xp3CryptReport, Xp3CryptWrongKeyReport, Xp3CryptoProfile,
-    build_synthetic_crypt_xp3, run_xp3_crypt_smoke_from_fixture, run_xp3_crypt_smoke_from_path,
+    Xp3CryptMissingKeyReport, Xp3CryptReport, Xp3CryptScheme, Xp3CryptWrongKeyReport,
+    Xp3CryptoProfile, build_synthetic_crypt_xp3, run_xp3_crypt_smoke_from_fixture,
+    run_xp3_crypt_smoke_from_path,
 };
 pub use xp3_crypt_chain::{
     Xp3ChainDeltaEvidence, Xp3ChainDeltaMember, Xp3ChainDeltaOperation, Xp3ChainDetectReport,
@@ -78,6 +80,12 @@ pub use xp3_private_local_summary::{
     Xp3PrivateLocalRedactionSummary, Xp3PrivateLocalSummary, Xp3PrivateLocalSummaryDiagnostic,
     Xp3PrivateLocalSummaryInput, Xp3SupportTupleRow, Xp3SupportTupleSummaryFixture,
     render_xp3_private_local_summary,
+};
+pub use xp3_production::{
+    Xp3HelperWorkflow, Xp3ProductionError, Xp3ProductionMemberDelta, Xp3ProductionMemberOperation,
+    Xp3ProductionNotClaimedReport, Xp3ProductionOutcome, Xp3ProductionRegistry,
+    Xp3ProductionReport, Xp3ProductionStage, Xp3ProductionVariant, Xp3ProductionVariantReport,
+    run_xp3_production,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable
