@@ -47,6 +47,10 @@ import { apiClient } from "../client.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { CorrectionScopePanel } from "./CorrectionScopePanel.js";
 import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
+// rev-runtime-evidence-ui — the runtime-evidence panel reads the runtime
+// dashboard (`runtime.status` + frame-capture) through the typed client, so
+// its loading / empty / error surfaces settle independently of the parent.
+import { RuntimeEvidencePanel } from "./RuntimeEvidencePanel.js";
 
 // ITOTORI-082 → HI-FI STUDIO EPIC · Review
 // (`spec/rev-decide`) — the decide action.
@@ -177,7 +181,7 @@ function ReadyView({
         <GlossaryPanel context={context} />
         <BranchReferencePanel context={context} />
         <QaFindingsPanel context={context} />
-        <RuntimeEvidencePanel context={context} />
+        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
         <RationalePanel context={context} />
         <TransitionsPanel context={context} />
       </section>
@@ -683,41 +687,6 @@ function QaFindingsPanel({ context }: { context: ReviewerDetailContext }): React
           ]}
           rows={context.qaFindings}
           getRowKey={(f) => f.findingId}
-        />
-      )}
-    </Panel>
-  );
-}
-
-function RuntimeEvidencePanel({ context }: { context: ReviewerDetailContext }): ReactNode {
-  return (
-    <Panel title="Runtime evidence" eyebrow="Fidelity">
-      {context.runtimeEvidence.length === 0 ? (
-        <MissingContext label="No runtime evidence" />
-      ) : (
-        <DataTable
-          caption="Runtime evidence"
-          columns={[
-            { key: "kind", header: "Kind", render: (e) => e.evidenceKind },
-            { key: "tier", header: "Tier", render: (e) => e.evidenceTier },
-            {
-              key: "target",
-              header: "Runtime target",
-              render: (e) => <code>{e.runtimeTargetId}</code>,
-            },
-            {
-              key: "events",
-              header: "Observation events",
-              render: (e) => e.observationEventIds.join(", ") || "none",
-            },
-            {
-              key: "hashes",
-              header: "Artifact hashes",
-              render: (e) => e.artifactHashes.join(", ") || "none",
-            },
-          ]}
-          rows={context.runtimeEvidence}
-          getRowKey={(e, i) => `${e.runtimeTargetId}:${i}`}
         />
       )}
     </Panel>
