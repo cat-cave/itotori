@@ -185,6 +185,86 @@
       ],
       "type": "object"
     },
+    "ApiPlaySceneCoverageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "type": "object"
+        },
+        "edges": {
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {},
+        "nodes": {
+          "type": "array"
+        },
+        "projectId": {},
+        "schemaVersion": {
+          "const": "itotori.play.scene-coverage.v0"
+        }
+      },
+      "required": [
+        "counts",
+        "edges",
+        "generatedAt",
+        "localeBranchId",
+        "nodes",
+        "projectId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySetSceneCoverageRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "coverageState": {
+          "enum": [
+            "needs_check",
+            "flagged",
+            "validated"
+          ]
+        },
+        "sceneId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageState",
+        "sceneId"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySetSceneCoverageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageState": {
+          "enum": [
+            "needs_check",
+            "flagged",
+            "validated"
+          ]
+        },
+        "localeBranchId": {},
+        "projectId": {},
+        "sceneId": {},
+        "schemaVersion": {
+          "const": "itotori.play.set-scene-coverage.v0"
+        },
+        "updatedAt": {},
+        "updatedByUserId": {}
+      },
+      "required": [
+        "coverageState",
+        "localeBranchId",
+        "projectId",
+        "sceneId",
+        "schemaVersion",
+        "updatedAt",
+        "updatedByUserId"
+      ],
+      "type": "object"
+    },
     "ApiProjectImportRequest": {
       "additionalProperties": true,
       "properties": {

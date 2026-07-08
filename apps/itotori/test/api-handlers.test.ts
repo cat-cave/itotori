@@ -127,7 +127,8 @@ type ApiMutationPermissionCase = {
 
 type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
-  | { surface: "authSsoSettings"; method: "configureSettings" };
+  | { surface: "authSsoSettings"; method: "configureSettings" }
+  | { surface: "sceneCoverage"; method: "setSceneCoverage" };
 
 type ApiMutationRoute = {
   route: string;
@@ -151,6 +152,8 @@ const readOnlyPostApiRoutes = new Set([
   // service (gated on queue.manage), not via a projectWorkflow call.
   "POST /api/workspace/corrections",
   "POST /api/settings/security/sso",
+  // play-mark-validated — set coverage mutates via sceneCoverage (queue.manage).
+  "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
 ]);
 
 const authSsoSettingsRequestFixture = {
@@ -227,6 +230,14 @@ const apiMutationPermissionMatrix = [
     "ssoSettingsConfigure",
     post("/api/settings/security/sso", authSsoSettingsRequestFixture),
     { surface: "authSsoSettings", method: "configureSettings" },
+  ),
+  apiGateForService(
+    "setSceneCoverage",
+    post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
+      sceneId: "scene-a",
+      coverageState: "validated",
+    }),
+    { surface: "sceneCoverage", method: "setSceneCoverage" },
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
@@ -3171,6 +3182,13 @@ describe("Itotori API handlers", () => {
           "route": "POST /api/settings/security/sso",
           "successFixture": "api-handlers.test.ts SSO settings configure success fixture",
         },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "set scene coverage",
+          "requiredPermission": "queue.manage",
+          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
+          "successFixture": "api-handlers.test.ts set scene coverage success fixture",
+        },
       ]
     `);
   });
@@ -3222,6 +3240,87 @@ describe("Itotori API handlers", () => {
     expect(response).toMatchObject({
       statusCode: 200,
       body: { status: "hello_world_failed", runtimeReportId: "runtime-1" },
+    });
+  });
+
+  describe("play-mark-validated scene-coverage routes", () => {
+    it("GET returns the RouteMap coverage read-model for an owned branch", async () => {
+      const services = serviceFixture();
+      const response = await handleItotoriApiRequest(
+        {
+          method: "GET",
+          pathname: "/api/projects/project-1/locale-branches/locale-1/scene-coverage",
+        },
+        services,
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatchObject({
+        schemaVersion: "itotori.play.scene-coverage.v0",
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        nodes: [{ sceneId: "scene-a", coverageState: "needs_check" }],
+      });
+      expect(services.sceneCoverage.loadRouteMapCoverage).toHaveBeenCalled();
+    });
+
+    it("POST marks a scene validated and returns the durable coverage row", async () => {
+      const services = serviceFixture();
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
+          sceneId: "scene-a",
+          coverageState: "validated",
+        }),
+        services,
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({
+        schemaVersion: "itotori.play.set-scene-coverage.v0",
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        sceneId: "scene-a",
+        coverageState: "validated",
+        updatedAt: "2026-07-08T12:00:00.000Z",
+        updatedByUserId: "local-user",
+      });
+      expect(services.authorization.requirePermission).toHaveBeenCalledWith("queue.manage");
+      expect(services.sceneCoverage.setSceneCoverage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          localeBranchId: "locale-1",
+          sceneId: "scene-a",
+          coverageState: "validated",
+        }),
+      );
+    });
+
+    it("POST denies an actor missing queue.manage", async () => {
+      const services = serviceFixture();
+      services.authorization.requirePermission.mockRejectedValueOnce(
+        new AuthorizationError(deniedActor, "queue.manage"),
+      );
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
+          sceneId: "scene-a",
+          coverageState: "validated",
+        }),
+        services,
+      );
+      assertForbiddenApiMutation(response, { actor: deniedActor, permission: "queue.manage" });
+      expect(services.sceneCoverage.setSceneCoverage).not.toHaveBeenCalled();
+    });
+
+    it("POST refuses a forged locale branch (foreign ownership)", async () => {
+      const services = serviceFixture();
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/locale-branches/locale-foreign/scene-coverage", {
+          sceneId: "scene-a",
+          coverageState: "validated",
+        }),
+        services,
+      );
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toMatchObject({ code: "forbidden" });
+      expect(services.sceneCoverage.setSceneCoverage).not.toHaveBeenCalled();
     });
   });
 
@@ -3327,10 +3426,18 @@ describe("Itotori API handlers", () => {
         const workflow = new ItotoriProjectWorkflowService(repository, actor);
         const project = await workflow.importBridge(bridgeFixture);
         const services: ItotoriApiServices = {
+          ...serviceFixture(),
           authorization: {
             requirePermission: vi.fn<[Permission], Promise<void>>(async () => {}),
           },
-          projectWorkflow: workflow,
+          projectWorkflow: {
+            ...serviceFixture().projectWorkflow,
+            listLocaleBranchIdentities: (projectId) =>
+              workflow.listLocaleBranchIdentities(projectId),
+            importBridge: (...args) => workflow.importBridge(...args),
+            ingestRuntimeReport: (...args) => workflow.ingestRuntimeReport(...args),
+            getRuntimeStatus: (...args) => workflow.getRuntimeStatus(...args),
+          },
         };
 
         const firstReport = {
@@ -3583,6 +3690,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "projectWorkflow") {
     return services.projectWorkflow[service.method];
   }
+  if (service.surface === "sceneCoverage") {
+    return services.sceneCoverage[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
@@ -3591,6 +3701,11 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
     throw new Error(
       `API mutation matrix entry must use POST: ${request.method} ${request.pathname}`,
     );
+  }
+  const sceneCoverageRoute =
+    /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/scene-coverage$/u.exec(request.pathname);
+  if (sceneCoverageRoute !== null) {
+    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage";
   }
   const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
   if (projectRoute?.[1]) {
@@ -4101,6 +4216,36 @@ function serviceFixture(): ItotoriApiServices {
         ...input,
         updatedAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
+    },
+    sceneCoverage: {
+      loadRouteMapCoverage: vi.fn(async ({ projectId, localeBranchId }) => ({
+        schemaVersion: "itotori.play.scene-coverage.v0" as const,
+        generatedAt: "2026-07-08T00:00:00.000Z",
+        projectId,
+        localeBranchId,
+        nodes: [
+          {
+            sceneId: "scene-a",
+            label: "Opening",
+            coverageState: "needs_check" as const,
+            routeKey: "scene-a",
+            routeMapId: "rm-1",
+          },
+        ],
+        edges: [],
+        counts: { needsCheck: 1, flagged: 0, validated: 0, total: 1 },
+      })),
+      setSceneCoverage: vi.fn(
+        async ({ projectId, localeBranchId, sceneId, coverageState, updatedByUserId }) => ({
+          schemaVersion: "itotori.play.set-scene-coverage.v0" as const,
+          projectId,
+          localeBranchId,
+          sceneId,
+          coverageState,
+          updatedAt: "2026-07-08T12:00:00.000Z",
+          updatedByUserId,
+        }),
+      ),
     },
   };
 }

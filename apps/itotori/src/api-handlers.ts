@@ -59,10 +59,13 @@ import {
   parseRuntimeEvidenceRequest,
   parseConfigureAuthSsoSettingsRequest,
   parseLaunchPassRequest,
+  parsePlaySetSceneCoverageRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
+  type ApiPlaySceneCoverageResponse,
+  type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiConfigureAuthSsoSettingsResponse,
   type ApiAssetDecisionsResponse,
@@ -81,6 +84,7 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
+import type { SceneCoverageServicePort } from "./play/scene-coverage-service.js";
 import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
@@ -137,6 +141,9 @@ export const apiMutationPermissionGates = {
   // that protects the draft workflow + the pass ledger.
   launchPass: apiMutationGate("launch pass", "draftWrite"),
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
+  // play-mark-validated — marking a scene validated/flagged is a human review
+  // / play mutation (same authority as workspace corrections).
+  setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -220,6 +227,11 @@ export type ItotoriReadOnlyApiServices = {
   jobs: {
     loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
   };
+  /**
+   * play-mark-validated — read side of the Play RouteMap coverage surface.
+   * Mutation (`setSceneCoverage`) is on the full {@link ItotoriApiServices}.
+   */
+  sceneCoverage: Pick<SceneCoverageServicePort, "loadRouteMapCoverage">;
 };
 
 /**
@@ -259,6 +271,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       updatedAt: Date;
     }>;
   };
+  sceneCoverage: SceneCoverageServicePort;
 };
 
 /**
@@ -317,6 +330,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     jobs: {
       loadRunTable: (options) => services.jobs.loadRunTable(options),
+    },
+    sceneCoverage: {
+      loadRouteMapCoverage: (input) => services.sceneCoverage.loadRouteMapCoverage(input),
     },
   };
 }
@@ -398,8 +414,14 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
   }
+  // play-mark-validated — GET is valid; a non-GET on this path falls through
+  // the read router, so a wrong-method GET is not applicable. POST is owned
+  // by the mutation router.
   if (parseProjectRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
+  }
+  if (parseSceneCoverageApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["GET", "POST"]);
   }
   return notFound(request.pathname);
 }
@@ -474,6 +496,28 @@ async function routeItotoriApiRequest(
       "workspace.correctionSubmit",
       await services.workspaceCorrections.submitCorrections({ ...body, permission }),
     );
+  }
+
+  // play-mark-validated — set a scene's coverage state (validated / flagged /
+  // needs_check). queue.manage-gated; branch ownership verified server-side.
+  const setSceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
+  if (request.method === "POST" && setSceneCoverageRoute !== null) {
+    const body = parsePlaySetSceneCoverageRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.setSceneCoverage);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: setSceneCoverageRoute.projectId,
+      localeBranchId: setSceneCoverageRoute.localeBranchId,
+    });
+    const actorUserId = "local-user";
+    const result = await services.sceneCoverage.setSceneCoverage({
+      actor: { userId: actorUserId },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      sceneId: body.sceneId,
+      coverageState: body.coverageState,
+      updatedByUserId: actorUserId,
+    });
+    return ok("play.setSceneCoverage", result);
   }
 
   if (
@@ -940,6 +984,23 @@ async function routeReadOnlyItotoriApiRequest(
         filter,
       ),
     });
+  }
+
+  // play-mark-validated — GET the Play RouteMap coverage read-model. The
+  // repository gates on queue.read; route maps need catalog.read (local-user
+  // holds both). Branch ownership is verified so a forged path cannot leak.
+  const sceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
+  if (request.method === "GET" && sceneCoverageRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: sceneCoverageRoute.projectId,
+      localeBranchId: sceneCoverageRoute.localeBranchId,
+    });
+    const model = await services.sceneCoverage.loadRouteMapCoverage({
+      actor: { userId: "local-user" },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+    });
+    return ok("play.sceneCoverage", model);
   }
 
   if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
@@ -1544,6 +1605,23 @@ function parseAssetDecisionApiRoute(pathname: string): {
   };
 }
 
+/** play-mark-validated — `/api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage`. */
+function parseSceneCoverageApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/scene-coverage$/u.exec(
+    pathname,
+  );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function decodeApiPathSegment(raw: string, label: string): string {
   let decoded: string;
   try {
@@ -1990,6 +2068,11 @@ function ok(
   body: ApiConfigureAuthSsoSettingsResponse,
 ): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
+function ok(routeId: "play.sceneCoverage", body: ApiPlaySceneCoverageResponse): ApiJsonResponse;
+function ok(
+  routeId: "play.setSceneCoverage",
+  body: ApiPlaySetSceneCoverageResponse,
+): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };

@@ -184,6 +184,86 @@
         ],
         "type": "object"
       },
+      "ApiPlaySceneCoverageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "type": "object"
+          },
+          "edges": {
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {},
+          "nodes": {
+            "type": "array"
+          },
+          "projectId": {},
+          "schemaVersion": {
+            "const": "itotori.play.scene-coverage.v0"
+          }
+        },
+        "required": [
+          "counts",
+          "edges",
+          "generatedAt",
+          "localeBranchId",
+          "nodes",
+          "projectId",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiPlaySetSceneCoverageRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "coverageState": {
+            "enum": [
+              "needs_check",
+              "flagged",
+              "validated"
+            ]
+          },
+          "sceneId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "coverageState",
+          "sceneId"
+        ],
+        "type": "object"
+      },
+      "ApiPlaySetSceneCoverageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "coverageState": {
+            "enum": [
+              "needs_check",
+              "flagged",
+              "validated"
+            ]
+          },
+          "localeBranchId": {},
+          "projectId": {},
+          "sceneId": {},
+          "schemaVersion": {
+            "const": "itotori.play.set-scene-coverage.v0"
+          },
+          "updatedAt": {},
+          "updatedByUserId": {}
+        },
+        "required": [
+          "coverageState",
+          "localeBranchId",
+          "projectId",
+          "sceneId",
+          "schemaVersion",
+          "updatedAt",
+          "updatedByUserId"
+        ],
+        "type": "object"
+      },
       "ApiProjectImportRequest": {
         "additionalProperties": true,
         "properties": {
@@ -3162,6 +3242,188 @@
         },
         "summary": "Candidate assets for localization decisions.",
         "x-itotoriRouteId": "assetDecisions.candidates"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage": {
+      "get": {
+        "operationId": "playSceneCoverage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlaySceneCoverageResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Play RouteMap scene localization coverage read model.",
+        "x-itotoriRouteId": "play.sceneCoverage"
+      },
+      "post": {
+        "operationId": "playSetSceneCoverage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPlaySetSceneCoverageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlaySetSceneCoverageResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Set a scene's localization coverage state (validated / flagged / needs_check).",
+        "x-itotoriRouteId": "play.setSceneCoverage"
       }
     },
     "/api/projects/{projectId}/runtime-evidence": {

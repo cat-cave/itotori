@@ -710,6 +710,37 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.projects.launch-pass.v0",
     }),
+
+  // play-mark-validated — scene coverage read/write envelopes --------------
+  ApiPlaySetSceneCoverageRequest: () =>
+    object({
+      required: ["sceneId", "coverageState"],
+      properties: {
+        sceneId: str,
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+      },
+      additionalProperties: true,
+    }),
+  ApiPlaySceneCoverageResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
+      properties: {
+        nodes: arr,
+        edges: arr,
+        counts: obj,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.scene-coverage.v0",
+    }),
+  ApiPlaySetSceneCoverageResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySetSceneCoverageResponse,
+      properties: {
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.set-scene-coverage.v0",
+    }),
 };
 
 /** Materialize the component table with `$ref`s pointing at `prefix` + name. */
@@ -1084,6 +1115,25 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiLaunchPassRequest",
     responseSchema: "ApiLaunchPassResponse",
+  },
+  // play-mark-validated — per-scene localization coverage (needs_check /
+  // flagged / validated) driving the Play RouteMap.
+  "play.sceneCoverage": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
+    operationId: "playSceneCoverage",
+    summary: "Play RouteMap scene localization coverage read model.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiPlaySceneCoverageResponse",
+  },
+  "play.setSceneCoverage": {
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
+    operationId: "playSetSceneCoverage",
+    summary: "Set a scene's localization coverage state (validated / flagged / needs_check).",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiPlaySetSceneCoverageRequest",
+    responseSchema: "ApiPlaySetSceneCoverageResponse",
   },
 };
 

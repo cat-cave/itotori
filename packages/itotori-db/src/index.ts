@@ -919,6 +919,20 @@ export type {
   RecordBenchmarkRunInput,
 } from "./repositories/benchmark-run-repository.js";
 export {
+  ItotoriSceneCoverageRepository,
+  SCENE_LOCALIZATION_COVERAGE_STATES,
+  SceneCoverageRepositoryError,
+  sceneLocalizationCoverageStateValues,
+} from "./repositories/scene-coverage-repository.js";
+export type {
+  ItotoriSceneCoverageRepositoryPort,
+  LoadSceneCoverageForBranchQuery,
+  LoadSceneCoverageForSceneQuery,
+  SceneCoverageRecord,
+  SceneLocalizationCoverageState,
+  SetSceneCoverageInput,
+} from "./repositories/scene-coverage-repository.js";
+export {
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
 } from "./repositories/principal-repository.js";

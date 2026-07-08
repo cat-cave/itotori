@@ -38,3 +38,12 @@ export type { PaginationProps } from "./navigation/Pagination.js";
 // feedback
 export { Toast, ToastViewport } from "./feedback/Toast.js";
 export type { ToastData, ToastProps, ToastTone, ToastViewportProps } from "./feedback/Toast.js";
+
+// diagram
+export { RouteMap } from "./diagram/RouteMap.js";
+export type {
+  RouteMapCoverageState,
+  RouteMapEdge,
+  RouteMapNode,
+  RouteMapProps,
+} from "./diagram/RouteMap.js";
