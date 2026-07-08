@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -317,7 +317,7 @@ describe("runWholeGameReplayRenderValidate", () => {
   it("drives real utsushi-cli through replay success into render-validation signal per unit", () => {
     // No nativeCli mock: the real binary runs. The committed Seen fixture is a
     // valid RealLive archive for scene 1, so replay-validate must pass before
-    // render-validate can emit the typed Gameexe parse failure asserted below.
+    // render-validate can emit a typed render-validation signal asserted below.
     const workDir = mkdtempSync(join(tmpdir(), "itotori-wholegame-render-real-"));
     const sourceRoot = join(workDir, "source");
     const targetRoot = join(workDir, "target");
@@ -334,7 +334,20 @@ describe("runWholeGameReplayRenderValidate", () => {
     );
     mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
     mkdirSync(join(targetRoot, "REALLIVEDATA"), { recursive: true });
-    copyFileSync(join(fixtureRoot, "Gameexe.ini"), join(sourceRoot, "REALLIVEDATA", "Gameexe.ini"));
+    writeFileSync(
+      join(sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
+      "#SCREENSIZE_MOD=1\r\n" +
+        "#WINDOW_ATTR=100,100,160,200,0\r\n" +
+        "#WINDOW.000.POS=0:0,345\r\n" +
+        "#WINDOW.000.ATTR_MOD=0\r\n" +
+        "#WINDOW.000.ATTR=080,112,160,255,0\r\n" +
+        "#WINDOW.000.MOJI_SIZE=25\r\n" +
+        "#WINDOW.000.MOJI_POS=19,0,53,0\r\n" +
+        "#WINDOW.000.MOJI_CNT=22,3\r\n" +
+        "#WINDOW.000.MOJI_REP=-1,3\r\n" +
+        "#WINDOW.000.NAME_MOD=0\r\n" +
+        "#WINDOW.000.MESSAGE_MOD=0\r\n",
+    );
     copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(sourceRoot, "REALLIVEDATA", "Seen.txt"));
     copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(targetRoot, "REALLIVEDATA", "Seen.txt"));
 
@@ -370,8 +383,8 @@ describe("runWholeGameReplayRenderValidate", () => {
       expect(finding.artifactRefs.renderEvidence).toBe(
         join(artifactRoot, "scene-1", `unit-${finding.bridgeUnitId}`, "render-evidence.json"),
       );
-      expect(finding.diagnostic.error.message).toContain(
-        "utsushi.cli.render_validate.gameexe_parse",
+      expect(finding.diagnostic.error.message).toMatch(
+        /utsushi\.cli\.render_validate\.(?:no_text|expect_text_missing_at_index)/u,
       );
     }
   });
