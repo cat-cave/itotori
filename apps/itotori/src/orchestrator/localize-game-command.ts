@@ -174,7 +174,11 @@ export function defaultLocalizeGameStages(nativeCli?: NativeCliRunner): Localize
   return {
     extract: (args) => runKaifuuRealliveExtract(args),
     structure: (args) => runUtsushiStructureExport(args),
-    localize: (args) => runLocalizeFullProjectLive(args),
+    localize: (args) =>
+      runLocalizeFullProjectLive({
+        ...args,
+        ...(nativeCli !== undefined ? { nativeCli } : {}),
+      }),
     runNative: (bin, args) => runNativeCli(bin, args, nativeCli),
   };
 }

@@ -706,7 +706,7 @@ branch.
 
 ## 10. Test plan
 
-Behavior-first names per `docs/testing-standard.md`. Unit tests live under
+Behavior-first names per `docs/dev/testing-standard.md`. Unit tests live under
 `crates/utsushi-core/src/embed/{capability,state,artifact,redaction,diagnostics}.rs`
 with `#[cfg(test)] mod tests`. Integration tests live under
 `crates/utsushi-core/tests/embed_*.rs`. TypeScript tests live under

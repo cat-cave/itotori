@@ -1057,7 +1057,7 @@ avoids cross-package coordination on the alpha track.
 
 ## 12. Test plan
 
-All tests follow `docs/testing-standard.md`. Unit tests live with the
+All tests follow `docs/dev/testing-standard.md`. Unit tests live with the
 modules under `crates/utsushi-core/src/conformance/`; integration tests
 under `crates/utsushi-core/tests/conformance_*.rs`. All tests are
 falsifiable, behavior-named, and use synthetic inline fixtures (no

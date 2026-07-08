@@ -15,7 +15,7 @@
 This plan is **planning only**. No Rust feature code is included; illustrative
 sketches use `// pseudo-code` comments. The implementation worker must follow
 `docs/kaifuu-engine-playbook.md`, `docs/kaifuu-patch-safety.md`,
-`docs/kaifuu-fixture-policy.md`, `docs/testing-standard.md`, and the clean-room
+`docs/kaifuu-fixture-policy.md`, `docs/dev/testing-standard.md`, and the clean-room
 provenance / no-shell-out rules already established by KAIFUU-172 and KAIFUU-173.
 
 ---
@@ -795,14 +795,14 @@ guarantee. KAIFUU-174 inherits the KAIFUU-173 stable id format
 
 ---
 
-## 11. Test plan (per `docs/testing-standard.md`)
+## 11. Test plan (per `docs/dev/testing-standard.md`)
 
 Tests live in three crates: `kaifuu-reallive/tests/` (unit/integration for the
 parser-adjacent surface), `kaifuu-engine-fixture/tests/` and inline tests
 (adapter-level), and `kaifuu-core/tests/` indirectly via existing
 contract tests (no new files in `kaifuu-core`).
 
-Test naming follows `docs/testing-standard.md` §3 — falsifiable behavior
+Test naming follows `docs/dev/testing-standard.md` §3 — falsifiable behavior
 names, no `works`/`handles_data` placeholders.
 
 ### 11.1 Fixture set (extends KAIFUU-173)
@@ -1239,7 +1239,7 @@ mirroring the KAIFUU-172/173 templates verbatim (six checkboxes plus the
   review.
 - `docs/kaifuu-patch-safety.md` — encoding, atomic output, path traversal,
   rollback, partial-write safety rules.
-- `docs/testing-standard.md` — falsifiable test names, fixture layering,
+- `docs/dev/testing-standard.md` — falsifiable test names, fixture layering,
   golden-fixture policy.
 - `docs/kaifuu-adapters/reallive.md` — KAIFUU-172 + KAIFUU-173 readiness
   records; KAIFUU-174 addendum is appended.

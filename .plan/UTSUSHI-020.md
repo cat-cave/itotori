@@ -511,7 +511,7 @@ it to adapters) lives with the fixture refactor follow-up.
 
 ## 8. Test plan
 
-All tests follow `docs/testing-standard.md`: behavior names, falsifiable
+All tests follow `docs/dev/testing-standard.md`: behavior names, falsifiable
 claims, public fixtures or synthetic literal data only.
 
 ### 8.1 Unit (in `utsushi-core::vfs::*` modules)

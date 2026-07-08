@@ -601,7 +601,7 @@ node closes that follow-up.
 
 ## 8. Test plan
 
-All tests follow `docs/testing-standard.md`. Test names read as falsifiable
+All tests follow `docs/dev/testing-standard.md`. Test names read as falsifiable
 behavior claims. Existing UTSUSHI-050 tests at `launch_adapters.rs:1003-1299`
 stay; UTSUSHI-148 ADDS tests and updates two existing ones noted below.
 

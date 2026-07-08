@@ -813,7 +813,7 @@ when relevant.
 
 ## 8. Test plan
 
-Tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline fixtures only, no live providers, no host paths.
 
 ### 8.1 `SnapshotStore` round-trip (`snapshot/store.rs::tests`)

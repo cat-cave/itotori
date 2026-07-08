@@ -694,7 +694,7 @@ The auditor must verify that **no path** silently returns
 
 ## 10. Test plan
 
-Per `docs/testing-standard.md`: behavior-named tests, fixtures at the
+Per `docs/dev/testing-standard.md`: behavior-named tests, fixtures at the
 lowest suitable layer, public fixtures with manifests, negative tests for
 every meaningful failure mode, golden capability reports per fixture.
 

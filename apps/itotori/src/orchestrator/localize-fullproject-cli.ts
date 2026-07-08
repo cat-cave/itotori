@@ -54,6 +54,7 @@ import {
   PipelineFailureDiagnosticError,
   runPipelineStepWithDiagnostic,
 } from "./pipeline-failure-diagnostic.js";
+import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
 export type RunLocalizeFullProjectLiveArgs = {
   configPath: string;
@@ -73,6 +74,8 @@ export type RunLocalizeFullProjectLiveArgs = {
    */
   sourceRoot?: string;
   patchTargetRoot?: string;
+  /** Injected native runner for post-patch Utsushi replay/render validation. */
+  nativeCli?: NativeCliRunner;
   log?: (message: string) => void;
 };
 
@@ -156,6 +159,7 @@ export async function runLocalizeFullProjectLive(
       costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
       artifactRecorder,
     });
+    let patchApply: WholeGamePatchExportAndApplyResult | undefined;
 
     const passResult = await runPipelineStepWithDiagnostic({
       step: "localize.run-pass",
@@ -187,67 +191,68 @@ export async function runLocalizeFullProjectLive(
             sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger: new DbPassLedger(passLedgerRepo),
             reviewerQueue: { repository: reviewerQueueRepo },
+            ...(args.sourceRoot !== undefined &&
+            args.sourceRoot.length > 0 &&
+            args.patchTargetRoot !== undefined &&
+            args.patchTargetRoot.length > 0
+              ? {
+                  afterExecutor: async (result) => {
+                    if (config.engineProfile !== "reallive") {
+                      throw new Error(
+                        `localize-live: patch-apply seam is wired for --engine reallive only; config engineProfile is '${config.engineProfile}'. Omit --source/--patch-target to stop at translated-bridge.json.`,
+                      );
+                    }
+                    const sourceRoot = args.sourceRoot!;
+                    const patchTargetRoot = args.patchTargetRoot!;
+                    const rawBridge = args.io.readJson(config.bridgePath);
+                    patchApply = await runPipelineStepWithDiagnostic({
+                      step: "localize.apply-patch",
+                      code: "unknown",
+                      message: `localize-live: apply-patch failed: kaifuu patch / export-patch preflight aborted`,
+                      inputs: {
+                        configPath: args.configPath,
+                        runDir: args.runDir,
+                        projectId: config.projectId,
+                        localeBranchId: config.localeBranchId,
+                      },
+                      repro: {
+                        configPath: args.configPath,
+                        bridgePath: config.bridgePath,
+                      },
+                      actor,
+                      run: () =>
+                        runWholeGamePatchExportAndApply({
+                          actor,
+                          draftJobs: draftJobRepo,
+                          ledger: ledgerRepo,
+                          patchReport: result.patchReport,
+                          rawBridge,
+                          sourceRoot,
+                          targetRoot: patchTargetRoot,
+                          translatedBundlePath: join(args.runDir, "translated-bridge.json"),
+                          requestedBy: localUserId,
+                          loadActiveDecisions: (a, projectId, localeBranchId) =>
+                            assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
+                          renderValidation: {
+                            artifactRoot: join(args.runDir, "wholegame-render-validation"),
+                            redaction: "on",
+                            ...(args.nativeCli !== undefined ? { nativeCli: args.nativeCli } : {}),
+                            ...(args.log !== undefined ? { log: args.log } : {}),
+                          },
+                          ...(args.log !== undefined ? { log: args.log } : {}),
+                        }),
+                    });
+                    return patchApply.renderValidation === undefined
+                      ? result
+                      : { ...result, runtimeValidation: patchApply.renderValidation };
+                  },
+                }
+              : {}),
             ...(args.log !== undefined ? { log: args.log } : {}),
           },
         }),
     });
-
-    // m1-wholegame-localize-to-patch-seam — reach an APPLYABLE patch. When the
-    // source + target roots are configured, run the export-patch preflight over
-    // the run's REAL persisted drafts (production loader) then apply the
-    // translated bridge via `kaifuu patch --engine reallive --bundle`, writing
-    // the byte-correct patched output under the target. Only RealLive is
-    // wired here (the kaifuu reallive bundle-driven patchback); other engines
-    // still stop at translated-bridge.json.
-    if (
-      args.sourceRoot !== undefined &&
-      args.sourceRoot.length > 0 &&
-      args.patchTargetRoot !== undefined &&
-      args.patchTargetRoot.length > 0
-    ) {
-      if (config.engineProfile !== "reallive") {
-        throw new Error(
-          `localize-live: patch-apply seam is wired for --engine reallive only; config engineProfile is '${config.engineProfile}'. Omit --source/--patch-target to stop at translated-bridge.json.`,
-        );
-      }
-      const sourceRoot = args.sourceRoot;
-      const patchTargetRoot = args.patchTargetRoot;
-      const rawBridge = args.io.readJson(config.bridgePath);
-      const patchApply = await runPipelineStepWithDiagnostic({
-        step: "localize.apply-patch",
-        code: "unknown",
-        message: `localize-live: apply-patch failed: kaifuu patch / export-patch preflight aborted`,
-        inputs: {
-          configPath: args.configPath,
-          runDir: args.runDir,
-          projectId: config.projectId,
-          localeBranchId: config.localeBranchId,
-        },
-        repro: {
-          configPath: args.configPath,
-          bridgePath: config.bridgePath,
-        },
-        actor,
-        run: () =>
-          runWholeGamePatchExportAndApply({
-            actor,
-            draftJobs: draftJobRepo,
-            ledger: ledgerRepo,
-            patchReport: passResult.result.patchReport,
-            rawBridge,
-            sourceRoot,
-            targetRoot: patchTargetRoot,
-            translatedBundlePath: join(args.runDir, "translated-bridge.json"),
-            requestedBy: localUserId,
-            loadActiveDecisions: (a, projectId, localeBranchId) =>
-              assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
-            ...(args.log !== undefined ? { log: args.log } : {}),
-          }),
-      });
-      return { ...passResult, patchApply };
-    }
-
-    return passResult;
+    return patchApply === undefined ? passResult : { ...passResult, patchApply };
   } catch (error) {
     // Already a structured diagnostic → rethrow untouched (upstream has the
     // more specific step + context).

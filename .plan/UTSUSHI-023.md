@@ -786,7 +786,7 @@ unexpected returns a typed `SnapshotError` variant. The contract has no
 
 ## 10. Test plan
 
-Behavior-first names per `docs/testing-standard.md`. Unit tests live under
+Behavior-first names per `docs/dev/testing-standard.md`. Unit tests live under
 `crates/utsushi-core/src/snapshot/{state,snapshot,inspectable,diff,redaction,diagnostics}.rs`
 with `#[cfg(test)] mod tests`. Integration tests live under
 `crates/utsushi-core/tests/snapshot_*.rs`.

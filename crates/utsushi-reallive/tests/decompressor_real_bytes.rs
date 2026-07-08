@@ -8,7 +8,7 @@
 //! (outcome A: no second-level XOR for Sukara-branch titles).
 //!
 //! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/orchestration-operating-model.md`), a parser that targets a
+//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. UTSUSHI-203 mirrors the pattern

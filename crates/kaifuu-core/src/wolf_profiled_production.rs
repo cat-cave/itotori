@@ -229,6 +229,17 @@ impl fmt::Debug for WolfProfiledProductionRegistry {
     }
 }
 
+impl WolfProfiledProductionRegistry {
+    /// True iff any raw key material held by this registry's module-private
+    /// resolvers appears verbatim in `haystack`. Backs the runtime no-leak guard
+    /// for downstream composers (KAIFUU-145 smoke) without ever handing the raw
+    /// bytes out — the check stays inside the owning resolver boundary.
+    pub fn archive_keys_leak_into(&self, haystack: &[u8]) -> bool {
+        self.archive_keys.any_key_appears_in(haystack)
+            || self.resolved_keys.any_key_appears_in(haystack)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WolfProfiledMemberOperation {
@@ -1069,6 +1080,20 @@ pub mod synthetic {
                 (dynamic_ref.as_str().to_string(), DYNAMIC_KEY_LABEL),
             ]),
         }
+    }
+
+    /// Test seam: return the registry with its resolved-keys resolver rebuilt
+    /// with a WRONG label for the static variant's ref, so the composed extract
+    /// stage fails as a loud KAIFUU-058 compatibility bug. Used by the KAIFUU-145
+    /// smoke fail-loud test; the raw bytes still stay inside the module-private
+    /// resolver.
+    pub fn production_registry_with_wrong_resolved_key(
+        mut registry: WolfProfiledProductionRegistry,
+    ) -> WolfProfiledProductionRegistry {
+        let static_ref = registry.variants[0].secret_ref.as_str().to_string();
+        registry.resolved_keys =
+            resolver_from_fixture_labels(vec![(static_ref, "wolf-profiled-production/wrong")]);
+        registry
     }
 }
 

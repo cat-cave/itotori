@@ -1660,8 +1660,7 @@ async function runRpgMakerSliceIteration({
 }
 
 /** Build the per-iteration output-path set rooted at `iterationDir`. */
-function rpgMakerIterationPaths(iterationDir, topLevelPaths) {
-  if (topLevelPaths !== undefined) return topLevelPaths;
+function rpgMakerIterationPaths(iterationDir) {
   return {
     agenticLoopBundlePath: join(iterationDir, "agentic-loop-bundle.v0.json"),
     translatedBundlePath: join(iterationDir, "translated-bridge.json"),

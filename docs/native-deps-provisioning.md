@@ -141,7 +141,7 @@ are **runtime / dev tooling** — a database engine, a browser, the language
 runtime — the same category as the nix packages in the devshell. They are
 provisioned as **external pinned binaries** (built, bundled, or fetched), never
 source-vendored into the pipeline. This is the identical boundary
-[`dependency-policy.md`](dependency-policy.md) and the devshell already draw.
+[`docs/dev/dependency-policy.md`](dev/dependency-policy.md) and the devshell already draw.
 
 ## Doctor / preflight
 

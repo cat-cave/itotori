@@ -58,6 +58,7 @@ import {
   type LocalizeFullProjectIo,
 } from "../src/orchestrator/localize-fullproject-command.js";
 import { parseNarrativeStructure } from "../src/agents/structure-informed-context/index.js";
+import type { WholeGameRenderValidationResult } from "../src/orchestrator/wholegame-render-validation-seam.js";
 
 // --- ids (text columns; UUID-ish so a shared DB never collides) -------------
 const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
@@ -634,6 +635,129 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         // Full history round-trips through the DB adapter.
         const history = await passLedger.loadPassesForBranch(actor, LOCALE_BRANCH_ID);
         expect(history.map((h) => h.passNumber)).toEqual([1, 2]);
+      } finally {
+        await context.close();
+      }
+    },
+    120_000,
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "records whole-game render-validation findings in pass 1 and pass 2 consumes them from the DB ledger",
+    async () => {
+      const databaseUrl = process.env.DATABASE_URL as string;
+      await migrate(databaseUrl);
+      const context = createDatabaseContext(databaseUrl);
+      const actor: AuthorizationActor = { userId: localUserId };
+
+      try {
+        await bootstrapLocalUser(context.db);
+        await seedProjectScope(context.pool);
+
+        const passLedger = new DbPassLedger(
+          new ItotoriLocalizationPassLedgerRepository(context.db),
+        );
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-render-"));
+        const { configPath } = materializeProject(workDir);
+        const io = fsIo();
+
+        const runOnePass = async (
+          runLabel: string,
+          runtimeValidation: WholeGameRenderValidationResult | undefined,
+        ) => {
+          const capture = makeCaptureFactory();
+          const draftJobRepo = new ItotoriDraftJobRepository(context.db);
+          const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+          const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+          const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
+            projectId: PROJECT_ID,
+            localeBranchId: LOCALE_BRANCH_ID,
+            actor,
+            pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          });
+          const runDir = join(workDir, runLabel);
+          mkdirSync(runDir, { recursive: true });
+          const patchSink = new FsDrivenPatchExportSink(runDir);
+          const out = await runLocalizeFullProjectCommand({
+            configPath,
+            runSummaryPath: join(runDir, "run-summary.json"),
+            deps: {
+              io,
+              actor,
+              providerFactory: capture.factory,
+              sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+              passLedger,
+              reviewerQueue: { repository: reviewerQueueRepo },
+              ...(runtimeValidation !== undefined
+                ? { afterExecutor: (result) => ({ ...result, runtimeValidation }) }
+                : {}),
+              now: deterministicClock(),
+            },
+          });
+          return { out, capture };
+        };
+
+        const runtimeValidation: WholeGameRenderValidationResult = {
+          schemaVersion: "itotori.wholegame-render-validation.v0",
+          redaction: "on",
+          coverage: {
+            acceptedUnitCount: 2,
+            candidateUnitCount: 1,
+            selectedUnitCount: 1,
+            candidateSceneCount: 1,
+            validatedSceneCount: 1,
+            sampled: false,
+            sceneIds: [SCENE_ID],
+            selectedUnitIds: [UNIT_A],
+            skippedUnitIds: [],
+          },
+          findings: [
+            {
+              phase: "render-validate",
+              bridgeUnitId: UNIT_A,
+              sourceUnitKey: `scene-${SCENE_ID}/line-001`,
+              sceneId: SCENE_ID,
+              code: "native-cli-failed",
+              message: `whole-game render-validate failed for unit ${UNIT_A} (scene 6010)`,
+              diagnostic: {
+                step: "localize.render-validate",
+                code: "unknown",
+                message: `whole-game render-validate failed for unit ${UNIT_A} (scene 6010)`,
+                failingUnitId: UNIT_A,
+                sceneId: SCENE_ID,
+                inputs: { sceneId: SCENE_ID, expectedTextContains: "[REDACTED]" },
+                repro: {
+                  bridgeUnitId: UNIT_A,
+                  sourceUnitKey: `scene-${SCENE_ID}/line-001`,
+                  sceneId: SCENE_ID,
+                },
+                error: {
+                  class: "Error",
+                  message: "utsushi-cli render-validate exited with status 1",
+                },
+                occurredAt: new Date(Date.UTC(2026, 6, 8, 12, 0, 0)).toISOString(),
+                schemaVersion: "itotori.pipeline-failure-diagnostic.v0",
+              },
+              artifactRefs: {
+                replayLog: `artifacts/wholegame-render-validation/scene-6010/unit-${UNIT_A}/replay-log.json`,
+                renderEvidence: `artifacts/wholegame-render-validation/scene-6010/unit-${UNIT_A}/render-evidence.json`,
+              },
+            },
+          ],
+        };
+
+        const pass1 = await runOnePass("pass-1", runtimeValidation);
+        expect(pass1.out.record.outputs.runtimeValidation?.coverage.validatedSceneCount).toBe(1);
+        expect(pass1.out.record.outputs.runtimeValidation?.findings).toHaveLength(1);
+
+        const latest = await passLedger.loadLatestPass(actor, LOCALE_BRANCH_ID);
+        expect(latest?.outputs.runtimeValidation?.findings[0]?.bridgeUnitId).toBe(UNIT_A);
+        expect(latest?.outputs.runtimeValidation?.redaction).toBe("on");
+
+        const pass2 = await runOnePass("pass-2", undefined);
+        expect(pass2.out.prior?.passNumber).toBe(1);
+        expect(pass2.out.record.passNumber).toBe(2);
+        expect(pass2.capture.priorFeedbackSeen.get(UNIT_A)).toBe(true);
       } finally {
         await context.close();
       }

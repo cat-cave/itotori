@@ -63,6 +63,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::wolf_extract_patch_verify_smoke::{
+    WolfExtractPatchVerifySmokeReport, WolfSmokeArtifactKind, run_wolf_extract_patch_verify_smoke,
+};
 use crate::wolf_helper_boundary::{
     WolfHelperBoundaryEntryReport, WolfHelperBoundaryFixture, WolfHelperBoundaryOutcome,
     WolfHelperBoundaryProfile, run_wolf_helper_boundary,
@@ -72,8 +75,7 @@ use crate::wolf_protection_detector::{
     WolfProtectionDetectorFixtureEntry, WolfProtectionProfile, run_wolf_protection_detector,
 };
 use crate::{
-    KaifuuResult, OperationStatus, ProofHash, read_json, redact_for_log_or_report,
-    sha256_hash_bytes, stable_json,
+    KaifuuResult, OperationStatus, ProofHash, read_json, redact_for_log_or_report, stable_json,
 };
 
 /// Schema version of the readiness fixture input.
@@ -169,39 +171,71 @@ pub enum WolfReadinessProvenance {
 
 /// An explicit synthetic proof that a Wolf archive operation (extract / patch)
 /// succeeded on synthetic bytes. Carries a stable artifact id + a sha256 proof
-/// hash the resolver RECOMPUTES from the artifact id — a fabricated hash is
-/// refused, so the extract/patch rungs can never be claimed by a bare boolean.
+/// hash.
+///
+/// # KAIFUU-145 — the proof hash BINDS to a genuinely-run smoke
+///
+/// The proof hash is NO LONGER a sha256 over a static label (that was the
+/// KAIFUU-080 anti-pattern: anyone who knew the artifact id could mint it, so
+/// the rung was a CLAIM). The resolver now recomputes the honored value from a
+/// genuinely-run KAIFUU-145 extract-patch-verify smoke
+/// ([`run_wolf_extract_patch_verify_smoke`]) — the honored hash is the SMOKE's
+/// per-variant proof hash for the matching kind, derived from the ACTUAL
+/// round-trip output. A fixture whose declared hash is a label (or otherwise
+/// not backed by a passing smoke) is refused, so `extract`/`patch` are
+/// unreachable without a verified round-trip.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WolfReadinessArtifactProof {
     pub kind: WolfReadinessArtifactKind,
     /// Stable synthetic artifact id (never a retail name / local path).
     pub artifact_id: String,
-    /// sha256 proof hash over the synthetic artifact — recomputed + checked.
+    /// sha256 proof hash — must equal the SMOKE-BOUND canonical value.
     pub proof_hash: ProofHash,
     pub provenance: WolfReadinessProvenance,
 }
 
-/// The canonical proof hash for a readiness artifact — a sha256 over a
-/// synthetic label bound to the kind + artifact id. The resolver recomputes
-/// this and rejects any proof whose declared hash disagrees.
-pub fn canonical_wolf_readiness_artifact_hash(
+impl WolfReadinessArtifactKind {
+    fn smoke_kind(self) -> WolfSmokeArtifactKind {
+        match self {
+            Self::SyntheticExtractFixture => WolfSmokeArtifactKind::Extract,
+            Self::SyntheticPatchFixture => WolfSmokeArtifactKind::Patch,
+        }
+    }
+}
+
+/// The canonical SMOKE-BOUND proof hash for a readiness artifact of `kind`,
+/// taken from a genuinely-run KAIFUU-145 extract-patch-verify smoke report.
+/// Returns `None` if the smoke produced no round-tripped variant (then no
+/// extract/patch proof can ever be honored — the honest floor holds).
+///
+/// The value depends on the smoke's ACTUAL round-trip output (archive hashes +
+/// per-member deltas + round-trip proof), so it cannot be reproduced by a bare
+/// label/boolean — this is exactly what binds the readiness `extract`/`patch`
+/// rungs to a VERIFIED smoke (the KAIFUU-080 mirror).
+pub fn canonical_wolf_readiness_artifact_hash_from_smoke(
+    smoke: &WolfExtractPatchVerifySmokeReport,
     kind: WolfReadinessArtifactKind,
-    artifact_id: &str,
-) -> ProofHash {
-    ProofHash::new(sha256_hash_bytes(
-        format!("wolf-readiness-artifact/{}/{}", kind.as_str(), artifact_id).as_bytes(),
-    ))
-    .expect("sha256_hash_bytes yields a valid sha256 ref")
+) -> Option<ProofHash> {
+    let outcome = smoke.outcomes.first()?;
+    Some(match kind.smoke_kind() {
+        WolfSmokeArtifactKind::Extract => outcome.extract_smoke_proof_hash.clone(),
+        WolfSmokeArtifactKind::Patch => outcome.patch_smoke_proof_hash.clone(),
+    })
 }
 
 impl WolfReadinessArtifactProof {
-    /// True iff the proof is of the expected kind and its declared hash matches
-    /// the canonical recomputation.
-    fn is_valid_for(&self, expected: WolfReadinessArtifactKind) -> bool {
+    /// True iff the proof is of the expected kind and its declared hash equals
+    /// the SMOKE-BOUND canonical value from `smoke`. A label-only or fabricated
+    /// hash (not backed by the genuinely-run round-trip) is refused.
+    fn is_valid_for(
+        &self,
+        expected: WolfReadinessArtifactKind,
+        smoke: &WolfExtractPatchVerifySmokeReport,
+    ) -> bool {
         self.kind == expected
-            && self.proof_hash
-                == canonical_wolf_readiness_artifact_hash(self.kind, &self.artifact_id)
+            && canonical_wolf_readiness_artifact_hash_from_smoke(smoke, self.kind)
+                .is_some_and(|canonical| self.proof_hash == canonical)
     }
 }
 
@@ -468,12 +502,19 @@ impl WolfReadinessReport {
 /// combines their derived outputs into the achieved level mechanically; the
 /// declared expectation is used only to raise findings. Never panics.
 pub fn run_wolf_readiness(fixture: &WolfReadinessFixture) -> WolfReadinessReport {
+    // Genuinely run the KAIFUU-145 extract-patch-verify smoke ONCE. Its
+    // per-variant round-trip output is the source of truth the `extract`/`patch`
+    // rungs bind to. If the smoke does not pass (e.g. a broken profiled fixture),
+    // NO case can honor an extract/patch proof and the top rungs stay unreached —
+    // readiness never claims `patch-proven` without a verified smoke.
+    let smoke = run_wolf_extract_patch_verify_smoke(&fixture.source_node_id).ok();
     let mut entries = Vec::with_capacity(fixture.cases.len());
     for case in &fixture.cases {
         entries.push(resolve_case(
             case,
             &fixture.source_node_id,
             &fixture.engine_family,
+            smoke.as_ref(),
         ));
     }
     let status = aggregate_status(&entries);
@@ -503,6 +544,7 @@ fn resolve_case(
     case: &WolfReadinessCase,
     source_node_id: &str,
     engine_family: &str,
+    smoke: Option<&WolfExtractPatchVerifySmokeReport>,
 ) -> WolfReadinessEntryReport {
     let mut findings: Vec<WolfReadinessFinding> = Vec::new();
 
@@ -586,16 +628,23 @@ fn resolve_case(
     }
 
     // --- Validate + honor the explicit synthetic extract/patch proofs. -------
+    // A proof is honored ONLY when its declared hash matches the SMOKE-BOUND
+    // canonical value from a genuinely-run KAIFUU-145 round-trip. If the smoke
+    // itself did not pass, no proof is honored and a declared proof is a loud
+    // finding — the readiness `patch` rung cannot be reached without a verified
+    // smoke.
     let extract_proven = honor_proof(
         case.extract_proof.as_ref(),
         WolfReadinessArtifactKind::SyntheticExtractFixture,
         "extractProof",
+        smoke,
         &mut findings,
     );
     let mut patch_proven = honor_proof(
         case.patch_proof.as_ref(),
         WolfReadinessArtifactKind::SyntheticPatchFixture,
         "patchProof",
+        smoke,
         &mut findings,
     );
     // Patch-back cannot be proven without extraction.
@@ -695,6 +744,7 @@ fn honor_proof(
     proof: Option<&WolfReadinessArtifactProof>,
     expected: WolfReadinessArtifactKind,
     field: &str,
+    smoke: Option<&WolfExtractPatchVerifySmokeReport>,
     findings: &mut Vec<WolfReadinessFinding>,
 ) -> bool {
     let Some(proof) = proof else {
@@ -708,12 +758,25 @@ fn honor_proof(
         });
         return false;
     }
-    if !proof.is_valid_for(expected) {
+    // The extract/patch rungs GATE on a genuinely-run smoke. If the smoke did
+    // not pass, a declared proof cannot be honored — fail loud, never silent.
+    let Some(smoke) = smoke else {
+        findings.push(WolfReadinessFinding {
+            code: "wolf.readiness.smoke_not_proven".to_string(),
+            field: field.to_string(),
+            message: format!(
+                "the {} rung requires a passing KAIFUU-145 extract-patch-verify smoke, but the smoke did not pass",
+                expected.as_str()
+            ),
+        });
+        return false;
+    };
+    if !proof.is_valid_for(expected, smoke) {
         findings.push(WolfReadinessFinding {
             code: "wolf.readiness.artifact_proof_invalid".to_string(),
             field: field.to_string(),
             message: format!(
-                "the {} proof hash does not match the canonical recomputation (or wrong kind)",
+                "the {} proof hash does not match the smoke-bound canonical value (label-only/fabricated/wrong-kind proof, not backed by a genuinely-run round-trip)",
                 expected.as_str()
             ),
         });
@@ -967,6 +1030,74 @@ mod tests {
         // And the DERIVED level fell back below extract (the fabricated proof
         // was refused, so the cleared gate proves only helper_required).
         assert_eq!(entry.readiness_level, WolfReadinessLevel::HelperRequired);
+    }
+
+    // --- KAIFUU-145: the `patch` rung BINDS to a genuinely-run smoke. --------
+
+    #[test]
+    fn readiness_patch_hash_equals_the_smoke_bound_value() {
+        // The fixture's honored patch proof hash is exactly the SMOKE-BOUND
+        // canonical value from a genuinely-run KAIFUU-145 round-trip — not a
+        // static label. Proving that the fixture is gated on the real smoke.
+        let smoke = crate::wolf_extract_patch_verify_smoke::run_wolf_extract_patch_verify_smoke(
+            "KAIFUU-040",
+        )
+        .expect("smoke runs");
+        let canonical_patch = canonical_wolf_readiness_artifact_hash_from_smoke(
+            &smoke,
+            WolfReadinessArtifactKind::SyntheticPatchFixture,
+        )
+        .expect("smoke yields a patch proof");
+        let fixture = load();
+        let patch_case = fixture
+            .cases
+            .iter()
+            .find(|c| c.fixture_id == "wolf.readiness.patch")
+            .unwrap();
+        assert_eq!(
+            patch_case.patch_proof.as_ref().unwrap().proof_hash,
+            canonical_patch,
+            "the fixture patch proof must equal the smoke-bound value",
+        );
+        // And with that binding, the case genuinely reaches `patch`.
+        let report = run_wolf_readiness(&fixture);
+        assert_eq!(
+            report.level("wolf.readiness.patch"),
+            Some(WolfReadinessLevel::Patch)
+        );
+    }
+
+    #[test]
+    fn a_label_only_patch_proof_does_not_reach_patch_proven() {
+        // Reproduce the OLD KAIFUU-080 label hash (sha256 over a static label).
+        // Because it is NOT the smoke-bound value, the patch rung is refused —
+        // a fixture without a passing smoke behind it cannot reach patch-proven.
+        let label_hash = ProofHash::new(crate::sha256_hash_bytes(
+            b"wolf-readiness-artifact/synthetic_patch_fixture/wolf.synthetic.patch",
+        ))
+        .unwrap();
+        let mut fixture = load();
+        let case = fixture
+            .cases
+            .iter_mut()
+            .find(|c| c.fixture_id == "wolf.readiness.patch")
+            .unwrap();
+        case.patch_proof.as_mut().unwrap().proof_hash = label_hash;
+        let report = run_wolf_readiness(&fixture);
+        let entry = report.entry("wolf.readiness.patch").unwrap();
+        assert_eq!(entry.status, OperationStatus::Failed);
+        assert!(
+            entry
+                .findings
+                .iter()
+                .any(|f| f.code == "wolf.readiness.artifact_proof_invalid"),
+            "label-only proof must raise the invalid-proof finding: {:?}",
+            entry.findings
+        );
+        // The DERIVED level fell BELOW patch: the label-only proof was refused,
+        // so the case does NOT reach patch-proven.
+        assert_ne!(entry.readiness_level, WolfReadinessLevel::Patch);
+        assert!(entry.readiness_level < WolfReadinessLevel::Patch);
     }
 
     // --- The resolver catches a lying declared level. ------------------------

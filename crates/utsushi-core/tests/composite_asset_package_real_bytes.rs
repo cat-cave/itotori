@@ -2,7 +2,7 @@
 //! package (UTSUSHI-222).
 //!
 //! Two engine families are exercised here per the
-//! `docs/orchestration-operating-model.md` "Single-game validation
+//! `docs/dev/orchestration-operating-model.md` "Single-game validation
 //! passing as 'claimed support'" rule: RealLive and RPG Maker MV/MZ.
 //! Both must pass for the substrate's cross-engine genericity claim to
 //! hold. Single-corpus validation is a P0 audit failure.

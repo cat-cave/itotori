@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 // KAIFUU-208: pin the supply-chain strictness of deny.toml so a future edit
 // cannot silently relax `bans.multiple-versions` back to "warn" or reopen
 // `bans.wildcards`, and so every accepted duplicate-version `[[bans.skip]]`
-// stays documented with a `# reason:` line. See docs/dependency-policy.md.
+// stays documented with a `# reason:` line. See docs/dev/dependency-policy.md.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const denyPath = resolve(root, "deny.toml");

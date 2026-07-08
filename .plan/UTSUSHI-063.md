@@ -168,7 +168,7 @@ The smoke test uses it in both happy-path and twin form:
 ## 6. Test plan
 
 Tests live in `crates/utsushi-core/tests/fixture_snapshot_restore.rs`.
-Tests follow `docs/testing-standard.md`: falsifiable, behavior-named,
+Tests follow `docs/dev/testing-standard.md`: falsifiable, behavior-named,
 synthetic inline fixtures only.
 
 ### 6.1 Happy path

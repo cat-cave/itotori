@@ -8,7 +8,7 @@
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 //!
 //! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/orchestration-operating-model.md`), a parser that targets a
+//! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. The MV/MZ and KAG
 //! corpora are different engines and do not contain a `Seen.txt`.

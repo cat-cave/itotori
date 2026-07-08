@@ -10,7 +10,7 @@
 //! # Multi-game validation status
 //!
 //! Per the itotori operating model
-//! (`docs/orchestration-operating-model.md`), an engine detector that
+//! (`docs/dev/orchestration-operating-model.md`), an engine detector that
 //! works on game X may fail on game Y; the rule normally requires a
 //! second corpus before merging-complete. KAIFUU-189 satisfies the rule
 //! **by the engine's hard-coded `REALLIVEDATA/` marker invariant**: the

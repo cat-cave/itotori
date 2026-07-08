@@ -97,7 +97,7 @@ jobs:
   # the devShell so PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN point at the
   # flake.lock-pinned Chromium. With no runnable Chromium, `just browser-e2e`
   # FAILS LOUD (nonzero) rather than passing with the e2e unexercised.
-  # See docs/ci-lanes.md.
+  # See docs/dev/ci-lanes.md.
   browser-e2e:
     if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'browser-only' }}
     runs-on: [self-hosted, itotori-corpora]

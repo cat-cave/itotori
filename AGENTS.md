@@ -1,5 +1,11 @@
 # Agent Conventions
 
+> **Contributor pointer.** This file is the short agent-conventions note.
+> The full developer docs (worktree lifecycle, qd orchestration, testing
+> standard, CI policy, internal architecture) live under
+> [`docs/dev/`](docs/dev/README.md). Start at
+> [`CONTRIBUTING.md`](CONTRIBUTING.md) if you are going to change code.
+
 ## Fresh Worktree Setup (`node_modules`)
 
 A fresh worktree has no `node_modules`, so `vp check`, `just fixtures-validate`,
@@ -11,7 +17,7 @@ direnv exec . just worktree-setup
 
 This is an OFFLINE `pnpm install --frozen-lockfile --offline` from the shared
 pnpm store (no network, ~1.5s). See
-[`docs/worktree-lifecycle.md`](docs/worktree-lifecycle.md) for details.
+[`docs/dev/worktree-lifecycle.md`](docs/dev/worktree-lifecycle.md) for details.
 
 ## Rust Build Artifacts
 

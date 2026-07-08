@@ -1784,13 +1784,38 @@ fn browser_capture_event(
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::{
+        Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
+    };
+
+    static TEST_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+    static BROWSER_PROBE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_browser_probe_env() -> MutexGuard<'static, ()> {
+        BROWSER_PROBE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn supported_test_chromium_version() -> super::browser_detection::ChromiumVersion {
+        super::browser_detection::ChromiumVersion::Parsed {
+            major: 124,
+            minor: 0,
+            patch: 6367,
+        }
+    }
+
+    #[cfg(unix)]
+    fn fake_browser_adapter(fake_browser: PathBuf) -> BrowserLaunchAdapter {
+        BrowserLaunchAdapter::with_browser_program_and_version(
+            fake_browser,
+            supported_test_chromium_version(),
+        )
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nonce = TEST_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = env::temp_dir().join(format!(
             "utsushi-launch-adapter-{name}-{}-{nonce}",
             std::process::id()
@@ -1848,6 +1873,7 @@ mod tests {
 
     #[test]
     fn browser_descriptor_reports_launch_capture_capability() {
+        let _browser_env = lock_browser_probe_env();
         let adapter = BrowserLaunchAdapter::new();
         let descriptor = adapter.descriptor();
 
@@ -1891,6 +1917,7 @@ mod tests {
 
     #[test]
     fn browser_host_diagnostic_emits_error_severity_when_chromium_absent() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-host-diagnostic");
         let private_missing_browser = root.join("private-browser-bin");
         let adapter = BrowserLaunchAdapter::with_browser_program(private_missing_browser.clone());
@@ -1965,6 +1992,7 @@ mod tests {
 
     #[test]
     fn browser_descriptor_omits_when_host_support_exists_optionality_language() {
+        let _browser_env = lock_browser_probe_env();
         let adapter = BrowserLaunchAdapter::new();
         let descriptor = adapter.descriptor();
         let serialized = serde_json::to_string(&json!({
@@ -2040,6 +2068,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn browser_smoke_uses_core_harness_and_persists_screenshot_artifact() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-smoke");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2065,7 +2094,7 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
 "#,
             ),
         );
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        let adapter = fake_browser_adapter(fake_browser);
 
         let report = adapter
             .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
@@ -2142,13 +2171,11 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
     #[cfg(unix)]
     #[test]
     fn browser_capture_requires_managed_artifact_root_before_launch() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-root-required");
         write_browser_smoke_fixture(&root);
         let launched_marker = root.join("launched");
         let launched_marker_arg = shell_quote_path(&launched_marker);
-        // Bounded probe invokes `--version`; that must NOT trip the launched
-        // marker — only a full capture launch (with --screenshot or --dump-dom)
-        // counts as "launched" for the purposes of this assertion.
         let fake_browser = fake_browser(
             &root,
             &format!(
@@ -2163,7 +2190,7 @@ exit 0
 "#,
             ),
         );
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        let adapter = fake_browser_adapter(fake_browser);
 
         let error = adapter.capture(&RuntimeRequest::new(&root)).unwrap_err();
         let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
@@ -2180,6 +2207,7 @@ exit 0
     #[cfg(unix)]
     #[test]
     fn browser_capture_reports_semantic_failure_when_screenshot_is_missing() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-missing-screenshot");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2190,7 +2218,7 @@ set -eu
 exit 0
 ",
         );
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        let adapter = fake_browser_adapter(fake_browser);
 
         let error = adapter
             .capture(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
@@ -2207,6 +2235,7 @@ exit 0
     #[cfg(unix)]
     #[test]
     fn browser_capture_does_not_promote_stale_staging_screenshot() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-stale-screenshot");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2221,7 +2250,7 @@ set -eu
 exit 0
 ",
         );
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        let adapter = fake_browser_adapter(fake_browser);
 
         let error = adapter
             .capture(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
@@ -2246,6 +2275,7 @@ exit 0
 
     #[test]
     fn browser_run_returns_chromium_unavailable_kind_when_binary_missing() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-binary-missing");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2282,10 +2312,9 @@ exit 0
     fn browser_run_returns_chromium_unavailable_when_env_browser_bin_broken() {
         // Scoped env guard: this test sets UTSUSHI_BROWSER_BIN to a bogus
         // path, asserts the typed semantic outcome, and restores the
-        // previous env value on drop. Tests that read the same env var
-        // must serialize through a single-threaded test runner OR avoid
-        // setting it concurrently; we accept that here as a known
-        // single-test scope.
+        // previous env value on drop. Tests that read browser probe env take
+        // BROWSER_PROBE_ENV_LOCK so this scoped mutation cannot leak across
+        // parallel test execution.
         struct EnvGuard {
             previous: Option<std::ffi::OsString>,
         }
@@ -2313,6 +2342,7 @@ exit 0
             }
         }
 
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-env-broken");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2347,6 +2377,7 @@ exit 0
     #[cfg(unix)]
     #[test]
     fn browser_run_returns_chromium_version_mismatch_when_version_too_old() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-version-too-old");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
@@ -2415,6 +2446,7 @@ exit 0
     #[cfg(unix)]
     #[test]
     fn browser_descriptor_does_not_invoke_browser_launch_during_version_probe() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-probe-only-version");
         let launch_marker = root.join("launched-non-version");
         let launch_marker_arg = shell_quote_path(&launch_marker);
@@ -2446,6 +2478,7 @@ exit 0
     #[cfg(unix)]
     #[test]
     fn browser_descriptor_version_probe_is_bounded_by_timeout() {
+        let _browser_env = lock_browser_probe_env();
         let root = temp_dir("browser-probe-sleep");
         let fake_browser = fake_browser(
             &root,
@@ -2693,6 +2726,7 @@ exit 0
             }
         }
 
+        let _browser_env = lock_browser_probe_env();
         let _guard = EnvGuard::capture(&["UTSUSHI_STRICT_DISPLAY", "DISPLAY", "WAYLAND_DISPLAY"]);
         EnvGuard::remove("DISPLAY");
         EnvGuard::remove("WAYLAND_DISPLAY");
@@ -2791,10 +2825,11 @@ printf '<!doctype html><html><body><div id="messageWindow">launched without inst
     #[cfg(unix)]
     #[test]
     fn browser_trace_observes_live_dom_text_and_choice_events() {
+        let _browser_env = lock_browser_probe_env();
         let work = temp_dir("browser-trace-live");
         let fixture = mvmz_observation_fixture_root();
         let fake = fake_browser(&work, LIVE_DOM_FAKE_BROWSER);
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake);
+        let adapter = fake_browser_adapter(fake);
 
         let report = adapter.trace(&RuntimeRequest::new(&fixture)).unwrap();
 
@@ -2883,10 +2918,11 @@ printf '<!doctype html><html><body><div id="messageWindow">launched without inst
     #[cfg(unix)]
     #[test]
     fn browser_trace_yields_no_observed_events_without_instrumentation_island() {
+        let _browser_env = lock_browser_probe_env();
         let work = temp_dir("browser-trace-empty");
         let fixture = mvmz_observation_fixture_root();
         let fake = fake_browser(&work, NO_ISLAND_FAKE_BROWSER);
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake);
+        let adapter = fake_browser_adapter(fake);
 
         let report = adapter.trace(&RuntimeRequest::new(&fixture)).unwrap();
 
@@ -2946,6 +2982,7 @@ printf '<!doctype html><html><body><div id="messageWindow">launched without inst
 
     #[test]
     fn build_observed_events_links_each_event_to_its_bridge_unit_without_a_browser() {
+        let _browser_env = lock_browser_probe_env();
         // Unit-level proof of the envelope + parse + linkage logic that does
         // not need a live browser (the CI/oracle exercises real Chromium).
         let source = json!({

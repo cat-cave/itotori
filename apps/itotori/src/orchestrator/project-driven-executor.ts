@@ -71,6 +71,7 @@ import {
 } from "./localize-project-stage-command.js";
 import { buildPipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
 import type { PipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
+import type { WholeGameRenderValidationResult } from "./wholegame-render-validation-seam.js";
 
 // ---------------------------------------------------------------------------
 // Config-driven translation scope
@@ -410,6 +411,12 @@ export type ProjectDrivenExecutorResult = {
    * populated it; the pass-ledger driver always reads it.
    */
   unitOutcomes: DrivenDraftRecord[];
+  /**
+   * m1-wholegame-replay-render-validate — optional post-patch replay/render
+   * validation report. Populated by the pass-ledger post-executor hook so the
+   * same pass record can carry rendered/runtime findings into pass N+1.
+   */
+  runtimeValidation?: WholeGameRenderValidationResult;
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;

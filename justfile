@@ -114,7 +114,7 @@ test:
 # and anchors a baseline ratio to diff against by eye. Scopes the tracked
 # product test suites (apps/*/test, packages/*/test, crates/); dev-harness
 # suites under scripts/ + suite/scripts/ are excluded. See
-# docs/testing-standard.md § Behavior-First Principle + § Test-Seam Classifier.
+# docs/dev/testing-standard.md § Behavior-First Principle + § Test-Seam Classifier.
 test-ratio:
     node scripts/classify-test-seams.mjs
 
@@ -307,7 +307,7 @@ real-bytes-oracle-drift:
 # (non-zero) with a pointer to the devShell — it NEVER passes with the browser
 # e2e unexercised. This mirrors `ci-real-bytes`' missing-corpus pre-check and is
 # the strict-lane analogue of the DB skip-honesty gates: a strict proof lane may
-# not go green-on-skip. See docs/ci-lanes.md.
+# not go green-on-skip. See docs/dev/ci-lanes.md.
 browser-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -330,7 +330,7 @@ browser-e2e:
 # pays for or waits on this ~30-45min lane. The browser sub-lane runs FIRST so a
 # missing Chromium fails fast before the long oracle. Both sub-lanes fail LOUD on
 # a missing prerequisite (no Chromium / no corpus) rather than passing
-# unexercised. See docs/ci-lanes.md.
+# unexercised. See docs/dev/ci-lanes.md.
 periodic-strict: browser-e2e real-bytes-oracle
 
 # Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the

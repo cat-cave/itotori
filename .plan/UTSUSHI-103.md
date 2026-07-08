@@ -828,7 +828,7 @@ no code for these crates.
 
 ## 8. Test plan
 
-All tests follow `docs/testing-standard.md`. Each test has a behavior
+All tests follow `docs/dev/testing-standard.md`. Each test has a behavior
 name and asserts one observable claim.
 
 ### 8.1 Unit (in `utsushi-core::port::*` modules)

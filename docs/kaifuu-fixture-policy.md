@@ -12,8 +12,8 @@
 
 KAIFUU-000 defines how engine fixtures and reference implementations are
 sourced before parallel adapter work begins. It extends
-[fixtures-and-corpora.md](fixtures-and-corpora.md) and
-[testing-standard.md](testing-standard.md) for real engine adapters.
+[fixtures-and-corpora.md](fixtures-and-corpora.md) and the dev doc
+[testing-standard.md](dev/testing-standard.md) for real engine adapters.
 
 Kaifuu is a tool for extraction, patching, verification, and `.kaifuu` delta
 packages over user-provided project files. This policy does not claim support
