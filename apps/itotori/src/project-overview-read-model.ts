@@ -37,6 +37,25 @@ export type ProjectOverviewPassLedgerRow = {
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   recordedAt: string;
+  /**
+   * Per-pass quality score (a 0..5 scalar) sourced from the pass's record body
+   * when the orchestrator recorded one — null when the pass has no score field
+   * (a real `null` is honest, never a fabricated zero). The Overview pass-
+   * ledger panel renders this column from this field verbatim.
+   */
+  score: number | null;
+  /**
+   * The count of feedback notes this pass consumed (carried in from reviewers /
+   * prior-pass corrections). Sourced from `consumedFeedbackNotes.length` in the
+   * record body; falls back to a top-level `feedback` integer when the body
+   * uses the legacy shape. Always present (zero is a real value).
+   */
+  feedback: number;
+  /**
+   * A free-form per-pass note (the orchestrator's iteration comment). Sourced
+   * from the record body; empty string when none was recorded.
+   */
+  note: string;
 };
 
 export type ProjectOverviewPassLedgerPage = {
@@ -267,6 +286,40 @@ function passLedgerRow(record: LocalizationPassLedgerRecord): ProjectOverviewPas
     totalUsageCostUsd: record.totalUsageCostUsd,
     zdrConfirmed: record.zdrConfirmed,
     recordedAt: record.recordedAt.toISOString(),
+    ...extractPassLedgerIterationSignals(record.recordBody),
+  };
+}
+
+/**
+ * Per-pass iteration signals (score / feedback / note) defensively extracted
+ * from the generic pass record body. The body is opaque to this read-model —
+ * `score` is null when absent (a real null is honest, never fabricated zero);
+ * `feedback` falls back to a top-level integer then to the consumed-feedback
+ * notes array length (zero is a real value); `note` is the empty string when
+ * the body carried no free-form note. The record body shape is owned by the
+ * orchestrator's `LocalizationPassRecord`; this reader is shaped to accept its
+ * currently-recorded keys (`score` / `feedback` / `note`) AND its structured
+ * `consumedFeedbackNotes` fallback.
+ */
+function extractPassLedgerIterationSignals(recordBody: Record<string, unknown>): {
+  score: number | null;
+  feedback: number;
+  note: string;
+} {
+  const scoreValue = recordBody["score"];
+  const noteValue = recordBody["note"];
+  const feedbackValue = recordBody["feedback"];
+  const consumedFeedbackNotes = recordBody["consumedFeedbackNotes"];
+  const feedbackCount =
+    typeof feedbackValue === "number"
+      ? feedbackValue
+      : Array.isArray(consumedFeedbackNotes)
+        ? consumedFeedbackNotes.length
+        : 0;
+  return {
+    score: typeof scoreValue === "number" ? scoreValue : null,
+    feedback: feedbackCount,
+    note: typeof noteValue === "string" ? noteValue : "",
   };
 }
 

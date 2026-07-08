@@ -24,6 +24,7 @@ import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { DecisionsBand } from "./DecisionsBand.js";
+import { PassLedgerPanel } from "./PassLedgerPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
 export function DashboardScreen(): ReactNode {
@@ -41,6 +42,8 @@ export function DashboardScreen(): ReactNode {
       <DecisionsBand />
 
       <ProgressInstrumentPanel />
+
+      <PassLedgerPanel />
 
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />

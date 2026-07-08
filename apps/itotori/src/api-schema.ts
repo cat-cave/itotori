@@ -3716,6 +3716,9 @@ function assertProjectOverviewPassLedgerRow(
     "totalUsageCostUsd",
     "zdrConfirmed",
     "recordedAt",
+    "score",
+    "feedback",
+    "note",
   ]);
   assertString(row.passLedgerId, `${label}.passLedgerId`);
   assertString(row.projectId, `${label}.projectId`);
@@ -3728,6 +3731,13 @@ function assertProjectOverviewPassLedgerRow(
   assertNonNegativeNumber(row.totalUsageCostUsd, `${label}.totalUsageCostUsd`);
   assertBoolean(row.zdrConfirmed, `${label}.zdrConfirmed`);
   assertDateLike(row.recordedAt, `${label}.recordedAt`);
+  if (row.score !== null) {
+    assertNonNegativeNumber(row.score, `${label}.score`);
+  }
+  assertNonNegativeInteger(row.feedback, `${label}.feedback`);
+  if (typeof row.note !== "string") {
+    throw new Error(`${label}.note must be a string`);
+  }
 }
 
 function assertProjectOverviewBenchmarkHeadline(
