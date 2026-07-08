@@ -6639,9 +6639,10 @@ pub fn xp3_profile_proof(
         }
     }
 
-    // Plain XP3 must declare `patch_back`; anything else gets the
-    // `xp3.patch_capability.overclaim` diagnostic and forced down to
-    // `Unsupported`.
+    // Non-plain XP3 variants are diagnostics-only routes. If the
+    // fixture claims any extract or patch-back level there, emit
+    // `xp3.patch_capability.overclaim`; the routed report has already
+    // been forced down to `Unsupported`.
     if !matches!(classification, Xp3ProfileClassification::Plain)
         && !matches!(
             fixture.patch_capability_level,
@@ -6653,12 +6654,12 @@ pub fn xp3_profile_proof(
             severity: PartialDiagnosticSeverity::P0,
             field: "patchCapabilityLevel".to_string(),
             message: format!(
-                "fixture declared {} but only plain XP3 may claim extract or patch_back",
+                "fixture declared {}; XP3 profile proof permits extract and patch_back capability claims only for plain XP3, while encrypted, compressed, helper_required, and unsupported_protected_executable fixtures must set patchCapabilityLevel to unsupported",
                 fixture.patch_capability_level.as_str()
             ),
             semantic_code: Some(SEMANTIC_MISSING_PATCH_BACK_CAPABILITY.to_string()),
             remediation: Some(
-                "set patchCapabilityLevel to \"unsupported\" for non-plain classifications"
+                "set patchCapabilityLevel to \"unsupported\" for encrypted, compressed, helper_required, and unsupported_protected_executable XP3 fixtures"
                     .to_string(),
             ),
         });
@@ -6777,12 +6778,12 @@ fn evaluate_xp3_crypt_profile(
                 severity: PartialDiagnosticSeverity::P0,
                 field: "cryptProfile".to_string(),
                 message: format!(
-                    "{} XP3 fixtures must declare a crypt profile",
+                    "{} XP3 fixtures must declare cryptProfile with cryptProfileId and keyRefRequirement; the crypt profile records routing metadata only and does not claim decryption, extraction, or patch_back support",
                     classification.as_str()
                 ),
                 semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
                 remediation: Some(
-                    "add a cryptProfile entry with crypt_profile_id and key_ref_requirement"
+                    "add cryptProfile with cryptProfileId and keyRefRequirement for encrypted or helper_required XP3 fixtures"
                         .to_string(),
                 ),
             });
@@ -29575,6 +29576,17 @@ mod tests {
         }
     }
 
+    fn xp3_profile_diagnostic<'a>(
+        report: &'a Xp3ProfileProofReport,
+        code: &str,
+    ) -> &'a Xp3ProfileProofDiagnostic {
+        report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == code)
+            .unwrap_or_else(|| panic!("missing XP3 profile diagnostic {code}"))
+    }
+
     #[test]
     fn xp3_profile_proof_distinct_outcomes_for_each_variant() {
         // Acceptance criterion: "Plain XP3, encrypted XP3, compressed
@@ -29886,6 +29898,62 @@ mod tests {
     }
 
     #[test]
+    fn xp3_profile_proof_overclaim_diagnostic_names_real_capability_rule() {
+        // Non-plain XP3 variants are routing diagnostics only; even a
+        // profiled encrypted fixture cannot claim extract or patch_back.
+        let dir = temp_dir("xp3-profile-proof-overclaim-message");
+        write_xp3_archive(
+            &dir,
+            "encrypted.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        let mut fixture = make_encrypted_fixture("encrypted.xp3");
+        fixture.patch_capability_level = Xp3PatchCapabilityLevel::PatchBack;
+
+        let report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.classification, Xp3ProfileClassification::Encrypted);
+        assert_eq!(
+            report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert_eq!(
+            report.crypt_profile.status,
+            Xp3CryptProfileStatus::Satisfied
+        );
+
+        let expected_message = "fixture declared patch_back; XP3 profile proof permits extract and patch_back capability claims only for plain XP3, while encrypted, compressed, helper_required, and unsupported_protected_executable fixtures must set patchCapabilityLevel to unsupported";
+        let diagnostic = xp3_profile_diagnostic(&report, "xp3.patch_capability.overclaim");
+        assert_eq!(diagnostic.severity, PartialDiagnosticSeverity::P0);
+        assert_eq!(diagnostic.field, "patchCapabilityLevel");
+        assert_eq!(diagnostic.message, expected_message);
+        assert_eq!(
+            diagnostic.semantic_code.as_deref(),
+            Some(SEMANTIC_MISSING_PATCH_BACK_CAPABILITY)
+        );
+        assert_eq!(
+            diagnostic.remediation.as_deref(),
+            Some(
+                "set patchCapabilityLevel to \"unsupported\" for encrypted, compressed, helper_required, and unsupported_protected_executable XP3 fixtures"
+            )
+        );
+
+        let redacted = report.redacted_for_report();
+        assert_eq!(
+            xp3_profile_diagnostic(&redacted, "xp3.patch_capability.overclaim").message,
+            expected_message
+        );
+        let stable_json = report.stable_json().unwrap();
+        assert!(stable_json.contains(expected_message));
+        assert!(!stable_json.contains("\"message\":\"[REDACTED:kaifuu.secret_redacted]\""));
+    }
+
+    #[test]
     fn xp3_profile_proof_missing_crypt_profile_fails_closed() {
         // Negative fixture: encrypted classification without a
         // crypt_profile entry → P0 missing-crypt-profile diagnostic.
@@ -29903,17 +29971,36 @@ mod tests {
         })
         .unwrap();
         assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.classification, Xp3ProfileClassification::Encrypted);
         assert_eq!(report.crypt_profile.status, Xp3CryptProfileStatus::Missing);
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "xp3.crypt_profile.missing")
+        let expected_message = "encrypted XP3 fixtures must declare cryptProfile with cryptProfileId and keyRefRequirement; the crypt profile records routing metadata only and does not claim decryption, extraction, or patch_back support";
+        let diagnostic = xp3_profile_diagnostic(&report, "xp3.crypt_profile.missing");
+        assert_eq!(diagnostic.severity, PartialDiagnosticSeverity::P0);
+        assert_eq!(diagnostic.field, "cryptProfile");
+        assert_eq!(diagnostic.message, expected_message);
+        assert_eq!(
+            diagnostic.semantic_code.as_deref(),
+            Some(SEMANTIC_MISSING_KEY_PROFILE)
+        );
+        assert_eq!(
+            diagnostic.remediation.as_deref(),
+            Some(
+                "add cryptProfile with cryptProfileId and keyRefRequirement for encrypted or helper_required XP3 fixtures"
+            )
         );
         assert_eq!(
             report.patch_capability_level,
             Xp3PatchCapabilityLevel::Unsupported
         );
+
+        let redacted = report.redacted_for_report();
+        assert_eq!(
+            xp3_profile_diagnostic(&redacted, "xp3.crypt_profile.missing").message,
+            expected_message
+        );
+        let stable_json = report.stable_json().unwrap();
+        assert!(stable_json.contains(expected_message));
+        assert!(!stable_json.contains("\"message\":\"[REDACTED:kaifuu.secret_redacted]\""));
     }
 
     #[test]
