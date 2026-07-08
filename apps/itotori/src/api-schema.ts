@@ -123,10 +123,7 @@ import type {
   ProjectOverviewReadModel,
 } from "./project-overview-read-model.js";
 import { PROJECT_OVERVIEW_SCHEMA_VERSION } from "./project-overview-read-model.js";
-import type {
-  BmkCockpitReadModel,
-  BmkCockpitRunHistoryPage,
-} from "./bmk-cockpit-read-model.js";
+import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import { BMK_COCKPIT_SCHEMA_VERSION } from "./bmk-cockpit-read-model.js";
 
 export type ItotoriApiRouteId =

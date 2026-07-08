@@ -46,12 +46,7 @@ export const BMK_COCKPIT_SCHEMA_VERSION = "itotori.bmk-cockpit.v0.1" as const;
  * `ContestantKind`s. The mapping is FROZEN (no string keys at the wire that
  * drift from the facility).
  */
-export type BmkCockpitContestantRole =
-  | "official"
-  | "self"
-  | "self_nocontext"
-  | "fan"
-  | "mtl";
+export type BmkCockpitContestantRole = "official" | "self" | "self_nocontext" | "fan" | "mtl";
 
 export const BMK_COCKPIT_CONTESTANT_ROLES = [
   "official",
@@ -238,9 +233,11 @@ export async function composeBmkCockpitReadModel(
   const run =
     input.runId !== undefined
       ? await input.repository.loadRun(input.actor, input.runId)
-      : await input.repository.loadLatestRunForProject(input.actor, input.projectId, {
-          ...(input.localeBranchId !== undefined ? { localeBranchId: input.localeBranchId } : {}),
-        });
+      : await input.repository.loadLatestRunForProject(
+          input.actor,
+          input.projectId,
+          input.localeBranchId !== undefined ? { localeBranchId: input.localeBranchId } : {},
+        );
   if (run === undefined) {
     throw new BmkCockpitReadModelError(
       `no benchmark runway found for projectId='${input.projectId}'${

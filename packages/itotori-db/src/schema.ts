@@ -4725,10 +4725,7 @@ export const benchmarkRuns = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("itotori_benchmark_runs_project_recorded_idx").on(
-      table.projectId,
-      table.recordedAt,
-    ),
+    index("itotori_benchmark_runs_project_recorded_idx").on(table.projectId, table.recordedAt),
     index("itotori_benchmark_runs_branch_recorded_idx").on(
       table.projectId,
       table.localeBranchId,

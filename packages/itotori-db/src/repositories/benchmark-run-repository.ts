@@ -30,11 +30,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
-import {
-  type AuthorizationActor,
-  permissionValues,
-  requirePermission,
-} from "../authorization.js";
+import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import { benchmarkRuns } from "../schema.js";
 
 export type BenchmarkRunKind = "real_run" | "fixture" | "replay";
@@ -97,14 +93,8 @@ export type LoadBenchmarkRunsForProjectOptions = {
 };
 
 export interface ItotoriBenchmarkRunRepositoryPort {
-  recordRun(
-    actor: AuthorizationActor,
-    input: RecordBenchmarkRunInput,
-  ): Promise<BenchmarkRunRecord>;
-  loadRun(
-    actor: AuthorizationActor,
-    runId: string,
-  ): Promise<BenchmarkRunRecord | undefined>;
+  recordRun(actor: AuthorizationActor, input: RecordBenchmarkRunInput): Promise<BenchmarkRunRecord>;
+  loadRun(actor: AuthorizationActor, runId: string): Promise<BenchmarkRunRecord | undefined>;
   loadLatestRunForProject(
     actor: AuthorizationActor,
     projectId: string,
@@ -127,9 +117,7 @@ export class BenchmarkRunRepositoryError extends Error {
 export const BENCHMARK_RUN_DEFAULT_LIMIT = 25;
 export const BENCHMARK_RUN_MAX_LIMIT = 200;
 
-export class ItotoriBenchmarkRunRepository
-  implements ItotoriBenchmarkRunRepositoryPort
-{
+export class ItotoriBenchmarkRunRepository implements ItotoriBenchmarkRunRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
 
   async recordRun(
@@ -190,10 +178,7 @@ export class ItotoriBenchmarkRunRepository
     return rowToRecord(row);
   }
 
-  async loadRun(
-    actor: AuthorizationActor,
-    runId: string,
-  ): Promise<BenchmarkRunRecord | undefined> {
+  async loadRun(actor: AuthorizationActor, runId: string): Promise<BenchmarkRunRecord | undefined> {
     // Read-side: `catalog.read` (mirrors `listBenchmarkReports`).
     await requirePermission(this.db, actor, permissionValues.catalogRead);
     const rows = await this.db
@@ -239,9 +224,7 @@ export class ItotoriBenchmarkRunRepository
     const limit = clampBenchmarkRunsLimit(options.limit ?? BENCHMARK_RUN_DEFAULT_LIMIT);
     const offset = options.offset ?? 0;
     if (offset < 0) {
-      throw new BenchmarkRunRepositoryError(
-        `offset must be a non-negative integer; got ${offset}`,
-      );
+      throw new BenchmarkRunRepositoryError(`offset must be a non-negative integer; got ${offset}`);
     }
     const where =
       options.localeBranchId === undefined
@@ -265,16 +248,12 @@ export class ItotoriBenchmarkRunRepository
 
 function clampBenchmarkRunsLimit(limit: number): number {
   if (!Number.isInteger(limit) || limit < 1) {
-    throw new BenchmarkRunRepositoryError(
-      `limit must be a positive integer; got ${limit}`,
-    );
+    throw new BenchmarkRunRepositoryError(`limit must be a positive integer; got ${limit}`);
   }
   return Math.min(limit, BENCHMARK_RUN_MAX_LIMIT);
 }
 
-function rowToRecord(
-  row: typeof benchmarkRuns.$inferSelect,
-): BenchmarkRunRecord {
+function rowToRecord(row: typeof benchmarkRuns.$inferSelect): BenchmarkRunRecord {
   return {
     runId: row.runId,
     projectId: row.projectId,
