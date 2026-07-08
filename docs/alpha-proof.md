@@ -3,7 +3,7 @@
 > **Milestone framework (2026-06-24).** The four-tier framework
 > (real-game-testing-ready → alpha → beta → full release) and per-tier
 > acceptance criteria live in [`project-readiness.md`](project-readiness.md)
-> (renamed from `alpha-localization-project-readiness.md` on 2026-06-24).
+> (renamed on 2026-06-24).
 > "Alpha proof" in this document refers to the SHARED-025 manifest contract and
 > the `ALPHA-009` workflow that superseded the literal hello-world fixture gate
 > — those mechanisms support the **real-game-testing-ready** tier, not the new

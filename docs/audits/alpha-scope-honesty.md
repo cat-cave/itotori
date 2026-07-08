@@ -27,7 +27,7 @@ citable so they can be executed in follow-ups.
 
 ## Inputs consulted
 
-- `docs/alpha-localization-project-readiness.md` — current alpha scope spec at the time of this audit; renamed to [`docs/project-readiness.md`](../project-readiness.md) on 2026-06-24.
+- [`project-readiness.md`](../project-readiness.md) — current alpha scope spec at the time of this audit; the file was renamed on 2026-06-24.
 - [`roadmap/spec-dag.json`](../../roadmap/spec-dag.json) — 563 nodes; 273 `target: alpha` (165 complete, 106 planned, 2 in_progress); 10 `ALPHA-*` nodes (1 complete, 9 planned).
 - [`docs/audits/dag-critique.md`](dag-critique.md) — landed on main as `40106e5`.
 - [`crates/kaifuu-reallive/src/lib.rs`](../../crates/kaifuu-reallive/src/lib.rs) — 3,318 LOC pure-Rust parser; module doc explicitly states "deliberately small, named-opcode bytecode... intentionally narrower than the real RealLive opcode space."
@@ -53,14 +53,14 @@ missing sibling audit it is marked **[depends on missing sibling — confirm]**.
 > _"Alpha readiness is achieved when the suite can run the same product loop on
 > public synthetic fixtures and at least one real-engine fixture profile, then
 > show that the engine boundary remains generic across the alpha
-> engine/readiness set."_ — `alpha-localization-project-readiness.md`:28
+> engine/readiness set."_ — `project-readiness.md`:28
 
 > _"The first real-engine end-to-end vertical is Sukara's Oshioki Sweetie HD
 > Remaster + Sweets fandisc (RealLive engine), sourced from the vault-curation
 > catalog at /archive/vault/. That vertical is what proves the suite on real
 > owned content: detect, extract, decrypt, decompile, patch, verify,
 > delta-apply, and Utsushi runtime evidence through a native RealLive port."_
-> — `alpha-localization-project-readiness.md`:57
+> — `project-readiness.md`:57
 
 **Verdict: aspirational.** Of the seven stages the doc names as required for
 the Sweetie HD vertical, the toolchain can credibly deliver only "detect" today.
@@ -106,7 +106,7 @@ than a generic RealLive decompiler.
 
 ### A.3 Engine readiness matrix (§2 table)
 
-The matrix at `alpha-localization-project-readiness.md`:105-112 lists six rows
+The matrix at `project-readiness.md`:105-112 lists six rows
 and conflates two very different evidence postures:
 
 - **Readiness-only rows** (`tyranoscript-null-key`, `kirikiri-xp3-readiness`,
@@ -123,7 +123,7 @@ and conflates two very different evidence postures:
 
 ### A.4 Specific forbidden-state risk
 
-`alpha-localization-project-readiness.md`:374-405 lists "Known Non-Goals." Two
+`project-readiness.md`:374-405 lists "Known Non-Goals." Two
 of them are at risk of being violated by accepting the current scope:
 
 - _"No claim of engine-perfect... fidelity unless a specific E4 report exists."_
@@ -147,7 +147,7 @@ The doc lists three claimed-support engine families:
 ### B.1 SiglusEngine + RealLive (single Rust port scope)
 
 > _"single Rust port scope. RealLive carries the first real-engine vertical;
-> Siglus shares the port substrate."_ — `alpha-localization-project-readiness.md`:77
+> Siglus shares the port substrate."_ — `project-readiness.md`:77
 
 **Reality:**
 
@@ -279,7 +279,7 @@ These capabilities should not be claimed for the alpha milestone at all:
   with the decomposed plan, and call the alpha milestone in §D the practical
   dogfood point that does not require the whole runtime port to land first.
 - **SiglusEngine claimed-support.** Already excluded by the doc
-  (`alpha-localization-project-readiness.md`:391: "No SiglusEngine production
+  (`project-readiness.md`:391: "No SiglusEngine production
   adapter before the first real localization project"), but the engine row at
   line 77 still groups it with RealLive. Excise SiglusEngine from the
   claimed-support row in §B language; keep it as a research-tier readiness
@@ -363,7 +363,7 @@ the post-alpha North Star"):**
 > vault, even if no runtime evidence is produced, (d) at least one MV/MZ JSON
 > public fixture round-trips byte-identically through the integration shell,
 > (e) the recorded-LLM proof bundle exists, and (f) every report and dashboard
-> workflow surface enumerated in `alpha-localization-project-readiness.md` §3
+> workflow surface enumerated in `project-readiness.md` §3
 > is reachable against synthetic-loop state. The first **runtime** evidence
 > on a real RealLive game is a post-alpha first-project milestone."_
 
@@ -393,13 +393,13 @@ the post-alpha North Star"):**
 - Requires accepting that the _first localization project_ (not alpha) is when
   end-to-end runtime evidence on a real game ships. This is honest given the
   ~6-month scope of `UTSUSHI-146` and is consistent with how
-  `alpha-localization-project-readiness.md`:1-13 already frames alpha ("not a
+  `project-readiness.md`:1-13 already frames alpha ("not a
   terminal product state... the first full-game localization project should
   discover scale, content, engine-variant, and workflow issues").
 
 ### D.3 What the alpha milestone language should claim, verbatim
 
-Replace `alpha-localization-project-readiness.md`:1-31 with:
+Replace `project-readiness.md`:1-31 with:
 
 > _"This document defines the feature set that makes the Itotori suite ready
 > to start a first real localization project. Alpha readiness means the suite
@@ -435,7 +435,7 @@ row (`synthetic-json`) plus the readiness matrix above.
 
 ## E. Hard re-cuts on what stays/goes (section-by-section)
 
-References below are to current `alpha-localization-project-readiness.md`
+References below are to current `project-readiness.md`
 line ranges.
 
 | Section                                                                   | Action                      | Rationale                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -495,7 +495,7 @@ The minimum ordered DAG path to reach alpha as redefined in §D:
    continuous-tier or first-project-tier per §C.1. Keep `ALPHA-003`/`ALPHA-005`
    /`ALPHA-008` alpha-tier (cost/quality, readiness hardening, live-provider
    proof).
-7. **Edit `alpha-localization-project-readiness.md`** per §E. This includes
+7. **Edit `project-readiness.md`** per §E. This includes
    removing the "claimed-support engines" three-row block and replacing the
    engine matrix.
 8. **Update the demo script (§8 of the readiness doc)** to remove the real-game

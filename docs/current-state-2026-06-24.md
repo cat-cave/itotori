@@ -11,8 +11,8 @@ What was previously called "alpha" is now **real-game-testing-ready**;
 alpha now requires live LLM via OpenRouter with an explicit
 (model, provider) pair, the full agentic loop, real patchback, and Linux
 replay of Sweetie HD via `utsushi-reallive`. Authoritative tier definitions
-live in [`project-readiness.md`](project-readiness.md) (renamed from
-`alpha-localization-project-readiness.md` on 2026-06-24). DAG re-tier
+live in [`project-readiness.md`](project-readiness.md) (renamed on
+2026-06-24). DAG re-tier
 proposal: [`proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md).
 
 What landed this session (~17+ nodes): kaifuu real-bytes parsers,

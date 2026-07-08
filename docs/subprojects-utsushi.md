@@ -1,7 +1,7 @@
 # Utsushi Subproject
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`docs/alpha-localization-project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point — substrate
 > extensions M.1–M.3 (`UTSUSHI-222`/`223`/`224`) plus a non-synthetic engine
 > port crate (`UTSUSHI-200`), validated against multi-engine real bytes.

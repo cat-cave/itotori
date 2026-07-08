@@ -492,7 +492,7 @@ remains distinct from screenshot conformance" — but with only the
 synthetic fixture engine in the test suite, that is asserted by
 review, not by code. Until UTSUSHI-160 lands a non-synthetic adapter,
 no completion of those nodes should be cited as evidence of "engine
-agnostic." Reflect this in `alpha-localization-project-readiness.md`'s
+agnostic." Reflect this in `project-readiness.md`'s
 `ALPHA-CHECK-004` ("Engine readiness breadth"): list UTSUSHI-160 as
 a hard prerequisite.
 

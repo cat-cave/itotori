@@ -1,7 +1,7 @@
 # Testing Standard
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](project-readiness.md).
 > "Alpha proof" mentions below refer to the `ALPHA-009` workflow and the
 > SHARED-025 manifest contract — mechanisms that support the redefined
 > dogfood point, not the alpha gate itself. Per the multi-game and

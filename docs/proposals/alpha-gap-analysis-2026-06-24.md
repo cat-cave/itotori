@@ -54,7 +54,7 @@ openrouter}.ts` (model-provider seam), `apps/itotori/src/agents/*` (the
 seven agent surfaces), `crates/kaifuu-cli/src/main.rs` (patch),
 `crates/kaifuu-reallive/src/{archive,parser,patchback,gameexe}.rs`,
 `crates/utsushi-reallive/` (scaffold-only); (c) reference docs —
-`current-state-2026-06-24.md`, `alpha-localization-project-readiness.md`,
+`current-state-2026-06-24.md`, `project-readiness.md`,
 `research/reallive-engine{,-dag-proposal}.md`,
 `research/reallive-sweetie-hd-encryption-mechanism.md` (XOR-2 outcome A
 = no second-level XOR, which is why UTSUSHI-219 was cancelled),

@@ -1,7 +1,7 @@
 # Architecture
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](project-readiness.md).
 > References below to "alpha proof" describe the SHARED-025 manifest contract
 > and the post-alpha dogfood vertical (the configured alpha corpus on
 > RealLive), not the alpha gate. Alpha-ready means the architecture-proven

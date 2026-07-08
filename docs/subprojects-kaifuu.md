@@ -1,7 +1,7 @@
 # Kaifuu Subproject
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`docs/alpha-localization-project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point (substrate
 > extensions M.1–M.3, a non-synthetic engine port crate, a real-bytes Sweetie
 > HD smoke, the recorded-LLM bundle, dashboard reachability, repo hygiene) —

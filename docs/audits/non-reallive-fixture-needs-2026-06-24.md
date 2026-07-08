@@ -2,7 +2,7 @@
 
 Date: 2026-06-24. Scope: the two non-RealLive engines named as
 claimed-alpha in
-[`docs/alpha-localization-project-readiness.md`](../project-readiness.md)
+[`project-readiness.md`](../project-readiness.md)
 §2. RealLive readiness is covered in
 [`docs/audits/alpha-scope-honesty.md`](alpha-scope-honesty.md) §B.1.
 
@@ -51,7 +51,7 @@ subcommand):
   redacted report.
 
 Everything else listed in
-`alpha-localization-project-readiness.md`:145 for MV/MZ is **not
+`project-readiness.md`:145 for MV/MZ is **not
 implemented**:
 
 - JSON-text adapter (`KAIFUU-007`/`108`/`109`/`110`/`111`/`112`,
@@ -249,7 +249,7 @@ xp3-unknown-container}`.
   `plain_xp3_fixture(...)`; not a public writer.
 
 Everything else listed in
-`alpha-localization-project-readiness.md`:147 is **not implemented**:
+`project-readiness.md`:147 is **not implemented**:
 
 - Deterministic writer / rebuild (`KAIFUU-098`, planned).
 - Reader+writer smoke CLI (`KAIFUU-071`, planned).
@@ -470,7 +470,7 @@ writing (max existing `KAIFUU-187`, max existing `UTSUSHI-176`).
 
 For **RPG Maker MV/MZ**, the toolchain today does detection +
 fixture-key validation only; everything else from
-`alpha-localization-project-readiness.md`:145 is planned. Useful
+`project-readiness.md`:145 is planned. Useful
 real-game fixtures split into plain-JSON / encrypted-media / plugin-
 text profiles; the highest-leverage ask is a freely-redistributable
 MV/MZ project matching profile A.

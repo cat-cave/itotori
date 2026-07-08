@@ -1,7 +1,7 @@
 # Project Readiness
 
-> **Rename note (2026-06-24).** This file was renamed from
-> `alpha-localization-project-readiness.md` on 2026-06-24 when the milestone
+> **Rename note (2026-06-24).** The current filename replaced the
+> prior `alpha-localization-` filename on 2026-06-24, when the milestone
 > framework was redefined from a two-level ("alpha" + "continuous") split
 > into a four-tier framework (real-game-testing-ready → alpha → beta → full
 > release). The previous body of that file described "alpha = dogfood point"

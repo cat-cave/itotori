@@ -1,7 +1,7 @@
 # Kaifuu Fixture Policy
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](project-readiness.md).
+> of [`project-readiness.md`](project-readiness.md).
 > "Claimed support" in this policy is Kaifuu's long-term per-engine
 > commitment — the full claimed-support chain (detect, extract, decrypt,
 > decompile, patch, verify, delta-apply) on real owned bytes. Alpha-ready
