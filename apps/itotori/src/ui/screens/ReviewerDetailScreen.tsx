@@ -45,6 +45,7 @@ import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { apiClient } from "../client.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { CorrectionScopePanel } from "./CorrectionScopePanel.js";
 import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
 
 // ITOTORI-082 → HI-FI STUDIO EPIC · Review
@@ -162,6 +163,16 @@ function ReadyView({
         <ComparisonPanel context={context} />
         <DraftHistoryPanel context={context} />
         <RevisionHistoryComparisonPane reviewItemId={context.reviewItemId} />
+        {/* rev-correction-loop-ui — the correction's scope + which pass (N+1)
+            folds it in. Consumes the correction-feedback-loop preview
+            read-model directly through the client; mounted only when the
+            item's locale-branch identity is available (the preview key). */}
+        {item !== null && (
+          <CorrectionScopePanel
+            reviewItemId={context.reviewItemId}
+            localeBranchId={item.localeBranchId}
+          />
+        )}
         <PolicyPanel context={context} />
         <GlossaryPanel context={context} />
         <BranchReferencePanel context={context} />
