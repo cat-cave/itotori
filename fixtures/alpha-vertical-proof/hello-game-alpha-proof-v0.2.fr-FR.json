@@ -35,7 +35,7 @@
       "artifactId": "019ed025-0000-7000-8000-000000000302",
       "artifactKind": "public_fixture_manifest",
       "uri": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
+      "hash": "sha256:41c7256fa0daba15ec55de630e3857727477d664de2b707ab615ff33b4ad5228",
       "mediaType": "application/json",
       "byteSize": 5060
     },
