@@ -15,6 +15,8 @@ import type {
 } from "@itotori/db";
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
+  ApiDraftBranchRequest,
+  ApiDraftBranchResponse,
   ApiErrorResponse,
   ApiProjectImportRequest,
   ApiProjectImportResponse,
@@ -1164,6 +1166,16 @@ export const bridgeImportResponseFixture: ApiProjectImportResponse = {
   status: dashboardStatusFixture,
 };
 
+export const draftBranchRequestFixture: ApiDraftBranchRequest = {
+  project: projectFixture,
+  targetLocale: "fr-FR",
+};
+
+export const draftBranchResponseFixture: ApiDraftBranchResponse = {
+  project: projectFixture,
+  status: dashboardStatusFixture,
+};
+
 export const recordFindingRequestFixture: ApiRecordFindingRequest = {
   localeBranchId: "locale-1",
   finding: findingRecordFixture,
@@ -1242,6 +1254,7 @@ export type ApiMutationContractEntry = {
   routeId: Extract<
     ItotoriApiRouteId,
     | "imports.bridge"
+    | "branches.draft"
     | "findings.record"
     | "decisions.record"
     | "benchmarks.record"
@@ -1270,6 +1283,16 @@ export const apiMutationContract: readonly ApiMutationContractEntry[] = [
     // `"ApiProjectImportRequest: <inner>"`, so the substring keys on the
     // request type label (always present) rather than the field path.
     parserErrorSubstring: "ApiProjectImportRequest",
+  },
+  {
+    routeId: "branches.draft",
+    url: "http://itotori.test/api/projects/project-1/branches",
+    requestTypeName: "ApiDraftBranchRequest",
+    requiredRequestField: "targetLocale",
+    requiredResponseField: "status",
+    // `targetLocale` is a top-level scalar, so `assertString` includes the
+    // full `"ApiDraftBranchRequest.targetLocale"` field path.
+    parserErrorSubstring: "ApiDraftBranchRequest.targetLocale",
   },
   {
     routeId: "findings.record",

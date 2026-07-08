@@ -38,6 +38,38 @@
       ],
       "type": "object"
     },
+    "ApiDraftBranchRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "targetLocale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "targetLocale"
+      ],
+      "type": "object"
+    },
+    "ApiDraftBranchResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "object"
+        },
+        "status": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "project",
+        "status"
+      ],
+      "type": "object"
+    },
     "ApiErrorResponse": {
       "additionalProperties": false,
       "properties": {

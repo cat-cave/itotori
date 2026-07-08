@@ -222,6 +222,7 @@ function servicesFixture(): ItotoriCliServices {
           units: [],
         },
       })),
+      draftProject: vi.fn(async (project) => project),
       exportPatch: vi.fn(async (project) => ({
         project,
         patchExport: {

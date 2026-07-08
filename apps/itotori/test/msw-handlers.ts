@@ -3,6 +3,7 @@ import {
   ApiValidationError,
   assertItotoriApiResponse,
   assertItotoriApiErrorResponse,
+  parseDraftBranchRequest,
   parseProjectImportRequest,
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
@@ -24,6 +25,8 @@ import {
   dashboardStatusFixture,
   jobsRunTableFixture,
   projectOverviewFixture,
+  draftBranchRequestFixture,
+  draftBranchResponseFixture,
   recordBenchmarkRequestFixture,
   recordBenchmarkResponseFixture,
   recordDecisionRequestFixture,
@@ -38,7 +41,7 @@ import { reviewQueueDashboardFixtures } from "../src/reviewer/index.js";
 import type { ReviewerQueueDashboardReadModel } from "../src/reviewer/index.js";
 
 /**
- * ITOTORI-051 — the SUCCESS handlers for the five project mutation routes.
+ * ITOTORI-051 — the SUCCESS handlers for the six project mutation routes.
  * Defined before {@link itotoriApiMswHandlers} so the dashboard MSW server
  * can spread them in without a temporal-dead-zone reference. Exported on its
  * own so a contract test can register JUST the mutation surface (or swap in
@@ -57,6 +60,11 @@ export const itotoriProjectMutationMswHandlers = [
     const body = await readJsonBody(request);
     parseProjectImportRequest(body);
     return apiJson("imports.bridge", bridgeImportResponseFixture);
+  }),
+  http.post("http://itotori.test/api/projects/project-1/branches", async ({ request }) => {
+    const body = await readJsonBody(request);
+    parseDraftBranchRequest(body);
+    return apiJson("branches.draft", draftBranchResponseFixture);
   }),
   http.post("http://itotori.test/api/projects/project-1/findings", async ({ request }) => {
     const body = await readJsonBody(request);
@@ -81,7 +89,7 @@ export const itotoriProjectMutationMswHandlers = [
 ];
 
 /**
- * ITOTORI-051 — typed VALIDATION FAILURE handlers for the five project
+ * ITOTORI-051 — typed VALIDATION FAILURE handlers for the six project
  * mutation routes. Each one feeds the SUCCESS request fixture to the parser
  * (proving the fixture parses cleanly) and then returns the shared
  * `bad_request` error response shape every mutation emits when the parser
@@ -91,6 +99,10 @@ export const itotoriProjectMutationMswHandlers = [
 export const itotoriProjectMutationValidationFailureMswHandlers = [
   http.post("http://itotori.test/api/imports/bridge", async () => {
     parseProjectImportRequest(bridgeImportRequestFixture);
+    return apiErrorJson(apiMutationBadRequestResponseFixture, 400);
+  }),
+  http.post("http://itotori.test/api/projects/project-1/branches", async () => {
+    parseDraftBranchRequest(draftBranchRequestFixture);
     return apiErrorJson(apiMutationBadRequestResponseFixture, 400);
   }),
   http.post("http://itotori.test/api/projects/project-1/findings", async () => {
@@ -113,7 +125,7 @@ export const itotoriProjectMutationValidationFailureMswHandlers = [
 
 /**
  * ITOTORI-050 / ITOTORI-051 — typed PERMISSION / SCOPING DENIAL handlers for
- * the five project mutation routes. Each returns the shared `forbidden` error
+ * the six project mutation routes. Each returns the shared `forbidden` error
  * response shape every mutation emits when either the permission gate
  * (`AuthorizationError`) or the server-side project/branch ownership scope
  * check (`ProjectMutationScopeError`) refuses the write. Used by the
@@ -122,6 +134,9 @@ export const itotoriProjectMutationValidationFailureMswHandlers = [
  */
 export const itotoriProjectMutationPermissionDeniedMswHandlers = [
   http.post("http://itotori.test/api/imports/bridge", async () =>
+    apiErrorJson(apiMutationForbiddenResponseFixture, 403),
+  ),
+  http.post("http://itotori.test/api/projects/project-1/branches", async () =>
     apiErrorJson(apiMutationForbiddenResponseFixture, 403),
   ),
   http.post("http://itotori.test/api/projects/project-1/findings", async () =>

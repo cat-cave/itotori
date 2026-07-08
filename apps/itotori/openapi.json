@@ -37,6 +37,38 @@
         ],
         "type": "object"
       },
+      "ApiDraftBranchRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "targetLocale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "targetLocale"
+        ],
+        "type": "object"
+      },
+      "ApiDraftBranchResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "project": {
+            "type": "object"
+          },
+          "status": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "status"
+        ],
+        "type": "object"
+      },
       "ApiErrorResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2242,6 +2274,95 @@
         },
         "summary": "Record a benchmark report.",
         "x-itotoriRouteId": "benchmarks.record"
+      }
+    },
+    "/api/projects/{projectId}/branches": {
+      "post": {
+        "operationId": "branchesDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiDraftBranchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiDraftBranchResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Draft a locale branch.",
+        "x-itotoriRouteId": "branches.draft"
       }
     },
     "/api/projects/{projectId}/decisions": {

@@ -236,6 +236,9 @@ export async function runItotoriCliCommand(
     case "import":
       await runImport(args, dependencies);
       break;
+    case "draft":
+      await runDraft(args, dependencies);
+      break;
     case "agentic-loop-smoke":
       await runAgenticLoopSmoke(args, dependencies);
       break;
@@ -472,6 +475,16 @@ async function runImport(args: string[], dependencies: ItotoriCliDependencies): 
     services.projectWorkflow.importBridge(bridge),
   );
   dependencies.io.writeJson(projectPath, project);
+}
+
+async function runDraft(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  const projectPath = requiredFlag(args, "--project");
+  const locale = requiredFlag(args, "--locale");
+  const project = readProject(dependencies.io, projectPath);
+  const nextProject = await dependencies.withServices((services) =>
+    services.projectWorkflow.draftProject(project, locale),
+  );
+  dependencies.io.writeJson(projectPath, nextProject);
 }
 
 async function runAgenticLoopSmoke(

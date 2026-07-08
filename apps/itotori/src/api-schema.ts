@@ -155,6 +155,7 @@ export type ItotoriApiRouteId =
   | "runtime.status"
   | "queue.health"
   | "imports.bridge"
+  | "branches.draft"
   | "findings.record"
   | "decisions.record"
   | "benchmarks.record"
@@ -439,6 +440,16 @@ export type ApiProjectImportResponse = {
   status: ProjectDashboardStatus;
 };
 
+export type ApiDraftBranchRequest = {
+  project: ProjectState;
+  targetLocale: string;
+};
+
+export type ApiDraftBranchResponse = {
+  project: ProjectState;
+  status: ProjectDashboardStatus;
+};
+
 export type ApiRecordFindingRequest = {
   localeBranchId?: string;
   finding: FindingRecordV02;
@@ -498,6 +509,7 @@ export type ItotoriApiResponseBody =
   | ApiQueueHealthResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
+  | ApiDraftBranchResponse
   | ApiRecordFindingResponse
   | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
@@ -516,6 +528,15 @@ export function parseProjectImportRequest(body: unknown): ApiProjectImportReques
     const request = asRecord(body, "ApiProjectImportRequest");
     assertBridgeInput(request.bridge);
     return { bridge: request.bridge };
+  });
+}
+
+export function parseDraftBranchRequest(body: unknown): ApiDraftBranchRequest {
+  return parseRequest("ApiDraftBranchRequest", () => {
+    const request = asRecord(body, "ApiDraftBranchRequest");
+    assertProjectState(request.project, "ApiDraftBranchRequest.project");
+    assertString(request.targetLocale, "ApiDraftBranchRequest.targetLocale");
+    return { project: request.project, targetLocale: request.targetLocale };
   });
 }
 
@@ -807,6 +828,9 @@ export function assertItotoriApiResponse(
       return;
     case "imports.bridge":
       assertProjectImportResponse(value);
+      return;
+    case "branches.draft":
+      assertDraftBranchResponse(value);
       return;
     case "findings.record":
       assertRecordFindingResponse(value);
@@ -4025,6 +4049,12 @@ function assertProjectImportResponse(value: unknown): asserts value is ApiProjec
   const response = asRecord(value, "ApiProjectImportResponse");
   assertProjectState(response.project, "ApiProjectImportResponse.project");
   assertProjectDashboardStatus(response.status, "ApiProjectImportResponse.status");
+}
+
+function assertDraftBranchResponse(value: unknown): asserts value is ApiDraftBranchResponse {
+  const response = asRecord(value, "ApiDraftBranchResponse");
+  assertProjectState(response.project, "ApiDraftBranchResponse.project");
+  assertProjectDashboardStatus(response.status, "ApiDraftBranchResponse.status");
 }
 
 function assertRecordFindingResponse(value: unknown): asserts value is ApiRecordFindingResponse {

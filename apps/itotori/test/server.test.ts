@@ -458,7 +458,7 @@ describe("itotori-043-followup transport-level read-only routing", () => {
     try {
       const address = server.address() as AddressInfo;
       const response = await fetch(
-        `http://127.0.0.1:${address.port}/api/projects/project-1/findings`,
+        `http://127.0.0.1:${address.port}/api/projects/project-1/branches`,
       );
 
       expect(response.status).toBe(405);
@@ -539,6 +539,7 @@ async function serviceFactory<T>(
       getCostDrilldown,
       getBenchmarkReports,
       importBridge,
+      draftProject: vi.fn(async () => projectFixture),
       exportPatch: vi.fn(async () => {
         throw new Error("not used");
       }),

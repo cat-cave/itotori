@@ -10,6 +10,7 @@ import type {
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
+  ItotoriTranslationMemoryService,
   LocaleBranchIdentity,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -35,11 +36,24 @@ import {
   assertConformanceManifestResultJoinV01,
   assertConformanceManifestV01,
   assertConformanceResultV01,
+  assertNormalizedSurfacePreservesIdentity,
   ConformanceIngestionError,
   computePatchResultOutputHashRollupV02,
+  normalizeBridgeSurface,
+  normalizedProtectedSpanRaws,
 } from "@itotori/localization-bridge-schema";
+import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import { summarizeBenchmarkReportMetadata } from "../benchmark-report-summary.js";
-import type { JsonObject } from "../providers/types.js";
+import {
+  ModelProviderError,
+  type JsonObject,
+  type ModelInvocationResult,
+  type ModelInvocationRequest,
+  type ModelProvider,
+  type ProviderRunRecord,
+  createProviderRunId,
+  localOnlyRoutingPosture,
+} from "../providers/types.js";
 import {
   DeterministicPreExportQaError,
   runDeterministicPreExportQa,
@@ -126,6 +140,27 @@ export type ConformanceIngestResult = {
   }>;
 };
 
+/**
+ * itotori-purge-fakemodelprovider-from-production — the DB-backed draft
+ * workflow (`projects.draft` HTTP route + CLI `draft`) MUST draft with a
+ * REAL model provider whose cost is read from the live call. Per the
+ * strict-proof rule "fakes and mocks ONLY belong in tests, NEVER in real
+ * code", the service no longer defaults to a zero-cost FakeModelProvider.
+ * When the production wiring has no real provider configured, `draftProject`
+ * refuses LOUDLY with this typed error rather than silently drafting a fake,
+ * zero-cost translation. Tests inject an explicit test double.
+ */
+export class DraftProviderNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "draftProject refused: no real model provider is configured for the draft workflow. " +
+        "The production draft path must inject a live OpenRouterModelProvider (real call, real cost); " +
+        "refusing to draft with a fake, zero-cost provider. Tests must inject an explicit test double.",
+    );
+    this.name = "DraftProviderNotConfiguredError";
+  }
+}
+
 export class PatchResultIngestionError extends Error {
   constructor(
     readonly diagnostic: PatchResultIngestionDiagnostic,
@@ -154,6 +189,7 @@ export interface ItotoriProjectWorkflowPort {
   getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
+  draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
   exportPatch(project: ProjectState): Promise<{
     project: ProjectState;
     patchExport: PatchExport;
@@ -201,7 +237,9 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   constructor(
     private readonly repository: ItotoriProjectRepositoryPort,
     private readonly actor: AuthorizationActor,
+    private readonly draftModelProvider?: ModelProvider,
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
+    private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
     private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
     private readonly passLedger?: ItotoriLocalizationPassLedgerRepositoryPort,
   ) {}
@@ -310,6 +348,106 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     };
     const importStatus = await this.repository.importSourceBundle(this.actor, project);
     return { ...project, importStatus };
+  }
+
+  async draftProject(project: ProjectState, locale: string): Promise<ProjectState> {
+    // itotori-purge-fakemodelprovider-from-production — refuse LOUDLY when no
+    // real provider is wired rather than silently drafting a zero-cost fake.
+    const provider = this.draftModelProvider;
+    if (provider === undefined) {
+      throw new DraftProviderNotConfiguredError();
+    }
+    const nextProject: ProjectState = {
+      ...project,
+      targetLocale: locale,
+      drafts: { ...project.drafts },
+    };
+    const reusedDraftUnitIds = await this.prefillTranslationMemoryDrafts(nextProject, locale);
+    for (const unit of nextProject.bridge.units) {
+      if (reusedDraftUnitIds.has(unit.bridgeUnitId)) {
+        continue;
+      }
+      const prompt = draftPromptPreset();
+      // SHARED-020 — normalize the unit's surface through the shared,
+      // surface-identity + protected-span preserving path. The expanded
+      // surface kind flows into the request (never collapsed to generic
+      // dialogue) and the assertion below fails loudly if normalization ever
+      // corrupts a span's offset / identity / semantic meaning.
+      const normalizedSurface = normalizeBridgeSurface(unit);
+      assertNormalizedSurfacePreservesIdentity(
+        unit,
+        normalizedSurface,
+        `draft.${unit.bridgeUnitId}`,
+      );
+      const request: ModelInvocationRequest = {
+        taskKind: "draft_translation",
+        modelId: provider.descriptor.defaultModelId,
+        // ITOTORI-220 — pin the descriptor's providerName as the
+        // providerId for this internal workflow path. The recorded
+        // provider surfaces the captured upstream identity, and the live
+        // providers will surface their pinned providerId.
+        providerId: provider.descriptor.providerName,
+        inputClassification: "private_corpus",
+        prompt,
+        messages: [
+          {
+            role: "system",
+            content: draftPromptSystemMessage,
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              sourceLocale: unit.sourceLocale,
+              targetLocale: locale,
+              surfaceKind: normalizedSurface.surfaceKind,
+              sourceText: normalizedSurface.sourceText,
+              protectedSpans: normalizedProtectedSpanRaws(normalizedSurface),
+            }),
+          },
+        ],
+      };
+      let result: ModelInvocationResult;
+      const invocationStartedAt = new Date();
+      try {
+        assertProviderInvocationSupported({
+          descriptor: provider.descriptor,
+          request,
+          requestedModelId: request.modelId ?? provider.descriptor.defaultModelId,
+        });
+        result = await provider.invoke(request);
+      } catch (error) {
+        await this.recordProviderFailure(
+          provider,
+          nextProject,
+          request,
+          invocationStartedAt,
+          error,
+        );
+        throw error;
+      }
+      if (result.content === null) {
+        const failedRun = failedProviderRunFromRun(result.providerRun, "provider_response_invalid");
+        const error = new ModelProviderError(
+          `draft provider returned no text for ${unit.bridgeUnitId}`,
+          "provider_response_invalid",
+          false,
+          failedRun,
+          result.adapterMetadata,
+        );
+        await this.recordProviderFailure(
+          provider,
+          nextProject,
+          request,
+          invocationStartedAt,
+          error,
+        );
+        throw error;
+      }
+      await this.recordProviderRun(nextProject, result);
+      nextProject.drafts[unit.bridgeUnitId] = result.content;
+    }
+    await this.repository.saveDrafts(this.actor, nextProject);
+    return nextProject;
   }
 
   async exportPatch(project: ProjectState): Promise<{
@@ -671,6 +809,233 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       findingCount: report.findingRecords.length,
     };
   }
+
+  private async recordProviderRun(
+    project: ProjectState,
+    result: ModelInvocationResult,
+  ): Promise<void> {
+    if (!this.modelLedger) {
+      return;
+    }
+    await this.modelLedger.recordProviderRun(
+      this.actor,
+      providerRunLedgerInputFromRun(project, result.providerRun, result.adapterMetadata),
+    );
+  }
+
+  private async prefillTranslationMemoryDrafts(
+    project: ProjectState,
+    locale: string,
+  ): Promise<Set<string>> {
+    if (!this.translationMemory) {
+      return new Set();
+    }
+    const result = await this.translationMemory.prefillDrafts(this.actor, {
+      projectId: project.projectId,
+      localeBranchId: project.localeBranchId,
+      requestedTargetLocale: locale,
+      bridgeUnitIds: project.bridge.units.map((unit) => unit.bridgeUnitId),
+      applyDrafts: true,
+      includeFuzzy: false,
+      requestId: `draft:${project.projectId}:${project.localeBranchId}:${locale}`,
+    });
+    if (result.status !== "completed") {
+      return new Set();
+    }
+
+    const reusedDraftUnitIds = new Set<string>();
+    for (const reuse of result.reuses) {
+      project.drafts[reuse.target.bridgeUnitId] = reuse.event.targetText;
+      reusedDraftUnitIds.add(reuse.target.bridgeUnitId);
+    }
+    return reusedDraftUnitIds;
+  }
+
+  private async recordProviderFailure(
+    provider: ModelProvider,
+    project: ProjectState,
+    request: ModelInvocationRequest,
+    startedAt: Date,
+    error: unknown,
+  ): Promise<void> {
+    if (!this.modelLedger) {
+      return;
+    }
+    const providerRun =
+      error instanceof ModelProviderError && error.providerRun !== undefined
+        ? error.providerRun
+        : failedProviderRunFromRequest({
+            descriptor: provider.descriptor,
+            request,
+            startedAt,
+            error,
+          });
+    const adapterMetadata = error instanceof ModelProviderError ? error.adapterMetadata : undefined;
+    await this.modelLedger.recordProviderRun(
+      this.actor,
+      providerRunLedgerInputFromRun(project, providerRun, adapterMetadata),
+    );
+  }
+}
+
+const draftPromptSystemMessage =
+  "Draft a localized target string. Preserve protected spans exactly and return only the target text.";
+
+function draftPromptPreset() {
+  const configSnapshot = {
+    schemaVersion: "itotori.prompt-preset.v0",
+    presetId: "itotori-draft-default-v1",
+    templateVersion: "1.0.0",
+    messages: [
+      {
+        role: "system",
+        content: draftPromptSystemMessage,
+      },
+      {
+        role: "user",
+        contentTemplate:
+          '{"sourceLocale":string,"targetLocale":string,"sourceText":string,"protectedSpans":string[]}',
+      },
+    ],
+  } satisfies JsonObject;
+  return {
+    presetId: "itotori-draft-default-v1",
+    templateVersion: "1.0.0",
+    promptHash: hashJson(configSnapshot),
+    schemaVersion: "itotori.prompt-preset.v0",
+    configSnapshot,
+  };
+}
+
+function failedProviderRunFromRun(run: ProviderRunRecord, errorClass: string): ProviderRunRecord {
+  return {
+    ...run,
+    status: "failed",
+    errorClasses: Array.from(new Set([...run.errorClasses, errorClass])),
+    // ITOTORI-225 — failed runs incurred no upstream charge.
+    cost: {
+      costKind: "zero",
+      currency: "USD",
+      amountUsd: "0",
+      amountMicrosUsd: 0,
+    },
+  };
+}
+
+function failedProviderRunFromRequest(input: {
+  descriptor: ModelProvider["descriptor"];
+  request: ModelInvocationRequest;
+  startedAt: Date;
+  error: unknown;
+}): ProviderRunRecord {
+  const completedAt = new Date();
+  const requestedModelId = input.request.modelId;
+  const fallbackPlan = fallbackPlanForRequest(input.request, requestedModelId);
+  const run: ProviderRunRecord = {
+    runId: input.request.runId ?? createProviderRunId(input.descriptor.family),
+    taskKind: input.request.taskKind,
+    startedAt: input.startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    latencyMs: completedAt.getTime() - input.startedAt.getTime(),
+    status: "failed",
+    provider: {
+      providerFamily: input.descriptor.family,
+      endpointFamily: input.descriptor.endpointFamily,
+      providerName: input.descriptor.providerName,
+      requestedModelId,
+      requestedProviderId: input.request.providerId,
+      actualModelId: requestedModelId,
+    },
+    structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
+    retryCount: 0,
+    errorClasses: [providerFailureClass(input.error)],
+    fallbackUsed: false,
+    fallbackPlan,
+    tokenUsage: {
+      tokenCountSource: "unknown",
+    },
+    // ITOTORI-225 — failed runs incurred no upstream charge.
+    cost: {
+      costKind: "zero",
+      currency: "USD",
+      amountUsd: "0",
+      amountMicrosUsd: 0,
+    },
+    // ITOTORI-230 — the call never reached the wire (pre-fetch
+    // failure), so we record the local-only posture as a structurally
+    // honest stand-in. A future capture path could carry the
+    // already-built routing block for HTTP-level failures.
+    routingPosture: localOnlyRoutingPosture(input.request.providerId),
+    // ITOTORI-232 — pre-fetch failures never produced a `usage` block;
+    // record the typed sentinel so the ledger row is object-shaped and
+    // the partial-NULL CHECK exempts it (no `cost` key).
+    usageResponseJson: { _pre_fetch_failure: true },
+    prompt: input.request.prompt,
+  };
+  if (input.request.preset) {
+    run.providerPreset = input.request.preset;
+  }
+  return run;
+}
+
+function providerFailureClass(error: unknown): string {
+  if (error instanceof ModelProviderError) {
+    return error.code;
+  }
+  return "provider_invocation_error";
+}
+
+function fallbackPlanForRequest(
+  request: ModelInvocationRequest,
+  requestedModelId: string,
+): string[] {
+  return Array.from(new Set([requestedModelId, ...(request.fallbackModels ?? [])]));
+}
+
+function providerRunLedgerInputFromRun(
+  project: ProjectState,
+  run: ProviderRunRecord,
+  adapterMetadata: JsonObject | undefined,
+): ProviderRunLedgerInput {
+  const prompt: ProviderRunLedgerInput["prompt"] = {
+    promptPresetId: run.prompt.presetId,
+    promptTemplateVersion: run.prompt.templateVersion,
+    promptHash: run.prompt.promptHash,
+  };
+  if (run.prompt.schemaVersion !== undefined) {
+    prompt.presetSchemaVersion = run.prompt.schemaVersion;
+  }
+  if (run.prompt.configSnapshot !== undefined) {
+    prompt.configSnapshot = run.prompt.configSnapshot;
+  }
+  return {
+    providerRunId: run.runId,
+    projectId: project.projectId,
+    localeBranchId: project.localeBranchId,
+    taskKind: run.taskKind,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    latencyMs: run.latencyMs,
+    status: run.status,
+    provider: run.provider,
+    prompt,
+    structuredOutputMode: run.structuredOutputMode,
+    retryCount: run.retryCount,
+    errorClasses: run.errorClasses,
+    fallbackUsed: run.fallbackUsed,
+    fallbackPlan: run.fallbackPlan,
+    tokenUsage: run.tokenUsage,
+    cost: run.cost,
+    // ITOTORI-230 — the captured OR routing posture for THIS run lands
+    // verbatim in the ledger row's `routing_posture` jsonb. Every
+    // ProviderRunRecord MUST carry one (LIVE OR builds it from the
+    // wire block; fake / local / recorded fill in their canonical or
+    // captured posture); writing the ledger row without it would
+    // leave the ZDR-enforcement count blind.
+    routingPosture: run.routingPosture as unknown as Record<string, unknown>,
+    ...(run.providerPreset === undefined ? {} : { providerPreset: run.providerPreset }),
+    ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
+  };
 }
 
 function providerRunLedgerInputFromBenchmark(

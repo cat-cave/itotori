@@ -112,6 +112,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
       projectRepository,
       actor,
       undefined,
+      undefined,
+      undefined,
       conformance.port,
     );
     const project = projectFixture();
@@ -138,6 +140,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
       projectRepository,
       actor,
       undefined,
+      undefined,
+      undefined,
       conformance.port,
     );
     const project = projectFixture();
@@ -156,6 +160,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
       projectRepository,
       actor,
       undefined,
+      undefined,
+      undefined,
       conformance.port,
     );
     const project = projectFixture();
@@ -173,6 +179,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
     const service = new ItotoriProjectWorkflowService(
       projectRepository,
       actor,
+      undefined,
+      undefined,
       undefined,
       conformance.port,
     );
@@ -195,6 +203,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
     const service = new ItotoriProjectWorkflowService(
       projectRepository,
       actor,
+      undefined,
+      undefined,
       undefined,
       conformance.port,
     );
@@ -240,6 +250,8 @@ describe("ItotoriProjectWorkflowService.ingestConformanceReport", () => {
     const service = new ItotoriProjectWorkflowService(
       projectRepository,
       actor,
+      undefined,
+      undefined,
       undefined,
       conformance.port,
     );
@@ -372,6 +384,8 @@ function servicesFixtureWithConformanceWorkflow(): ItotoriCliServices {
   const workflow = new ItotoriProjectWorkflowService(
     projectRepository,
     actor,
+    undefined,
+    undefined,
     undefined,
     conformance.port,
   );

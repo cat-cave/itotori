@@ -30,8 +30,9 @@ import {
   benchmarkReportsFixture,
   costDrilldownFixture,
   dashboardStatusFixture,
-  recordFindingRequestFixture,
-  recordFindingResponseFixture,
+  draftBranchRequestFixture,
+  draftBranchResponseFixture,
+  projectFixture,
 } from "./api-fixtures.js";
 
 const BASE = "http://itotori.test";
@@ -264,23 +265,24 @@ describe("fnd-api-client: type-safe consumption", () => {
 
   it("createApiQueryHook yields a typed resource for a POST route with a body", async () => {
     server.use(
-      http.post(`${BASE}/api/projects/project-1/findings`, () =>
-        apiJson("findings.record", recordFindingResponseFixture),
+      http.post(`${BASE}/api/projects/project-1/branches`, () =>
+        apiJson("branches.draft", draftBranchResponseFixture),
       ),
     );
     const { useApiQuery } = createApiQueryHook(client());
     // body + pathParams are REQUIRED here (typed); the call compiles because
-    // both are supplied with the correct shape.
-    const resource = useApiQuery("findings.record", {
+    // both are supplied with the correct shape (ProjectState + targetLocale).
+    const resource = useApiQuery("branches.draft", {
       pathParams: { projectId: "project-1" },
-      body: recordFindingRequestFixture,
+      body: draftBranchRequestFixture,
     });
     const settled = await resource.whenSettled();
     expect(settled.state).toBe("ready");
     if (settled.state !== "ready") {
       throw new Error("expected ready state");
     }
-    expect(settled.data.findingId).toBe(recordFindingResponseFixture.findingId);
+    expect(settled.data.status.projectId).toBe(dashboardStatusFixture.projectId);
+    expect(settled.data.project.projectId).toBe(projectFixture.projectId);
   });
 });
 
@@ -302,11 +304,11 @@ describe("fnd-api-client: compile-time type-safety", () => {
       .toMatchTypeOf<{ pathParams: { reviewItemId: string }; body?: never }>();
 
     // POST route with path params + body: both REQUIRED.
-    expectTypeOf(c.request<"findings.record">)
+    expectTypeOf(c.request<"branches.draft">)
       .parameter(1)
       .toMatchTypeOf<{
         pathParams: { projectId: string };
-        body: { finding: typeof recordFindingRequestFixture.finding };
+        body: { project: typeof projectFixture; targetLocale: string };
       }>();
 
     // Response type is the typed body, not `unknown`.
