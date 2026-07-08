@@ -13474,6 +13474,120 @@ pub fn redact_report_value(value: &Value) -> Value {
     redact_report_value_at(value, "$")
 }
 
+/// Whether a string leaf named as a typed diagnostic identifier ALSO carries a
+/// value matching its known-safe shape, so it can be printed verbatim.
+///
+/// The field NAME alone is NOT proof the value is safe: a secret-shaped value
+/// that happened to land in a `diagnosticCode`/`failureId`/etc. field must NOT
+/// ride through just because of the field name. So the exemption is gated on
+/// the VALUE actually matching a vocabulary-token / enum / UUID shape:
+///
+/// * stable error codes and v0.2 failure categories
+///   (`kaifuu.reallive.patchback_*`, `patch_write_failed`) match a conservative
+///   identifier grammar `^[A-Za-z][A-Za-z0-9_.:-]*$` — an ASCII-identifier-ish
+///   token with no whitespace, no `+`/`/`/`=` (so no base64), and a leading
+///   letter (so no hex/number-leading key material);
+/// * `failureId` must be a UUID.
+///
+/// If the value does NOT match its safe shape (raw-key-shaped, high-entropy,
+/// path-like, base64, …), this returns `false` and the caller falls back to the
+/// normal content redactor, so a secret still redacts.
+///
+/// The field-NAME secret gate (`secret_redaction_reason`) still runs ahead of
+/// this, so a genuinely secret-named field is unaffected either way.
+fn is_safe_typed_diagnostic_identifier(key: &str, value: &str) -> bool {
+    match normalize_secret_field_name(key).as_str() {
+        "code" | "diagnosticcode" | "category" | "rollbackdiagnosticcode" => {
+            is_safe_vocabulary_token(value)
+        }
+        "failureid" => is_uuid_like(value),
+        _ => false,
+    }
+}
+
+/// A conservative enum/vocabulary-token grammar: a leading ASCII letter
+/// followed by ASCII letters/digits and the code separators `_`, `.`, `:`, `-`.
+/// Deliberately excludes whitespace and every base64/base64 symbol
+/// (`+`, `/`, `=`), and requires a leading LETTER so a hex- or number-leading
+/// raw-key string cannot pass. Matches `^[A-Za-z][A-Za-z0-9_.:-]*$`.
+///
+/// The grammar alone still admits `-`/`_`, so a base64url raw key that happens
+/// to lead with a letter could match it. So a value that passes the grammar is
+/// additionally run through the KAIFUU-085 raw-key heuristic and rejected if it
+/// looks like raw key material — a diagnostic code / category never trips that
+/// heuristic, but a high-entropy secret does, and must NOT ride through.
+fn is_safe_vocabulary_token(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    let grammar_ok = chars.all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '_' | '.' | ':' | '-')
+    });
+    grammar_ok && !looks_like_raw_key_material(value)
+}
+
+/// Free-text diagnostic fields whose typed code prefix + human-readable reason
+/// must stay visible for triage, while any secret-shaped token embedded in the
+/// prose is scrubbed in place (rather than blanking the whole message).
+fn is_diagnostic_free_text_field(key: &str) -> bool {
+    matches!(
+        normalize_secret_field_name(key).as_str(),
+        "cause" | "message" | "reason"
+    )
+}
+
+/// Scrub only the secret-shaped whitespace tokens out of a free-text diagnostic
+/// message, preserving every other token. This keeps the typed diagnostic code
+/// and the human-readable reason visible for triage while still masking any
+/// raw key material, local path, private payload, or sensitive filename that a
+/// message happens to carry.
+///
+/// The per-token predicate is the same one the whole-string redactor uses
+/// (`text_requires_redaction`), so raw-key redaction is NOT weakened: a token
+/// that would have redacted the whole message still redacts — just that token.
+fn redact_secret_tokens_in_text(text: &str) -> String {
+    // A forbidden private-payload marker (`helper dump`, `decrypted text`,
+    // `raw key`, …) is a multi-word phrase that per-token scanning cannot
+    // detect, and its presence means the whole message is carrying a private
+    // dump rather than a typed diagnostic reason — so redact the whole string.
+    // A genuine typed patchback reason never contains these phrases, so triage
+    // visibility is unaffected.
+    if text_contains_forbidden_private_payload(text) {
+        return format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]");
+    }
+    // Preserve the exact original whitespace runs (single/multi space, tabs,
+    // newlines) so the reason reads identically apart from masked tokens.
+    let mut out = String::with_capacity(text.len());
+    let mut token = String::new();
+    let flush = |token: &mut String, out: &mut String| {
+        if token.is_empty() {
+            return;
+        }
+        if text_requires_redaction(token) {
+            out.push_str("[REDACTED:");
+            out.push_str(SEMANTIC_SECRET_REDACTED);
+            out.push(']');
+        } else {
+            out.push_str(token);
+        }
+        token.clear();
+    };
+    for character in text.chars() {
+        if character.is_whitespace() {
+            flush(&mut token, &mut out);
+            out.push(character);
+        } else {
+            token.push(character);
+        }
+    }
+    flush(&mut token, &mut out);
+    out
+}
+
 fn redact_report_value_at(value: &Value, field: &str) -> Value {
     match value {
         Value::Object(object) => {
@@ -13489,6 +13603,27 @@ fn redact_report_value_at(value: &Value, field: &str) -> Value {
                         key.clone(),
                         Value::String(format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")),
                     );
+                } else if let Some(text) = child.as_str() {
+                    // A string leaf named as a typed diagnostic identifier
+                    // (diagnosticCode / category / code / failureId /
+                    // rollbackDiagnosticCode) is exempt from the free-text content
+                    // heuristic ONLY when its value ALSO matches the known-safe
+                    // vocabulary-token / enum / UUID shape — so an operator can
+                    // triage a patch failure by its typed code (the common case)
+                    // even when that code happens to look hex- or base64url-shaped,
+                    // while a secret-shaped value that merely landed in a
+                    // code-named field still falls through to the content redactor
+                    // and redacts. Free-text diagnostic fields (cause / message /
+                    // reason) keep their typed code + human reason visible while
+                    // any embedded secret-shaped token is scrubbed in place.
+                    let value = if is_safe_typed_diagnostic_identifier(key, text) {
+                        text.to_string()
+                    } else if is_diagnostic_free_text_field(key) {
+                        redact_secret_tokens_in_text(text)
+                    } else {
+                        redact_for_log_or_report(text)
+                    };
+                    redacted.insert(key.clone(), Value::String(value));
                 } else {
                     redacted.insert(key.clone(), redact_report_value_at(child, &child_field));
                 }
@@ -27128,6 +27263,195 @@ mod tests {
             assert!(
                 !serialized.contains(forbidden),
                 "redacted report value leaked {forbidden}: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn patchback_diagnostic_codes_stay_visible_while_secret_material_redacts() {
+        // KAIFUU: exempt typed patchback diagnostic codes/categories/reasons
+        // from the free-text secret-redactor so an agent can triage patch
+        // failures at scale, WITHOUT weakening raw-key redaction. This is the
+        // v0.2 PatchResult `failures[]` shape emitted by `build_failure_v02` /
+        // `map_patchback_error_to_v02_failure` and redacted through
+        // `redact_report_value` on the CLI emit path.
+        let raw_key = "sk-Ab3xQ9pLmN7rT2vW8yZ4dK6hJ1cF5gB0nP-eR_uS";
+        let value = serde_json::json!({
+            "schemaVersion": "0.2.0",
+            "status": "failed",
+            "failureCategories": ["patch_write_failed", "source_incompatible"],
+            "failures": [
+                {
+                    // A UUID failure id — must survive verbatim (not a secret).
+                    "failureId": "019ed011-0000-7000-8000-000000000031",
+                    "category": "patch_write_failed",
+                    // The typed diagnostic code false-tripped the raw-key
+                    // heuristic in prose form before this fix; it MUST be visible.
+                    "diagnosticCode": "kaifuu.reallive.patchback_target_encode_failure",
+                    // Free-text cause: the typed code prefix + the human reason
+                    // (a UUID unit id, a scene id, an offset) stay visible while
+                    // an embedded raw-key-shaped token is scrubbed in place.
+                    "cause": format!(
+                        "kaifuu.reallive.patchback_target_encode_failure: unit 019ed011-0000-7000-8000-000000000020 target text could not be encoded as Shift-JIS at scene 0031 offset 0x1a2b; leaked key {raw_key}"
+                    ),
+                    "bridgeUnitId": "019ed011-0000-7000-8000-000000000020",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot",
+                },
+                {
+                    "failureId": "019ed011-0000-7000-8000-000000000032",
+                    "category": "source_incompatible",
+                    "diagnosticCode": "kaifuu.reallive.patchback_provenance_mismatch",
+                    "cause": "kaifuu.reallive.patchback_provenance_mismatch: unit u1 byte range 0x1a2b..0x1a3c does not resolve to a scene textout body: offset drift",
+                    "bridgeUnitId": "019ed011-0000-7000-8000-000000000021",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot",
+                }
+            ],
+        });
+
+        let redacted = redact_report_value(&value);
+
+        // --- Case 1: typed diagnostic codes/categories/reasons are VISIBLE. ---
+        assert_eq!(
+            redacted["failures"][0]["diagnosticCode"],
+            "kaifuu.reallive.patchback_target_encode_failure",
+            "typed diagnostic code must be visible for triage, not [REDACTED]"
+        );
+        assert_eq!(
+            redacted["failures"][0]["category"], "patch_write_failed",
+            "typed failure category must be visible"
+        );
+        assert_eq!(
+            redacted["failures"][1]["diagnosticCode"],
+            "kaifuu.reallive.patchback_provenance_mismatch"
+        );
+        assert_eq!(
+            redacted["failures"][0]["failureId"], "019ed011-0000-7000-8000-000000000031",
+            "UUID failure id must survive verbatim"
+        );
+        assert_eq!(
+            redacted["failureCategories"][0], "patch_write_failed",
+            "failure category vocabulary must survive verbatim"
+        );
+        // The human-readable reason stays legible: the code, the unit id, the
+        // scene id and the offset all remain in the cause string.
+        let cause0 = redacted["failures"][0]["cause"].as_str().unwrap();
+        for legible in [
+            "kaifuu.reallive.patchback_target_encode_failure",
+            "could not be encoded as Shift-JIS",
+            "scene 0031",
+            "offset 0x1a2b",
+            "019ed011-0000-7000-8000-000000000020",
+        ] {
+            assert!(
+                cause0.contains(legible),
+                "diagnostic reason lost triage detail {legible}: {cause0}"
+            );
+        }
+        // The second, entirely-non-secret cause survives unchanged.
+        assert_eq!(
+            redacted["failures"][1]["cause"],
+            "kaifuu.reallive.patchback_provenance_mismatch: unit u1 byte range 0x1a2b..0x1a3c does not resolve to a scene textout body: offset drift"
+        );
+
+        // --- Case 2: real key material embedded in the reason still redacts. ---
+        assert!(
+            cause0.contains(SEMANTIC_SECRET_REDACTED),
+            "the embedded raw-key token must be scrubbed: {cause0}"
+        );
+        let serialized = serde_json::to_string(&redacted).unwrap();
+        assert!(
+            !serialized.contains(raw_key),
+            "raw key material leaked through the diagnostic exemption: {serialized}"
+        );
+    }
+
+    #[test]
+    fn diagnostic_free_text_scrub_masks_secret_tokens_but_keeps_reason() {
+        // Directly exercise the token scrubber: a free-text reason keeps every
+        // safe token while masking each secret-shaped token in place, so the
+        // raw-key heuristic is not weakened.
+        let raw_hex = "00112233445566778899aabbccddeeff00112233";
+        let text = format!(
+            "scene 0031 header parse failed at offset 0x40; leaked key {raw_hex} and path /home/dev/private.bin"
+        );
+        let scrubbed = super::redact_secret_tokens_in_text(&text);
+        for legible in [
+            "scene", "0031", "header", "parse", "failed", "offset", "0x40",
+        ] {
+            assert!(
+                scrubbed.contains(legible),
+                "scrub dropped safe token {legible}: {scrubbed}"
+            );
+        }
+        assert!(
+            !scrubbed.contains(raw_hex),
+            "raw hex key not scrubbed: {scrubbed}"
+        );
+        assert!(
+            !scrubbed.contains("/home/dev/private.bin"),
+            "local path not scrubbed: {scrubbed}"
+        );
+        assert!(scrubbed.contains(SEMANTIC_SECRET_REDACTED));
+    }
+
+    #[test]
+    fn typed_diagnostic_field_exemption_is_value_shape_gated_not_name_gated() {
+        // The exemption must not ride on the field NAME alone: a secret-shaped
+        // value that lands in a diagnosticCode / failureId / category field must
+        // STILL redact, while a genuine enum code / category / UUID in the same
+        // field stays visible.
+        let raw_key_hex = "00112233445566778899aabbccddeeff00112233";
+        let raw_key_b64url = "Ab3xQ9pLmN7rT2vW8yZ4dK6hJ1cF5gB0nP-eR_uS0-9";
+        let value = serde_json::json!({
+            // Safe values — must survive verbatim.
+            "diagnosticCode": "kaifuu.reallive.patchback_target_encode_failure",
+            "category": "patch_write_failed",
+            "failureId": "019ed011-0000-7000-8000-000000000031",
+            // Hostile values wearing typed-identifier field NAMES — must redact.
+            "failures": [
+                { "diagnosticCode": raw_key_hex },
+                { "category": raw_key_b64url },
+                // A non-UUID secret-shaped value in a failureId field.
+                { "failureId": raw_key_hex },
+            ],
+        });
+
+        let redacted = redact_report_value(&value);
+        let serialized = serde_json::to_string(&redacted).unwrap();
+
+        // Common case: real codes/categories/UUIDs stay visible.
+        assert_eq!(
+            redacted["diagnosticCode"],
+            "kaifuu.reallive.patchback_target_encode_failure"
+        );
+        assert_eq!(redacted["category"], "patch_write_failed");
+        assert_eq!(
+            redacted["failureId"],
+            "019ed011-0000-7000-8000-000000000031"
+        );
+
+        // Secret-shaped values in code-named fields must NOT ride through.
+        assert_eq!(
+            redacted["failures"][0]["diagnosticCode"],
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
+            "raw-key-shaped value in a diagnosticCode field must redact"
+        );
+        assert_eq!(
+            redacted["failures"][1]["category"],
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
+            "base64url-shaped value in a category field must redact"
+        );
+        assert_eq!(
+            redacted["failures"][2]["failureId"],
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
+            "non-UUID secret-shaped value in a failureId field must redact"
+        );
+        for leaked in [raw_key_hex, raw_key_b64url] {
+            assert!(
+                !serialized.contains(leaked),
+                "secret rode through a code-named field: {serialized}"
             );
         }
     }
