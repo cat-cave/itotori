@@ -1300,8 +1300,8 @@ mod tests {
         assert_eq!(report.status, Xp3PrivateLocalValidationState::Passed);
         assert!(report.is_private_validated());
         // The verified workflow-bound proof entered the aggregate + row proof set.
-        assert!(report.proof_hashes.iter().any(|h| *h == canonical));
-        assert!(report.rows[0].proof_hashes.iter().any(|h| *h == canonical));
+        assert!(report.proof_hashes.contains(&canonical));
+        assert!(report.rows[0].proof_hashes.contains(&canonical));
     }
 
     #[test]
@@ -1341,7 +1341,7 @@ mod tests {
             b"kaifuu-k144-xp3-readiness/kaifuu-k057-xp3-simple-crypt/label",
         ))
         .unwrap();
-        assert!(!report.proof_hashes.iter().any(|h| *h == label_hash_again));
+        assert!(!report.proof_hashes.contains(&label_hash_again));
     }
 
     #[test]
