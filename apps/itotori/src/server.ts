@@ -292,7 +292,7 @@ function isRuntimeDashboardRoute(pathname: string): boolean {
 function isItotoriDashboardRoute(pathname: string): boolean {
   return (
     pathname === "/style-guide-builder" ||
-    /^\/reviewer-queue\/(?:batch|[^/]+)$/u.test(pathname) ||
+    /^\/reviewer-queue(?:\/(?:batch|[^/]+))?$/u.test(pathname) ||
     /^\/projects\/[^/]+\/locale-branches\/[^/]+\/asset-decisions(?:\/batch)?$/u.test(pathname) ||
     // ITOTORI-040 — the localization workspace SPA. Mirrors the client-side
     // `workspaceRoutePathRegex` so every workspace deep link (source/draft/

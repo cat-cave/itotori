@@ -16,6 +16,7 @@ import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
+import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 
@@ -35,6 +36,15 @@ export function App({ location = currentLocation() }: { location?: AppLocation }
   const legacy = matchLegacyRoute(location.pathname, location.search);
   if (legacy !== null) {
     return <LegacyRoute render={legacy} />;
+  }
+
+  // The bare `/reviewer-queue` (the categorized+severity+paginated queue) is
+  // matched BEFORE the reviewer-detail regex — the queue regex is
+  // trailing-slash-only, so it never captures a `/reviewer-queue/:id` detail
+  // path, but keeping it ahead makes the precedence explicit.
+  const reviewerQueue = parseReviewerQueueRoute(location.pathname, location.search);
+  if (reviewerQueue !== null) {
+    return <ReviewerQueueScreen route={reviewerQueue} />;
   }
 
   const reviewerDetail = parseReviewerDetailRoute(location.pathname);

@@ -167,6 +167,7 @@ describe("Itotori server API contracts", () => {
         await expect(styleGuideBuilderResponse.text()).resolves.toBe("itotori dashboard");
 
         for (const pathname of [
+          "/reviewer-queue",
           "/reviewer-queue/batch",
           "/reviewer-queue/reviewer-queue-1",
           "/projects/project-1/locale-branches/locale-1/asset-decisions",
@@ -198,7 +199,6 @@ describe("Itotori server API contracts", () => {
         }
 
         for (const pathname of [
-          "/reviewer-queue",
           "/reviewer-queue/batch/",
           "/reviewer-queue/reviewer-queue-1/extra",
           "/reviewer-queue/reviewer-queue-1/%2e%2e",
