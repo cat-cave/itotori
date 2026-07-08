@@ -27,11 +27,28 @@
 const KIDOKU_OPEN = "<reallive.kidoku ";
 
 /**
+ * Placeholder substituted for each interior close/open quote char when a
+ * multi-quoted-segment line is collapsed. `\u0001` (SOH) is a single-byte
+ * ASCII control char — it is Shift_JIS-encodable (so it survives
+ * {@link normalizeToSjisSafe}) and never appears in real dialogue, so the
+ * model cannot confuse it with the outer `「」` wrapper. The original chars
+ * are tracked in {@link ProtectedSpanSkeleton.interiorQuotes} and restored
+ * verbatim by {@link reconstructTarget}.
+ */
+const INTERIOR_QUOTE_PLACEHOLDER = "\u0001";
+
+/**
  * The deterministic protected-span skeleton of a RealLive source line, with the
  * translatable dialogue body separated out. Shapes:
  *   `<kidoku>【name】「body」` → { name:"【name】", open:"「", body, close:"」", trailing:"" }
  *   `<kidoku>「body」`        → { name:"",         open:"「", body, close:"」", trailing:"" }
  *   `<kidoku>bareNarration`   → { name:"",         open:"",  body, close:"",  trailing:"" }
+ *
+ * For a MULTI-quoted-segment line (`「A」x「B」`), the outer wrapper is the
+ * first `「` and the last `」`; any interior `」「` chars between them are
+ * collapsed to {@link INTERIOR_QUOTE_PLACEHOLDER} in `body` (so the model
+ * never sees bare interior quotes it could confuse with the wrapper) and the
+ * original chars are recorded in `interiorQuotes` for faithful re-inject.
  */
 export type ProtectedSpanSkeleton = {
   /** Leading `【…】` speaker name token, or "" when absent. */
@@ -44,6 +61,13 @@ export type ProtectedSpanSkeleton = {
   close: string;
   /** Any residual text after the closing quote (rare), preserved verbatim. */
   trailing: string;
+  /**
+   * Interior close/open quote chars collapsed out of `body` for a multi-
+   * quoted-segment line, in the order their placeholders appear. Undefined
+   * for the common single-quote / narration case. reconstructTarget swaps
+   * each placeholder back to the original char.
+   */
+  interiorQuotes?: string[];
 };
 
 /**
@@ -73,6 +97,11 @@ export function stripOutOfBandControlMarkup(text: string): string {
 /**
  * Deterministically split a source line into its protected-span skeleton plus
  * the pure translatable body. The caller sends ONLY `body` to the model.
+ *
+ * For a multi-quoted-segment line (`「A」x「B」`), the outer wrapper is the
+ * first `「` and the last 」; interior 」「 between them are collapsed to
+ * {@link INTERIOR_QUOTE_PLACEHOLDER} so the model never sees bare interior
+ * quote chars it could confuse with the wrapper or mis-nest on reconstruct.
  */
 export function splitProtectedSpans(sourceText: string): ProtectedSpanSkeleton {
   let s = stripOutOfBandControlMarkup(sourceText);
@@ -86,16 +115,42 @@ export function splitProtectedSpans(sourceText: string): ProtectedSpanSkeleton {
   let close = "";
   let trailing = "";
   let body = s;
+  let interiorQuotes: string[] | undefined;
   if (s.startsWith("「")) {
     const end = s.lastIndexOf("」");
     if (end > 0) {
       open = "「";
       close = "」";
-      body = s.slice(1, end);
+      const rawBody = s.slice(1, end);
       trailing = s.slice(end + 1);
+      // Collapse any interior 」「 to placeholders so the model never sees
+      // bare interior quote chars (which it could confuse with the outer
+      // wrapper). The original chars are tracked for faithful re-inject.
+      if (rawBody.includes("「") || rawBody.includes("」")) {
+        interiorQuotes = [];
+        let collapsed = "";
+        for (const ch of rawBody) {
+          if (ch === "「" || ch === "」") {
+            interiorQuotes.push(ch);
+            collapsed += INTERIOR_QUOTE_PLACEHOLDER;
+          } else {
+            collapsed += ch;
+          }
+        }
+        body = collapsed;
+      } else {
+        body = rawBody;
+      }
     }
   }
-  return { name, open, body, close, trailing };
+  return {
+    name,
+    open,
+    body,
+    close,
+    trailing,
+    ...(interiorQuotes !== undefined ? { interiorQuotes } : {}),
+  };
 }
 
 /**
@@ -103,6 +158,13 @@ export function splitProtectedSpans(sourceText: string): ProtectedSpanSkeleton {
  * SJIS-normalized) translated body. `nameRomanization` maps a source name
  * token to its target form; a name absent from the map keeps its original
  * (Shift_JIS-safe) token, so a name is never dropped or corrupted.
+ *
+ * For a multi-quoted-segment line, each {@link INTERIOR_QUOTE_PLACEHOLDER}
+ * the model (hopefully) preserved is swapped back to its original interior
+ * quote char from `skeleton.interiorQuotes`. Placeholders the model dropped
+ * are simply skipped (the interior 」「 is lost — caught by the downstream
+ * safety net); any leftover placeholder is stripped so it cannot leak an
+ * out-of-band control char into the patchback target.
  */
 export function reconstructTarget(
   skeleton: ProtectedSpanSkeleton,
@@ -113,7 +175,22 @@ export function reconstructTarget(
     skeleton.name && nameRomanization && nameRomanization.has(skeleton.name)
       ? (nameRomanization.get(skeleton.name) as string)
       : skeleton.name;
-  return `${name}${skeleton.open}${translatedBody}${skeleton.close}${skeleton.trailing}`;
+  let body = translatedBody;
+  const interior = skeleton.interiorQuotes;
+  if (interior !== undefined && interior.length > 0) {
+    let qi = 0;
+    let restored = "";
+    for (const ch of translatedBody) {
+      if (ch === INTERIOR_QUOTE_PLACEHOLDER) {
+        restored += interior[qi] ?? "";
+        qi += 1;
+      } else {
+        restored += ch;
+      }
+    }
+    body = restored;
+  }
+  return `${name}${skeleton.open}${body}${skeleton.close}${skeleton.trailing}`;
 }
 
 // ---------------------------------------------------------------------------

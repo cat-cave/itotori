@@ -54,6 +54,78 @@ describe("splitProtectedSpans", () => {
     expect(s.body).toBe("あ");
     expect(s.trailing).toBe("……");
   });
+  it("collapses interior 」「 of a multi-quoted-segment line to placeholders (no bare quote in body)", () => {
+    // Audit case 「A」text「B」: the naive first-open/last-close used to leave
+    // the inner 」…「 in the body, where the model could confuse it with the
+    // outer wrapper. The body now carries a placeholder per interior quote.
+    const s = splitProtectedSpans("「A」text「B」");
+    expect(s.open).toBe("「");
+    expect(s.close).toBe("」");
+    expect(s.body).not.toContain("」");
+    expect(s.body).not.toContain("「");
+    // The translatable interior content survives.
+    expect(s.body).toContain("A");
+    expect(s.body).toContain("text");
+    expect(s.body).toContain("B");
+    // The original interior close/open chars are tracked in order.
+    expect(s.interiorQuotes).toEqual(["」", "「"]);
+  });
+  it("handles a multi-quoted-segment line with a 【name】 token", () => {
+    const s = splitProtectedSpans("<reallive.kidoku 5>【凛】「あ」…「う」");
+    expect(s.name).toBe("【凛】");
+    expect(s.open).toBe("「");
+    expect(s.close).toBe("」");
+    expect(s.body).not.toContain("」");
+    expect(s.body).not.toContain("「");
+    expect(s.interiorQuotes).toEqual(["」", "「"]);
+  });
+  it("handles a three-segment multi-quote line (multiple interior pairs)", () => {
+    const s = splitProtectedSpans("「A」x「B」y「C」");
+    expect(s.body).not.toContain("」");
+    expect(s.body).not.toContain("「");
+    // Two interior close/open pairs (4 chars total).
+    expect(s.interiorQuotes).toEqual(["」", "「", "」", "「"]);
+  });
+});
+
+describe("reconstructTarget — multi-quote round-trip", () => {
+  it("round-trips a multi-quoted-segment line byte-exact via the source body", () => {
+    const skeleton = splitProtectedSpans("「A」text「B」");
+    // The reconstruct round-trip is byte-exact when the body is unchanged.
+    expect(reconstructTarget(skeleton, skeleton.body)).toBe("「A」text「B」");
+  });
+  it("round-trips a multi-quote line with 【name】 + kidoku byte-exact", () => {
+    const source = "<reallive.kidoku 5>【凛】「あ」…「う」";
+    const skeleton = splitProtectedSpans(source);
+    expect(reconstructTarget(skeleton, skeleton.body)).toBe("【凛】「あ」…「う」");
+  });
+  it("reconstructs a translated multi-quote body when the model preserved placeholders", () => {
+    // The model translated each segment and KEPT the placeholder boundary,
+    // so the deterministic re-inject restores the interior 」「 verbatim.
+    const skeleton = splitProtectedSpans("「A」x「B」");
+    const placeholders = skeleton.body.match(/\u0001/gu) ?? [];
+    expect(placeholders.length).toBe(2);
+    // Model translates A→Apple, B→Banana, preserving the \u0001 placeholders.
+    const preserved = skeleton.body.replace("A", "Apple").replace("B", "Banana");
+    expect(reconstructTarget(skeleton, preserved)).toBe("「Apple」x「Banana」");
+  });
+  it("degrades gracefully (no leftover control char) when the model DROPS placeholders", () => {
+    // If the model strips the placeholders, the interior 」「 are lost — but
+    // no bare \u0001 control char may leak into the patchback target.
+    const skeleton = splitProtectedSpans("「A」x「B」");
+    const stripped = skeleton.body.replace(/\u0001/gu, "");
+    const out = reconstructTarget(skeleton, stripped);
+    expect(out).not.toContain("\u0001");
+    expect(out).toBe("「AxB」");
+  });
+  it("degrades gracefully when the model ADDS extra placeholders", () => {
+    // Extra placeholders (model hallucinated them) must be stripped, not
+    // left as bare control chars in the patchback target.
+    const skeleton = splitProtectedSpans("「A」x「B」");
+    const extra = skeleton.body + "\u0001";
+    const out = reconstructTarget(skeleton, extra);
+    expect(out).not.toContain("\u0001");
+  });
 });
 
 describe("reconstructTarget", () => {
