@@ -785,8 +785,8 @@ describe("ItotoriProjectWorkflowService", () => {
         ...bridge.units[0]!,
         sourceText: "こんにちは、{player}と{player}。",
         protectedSpans: [
-          { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
-          { kind: "placeholder", raw: "{player}", start: 15, end: 23, preserveMode: "exact" },
+          { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
+          { kind: "placeholder", raw: "{player}", start: 29, end: 37, preserveMode: "exact" },
         ],
       },
     ];
@@ -1328,7 +1328,7 @@ function bridgeFixture(): BridgeBundle {
         sourceText: "こんにちは、{player}。",
         textSurface: "dialogue",
         protectedSpans: [
-          { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+          { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
         ],
         patchRef: {
           assetId: "source.json",

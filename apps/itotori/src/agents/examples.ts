@@ -372,8 +372,8 @@ export const deterministicPreExportQaJobFixture = {
               {
                 kind: "placeholder",
                 raw: "{player}",
-                start: 6,
-                end: 14,
+                start: 18,
+                end: 26,
                 preserveMode: "exact",
               },
             ],

@@ -12,8 +12,8 @@
       "protectedSpans": [
         {
           "spanRef": "span-019-unit-01-player",
-          "sourceStart": 6,
-          "sourceEnd": 14,
+          "sourceStart": 18,
+          "sourceEnd": 26,
           "sourceText": "{player}",
           "kind": "variable",
           "preservationRule": "verbatim"

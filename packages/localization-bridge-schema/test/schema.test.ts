@@ -1212,6 +1212,87 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBridgeBundle(bridge)).toThrow(/raw must match sourceText byte range/);
   });
 
+  it("treats legacy v0.1 protected span start/end as UTF-8 byte offsets", () => {
+    const bridge = {
+      schemaVersion: "0.1.0",
+      bridgeId: "019ed000-0000-7000-8000-000000000001",
+      sourceBundleHash: "hash",
+      sourceLocale: "ja-JP",
+      extractorName: "kaifuu-fixture",
+      extractorVersion: "0.0.0",
+      units: [
+        {
+          bridgeUnitId: "019ed000-0000-7000-8000-bridgeun0001",
+          sourceUnitKey: "line.001",
+          occurrenceId: "occurrence-1",
+          sourceHash: "hash",
+          sourceLocale: "ja-JP",
+          sourceText: "こんにちは、{player}。",
+          speaker: "",
+          textSurface: "dialogue",
+          protectedSpans: [
+            {
+              kind: "variable_placeholder",
+              raw: "{player}",
+              start: Buffer.from("こんにちは、", "utf8").length,
+              end:
+                Buffer.from("こんにちは、", "utf8").length + Buffer.from("{player}", "utf8").length,
+              preserveMode: "map",
+              variableName: "player",
+            },
+          ],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "line.001",
+          },
+        },
+      ],
+    };
+
+    expect(() => assertBridgeBundle(bridge)).not.toThrow();
+  });
+
+  it("rejects legacy v0.1 protected span ranges authored as UTF-16 code-unit offsets", () => {
+    const bridge = {
+      schemaVersion: "0.1.0",
+      bridgeId: "019ed000-0000-7000-8000-000000000001",
+      sourceBundleHash: "hash",
+      sourceLocale: "ja-JP",
+      extractorName: "kaifuu-fixture",
+      extractorVersion: "0.0.0",
+      units: [
+        {
+          bridgeUnitId: "019ed000-0000-7000-8000-bridgeun0001",
+          sourceUnitKey: "line.001",
+          occurrenceId: "occurrence-1",
+          sourceHash: "hash",
+          sourceLocale: "ja-JP",
+          sourceText: "こんにちは、{player}。",
+          speaker: "",
+          textSurface: "dialogue",
+          protectedSpans: [
+            {
+              kind: "variable_placeholder",
+              raw: "{player}",
+              start: "こんにちは、".length,
+              end: "こんにちは、{player}".length,
+              preserveMode: "map",
+              variableName: "player",
+            },
+          ],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "line.001",
+          },
+        },
+      ],
+    };
+
+    expect(() => assertBridgeBundle(bridge)).toThrow(/raw must match sourceText byte range/);
+  });
+
   it("accepts the public full-system hello-game v0.2 golden artifact corpus", () => {
     const manifest = publicFixture("fixtures/public/hello-game.manifest.json");
     const manifestFiles = manifest.files as Array<{

@@ -6972,7 +6972,30 @@ mod tests {
     }
 
     #[test]
-    fn explicit_fixture_spans_are_normalized_to_byte_offsets() {
+    fn explicit_fixture_spans_preserve_canonical_byte_offsets() {
+        let text = "こんにちは、{player}。";
+        let unit = json!({
+            "protectedSpans": [
+                {
+                    "kind": "placeholder",
+                    "raw": "{player}",
+                    "start": 18,
+                    "end": 26
+                }
+            ]
+        });
+
+        let spans = FixtureAdapter::protected_spans_for_unit(&unit, text).unwrap();
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].kind, "variable_placeholder");
+        assert_eq!(spans[0].start, 18);
+        assert_eq!(spans[0].end, 26);
+        assert_eq!(spans[0].variable_name.as_deref(), Some("player"));
+    }
+
+    #[test]
+    fn legacy_code_unit_fixture_spans_convert_to_byte_offsets() {
         let text = "こんにちは、{player}。";
         let unit = json!({
             "protectedSpans": [
@@ -6991,7 +7014,7 @@ mod tests {
         assert_eq!(spans[0].kind, "variable_placeholder");
         assert_eq!(spans[0].start, 18);
         assert_eq!(spans[0].end, 26);
-        assert_eq!(spans[0].variable_name.as_deref(), Some("player"));
+        assert_eq!(&text[spans[0].start as usize..spans[0].end as usize], "{player}");
     }
 
     #[test]
