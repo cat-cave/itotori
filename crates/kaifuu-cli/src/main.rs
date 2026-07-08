@@ -630,11 +630,16 @@ struct DecodedRealliveScene<'a> {
     kidoku_count: u32,
 }
 
+/// The two borrowed byte slices (scene blob + decompressed body region) and the
+/// parsed header a decoded RealLive scene yields — factored out to keep
+/// `reallive_scene_slices`' signature under clippy's type-complexity threshold.
+type RealliveSceneSlices<'a> = (&'a [u8], &'a [u8], kaifuu_reallive::SceneHeader);
+
 fn reallive_scene_slices<'a>(
     seen_bytes: &'a [u8],
     scene_id: u16,
     index: &kaifuu_reallive::RealLiveSceneIndex,
-) -> Result<(&'a [u8], &'a [u8], kaifuu_reallive::SceneHeader), Box<dyn std::error::Error>> {
+) -> Result<RealliveSceneSlices<'a>, Box<dyn std::error::Error>> {
     let entry = index
         .entries
         .iter()
