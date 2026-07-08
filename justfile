@@ -17,6 +17,22 @@ export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default('ITOTORI_DB_COMPOSE_ENV
 install:
     pnpm install
 
+# Native-deps preflight/doctor (itotori-native-deps-provisioning). Verifies that
+# each native dependency an INSTALLED itotori needs — the kaifuu/utsushi Rust
+# bins, Node, Postgres, and (for render/e2e) Chromium — RESOLVES and RUNS on this
+# machine, and fails LOUD with a per-dep fix-it if not. This is the check an
+# installed (non-nix) machine runs; in the dev shell it confirms the same deps.
+# Profiles: core (localize pipeline) | render (adds Chromium) | full (default).
+# See docs/native-deps-provisioning.md.
+doctor *ARGS:
+    node scripts/native-deps.mjs doctor {{ARGS}}
+
+# Obtain the native deps a fresh (non-nix) machine is missing, via the pinned,
+# deterministic path (cargo release build, `playwright install chromium`,
+# `just db-up`). Add --dry-run to print the plan without executing.
+provision-native-deps *ARGS:
+    node scripts/native-deps.mjs provision {{ARGS}}
+
 # Provision a FRESH worktree so `vp check`, `fixtures-validate`, and public-manifest
 # regen work. Run this ONCE right after `cd`-ing into a new worktree. It installs
 # node_modules OFFLINE from the shared pnpm content-addressed store (already
@@ -43,6 +59,7 @@ check:
     node --test scripts/style-guide-fixture-flow-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
+    node --test scripts/native-deps.test.mjs
     node --test scripts/alpha-proof-gate.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check

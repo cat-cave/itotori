@@ -24,6 +24,14 @@ you use the flake. Toolchain-bump policy lives in
 If you are not using direnv, prefix commands with `nix develop -c` (or
 `direnv exec .`) so they run inside the dev shell.
 
+This section is the **developer / fresh-clone** path via Nix. An **installed**
+itotori on a machine **without** the nix devshell obtains its native deps
+(kaifuu/utsushi Rust bins, Node, Postgres, Chromium) through the deterministic
+provisioning path in
+[`native-deps-provisioning.md`](native-deps-provisioning.md). Run `just doctor`
+to verify every native dep resolves + runs — it fails loud with a per-dep
+fix-it — and `just provision-native-deps` to obtain the missing ones.
+
 ## 2. Install dependencies
 
 ```sh
