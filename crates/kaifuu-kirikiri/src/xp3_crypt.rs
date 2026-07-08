@@ -289,14 +289,24 @@ impl std::fmt::Debug for Xp3CryptKey {
 /// Resolves a [`SecretRef`] to fixture-safe key material.
 ///
 /// This is the seam the decrypt path consumes: it is handed a requirement id +
-/// a secret ref and returns an [`Xp3CryptKey`] (raw bytes wrapped) or a typed
-/// [`Xp3CryptError::MissingSecret`]. It never surfaces raw bytes to the caller.
-/// The real scoped run would consume a validated key-ref here; the fixture maps
-/// the canonical refs to obviously-fake constants.
-#[derive(Debug, Clone)]
+/// a secret ref and returns a borrowed [`Xp3CryptKey`] (raw bytes confined to
+/// the zeroize-on-drop holder) or a typed [`Xp3CryptError::MissingSecret`]. It
+/// never surfaces raw bytes to the caller. The real scoped run would consume a
+/// validated key-ref here; the fixture maps the canonical refs to obviously-fake
+/// constants.
+///
+/// # Secret discipline
+///
+/// The raw key bytes are never stored bare: each entry holds the material inside
+/// the module-private, zeroize-on-drop, `Debug`-redacting [`Xp3CryptKey`], and
+/// [`Self::resolve`] hands the key back BY REF so no raw key is ever copied out,
+/// re-stored, or emitted. `Debug` is therefore safe (the holder redacts its
+/// bytes); a manual [`std::fmt::Debug`] impl reinforces that no key material can
+/// ever be formatted. Deliberately NOT `Clone`: the resolved key must not be
+/// duplicated past this boundary.
 pub struct FixtureSecretResolver {
-    /// `(secret-ref string, fixture-safe bytes)`.
-    entries: Vec<(String, Vec<u8>)>,
+    /// `(secret-ref string, fixture-safe key holder)`.
+    entries: Vec<(String, Xp3CryptKey)>,
 }
 
 impl FixtureSecretResolver {
@@ -307,39 +317,81 @@ impl FixtureSecretResolver {
             entries: vec![
                 (
                     XP3_CRYPT_VALID_SECRET_REF.to_string(),
-                    SYNTHETIC_FIXTURE_KEY.to_vec(),
+                    Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec()),
                 ),
                 (
                     XP3_CRYPT_WRONG_SECRET_REF.to_string(),
-                    SYNTHETIC_WRONG_KEY.to_vec(),
+                    Xp3CryptKey::from_resolved_bytes(SYNTHETIC_WRONG_KEY.to_vec()),
                 ),
             ],
         }
     }
 
-    /// Build a resolver from explicit `(secret-ref, fixture-safe bytes)` entries.
-    /// The production variant registry uses this to bind each profiled variant's
-    /// declared secret ref to its fixture-safe key material — still never a raw
-    /// key past the [`Xp3CryptKey`] boundary.
-    pub(crate) fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
-        Self { entries }
+    /// Build a resolver by binding declared secret refs to existing key HOLDERS.
+    /// The raw key material never leaves an [`Xp3CryptKey`]: each source holder's
+    /// bytes are copied into a fresh zeroize-on-drop holder inside the resolver
+    /// (this is intra-module, so no bytes are ever exposed to a caller). Used by
+    /// the production driver to route a variant's already-confined resolved key
+    /// through the ref path without ever materializing raw bytes in a `pub`
+    /// struct.
+    pub(crate) fn from_key_refs(entries: Vec<(String, &Xp3CryptKey)>) -> Self {
+        Self {
+            entries: entries
+                .into_iter()
+                .map(|(secret_ref, key)| {
+                    (
+                        secret_ref,
+                        Xp3CryptKey::from_resolved_bytes(key.bytes.clone()),
+                    )
+                })
+                .collect(),
+        }
     }
 
-    /// Resolve `secret_ref` to fixture-safe key material, or a typed
-    /// missing-secret error citing the requirement id.
+    /// Resolve `secret_ref` to fixture-safe key material BY REF, or a typed
+    /// missing-secret error citing the requirement id. Never returns or copies
+    /// the raw key bytes: the borrow keeps the material inside the resolver's
+    /// zeroize-on-drop holder.
     pub(crate) fn resolve(
         &self,
         requirement_id: &str,
         secret_ref: &SecretRef,
-    ) -> Result<Xp3CryptKey, Xp3CryptError> {
+    ) -> Result<&Xp3CryptKey, Xp3CryptError> {
         self.entries
             .iter()
             .find(|(candidate, _)| candidate == secret_ref.as_str())
-            .map(|(_, bytes)| Xp3CryptKey::from_resolved_bytes(bytes.clone()))
+            .map(|(_, key)| key)
             .ok_or_else(|| Xp3CryptError::MissingSecret {
                 requirement_id: requirement_id.to_string(),
                 secret_ref_scheme: secret_ref.scheme(),
             })
+    }
+
+    /// Does any resolver-held raw key material appear as a contiguous window in
+    /// `haystack`? Used by the no-leak guard so registry/resolver-held bytes are
+    /// covered, not just the serialized report.
+    pub(crate) fn any_key_appears_in(&self, haystack: &[u8]) -> bool {
+        self.entries.iter().any(|(_, key)| key.appears_in(haystack))
+    }
+}
+
+impl std::fmt::Debug for FixtureSecretResolver {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Manual redacting Debug: never format the held key material. The refs
+        // are safe to show (they are the reportable identifiers); the holders
+        // are already `Debug`-redacting but we render only their count + refs so
+        // no key bytes can ever be reached through this impl.
+        let refs: Vec<&str> = self
+            .entries
+            .iter()
+            .map(|(secret_ref, _)| secret_ref.as_str())
+            .collect();
+        formatter
+            .debug_struct("FixtureSecretResolver")
+            .field("entries", &self.entries.len())
+            .field("secret_refs", &refs)
+            .field("key_material", &"[REDACTED:kaifuu.secret_redacted]")
+            .finish()
     }
 }
 
@@ -838,7 +890,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
 
     // (1) Valid secret ref → key → decrypt + extract + verify integrity.
     let key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
-    let manifest = decrypt_and_extract(&container, &key, scheme)?;
+    let manifest = decrypt_and_extract(&container, key, scheme)?;
 
     // Declared expectation: the decrypted member set matches.
     let extracted_ids: Vec<&str> = manifest
@@ -857,7 +909,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
     let wrong_ref = SecretRef::new(XP3_CRYPT_WRONG_SECRET_REF)
         .map_err(|message| Xp3CryptError::Internal { message })?;
     let wrong_key = resolver.resolve(&fixture.secret_requirement_id, &wrong_ref)?;
-    let wrong_key_report = match decrypt_and_extract(&container, &wrong_key, scheme) {
+    let wrong_key_report = match decrypt_and_extract(&container, wrong_key, scheme) {
         Err(Xp3CryptError::IntegrityCheckFailed { member_id }) => Xp3CryptWrongKeyReport {
             attempted_secret_ref: wrong_ref,
             typed_error: true,
@@ -1074,7 +1126,7 @@ mod tests {
             .expect("wrong ref resolves to (wrong) material");
         let err = decrypt_and_extract(
             &container,
-            &wrong_key,
+            wrong_key,
             Xp3CryptoProfile::XorSimpleCryptFixture.scheme(),
         )
         .expect_err("wrong key must fail integrity, not silently pass");
@@ -1128,6 +1180,31 @@ mod tests {
         let rendered = format!("{key:?}");
         assert!(rendered.contains("REDACTED"));
         assert!(!rendered.contains(&String::from_utf8_lossy(SYNTHETIC_FIXTURE_KEY).into_owned()));
+    }
+
+    #[test]
+    fn resolver_debug_never_emits_raw_key_bytes() {
+        // P1(b): FixtureSecretResolver stores each key inside the zeroize-on-drop
+        // Xp3CryptKey holder and has a manual redacting Debug. `format!("{:?}")`
+        // (and pretty `{:#?}`) must never render either the correct or the wrong
+        // fixture key, while the (safe) secret refs are still shown.
+        let resolver = FixtureSecretResolver::fixture_default();
+        for rendered in [format!("{resolver:?}"), format!("{resolver:#?}")] {
+            assert!(
+                !rendered.contains(&String::from_utf8_lossy(SYNTHETIC_FIXTURE_KEY).into_owned()),
+                "resolver Debug leaked the correct key"
+            );
+            assert!(
+                !rendered.contains(&String::from_utf8_lossy(SYNTHETIC_WRONG_KEY).into_owned()),
+                "resolver Debug leaked the wrong key"
+            );
+            assert!(
+                rendered.contains("REDACTED"),
+                "resolver Debug should mark redaction"
+            );
+            // The reportable secret refs are safe to disclose.
+            assert!(rendered.contains(XP3_CRYPT_VALID_SECRET_REF));
+        }
     }
 
     #[test]

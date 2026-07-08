@@ -427,14 +427,14 @@ pub fn run_xp3_patch_smoke_from_fixture(
     let key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
 
     // (1) Decrypt + integrity-verify the source members (the KAIFUU-100 path).
-    let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source, &key, scheme)?
+    let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source, key, scheme)?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
         .collect();
 
     // (2) Identity round-trip: re-encipher + repack with NO change must be
     //     byte-identical to the source encrypted container.
-    let identity_rebuilt = encode_encrypted_xp3(&source_members, &key, scheme);
+    let identity_rebuilt = encode_encrypted_xp3(&source_members, key, scheme);
     let byte_identical = identity_rebuilt == source;
     if !byte_identical {
         return Err(Xp3PatchError::IdentityNotBytePreserving);
@@ -449,7 +449,7 @@ pub fn run_xp3_patch_smoke_from_fixture(
 
     // (3) Apply the trivial replacement manifest + repack (patch-back).
     let (patched_members, changed_ids) = apply_replacements(&source_members, manifest)?;
-    let rebuilt = encode_encrypted_xp3(&patched_members, &key, scheme);
+    let rebuilt = encode_encrypted_xp3(&patched_members, key, scheme);
 
     // The fixture declares exactly one changed member for the trivial-change
     // proof.
@@ -465,7 +465,7 @@ pub fn run_xp3_patch_smoke_from_fixture(
     //     container and decrypt through the DECLARED secret ref. Integrity must
     //     pass for every member against its recomputed adlr.
     let rebuilt_key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
-    let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt, &rebuilt_key, scheme)?
+    let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt, rebuilt_key, scheme)?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
         .collect();

@@ -201,13 +201,22 @@ impl Xp3ProductionError {
 /// One profiled XP3 crypt-scheme + helper-workflow variant. Everything here is
 /// DATA: the driver runs the same code path for every variant.
 ///
-/// The `archive_key` / `resolved_key_evidence` split models a real run: the
-/// synthetic encrypted archive was enciphered with the fixture `archive_key`
-/// (ground truth), while `resolved_key_evidence` is what the operator's
+/// The archive-key / resolved-key-evidence split models a real run: the
+/// synthetic encrypted archive was enciphered with the fixture archive key
+/// (ground truth), while the resolved key evidence is what the operator's
 /// key/helper workflow actually produced. When they match and the helper
 /// evidence is satisfied, the variant extracts + patches; when the operator's
 /// evidence is missing/wrong, a CLAIMED variant fails loud.
-#[derive(Debug, Clone)]
+///
+/// # Secret discipline
+///
+/// The raw key material NEVER lives in a `pub`, `Debug`-deriving field. Both the
+/// ground-truth archive key and the operator's resolved key evidence are held
+/// ONLY inside the module-private, zeroize-on-drop, `Debug`-redacting
+/// [`Xp3CryptKey`] holder (constructed via [`Xp3ProductionVariant::new`]); the
+/// fields are private and the manual [`std::fmt::Debug`] impl redacts them. The
+/// non-secret fields (ids, crypt profile, surface, refs, helper workflow,
+/// member surfaces, replacements, claim) stay public.
 pub struct Xp3ProductionVariant {
     /// Stable variant id.
     pub variant_id: String,
@@ -230,28 +239,106 @@ pub struct Xp3ProductionVariant {
     pub members: Vec<(String, String)>,
     /// The trivial replacement(s) the patch-back applies.
     pub replacements: Vec<Xp3TextReplacement>,
-    /// The fixture archive key the synthetic container is enciphered with
-    /// (ground truth; never serialized, never leaves [`Xp3CryptKey`]).
-    pub archive_key: Vec<u8>,
-    /// The key material the operator's key/helper workflow actually resolved.
-    /// `None` models "the required key evidence is absent"; a value that differs
-    /// from `archive_key` models a wrong resolved key.
-    pub resolved_key_evidence: Option<Vec<u8>>,
     /// Whether the profile CLAIMS to support this variant. A claimed variant
     /// MUST extract + patch (else a loud bug); an unclaimed variant is an
     /// explicit out-of-scope row.
     pub claimed: bool,
+    /// The fixture archive key the synthetic container is enciphered with
+    /// (ground truth). PRIVATE + confined to the zeroize-on-drop, `Debug`-
+    /// redacting holder — never serialized, never `Debug`-loggable, never
+    /// leaves [`Xp3CryptKey`].
+    archive_key: Xp3CryptKey,
+    /// The key material the operator's key/helper workflow actually resolved.
+    /// `None` models "the required key evidence is absent"; a holder whose bytes
+    /// differ from `archive_key` models a wrong resolved key. PRIVATE + confined
+    /// to the zeroize-on-drop, `Debug`-redacting holder.
+    resolved_key_evidence: Option<Xp3CryptKey>,
 }
 
 impl Xp3ProductionVariant {
+    /// Construct a variant, confining the raw archive key + resolved key
+    /// evidence bytes to the zeroize-on-drop [`Xp3CryptKey`] holder immediately.
+    /// This is the ONLY way to supply key material to a variant — there is no
+    /// `pub` raw-key field to write to.
+    #[expect(clippy::too_many_arguments)]
+    #[must_use]
+    pub fn new(
+        variant_id: String,
+        crypto_profile: Xp3CryptoProfile,
+        surface: KirikiriXp3Surface,
+        secret_requirement_id: String,
+        secret_ref: SecretRef,
+        helper_workflow: Xp3HelperWorkflow,
+        helper_evidence: Option<HelperResult>,
+        members: Vec<(String, String)>,
+        replacements: Vec<Xp3TextReplacement>,
+        claimed: bool,
+        archive_key: Vec<u8>,
+        resolved_key_evidence: Option<Vec<u8>>,
+    ) -> Self {
+        Self {
+            variant_id,
+            crypto_profile,
+            surface,
+            secret_requirement_id,
+            secret_ref,
+            helper_workflow,
+            helper_evidence,
+            members,
+            replacements,
+            claimed,
+            archive_key: Xp3CryptKey::from_resolved_bytes(archive_key),
+            resolved_key_evidence: resolved_key_evidence.map(Xp3CryptKey::from_resolved_bytes),
+        }
+    }
+
+    /// Replace (or clear) the operator's resolved key evidence, re-confining any
+    /// raw bytes to the zeroize-on-drop holder. Models a run where the resolved
+    /// key is absent, wrong, or supplied.
+    pub fn set_resolved_key_evidence(&mut self, bytes: Option<Vec<u8>>) {
+        self.resolved_key_evidence = bytes.map(Xp3CryptKey::from_resolved_bytes);
+    }
+
     /// The declared expected member ids (in archive order).
     fn expected_member_ids(&self) -> Vec<String> {
         self.members.iter().map(|(id, _)| id.clone()).collect()
     }
 }
 
+impl std::fmt::Debug for Xp3ProductionVariant {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Manual redacting Debug: the archive key + resolved key evidence holders
+        // already redact, but we never even reach into them here. No raw key
+        // material can be formatted through this impl.
+        formatter
+            .debug_struct("Xp3ProductionVariant")
+            .field("variant_id", &self.variant_id)
+            .field("crypto_profile", &self.crypto_profile)
+            .field("surface", &self.surface)
+            .field("secret_requirement_id", &self.secret_requirement_id)
+            .field("secret_ref", &self.secret_ref)
+            .field("helper_workflow", &self.helper_workflow)
+            .field("helper_evidence_present", &self.helper_evidence.is_some())
+            .field("members", &self.members)
+            .field("replacements", &self.replacements)
+            .field("claimed", &self.claimed)
+            .field("archive_key", &self.archive_key)
+            .field(
+                "resolved_key_evidence",
+                &self
+                    .resolved_key_evidence
+                    .as_ref()
+                    .map(|_| "[REDACTED:kaifuu.secret_redacted]"),
+            )
+            .finish()
+    }
+}
+
 /// A registry of profiled variants the production driver runs.
-#[derive(Debug, Clone)]
+///
+/// Not `Clone`: a variant confines its key material to a non-`Clone`
+/// zeroize-on-drop holder, so the registry (and its keys) is never duplicated.
+#[derive(Debug)]
 pub struct Xp3ProductionRegistry {
     /// Stable registry id.
     pub registry_id: String,
@@ -504,9 +591,10 @@ pub fn run_xp3_production(
     let mut claimed_profiles: Vec<Xp3CryptoProfile> = Vec::new();
     let mut claimed_count = 0u32;
     let mut not_claimed_count = 0u32;
-    // The resolved keys are held only long enough to run the no-leak guard, then
-    // dropped (each zeroizes on drop).
-    let mut resolved_keys: Vec<Xp3CryptKey> = Vec::new();
+    // The per-variant resolvers (each owning its resolved-key holder) are held
+    // only long enough to run the no-leak guard, then dropped (each holder
+    // zeroizes on drop).
+    let mut resolvers: Vec<FixtureSecretResolver> = Vec::new();
 
     for variant in &registry.variants {
         if !variant.claimed {
@@ -525,12 +613,12 @@ pub fn run_xp3_production(
             continue;
         }
 
-        let (report, key) = run_claimed_variant(variant)?;
+        let (report, resolver) = run_claimed_variant(variant)?;
         if !claimed_profiles.contains(&variant.crypto_profile) {
             claimed_profiles.push(variant.crypto_profile);
         }
         claimed_count += 1;
-        resolved_keys.push(key);
+        resolvers.push(resolver);
         outcomes.push(Xp3ProductionOutcome::Claimed(report));
     }
 
@@ -551,14 +639,16 @@ pub fn run_xp3_production(
     };
 
     // Runtime no-leak guard: the serialized (redacted) report must never carry
-    // any resolved raw key material. Hard refusal, not just a test-time check.
+    // any resolved raw key material. The guard scans the registry/resolver-held
+    // bytes (confined to the zeroize-on-drop holders), not just the report — a
+    // hard refusal, not just a test-time check.
     let json = report
         .stable_json()
         .map_err(|error| Xp3ProductionError::Internal {
             message: error.to_string(),
         })?;
-    for key in &resolved_keys {
-        if key.appears_in(json.as_bytes()) {
+    for resolver in &resolvers {
+        if resolver.any_key_appears_in(json.as_bytes()) {
             return Err(Xp3ProductionError::Internal {
                 message: "refusing to emit a report that leaks raw key material".to_string(),
             });
@@ -569,11 +659,12 @@ pub fn run_xp3_production(
 }
 
 /// Run one claimed variant's extract → patch round-trip. Returns the per-variant
-/// report and the resolved key (so the caller can run the no-leak guard against
-/// the serialized report before the key drops/zeroizes).
+/// report and the resolver holding the resolved-key holder (so the caller can
+/// run the no-leak guard against the serialized report before the holder
+/// drops/zeroizes).
 fn run_claimed_variant(
     variant: &Xp3ProductionVariant,
-) -> Result<(Xp3ProductionVariantReport, Xp3CryptKey), Xp3ProductionError> {
+) -> Result<(Xp3ProductionVariantReport, FixtureSecretResolver), Xp3ProductionError> {
     let id = variant.variant_id.as_str();
     let scheme = variant.crypto_profile.scheme();
 
@@ -591,12 +682,12 @@ fn run_claimed_variant(
             "variant declares no member surfaces to extract",
         ));
     }
-    let archive_key = Xp3CryptKey::from_resolved_bytes(variant.archive_key.clone());
-    let source_container = encode_encrypted_xp3(&members, &archive_key, scheme);
+    // The ground-truth archive key is already confined to the variant's holder.
+    let source_container = encode_encrypted_xp3(&members, &variant.archive_key, scheme);
 
     // (1) EVIDENCE CHECK: the required key/helper evidence must be present +
     //     adequate. A missing/inadequate leg for a CLAIMED variant is a loud bug.
-    let resolved_key_bytes = variant.resolved_key_evidence.as_ref().ok_or_else(|| {
+    let resolved_key = variant.resolved_key_evidence.as_ref().ok_or_else(|| {
         Xp3ProductionError::claimed(
             id,
             Xp3ProductionStage::EvidenceCheck,
@@ -608,11 +699,13 @@ fn run_claimed_variant(
     })?;
 
     // (2) KEY RESOLVE: bind the declared secret ref to the resolved key evidence
-    //     and resolve through the ref (proves the ref path; key wrapped +
-    //     zeroize-on-drop). The archive key never enters the resolver.
-    let resolver = FixtureSecretResolver::from_entries(vec![(
+    //     HOLDER and resolve through the ref (proves the ref path; the material
+    //     never leaves an [`Xp3CryptKey`]). The archive key never enters the
+    //     resolver. The resolver owns the resolved-key holder and is returned so
+    //     the caller can run the no-leak guard before it drops/zeroizes.
+    let resolver = FixtureSecretResolver::from_key_refs(vec![(
         variant.secret_ref.as_str().to_string(),
-        resolved_key_bytes.clone(),
+        resolved_key,
     )]);
     let key = resolver
         .resolve(&variant.secret_requirement_id, &variant.secret_ref)
@@ -620,7 +713,7 @@ fn run_claimed_variant(
 
     // (3) EXTRACT: decrypt + integrity-verify every member. A wrong resolved key
     //     trips the adlr integrity check → a loud claimed failure.
-    let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source_container, &key, scheme)
+    let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source_container, key, scheme)
         .map_err(|error| Xp3ProductionError::claimed(id, Xp3ProductionStage::Extract, error))?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
@@ -636,7 +729,7 @@ fn run_claimed_variant(
     }
 
     // (4) IDENTITY: rebuild(extract(x)) with no change must be byte-identical.
-    let identity_rebuilt = encode_encrypted_xp3(&source_members, &key, scheme);
+    let identity_rebuilt = encode_encrypted_xp3(&source_members, key, scheme);
     let identity_byte_identical = identity_rebuilt == source_container;
     if !identity_byte_identical {
         return Err(Xp3ProductionError::claimed(
@@ -657,12 +750,12 @@ fn run_claimed_variant(
             "variant declared no applicable replacement",
         ));
     }
-    let rebuilt_container = encode_encrypted_xp3(&patched_members, &key, scheme);
+    let rebuilt_container = encode_encrypted_xp3(&patched_members, key, scheme);
 
     // (6) VERIFY: re-decrypt the rebuilt container through the SAME ref and prove
     //     the patched text is present, the old text gone, and every other member
     //     byte-identical.
-    let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt_container, &key, scheme)
+    let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt_container, key, scheme)
         .map_err(|error| Xp3ProductionError::claimed(id, Xp3ProductionStage::Verify, error))?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
@@ -731,14 +824,16 @@ fn run_claimed_variant(
         status: OperationStatus::Passed,
     };
 
-    Ok((report, key))
+    Ok((report, resolver))
 }
 
 /// Check the variant's required helper evidence is present and adequate. Only
 /// helper-gated workflows require a helper result; when one is required it must
-/// reference the requirement id, carry a non-blocking diagnostic (a resolved
-/// key, not `missing_key`/`helper_required`/etc.), pass KAIFUU-085 validation,
-/// and meet the workflow's minimum capability level.
+/// reference the EXACT `variant.secret_ref` (bound to the variant's requirement
+/// id), carry a non-blocking diagnostic (a resolved key, not
+/// `missing_key`/`helper_required`/etc.), pass KAIFUU-085 validation, and meet
+/// the workflow's minimum capability level. A helper result for the right
+/// requirement id but a DIFFERENT secret ref does NOT satisfy the gate.
 fn check_helper_evidence(variant: &Xp3ProductionVariant) -> Result<(), String> {
     if !variant.helper_workflow.requires_helper() {
         return Ok(());
@@ -765,14 +860,21 @@ fn check_helper_evidence(variant: &Xp3ProductionVariant) -> Result<(), String> {
         ));
     }
 
-    let references_requirement = helper
-        .secret_refs
-        .iter()
-        .any(|secret| secret.requirement_id == variant.secret_requirement_id);
-    if !references_requirement {
-        return Err(
-            "helper result references no secretRef for the variant's requirement id".to_string(),
-        );
+    // Bind the helper evidence to the EXACT secret ref the variant will resolve
+    // its key through — not merely to the requirement id. A helper result for the
+    // right requirement id but a WRONG ref must NOT satisfy the helper-gated path
+    // (the key bytes are resolved independently through `variant.secret_ref`, so
+    // a mismatched helper ref is evidence for the wrong secret).
+    let binds_secret_ref = helper.secret_refs.iter().any(|secret| {
+        secret.requirement_id == variant.secret_requirement_id
+            && secret.secret_ref == variant.secret_ref
+    });
+    if !binds_secret_ref {
+        return Err(format!(
+            "helper result carries no secretRef bound to the variant's requirement id + secret ref \
+             {} (a helper result for a different ref does not satisfy the gate)",
+            variant.secret_ref.as_str()
+        ));
     }
 
     let minimum = minimum_capability(variant.helper_workflow);
@@ -952,15 +1054,15 @@ pub mod synthetic {
         let a_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-simple-crypt-key")
             .expect("synthetic secret ref is valid");
         let a_key = b"K057-XP3-SIMPLEKEY01".to_vec();
-        let variant_a = Xp3ProductionVariant {
-            variant_id: "kaifuu-k057-xp3-simple-crypt".to_string(),
-            crypto_profile: Xp3CryptoProfile::XorSimpleCryptFixture,
-            surface: KirikiriXp3Surface::ScenarioScript,
-            secret_requirement_id: a_requirement.clone(),
-            secret_ref: a_ref.clone(),
-            helper_workflow: Xp3HelperWorkflow::None,
-            helper_evidence: None,
-            members: vec![
+        let variant_a = Xp3ProductionVariant::new(
+            "kaifuu-k057-xp3-simple-crypt".to_string(),
+            Xp3CryptoProfile::XorSimpleCryptFixture,
+            KirikiriXp3Surface::ScenarioScript,
+            a_requirement.clone(),
+            a_ref.clone(),
+            Xp3HelperWorkflow::None,
+            None,
+            vec![
                 (
                     "scenario/opening.ks".to_string(),
                     "*start\n#Narrator\n[synthetic-k057-simple-line-0]\n@wait time=200\n"
@@ -971,30 +1073,30 @@ pub mod synthetic {
                     "[synthetic-k057-simple-config]\nwindow=default\n".to_string(),
                 ),
             ],
-            replacements: vec![Xp3TextReplacement {
+            vec![Xp3TextReplacement {
                 member_id: "scenario/opening.ks".to_string(),
                 find: "[synthetic-k057-simple-line-0]".to_string(),
                 replace: "[localized-k057-simple-line-0-JA-longer]".to_string(),
             }],
-            archive_key: a_key.clone(),
-            resolved_key_evidence: Some(a_key),
-            claimed: true,
-        };
+            true,
+            a_key.clone(),
+            Some(a_key),
+        );
 
         // Variant B: XorPositionCryptFixture, manual-entry-helper-gated key.
         let b_requirement = "kaifuu-k057-xp3-position-key".to_string();
         let b_ref = SecretRef::new("prompt:kaifuu/k057/xp3-position-archive-password")
             .expect("synthetic secret ref is valid");
         let b_key = b"K057-XP3-POSITIONKEY02".to_vec();
-        let variant_b = Xp3ProductionVariant {
-            variant_id: "kaifuu-k057-xp3-position-crypt".to_string(),
-            crypto_profile: Xp3CryptoProfile::XorPositionCryptFixture,
-            surface: KirikiriXp3Surface::ScenarioScript,
-            secret_requirement_id: b_requirement.clone(),
-            secret_ref: b_ref.clone(),
-            helper_workflow: Xp3HelperWorkflow::ManualKeyEntry,
-            helper_evidence: Some(satisfied_manual_entry_helper(&b_requirement, &b_ref)),
-            members: vec![
+        let variant_b = Xp3ProductionVariant::new(
+            "kaifuu-k057-xp3-position-crypt".to_string(),
+            Xp3CryptoProfile::XorPositionCryptFixture,
+            KirikiriXp3Surface::ScenarioScript,
+            b_requirement.clone(),
+            b_ref.clone(),
+            Xp3HelperWorkflow::ManualKeyEntry,
+            Some(satisfied_manual_entry_helper(&b_requirement, &b_ref)),
+            vec![
                 (
                     "scenario/route_a.ks".to_string(),
                     "*route_a\n#Heroine\n[synthetic-k057-position-line-0]\n@wait time=120\n"
@@ -1009,37 +1111,37 @@ pub mod synthetic {
                     "[synthetic-k057-position-scn]\nmode=adv\n".to_string(),
                 ),
             ],
-            replacements: vec![Xp3TextReplacement {
+            vec![Xp3TextReplacement {
                 member_id: "scenario/route_a.ks".to_string(),
                 find: "[synthetic-k057-position-line-0]".to_string(),
                 replace: "[localized-k057-position-line-0-JA]".to_string(),
             }],
-            archive_key: b_key.clone(),
-            resolved_key_evidence: Some(b_key),
-            claimed: true,
-        };
+            true,
+            b_key.clone(),
+            Some(b_key),
+        );
 
         // Variant C: explicitly NOT claimed — a research-tier scheme the profile
         // does not advance to a claim (out of scope).
         let c_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-research-only")
             .expect("synthetic secret ref is valid");
-        let variant_c = Xp3ProductionVariant {
-            variant_id: "kaifuu-k057-xp3-research-only".to_string(),
-            crypto_profile: Xp3CryptoProfile::XorSimpleCryptFixture,
-            surface: KirikiriXp3Surface::ScenarioScript,
-            secret_requirement_id: "kaifuu-k057-xp3-research-key".to_string(),
-            secret_ref: c_ref,
-            helper_workflow: Xp3HelperWorkflow::KnownKeyImport,
-            helper_evidence: None,
-            members: vec![(
+        let variant_c = Xp3ProductionVariant::new(
+            "kaifuu-k057-xp3-research-only".to_string(),
+            Xp3CryptoProfile::XorSimpleCryptFixture,
+            KirikiriXp3Surface::ScenarioScript,
+            "kaifuu-k057-xp3-research-key".to_string(),
+            c_ref,
+            Xp3HelperWorkflow::KnownKeyImport,
+            None,
+            vec![(
                 "scenario/unknown.ks".to_string(),
                 "[synthetic-k057-research-line]\n".to_string(),
             )],
-            replacements: vec![],
-            archive_key: b"K057-XP3-RESEARCHKEY0".to_vec(),
-            resolved_key_evidence: None,
-            claimed: false,
-        };
+            vec![],
+            false,
+            b"K057-XP3-RESEARCHKEY0".to_vec(),
+            None,
+        );
 
         Xp3ProductionRegistry {
             registry_id: deterministic_id("kaifuu-k057-xp3-production-registry", 1),
@@ -1133,7 +1235,7 @@ mod tests {
         // A claimed variant whose required key evidence is absent must be a BUG,
         // not a silent skip.
         let mut registry = registry();
-        registry.variants[0].resolved_key_evidence = None;
+        registry.variants[0].set_resolved_key_evidence(None);
         let err =
             run_xp3_production(&registry, "KAIFUU-057").expect_err("missing key evidence is a bug");
         match err {
@@ -1175,7 +1277,7 @@ mod tests {
         // trips the adlr integrity check — a loud bug at the extract stage, never
         // a silent pass.
         let mut registry = registry();
-        registry.variants[0].resolved_key_evidence = Some(b"K057-XP3-WRONGKEY0000".to_vec());
+        registry.variants[0].set_resolved_key_evidence(Some(b"K057-XP3-WRONGKEY0000".to_vec()));
         let err =
             run_xp3_production(&registry, "KAIFUU-057").expect_err("wrong key evidence is a bug");
         match err {
@@ -1248,5 +1350,161 @@ mod tests {
             .stable_json()
             .unwrap();
         assert_eq!(a, b, "production report is deterministic");
+    }
+
+    /// The raw fixture key bytes carried by the synthetic registry. Used to prove
+    /// none of them can ever be formatted through `Debug`, and that they are
+    /// confined to the zeroize-on-drop holders (never a `pub`/`Debug` field).
+    const RAW_KEYS: [&str; 3] = [
+        "K057-XP3-SIMPLEKEY01",
+        "K057-XP3-POSITIONKEY02",
+        "K057-XP3-RESEARCHKEY0",
+    ];
+
+    #[test]
+    fn variant_debug_never_emits_raw_key_bytes() {
+        // P1(a): the variant holds the archive key + resolved key evidence ONLY
+        // inside the module-private, Debug-redacting Xp3CryptKey holder. Its
+        // manual Debug must never render any raw key material — not even for a
+        // variant whose resolved evidence is present. `{:#?}` (pretty) too.
+        let registry = registry();
+        for variant in &registry.variants {
+            for rendered in [format!("{variant:?}"), format!("{variant:#?}")] {
+                for key in RAW_KEYS {
+                    assert!(
+                        !rendered.contains(key),
+                        "variant Debug leaked raw key {key}"
+                    );
+                }
+                assert!(
+                    rendered.contains("REDACTED"),
+                    "variant Debug should mark redaction"
+                );
+                // The non-secret ids ARE shown (proves Debug is still useful).
+                assert!(rendered.contains("variant_id"));
+            }
+        }
+    }
+
+    #[test]
+    fn registry_debug_never_emits_raw_key_bytes() {
+        // The whole registry (which owns every variant's key holders) must not
+        // emit any raw key material through Debug either.
+        let registry = registry();
+        for rendered in [format!("{registry:?}"), format!("{registry:#?}")] {
+            for key in RAW_KEYS {
+                assert!(
+                    !rendered.contains(key),
+                    "registry Debug leaked raw key {key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resolver_debug_never_emits_raw_key_bytes() {
+        // P1(b): the FixtureSecretResolver stores each key in the zeroize-on-drop
+        // Xp3CryptKey holder and has a manual redacting Debug. Building a resolver
+        // over the synthetic keys and formatting it must never emit key bytes,
+        // while the (safe) secret ref is still shown.
+        let a_key = Xp3CryptKey::from_resolved_bytes(b"K057-XP3-SIMPLEKEY01".to_vec());
+        let b_key = Xp3CryptKey::from_resolved_bytes(b"K057-XP3-POSITIONKEY02".to_vec());
+        let resolver = FixtureSecretResolver::from_key_refs(vec![
+            (
+                "local-secret:kaifuu/k057/xp3-simple-crypt-key".to_string(),
+                &a_key,
+            ),
+            (
+                "prompt:kaifuu/k057/xp3-position-archive-password".to_string(),
+                &b_key,
+            ),
+        ]);
+        for rendered in [format!("{resolver:?}"), format!("{resolver:#?}")] {
+            for key in ["K057-XP3-SIMPLEKEY01", "K057-XP3-POSITIONKEY02"] {
+                assert!(
+                    !rendered.contains(key),
+                    "resolver Debug leaked raw key {key}"
+                );
+            }
+            assert!(
+                rendered.contains("REDACTED"),
+                "resolver Debug should mark redaction"
+            );
+            // The reportable secret refs are safe to show.
+            assert!(rendered.contains("local-secret:kaifuu/k057/xp3-simple-crypt-key"));
+        }
+    }
+
+    #[test]
+    fn registry_held_key_bytes_are_confined_to_the_zeroizing_holder() {
+        // The registry/holder-held raw bytes must never appear in the serialized
+        // report, and the runtime no-leak guard scans the resolver-held holders
+        // (not just the report). A passing run means the guard saw the resolved
+        // key material and confirmed it is absent from the JSON.
+        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let json = report.stable_json().expect("stable json");
+        for key in RAW_KEYS {
+            assert!(
+                !json.contains(key),
+                "registry-held raw key {key} reached the serialized report"
+            );
+        }
+    }
+
+    #[test]
+    fn helper_evidence_bound_to_wrong_secret_ref_is_rejected() {
+        // P2: a helper result for the RIGHT requirement id but a DIFFERENT secret
+        // ref must NOT satisfy the helper-gated path. The variant's key is
+        // resolved independently through variant.secret_ref, so a helper result
+        // that vouches for a different ref is evidence for the wrong secret.
+        let mut registry = registry();
+        let variant = &mut registry.variants[1];
+        assert_eq!(variant.helper_workflow, Xp3HelperWorkflow::ManualKeyEntry);
+
+        // A well-formed, satisfied helper — but for a DIFFERENT (valid) ref than
+        // the variant's declared secret_ref, under the same requirement id.
+        let wrong_ref = SecretRef::new("prompt:kaifuu/k057/xp3-position-other-password")
+            .expect("synthetic secret ref is valid");
+        assert_ne!(wrong_ref, variant.secret_ref);
+        variant.helper_evidence = Some(synthetic::satisfied_manual_entry_helper(
+            &variant.secret_requirement_id,
+            &wrong_ref,
+        ));
+
+        let err = run_xp3_production(&registry, "KAIFUU-057")
+            .expect_err("a helper result bound to the wrong secret ref must be rejected");
+        match err {
+            Xp3ProductionError::ClaimedVariantFailed {
+                variant_id, stage, ..
+            } => {
+                assert_eq!(variant_id, "kaifuu-k057-xp3-position-crypt");
+                assert_eq!(stage, "evidence-check");
+            }
+            other @ Xp3ProductionError::Internal { .. } => {
+                panic!("expected ClaimedVariantFailed, got {other}")
+            }
+        }
+    }
+
+    #[test]
+    fn helper_evidence_bound_to_the_exact_secret_ref_is_accepted() {
+        // The positive control for P2: the default registry's helper result IS
+        // bound to the variant's exact secret ref, so the helper-gated variant
+        // passes. (Guards against the wrong-ref test passing for the wrong
+        // reason, e.g. helper evidence being ignored entirely.)
+        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let position = report
+            .outcomes
+            .iter()
+            .find_map(|outcome| match outcome {
+                Xp3ProductionOutcome::Claimed(report)
+                    if report.crypto_profile == Xp3CryptoProfile::XorPositionCryptFixture =>
+                {
+                    Some(report)
+                }
+                _ => None,
+            })
+            .expect("helper-gated position variant round-tripped");
+        assert!(position.helper_evidence_present);
     }
 }
