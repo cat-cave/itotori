@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "wolf-text-table-adapter-synthetic",
+  "sourceNodeId": "KAIFUU-012",
+  "engineFamily": "wolf",
+  "detector": {
+    "fixtureId": "wolf.adapter.protected",
+    "variant": "synthetic-protected-textdb",
+    "container": "wolf_archive",
+    "protectionSignal": "static_key_protected",
+    "crypto": "fixed_key",
+    "codec": "shift_jis_text",
+    "surface": "table_record",
+    "secretRequirements": [
+      {
+        "requirementId": "kaifuu-k073-wolf-archive-key",
+        "keyRef": "local-secret:kaifuu-wolf-archive-fixture-key"
+      }
+    ],
+    "expectedProfile": "protected",
+    "expectedSemanticCodes": ["kaifuu.unsupported_layered_transform"]
+  },
+  "helperBoundary": {
+    "fixtureId": "wolf.adapter.static-key",
+    "profileId": "wolf.adapter.static-key",
+    "boundaryKind": "static_key_local_import",
+    "keyRequirement": {
+      "requirementId": "kaifuu-k073-wolf-archive-key",
+      "keyRef": "local-secret:kaifuu-wolf-archive-fixture-key",
+      "materialKind": "fixedBytes"
+    },
+    "locallyAvailable": true,
+    "expectedOutcome": "key_resolved"
+  },
+  "secretRef": "local-secret:kaifuu-wolf-archive-fixture-key",
+  "tables": [
+    {
+      "tableName": "CharacterDB",
+      "fieldCount": 2,
+      "records": [
+        ["hero-name", "テスト説明A"],
+        ["mage-name", "テスト説明B"]
+      ]
+    },
+    {
+      "tableName": "SystemStrings",
+      "fieldCount": 1,
+      "records": [["synthetic-menu=start"], ["synthetic-menu=load"]]
+    }
+  ],
+  "patches": [
+    {
+      "tableName": "CharacterDB",
+      "recordIndex": 0,
+      "fieldIndex": 1,
+      "newText": "テスト説明A-改"
+    },
+    {
+      "tableName": "SystemStrings",
+      "recordIndex": 0,
+      "fieldIndex": 0,
+      "newText": "synthetic-menu=begin"
+    }
+  ]
+}

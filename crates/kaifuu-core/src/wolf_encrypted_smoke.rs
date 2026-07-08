@@ -141,11 +141,13 @@ impl WolfEncryptedArchiveKey {
         Self { bytes }
     }
 
-    fn byte_len(&self) -> usize {
+    /// Resolved key length in bytes. Reportable (a count, never the bytes).
+    pub(crate) fn byte_len(&self) -> usize {
         self.bytes.len()
     }
 
-    fn material_hash(&self) -> Result<ProofHash, WolfEncryptedSmokeError> {
+    /// sha256 over the raw key material — a one-way proof hash, never the bytes.
+    pub(crate) fn material_hash(&self) -> Result<ProofHash, WolfEncryptedSmokeError> {
         proof_hash(&self.bytes)
     }
 
@@ -159,7 +161,7 @@ impl WolfEncryptedArchiveKey {
             .collect()
     }
 
-    fn appears_in(&self, haystack: &[u8]) -> bool {
+    pub(crate) fn appears_in(&self, haystack: &[u8]) -> bool {
         !self.bytes.is_empty()
             && self.bytes.len() <= haystack.len()
             && haystack
@@ -210,7 +212,7 @@ impl WolfEncryptedFixtureSecretResolver {
     /// missing-secret error citing the requirement id. Never returns or copies
     /// the raw key bytes: the borrow keeps the material inside the resolver's
     /// zeroize-on-drop holder.
-    fn resolve(
+    pub(crate) fn resolve(
         &self,
         requirement_id: &str,
         secret_ref: &SecretRef,
@@ -306,10 +308,14 @@ struct WolfArchiveMember {
     payload: Vec<u8>,
 }
 
+/// A decrypted archive member: a member id and its raw plaintext payload
+/// (arbitrary bytes — text for KAIFUU-073, a binary text-table for the
+/// KAIFUU-012 adapter). Shared `pub(crate)` so the Wolf adapter drives the SAME
+/// container+crypto layer rather than reimplementing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct WolfPlainMember {
-    member_id: String,
-    plaintext: Vec<u8>,
+pub(crate) struct WolfPlainMember {
+    pub(crate) member_id: String,
+    pub(crate) plaintext: Vec<u8>,
 }
 
 /// One hash-based extracted member report.
@@ -637,7 +643,7 @@ fn resolve_archive_bytes(
     }
 }
 
-fn pack_encrypted_archive(
+pub(crate) fn pack_encrypted_archive(
     members: &[WolfPlainMember],
     key: &WolfEncryptedArchiveKey,
 ) -> Result<Vec<u8>, WolfEncryptedSmokeError> {
@@ -700,7 +706,7 @@ fn read_encrypted_archive(bytes: &[u8]) -> Result<Vec<WolfArchiveMember>, WolfEn
     Ok(members)
 }
 
-fn decrypt_archive_members(
+pub(crate) fn decrypt_archive_members(
     archive: &[u8],
     key: &WolfEncryptedArchiveKey,
 ) -> Result<Vec<WolfPlainMember>, WolfEncryptedSmokeError> {

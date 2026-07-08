@@ -229,6 +229,7 @@ pub mod rgss3_smoke;
 pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
+pub mod wolf_adapter;
 pub mod wolf_encrypted_smoke;
 pub mod wolf_helper_boundary;
 pub mod wolf_protection_detector;
