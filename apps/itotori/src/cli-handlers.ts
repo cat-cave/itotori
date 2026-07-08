@@ -81,6 +81,11 @@ import {
   type LocalizeProjectStageArgs,
 } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
+import {
+  runLocalizeGameCommand,
+  LocalizeGameStageError,
+  type RunLocalizeGameArgs,
+} from "./orchestrator/localize-game-command.js";
 import { runKaifuuRealliveExtract } from "./extract/kaifuu-extract-seam.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
@@ -254,6 +259,9 @@ export async function runItotoriCliCommand(
       break;
     case "localize":
       await runLocalizeFullProject(args, dependencies);
+      break;
+    case "localize-game":
+      await runLocalizeGame(args, dependencies);
       break;
     case "extract":
       await runExtract(args, dependencies);
@@ -1084,6 +1092,148 @@ async function runLocalizeFullProject(
       2,
     )}\n`,
   );
+}
+
+/**
+ * itotori-cli-localize-game-vertical — the M1 CAPSTONE. ONE user-shaped
+ * command an agent types to localize the WHOLE game end-to-end. Orchestrates,
+ * against a writable target copy, the full vertical by COMPOSING the existing
+ * gated subcommands / their in-process seams (it duplicates NONE of their
+ * logic):
+ *
+ *   1. extract   — the whole-Seen bridge (`itotori extract --whole-seen` seam)
+ *   2. structure — the narrative structure (`itotori structure-export` seam)
+ *   3. localize  — the whole-game driver + M1 patch-apply seam (`itotori
+ *      localize --source --patch-target`): drives every unit against live
+ *      OpenRouter + real Postgres, then applies the byte-correct patch.
+ *   4. validate  — replay + render of the patched target (`itotori validate`).
+ *
+ * The extract + structure artifacts land in `--run-dir`; the command derives
+ * an EFFECTIVE localize config overriding the base config's bridgePath /
+ * structureJsonPath with them, so the driver consumes exactly what this run
+ * produced. `just localize-project` remains only the four-binary dev/test
+ * runner — `itotori localize-game` is the USER surface.
+ *
+ * Required flags (no defaulting):
+ *   --config <PATH>              base localize-fullproject config (v0)
+ *   --source <PATH>              read-only source game root (REALLIVEDATA/Seen.txt)
+ *   --target <PATH>              writable target the patched game lands under
+ *   --run-dir <PATH>             per-run artifact directory
+ *   --game-id / --game-version / --source-profile-id / --source-locale
+ *                                RealLive identity for the whole-seen extract
+ *   --scene <N>                  scene the validate stage replays + renders
+ * Optional:
+ *   --vault-canonical-id <ID>    source by-id through the read-only vault
+ *   --game-root <PATH>           raw extract source root (defaults to --source)
+ *   --gameexe <PATH> / --seen <PATH>  structure inputs (default <source>/REALLIVEDATA/*)
+ *   --entry-scene <N>            structure dispatch-order entry scene override
+ *   --expect-text <TEXT>         localized text the render frame must contain
+ *   --redaction on|off           render-frame redaction posture (default on)
+ *   --cost-cap-usd <decimal>     per-process OpenRouter budget cap
+ */
+async function runLocalizeGame(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const configPath = requiredFlag(args, "--config");
+  const sourceRoot = requiredFlag(args, "--source");
+  const targetRoot = requiredFlag(args, "--target");
+  const runDir = requiredFlag(args, "--run-dir");
+  const validateScene = requiredFlag(args, "--scene");
+  const identity = {
+    gameId: requiredFlag(args, "--game-id"),
+    gameVersion: requiredFlag(args, "--game-version"),
+    sourceProfileId: requiredFlag(args, "--source-profile-id"),
+    sourceLocale: requiredFlag(args, "--source-locale"),
+  };
+  const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
+  const gameRoot = optionalFlag(args, "--game-root");
+  const gameexePath = optionalFlag(args, "--gameexe");
+  const seenPath = optionalFlag(args, "--seen");
+  const entrySceneRaw = optionalFlag(args, "--entry-scene");
+  const expectTextContains = optionalFlag(args, "--expect-text");
+  const redactionRaw = optionalFlag(args, "--redaction") ?? "on";
+  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+
+  if (redactionRaw !== "on" && redactionRaw !== "off") {
+    throw new Error(`localize-game: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
+  }
+  let entryScene: number | undefined;
+  if (entrySceneRaw !== undefined) {
+    entryScene = parseNonNegativeInteger(entrySceneRaw, "--entry-scene");
+  }
+  let costCapUsd: number | undefined;
+  if (costCapUsdRaw !== undefined) {
+    const parsed = Number.parseFloat(costCapUsdRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`localize-game: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`);
+    }
+    costCapUsd = parsed;
+  }
+
+  const callArgs: RunLocalizeGameArgs = {
+    configPath,
+    sourceRoot,
+    targetRoot,
+    runDir,
+    identity,
+    validateScene,
+    redaction: redactionRaw,
+    io: {
+      readJson: (path) => dependencies.io.readJson(path),
+      writeJson: (path, value) => dependencies.io.writeJson(path, value),
+    },
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+    ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
+    ...(gameRoot !== undefined ? { gameRoot } : {}),
+    ...(gameexePath !== undefined ? { gameexePath } : {}),
+    ...(seenPath !== undefined ? { seenPath } : {}),
+    ...(entryScene !== undefined ? { entryScene } : {}),
+    ...(expectTextContains !== undefined ? { expectTextContains } : {}),
+    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+  };
+  if (dependencies.nativeCli !== undefined) {
+    const nativeCli = dependencies.nativeCli;
+    // Bind the validate stage to the injected native runner (tests supply a
+    // fake); the other three stages resolve their own seams.
+    callArgs.stages = {
+      extract: (extractArgs) => runKaifuuRealliveExtract(extractArgs),
+      structure: (structureArgs) => runUtsushiStructureExport(structureArgs),
+      localize: (localizeArgs) => runLocalizeFullProjectLive(localizeArgs),
+      runNative: (bin, nativeArgs) => runNativeCli(bin, nativeArgs, nativeCli),
+    };
+  }
+
+  try {
+    const result = await runLocalizeGameCommand(callArgs);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          runDir: result.runDir,
+          effectiveConfigPath: result.effectiveConfigPath,
+          patchTargetRoot: result.patchTargetRoot,
+          unitsRun: result.localize.result.unitsRun,
+          acceptedDraftCount: result.localize.result.acceptedDraftCount,
+          totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
+          zdrConfirmed: result.localize.result.zdrConfirmed,
+          patchApplied: result.localize.patchApply !== undefined,
+          replayLogPath: result.replayLogPath,
+          renderEvidencePath: result.renderEvidencePath,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } catch (error) {
+    if (error instanceof LocalizeGameStageError) {
+      // Surface WHICH stage broke on stderr before rethrowing so the top-level
+      // handler exits non-zero with the failing-stage context visible.
+      process.stderr.write(`[localize-game] STAGE FAILED: stage=${error.stage} ${error.message}\n`);
+    }
+    throw error;
+  }
 }
 
 /**

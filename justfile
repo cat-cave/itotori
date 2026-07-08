@@ -607,9 +607,16 @@ hello-replay-validate:
     cargo test -p utsushi-cli --bins replay_validate -- --nocapture
     cargo run -p utsushi-cli -- replay-validate --help
 
-# UTSUSHI-228 — alpha closer. Wraps every other alpha node into one
-# command: kaifuu extract -> itotori live agentic loop -> kaifuu patch
-# -> utsushi replay-validate. The driver hard-fails if OPENROUTER_API_KEY,
+# UTSUSHI-228 — the four-binary DEV/TEST runner for the localize vertical
+# (kaifuu extract -> itotori live agentic loop -> kaifuu patch -> utsushi
+# replay/render-validate). NOTE: the USER surface for localizing a whole game
+# end-to-end is now the single `itotori localize-game` command
+# (itotori-cli-localize-game-vertical) — it composes the same extract /
+# structure-export / localize-driver / validate seams into ONE command an agent
+# types. This recipe stays as the per-scene four-binary harness / regression
+# runner, not the user entry point.
+#
+# Wraps every other alpha node into one command. The driver hard-fails if OPENROUTER_API_KEY,
 # a corpus source root, or TARGET is unset (no fallback to the recorded
 # provider). Pass --dry-run to print the per-phase commands without invoking
 # any LLM. The engine is selected by the project's alpha-target-data record:
