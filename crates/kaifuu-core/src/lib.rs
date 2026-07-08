@@ -232,6 +232,7 @@ pub mod wine_proton_helper;
 pub mod wolf_adapter;
 pub mod wolf_encrypted_smoke;
 pub mod wolf_helper_boundary;
+pub mod wolf_profiled_production;
 pub mod wolf_protection_detector;
 pub mod wolf_readiness;
 pub mod xp3_capability_profile;

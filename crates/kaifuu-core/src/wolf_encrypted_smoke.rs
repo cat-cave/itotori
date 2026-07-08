@@ -139,11 +139,27 @@ impl WolfEncryptedSmokeFixture {
 
 /// Resolved archive key. Raw bytes are private, redacted in `Debug`, and
 /// zeroized on drop.
+///
+/// # Secret boundary
+///
+/// The raw-key constructor [`WolfEncryptedArchiveKey::from_resolved_bytes`] is
+/// PRIVATE to this module: no crate-wide code can mint a raw-key holder from
+/// arbitrary bytes. Every consumer (the KAIFUU-012 adapter, the KAIFUU-058
+/// profiled production driver) obtains a key ONLY by resolving a [`SecretRef`]
+/// through [`WolfEncryptedFixtureSecretResolver`], which hands the key back BY
+/// REF and never copies the raw bytes back out. This mirrors the KAIFUU-057
+/// `Xp3CryptKey` boundary: the holder + its raw-bytes constructor stay
+/// module-private and keys are only minted inside the owning module via the
+/// controlled resolve path.
 pub(crate) struct WolfEncryptedArchiveKey {
     bytes: Vec<u8>,
 }
 
 impl WolfEncryptedArchiveKey {
+    /// PRIVATE raw-key constructor. Deliberately NOT `pub(crate)`: minting a
+    /// raw-key holder from arbitrary bytes must only happen inside this module,
+    /// via [`WolfEncryptedFixtureSecretResolver`]. See the type-level
+    /// "Secret boundary" note.
     fn from_resolved_bytes(bytes: Vec<u8>) -> Self {
         Self { bytes }
     }
@@ -215,6 +231,26 @@ impl WolfEncryptedFixtureSecretResolver {
         }
     }
 
+    /// Build a resolver from `(secret_ref, raw_bytes)` entries. This is the ONLY
+    /// controlled crate-wide construction entry that turns raw key bytes into a
+    /// zeroize-on-drop [`WolfEncryptedArchiveKey`]: the raw bytes are consumed
+    /// here and minted into the private holder inside this module, so no
+    /// crate-wide `from_resolved_bytes(raw)` constructor is exposed. Mirrors the
+    /// KAIFUU-057 `FixtureSecretResolver::from_entries` boundary.
+    pub(crate) fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
+        Self {
+            entries: entries
+                .into_iter()
+                .map(|(secret_ref, bytes)| {
+                    (
+                        secret_ref,
+                        WolfEncryptedArchiveKey::from_resolved_bytes(bytes),
+                    )
+                })
+                .collect(),
+        }
+    }
+
     /// Resolve `secret_ref` to fixture-safe key material BY REF, or a typed
     /// missing-secret error citing the requirement id. Never returns or copies
     /// the raw key bytes: the borrow keeps the material inside the resolver's
@@ -232,6 +268,13 @@ impl WolfEncryptedFixtureSecretResolver {
                 requirement_id: requirement_id.to_string(),
                 secret_ref_scheme: secret_ref.scheme(),
             })
+    }
+
+    /// True iff any held raw key appears verbatim in `haystack`. Backs the
+    /// runtime no-leak guard so callers never need direct access to the key
+    /// bytes.
+    pub(crate) fn any_key_appears_in(&self, haystack: &[u8]) -> bool {
+        self.entries.iter().any(|(_, key)| key.appears_in(haystack))
     }
 }
 
@@ -1037,6 +1080,35 @@ mod tests {
         let debug = format!("{key:?}");
         assert!(debug.contains("[REDACTED:kaifuu.secret_redacted]"));
         assert!(!debug.contains("K073-WOLF-FIXTURE"));
+    }
+
+    #[test]
+    fn from_entries_is_the_controlled_construction_path() {
+        // The ONLY crate-wide way to turn raw bytes into a key holder is the
+        // resolver's `from_entries` controlled entry; it mints the private
+        // zeroize-on-drop holder inside this module and hands it back BY REF.
+        // (There is no crate-wide `WolfEncryptedArchiveKey::from_resolved_bytes`
+        // raw-key constructor — that constructor is module-private, which is
+        // what makes this the sole minting path for downstream crate code.)
+        let secret_ref = WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF.to_string();
+        let raw = b"synthetic-controlled-entry-key".to_vec();
+        let resolver =
+            WolfEncryptedFixtureSecretResolver::from_entries(vec![(secret_ref, raw.clone())]);
+
+        let key = resolver
+            .resolve(
+                WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID,
+                &SecretRef::new(WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF).unwrap(),
+            )
+            .expect("controlled-entry key resolves by ref");
+        // The holder carries exactly the bytes it was minted from...
+        assert_eq!(key.byte_len(), raw.len());
+        assert!(key.appears_in(&raw));
+        // ...and the resolver's no-leak helper sees the raw material only for the
+        // guard, never copying it out.
+        assert!(resolver.any_key_appears_in(&raw));
+        // Debug never reveals the raw bytes.
+        assert!(format!("{resolver:?}").contains("[REDACTED:kaifuu.secret_redacted]"));
     }
 
     #[test]
