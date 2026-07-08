@@ -804,6 +804,14 @@ async function runLocalizeProjectStage(
  *                         artifacts + run summary
  * Optional:
  *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
+ *   --source <PATH>       read-only source game root (REALLIVEDATA/Seen.txt)
+ *   --patch-target <PATH> writable output the patched archive lands under
+ *
+ * m1-wholegame-localize-to-patch-seam: pass BOTH --source and --patch-target to
+ * reach an APPLYABLE, byte-correct patch — the run's real drafts pass the
+ * export-patch preflight (production loader) then `kaifuu patch --engine
+ * reallive --bundle translated-bridge.json` writes the patched output. Omit
+ * both to stop at translated-bridge.json. (RealLive engine only.)
  */
 async function runLocalizeFullProject(
   args: string[],
@@ -812,6 +820,15 @@ async function runLocalizeFullProject(
   const configPath = requiredFlag(args, "--config");
   const runDir = requiredFlag(args, "--run-dir");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+  // m1-wholegame-localize-to-patch-seam: --source (read-only game root) +
+  // --patch-target (writable output) reach an APPLYABLE patch. Both or neither.
+  const sourceRoot = optionalFlag(args, "--source");
+  const patchTargetRoot = optionalFlag(args, "--patch-target");
+  if ((sourceRoot === undefined) !== (patchTargetRoot === undefined)) {
+    throw new Error(
+      "localize refused: --source and --patch-target must be given together (both reach an applyable patch) or both omitted (stop at translated-bridge.json)",
+    );
+  }
   let costCapUsd: number | undefined;
   if (costCapUsdRaw !== undefined) {
     const parsed = Number.parseFloat(costCapUsdRaw);
@@ -822,7 +839,7 @@ async function runLocalizeFullProject(
     }
     costCapUsd = parsed;
   }
-  const { result, record } = await runLocalizeFullProjectLive({
+  const { result, record, patchApply } = await runLocalizeFullProjectLive({
     configPath,
     runDir,
     io: {
@@ -830,6 +847,8 @@ async function runLocalizeFullProject(
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+    ...(sourceRoot !== undefined ? { sourceRoot } : {}),
+    ...(patchTargetRoot !== undefined ? { patchTargetRoot } : {}),
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
@@ -848,6 +867,13 @@ async function runLocalizeFullProject(
         totalUsageCostUsd: result.totalUsageCostUsd,
         zdrConfirmed: result.zdrConfirmed,
         budgetStopped: result.budgetStopped,
+        patchApplied: patchApply !== undefined,
+        ...(patchApply !== undefined
+          ? {
+              patchExportDraftCount: patchApply.patchExportBundle.drafts.length,
+              patchTargetRoot,
+            }
+          : {}),
       },
       null,
       2,

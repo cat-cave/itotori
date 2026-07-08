@@ -38,6 +38,7 @@
 // downgrades ZDR, never widens scope — it threads the caller's parsed policy
 // into every `runAgenticLoopForUnit` call verbatim.
 
+import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
   CreateReviewerQueueItemInput,
@@ -230,9 +231,27 @@ export type DrivenPatchReport = {
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
+  /**
+   * The canonical hash of the RAW bridge this run actually drafted against. The
+   * patch-apply seam compares this to the apply-time bridge's hash so a
+   * stale / mismatched bridge cannot pass `sourceBridgeIntegrity` (the check is
+   * NOT self-referential — it binds to the bridge the drafts were produced from).
+   */
+  sourceBridgeHash: string;
   /** The accepted units + their REAL translated body (the patchback splices). */
   acceptedUnits: Array<{ bridgeUnitId: string; sourceUnitKey: string; finalDraftText: string }>;
 };
+
+/**
+ * Canonical hash of the raw v0.2 bridge JSON a run drafted against. The patch
+ * report records this (as `sourceBridgeHash`) and the patch-apply seam recomputes
+ * it over the apply-time bridge and compares — a mismatch means the drafts were
+ * produced against a different bridge and MUST NOT be applied. Both sides hash
+ * the identical raw JSON with this function so the comparison is meaningful.
+ */
+export function hashDraftedAgainstBridge(rawBridge: unknown): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(rawBridge)).digest("hex")}`;
+}
 
 export type DrivenDraftSink = {
   persistDraft(record: DrivenDraftRecord): Promise<void>;
@@ -602,6 +621,7 @@ export async function runProjectDrivenExecutor(
     totalUsageCostUsd,
     zdrConfirmed,
     budgetStopped,
+    sourceBridgeHash: hashDraftedAgainstBridge(input.rawBridge),
     acceptedUnits,
   };
   const translatedBridge = synthesiseDrivenTranslatedBridge({

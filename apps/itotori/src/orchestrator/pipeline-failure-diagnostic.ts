@@ -161,6 +161,8 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  * - `localize.persist-draft`       — persist a draft outcome.
  * - `localize.persist-provider-run`— persist a provider-run summary.
  * - `localize.export-patch`        — write the patch export artifact.
+ * - `localize.apply-patch`         — reach an applyable patch: export-patch
+ *                                    preflight over real drafts + kaifuu patch.
  * - `localize.record-pass`         — record the localization pass in the ledger.
  * - `localize.write-run-summary`   — write the run summary JSON.
  * - `executor.enumerate-units`     — batch planner / scope enumeration.
@@ -183,6 +185,7 @@ export type PipelineStep =
   | "localize.persist-draft"
   | "localize.persist-provider-run"
   | "localize.export-patch"
+  | "localize.apply-patch"
   | "localize.record-pass"
   | "localize.write-run-summary"
   | "executor.enumerate-units"

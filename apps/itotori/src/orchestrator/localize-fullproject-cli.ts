@@ -17,6 +17,7 @@
 
 import { join } from "node:path";
 import {
+  ItotoriAssetLocalizationDecisionRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriDraftJobRepository,
   ItotoriLocalizationPassLedgerRepository,
@@ -46,6 +47,10 @@ import {
   type LocalizeFullProjectResult,
 } from "./localize-fullproject-command.js";
 import {
+  runWholeGamePatchExportAndApply,
+  type WholeGamePatchExportAndApplyResult,
+} from "./patch-apply-seam.js";
+import {
   PipelineFailureDiagnosticError,
   runPipelineStepWithDiagnostic,
 } from "./pipeline-failure-diagnostic.js";
@@ -57,7 +62,23 @@ export type RunLocalizeFullProjectLiveArgs = {
   io: LocalizeFullProjectIo;
   /** Per-process USD cost cap for the OpenRouter provider. Defaults to $0.50. */
   costCapUsd?: number;
+  /**
+   * m1-wholegame-localize-to-patch-seam — the read-only source game root
+   * (contains REALLIVEDATA/Seen.txt) + the writable target root. When BOTH are
+   * present the run reaches an APPLYABLE, byte-correct patch: the executor's
+   * real drafts pass the export-patch preflight (production loader), then
+   * `kaifuu patch --engine reallive --bundle translated-bridge.json` writes the
+   * patched output under `patchTargetRoot`. Omit both to stop at
+   * `translated-bridge.json` (e.g. a decode-only dry check).
+   */
+  sourceRoot?: string;
+  patchTargetRoot?: string;
   log?: (message: string) => void;
+};
+
+export type RunLocalizeFullProjectLiveResult = LocalizeFullProjectResult & {
+  /** Present when the source + target roots drove the patch-apply seam. */
+  patchApply?: WholeGamePatchExportAndApplyResult;
 };
 
 /**
@@ -75,7 +96,7 @@ export type RunLocalizeFullProjectLiveArgs = {
  */
 export async function runLocalizeFullProjectLive(
   args: RunLocalizeFullProjectLiveArgs,
-): Promise<LocalizeFullProjectResult> {
+): Promise<RunLocalizeFullProjectLiveResult> {
   // Privacy gate BEFORE any live byte.
   assertOpenRouterZdrAccount(process.env);
 
@@ -119,6 +140,7 @@ export async function runLocalizeFullProjectLive(
     const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
     const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
     const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
+    const assetDecisionRepo = new ItotoriAssetLocalizationDecisionRepository(context.db);
 
     const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
       projectId: config.projectId,
@@ -135,7 +157,7 @@ export async function runLocalizeFullProjectLive(
       artifactRecorder,
     });
 
-    return await runPipelineStepWithDiagnostic({
+    const passResult = await runPipelineStepWithDiagnostic({
       step: "localize.run-pass",
       code: "unknown",
       message: `localize-live: run-pass failed: the driven executor / pass-ledger step aborted`,
@@ -169,6 +191,63 @@ export async function runLocalizeFullProjectLive(
           },
         }),
     });
+
+    // m1-wholegame-localize-to-patch-seam — reach an APPLYABLE patch. When the
+    // source + target roots are configured, run the export-patch preflight over
+    // the run's REAL persisted drafts (production loader) then apply the
+    // translated bridge via `kaifuu patch --engine reallive --bundle`, writing
+    // the byte-correct patched output under the target. Only RealLive is
+    // wired here (the kaifuu reallive bundle-driven patchback); other engines
+    // still stop at translated-bridge.json.
+    if (
+      args.sourceRoot !== undefined &&
+      args.sourceRoot.length > 0 &&
+      args.patchTargetRoot !== undefined &&
+      args.patchTargetRoot.length > 0
+    ) {
+      if (config.engineProfile !== "reallive") {
+        throw new Error(
+          `localize-live: patch-apply seam is wired for --engine reallive only; config engineProfile is '${config.engineProfile}'. Omit --source/--patch-target to stop at translated-bridge.json.`,
+        );
+      }
+      const sourceRoot = args.sourceRoot;
+      const patchTargetRoot = args.patchTargetRoot;
+      const rawBridge = args.io.readJson(config.bridgePath);
+      const patchApply = await runPipelineStepWithDiagnostic({
+        step: "localize.apply-patch",
+        code: "unknown",
+        message: `localize-live: apply-patch failed: kaifuu patch / export-patch preflight aborted`,
+        inputs: {
+          configPath: args.configPath,
+          runDir: args.runDir,
+          projectId: config.projectId,
+          localeBranchId: config.localeBranchId,
+        },
+        repro: {
+          configPath: args.configPath,
+          bridgePath: config.bridgePath,
+        },
+        actor,
+        run: () =>
+          runWholeGamePatchExportAndApply({
+            actor,
+            draftJobs: draftJobRepo,
+            ledger: ledgerRepo,
+            patchReport: passResult.result.patchReport,
+            rawBridge,
+            sourceRoot,
+            targetRoot: patchTargetRoot,
+            translatedBundlePath: join(args.runDir, "translated-bridge.json"),
+            requestedBy: localUserId,
+            loadActiveDecisions: (a, projectId, localeBranchId) =>
+              assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
+            ...(args.log !== undefined ? { log: args.log } : {}),
+          }),
+      });
+      return { ...passResult, patchApply };
+    }
+
+    return passResult;
   } catch (error) {
     // Already a structured diagnostic → rethrow untouched (upstream has the
     // more specific step + context).
