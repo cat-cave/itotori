@@ -3,6 +3,7 @@ export type { DatabaseContext, ItotoriDatabase } from "./connection.js";
 export {
   AuthorizationError,
   allPermissions,
+  applyMappedProviderClaimGrants,
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
   defaultLocalAccountId,
@@ -20,11 +21,17 @@ export {
   localUserDisplayName,
   localUserId,
   permissionValues,
+  ProviderClaimQuarantineError,
+  quarantineExternalIdentityProviderClaims,
   requirePermission,
   resolvePrincipalEffectivePermissions,
   seedDefaultPermissionSets,
 } from "./authorization.js";
-export type { AuthorizationActor, Permission } from "./authorization.js";
+export type {
+  AuthorizationActor,
+  ExternalIdentityProviderClaim,
+  Permission,
+} from "./authorization.js";
 export { migrate } from "./migrations.js";
 export {
   BENCHMARK_MANAGED_ARTIFACT_KINDS,
@@ -59,6 +66,7 @@ export {
   outboxEventTypeValues,
   outboxStatusValues,
   providerCostKindValues,
+  authProviderClaimKindValues,
   providerRunStatusValues,
   runtimeBridgeUnitRefRoleValues,
   runtimeEvidenceKindValues,
@@ -145,6 +153,7 @@ export type {
   OutboxEventType,
   OutboxStatus,
   ProviderCostKind,
+  AuthProviderClaimKind,
   ProviderRunStatus,
   RuntimeBridgeUnitRefRole,
   RuntimeEvidenceKind,

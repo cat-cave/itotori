@@ -2,11 +2,15 @@ import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { ItotoriDatabase } from "./connection.js";
 import {
   type AuthPrincipalKind,
+  type AuthProviderClaimKind,
   authAccountMemberships,
   authAccounts,
+  authExternalIdentityProviderClaims,
   authExternalIdentities,
   authPermissionSetPermissions,
   authPermissionSets,
+  authProviderClaimKindValues,
+  authProviderClaimPermissionMappings,
   authPrincipalPermissionGrants,
   authPrincipalPermissionSetGrants,
   authPrincipals,
@@ -141,6 +145,18 @@ export class AuthorizationError extends Error {
     this.name = "AuthorizationError";
   }
 }
+
+export class ProviderClaimQuarantineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderClaimQuarantineError";
+  }
+}
+
+export type ExternalIdentityProviderClaim = {
+  kind: AuthProviderClaimKind;
+  value: string;
+};
 
 /**
  * The principal's ACTIVE account context: the ids of the accounts it belongs to
@@ -302,6 +318,148 @@ async function isActiveSession(
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Record external IdP claims as quarantined, untrusted input.
+ *
+ * These rows are deliberately NOT read by `requirePermission` or
+ * `resolvePrincipalEffectivePermissions`; recording a provider role/group/scope
+ * cannot authorize anything by itself.
+ */
+export async function quarantineExternalIdentityProviderClaims(
+  db: ItotoriDatabase,
+  input: {
+    externalIdentityId: string;
+    claims: readonly ExternalIdentityProviderClaim[];
+  },
+): Promise<void> {
+  const claims = normalizeProviderClaims(input.claims);
+  if (claims.length === 0) {
+    return;
+  }
+  await db
+    .insert(authExternalIdentityProviderClaims)
+    .values(
+      claims.map((claim) => ({
+        externalIdentityId: input.externalIdentityId,
+        claimKind: claim.kind,
+        claimValue: claim.value,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [
+        authExternalIdentityProviderClaims.externalIdentityId,
+        authExternalIdentityProviderClaims.claimKind,
+        authExternalIdentityProviderClaims.claimValue,
+      ],
+      set: { lastSeenAt: new Date() },
+    });
+}
+
+/**
+ * Login reconciliation for provider claims.
+ *
+ * The function first quarantines the presented roles/groups/scopes. It then
+ * checks for explicit admin-created claim mappings and materializes those
+ * mappings as ordinary direct permission grant rows for the linked principal.
+ * Provider claims themselves still confer no permission; the existing grant
+ * resolver remains the only authorization path.
+ *
+ * @returns the direct permissions materialized from matching mappings.
+ */
+export async function applyMappedProviderClaimGrants(
+  db: ItotoriDatabase,
+  input: {
+    externalIdentityId: string;
+    claims: readonly ExternalIdentityProviderClaim[];
+  },
+): Promise<Permission[]> {
+  const claims = normalizeProviderClaims(input.claims);
+  const identityRows = await db
+    .select({
+      provider: authExternalIdentities.provider,
+      principalId: authUsers.principalId,
+    })
+    .from(authExternalIdentities)
+    .innerJoin(authUsers, eq(authUsers.userId, authExternalIdentities.userId))
+    .where(eq(authExternalIdentities.externalIdentityId, input.externalIdentityId))
+    .limit(1);
+  const identity = identityRows[0];
+  if (identity === undefined) {
+    throw new ProviderClaimQuarantineError(
+      `external identity ${input.externalIdentityId} does not exist`,
+    );
+  }
+
+  await quarantineExternalIdentityProviderClaims(db, {
+    externalIdentityId: input.externalIdentityId,
+    claims,
+  });
+  if (claims.length === 0) {
+    return [];
+  }
+
+  const claimKeys = new Set(claims.map(providerClaimKey));
+  const candidateMappings = await db
+    .select({
+      claimKind: authProviderClaimPermissionMappings.claimKind,
+      claimValue: authProviderClaimPermissionMappings.claimValue,
+      permission: authProviderClaimPermissionMappings.permission,
+    })
+    .from(authProviderClaimPermissionMappings)
+    .where(
+      and(
+        eq(authProviderClaimPermissionMappings.provider, identity.provider),
+        inArray(
+          authProviderClaimPermissionMappings.claimValue,
+          claims.map((claim) => claim.value),
+        ),
+      ),
+    );
+  const mappedPermissions = [
+    ...new Set(
+      candidateMappings
+        .filter((mapping) =>
+          claimKeys.has(providerClaimKey({ kind: mapping.claimKind, value: mapping.claimValue })),
+        )
+        .map((mapping) => mapping.permission),
+    ),
+  ].sort();
+
+  for (const permission of mappedPermissions) {
+    await db
+      .insert(authPrincipalPermissionGrants)
+      .values({ principalId: identity.principalId, permission })
+      .onConflictDoNothing();
+  }
+  return mappedPermissions;
+}
+
+function normalizeProviderClaims(
+  claims: readonly ExternalIdentityProviderClaim[],
+): ExternalIdentityProviderClaim[] {
+  const allowedKinds = new Set<string>(Object.values(authProviderClaimKindValues));
+  const seen = new Set<string>();
+  const normalized: ExternalIdentityProviderClaim[] = [];
+  for (const claim of claims) {
+    if (!allowedKinds.has(claim.kind)) {
+      throw new ProviderClaimQuarantineError(`unsupported provider claim kind ${claim.kind}`);
+    }
+    if (claim.value.trim().length === 0) {
+      throw new ProviderClaimQuarantineError("provider claim value must be non-empty");
+    }
+    const key = providerClaimKey(claim);
+    if (!seen.has(key)) {
+      seen.add(key);
+      normalized.push(claim);
+    }
+  }
+  return normalized;
+}
+
+function providerClaimKey(claim: ExternalIdentityProviderClaim): string {
+  return `${claim.kind}\0${claim.value}`;
 }
 
 /**

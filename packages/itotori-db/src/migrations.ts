@@ -316,6 +316,10 @@ export const migrations = [
     id: "0064_benchmark_runs",
     file: "0064_benchmark_runs.sql",
   },
+  {
+    id: "0065_auth_provider_claim_quarantine",
+    file: "0065_auth_provider_claim_quarantine.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

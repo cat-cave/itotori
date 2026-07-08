@@ -8,8 +8,10 @@
 // NOTHING unless a grant row exists. These tests exercise the real resolver
 // against real Postgres.
 
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
+  applyMappedProviderClaimGrants,
   localUserId,
   permissionValues,
   requirePermission,
@@ -17,7 +19,12 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
-import { authAccountMemberships, authExternalIdentities } from "../src/schema.js";
+import {
+  authAccountMemberships,
+  authExternalIdentities,
+  authExternalIdentityProviderClaims,
+  authPrincipalPermissionGrants,
+} from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 // The bootstrap local user is granted every permission directly in the LEGACY
@@ -148,6 +155,101 @@ describe("requirePermission effective-permission resolution", () => {
       const claimActor: AuthorizationActor = { userId: "user-claim" };
       // Not a single permission is authorized: the identity carries no grants.
       for (const permission of Object.values(permissionValues)) {
+        await expectDenied(requirePermission(context.db, claimActor, permission), permission);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("quarantines provider roles/groups/scopes and only mapped grants authorize", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriPrincipalRepository(context.db);
+      await repo.createAccount(localActor, { accountId: "acct", slug: "acct", name: "Acct" });
+      await repo.createPrincipal(localActor, {
+        kind: "human_user",
+        principalId: "principal-admin",
+        userId: "user-admin",
+        displayName: "Admin",
+      });
+      await repo.createPrincipal(localActor, {
+        kind: "human_user",
+        principalId: "principal-provider",
+        userId: "user-provider",
+        displayName: "Provider User",
+      });
+      await context.db.insert(authAccountMemberships).values({
+        membershipId: "membership-provider",
+        accountId: "acct",
+        userId: "user-provider",
+      });
+      await context.db.insert(authExternalIdentities).values({
+        externalIdentityId: "ext-provider",
+        userId: "user-provider",
+        provider: "oidc-zitadel",
+        subject: "sub-provider-123",
+      });
+
+      const claims = [
+        { kind: "role", value: "itotori-admin" },
+        { kind: "group", value: "localizers" },
+        { kind: "scope", value: "catalog:read" },
+      ] as const;
+      const claimActor: AuthorizationActor = { userId: "user-provider" };
+
+      expect(
+        await applyMappedProviderClaimGrants(context.db, {
+          externalIdentityId: "ext-provider",
+          claims,
+        }),
+      ).toEqual([]);
+
+      const quarantinedClaims = await context.db
+        .select()
+        .from(authExternalIdentityProviderClaims)
+        .where(eq(authExternalIdentityProviderClaims.externalIdentityId, "ext-provider"));
+      expect(
+        quarantinedClaims.map((claim) => `${claim.claimKind}:${claim.claimValue}`).sort(),
+      ).toEqual(["group:localizers", "role:itotori-admin", "scope:catalog:read"]);
+
+      const unmappedGrants = await context.db
+        .select()
+        .from(authPrincipalPermissionGrants)
+        .where(eq(authPrincipalPermissionGrants.principalId, "principal-provider"));
+      expect(unmappedGrants).toHaveLength(0);
+      for (const permission of Object.values(permissionValues)) {
+        await expectDenied(requirePermission(context.db, claimActor, permission), permission);
+      }
+
+      await repo.mapProviderClaimToDirectPermission(localActor, {
+        actorPrincipalId: "principal-admin",
+        provider: "oidc-zitadel",
+        claimKind: "group",
+        claimValue: "localizers",
+        permission: permissionValues.catalogRead,
+        reason: "map IdP localizers group to catalog read",
+        requestId: "req-provider-claim-map",
+      });
+      expect(
+        await applyMappedProviderClaimGrants(context.db, {
+          externalIdentityId: "ext-provider",
+          claims,
+        }),
+      ).toEqual([permissionValues.catalogRead]);
+
+      const mappedGrants = await context.db
+        .select({ permission: authPrincipalPermissionGrants.permission })
+        .from(authPrincipalPermissionGrants)
+        .where(eq(authPrincipalPermissionGrants.principalId, "principal-provider"));
+      expect(mappedGrants).toEqual([{ permission: permissionValues.catalogRead }]);
+      await expect(
+        requirePermission(context.db, claimActor, permissionValues.catalogRead),
+      ).resolves.toBeUndefined();
+
+      for (const permission of Object.values(permissionValues).filter(
+        (permission) => permission !== permissionValues.catalogRead,
+      )) {
         await expectDenied(requirePermission(context.db, claimActor, permission), permission);
       }
     } finally {

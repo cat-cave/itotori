@@ -4766,6 +4766,16 @@ export const authPrincipalKindValues = {
 export type AuthPrincipalKind =
   (typeof authPrincipalKindValues)[keyof typeof authPrincipalKindValues];
 
+/** External IdP claim KIND. Claims are quarantined input, not grants. */
+export const authProviderClaimKindValues = {
+  role: "role",
+  group: "group",
+  scope: "scope",
+} as const;
+
+export type AuthProviderClaimKind =
+  (typeof authProviderClaimKindValues)[keyof typeof authProviderClaimKindValues];
+
 /** Direction of a permission / permission-set delta recorded in the audit log. */
 export const authAuditEventActionValues = {
   granted: "granted",
@@ -4888,6 +4898,77 @@ export const authExternalIdentities = pgTable(
       table.subject,
     ),
     index("itotori_auth_external_identities_user_idx").on(table.userId),
+  ],
+);
+
+/**
+ * Quarantined provider claims observed during external-login processing.
+ *
+ * These rows are untrusted facts from the IdP. Authorization never reads them
+ * directly; only explicit admin-created mappings may materialize ordinary grant
+ * rows.
+ */
+export const authExternalIdentityProviderClaims = pgTable(
+  "itotori_auth_external_identity_provider_claims",
+  {
+    externalIdentityId: text("external_identity_id")
+      .notNull()
+      .references(() => authExternalIdentities.externalIdentityId, { onDelete: "cascade" }),
+    claimKind: text("claim_kind").notNull().$type<AuthProviderClaimKind>(),
+    claimValue: text("claim_value").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.externalIdentityId, table.claimKind, table.claimValue] }),
+    check(
+      "itotori_auth_external_identity_provider_claims_kind_check",
+      sql`${table.claimKind} in ('role', 'group', 'scope')`,
+    ),
+    check(
+      "itotori_auth_external_identity_provider_claims_value_check",
+      sql`length(${table.claimValue}) > 0`,
+    ),
+    index("itotori_auth_external_identity_provider_claims_identity_idx").on(
+      table.externalIdentityId,
+    ),
+  ],
+);
+
+/**
+ * Admin-created mapping from a quarantined provider claim to an exact
+ * permission. Login reconciliation uses these rows to materialize ordinary
+ * `auth_principal_permission_grants`; authorization still reads only grants.
+ */
+export const authProviderClaimPermissionMappings = pgTable(
+  "itotori_auth_provider_claim_permission_mappings",
+  {
+    provider: text("provider").notNull(),
+    claimKind: text("claim_kind").notNull().$type<AuthProviderClaimKind>(),
+    claimValue: text("claim_value").notNull(),
+    permission: text("permission").notNull().$type<Permission>(),
+    createdByPrincipalId: text("created_by_principal_id")
+      .notNull()
+      .references(() => authPrincipals.principalId, { onDelete: "restrict" }),
+    reason: text("reason"),
+    requestId: text("request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.provider, table.claimKind, table.claimValue, table.permission] }),
+    check(
+      "itotori_auth_provider_claim_permission_mappings_kind_check",
+      sql`${table.claimKind} in ('role', 'group', 'scope')`,
+    ),
+    check(
+      "itotori_auth_provider_claim_permission_mappings_claim_value_check",
+      sql`length(${table.claimValue}) > 0`,
+    ),
+    index("itotori_auth_provider_claim_permission_mappings_claim_idx").on(
+      table.provider,
+      table.claimKind,
+      table.claimValue,
+    ),
   ],
 );
 

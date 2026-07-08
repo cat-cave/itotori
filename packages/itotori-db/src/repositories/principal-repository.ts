@@ -26,6 +26,7 @@ import {
 } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
+  type AuthProviderClaimKind,
   type AuthPrincipalKind,
   authAccountMemberships,
   authAccounts,
@@ -35,6 +36,7 @@ import {
   authPermissionSetAuditEvents,
   authPermissionSetPermissions,
   authPermissionSets,
+  authProviderClaimPermissionMappings,
   authPrincipalPermissionGrants,
   authPrincipalPermissionSetGrants,
   authPrincipals,
@@ -148,6 +150,17 @@ export type GrantDirectPermissionInput = {
   requestId?: string;
 };
 
+/** Admin mapping from a quarantined provider claim to an exact permission grant. */
+export type MapProviderClaimToDirectPermissionInput = {
+  actorPrincipalId: string;
+  provider: string;
+  claimKind: AuthProviderClaimKind;
+  claimValue: string;
+  permission: Permission;
+  reason?: string;
+  requestId?: string;
+};
+
 /** Revoke a previously-granted permission set (the "role unassignment"). */
 export type RevokePermissionSetInput = {
   actorPrincipalId: string;
@@ -185,6 +198,10 @@ export interface ItotoriPrincipalRepositoryPort {
   grantDirectPermission(
     actor: AuthorizationActor,
     input: GrantDirectPermissionInput,
+  ): Promise<void>;
+  mapProviderClaimToDirectPermission(
+    actor: AuthorizationActor,
+    input: MapProviderClaimToDirectPermissionInput,
   ): Promise<void>;
   revokeDirectPermission(
     actor: AuthorizationActor,
@@ -549,6 +566,33 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
         ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
       });
+    });
+  }
+
+  /**
+   * Map a quarantined external-provider claim to one exact permission.
+   *
+   * This does NOT make provider claims an authorization source. It creates an
+   * admin-owned mapping that login reconciliation may materialize into ordinary
+   * direct grant rows; `requirePermission` still authorizes only through the
+   * existing grant resolver.
+   */
+  async mapProviderClaimToDirectPermission(
+    actor: AuthorizationActor,
+    input: MapProviderClaimToDirectPermissionInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    if (input.claimValue.trim().length === 0) {
+      throw new ItotoriPrincipalRepositoryError("provider claim value must be non-empty");
+    }
+    await this.db.insert(authProviderClaimPermissionMappings).values({
+      provider: input.provider,
+      claimKind: input.claimKind,
+      claimValue: input.claimValue,
+      permission: input.permission,
+      createdByPrincipalId: input.actorPrincipalId,
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
     });
   }
 

@@ -1082,6 +1082,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.grantDirectPermission(deniedActor, undefined as never),
   ),
   principalGate(
+    "mapProviderClaimToDirectPermission",
+    "authAdmin",
+    "effective-permission-resolver.test.ts provider claim mapping coverage",
+    (repo) => repo.mapProviderClaimToDirectPermission(deniedActor, undefined as never),
+  ),
+  principalGate(
     "revokeDirectPermission",
     "authAdmin",
     "auth-grant-audit-log.test.ts revoke direct permission coverage",
@@ -1130,6 +1136,7 @@ const authManagementOperations = [
   "grantPermissionSet",
   "revokePermissionSet",
   "grantDirectPermission",
+  "mapProviderClaimToDirectPermission",
   "revokeDirectPermission",
   "loadPrincipal",
   "resolvePrincipalPermissions",
@@ -2149,6 +2156,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriPrincipalRepository.grantDirectPermission",
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts grant direct permission coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepository.mapProviderClaimToDirectPermission",
+          "requiredPermission": "auth.admin",
+          "successFixture": "effective-permission-resolver.test.ts provider claim mapping coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
