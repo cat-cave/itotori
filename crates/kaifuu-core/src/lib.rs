@@ -206,6 +206,7 @@ pub mod alpha_readiness_profile;
 pub mod asset_ocr;
 pub mod bgi_bytecode_fixture;
 pub mod bgi_detector_fixture;
+pub mod bgi_readiness;
 pub mod compat_evidence;
 pub mod compat_profile;
 pub mod compat_regression;
@@ -248,6 +249,15 @@ pub use bgi_detector_fixture::{
     BGI_DETECTOR_SUPPORT_BOUNDARY, BGI_ENGINE_FAMILY, BgiDetectorCrypto, BgiDetectorDiagnostic,
     BgiDetectorEntryReport, BgiDetectorFixture, BgiDetectorFixtureEntry, BgiDetectorProfile,
     BgiDetectorReport, read_bgi_detector_fixture, run_bgi_detector_fixture,
+};
+pub use bgi_readiness::{
+    BGI_READINESS_BYTECODE_PROVENANCE_NODE, BGI_READINESS_DETECTOR_PROVENANCE_NODE,
+    BGI_READINESS_REPORT_SCHEMA_VERSION, BGI_READINESS_SCHEMA_VERSION,
+    BGI_READINESS_SUPPORT_BOUNDARY, BgiReadinessArtifactKind, BgiReadinessArtifactProof,
+    BgiReadinessCase, BgiReadinessEntryReport, BgiReadinessEvidence, BgiReadinessFinding,
+    BgiReadinessFixture, BgiReadinessLevel, BgiReadinessProvenance, BgiReadinessReport,
+    canonical_bgi_readiness_artifact_hash, derive_bgi_readiness_level, read_bgi_readiness_fixture,
+    run_bgi_readiness,
 };
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
 pub use wolf_encrypted_smoke::{

@@ -1,0 +1,419 @@
+{
+  "schemaVersion": "0.1.0",
+  "readinessSetId": "kaifuu-bgi-readiness-fixtures",
+  "sourceNodeId": "KAIFUU-041",
+  "engineFamily": "bgi",
+  "cases": [
+    {
+      "fixtureId": "bgi.readiness.unsupported-encrypted",
+      "caseId": "bgi-readiness-unsupported-encrypted",
+      "detector": {
+        "fixtureId": "bgi.bse-encrypted-container",
+        "variant": "bse-encrypted-container",
+        "profile": "bse_encrypted_container",
+        "container": "archive",
+        "crypto": "none_or_unknown_variant",
+        "codec": "binary_table",
+        "surface": "archive_entry",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:9262990c48461951bb68a99fb44af7c0e8edce1470c2d942733ad48be722568f"],
+        "expectedSemanticCodes": [
+          "kaifuu.unknown_engine_variant",
+          "kaifuu.unsupported_variant.encrypted",
+          "kaifuu.missing_capability.crypto"
+        ]
+      },
+      "expectedLevel": "unsupported"
+    },
+    {
+      "fixtureId": "bgi.readiness.unsupported-compressed",
+      "caseId": "bgi-readiness-unsupported-compressed",
+      "detector": {
+        "fixtureId": "bgi.dsc-compressed-container",
+        "variant": "dsc-compressed-container",
+        "profile": "dsc_compressed_container",
+        "container": "archive",
+        "crypto": "none_or_unknown_variant",
+        "codec": "binary_table",
+        "surface": "archive_entry",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:9480e683f0462de837e0f7ca6b8ab96ac6bb5e85297f25039960bfca0a01b821"],
+        "expectedSemanticCodes": [
+          "kaifuu.unknown_engine_variant",
+          "kaifuu.missing_capability.codec"
+        ]
+      },
+      "expectedLevel": "unsupported"
+    },
+    {
+      "fixtureId": "bgi.readiness.unsupported-unknown",
+      "caseId": "bgi-readiness-unsupported-unknown",
+      "detector": {
+        "fixtureId": "bgi.unknown-container",
+        "variant": "unknown-container",
+        "profile": "unknown_container",
+        "container": "unknown",
+        "crypto": "none_or_unknown_variant",
+        "codec": "unknown",
+        "surface": "unknown",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:a85d7e68db9f5891fea56f90d9f419c3b563ead13da97bf843e6a708548e9461"],
+        "expectedSemanticCodes": [
+          "kaifuu.unknown_engine_variant",
+          "kaifuu.missing_capability.container"
+        ]
+      },
+      "expectedLevel": "unsupported"
+    },
+    {
+      "fixtureId": "bgi.readiness.identify",
+      "caseId": "bgi-readiness-identify",
+      "detector": {
+        "fixtureId": "bgi.buriko-arc20-container",
+        "variant": "buriko-arc20-container",
+        "profile": "buriko_arc20_container",
+        "container": "archive",
+        "crypto": "none_or_unknown_variant",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
+      },
+      "expectedLevel": "identify"
+    },
+    {
+      "fixtureId": "bgi.readiness.inventory-header",
+      "caseId": "bgi-readiness-inventory-header",
+      "bytecode": {
+        "fixtureId": "bgi.bytecode.header",
+        "variant": "header",
+        "profile": "header_bytecode",
+        "container": "bytecode",
+        "crypto": "none",
+        "codec": "shift_jis",
+        "surface": "string_reference",
+        "parserSurface": {
+          "surfaceTransform": "binary_offset",
+          "entryPointByte": 32,
+          "headerMagic": "BurikoCompiledScriptVer1.00\\0",
+          "headerSizeBytes": 32,
+          "codeStartByte": 32,
+          "codeEndSentinelHex": "1b000000",
+          "pointerBase": "code_size_relative_text_offset",
+          "stringTerminatorHex": "00"
+        },
+        "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+        "expectedStringReferences": [
+          {
+            "referenceId": "bgi.header.name.001",
+            "textSurface": "character_name",
+            "parserOpcode": "bgi.string_ref.text_function.name",
+            "pointerOffsetByte": 36,
+            "pointerValue": 24,
+            "stringStartByte": 56,
+            "stringEndByte": 62,
+            "terminatorByte": 62,
+            "decodedText": "アリス"
+          },
+          {
+            "referenceId": "bgi.header.dialogue.001",
+            "textSurface": "dialogue",
+            "parserOpcode": "bgi.string_ref.text_function.dialogue",
+            "pointerOffsetByte": 44,
+            "pointerValue": 31,
+            "stringStartByte": 63,
+            "stringEndByte": 73,
+            "terminatorByte": 73,
+            "decodedText": "こんにちは"
+          }
+        ],
+        "negativeCases": [
+          {
+            "caseId": "bgi.header.missing-magic",
+            "description": "Header profile must start with the BurikoCompiledScriptVer1.00 NUL-terminated magic.",
+            "sourceBytesHex": "437572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.header-size-out-of-bounds",
+            "description": "Header profile rejects an additional-header-size word that moves code start beyond EOF.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000ffffffff0300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.missing-code-terminator",
+            "description": "Header profile rejects code sections without the BGI 1b000000 terminal dword.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f00000040010000000000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "missing_code_terminator"
+          }
+        ],
+        "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+      },
+      "expectedLevel": "inventory"
+    },
+    {
+      "fixtureId": "bgi.readiness.inventory-no-header",
+      "caseId": "bgi-readiness-inventory-no-header",
+      "bytecode": {
+        "fixtureId": "bgi.bytecode.no-header",
+        "variant": "no_header",
+        "profile": "no_header_bytecode",
+        "container": "bytecode",
+        "crypto": "none",
+        "codec": "shift_jis",
+        "surface": "string_reference",
+        "parserSurface": {
+          "surfaceTransform": "binary_offset",
+          "entryPointByte": 0,
+          "headerMagic": null,
+          "headerSizeBytes": 0,
+          "codeStartByte": 0,
+          "codeEndSentinelHex": "1b000000",
+          "pointerBase": "code_size_relative_text_offset",
+          "stringTerminatorHex": "00"
+        },
+        "sourceBytesHex": "030000003f0000000300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+        "expectedStringReferences": [
+          {
+            "referenceId": "bgi.no_header.dialogue.001",
+            "textSurface": "dialogue",
+            "parserOpcode": "bgi.string_ref.text_function.dialogue",
+            "pointerOffsetByte": 4,
+            "pointerValue": 63,
+            "stringStartByte": 63,
+            "stringEndByte": 73,
+            "terminatorByte": 73,
+            "decodedText": "こんにちは"
+          },
+          {
+            "referenceId": "bgi.no_header.name.001",
+            "textSurface": "character_name",
+            "parserOpcode": "bgi.string_ref.text_function.name",
+            "pointerOffsetByte": 12,
+            "pointerValue": 56,
+            "stringStartByte": 56,
+            "stringEndByte": 62,
+            "terminatorByte": 62,
+            "decodedText": "アリス"
+          },
+          {
+            "referenceId": "bgi.no_header.other.001",
+            "textSurface": "other",
+            "parserOpcode": "bgi.string_ref.other",
+            "pointerOffsetByte": 20,
+            "pointerValue": 74,
+            "stringStartByte": 74,
+            "stringEndByte": 80,
+            "terminatorByte": 80,
+            "decodedText": "選択肢"
+          }
+        ],
+        "negativeCases": [
+          {
+            "caseId": "bgi.no_header.unexpected-header",
+            "description": "No-header profile rejects bytes that carry the header-only BurikoCompiledScriptVer1.00 marker.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.no_header.string-pointer-out-of-bounds",
+            "description": "No-header profile rejects a string-reference dword that cannot land in the string section.",
+            "sourceBytesHex": "03000000ffffffff0300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "string_pointer_out_of_bounds"
+          },
+          {
+            "caseId": "bgi.no_header.invalid-shift-jis",
+            "description": "No-header profile rejects a referenced NUL-terminated string that is not valid Shift-JIS.",
+            "sourceBytesHex": "030000003f0000000300000038000000030000004a000000000000000000000000000000000000000000000000000000400100001b0000008200838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "invalid_shift_jis"
+          }
+        ],
+        "proofHashes": ["sha256:5e428e85890961568710fadc0e0c8faef8b08c6adbc8a9cdf11e6f56bdeac30f"]
+      },
+      "expectedLevel": "inventory"
+    },
+    {
+      "fixtureId": "bgi.readiness.extract",
+      "caseId": "bgi-readiness-extract",
+      "detector": {
+        "fixtureId": "bgi.buriko-arc20-container",
+        "variant": "buriko-arc20-container",
+        "profile": "buriko_arc20_container",
+        "container": "archive",
+        "crypto": "none_or_unknown_variant",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
+      },
+      "bytecode": {
+        "fixtureId": "bgi.bytecode.header",
+        "variant": "header",
+        "profile": "header_bytecode",
+        "container": "bytecode",
+        "crypto": "none",
+        "codec": "shift_jis",
+        "surface": "string_reference",
+        "parserSurface": {
+          "surfaceTransform": "binary_offset",
+          "entryPointByte": 32,
+          "headerMagic": "BurikoCompiledScriptVer1.00\\0",
+          "headerSizeBytes": 32,
+          "codeStartByte": 32,
+          "codeEndSentinelHex": "1b000000",
+          "pointerBase": "code_size_relative_text_offset",
+          "stringTerminatorHex": "00"
+        },
+        "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+        "expectedStringReferences": [
+          {
+            "referenceId": "bgi.header.name.001",
+            "textSurface": "character_name",
+            "parserOpcode": "bgi.string_ref.text_function.name",
+            "pointerOffsetByte": 36,
+            "pointerValue": 24,
+            "stringStartByte": 56,
+            "stringEndByte": 62,
+            "terminatorByte": 62,
+            "decodedText": "アリス"
+          },
+          {
+            "referenceId": "bgi.header.dialogue.001",
+            "textSurface": "dialogue",
+            "parserOpcode": "bgi.string_ref.text_function.dialogue",
+            "pointerOffsetByte": 44,
+            "pointerValue": 31,
+            "stringStartByte": 63,
+            "stringEndByte": 73,
+            "terminatorByte": 73,
+            "decodedText": "こんにちは"
+          }
+        ],
+        "negativeCases": [
+          {
+            "caseId": "bgi.header.missing-magic",
+            "description": "Header profile must start with the BurikoCompiledScriptVer1.00 NUL-terminated magic.",
+            "sourceBytesHex": "437572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.header-size-out-of-bounds",
+            "description": "Header profile rejects an additional-header-size word that moves code start beyond EOF.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000ffffffff0300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.missing-code-terminator",
+            "description": "Header profile rejects code sections without the BGI 1b000000 terminal dword.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f00000040010000000000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "missing_code_terminator"
+          }
+        ],
+        "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+      },
+      "extractProof": {
+        "kind": "synthetic_extract_fixture",
+        "artifactId": "bgi-readiness-extract-arc20-member",
+        "proofHash": "sha256:b406653e6ae24821fa0077c2650a5ec4a074f42e3b768dd1700ec68c1f15aaa0",
+        "provenance": "public_synthetic"
+      },
+      "expectedLevel": "extract"
+    },
+    {
+      "fixtureId": "bgi.readiness.patch",
+      "caseId": "bgi-readiness-patch",
+      "detector": {
+        "fixtureId": "bgi.buriko-arc20-container",
+        "variant": "buriko-arc20-container",
+        "profile": "buriko_arc20_container",
+        "container": "archive",
+        "crypto": "none_or_unknown_variant",
+        "codec": "shift_jis_text",
+        "surface": "archive_entry",
+        "secretRequirementIds": [],
+        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
+      },
+      "bytecode": {
+        "fixtureId": "bgi.bytecode.header",
+        "variant": "header",
+        "profile": "header_bytecode",
+        "container": "bytecode",
+        "crypto": "none",
+        "codec": "shift_jis",
+        "surface": "string_reference",
+        "parserSurface": {
+          "surfaceTransform": "binary_offset",
+          "entryPointByte": 32,
+          "headerMagic": "BurikoCompiledScriptVer1.00\\0",
+          "headerSizeBytes": 32,
+          "codeStartByte": 32,
+          "codeEndSentinelHex": "1b000000",
+          "pointerBase": "code_size_relative_text_offset",
+          "stringTerminatorHex": "00"
+        },
+        "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+        "expectedStringReferences": [
+          {
+            "referenceId": "bgi.header.name.001",
+            "textSurface": "character_name",
+            "parserOpcode": "bgi.string_ref.text_function.name",
+            "pointerOffsetByte": 36,
+            "pointerValue": 24,
+            "stringStartByte": 56,
+            "stringEndByte": 62,
+            "terminatorByte": 62,
+            "decodedText": "アリス"
+          },
+          {
+            "referenceId": "bgi.header.dialogue.001",
+            "textSurface": "dialogue",
+            "parserOpcode": "bgi.string_ref.text_function.dialogue",
+            "pointerOffsetByte": 44,
+            "pointerValue": 31,
+            "stringStartByte": 63,
+            "stringEndByte": 73,
+            "terminatorByte": 73,
+            "decodedText": "こんにちは"
+          }
+        ],
+        "negativeCases": [
+          {
+            "caseId": "bgi.header.missing-magic",
+            "description": "Header profile must start with the BurikoCompiledScriptVer1.00 NUL-terminated magic.",
+            "sourceBytesHex": "437572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.header-size-out-of-bounds",
+            "description": "Header profile rejects an additional-header-size word that moves code start beyond EOF.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000ffffffff0300000018000000030000001f000000400100001b0000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "malformed_header"
+          },
+          {
+            "caseId": "bgi.header.missing-code-terminator",
+            "description": "Header profile rejects code sections without the BGI 1b000000 terminal dword.",
+            "sourceBytesHex": "427572696b6f436f6d70696c6564536372697074566572312e303000040000000300000018000000030000001f00000040010000000000008341838a83580082b182f182c982bf82cd00914991f08e8800",
+            "expectedDiagnosticCode": "missing_code_terminator"
+          }
+        ],
+        "proofHashes": ["sha256:71a7dc90d311daa4d4b21fde7e4a368b16fb4806c634ceafe5936322a4c5dc08"]
+      },
+      "extractProof": {
+        "kind": "synthetic_extract_fixture",
+        "artifactId": "bgi-readiness-extract-arc20-member",
+        "proofHash": "sha256:b406653e6ae24821fa0077c2650a5ec4a074f42e3b768dd1700ec68c1f15aaa0",
+        "provenance": "public_synthetic"
+      },
+      "patchProof": {
+        "kind": "synthetic_patch_fixture",
+        "artifactId": "bgi-readiness-patch-arc20-member",
+        "proofHash": "sha256:3173b469b2061afb8c60279d02257487ad7f93e2d64c2f38fa2f836c5561e5de",
+        "provenance": "public_synthetic"
+      },
+      "expectedLevel": "patch"
+    }
+  ]
+}
