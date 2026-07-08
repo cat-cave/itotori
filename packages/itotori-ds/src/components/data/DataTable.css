@@ -1,0 +1,71 @@
+.itotori-datatable {
+  /* The container background IS the divider colour; the 1px border-spacing gap
+   * between night cells reveals it, so seams read as thin hairline dividers. */
+  background: var(--ito-color-divider);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  overflow: hidden;
+}
+
+.itotori-datatable__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 1px;
+  font-size: var(--ito-text-table);
+  font-family: var(--ito-font-sans);
+}
+
+.itotori-datatable__caption {
+  caption-side: top;
+  text-align: start;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+.itotori-datatable__th {
+  background: var(--ito-color-raised);
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  font-weight: var(--ito-weight-body);
+  text-align: start;
+  padding: var(--ito-space-8) var(--ito-space-10);
+}
+
+.itotori-datatable__td {
+  background: var(--ito-color-surface);
+  color: var(--ito-color-text);
+  padding: var(--ito-space-8) var(--ito-space-10);
+  vertical-align: top;
+}
+
+.itotori-datatable__empty {
+  background: var(--ito-color-surface);
+  color: var(--ito-color-text-muted);
+  padding: var(--ito-space-14);
+  text-align: center;
+}
+
+.itotori-datatable__row--activatable {
+  cursor: pointer;
+}
+.itotori-datatable__row--activatable:hover .itotori-datatable__td {
+  background: var(--ito-color-raised);
+}
+.itotori-datatable__row--activatable:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.itotori-align-start {
+  text-align: start;
+}
+.itotori-align-end {
+  text-align: end;
+}
+.itotori-align-center {
+  text-align: center;
+}

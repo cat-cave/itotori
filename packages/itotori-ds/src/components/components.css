@@ -1,0 +1,16 @@
+/*
+ * Component styles barrel. Each component is `Name.tsx` + co-located `Name.css`
+ * (the precedent for downstream UI nodes); this file @imports them so the single
+ * DS entry (`tokens/styles.css`) ships one CSS bundle.
+ */
+@import "./core/Badge.css";
+@import "./layout/Panel.css";
+@import "./data/DataTable.css";
+@import "./data/ProgressBar.css";
+@import "./data/ComparisonPane.css";
+@import "./data/LocalizationProgress.css";
+@import "./data/StatReadout.css";
+@import "./localization/BiText.css";
+@import "./navigation/NavPills.css";
+@import "./navigation/CommandPalette.css";
+@import "./feedback/Toast.css";

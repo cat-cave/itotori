@@ -1,0 +1,19 @@
+/*
+ * Dusk Observatory — forms tokens (fields / toggles).
+ * Source: docs/design/itotori-design-system.md §Token groups (forms).
+ * The listed component set for this foundation node touches fields only via the
+ * command-palette query input; the full forms family (Button/TextField/Select/
+ * Switch/SegmentedControl) lands with the forms UI nodes downstream.
+ */
+:root {
+  --ito-field-bg: #17122a;
+  --ito-field-border: #423a66;
+  --ito-field-fg: var(--ito-color-text);
+  --ito-field-placeholder: #6f6394;
+  --ito-field-focus-border: var(--ito-color-amber);
+  --ito-field-radius: var(--ito-radius-tight);
+
+  --ito-toggle-off-bg: #2a2246;
+  --ito-toggle-on-bg: var(--ito-color-mint);
+  --ito-toggle-knob: #f3efff;
+}

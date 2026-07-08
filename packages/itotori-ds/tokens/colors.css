@@ -1,0 +1,53 @@
+/*
+ * Dusk Observatory — colour tokens.
+ * Source of truth: docs/design/itotori-design-system.md §Color.
+ * A 90s/2000s VN title screen at twilight, rebuilt as a dark studio cockpit.
+ * Amber is scarce (the one decisive action); mint is the evidence signal.
+ */
+:root {
+  /* Night canvas */
+  --ito-color-page: #15101f;
+  --ito-color-surface: #201a34;
+  --ito-color-raised: #2a2246;
+  --ito-color-code-well: #100c1c;
+
+  /* Ink */
+  --ito-color-text: #f3efff; /* lavender-white */
+  --ito-color-text-muted: #9a8dc4;
+  --ito-color-ink-on-accent: #15101f; /* dark ink on amber/mint fills */
+
+  /* Accents */
+  --ito-color-amber: #ffb648; /* primary — scarce, the one decisive action */
+  --ito-color-sakura: #ff6ca0; /* attention / decision / romance */
+  --ito-color-mint: #45e6ad; /* the evidence signal — progress, "proven" */
+  --ito-color-cyan: #55d6ea; /* links / info */
+  --ito-color-coral: #f4737e; /* critical badge tone */
+
+  /* Three-tone badge palette (tone derived from the status string) */
+  --ito-tone-neutral-fg: #cbbdf2;
+  --ito-tone-neutral-bg: #2a2246;
+  --ito-tone-neutral-border: #3a3160;
+  --ito-tone-ok-fg: #45e6ad;
+  --ito-tone-ok-bg: #16332a;
+  --ito-tone-ok-border: #2c5f4c;
+  --ito-tone-critical-fg: #f4737e;
+  --ito-tone-critical-bg: #2c1622;
+  --ito-tone-critical-border: #6e3242;
+
+  /* Alerts on deep coral-plum */
+  --ito-color-alert-bg: #2c1622;
+  --ito-color-alert-border: #6e3242;
+
+  /* Hairline-divider grid — the signature data motif: cells are night, the
+   * 1px gap reveals this divider colour so seams read as thin dividers. */
+  --ito-color-divider: #322a52;
+  --ito-color-border: #37305a;
+
+  /* Bevels / elevation */
+  --ito-bevel-top-highlight: rgba(255, 255, 255, 0.06);
+  --ito-shadow-panel: 0 18px 40px -24px rgba(0, 0, 0, 0.75);
+
+  /* Focus + selection */
+  --ito-color-focus-ring: #ffb648;
+  --ito-color-selection: rgba(255, 182, 72, 0.28);
+}

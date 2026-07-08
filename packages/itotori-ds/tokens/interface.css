@@ -1,0 +1,50 @@
+/*
+ * Dusk Observatory — interface tokens.
+ * Source: docs/design/itotori-design-system.md §Token groups (interface).
+ * Covers menu (VN config-window) chrome, kbd, command palette, tabs/pills,
+ * status bar, and data-viz. Panels are VN config-menu windows: a title bar with
+ * a vertical sheen + leading amber tick, a night body, a soft shadow, and a 1px
+ * inset top-highlight bevel.
+ */
+:root {
+  /* Menu / panel (VN config-window) chrome */
+  --ito-menu-title-bg: linear-gradient(180deg, #2f2748 0%, #241d3b 100%);
+  --ito-menu-title-sheen: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+  --ito-menu-tick: var(--ito-color-amber); /* leading amber tick */
+  --ito-menu-body-bg: var(--ito-color-surface);
+  --ito-menu-border: var(--ito-color-border);
+
+  /* Kbd */
+  --ito-kbd-bg: #17122a;
+  --ito-kbd-border: #423a66;
+  --ito-kbd-fg: #cbbdf2;
+
+  /* Command palette (⌘K) */
+  --ito-command-scrim: rgba(9, 6, 16, 0.72);
+  --ito-command-bg: #1b1530;
+  --ito-command-border: #4a3f74;
+  --ito-command-active-bg: rgba(255, 182, 72, 0.12);
+  --ito-command-active-border: var(--ito-color-amber);
+
+  /* Tabs / nav pills */
+  --ito-pill-bg: transparent;
+  --ito-pill-fg: var(--ito-color-text-muted);
+  --ito-pill-active-bg: rgba(255, 182, 72, 0.14);
+  --ito-pill-active-fg: var(--ito-color-amber);
+  --ito-pill-active-border: rgba(255, 182, 72, 0.5);
+
+  /* Status bar (persistent ZDR posture + source→branch) */
+  --ito-statusbar-bg: #17122a;
+  --ito-statusbar-fg: var(--ito-color-text-muted);
+  --ito-statusbar-border: var(--ito-color-border);
+
+  /* Data-viz — progress + sparkline + comparison surfaces */
+  --ito-dataviz-track: #17122a; /* progress track well */
+  --ito-dataviz-fill: var(--ito-color-mint); /* the evidence fill */
+  --ito-dataviz-fill-pending: #4a3f74;
+  --ito-dataviz-spark: var(--ito-color-cyan);
+  --ito-dataviz-grid-line: var(--ito-color-divider);
+  --ito-compare-source-bg: #1a1530;
+  --ito-compare-draft-bg: #191f2c;
+  --ito-compare-gutter: var(--ito-color-divider);
+}

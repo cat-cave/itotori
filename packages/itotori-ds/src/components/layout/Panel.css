@@ -1,0 +1,81 @@
+.itotori-panel {
+  background: var(--ito-menu-body-bg);
+  border-radius: var(--ito-radius);
+  color: var(--ito-color-text);
+  overflow: hidden;
+}
+
+.itotori-panel--frame {
+  border: 1px solid var(--ito-menu-border);
+  box-shadow:
+    var(--ito-shadow-panel),
+    inset 0 1px 0 0 var(--ito-bevel-top-highlight);
+}
+
+.itotori-panel__titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-10);
+  padding: var(--ito-space-8) var(--ito-space-12);
+  background: var(--ito-menu-title-bg);
+  border-bottom: 1px solid var(--ito-menu-border);
+  position: relative;
+}
+
+.itotori-panel__titlebar::after {
+  /* vertical sheen */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ito-menu-title-sheen);
+  pointer-events: none;
+}
+
+.itotori-panel__tick {
+  width: 3px;
+  align-self: stretch;
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-menu-tick);
+}
+
+.itotori-panel--tone-mint .itotori-panel__tick {
+  background: var(--ito-color-mint);
+}
+.itotori-panel--tone-sakura .itotori-panel__tick {
+  background: var(--ito-color-sakura);
+}
+
+.itotori-panel__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itotori-panel__title {
+  margin: 0;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-h2);
+  color: var(--ito-color-text);
+}
+
+.itotori-panel__lamps {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  position: relative;
+}
+
+.itotori-panel__body {
+  padding: var(--ito-space-12) var(--ito-space-14);
+}
+
+.itotori-eyebrow {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}

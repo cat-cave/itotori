@@ -1,0 +1,25 @@
+/*
+ * Dusk Observatory — typographic scale + weights.
+ * Source: docs/design/itotori-design-system.md §Type + §Voice.
+ * Sentence case everywhere; the only uppercase is the pixel eyebrow kicker and
+ * dt/th labels (via text-transform).
+ */
+:root {
+  --ito-text-h1: 1.9rem;
+  --ito-text-h1-sub: 1.55rem;
+  --ito-text-h2: 1.02rem;
+  --ito-text-body: 0.9rem;
+  --ito-text-table: 0.9rem;
+  --ito-text-pixel: 0.68rem; /* pixel labels 0.66–0.7 */
+  --ito-text-pixel-tight: 0.66rem;
+
+  --ito-weight-display: 700;
+  --ito-weight-display-soft: 600;
+  --ito-weight-body: 400;
+
+  --ito-leading-body: 1.5;
+  --ito-leading-tight: 1.2;
+
+  /* Tracked-uppercase pixel labels (eyebrows / th / dt). */
+  --ito-tracking-pixel: 0.14em;
+}

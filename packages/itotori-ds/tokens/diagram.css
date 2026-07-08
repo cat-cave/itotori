@@ -1,0 +1,14 @@
+/*
+ * Dusk Observatory — diagram tokens (route-map nodes / edges / branches).
+ * Source: docs/design/itotori-design-system.md §Token groups (diagram).
+ * The RouteMap component itself lands with the player/route UI nodes; these
+ * tokens exist so the route/choice tree chrome is consistent when it does.
+ */
+:root {
+  --ito-diagram-node-bg: var(--ito-color-raised);
+  --ito-diagram-node-border: var(--ito-color-border);
+  --ito-diagram-node-active-border: var(--ito-color-amber);
+  --ito-diagram-edge: #4a3f74;
+  --ito-diagram-edge-taken: var(--ito-color-mint);
+  --ito-diagram-branch-choice: var(--ito-color-sakura); /* decision points */
+}

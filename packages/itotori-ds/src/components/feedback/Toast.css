@@ -1,0 +1,65 @@
+.itotori-toast-viewport {
+  position: fixed;
+  right: var(--ito-space-16);
+  bottom: var(--ito-space-16);
+  z-index: var(--ito-layer-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-8);
+  max-width: min(360px, 92vw);
+}
+
+.itotori-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-10);
+  padding: var(--ito-space-10) var(--ito-space-12);
+  border: 1px solid var(--ito-tone-neutral-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-raised);
+  color: var(--ito-color-text);
+  box-shadow: var(--ito-shadow-panel);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+}
+
+.itotori-toast__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-color-text-muted);
+  flex-shrink: 0;
+}
+.itotori-toast--ok {
+  border-color: var(--ito-tone-ok-border);
+}
+.itotori-toast--ok .itotori-toast__dot {
+  background: var(--ito-color-mint);
+}
+.itotori-toast--critical {
+  border-color: var(--ito-tone-critical-border);
+}
+.itotori-toast--critical .itotori-toast__dot {
+  background: var(--ito-color-coral);
+}
+
+.itotori-toast__message {
+  flex: 1;
+}
+
+.itotori-toast__dismiss {
+  border: none;
+  background: transparent;
+  color: var(--ito-color-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 var(--ito-space-4);
+}
+.itotori-toast__dismiss:hover {
+  color: var(--ito-color-text);
+}
+.itotori-toast__dismiss:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 2px;
+}

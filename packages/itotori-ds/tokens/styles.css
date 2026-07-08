@@ -1,0 +1,22 @@
+/*
+ * Itotori design system — the single CSS entry.
+ * Import once at the app shell: `import "@itotori/ds/styles.css";`
+ *
+ * Order matters: the token groups define the `--ito-*` custom properties first,
+ * then the component layer consumes them. Downstream UI nodes never redefine a
+ * token value inline — they reference these variables.
+ */
+
+/* Token groups (docs/design/itotori-design-system.md §Token groups). */
+@import "./colors.css";
+@import "./fonts.css";
+@import "./typography.css";
+@import "./spacing.css";
+@import "./interface.css";
+@import "./forms.css";
+@import "./prose.css";
+@import "./diagram.css";
+@import "./effects.css";
+
+/* Component layer. */
+@import "../src/components/components.css";

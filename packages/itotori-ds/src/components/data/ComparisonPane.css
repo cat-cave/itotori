@@ -1,0 +1,59 @@
+.itotori-compare {
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  overflow: hidden;
+  background: var(--ito-compare-gutter);
+}
+
+.itotori-compare__unit {
+  display: block;
+  padding: var(--ito-space-6) var(--ito-space-10);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-cyan);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+}
+
+.itotori-compare__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px; /* the divider gutter reads as a hairline */
+}
+
+.itotori-compare__side {
+  padding: var(--ito-space-10) var(--ito-space-12);
+}
+.itotori-compare__side--source {
+  background: var(--ito-compare-source-bg);
+}
+.itotori-compare__side--draft {
+  background: var(--ito-compare-draft-bg);
+}
+
+.itotori-compare__label {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  margin-bottom: var(--ito-space-6);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+.itotori-compare__meta {
+  margin-left: auto;
+}
+
+.itotori-compare__body {
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+}
+
+@media (max-width: 640px) {
+  .itotori-compare__grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,28 @@
+.itotori-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ito-space-6);
+  padding: var(--ito-space-1) var(--ito-space-8);
+  border-radius: var(--ito-radius-pill);
+  border: 1px solid var(--ito-tone-neutral-border);
+  background: var(--ito-tone-neutral-bg);
+  color: var(--ito-tone-neutral-fg);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.itotori-badge--ok {
+  border-color: var(--ito-tone-ok-border);
+  background: var(--ito-tone-ok-bg);
+  color: var(--ito-tone-ok-fg);
+}
+
+.itotori-badge--critical {
+  border-color: var(--ito-tone-critical-border);
+  background: var(--ito-tone-critical-bg);
+  color: var(--ito-tone-critical-fg);
+}

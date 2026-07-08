@@ -1,0 +1,94 @@
+.itotori-locprog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+}
+
+.itotori-locprog__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ito-space-12);
+}
+
+.itotori-locprog__headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ito-space-6);
+}
+.itotori-locprog__proven {
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display);
+  font-size: var(--ito-text-h1-sub);
+  color: var(--ito-color-mint);
+}
+.itotori-locprog__proven-label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-locprog__meta {
+  display: flex;
+  gap: var(--ito-space-12);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+}
+.itotori-locprog__meta code {
+  color: var(--ito-color-text);
+}
+
+.itotori-locprog__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--ito-radius-pill);
+  overflow: hidden;
+  background: var(--ito-dataviz-track);
+}
+.itotori-locprog__seg {
+  height: 100%;
+}
+
+.itotori-locprog__seg--amber {
+  background: var(--ito-color-amber);
+}
+.itotori-locprog__seg--mint {
+  background: var(--ito-color-mint);
+}
+.itotori-locprog__seg--cyan {
+  background: var(--ito-color-cyan);
+}
+.itotori-locprog__seg--sakura {
+  background: var(--ito-color-sakura);
+}
+.itotori-locprog__seg--neutral {
+  background: var(--ito-dataviz-fill-pending);
+}
+
+.itotori-locprog__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-12);
+}
+.itotori-locprog__legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-6);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+}
+.itotori-locprog__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ito-radius-pill);
+}
+.itotori-locprog__legend-count {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-text);
+}

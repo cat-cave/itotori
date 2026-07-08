@@ -1,0 +1,17 @@
+{
+  // The DS component library. Emitted by tsc (JS + .d.ts) like every other
+  // `packages/*`. Adds React JSX (automatic runtime) on top of the repo base;
+  // everything else — strict, NodeNext, noUncheckedIndexedAccess — is inherited.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  // The gallery entry + tests are type-checked by tsconfig.gallery.json, not
+  // emitted into the shipped library.
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/gallery/**/*", "test/**/*"]
+}

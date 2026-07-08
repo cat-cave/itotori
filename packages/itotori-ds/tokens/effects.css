@@ -1,0 +1,129 @@
+/*
+ * Dusk Observatory — effects (keyframes + utilities).
+ * Source: docs/design/itotori-design-system.md §Token groups (effects).
+ * CRT amber, faint scanlines, sheen sweeps, live dots. Every animation is
+ * suppressed under prefers-reduced-motion (accessibility is non-negotiable and
+ * a precedent for all downstream UI).
+ */
+:root {
+  --ito-glow-amber: 0 0 0 1px rgba(255, 182, 72, 0.35), 0 0 18px -6px rgba(255, 182, 72, 0.6);
+  --ito-glow-mint: 0 0 14px -6px rgba(69, 230, 173, 0.7);
+}
+
+/* Faint CRT scanlines. */
+.itotori-scanlines {
+  position: relative;
+}
+.itotori-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.14) 0,
+    rgba(0, 0, 0, 0.14) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* Amber controls carry a glow. */
+.itotori-glow {
+  box-shadow: var(--ito-glow-amber);
+}
+
+/* A running progress stripe (indeterminate work). */
+.itotori-stripes-run {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.08) 0,
+    rgba(255, 255, 255, 0.08) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  animation: itotori-stripes-run 0.8s linear infinite;
+}
+@keyframes itotori-stripes-run {
+  to {
+    background-position: 24px 0;
+  }
+}
+
+/* Title-bar / panel sheen sweep. */
+.itotori-sweep {
+  animation: itotori-sweep 6s ease-in-out infinite;
+}
+@keyframes itotori-sweep {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Blinking caret. */
+.itotori-caret {
+  animation: itotori-caret 1s step-end infinite;
+}
+@keyframes itotori-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Live / running status dot. */
+.itotori-live-dot {
+  animation: itotori-live-dot 1.6s ease-in-out infinite;
+}
+@keyframes itotori-live-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Hover lift on interactive panels. */
+.itotori-lift {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.itotori-lift:hover {
+  transform: translateY(-1px);
+}
+
+/* Riser — content rising in on mount. */
+.itotori-riser {
+  animation: itotori-riser 0.24s ease-out both;
+}
+@keyframes itotori-riser {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Framed render slot (the composited scene textbox). */
+.itotori-frame {
+  outline: 1px solid var(--ito-color-border);
+  outline-offset: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .itotori-stripes-run,
+  .itotori-sweep,
+  .itotori-caret,
+  .itotori-live-dot,
+  .itotori-riser {
+    animation: none;
+  }
+  .itotori-lift {
+    transition: none;
+  }
+}

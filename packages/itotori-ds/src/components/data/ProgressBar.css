@@ -1,0 +1,41 @@
+.itotori-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-10);
+}
+
+.itotori-progress__track {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-dataviz-track);
+  overflow: hidden;
+}
+
+.itotori-progress__fill {
+  height: 100%;
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-dataviz-fill);
+  transition: width 0.3s ease;
+}
+
+.itotori-progress__fill--mint {
+  background: var(--ito-color-mint);
+  box-shadow: var(--ito-glow-mint);
+}
+.itotori-progress__fill--amber {
+  background: var(--ito-color-amber);
+}
+.itotori-progress__fill--cyan {
+  background: var(--ito-color-cyan);
+}
+
+.itotori-progress__value {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+.itotori-progress__value-sep {
+  color: var(--ito-color-divider);
+}

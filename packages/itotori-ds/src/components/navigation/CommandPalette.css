@@ -1,0 +1,96 @@
+.itotori-command__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ito-layer-command);
+  background: var(--ito-command-scrim);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+}
+
+.itotori-command {
+  width: min(560px, 92vw);
+  background: var(--ito-command-bg);
+  border: 1px solid var(--ito-command-border);
+  border-radius: var(--ito-radius-large);
+  box-shadow: var(--ito-shadow-panel);
+  overflow: hidden;
+}
+
+.itotori-command__field {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-10);
+  padding: var(--ito-space-12) var(--ito-space-14);
+  border-bottom: 1px solid var(--ito-command-border);
+}
+
+.itotori-command__prompt {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-amber);
+}
+
+.itotori-command__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-h2);
+}
+.itotori-command__input::placeholder {
+  color: var(--ito-field-placeholder);
+}
+
+.itotori-command__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--ito-space-6);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.itotori-command__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-10);
+  width: 100%;
+  text-align: start;
+  border: 1px solid transparent;
+  border-radius: var(--ito-radius-tight);
+  background: transparent;
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  padding: var(--ito-space-8) var(--ito-space-10);
+  cursor: pointer;
+}
+
+.itotori-command__item--active {
+  background: var(--ito-command-active-bg);
+  border-color: var(--ito-command-active-border);
+}
+
+.itotori-command__group {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-command__hint {
+  margin-left: auto;
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-cyan);
+}
+
+.itotori-command__empty {
+  padding: var(--ito-space-14);
+  text-align: center;
+  color: var(--ito-color-text-muted);
+}

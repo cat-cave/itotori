@@ -1,0 +1,53 @@
+.itotori-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+}
+
+.itotori-stat__label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-stat__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ito-space-8);
+}
+
+.itotori-stat__value {
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-h1-sub);
+  color: var(--ito-color-text);
+}
+.itotori-stat__value--mono {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-h2);
+}
+.itotori-stat__unit {
+  font-size: var(--ito-text-body);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-stat__delta {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+}
+.itotori-stat__delta--ok {
+  color: var(--ito-color-mint);
+}
+.itotori-stat__delta--critical {
+  color: var(--ito-color-coral);
+}
+.itotori-stat__delta--neutral {
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-stat__spark {
+  color: var(--ito-dataviz-spark);
+  stroke: currentColor;
+}

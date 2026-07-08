@@ -1,0 +1,20 @@
+/*
+ * Dusk Observatory — font stacks (era blend).
+ * Source: docs/design/itotori-design-system.md §Type.
+ *
+ * The four families are an ART-DIRECTION choice (all Google Fonts); they are
+ * NOT repo-shipped. When the host loads them (a `<link>` to Google Fonts, or a
+ * bundled web-font layer) the display renders as designed; otherwise these
+ * stacks fall back to close system faces so the layout never breaks. Downstream
+ * hosts opt in to the web fonts; the DS only declares the stacks.
+ */
+:root {
+  /* Display — titles / buttons / nav (600/700) */
+  --ito-font-display: "Chakra Petch", "Zen Kaku Gothic New", system-ui, sans-serif;
+  /* Pixel — eyebrows / labels / badges / nameplate (tracked uppercase) */
+  --ito-font-pixel: "DotGothic16", "Chakra Petch", monospace;
+  /* Sans / body (Inter fallback, as the doc specifies) */
+  --ito-font-sans: "Zen Kaku Gothic New", "Inter", system-ui, sans-serif;
+  /* Mono — every <code>, cyan-tinted */
+  --ito-font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
+}

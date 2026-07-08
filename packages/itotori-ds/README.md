@@ -1,0 +1,63 @@
+# @itotori/ds — Dusk Observatory design system
+
+The repo port of the **Itotori Design System** ("Dusk Observatory") design
+language into a React + CSS package. This is the **foundation** of the hi-fi
+Studio epic: the ~50 downstream UI nodes build their screens by composing these
+tokens + components, so the patterns here are the precedent.
+
+Source of truth for the design language:
+[`docs/design/itotori-design-system.md`](../../docs/design/itotori-design-system.md).
+
+## Layout
+
+```
+tokens/                 the token set — one file per group, entry styles.css
+  colors · fonts · typography · spacing · interface · forms · prose · diagram · effects
+  styles.css            @imports every token group + the component layer (the single CSS entry)
+src/
+  status.ts             the closed status vocabulary → three-tone mapping
+  cx.ts                 className joiner (the only styling helper)
+  components/
+    core/Badge           layout/Panel
+    data/DataTable · ProgressBar · ComparisonPane · LocalizationProgress · StatReadout
+    localization/BiText   navigation/NavPills · CommandPalette   feedback/Toast
+    <Name>.tsx + <Name>.css co-located; components.css @imports them
+  gallery/              the component gallery (visual reference + test surface)
+test/                   behaviour-first component tests (Vitest + jsdom + Testing Library)
+```
+
+## Patterns downstream UI nodes copy
+
+1. **className-based styling, CSS ships separately.** Components render semantic
+   DOM with `itotori-*` classes; the visual truth lives in `tokens/` + co-located
+   component CSS, shipped as one bundle (`@itotori/ds/styles.css`). No CSS-in-JS,
+   no CSS modules — tsc stays clean and the library is drop-in.
+2. **Import the bundle once**, then components:
+   ```tsx
+   import "@itotori/ds/styles.css";
+   import { Panel, Badge, DataTable } from "@itotori/ds";
+   ```
+3. **Status is a closed vocabulary → derived tone.** Never pick a badge colour by
+   hand; pass the product status to `<Badge status={…} />` / `statusTone(…)`.
+4. **Tokens, never literals.** Reference `--ito-*` variables; never inline a hex
+   value. Missing tokens are specced in `MISSING-TOKENS.md`, not invented.
+5. **Sentence case, mono machine-tokens, icon-light, no emoji, and every
+   animation is suppressed under `prefers-reduced-motion`** (see `effects.css`).
+6. **Behaviour-first tests.** Assert rendered DOM + real interactions
+   (Testing Library), never component internals — see any `test/*.test.tsx`.
+
+## Scripts
+
+- `pnpm --filter @itotori/ds build` — tsc emits the library (JS + `.d.ts`).
+- `pnpm --filter @itotori/ds test` — Vitest component tests (jsdom).
+- `pnpm --filter @itotori/ds typecheck` — `tsc --noEmit` over library + gallery + tests.
+- `pnpm --filter @itotori/ds gallery:dev` — serve the gallery.
+- `pnpm --filter @itotori/ds gallery:build` — build the gallery for the browser.
+
+## Fonts
+
+The four families (Chakra Petch / DotGothic16 / Zen Kaku Gothic New / Space Mono)
+are an art-direction choice and are **not repo-shipped**. `fonts.css` declares the
+stacks with graceful system fallbacks; a host opts into the web fonts (the gallery
+`index.html` links Google Fonts). See `MISSING-TOKENS.md` for the seven token
+groups the design doc flags as still-to-spec.

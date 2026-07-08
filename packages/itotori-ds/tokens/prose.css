@@ -1,0 +1,26 @@
+/*
+ * Dusk Observatory — prose tokens (.itotori-prose).
+ * Source: docs/design/itotori-design-system.md §Token groups (prose).
+ * The reading surface (translation prose / dialogue) must stay comfortable even
+ * as the instrument chrome gets dense. No Prose component ships in this
+ * foundation node; the tokens exist so downstream reading surfaces are cohesive.
+ */
+:root {
+  --ito-prose-fg: var(--ito-color-text);
+  --ito-prose-muted: var(--ito-color-text-muted);
+  --ito-prose-leading: 1.7;
+  --ito-prose-measure: 62ch;
+  --ito-prose-link: var(--ito-color-cyan);
+}
+
+.itotori-prose {
+  color: var(--ito-prose-fg);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-prose-leading);
+  max-width: var(--ito-prose-measure);
+}
+
+.itotori-prose a {
+  color: var(--ito-prose-link);
+}

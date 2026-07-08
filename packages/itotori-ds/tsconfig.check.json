@@ -1,0 +1,13 @@
+{
+  // Type-check EVERYTHING (library + gallery + behaviour tests) with no emit.
+  // The shipped library is emitted by tsconfig.json (src only); this config is
+  // the full-surface `typecheck` gate so the gallery and tests can't drift.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"],
+  "exclude": []
+}

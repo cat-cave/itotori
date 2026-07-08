@@ -1,0 +1,29 @@
+/*
+ * Dusk Observatory — spacing, radius, layers.
+ * Source: docs/design/itotori-design-system.md §Spacing / radius / elevation.
+ * Spacing steps are the exact ladder the doc names: 1,4,6,8,10,12,14,16,18,24.
+ */
+:root {
+  --ito-space-1: 1px;
+  --ito-space-4: 4px;
+  --ito-space-6: 6px;
+  --ito-space-8: 8px;
+  --ito-space-10: 10px;
+  --ito-space-12: 12px;
+  --ito-space-14: 14px;
+  --ito-space-16: 16px;
+  --ito-space-18: 18px;
+  --ito-space-24: 24px;
+
+  --ito-radius: 10px; /* default */
+  --ito-radius-tight: 6px;
+  --ito-radius-large: 14px;
+  --ito-radius-pill: 999px;
+
+  /* Layers — menu chrome, command palette, toasts. */
+  --ito-layer-base: 0;
+  --ito-layer-nav: 20;
+  --ito-layer-overlay: 40;
+  --ito-layer-command: 60;
+  --ito-layer-toast: 80;
+}
