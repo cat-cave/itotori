@@ -129,7 +129,7 @@
       "extractProof": {
         "kind": "synthetic_extract_fixture",
         "artifactId": "wolf.synthetic.extract",
-        "proofHash": "sha256:36ad26497efd7ca2edfdddd1b7865542bc57c13ea9bc6afbd2cd9ae230221395",
+        "proofHash": "sha256:9c008acb1dce77831a13f746058b49209093e58c1cee3b8d81edd48a1eb8601c",
         "provenance": "public_synthetic"
       },
       "expectedLevel": "extract"
@@ -169,13 +169,13 @@
       "extractProof": {
         "kind": "synthetic_extract_fixture",
         "artifactId": "wolf.synthetic.extract",
-        "proofHash": "sha256:36ad26497efd7ca2edfdddd1b7865542bc57c13ea9bc6afbd2cd9ae230221395",
+        "proofHash": "sha256:9c008acb1dce77831a13f746058b49209093e58c1cee3b8d81edd48a1eb8601c",
         "provenance": "public_synthetic"
       },
       "patchProof": {
         "kind": "synthetic_patch_fixture",
         "artifactId": "wolf.synthetic.patch",
-        "proofHash": "sha256:e4059bcb577a651e9979d77997234517864b2bf565ad71fcbd4d4562590690db",
+        "proofHash": "sha256:d950a123f7dca405b9298d4a66b683b336c6d4cc421dacdb4f326169526467bf",
         "provenance": "public_synthetic"
       },
       "expectedLevel": "patch"

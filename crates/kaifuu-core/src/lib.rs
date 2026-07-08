@@ -231,6 +231,7 @@ pub mod siglus_static_key;
 pub mod wine_proton_helper;
 pub mod wolf_adapter;
 pub mod wolf_encrypted_smoke;
+pub mod wolf_extract_patch_verify_smoke;
 pub mod wolf_helper_boundary;
 pub mod wolf_profiled_production;
 pub mod wolf_protection_detector;
@@ -296,8 +297,17 @@ pub use wolf_readiness::{
     WOLF_READINESS_SUPPORT_BOUNDARY, WolfReadinessArtifactKind, WolfReadinessArtifactProof,
     WolfReadinessCase, WolfReadinessEntryReport, WolfReadinessEvidence, WolfReadinessFinding,
     WolfReadinessFixture, WolfReadinessLevel, WolfReadinessProvenance, WolfReadinessReport,
-    canonical_wolf_readiness_artifact_hash, derive_wolf_readiness_level,
+    canonical_wolf_readiness_artifact_hash_from_smoke, derive_wolf_readiness_level,
     read_wolf_readiness_fixture, run_wolf_readiness,
+};
+
+pub use wolf_extract_patch_verify_smoke::{
+    WOLF_EXTRACT_PATCH_VERIFY_SMOKE_CAPABILITY_ID, WOLF_EXTRACT_PATCH_VERIFY_SMOKE_MARKER,
+    WOLF_EXTRACT_PATCH_VERIFY_SMOKE_SCHEMA_VERSION,
+    WOLF_EXTRACT_PATCH_VERIFY_SMOKE_SUPPORT_BOUNDARY, WolfExtractPatchVerifySmokeError,
+    WolfExtractPatchVerifySmokeReport, WolfSmokeArtifactKind, WolfSmokeVariantOutcome,
+    canonical_wolf_smoke_proof_hash, run_wolf_extract_patch_verify_smoke,
+    run_wolf_extract_patch_verify_smoke_with_registry,
 };
 
 pub use mv_mz_encrypted_audio::{
