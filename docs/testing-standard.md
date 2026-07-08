@@ -340,6 +340,31 @@ run ONLY that suite and assert it executed persistence tests (per-suite count
   `just catalog-replay-db-strict` (`scripts/catalog-replay-db-gate.mjs`).
   Skip artifact `.tmp/itotori-db/catalog-replay-skipped.json`; marker
   `CATALOG_REPLAY_DB_SKIP`; regression `scripts/catalog-replay-db-gate.test.mjs`.
+- **Repository permission-denial matrix (SHARED-027)** —
+  `just permission-denial-db-strict`
+  (`scripts/permission-denial-db-gate.mjs`). This runs only
+  `packages/itotori-db/test/authorization-matrix.test.ts` through the
+  `--require-database` runner path, then asserts the `repository permission
+denial fixtures` tests executed exactly one DB-backed denial assertion for
+  every `repositoryPermissionGateMatrix` entry (all passed, 0 skipped). Skip
+  artifact `.tmp/itotori-db/permission-denial-skipped.json`; proof artifact
+  `.tmp/itotori-db/permission-denial-proof.json`; one-line marker
+  `PERMISSION_DENIAL_DB_SKIP`; regression
+  `scripts/permission-denial-db-gate.test.mjs` (wired into `just check`). Bring
+  up a disposable Postgres first (`just db-up && just db-migrate`); the recipe
+  does not itself manage docker. The full up/migrate/run/down flow:
+
+  ```sh
+  just db-up
+  just db-migrate
+  DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" \
+    just permission-denial-db-strict
+  just db-down
+  ```
+
+  Run `DATABASE_URL= just permission-denial-db-strict` to see the missing-
+  `DATABASE_URL` hard failure.
+
 - **Style-guide fixture-flow persistence (ITOTORI-135, for the ITOTORI-007
   suite)** — `just style-guide-fixture-flow-db-strict`
   (`scripts/style-guide-fixture-flow-db-gate.mjs`). This drives the recorded

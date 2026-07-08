@@ -55,6 +55,7 @@ check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
     node --test scripts/db-test-skip-visibility.test.mjs
+    node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/style-guide-fixture-flow-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
@@ -354,6 +355,10 @@ ci-itotori:
     rm -f .tmp/itotori-db/no-database-skipped.json
     pnpm --filter @itotori/db test:db
     node scripts/assert-db-tests-not-skipped.mjs
+    # SHARED-027: prove the full repository permission-denial matrix explicitly
+    # ran against this disposable database. A skipped or partial authorization
+    # matrix outcome fails loudly rather than passing as denial coverage.
+    node scripts/permission-denial-db-gate.mjs
     # CATALOG-072: prove the catalog source-adapter replay + idempotency suites
     # (CATALOG-065 contract) explicitly RAN against this database — a skipped or
     # zero-test outcome fails loudly rather than passing as replay coverage.
@@ -430,6 +435,21 @@ test-db-strict:
     rm -f .tmp/itotori-db/no-database-skipped.json
     pnpm --filter @itotori/db test:db
     node scripts/assert-db-tests-not-skipped.mjs
+
+# SHARED-027: DB-backed local gate PROVING the repository permission-denial
+# matrix actually ran against a disposable database. The authorization matrix is
+# DB-classified, so a fast-local run SKIPS it — and skipped denial fixtures are
+# NOT authorization coverage. This gate makes "full permission-denial coverage
+# ran" provable: with no DATABASE_URL it writes a machine-readable skipped
+# artifact and FAILS (non-zero) instead of going green-on-skip; with a reachable
+# Postgres it runs ONLY authorization-matrix.test.ts and asserts every matrix
+# entry executed one denial test (all passed, zero skipped), emitting a
+# deterministic proof artifact. Bring up a disposable Postgres first (see
+# `just db-up` / `just db-migrate`); this recipe does not itself manage docker.
+# Run `DATABASE_URL= just permission-denial-db-strict` to see the missing-
+# DATABASE_URL failure.
+permission-denial-db-strict:
+    node scripts/permission-denial-db-gate.mjs
 
 # CATALOG-072: DB-backed local gate PROVING the catalog source-adapter replay +
 # idempotency repository tests (the CATALOG-065 idempotent fact-import contract)
