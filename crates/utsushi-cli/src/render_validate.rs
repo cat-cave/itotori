@@ -36,7 +36,7 @@ use serde_json::json;
 use utsushi_core::RuntimeArtifactRoot;
 use utsushi_core::substrate::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
-    PackageDescriptor, PackageKind, PackageSource, VfsError, VfsResult,
+    PackageDescriptor, PackageKind, PackageSource, TextLine, VfsError, VfsResult,
 };
 use utsushi_reallive::{
     Gameexe, GraphicsObject, GraphicsObjectStack, GraphicsPlane, GraphicsScale,
@@ -68,7 +68,7 @@ USAGE:
     --artifact-root <DIR> \
     [--private-artifact-root <DIR>] [--redaction on|off] \
     [--run-id <ID>] \
-    [--expect-text-contains <SUBSTR>] \
+    [--expect-text-contains <SUBSTR>] [--message-index <N>] \
     [--width <N>] [--height <N>] \
     [--output <PATH>]
 
@@ -100,7 +100,9 @@ FLAGS:
   --run-id <ID>                 Run id segment for the artifact URI (default: render-validate).
   --expect-text-contains <S>    Select + assert the rendered message contains <S> (the real
                                 translated draft). The play-order message carrying it is the
-                                one rendered.
+                                one rendered. If multiple messages match, pass --message-index.
+  --message-index <N>           Zero-based play-order message index within the scene. Selects
+                                that exact message before applying --expect-text-contains.
   --width <N> / --height <N>    Framebuffer size override (default: the Gameexe screen size).
   --output <PATH>               Write the deterministic JSON report to <PATH>.
   -h, --help                    Print this message and exit.
@@ -134,6 +136,7 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let artifact_root = PathBuf::from(required_flag(args, "--artifact-root")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("render-validate");
     let expect_text_contains = optional_flag(args, "--expect-text-contains").map(str::to_string);
+    let message_index = parse_message_index(args)?;
     let width = parse_dimension_override(args, "--width")?;
     let height = parse_dimension_override(args, "--height")?;
     let output = optional_flag(args, "--output").map(PathBuf::from);
@@ -160,6 +163,7 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         artifact_root: &artifact_root,
         run_id,
         expect_text_contains: expect_text_contains.as_deref(),
+        message_index,
         width,
         height,
         gameexe_path: &gameexe_path,
@@ -189,6 +193,10 @@ pub(crate) struct Params<'a> {
     pub(crate) artifact_root: &'a Path,
     pub(crate) run_id: &'a str,
     pub(crate) expect_text_contains: Option<&'a str>,
+    /// Zero-based play-order message index within the scene. When present,
+    /// selection is positional first; `expect_text_contains` then asserts that
+    /// the selected message is the intended patched draft.
+    pub(crate) message_index: Option<usize>,
     /// Framebuffer width override; `None` uses the Gameexe screen width.
     pub(crate) width: Option<u32>,
     /// Framebuffer height override; `None` uses the Gameexe screen height.
@@ -258,26 +266,17 @@ pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Err
         .into());
     }
 
-    // 3. Select the ONE message to render. When --expect-text-contains is
-    //    given (the real translated draft), render the play-order message
-    //    that carries it — the honest proof that the localized English is
-    //    what the box shows. Fail typed when no message carries it (a real
-    //    round-trip mismatch, not a silently substituted frame). Otherwise
-    //    render the first play-order message.
-    let (chosen_index, chosen) = match params.expect_text_contains {
-        Some(needle) => play_order
-            .iter()
-            .enumerate()
-            .find(|(_, line)| line.text.contains(needle))
-            .ok_or_else(|| {
-                format!(
-                    "utsushi.cli.render_validate.expect_text_missing: no play-order message in \
-                     scene {} contains {needle:?}",
-                    params.scene_id
-                )
-            })?,
-        None => (0, &play_order[0]),
-    };
+    // 3. Select the ONE message to render. A caller that needs per-unit proof
+    //    supplies --message-index so duplicate/prefix-overlapping drafts select
+    //    their own play-order line, then --expect-text-contains is asserted
+    //    against that exact line. Without an index, substring selection remains
+    //    available for one-off callers but rejects ambiguous multi-matches.
+    let (chosen_index, chosen) = select_play_order_message(
+        play_order,
+        params.scene_id,
+        params.expect_text_contains,
+        params.message_index,
+    )?;
     let contains_expected = params
         .expect_text_contains
         .map(|needle| chosen.text.contains(needle));
@@ -441,6 +440,7 @@ pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Err
         "height": artifact.height,
         "textlineCount": textline_count,
         "renderedLineCount": 1,
+        "renderedMessageIndex": chosen_index,
         "renderedTextSha256": sha256_hex(rendered_text.as_bytes()),
         "expectTextContains": params.expect_text_contains,
         "containsExpected": contains_expected,
@@ -497,6 +497,73 @@ fn parse_dimension_override(args: &[String], name: &str) -> Result<Option<u32>, 
                     Ok(Some(parsed))
                 }
             }),
+    }
+}
+
+fn parse_message_index(args: &[String]) -> Result<Option<usize>, Box<dyn Error>> {
+    optional_flag(args, "--message-index")
+        .map(|value| {
+            value.parse::<usize>().map_err(|err| {
+                format!(
+                    "utsushi.cli.render_validate.message_index_parse: --message-index must be a \
+                     zero-based usize: {err}"
+                )
+                .into()
+            })
+        })
+        .transpose()
+}
+
+fn select_play_order_message<'a>(
+    play_order: &'a [TextLine],
+    scene_id: u16,
+    expect_text_contains: Option<&str>,
+    message_index: Option<usize>,
+) -> Result<(usize, &'a TextLine), Box<dyn Error>> {
+    if let Some(index) = message_index {
+        let chosen = play_order.get(index).ok_or_else(|| {
+            format!(
+                "utsushi.cli.render_validate.message_index_oob: scene {scene_id} has {} \
+                 play-order message(s), cannot select index {index}",
+                play_order.len()
+            )
+        })?;
+        if let Some(needle) = expect_text_contains
+            && !chosen.text.contains(needle)
+        {
+            return Err(format!(
+                "utsushi.cli.render_validate.expect_text_missing_at_index: play-order message \
+                 index {index} in scene {scene_id} does not contain {needle:?}",
+            )
+            .into());
+        }
+        return Ok((index, chosen));
+    }
+
+    match expect_text_contains {
+        Some(needle) => {
+            let mut matches = play_order
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.text.contains(needle));
+            let first = matches.next().ok_or_else(|| {
+                format!(
+                    "utsushi.cli.render_validate.expect_text_missing: no play-order message in \
+                     scene {scene_id} contains {needle:?}",
+                )
+            })?;
+            if let Some((second_index, _)) = matches.next() {
+                return Err(format!(
+                    "utsushi.cli.render_validate.expect_text_ambiguous: more than one \
+                     play-order message in scene {scene_id} contains {needle:?}; first indices \
+                     are {} and {second_index}; pass --message-index",
+                    first.0
+                )
+                .into());
+            }
+            Ok(first)
+        }
+        None => Ok((0, &play_order[0])),
     }
 }
 
@@ -772,6 +839,7 @@ mod tests {
         // The redaction toggle + private/public split is documented.
         assert!(HELP.contains("--redaction on|off"));
         assert!(HELP.contains("--private-artifact-root"));
+        assert!(HELP.contains("--message-index"));
         assert!(HELP.contains("redacted by default"));
     }
 
@@ -850,5 +918,60 @@ mod tests {
                 .contains("utsushi.cli.render_validate.gameexe_read"),
             "expected the gameexe read error, got: {err}"
         );
+    }
+
+    #[test]
+    fn positional_message_index_checks_expected_text_on_that_line() {
+        let play_order = vec![
+            text_line("line-0", "Same localized line."),
+            text_line("line-1", "Broken second line."),
+        ];
+        let err =
+            select_play_order_message(&play_order, 6010, Some("Same localized line."), Some(1))
+                .expect_err("index 1 must not be accepted just because index 0 matches");
+        assert!(
+            err.to_string().contains("expect_text_missing_at_index"),
+            "expected indexed missing-text diagnostic, got: {err}"
+        );
+    }
+
+    #[test]
+    fn positional_message_index_selects_duplicate_occurrence() {
+        let play_order = vec![
+            text_line("line-0", "Same localized line."),
+            text_line("line-1", "Same localized line."),
+        ];
+        let (index, chosen) =
+            select_play_order_message(&play_order, 6010, Some("Same localized line."), Some(1))
+                .expect("second duplicate occurrence is selected by index");
+        assert_eq!(index, 1);
+        assert_eq!(chosen.line_id, "line-1");
+    }
+
+    #[test]
+    fn substring_selection_without_index_rejects_duplicate_matches() {
+        let play_order = vec![
+            text_line("line-0", "Same localized line."),
+            text_line("line-1", "Same localized line."),
+        ];
+        let err = select_play_order_message(&play_order, 6010, Some("Same localized"), None)
+            .expect_err("duplicate substring matches require a message index");
+        assert!(
+            err.to_string().contains("expect_text_ambiguous"),
+            "expected ambiguous substring diagnostic, got: {err}"
+        );
+    }
+
+    fn text_line(line_id: &str, text: &str) -> TextLine {
+        TextLine {
+            line_id: line_id.to_string(),
+            evidence_tier: EvidenceTier::E1,
+            text: text.to_string(),
+            speaker: None,
+            color: None,
+            text_surface: None,
+            bridge_ref: None,
+            source_asset: None,
+        }
     }
 }

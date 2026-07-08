@@ -40,7 +40,6 @@ import type { AgenticLoopProviderFactory } from "./agentic-loop.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
 import {
-  runProjectDrivenExecutor,
   type DrivenDraftSink,
   type DrivenEngineProfile,
   type DrivenPatchExportSink,
@@ -143,6 +142,9 @@ export type LocalizeFullProjectDeps = {
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide?: StyleGuidePolicyV0Draft;
+  afterExecutor?: (
+    result: ProjectDrivenExecutorResult,
+  ) => Promise<ProjectDrivenExecutorResult> | ProjectDrivenExecutorResult;
   now?: () => Date;
   log?: (message: string) => void;
 };
@@ -368,6 +370,7 @@ export async function runLocalizeFullProjectCommand(
         ledger: deps.passLedger,
         actor: deps.actor,
         executorInput,
+        ...(deps.afterExecutor !== undefined ? { afterExecutor: deps.afterExecutor } : {}),
         ...(feedbackNotesByUnit !== undefined ? { feedbackNotesByUnit } : {}),
         ...(deps.now !== undefined ? { now: deps.now } : {}),
         ...(deps.log !== undefined ? { log: deps.log } : {}),
@@ -394,6 +397,9 @@ export async function runLocalizeFullProjectCommand(
     failureCount: result.failures.length,
     reviewerQueueItemCount: result.reviewerQueueItemCount,
     patchExportCount: result.patchExportCount,
+    ...(result.runtimeValidation !== undefined
+      ? { runtimeValidation: result.runtimeValidation }
+      : {}),
     acceptedDeltaCount: record.acceptedDeltas.length,
     // PROJECT LAW: the REAL summed usage.cost + ZDR posture, verbatim.
     totalUsageCostUsd: result.totalUsageCostUsd,

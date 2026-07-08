@@ -49,6 +49,10 @@ import {
   type ProjectDrivenExecutorResult,
   type TranslationScope,
 } from "./project-driven-executor.js";
+import type {
+  WholeGameRenderValidationFinding,
+  WholeGameRenderValidationResult,
+} from "./wholegame-render-validation-seam.js";
 
 // ---------------------------------------------------------------------------
 // Record shapes (project-agnostic — no game / engine / title fields)
@@ -122,6 +126,12 @@ export type LocalizationPassOutputs = {
   unitOutcomes: LocalizationPassUnitOutcome[];
   /** Per-unit failures (isolated), canonical order. */
   unitFailures: DrivenUnitFailure[];
+  /**
+   * Post-patch replay/render validation signal for this pass. When present,
+   * pass N+1 projects its findings into prior-pass feedback so rendered/runtime
+   * bugs are consumed by the next drafting pass.
+   */
+  runtimeValidation?: WholeGameRenderValidationResult;
 };
 
 /**
@@ -350,15 +360,20 @@ export function buildPriorPassContext(args: {
     return undefined;
   }
   const latest = args.latest;
+  const runtimeNotesByUnit = runtimeValidationNotesByUnit(
+    latest.outputs.runtimeValidation?.findings ?? [],
+  );
   const feedbackByUnit = new Map<string, PriorPassFeedback>();
   for (const unit of latest.outputs.unitOutcomes) {
     const note = args.feedbackNotesByUnit?.get(unit.bridgeUnitId);
+    const runtimeNote = runtimeNotesByUnit.get(unit.bridgeUnitId);
+    const feedbackNote = combineFeedbackNotes(note, runtimeNote);
     const feedback: PriorPassFeedback = {
       passNumber: latest.passNumber,
       priorOutcome: unit.outcome,
       ...(unit.draftText !== undefined ? { priorDraftText: unit.draftText } : {}),
       ...(unit.deferredReason !== undefined ? { deferredReason: unit.deferredReason } : {}),
-      ...(note !== undefined ? { feedbackNote: note } : {}),
+      ...(feedbackNote !== undefined ? { feedbackNote } : {}),
     };
     feedbackByUnit.set(unit.bridgeUnitId, feedback);
   }
@@ -426,6 +441,9 @@ export function buildLocalizationPassRecord(args: {
       budgetStopped: result.budgetStopped,
       unitOutcomes,
       unitFailures: result.failures,
+      ...(result.runtimeValidation !== undefined
+        ? { runtimeValidation: result.runtimeValidation }
+        : {}),
     },
     acceptedDeltas: [],
     consumedFeedbackNotes: args.consumedFeedbackNotes ?? [],
@@ -463,6 +481,9 @@ export async function runLocalizationPass(args: {
   ledger: PassLedgerPort;
   actor: AuthorizationActor;
   executorInput: Omit<ProjectDrivenExecutorInput, "priorPass">;
+  afterExecutor?: (
+    result: ProjectDrivenExecutorResult,
+  ) => Promise<ProjectDrivenExecutorResult> | ProjectDrivenExecutorResult;
   feedbackNotesByUnit?: ReadonlyMap<string, string>;
   now?: () => Date;
   log?: (message: string) => void;
@@ -494,10 +515,22 @@ export async function runLocalizationPass(args: {
   }
 
   // RUN the executor with the prior context threaded in (or undefined).
-  const result = await runProjectDrivenExecutor({
+  let result = await runProjectDrivenExecutor({
     ...args.executorInput,
     ...(priorContext !== undefined ? { priorPass: priorContext } : {}),
   });
+  if (args.afterExecutor !== undefined) {
+    result = await args.afterExecutor(result);
+    if (result.runtimeValidation !== undefined) {
+      const coverage = result.runtimeValidation.coverage;
+      log(
+        `pass-ledger: post-patch render validation covered ${coverage.selectedUnitCount}/${coverage.candidateUnitCount} unit(s) ` +
+          `across ${coverage.validatedSceneCount}/${coverage.candidateSceneCount} scene(s), ` +
+          `${result.runtimeValidation.findings.length} finding(s)` +
+          (coverage.sampled ? ` (sampled; skipped=${coverage.skippedUnitIds.length})` : ""),
+      );
+    }
+  }
 
   // RECORD the pass — derive the deterministic accepted deltas vs the prior.
   const consumedFeedbackNotes: PassFeedbackNote[] = [];
@@ -535,3 +568,26 @@ export type {
   ProjectDrivenExecutorInput,
   ProjectDrivenExecutorResult,
 } from "./project-driven-executor.js";
+
+function runtimeValidationNotesByUnit(
+  findings: ReadonlyArray<WholeGameRenderValidationFinding>,
+): Map<string, string> {
+  const out = new Map<string, string[]>();
+  for (const finding of findings) {
+    const notes = out.get(finding.bridgeUnitId) ?? [];
+    notes.push(
+      `Runtime validation (${finding.phase}, scene ${finding.sceneId}) failed: ${finding.message}`,
+    );
+    out.set(finding.bridgeUnitId, notes);
+  }
+  return new Map([...out.entries()].map(([unitId, notes]) => [unitId, notes.join("\n")]));
+}
+
+function combineFeedbackNotes(
+  explicitNote: string | undefined,
+  runtimeNote: string | undefined,
+): string | undefined {
+  if (explicitNote === undefined) return runtimeNote;
+  if (runtimeNote === undefined) return explicitNote;
+  return `${explicitNote}\n${runtimeNote}`;
+}

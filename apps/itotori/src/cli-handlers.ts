@@ -1062,6 +1062,7 @@ async function runLocalizeFullProject(
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
     ...(sourceRoot !== undefined ? { sourceRoot } : {}),
     ...(patchTargetRoot !== undefined ? { patchTargetRoot } : {}),
+    ...(dependencies.nativeCli !== undefined ? { nativeCli: dependencies.nativeCli } : {}),
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
@@ -1201,7 +1202,7 @@ async function runLocalizeGame(
     callArgs.stages = {
       extract: (extractArgs) => runKaifuuRealliveExtract(extractArgs),
       structure: (structureArgs) => runUtsushiStructureExport(structureArgs),
-      localize: (localizeArgs) => runLocalizeFullProjectLive(localizeArgs),
+      localize: (localizeArgs) => runLocalizeFullProjectLive({ ...localizeArgs, nativeCli }),
       runNative: (bin, nativeArgs) => runNativeCli(bin, nativeArgs, nativeCli),
     };
   }

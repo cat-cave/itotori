@@ -255,6 +255,7 @@ pub(crate) fn drive(config: Config<'_>) -> Result<Value, Box<dyn Error>> {
         artifact_root: config.artifact_root,
         run_id: config.run_id,
         expect_text_contains: config.expect_text_contains,
+        message_index: None,
         width: config.width,
         height: config.height,
         gameexe_path: config.gameexe_path,

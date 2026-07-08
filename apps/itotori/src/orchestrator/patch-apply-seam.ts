@@ -69,6 +69,11 @@ import type {
   SourceBridgeView,
 } from "../patch-export/source-bridge-view.js";
 import type { DrivenPatchReport, TranslationScope } from "./project-driven-executor.js";
+import {
+  runWholeGameReplayRenderValidate,
+  type RunWholeGameReplayRenderValidateArgs,
+  type WholeGameRenderValidationResult,
+} from "./wholegame-render-validation-seam.js";
 
 // ---------------------------------------------------------------------------
 // (1) Production DraftArtifactBundle loader — real executor drafts, no fixture
@@ -509,6 +514,10 @@ export type RunWholeGamePatchExportAndApplyArgs = {
   force?: boolean;
   env?: NodeJS.ProcessEnv;
   runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => KaifuuProcessResult;
+  renderValidation?: Omit<
+    RunWholeGameReplayRenderValidateArgs,
+    "rawBridge" | "patchReport" | "sourceRoot" | "targetRoot"
+  >;
   log?: (message: string) => void;
 };
 
@@ -519,6 +528,8 @@ export type WholeGamePatchExportAndApplyResult = {
   apply: ApplyKaifuuRealLivePatchResult;
   /** The reconstructed draft-artifact bundle id (deterministic per run). */
   draftArtifactBundleId: string;
+  /** Present when the caller requested post-apply replay/render validation. */
+  renderValidation?: WholeGameRenderValidationResult;
 };
 
 export class WholeGamePatchExportPreflightError extends Error {
@@ -646,7 +657,23 @@ export async function runWholeGamePatchExportAndApply(
     ...(args.log !== undefined ? { log: args.log } : {}),
   });
 
-  return { patchExportBundle: result, apply, draftArtifactBundleId };
+  const renderValidation =
+    args.renderValidation === undefined
+      ? undefined
+      : runWholeGameReplayRenderValidate({
+          rawBridge: args.rawBridge,
+          patchReport: args.patchReport,
+          sourceRoot: args.sourceRoot,
+          targetRoot: args.targetRoot,
+          ...args.renderValidation,
+        });
+
+  return {
+    patchExportBundle: result,
+    apply,
+    draftArtifactBundleId,
+    ...(renderValidation !== undefined ? { renderValidation } : {}),
+  };
 }
 
 /**

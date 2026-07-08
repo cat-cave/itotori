@@ -53,6 +53,7 @@ export const GAME_TEXT_KEYS: ReadonlySet<string> = new Set([
   "draftText",
   "targetText",
   "text",
+  "expectedTextContains",
   // protected-span surface (the literal the translator must preserve).
   "expectedTargetForm",
   // glossary / terminology surface forms (project-specific terms).
@@ -163,6 +164,9 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  * - `localize.export-patch`        — write the patch export artifact.
  * - `localize.apply-patch`         — reach an applyable patch: export-patch
  *                                    preflight over real drafts + kaifuu patch.
+ * - `localize.replay-validate`     — replay the patched output through Utsushi.
+ * - `localize.render-validate`     — render-validate the patched output through
+ *                                    Utsushi with redaction enabled by default.
  * - `localize.record-pass`         — record the localization pass in the ledger.
  * - `localize.write-run-summary`   — write the run summary JSON.
  * - `executor.enumerate-units`     — batch planner / scope enumeration.
@@ -186,6 +190,8 @@ export type PipelineStep =
   | "localize.persist-provider-run"
   | "localize.export-patch"
   | "localize.apply-patch"
+  | "localize.replay-validate"
+  | "localize.render-validate"
   | "localize.record-pass"
   | "localize.write-run-summary"
   | "executor.enumerate-units"
