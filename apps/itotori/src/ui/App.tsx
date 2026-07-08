@@ -19,6 +19,7 @@ import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
+import { RedactionGovernor, RedactionToggle } from "./redaction-governor.js";
 
 export type AppLocation = { pathname: string; search: string };
 
@@ -29,7 +30,31 @@ function currentLocation(): AppLocation {
   return { pathname: window.location.pathname, search: window.location.search };
 }
 
-export function App({ location = currentLocation() }: { location?: AppLocation }): ReactNode {
+// shell-redaction-toggle — the global redaction governor wraps EVERY routed
+// screen so the cap-gated reveal toggle + share/export redaction govern ALL
+// frame/screenshot rendering across the SPA from one shell-level context.
+// `revealSensitive` is the cap (the revealSensitive capability); the
+// downstream `fnd-caps-context` node will lift this onto a real caps context,
+// until then the shell (and tests) pass it explicitly — the same pattern
+// `ReviewerDetailScreen.canDecide` uses.
+export function App({
+  location = currentLocation(),
+  revealSensitive = false,
+}: {
+  location?: AppLocation;
+  revealSensitive?: boolean;
+}): ReactNode {
+  return (
+    <RedactionGovernor revealSensitive={revealSensitive}>
+      <div className="itotori-shell-toolbar" data-shell-toolbar="true">
+        <RedactionToggle />
+      </div>
+      <RoutedScreen location={location} />
+    </RedactionGovernor>
+  );
+}
+
+function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   // Legacy (not-yet-ported) routes are checked FIRST so `/reviewer-queue/batch`
   // resolves to the batch renderer before the reviewer-detail regex (which
   // also matches that path) — preserving the original dispatch precedence.
