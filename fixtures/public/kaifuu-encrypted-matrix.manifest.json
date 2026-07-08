@@ -24,8 +24,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "2fdab57da717dc4545d7b628c62587d65031c949827614e3b1b61c3af52449f3",
-      "bytes": 1687,
+      "sha256": "40e04cbc8b5818e45f1dda542477c245ed3bce3eaf7d6cd4c8c1ef59ce715676",
+      "bytes": 1717,
       "redistributable": true
     },
     {
@@ -96,8 +96,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-unknown-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "a760ad2e20ff0321f9f30c391c669729bd4724242fc573564d5f7d9e3fcc44a6",
-      "bytes": 36161,
+      "sha256": "2d56bd0bea2941199be969b5e9b0b9e7d4fc9310cf41da70319d7cecfdadcca2",
+      "bytes": 36702,
       "redistributable": true
     },
     {

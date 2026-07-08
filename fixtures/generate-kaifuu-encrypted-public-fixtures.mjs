@@ -486,7 +486,7 @@ writeJson(
         rowId: "bgi-ethornell-containers",
         engineFamily: "bgi_ethornell",
         detected: true,
-        signals: ["encrypted", "packed", "unknown_variant"],
+        signals: ["crypto_unsupported", "encrypted", "packed", "unknown_variant"],
       },
       {
         rowId: "unknown-archive-variant",
