@@ -1671,8 +1671,8 @@ export const _internalResolveCharacterRelationshipProviderForCliHandlers =
 // registry. `engine-capabilities-record` upserts one adapter's matrix
 // from a JSON file (used to import what `EngineAdapter::capabilities()`
 // produced upstream); `engine-capabilities-list` writes a JSON report
-// the dashboard and any wrapping tooling can render — see
-// `apps/itotori/src/dashboard.ts:renderEngineCapabilityRows`.
+// the dashboard and any wrapping tooling can render (the engine-capability
+// matrix is exposed via the `/api/*` layer the React SPA consumes).
 async function runEngineCapabilitiesRecord(
   args: string[],
   dependencies: ItotoriCliDependencies,

@@ -39,22 +39,11 @@ export type {
   LocalizationWorkspaceReadPort,
 } from "./api-service.js";
 
-export {
-  renderWorkspaceAssetBrowseView,
-  renderWorkspaceComparisonView,
-  renderWorkspaceProjectBrowseView,
-  renderWorkspaceSceneBrowseView,
-  renderWorkspaceSearchView,
-} from "./view.js";
-
-export {
-  parseWorkspaceRoute,
-  renderWorkspaceReadModel,
-  renderWorkspaceRoute,
-  workspaceRouteApiTarget,
-  workspaceRoutePathRegex,
-} from "./route.js";
-export type { WorkspaceRoute, WorkspaceRouteDeps } from "./route.js";
+// fnd-spa-shell — the HTML-string workspace VIEW renderers were deleted; the
+// React `WorkspaceScreen` renders these read-models now. Routing (parse +
+// API-target mapping) stays here as pure, framework-agnostic utilities.
+export { parseWorkspaceRoute, workspaceRouteApiTarget, workspaceRoutePathRegex } from "./route.js";
+export type { WorkspaceRoute } from "./route.js";
 
 // ITOTORI-118 — workspace manual-correction mutation layer.
 export {

@@ -32,9 +32,18 @@ importers:
       '@itotori/db':
         specifier: workspace:*
         version: link:../../packages/itotori-db
+      '@itotori/ds':
+        specifier: workspace:*
+        version: link:../../packages/itotori-ds
       '@itotori/localization-bridge-schema':
         specifier: workspace:*
         version: link:../../packages/localization-bridge-schema
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -42,6 +51,24 @@ importers:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@24.13.2)(esbuild@0.28.1)
     devDependencies:
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.0
+        version: 6.0.3(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.1))
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1

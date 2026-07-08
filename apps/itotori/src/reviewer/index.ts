@@ -53,15 +53,15 @@ export {
   itotori084FixtureSourceRevisionId,
 } from "./repair-rerun-fixtures.js";
 
-// ITOTORI-082 — reviewer detail view + route loader.
+// ITOTORI-082 — reviewer detail route loader + route identity. The
+// HTML-string detail VIEW was deleted by fnd-spa-shell; the React
+// `ReviewerDetailScreen` renders this context now.
 export {
+  loadReviewerDetailContext,
   parseReviewerDetailRoute,
-  renderReviewerDetailView,
   reviewerDetailRoutePathRegex,
-  reviewerDetailViewInternals,
-} from "./detail-view.js";
-export type { ReviewerDetailRouteParams } from "./detail-view.js";
-export { loadReviewerDetailContext, renderReviewerDetailRoute } from "./detail-route.js";
+} from "./detail-route.js";
+export type { ReviewerDetailRouteParams } from "./detail-route.js";
 export type {
   ReviewerDetailEvidenceLoaderPort,
   ReviewerDetailEvidencePayload,

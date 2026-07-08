@@ -7,7 +7,6 @@ import {
   type AdapterCapabilitySummary,
   toSummary,
 } from "../src/services/engine-capability-report.js";
-import { renderEngineCapabilityRows } from "../src/dashboard.js";
 
 // KAIFUU-053: itotori-side consumer round-trips. Mirrors the strict-gate
 // tests in `crates/kaifuu-core/src/registry/` and
@@ -60,115 +59,6 @@ describe("adapterBadge", () => {
         patch: { kind: "unsupported", reason: "no" },
       }),
     ).toBe("unsupported");
-  });
-});
-
-describe("renderEngineCapabilityRows", () => {
-  function summaryFor(adapterId: string, override: Partial<AdapterCapabilitySummary> = {}) {
-    return toSummary({
-      adapterId,
-      identify: { kind: "supported" },
-      inventory: { kind: "supported" },
-      extract: { kind: "supported" },
-      patch: { kind: "supported" },
-      ...override,
-    } as Parameters<typeof toSummary>[0]);
-  }
-
-  it("renders an Identified only badge for engines with no Extract path", () => {
-    const html = renderEngineCapabilityRows([
-      summaryFor("kaifuu.siglus", {
-        identify: { kind: "supported" },
-        inventory: { kind: "unsupported", reason: "detector-only fixture" },
-        extract: { kind: "unsupported", reason: "detector-only fixture" },
-        patch: { kind: "unsupported", reason: "detector-only fixture" },
-      }),
-    ]);
-    expect(html).toContain("Identified only");
-    expect(html).toContain("kaifuu.siglus");
-    // The reason is surfaced as a tooltip title (defense in depth — users
-    // hovering over the unsupported chip see the cause).
-    expect(html).toContain("detector-only fixture");
-  });
-
-  it("renders a Partial extract badge when extract is partial", () => {
-    const html = renderEngineCapabilityRows([
-      summaryFor("kaifuu.reallive", {
-        extract: { kind: "partial", limitations: ["only text"] },
-        patch: { kind: "unsupported", reason: "no patch path" },
-      }),
-    ]);
-    expect(html).toContain("Partial extract");
-    expect(html).toContain("only text");
-  });
-
-  it("renders an empty-copy panel when no matrices are recorded", () => {
-    const html = renderEngineCapabilityRows([]);
-    expect(html).toContain("No engine capability reports recorded yet.");
-  });
-
-  it("separates public fixture support from private-local aggregate evidence", () => {
-    const row = toSummary(
-      {
-        adapterId: "kaifuu.rpg_maker_mv_mz",
-        identify: { kind: "supported" },
-        inventory: { kind: "unsupported", reason: "fixture is identify-only" },
-        extract: { kind: "unsupported", reason: "fixture is identify-only" },
-        patch: { kind: "unsupported", reason: "fixture is identify-only" },
-      },
-      [
-        {
-          adapterId: "kaifuu.rpg_maker_mv_mz",
-          evidenceSource: "public_fixture",
-          evidenceKind: "adapter_matrix",
-          publicFixtureId: "rpg-maker-mv-mz-key-validation-success-v0.1",
-          level: "identify",
-          status: "present",
-        },
-        {
-          adapterId: "kaifuu.rpg_maker_mv_mz",
-          evidenceSource: "private_local_aggregate",
-          evidenceKind: "local_corpus_sidecar",
-          level: "identify",
-          status: "present",
-          evidenceLabels: [
-            "rpgmaker_mv_metadata",
-            "encrypted_asset_extension",
-            "/home/private/game/System.json",
-          ],
-          aggregateCounts: {
-            corpusCount: 1,
-            entryCount: 12,
-            markerCount: 3,
-            pathHash: 1,
-          },
-          limitations: [
-            "local scan marker evidence only; no adapter execution claimed",
-            "SECRET_KEY=/home/private/key.txt",
-          ],
-        },
-      ],
-    );
-
-    expect(row.badge).toBe("identify_only");
-    expect(row.extract.kind).toBe("unsupported");
-    expect(row.evidence.publicFixture.present).toBe(true);
-    expect(row.evidence.privateLocalAggregate.present).toBe(true);
-    expect(row.evidence.privateLocalAggregate.entryCount).toBe(12);
-    expect(row.evidence.privateLocalAggregate.markerKinds).toEqual([
-      "encrypted_asset_extension",
-      "rpgmaker_mv_metadata",
-    ]);
-
-    const html = renderEngineCapabilityRows([row]);
-    expect(html).toContain("Public fixture support");
-    expect(html).toContain("Private-local aggregate evidence");
-    expect(html).toContain("Public fixture evidence");
-    expect(html).toContain("Private-local aggregate (12)");
-    expect(html).not.toContain("/home/private");
-    expect(html).not.toContain("System.json");
-    expect(html).not.toContain("SECRET_KEY");
-    expect(html).not.toContain("pathHash");
   });
 });
 
@@ -300,14 +190,5 @@ describe("EngineCapabilityReportService", () => {
     expect(row?.evidence.privateLocalAggregate.aggregateCounts["marker.kinds"]).toBe(3);
     expect(row?.evidence.privateLocalAggregate.aggregateCounts.encryptedAssetCount).toBe(2);
     expect(row?.evidence.privateLocalAggregate.aggregateCounts["path.hash"]).toBeUndefined();
-
-    const html = renderEngineCapabilityRows(row === undefined ? [] : [row]);
-    expect(html).toContain("Public fixture support");
-    expect(html).toContain("Public fixture evidence");
-    expect(html).toContain("Private-local aggregate evidence");
-    expect(html).toContain("Private-local aggregate (12)");
-    expect(html).toContain("marker.kinds=3");
-    expect(html).toContain("encryptedAssetCount=2");
-    expect(html).not.toContain("path.hash");
   });
 });

@@ -1,62 +1,57 @@
-import { renderDashboard } from "./dashboard.js";
-import { renderStyleGuideBuilderRoute } from "./style-guide-builder.js";
-import { parseAssetDecisionsRoute, renderAssetDecisionsRoute } from "./asset-decisions/route.js";
+// fnd-spa-shell — bridge for the routes NOT ported to React by this node.
+//
+// fnd-spa-shell replaces the dashboard / reviewer-detail / workspace
+// HTML-string renderers with React. The asset-decisions, reviewer-batch, and
+// style-guide-builder routes are SEPARATE downstream screen nodes that still
+// use their own HTML-string renderers (out of this node's delete scope). This
+// module keeps them working by returning the async renderer to mount into a
+// container — an honest, temporary bridge (each is a tracked follow-on
+// screen), NOT a dual path for a replaced view.
+
+import { parseAssetDecisionsRoute, renderAssetDecisionsRoute } from "../asset-decisions/route.js";
 import {
   parseReviewerBatchRoute,
-  parseReviewerDetailRoute,
   renderReviewerBatchRoute,
-  renderReviewerDetailView,
   type ReviewerBatchActionRequest,
   type ReviewerBatchActionServicePort,
   type ReviewerBatchExecuteResult,
   type ReviewerBatchPermissionView,
   type ReviewerBatchPreview,
   type ReviewerBatchPreviewServicePort,
-  type ReviewerDetailContext,
-} from "./reviewer/index.js";
-import { parseWorkspaceRoute, renderWorkspaceRoute } from "./workspace/index.js";
-import { assertItotoriApiResponse } from "./api-schema.js";
+} from "../reviewer/index.js";
+import { renderStyleGuideBuilderRoute } from "../style-guide-builder.js";
+import { assertItotoriApiResponse } from "../api-schema.js";
 import { reviewerQueueActionList, reviewerQueueActionValues } from "@itotori/db";
 
-const root = document.querySelector<HTMLDivElement>("#app")!;
+export type LegacyRouteRenderer = (root: HTMLElement) => void | Promise<void>;
 
-const assetDecisionsParams = parseAssetDecisionsRoute(window.location.pathname);
-const reviewerDetailParams = parseReviewerDetailRoute(window.location.pathname);
-const reviewerBatchHit = parseReviewerBatchRoute(window.location.pathname);
-const workspaceRoute = parseWorkspaceRoute(window.location.pathname, window.location.search);
-if (assetDecisionsParams !== null) {
-  await renderAssetDecisionsRoute(root, assetDecisionsParams);
-} else if (reviewerBatchHit !== null) {
-  const request = reviewerBatchRequestFromSearch(window.location.search);
-  await renderReviewerBatchRoute(root, request, {
-    permission: optimisticBatchPermission(request.actorUserId),
-    previewService: makeApiBatchPreviewService(),
-    confirm: {
-      permission: optimisticBatchPermission(request.actorUserId),
-      actionService: makeApiBatchActionService(),
-      actor: { userId: request.actorUserId },
-    },
-  });
-} else if (reviewerDetailParams !== null) {
-  root.innerHTML = `
-    <main class="itotori-shell" data-state="loading">Loading reviewer item...</main>
-  `;
-  const context = await fetchReviewerDetailContext(reviewerDetailParams.reviewItemId);
-  root.innerHTML = renderReviewerDetailView(context);
-} else if (workspaceRoute !== null) {
-  await renderWorkspaceRoute(root, workspaceRoute, { fetchJson: fetchWorkspaceJson });
-} else if (window.location.pathname === "/style-guide-builder") {
-  await renderStyleGuideBuilderRoute(root);
-} else {
-  await renderDashboard(root);
-}
-
-async function fetchWorkspaceJson(apiPath: string): Promise<unknown> {
-  const response = await fetch(apiPath, { headers: { accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`workspace API request failed: ${response.status}`);
+/**
+ * Return the async HTML-string renderer for a route this node does not port,
+ * or `null` when the path is owned by a React screen (so `App` renders React).
+ */
+export function matchLegacyRoute(pathname: string, search: string): LegacyRouteRenderer | null {
+  const assetDecisions = parseAssetDecisionsRoute(pathname);
+  if (assetDecisions !== null) {
+    return (root) => renderAssetDecisionsRoute(root, assetDecisions);
   }
-  return await response.json();
+  const reviewerBatch = parseReviewerBatchRoute(pathname);
+  if (reviewerBatch !== null) {
+    const request = reviewerBatchRequestFromSearch(search);
+    return (root) =>
+      renderReviewerBatchRoute(root, request, {
+        permission: optimisticBatchPermission(request.actorUserId),
+        previewService: makeApiBatchPreviewService(),
+        confirm: {
+          permission: optimisticBatchPermission(request.actorUserId),
+          actionService: makeApiBatchActionService(),
+          actor: { userId: request.actorUserId },
+        },
+      });
+  }
+  if (pathname === "/style-guide-builder") {
+    return (root) => renderStyleGuideBuilderRoute(root);
+  }
+  return null;
 }
 
 function reviewerBatchRequestFromSearch(search: string): ReviewerBatchActionRequest {
@@ -132,14 +127,4 @@ function makeApiBatchActionService(): ReviewerBatchActionServicePort {
       return body as ReviewerBatchExecuteResult;
     },
   };
-}
-
-async function fetchReviewerDetailContext(reviewItemId: string): Promise<ReviewerDetailContext> {
-  const response = await fetch(`/api/reviewer/queue/${encodeURIComponent(reviewItemId)}/detail`);
-  if (!response.ok) {
-    throw new Error(`failed to load reviewer detail: ${response.status}`);
-  }
-  const body = await response.json();
-  assertItotoriApiResponse("reviewer.detail", body);
-  return body as ReviewerDetailContext;
 }

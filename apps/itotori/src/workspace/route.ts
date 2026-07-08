@@ -10,24 +10,7 @@
 // `fetchJson` is injected so tests drive the loader deterministically
 // without a live server.
 
-import { assertItotoriApiResponse } from "../api-schema.js";
-import type {
-  WorkspaceAssetBrowseReadModel,
-  WorkspaceComparisonReadModel,
-  WorkspaceProjectBrowseReadModel,
-  WorkspaceSceneBrowseReadModel,
-  WorkspaceSearchMode,
-  WorkspaceSearchReadModel,
-} from "./read-model.js";
-import {
-  renderWorkspaceAssetBrowseView,
-  renderWorkspaceComparisonView,
-  renderWorkspaceProjectBrowseView,
-  renderWorkspaceSceneBrowseView,
-  renderWorkspaceSearchView,
-} from "./view.js";
-import type { WorkspaceCorrectionPreviewReadModel } from "./correction-model.js";
-import { renderWorkspaceCorrectionPreviewView } from "./correction-view.js";
+import type { WorkspaceSearchMode } from "./read-model.js";
 
 export const workspaceRoutePathRegex =
   /^\/workspace(?:\/(projects|scenes|assets|comparison|search|corrections))?$/u;
@@ -155,60 +138,6 @@ export function workspaceRouteApiTarget(route: WorkspaceRoute): {
   }
 }
 
-export type WorkspaceRouteDeps = {
-  /** Issues a GET to the API path and resolves the parsed JSON body. */
-  fetchJson: (apiPath: string) => Promise<unknown>;
-};
-
-/**
- * Render a workspace route into `root` by fetching the JSON API and
- * validating + rendering the typed read-model.
- */
-export async function renderWorkspaceRoute(
-  root: HTMLElement,
-  route: WorkspaceRoute,
-  deps: WorkspaceRouteDeps,
-): Promise<void> {
-  const target = workspaceRouteApiTarget(route);
-  root.innerHTML = `<main class="itotori-shell workspace-browse" data-state="loading"
-    data-view="${target.routeId}"><p role="status">Loading workspace...</p></main>`;
-  try {
-    const body = await deps.fetchJson(target.apiPath);
-    assertItotoriApiResponse(target.routeId, body);
-    root.innerHTML = renderWorkspaceReadModel(target.routeId, body);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    root.innerHTML = `<main class="itotori-shell workspace-browse" data-state="error"
-      data-view="${target.routeId}"><p role="alert">Workspace unavailable.</p><pre>${escapeHtml(message)}</pre></main>`;
-  }
-}
-
-export function renderWorkspaceReadModel(
-  routeId:
-    | "workspace.projects"
-    | "workspace.scenes"
-    | "workspace.assets"
-    | "workspace.comparison"
-    | "workspace.search"
-    | "workspace.correctionPreview",
-  body: unknown,
-): string {
-  switch (routeId) {
-    case "workspace.projects":
-      return renderWorkspaceProjectBrowseView(body as WorkspaceProjectBrowseReadModel);
-    case "workspace.scenes":
-      return renderWorkspaceSceneBrowseView(body as WorkspaceSceneBrowseReadModel);
-    case "workspace.assets":
-      return renderWorkspaceAssetBrowseView(body as WorkspaceAssetBrowseReadModel);
-    case "workspace.comparison":
-      return renderWorkspaceComparisonView(body as WorkspaceComparisonReadModel);
-    case "workspace.search":
-      return renderWorkspaceSearchView(body as WorkspaceSearchReadModel);
-    case "workspace.correctionPreview":
-      return renderWorkspaceCorrectionPreviewView(body as WorkspaceCorrectionPreviewReadModel);
-  }
-}
-
 function requireBranchScope(
   params: URLSearchParams,
 ): { projectId: string; localeBranchId: string } | null {
@@ -225,13 +154,4 @@ function nonEmpty(value: string | null): string | null {
     return null;
   }
   return value;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }

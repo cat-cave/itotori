@@ -28,7 +28,6 @@ import {
   policyFixture,
   qaFindingFixture,
   rationaleFixture,
-  renderReviewerDetailRoute,
   repositoryTransitionFixture,
   reviewerDetailDiagnosticCodeValues,
   runtimeEvidenceItemFixture,
@@ -483,81 +482,6 @@ describe("loadReviewerDetailContext — branch policy/glossary reference provena
     expect(context.diagnostics.map((d) => d.code)).toContain(
       reviewerDetailDiagnosticCodeValues.staleSourceRevision,
     );
-  });
-});
-
-describe("renderReviewerDetailRoute — DOM integration", () => {
-  it("renders the loading shell, then the denied view when the actor is unauthorized", async () => {
-    const stub = stubLoader({ item: null });
-    const root = document.createElement("div");
-    await renderReviewerDetailRoute(
-      root,
-      { reviewItemId: "reviewer-queue-1" },
-      {
-        permission: permissionView({
-          actorUserId: "anon",
-          canReadQueue: false,
-          canManageQueue: false,
-          denialReasons: ["user anon is missing permission queue.read"],
-        }),
-        evidenceLoader: stub.loader,
-      },
-    );
-    expect(root.querySelector('[data-state="denied"]')).not.toBeNull();
-    expect(root.textContent).toContain("Access denied");
-  });
-
-  it("renders the ready view end-to-end when permissions and evidence are present", async () => {
-    const item = runtimeEvidenceItemFixture();
-    const stub = stubLoader({
-      item,
-      payload: {
-        loadedSourceRevisionId: item.sourceRevisionId,
-        source: sourceUnitFixture(),
-        draft: draftFixture(),
-        policy: policyFixture(),
-        glossary: [glossaryFixture()],
-        qaFindings: [qaFindingFixture()],
-        runtimeEvidence: [runtimeTextTraceFixture()],
-        rationaleRefs: [rationaleFixture()],
-      },
-    });
-    const root = document.createElement("div");
-    await renderReviewerDetailRoute(
-      root,
-      { reviewItemId: item.reviewItemId },
-      {
-        permission: permissionView(),
-        evidenceLoader: stub.loader,
-      },
-    );
-    const main = root.querySelector(".reviewer-detail")!;
-    expect(main.getAttribute("data-state")).toBe("ready");
-    expect(main.getAttribute("data-can-manage")).toBe("true");
-    expect(root.querySelector('[data-panel-id="runtime-evidence"]')).not.toBeNull();
-  });
-
-  it("renders an error pane when the loader throws", async () => {
-    const root = document.createElement("div");
-    const exploding: ReviewerDetailEvidenceLoaderPort = {
-      loadItem: async () => {
-        throw new Error("DB connection lost");
-      },
-      loadTransitions: async () => [],
-      loadDetailEvidence: async () => {
-        throw new Error("unreachable");
-      },
-    };
-    await renderReviewerDetailRoute(
-      root,
-      { reviewItemId: "reviewer-queue-1" },
-      {
-        permission: permissionView(),
-        evidenceLoader: exploding,
-      },
-    );
-    expect(root.querySelector('[data-state="error"]')).not.toBeNull();
-    expect(root.textContent).toContain("DB connection lost");
   });
 });
 

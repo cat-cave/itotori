@@ -1,7 +1,7 @@
 // ITOTORI-082 — reviewer detail route loader.
 //
-// Resolves a `ReviewerDetailContext` for a given route param tuple and
-// dispatches to `renderReviewerDetailView`. The loader is gated on
+// Resolves a `ReviewerDetailContext` for a given route param tuple, which the
+// React `ReviewerDetailScreen` renders. The loader is gated on
 // `queue.read`: callers supply a pre-resolved
 // `ReviewerDetailPermissionView` (the JSON API layer / SPA bootstrap
 // resolves it via the central authorization port). If the actor lacks
@@ -43,15 +43,27 @@ import {
   type ReviewerDetailSourceUnit,
   type ReviewerDetailTransition,
 } from "./detail-fixtures.js";
-import {
-  parseReviewerDetailRoute,
-  renderReviewerDetailView,
-  reviewerDetailRoutePathRegex,
-  type ReviewerDetailRouteParams,
-} from "./detail-view.js";
+// fnd-spa-shell — the reviewer-detail route identity lives HERE now that the
+// HTML-string `detail-view.ts` renderer is deleted. Parsing is pure routing
+// (consumed by the React `App` shell + the JSON API layer); the rendering is
+// owned by `ui/screens/ReviewerDetailScreen.tsx`.
+export const reviewerDetailRoutePathRegex = /^\/reviewer-queue\/([^/]+)$/u;
 
-export { parseReviewerDetailRoute, reviewerDetailRoutePathRegex };
-export type { ReviewerDetailRouteParams };
+export type ReviewerDetailRouteParams = {
+  reviewItemId: string;
+};
+
+export function parseReviewerDetailRoute(pathname: string): ReviewerDetailRouteParams | null {
+  const match = reviewerDetailRoutePathRegex.exec(pathname);
+  if (match === null) {
+    return null;
+  }
+  const reviewItemId = match[1];
+  if (reviewItemId === undefined || reviewItemId.length === 0) {
+    return null;
+  }
+  return { reviewItemId: decodeURIComponent(reviewItemId) };
+}
 
 /**
  * The empty-evidence scaffold every "no visible evidence" reviewer-detail
@@ -146,9 +158,9 @@ export type ReviewerDetailRouteDeps = {
 };
 
 /**
- * Load the reviewer detail context. Public surface for both the SPA
- * bootstrap and tests; routes call `renderReviewerDetailRoute` which
- * threads this loader's output through the renderer.
+ * Load the reviewer detail context. Public surface for both the JSON API
+ * layer and tests; the React `ReviewerDetailScreen` renders the context it
+ * returns.
  */
 export async function loadReviewerDetailContext(
   params: ReviewerDetailRouteParams,
@@ -306,52 +318,4 @@ export async function loadReviewerDetailContext(
     transitions,
     diagnostics,
   };
-}
-
-/**
- * SPA route handler. Renders a loading shell, fetches the context,
- * then swaps in the rendered view (or an error pane).
- */
-export async function renderReviewerDetailRoute(
-  root: HTMLElement,
-  params: ReviewerDetailRouteParams,
-  deps: ReviewerDetailRouteDeps,
-): Promise<void> {
-  renderLoading(root, params);
-  try {
-    const context = await loadReviewerDetailContext(params, deps);
-    root.innerHTML = renderReviewerDetailView(context);
-  } catch (error) {
-    renderError(root, params, error);
-  }
-}
-
-function renderLoading(root: HTMLElement, params: ReviewerDetailRouteParams): void {
-  root.innerHTML = `
-    <main class="itotori-shell reviewer-detail" data-state="loading"
-      data-review-item-id="${escapeHtml(params.reviewItemId)}">
-      <p role="status">Loading reviewer detail for ${escapeHtml(params.reviewItemId)}...</p>
-    </main>
-  `;
-}
-
-function renderError(root: HTMLElement, params: ReviewerDetailRouteParams, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  root.innerHTML = `
-    <main class="itotori-shell reviewer-detail" data-state="error"
-      data-review-item-id="${escapeHtml(params.reviewItemId)}">
-      <h1>Reviewer detail unavailable</h1>
-      <p role="alert">Could not load reviewer detail for ${escapeHtml(params.reviewItemId)}.</p>
-      <pre>${escapeHtml(message)}</pre>
-    </main>
-  `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
