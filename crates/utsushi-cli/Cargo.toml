@@ -43,5 +43,8 @@ utsushi-siglus = { path = "../utsushi-siglus" }
 utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-rpgmaker-mv-mz = { path = "../utsushi-rpgmaker-mv-mz" }
 
+[build-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true
