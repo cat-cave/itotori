@@ -2091,20 +2091,71 @@ describe("localization bridge schema guards", () => {
     expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(/textSourceKind/);
   });
 
-  it("rejects font substitution patch refs that point at non-font assets", () => {
+  // SHARED-018 — parameterize font-substitution wrong-kind patchRef coverage
+  // across image, audio, and video patch asset kinds instead of exercising only
+  // the image case. Each covered kind carries a positive fixture (the kind is
+  // admitted in its own correct patch mode/surface) and a negative wrong-kind
+  // fixture (a font_substitution_required patchRef pointing at that kind is
+  // rejected). If validation is accidentally limited to image patch refs, the
+  // audio and video negative rows fail loud.
+  const FONT_SUBSTITUTION_WRONG_KIND_MATRIX = [
+    {
+      kind: "image",
+      assetId: "019ed004-0000-7000-8000-000000000101",
+      positiveDecisionId: "019ed004-0000-7000-8000-000000000301",
+    },
+    {
+      kind: "audio",
+      assetId: "019ed004-0000-7000-8000-000000000103",
+      positiveDecisionId: "019ed004-0000-7000-8000-000000000303",
+    },
+    {
+      kind: "video",
+      assetId: "019ed004-0000-7000-8000-000000000106",
+      positiveDecisionId: "019ed004-0000-7000-8000-000000000306",
+    },
+  ] as const;
+
+  it.each(FONT_SUBSTITUTION_WRONG_KIND_MATRIX)(
+    "SHARED-018 admits $kind patch refs in their correct patch mode (positive fixture)",
+    ({ kind, assetId, positiveDecisionId }) => {
+      const assetPolicy = assetPolicyV02Example();
+      const decision = assetPolicyDecisionById(assetPolicy, positiveDecisionId);
+      const patchRef = asTestRecord(decision.patchRef, `${kind} positive patch ref`);
+      expect(patchRef.assetId).toBe(assetId);
+
+      expect(() => assertAssetPolicyBundleV02(assetPolicy)).not.toThrow();
+    },
+  );
+
+  it.each(FONT_SUBSTITUTION_WRONG_KIND_MATRIX)(
+    "SHARED-018 rejects font_substitution_required patchRefs that point at $kind assets (wrong-kind fixture)",
+    ({ kind, assetId }) => {
+      const assetPolicy = assetPolicyV02Example();
+      const fontDecision = assetPolicyDecisionById(
+        assetPolicy,
+        "019ed004-0000-7000-8000-000000000304",
+      );
+      const patchRef = asTestRecord(fontDecision.patchRef, "font asset policy patch ref");
+      patchRef.assetId = assetId;
+      patchRef.sourceRevision = assetPolicyAssetRevision(assetPolicy, assetId);
+
+      expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(
+        new RegExp(`patchRef\\.assetId assetKind ${kind}.*font_substitution_required`),
+      );
+    },
+  );
+
+  it("SHARED-018 admits font_substitution_required patchRefs that point at font assets (positive fixture)", () => {
     const assetPolicy = assetPolicyV02Example();
     const fontDecision = assetPolicyDecisionById(
       assetPolicy,
       "019ed004-0000-7000-8000-000000000304",
     );
     const patchRef = asTestRecord(fontDecision.patchRef, "font asset policy patch ref");
-    const imageAssetId = "019ed004-0000-7000-8000-000000000101";
-    patchRef.assetId = imageAssetId;
-    patchRef.sourceRevision = assetPolicyAssetRevision(assetPolicy, imageAssetId);
+    expect(patchRef.assetId).toBe("019ed004-0000-7000-8000-000000000104");
 
-    expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(
-      /patchRef\.assetId assetKind image.*font_substitution_required/,
-    );
+    expect(() => assertAssetPolicyBundleV02(assetPolicy)).not.toThrow();
   });
 
   it("rejects asset replacement patch refs outside the asset policy surface kind", () => {
