@@ -2788,6 +2788,13 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
                 .transpose()?
                 .unwrap_or_else(|| serde_json::json!({"fixture": true}));
             let registry = fixture_helper_registry()?;
+            // A request normally selects its registered helper through
+            // `helperId`. An explicit `--helper-id` selects the dispatch entry
+            // instead, so a fixture which intentionally claims the wrong
+            // helper can be evaluated by the registered stub and produce the
+            // same structured boundary diagnostic as core. Without that
+            // override, an unregistered request id still fails closed before
+            // any helper adapter is invoked.
             let helper_id = flag_optional(args, "--helper-id")
                 .or_else(|| input.get("helperId").and_then(serde_json::Value::as_str))
                 .unwrap_or(kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
@@ -2908,7 +2915,7 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
         }
         _ => {
             return Err(
-                "usage: kaifuu helper-registry <validate <entry.json>|check-binary <entry.json>|invoke-fixture-stub> --output <report.json>"
+                "usage: kaifuu helper-registry <validate <entry.json>|check-binary <entry.json>|invoke-fixture-stub [--input <request.json>] [--helper-id <registered-id>]> --output <report.json>\n  invoke-fixture-stub derives its dispatch helper from input.helperId. Pass --helper-id kaifuu.fixture.helper-stub only when a fixture intentionally rejects that request helper id and needs the registered stub to emit its structured boundary diagnostic; an unregistered dispatch id fails closed."
                     .into(),
             );
         }
@@ -5521,6 +5528,83 @@ mod tests {
         ] {
             assert!(!serialized.contains(forbidden), "leaked {forbidden}");
         }
+    }
+
+    #[test]
+    fn helper_registry_invoke_fixture_stub_reports_siglus_rejected_helper_with_registered_override()
+    {
+        let root = temp_dir("helper-registry-invoke-siglus-rejected-helper");
+        let output = root.join("helper-result.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-helper-rejection.json",
+        );
+
+        run_cli(&[
+            "helper-registry",
+            "invoke-fixture-stub",
+            "--input",
+            request.to_str().unwrap(),
+            "--helper-id",
+            kaifuu_core::FIXTURE_HELPER_REGISTRY_ID,
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let result: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(result["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            result["diagnostic"]["message"],
+            kaifuu_core::SEMANTIC_HELPER_REQUEST_WRONG_HELPER
+        );
+        assert_eq!(
+            result["helper"]["helperId"],
+            kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+        );
+        assert_eq!(
+            kaifuu_core::validate_helper_result_value(&result).status,
+            kaifuu_core::OperationStatus::Passed
+        );
+
+        // Parity with the core boundary suite: the structured rejection
+        // diagnostic must stay public-safe even though the request fixture
+        // names a helper id the registry does not recognize.
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[test]
+    fn helper_registry_invoke_fixture_stub_fails_closed_for_unregistered_request_helper() {
+        let root = temp_dir("helper-registry-invoke-unregistered-helper");
+        let output = root.join("helper-result.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-helper-rejection.json",
+        );
+
+        let error = run_with_args(vec![
+            "helper-registry".to_string(),
+            "invoke-fixture-stub".to_string(),
+            "--input".to_string(),
+            request.display().to_string(),
+            "--output".to_string(),
+            output.display().to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains(kaifuu_core::SEMANTIC_HELPER_UNAVAILABLE)
+        );
+        assert!(!output.exists());
     }
 
     #[test]
