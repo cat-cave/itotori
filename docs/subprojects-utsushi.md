@@ -7,8 +7,9 @@
 > port crate (`UTSUSHI-200`), validated against multi-engine real bytes.
 > Sections below that describe Utsushi as the "runtime evidence layer" or the
 > alpha runtime path for a specific engine describe the long-term contract,
-> not the alpha gate. Full RealLive runtime evidence on Sweetie HD via the
-> 22-node decomposition (`UTSUSHI-201..221`) is continuous-tier post-alpha.
+> not the alpha gate. Full runtime evidence on the configured RealLive target
+> via the 22-node decomposition (`UTSUSHI-201..221`) is continuous-tier
+> post-alpha.
 
 Utsushi owns runtime validation evidence: trace, replay, capture, smoke reports, and future playable review slices.
 
@@ -224,8 +225,8 @@ screenshot, or recording APIs.
 The `utsushi-browser` adapter is the runtime evidence path for MV/MZ, which is a
 **beta** (end-to-end, real-game-testing-ready) engine — RPG Maker MV/MZ
 end-to-end on a real game is beta per
-[`docs/project-readiness.md`](project-readiness.md), where alpha is single-game
-RealLive (Sweetie HD) only. It
+[`docs/project-readiness.md`](project-readiness.md), where alpha is the single
+configured RealLive corpus only. It
 uses the core bounded process harness to launch a Chromium-compatible browser
 against `index.html` or `www/index.html`, captures a headless screenshot, and
 ingests screenshot bytes through the managed runtime artifact store. Browser

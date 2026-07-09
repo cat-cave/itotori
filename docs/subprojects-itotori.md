@@ -3,7 +3,7 @@
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point: substrate
-> M.1–M.3, a non-synthetic engine port crate, real-bytes Sweetie HD smoke, a
+> M.1–M.3, a non-synthetic engine port crate, real-bytes alpha-corpus smoke, a
 > recorded-LLM bundle, dashboard reachability, and repo hygiene. The product
 > loop and live-provider bar described below — including `ITOTORI-116` and
 > `ITOTORI-117` — remain the alpha contract for Itotori's own surface; full
