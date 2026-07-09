@@ -974,6 +974,21 @@ export type {
   RevokePrincipalSessionInput,
   ResolvedAuthSessionActor,
 } from "./repositories/auth-session-service.js";
+export {
+  HttpOidcProtocolClient,
+  ItotoriOidcLoginAdapter,
+  ItotoriOidcLoginAdapterError,
+  oidcExternalIdentityProviderKey,
+} from "./repositories/oidc-login-adapter.js";
+export type {
+  OidcAuthorizationCodeLoginInput,
+  OidcLoginResult,
+  OidcProtocolClient,
+  OidcTokenExchangeInput,
+  OidcTokenExchangeResult,
+  OidcUserInfoInput,
+  OidcUserInfoResult,
+} from "./repositories/oidc-login-adapter.js";
 export type {
   AccountRecord,
   AddPermissionToSetInput,
