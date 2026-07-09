@@ -4341,7 +4341,12 @@ export function assertRuntimeEvidenceReportV02(
       "RuntimeEvidenceReportV02.runtimeCapabilities",
     );
   }
-  if (observationHookEvents.length > 0 && report.runtimeCapabilities !== undefined) {
+  if (observationHookEvents.length > 0) {
+    if (report.runtimeCapabilities === undefined) {
+      throw new Error(
+        "RuntimeEvidenceReportV02.runtimeCapabilities is required when observationHookEvents are present",
+      );
+    }
     assertRuntimeCapabilitySupportsFeatureV02(
       report.runtimeCapabilities as RuntimeCapabilityContractV02,
       "instrumentation_hooks",

@@ -3206,11 +3206,38 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
   });
 
-  it("accepts typed observation hook events on v0.2 runtime evidence", () => {
+  it("accepts observation hook events with partial instrumentation hook capability", () => {
     const report = runtimeEvidenceV02Example();
     report.observationHookEvents = [observationHookEventExample()];
 
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+  });
+
+  it("accepts observation hook events with supported instrumentation hook capability", () => {
+    const report = runtimeEvidenceV02Example();
+    report.observationHookEvents = [observationHookEventExample()];
+    const runtimeCapabilities = asTestRecord(
+      report.runtimeCapabilities,
+      "runtime capability contract",
+    );
+    const features = runtimeCapabilities.features as Array<Record<string, unknown>>;
+    const hookFeature = asTestRecord(
+      features.find((feature) => feature.feature === "instrumentation_hooks"),
+      "instrumentation hooks feature",
+    );
+    hookFeature.status = "supported";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+  });
+
+  it("rejects observation hook events without runtime capabilities", () => {
+    const report = runtimeEvidenceV02Example();
+    report.observationHookEvents = [observationHookEventExample()];
+    delete report.runtimeCapabilities;
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(
+      /runtimeCapabilities is required when observationHookEvents are present/,
+    );
   });
 
   it("rejects observation hook events without advertised instrumentation hook support", () => {

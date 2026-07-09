@@ -1841,9 +1841,12 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
             "RuntimeEvidenceReportV02.runtimeCapabilities",
         )?;
     }
-    if !observation_hook_events.is_empty()
-        && let Some(runtime_capabilities) = report.get("runtimeCapabilities")
-    {
+    if !observation_hook_events.is_empty() {
+        let runtime_capabilities = report.get("runtimeCapabilities").ok_or_else(|| {
+            BridgeContractValidationError::new(
+                "RuntimeEvidenceReportV02.runtimeCapabilities is required when observationHookEvents are present",
+            )
+        })?;
         validate_runtime_capability_supports_feature(
             runtime_capabilities,
             "instrumentation_hooks",
@@ -6694,15 +6697,71 @@ mod tests {
                 }
             ],
             "validationFindings": [],
-            "limitations": []
+            "limitations": [],
+            "runtimeCapabilities": {
+                "contractVersion": "0.2.0",
+                "capabilityClass": "instrumented_runtime",
+                "fidelityTierCeiling": "replay_review",
+                "evidenceTierCeiling": "E3",
+                "features": [
+                    {
+                        "feature": "instrumentation_hooks",
+                        "status": "partial",
+                        "evidenceTierCeiling": "E1",
+                        "description": "Instrumentation covers the deterministic fixture route.",
+                        "limitations": ["Only the fixture route is instrumented."]
+                    }
+                ],
+                "limitations": ["Not a reference runtime."]
+            }
         })
     }
 
     #[test]
-    fn runtime_evidence_accepts_observation_hook_events() {
+    fn runtime_evidence_accepts_observation_hook_events_with_partial_capability() {
         let report = runtime_evidence_with_observation_hook();
 
         validate_runtime_evidence_report_v02(&report).unwrap();
+    }
+
+    #[test]
+    fn runtime_evidence_accepts_observation_hook_events_with_supported_capability() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report["runtimeCapabilities"]["features"][0]["status"] = json!("supported");
+
+        validate_runtime_evidence_report_v02(&report).unwrap();
+    }
+
+    #[test]
+    fn runtime_evidence_rejects_observation_hook_events_without_runtime_capabilities() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report
+            .as_object_mut()
+            .expect("runtime evidence fixture is an object")
+            .remove("runtimeCapabilities");
+
+        let error = validate_runtime_evidence_report_v02(&report)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error
+                .contains("runtimeCapabilities is required when observationHookEvents are present")
+        );
+    }
+
+    #[test]
+    fn runtime_evidence_rejects_observation_hook_events_with_unsupported_capability() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report["runtimeCapabilities"]["features"][0]["status"] = json!("unsupported");
+        report["runtimeCapabilities"]["features"][0]
+            .as_object_mut()
+            .expect("instrumentation hooks feature is an object")
+            .remove("evidenceTierCeiling");
+
+        let error = validate_runtime_evidence_report_v02(&report)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("instrumentation_hooks capability"));
     }
 
     #[test]
