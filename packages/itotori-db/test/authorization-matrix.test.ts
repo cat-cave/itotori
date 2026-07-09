@@ -2402,6 +2402,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriModelRoutingSettingsRepository.loadSettings",
+          "requiredPermission": "catalog.read",
+          "successFixture": "model-routing-settings-repository.test.ts load settings coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriModelRoutingSettingsRepository.saveRoute",
+          "requiredPermission": "draft.write",
+          "successFixture": "model-routing-settings-repository.test.ts save route coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuthSessionService.listPrincipalSessions",
           "requiredPermission": "auth.sessions.manage",
           "successFixture": "auth-session-service.test.ts list principal sessions coverage",
