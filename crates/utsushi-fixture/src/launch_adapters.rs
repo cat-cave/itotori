@@ -1,3 +1,22 @@
+//! MV/MZ browser-engine runtime-evidence adapters.
+//!
+//! This module owns the workspace's deliberate, scoped browser-engine
+//! exception to the "no shipped `Command::new`" port posture.
+//! `BrowserLaunchAdapter::run_browser` launches a real headless
+//! Chromium-compatible browser (`--headless=new`, `--screenshot` or
+//! `--dump-dom`) to render/observe RPG Maker MV/MZ games, and
+//! `browser_detection::probe_version` runs the bounded `<binary> --version`
+//! probe that resolves and validates the binary. Both spawn through
+//! `utsushi_core::RuntimeLaunchCommand` (the single shipped external spawn),
+//! and `BrowserLaunchAdapter` is registered as a production runtime adapter in
+//! `utsushi-cli`. RPG Maker MV/MZ games are browser/NW.js JavaScript games
+//! with no proprietary opcode VM, so launching the real browser runs the
+//! actual engine rather than a from-scratch mimic. See
+//! `docs/dev/architecture.md` ("MV/MZ runtime evidence: real-Chromium
+//! policy") for the decided policy and its scope boundary; every other
+//! `kaifuu`/`utsushi` engine module keeps its no-`Command::new`,
+//! in-process-Rust rule unchanged.
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

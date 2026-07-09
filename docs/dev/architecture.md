@@ -117,6 +117,65 @@ downstream-screen patterns) lives in [frontend.md](../frontend.md); the
 design ↔ repo alignment for the hi-fi Studio epic lives in
 [`design/hifi/README.md`](../design/hifi/README.md).
 
+## Runtime evidence: MV/MZ proof-by-real-Chromium (scoped browser-engine exception)
+
+**Policy decision (decided).** RPG Maker MV/MZ runtime evidence is produced by
+launching a **real headless Chromium-compatible browser** — the only shipped
+`std::process::Command::new` external spawn in the workspace. This is an
+**in-policy, deliberate, scoped exception** to the behavior-faithful
+from-scratch-Rust-port posture the other engine modules carry. It is documented
+here so it is not an un-flagged deviation.
+
+**Why it is faithful, not a mimic.** RPG Maker MV and MZ ship a game as JSON
+event-command data executed by a **JavaScript** runtime — a browser or the
+bundled NW.js shell. There is no proprietary opcode VM (as RealLive and Siglus
+have) for a Rust interpreter to decode: the browser _is_ the engine. Launching
+the real browser therefore runs the actual engine rather than re-implementing
+it. A from-scratch Rust NW.js/Chromium port (V8 + DOM + canvas + WebAudio + the
+`rpg_*` JS engine) is explicitly **out of scope**; the faithful runtime for a
+browser game is the browser itself.
+
+**The single shipped spawn, and its scope.** The only shipped external
+`Command::new` is `RuntimeLaunchCommand::to_command()` in
+`crates/utsushi-core/src/lib.rs` (`RuntimeLaunchCommand`), driven exclusively by
+the MV/MZ browser-engine surface:
+
+- `BrowserLaunchAdapter::run_browser` in
+  `crates/utsushi-fixture/src/launch_adapters.rs` — launches the configured
+  Chromium (`--headless=new`, `--screenshot` or `--dump-dom`) to render/observe
+  the game, registered as a production adapter in `utsushi-cli`'s
+  `runtime_registry` (`BROWSER_LAUNCH_ADAPTER`).
+- the bounded `<binary> --version` probe in the same adapter
+  (`browser_detection::probe_version`) that resolves and validates the binary.
+
+Every other `Command::new` in the workspace is either (a) inside
+`#[cfg(test)]` dev-oracle harness entries that re-launch
+`std::env::current_exe()` (the test binary itself), or (b) integration-test
+binary invocations under `crates/*/tests/`. None of those ship.
+
+**What the exception does not widen.** The scoped exception covers only the
+MV/MZ browser-engine runtime-evidence adapter. Every other `kaifuu`/`utsushi`
+engine module — the RealLive/Siglus/KiriKiri runtime ports, the RPG Maker
+decoder, and all `kaifuu-*` text-access crates — retains its
+no-`Command::new`, no-helper-process, no-network, in-process-Rust rule
+unchanged. The MV/MZ static event-data port (`utsushi-rpgmaker-mv`) also spawns
+nothing: it is an in-process reader of the JSON command lists. The browser
+launch itself lives in the runtime-evidence harness (the `utsushi-fixture`
+launch adapters and the `utsushi-core` `RuntimeLaunchCommand`), while the
+`utsushi-rpgmaker-mv-mz` delegation scaffold carries zero opcode handlers by
+design ("the browser is the runtime").
+
+**Pairing with the live-observed vs fixture-declared proof gap.** Real-Chromium
+render only counts as _observed_ evidence when the text/choice island is read
+from the **live post-render DOM**, not from fixture-declared strings. The
+`--dump-dom` trace probe (`run_browser`, `launch_adapters.rs`) extracts the
+machine-readable observation island a real JS runtime emits, with an
+evidence-tier discriminator (`live_dom` vs `fixture_declared`) so a
+fixture-declared trace is never mistaken for a live observation (the
+UTSUSHI-006/110 proof-honesty concern). The policy permits real-Chromium
+evidence, and the DOM probe is what makes that evidence genuinely live rather
+than declared.
+
 ## Current Alpha Proof
 
 The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.

@@ -53,7 +53,12 @@
 //!   cannot poison the other — the same architectural rule
 //!   `utsushi-reallive` carries against `kaifuu-reallive`.
 //! - No `Command::new`, no NW.js, no browser, no remote helper: the port
-//!   reads the project's data files and walks them in-process.
+//!   reads the project's data files and walks them in-process. (The MV/MZ
+//!   browser-engine render — real headless Chromium via
+//!   `BrowserLaunchAdapter` + `utsushi_core::RuntimeLaunchCommand`, the
+//!   workspace's one shipped `Command::new` — is a separate, deliberate
+//!   scoped exception documented in `docs/dev/architecture.md`. This
+//!   static-walk port is not that surface and does not spawn.)
 //!
 //! # Substrate-facade containment
 //!

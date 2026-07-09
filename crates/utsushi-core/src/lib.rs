@@ -2623,6 +2623,24 @@ pub fn looks_like_local_path(value: &str) -> bool {
                 .is_some_and(|separator| *separator == b'\\' || *separator == b'/'))
 }
 
+/// The one deliberate, scoped browser-engine exception to the workspace's
+/// "no shipped `Command::new`" port posture.
+///
+/// `to_command` builds the `std::process::Command::new(&self.program)` spawn
+/// that drives the MV/MZ browser runtime-evidence adapter
+/// (`BrowserLaunchAdapter` in `utsushi-fixture`/`launch_adapters.rs`,
+/// registered as a production adapter in `utsushi-cli`). RPG Maker MV/MZ games
+/// are browser/NW.js JavaScript games with no proprietary opcode VM, so
+/// launching a real headless Chromium runs the actual engine rather than a
+/// from-scratch mimic — the faithful runtime for a browser game is the
+/// browser. This is the ONLY shipped external-process spawn: every other
+/// `Command::new` in the workspace is a `#[cfg(test)]` dev-oracle that
+/// re-launches `current_exe()` or an integration-test binary invocation, and
+/// every other `kaifuu`/`utsushi` engine module retains its
+/// no-`Command::new`, in-process-Rust rule.
+///
+/// See `docs/dev/architecture.md` ("MV/MZ runtime evidence: real-Chromium
+/// policy") for the full decided policy and its scope boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeLaunchCommand {
     pub program: PathBuf,
