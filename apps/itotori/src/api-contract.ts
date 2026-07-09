@@ -658,6 +658,37 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.auth.member-removed.v0",
     }),
+  // fnd-caps-context — Studio capability permission view wire schemas.
+  ApiStudioCapabilityDenials: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
+      properties: {
+        flag: { oneOf: [str, { type: "null" }] },
+        decide: { oneOf: [str, { type: "null" }] },
+        steer: { oneOf: [str, { type: "null" }] },
+        reveal: { oneOf: [str, { type: "null" }] },
+        queueRead: { oneOf: [str, { type: "null" }] },
+        queueManage: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiAuthCapabilitiesResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
+      properties: {
+        actorUserId: str,
+        canReadQueue: bool,
+        canManageQueue: bool,
+        canFlag: bool,
+        canDecide: bool,
+        canSteer: bool,
+        canReveal: bool,
+        denials: ref("ApiStudioCapabilityDenials"),
+        denialReasons: { type: "array", items: str },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.capabilities.v0",
+    }),
 
   // Mutations --------------------------------------------------------------
   ApiProjectImportResponse: () =>
@@ -1185,6 +1216,17 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "List account members and granted permission sets.",
     pathParams: [],
     responseSchema: "ApiMembersListResponse",
+  },
+  // fnd-caps-context — the actor's Studio capability permission VIEW
+  // (canFlag / canDecide / canSteer / canReveal) resolved from exact
+  // permission grants (capabilities, NOT roles).
+  "auth.capabilities": {
+    method: "GET",
+    pathTemplate: "/api/auth/capabilities",
+    operationId: "authCapabilities",
+    summary: "Resolve the caller's Studio capability permission view (flag/decide/steer/reveal).",
+    pathParams: [],
+    responseSchema: "ApiAuthCapabilitiesResponse",
   },
   "auth.members.invite": {
     method: "POST",

@@ -27,7 +27,7 @@ import {
 import { App } from "../src/ui/App.js";
 import type { ReviewerQueueDashboardReadModel } from "../src/reviewer/index.js";
 import type { ReviewerQueueDashboardRow } from "../src/reviewer/index.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authCapabilitiesMswHandler } from "./msw-handlers.js";
 import { dashboardStatusFixture } from "./api-fixtures.js";
 
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
@@ -164,6 +164,7 @@ function queueReadModel(
 }
 
 const server = setupServer(
+  authCapabilitiesMswHandler,
   http.get("*/api/reviewer/queue", () => apiJson("reviewer.queue", queueReadModel())),
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
 );

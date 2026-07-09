@@ -20,6 +20,7 @@ import { useState, type ReactNode } from "react";
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type { ProjectOverviewReadModel } from "../../project-overview-read-model.js";
+import { useCapsOptional } from "../caps-context.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
@@ -90,6 +91,7 @@ export function PassLedgerPanelBody({
 }: {
   overview: ApiCallState<ProjectOverviewReadModel>;
 }): ReactNode {
+  const caps = useCapsOptional();
   const rowCount = overview.state === "ready" ? overview.data.passLedger.rows.length : null;
   const headline =
     rowCount === null
@@ -97,6 +99,13 @@ export function PassLedgerPanelBody({
       : rowCount === 0
         ? "Pass ledger — no passes recorded"
         : `Pass ledger — ${rowCount} pass${rowCount === 1 ? "" : "es"} recorded`;
+  // canSteer: the overview already surfaces the server-derived draft.write
+  // signal; AND it with the caps context when present so a client-resolved
+  // denial cannot be bypassed by a stale overview payload.
+  const overviewCanSteer = overview.state === "ready" ? overview.data.canSteer : false;
+  const canSteer = caps === null ? overviewCanSteer : overviewCanSteer && caps.canSteer;
+  const steerDenial =
+    caps?.denials.steer ?? (canSteer ? null : "draft.write permission required to launch a pass");
   return (
     <Panel
       title={headline}
@@ -106,7 +115,8 @@ export function PassLedgerPanelBody({
     >
       {overview.state === "ready" && (
         <LaunchPassAction
-          canSteer={overview.data.canSteer}
+          canSteer={canSteer}
+          steerDenial={steerDenial}
           projectId={overview.data.projectId}
           localeBranchId={overview.data.passLedger.filter.localeBranchId}
         />
@@ -120,11 +130,10 @@ export function PassLedgerPanelBody({
 // ovw-launch-pass-action — the Overview "launch next pass" action. Folds
 // queued corrections + DRIVES the next localization pass via the typed client
 // (`projects.launchPass` → the project-driven-executor / localize-fullproject
-// driver). `canSteer`-GATED: hidden entirely without the steer capability
-// (the server-derived `draft.write` signal on the overview) — mirroring the
-// reviewer detail `DecideActionStrip` (hidden, not disabled, without the
-// capability). A refused / errored launch is surfaced like the reviewer strip:
-// an alert, never a silent success. No game is named; ds tokens only.
+// driver). `canSteer`-GATED (the `draft.write` steer permission): fnd-caps-
+// context requires a denied action be DISABLED + EXPLAINED (not a silent
+// hide). A refused / errored launch is surfaced like the reviewer strip: an
+// alert, never a silent success. No game is named; ds tokens only.
 // ---------------------------------------------------------------------------
 
 type LaunchPassOutcome =
@@ -136,16 +145,43 @@ export function LaunchPassAction({
   canSteer,
   projectId,
   localeBranchId,
+  steerDenial,
 }: {
   canSteer: boolean;
   projectId: string;
   localeBranchId: string | null;
+  /** Denial explanation when canSteer is false (from the caps context). */
+  steerDenial?: string | null;
 }): ReactNode {
-  // Hidden without the steer capability, or when no locale branch is selectable
-  // (nothing to scope the pass to). Toast host is only required once the
-  // active body mounts.
-  if (!canSteer || localeBranchId === null) {
+  // No locale branch to scope the pass to — nothing actionable to show.
+  if (localeBranchId === null) {
     return null;
+  }
+  // fnd-caps-context — denied steer is disabled + explained, not hidden.
+  if (!canSteer) {
+    const reason = steerDenial ?? "draft.write permission required to launch a pass";
+    return (
+      <div
+        className="itotori-launch-pass"
+        data-launch-pass="denied"
+        data-cap="steer"
+        data-cap-allowed="false"
+      >
+        <button
+          type="button"
+          data-action="launch-pass"
+          disabled
+          aria-disabled
+          title={reason}
+          aria-description={reason}
+        >
+          Launch next pass
+        </button>
+        <span role="note" data-cap-denial="steer">
+          {reason}
+        </span>
+      </div>
+    );
   }
   return <LaunchPassActionBody projectId={projectId} localeBranchId={localeBranchId} />;
 }

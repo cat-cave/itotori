@@ -47,7 +47,11 @@ import {
   type WikiEntriesReadModel,
   wikiEntryKindValues,
 } from "@itotori/db";
-import type { ItotoriAuthorizationPort } from "./auth.js";
+import {
+  resolveStudioCapabilityPermissionView,
+  type ItotoriAuthorizationPort,
+  type ReviewerQueuePermissionView,
+} from "./auth.js";
 import {
   ApiValidationError,
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -68,6 +72,7 @@ import {
   parseRemoveMemberRequest,
   parseLaunchPassRequest,
   parseWorkspaceCorrectionSubmitRequest,
+  type ApiAuthCapabilitiesResponse,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
@@ -118,7 +123,6 @@ import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.j
 import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
 import { reviewerBatchPreviewStatusValues } from "./reviewer/batch-preview.js";
-import type { ReviewerQueuePermissionView } from "./auth.js";
 import type {
   LocalizationWorkspaceApiServicePort,
   LoadWorkspaceSearchInput,
@@ -965,6 +969,17 @@ async function routeReadOnlyItotoriApiRequest(
     });
   }
 
+  // fnd-caps-context — the actor's Studio capability permission VIEW
+  // (canFlag / canDecide / canSteer / canReveal). Resolved from exact
+  // permission grants through the auth-002 effective-permission resolver;
+  // never branches on a role name. No permission is required to *read* the
+  // view itself (a missing grant simply yields canX=false + a denial reason).
+  if (request.method === "GET" && request.pathname === "/api/auth/capabilities") {
+    const actorUserId = parseAuthCapabilitiesActorQuery(request.search);
+    const view = await resolveStudioCapabilityPermissionView(services.authorization, actorUserId);
+    return ok("auth.capabilities", authCapabilitiesResponseBody(view));
+  }
+
   if (
     request.method === "GET" &&
     (request.pathname === "/api/hello/status" || request.pathname === "/api/runtime/v0.2/status")
@@ -1202,6 +1217,7 @@ async function routeReadOnlyItotoriApiRequest(
     bmkCockpitRoute !== null ||
     request.pathname === "/api/jobs/run-table" ||
     request.pathname === "/api/auth/members" ||
+    request.pathname === "/api/auth/capabilities" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
@@ -1232,23 +1248,55 @@ async function resolveApiReviewerQueuePermissionView(
   services: ApiAuthorizationDependency,
   actorUserId = "local-user",
 ): Promise<ReviewerQueuePermissionView> {
-  const [canReadQueue, readDenial] = await tryApiPermission(services, permissionValues.queueRead);
-  const [canManageQueue, manageDenial] = await tryApiPermission(
-    services,
-    permissionValues.queueManage,
-  );
+  // fnd-caps-context — project the queue subset from the full studio
+  // capability view so the queue + SPA caps share one resolver path.
+  // Queue denial reasons stay queue-scoped.
+  const studio = await resolveStudioCapabilityPermissionView(services.authorization, actorUserId);
   const denialReasons: string[] = [];
-  if (readDenial !== null) {
-    denialReasons.push(readDenial);
+  if (studio.denials.queueRead !== null) {
+    denialReasons.push(studio.denials.queueRead);
   }
-  if (manageDenial !== null) {
-    denialReasons.push(manageDenial);
+  if (studio.denials.queueManage !== null) {
+    denialReasons.push(studio.denials.queueManage);
   }
   return {
-    actorUserId,
-    canReadQueue,
-    canManageQueue,
+    actorUserId: studio.actorUserId,
+    canReadQueue: studio.canReadQueue,
+    canManageQueue: studio.canManageQueue,
     denialReasons,
+  };
+}
+
+/**
+ * fnd-caps-context — optional `?actorUserId=` for the capabilities read.
+ * Defaults to the local-user actor (the SPA's default authorization actor).
+ */
+function parseAuthCapabilitiesActorQuery(search: string | undefined): string {
+  if (search === undefined || search === "" || search === "?") {
+    return "local-user";
+  }
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const actorUserId = params.get("actorUserId");
+  if (actorUserId === null || actorUserId.trim() === "") {
+    return "local-user";
+  }
+  return actorUserId;
+}
+
+function authCapabilitiesResponseBody(
+  view: Awaited<ReturnType<typeof resolveStudioCapabilityPermissionView>>,
+): ApiAuthCapabilitiesResponse {
+  return {
+    schemaVersion: "itotori.auth.capabilities.v0",
+    actorUserId: view.actorUserId,
+    canReadQueue: view.canReadQueue,
+    canManageQueue: view.canManageQueue,
+    canFlag: view.canFlag,
+    canDecide: view.canDecide,
+    canSteer: view.canSteer,
+    canReveal: view.canReveal,
+    denials: view.denials,
+    denialReasons: view.denialReasons,
   };
 }
 
@@ -2314,6 +2362,7 @@ function ok(routeId: "auth.members.list", body: ApiMembersListResponse): ApiJson
 function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
+function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);

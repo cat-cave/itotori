@@ -63,10 +63,21 @@ function renderWithToasts(ui: ReactNode): void {
 }
 
 describe("ovw-launch-pass-action — LaunchPassAction", () => {
-  it("hides the action entirely for a non-canSteer user (no button, no POST)", () => {
-    render(<LaunchPassAction canSteer={false} projectId="project-1" localeBranchId="locale-1" />);
-    expect(screen.queryByRole("button", { name: /launch next pass/i })).not.toBeInTheDocument();
-    expect(document.querySelector('[data-strip="launch-pass"]')).toBeNull();
+  it("disables + explains the action for a non-canSteer user (no POST)", () => {
+    // fnd-caps-context — a denied action is disabled + explained, not hidden.
+    render(
+      <LaunchPassAction
+        canSteer={false}
+        steerDenial="user anon is missing permission draft.write"
+        projectId="project-1"
+        localeBranchId="locale-1"
+      />,
+    );
+    const button = screen.getByRole("button", { name: /launch next pass/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "user anon is missing permission draft.write");
+    expect(screen.getByRole("note")).toHaveAttribute("data-cap-denial", "steer");
+    expect(document.querySelector('[data-launch-pass="denied"]')).not.toBeNull();
   });
 
   it("hides the action when no locale branch is selectable", () => {
@@ -128,19 +139,19 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
     expect(await screen.findByRole("button", { name: "Launch next pass" })).toBeInTheDocument();
   });
 
-  it("PassLedgerPanel hides the launch action when the overview reports canSteer=false", async () => {
+  it("PassLedgerPanel disables + explains the launch action when the overview reports canSteer=false", async () => {
+    // fnd-caps-context — denied steer is disabled + explained, not hidden.
     server.use(
       http.get(OVERVIEW_PATH, () =>
         apiJson("projects.overview", { ...projectOverviewFixture, canSteer: false }),
       ),
     );
     renderWithToasts(<PassLedgerPanel />);
-    // Wait for the panel to settle (the overview read resolves to `ready`)
-    // before asserting the action is absent, so this is not a false negative
-    // on a not-yet-mounted panel.
     await waitFor(() => {
       expect(document.querySelector('[data-panel-state="ready"]')).not.toBeNull();
     });
-    expect(screen.queryByRole("button", { name: "Launch next pass" })).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Launch next pass" });
+    expect(button).toBeDisabled();
+    expect(document.querySelector('[data-launch-pass="denied"]')).not.toBeNull();
   });
 });

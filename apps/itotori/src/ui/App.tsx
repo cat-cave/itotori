@@ -17,9 +17,11 @@
 // `useApiQuery` and paints with `@itotori/ds`.
 
 import { useEffect, useRef, type ReactNode } from "react";
+import type { StudioCapabilityPermissionView } from "../auth.js";
 import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
 import { parseAddressableLocation } from "./addressable-routing.js";
+import { CapsProvider, useCapsOptional } from "./caps-context.js";
 import {
   BenchmarkCockpitScreen,
   isBenchmarkCockpitRoute,
@@ -50,25 +52,61 @@ function currentLocation(): AppLocation {
 
 // shell-frame-ui — the persistent shell frame (nav + status bar) wraps EVERY
 // routed screen so the app chrome (Project+branch context, ZDR posture,
-// source->branch, live cost) is consistent across surfaces. `revealSensitive`
-// is the cap (the revealSensitive capability); the downstream `fnd-caps-
-// context` node will lift this onto a real caps context, until then the shell
-// (and tests) pass it explicitly — the same pattern `ReviewerDetailScreen.
-// canDecide` uses.
+// source->branch, live cost) is consistent across surfaces.
+//
+// fnd-caps-context — the CapsProvider resolves the actor's Studio capability
+// permission VIEW (canFlag / canDecide / canSteer / canReveal) from exact
+// permission grants via GET `/api/auth/capabilities`. RedactionGovernor
+// reads canReveal from that context (an explicit `revealSensitive` prop
+// still overrides for tests / partial mounts).
 export function App({
   location = currentLocation(),
-  revealSensitive = false,
+  revealSensitive,
+  caps,
   navigate,
 }: {
   location?: AppLocation;
+  /**
+   * Explicit revealSensitive override. When omitted, the shell reads
+   * `canReveal` from the CapsProvider (the resolved catalog.read grant).
+   */
   revealSensitive?: boolean;
+  /**
+   * Explicit Studio capability view (tests / partial mounts). When omitted
+   * the CapsProvider fetches `/api/auth/capabilities`.
+   */
+  caps?: StudioCapabilityPermissionView;
   /** Navigation handler for the shell nav (defaults to window.location.assign). */
   navigate?: (path: string) => void;
 }): ReactNode {
+  // exactOptionalPropertyTypes: only pass optional props when defined.
   return (
-    <RedactionGovernor revealSensitive={revealSensitive}>
+    <CapsProvider {...(caps !== undefined ? { value: caps } : {})}>
+      <AppWithCaps
+        location={location}
+        {...(revealSensitive !== undefined ? { revealSensitive } : {})}
+        navigate={navigate ?? defaultNavigate}
+      />
+    </CapsProvider>
+  );
+}
+
+function AppWithCaps({
+  location,
+  revealSensitive,
+  navigate,
+}: {
+  location: AppLocation;
+  revealSensitive?: boolean;
+  navigate: (path: string) => void;
+}): ReactNode {
+  const caps = useCapsOptional();
+  // Explicit prop wins (tests); otherwise the resolved canReveal capability.
+  const resolvedReveal = revealSensitive ?? caps?.canReveal ?? false;
+  return (
+    <RedactionGovernor revealSensitive={resolvedReveal}>
       <ToastProvider>
-        <ShellFrame location={location} navigate={navigate ?? defaultNavigate}>
+        <ShellFrame location={location} navigate={navigate}>
           <RoutedScreen location={location} />
         </ShellFrame>
       </ToastProvider>

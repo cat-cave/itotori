@@ -33,13 +33,18 @@ import {
   dashboardStatusFixture,
   projectOverviewFixture,
 } from "./api-fixtures.js";
-import { apiJson, reviewerQueueDashboardApiFixture } from "./msw-handlers.js";
+import {
+  apiJson,
+  authCapabilitiesMswHandler,
+  reviewerQueueDashboardApiFixture,
+} from "./msw-handlers.js";
 
 const reviewerDetailContext = readyContextFixture();
 
 // Host-agnostic handlers: the shell's client issues RELATIVE `/api/*` calls,
 // which jsdom resolves against the test origin; `*/…` matches that origin.
 const server = setupServer(
+  authCapabilitiesMswHandler,
   http.get("*/api/projects", () =>
     apiJson("projects.list", { projects: [dashboardStatusFixture] }),
   ),

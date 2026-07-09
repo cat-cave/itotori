@@ -115,6 +115,26 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "decisions.record": recordDecisionResponseFixture,
   "benchmarks.record": recordBenchmarkResponseFixture,
   "runtimeEvidence.ingest": runtimeEvidenceIngestResponseFixture,
+  // fnd-caps-context — fully-granted local-user capability view.
+  "auth.capabilities": {
+    schemaVersion: "itotori.auth.capabilities.v0",
+    actorUserId: "local-user",
+    canReadQueue: true,
+    canManageQueue: true,
+    canFlag: true,
+    canDecide: true,
+    canSteer: true,
+    canReveal: true,
+    denials: {
+      flag: null,
+      decide: null,
+      steer: null,
+      reveal: null,
+      queueRead: null,
+      queueManage: null,
+    },
+    denialReasons: [],
+  },
 };
 
 describe("fe-api-openapi-emit: deterministic emit", () => {
@@ -342,7 +362,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(44);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(45);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

@@ -79,6 +79,7 @@ import {
   type ApiMembersListResponse,
   type ApiRemoveMemberRequest,
   type ApiRemoveMemberResponse,
+  type ApiAuthCapabilitiesResponse,
   type ApiTerminologySearchResponse,
   type ApiWikiEntriesResponse,
   type ApiWorkspaceAssetBrowseResponse,
@@ -266,6 +267,10 @@ interface ItotoriApiRouteTypeMap {
   "auth.members.list": {
     response: ApiMembersListResponse;
     collectionKey: "members";
+  };
+  // fnd-caps-context — Studio capability permission view for the SPA caps provider.
+  "auth.capabilities": {
+    response: ApiAuthCapabilitiesResponse;
   };
   "auth.members.invite": {
     response: ApiMemberInvitationResponse;
