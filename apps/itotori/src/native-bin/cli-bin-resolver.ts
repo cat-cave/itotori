@@ -26,6 +26,60 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scrubLiveProviderSecretsFromEnv } from "../env/live-provider-secret-vars.js";
+
+/**
+ * Return a shallow copy of `env` with the live-provider secrets removed. Used
+ * at the spawn boundary so the resolver still sees the full env (PATH, cargo
+ * dirs, ITOTORI_*_BIN overrides) while the spawned child never receives the
+ * OpenRouter credentials. The native tools (kaifuu-cli / utsushi-cli) are
+ * byte/decode/render drivers — they never call OpenRouter, so they must not
+ * inherit those credentials (a child could log its env, core-dump it, etc.).
+ * Delegates to the single source of truth in `live-provider-secret-vars.mjs`
+ * (shared with the external env-file loader + the native-deps doctor) so the
+ * list + scrub logic can never drift; removes both file-loaded AND
+ * caller-exported live-provider vars.
+ */
+export function scrubLiveProviderSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return scrubLiveProviderSecretsFromEnv(env);
+}
+
+/** The raw shape a native-CLI spawn returns (mirrors the relevant spawnSync fields). */
+export type NativeSpawnResult = {
+  error: Error | undefined;
+  status: number | null;
+  stdout: string;
+  stderr: string;
+};
+
+/**
+ * THE single sanitized spawn boundary for native-tool child processes.
+ *
+ * Every native-CLI seam (extract / structure-export / patch-apply /
+ * runNativeCli) MUST route its `spawnSync` through here so the live-provider
+ * secrets are scrubbed from the child env in exactly one place — a new seam
+ * that calls `spawnSync` directly with the full env is a regression the guard
+ * test flags. Bin resolution still happens against the FULL env upstream; only
+ * the CHILD env is scrubbed. The raw result (including any spawn `error`) is
+ * returned so each seam keeps its own typed error wrapping.
+ */
+export function spawnNativeCliProcess(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): NativeSpawnResult {
+  const res = spawnSync(command, args, {
+    env: scrubLiveProviderSecrets(env),
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {
+    error: res.error,
+    status: res.status,
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? "",
+  };
+}
 
 /**
  * The bin the shared resolver resolves for. `binName` is the cargo bin target
@@ -251,6 +305,10 @@ export function runNativeCli(
   options: NativeCliRunner = {},
 ): NativeCliProcessResult & { command: string; args: string[] } {
   const env = options.env ?? process.env;
+  // Resolve the bin against the FULL env (PATH, cargo dirs, ITOTORI_*_BIN
+  // overrides all matter for resolution); the shared spawn boundary scrubs the
+  // live-provider secrets from the CHILD env — a byte/decode/render tool never
+  // needs OpenRouter creds, so they must not leak into its process environment.
   const { command, prefixArgs } = resolveNativeCli(bin, env);
   const fullArgs = [...prefixArgs, ...args];
   const runProcess = options.runProcess ?? defaultRunProcess;
@@ -263,17 +321,13 @@ function defaultRunProcess(
   args: string[],
   env: NodeJS.ProcessEnv,
 ): NativeCliProcessResult {
-  const res = spawnSync(command, args, {
-    env,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
     throw new Error(`native CLI could not be spawned (${command}): ${res.error.message}`);
   }
   return {
     status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? "",
+    stdout: res.stdout,
+    stderr: res.stderr,
   };
 }

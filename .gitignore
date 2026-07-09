@@ -15,6 +15,9 @@ coverage/
 .env.*
 !.env.example
 !.env.*.example
+# Opt-in local direnv hook. Secrets are never auto-loaded from a tracked path;
+# `.envrc` sources this file only if a developer creates it.
+.envrc.local
 # Local-only purchased-game corpora and private benchmark inputs.
 fixtures/private-local/
 .kaifuu/secrets.local/

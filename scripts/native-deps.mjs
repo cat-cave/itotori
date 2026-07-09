@@ -38,6 +38,79 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 
+// The live-provider secret env-var names that must NEVER reach a spawned
+// native-CLI child. This doctor is Node-built-ins-only and runs BEFORE
+// `pnpm install`, so it cannot import the compiled module — instead it reads
+// the JSON array from the SINGLE source of truth
+// (apps/itotori/src/env/live-provider-secret-vars.{ts,js}) at runtime, so the
+// list can never drift from the app's env-file allowlist / spawn-scrub
+// boundary.
+//
+// DURABILITY: an installed/packaged artifact ships the COMPILED `dist/` output
+// and may NOT ship `src/`. Both the `.ts` source and the emitted `.js` carry
+// the identical marker block, so the doctor prefers the shipped `dist/.js` and
+// falls back to the `src/.ts` (dev / pre-build checkout). A drift test asserts
+// the two blocks stay identical.
+// Ordered candidate locations for the single-source marker block. `dist` first
+// so an installed artifact (compiled, no src) resolves; `src` as the dev
+// fallback. Relative to REPO_ROOT.
+export const LIVE_PROVIDER_SECRET_VARS_SOURCE_CANDIDATES = [
+  "apps/itotori/dist/env/live-provider-secret-vars.js",
+  "apps/itotori/src/env/live-provider-secret-vars.ts",
+];
+
+/**
+ * Extract + validate the canonical array from a marker-block source body. The
+ * `.ts` and emitted `.js` share the exact `LIVE_PROVIDER_SECRET_VARS_JSON = [ … ]`
+ * literal, so the same parser handles both. Exported for the drift test.
+ */
+export function parseLiveProviderSecretVarsBlock(source) {
+  const block = /LIVE_PROVIDER_SECRET_VARS_JSON\s*=\s*(\[[\s\S]*?\]);/.exec(source);
+  if (block === null) {
+    throw new Error("native-deps: could not find the LIVE_PROVIDER_SECRET_VARS_JSON marker block");
+  }
+  // Tolerate the trailing comma prettier keeps in the array literal.
+  const jsonText = block[1].replace(/,(\s*\])/u, "$1");
+  const parsed = JSON.parse(jsonText);
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((v) => typeof v !== "string")) {
+    throw new Error("native-deps: LIVE_PROVIDER_SECRET_VARS block is not a non-empty string array");
+  }
+  return parsed;
+}
+
+function readLiveProviderSecretVars() {
+  const tried = [];
+  for (const rel of LIVE_PROVIDER_SECRET_VARS_SOURCE_CANDIDATES) {
+    tried.push(rel);
+    let source;
+    try {
+      source = readFileSync(path.join(REPO_ROOT, rel), "utf8");
+    } catch {
+      continue; // candidate absent (e.g. dist-only artifact has no src) — try next
+    }
+    return parseLiveProviderSecretVarsBlock(source);
+  }
+  throw new Error(
+    `native-deps: could not read the live-provider secret allowlist from any of: ${tried.join(", ")}`,
+  );
+}
+
+const LIVE_PROVIDER_SECRET_VARS = readLiveProviderSecretVars();
+
+// A live run may have loaded the OpenRouter credentials into this process's env
+// (via the external env-file workflow) before the doctor runs, so — exactly
+// like the app's `spawnNativeCliProcess` boundary — scrub the live-provider
+// secrets from every child env: a decode/render/probe/build child never needs
+// OpenRouter creds.
+function scrubLiveProviderSecretsFromEnv(env) {
+  const scrubbed = { ...env };
+  for (const key of LIVE_PROVIDER_SECRET_VARS) {
+    delete scrubbed[key];
+  }
+  return scrubbed;
+}
+const NATIVE_CHILD_ENV = scrubLiveProviderSecretsFromEnv(process.env);
+
 // The kaifuu/utsushi CLI binaries the localize + render pipeline drive. Bin
 // names are the crate names (default cargo bin target).
 export const RUST_BINS = [
@@ -388,7 +461,11 @@ export function defaultProbe() {
       // (missing loader / wrong path) or ENOEXEC (wrong-arch / corrupt binary) —
       // which is exactly what a mis-provisioned or wrong-platform bin produces.
       for (const args of [["--version"], ["--help"], []]) {
-        const r = spawnSync(bin, args, { encoding: "utf8", timeout: 15_000 });
+        const r = spawnSync(bin, args, {
+          encoding: "utf8",
+          timeout: 15_000,
+          env: NATIVE_CHILD_ENV,
+        });
         if (r.error) {
           if (r.error.code === "ENOENT") return { ok: false, error: "not found (ENOENT)" };
           if (r.error.code === "ENOEXEC")
@@ -443,7 +520,7 @@ function tcpReachableSync(host, port, timeoutMs = 1500) {
         `s.on("timeout",()=>{s.destroy();process.exit(1)});` +
         `s.on("error",()=>process.exit(1));`,
     ],
-    { timeout: timeoutMs + 1000 },
+    { timeout: timeoutMs + 1000, env: NATIVE_CHILD_ENV },
   );
   return r.status === 0;
 }
@@ -561,7 +638,11 @@ function runProvision({ dryRun, profile }) {
     process.stdout.write(`  ${dryRun ? "would run" : "running"}: ${printable}  (cwd: ${a.cwd})\n`);
     if (dryRun) continue;
     try {
-      execFileSync(a.cmd[0], a.cmd.slice(1), { cwd: a.cwd, stdio: "inherit" });
+      execFileSync(a.cmd[0], a.cmd.slice(1), {
+        cwd: a.cwd,
+        stdio: "inherit",
+        env: NATIVE_CHILD_ENV,
+      });
     } catch (err) {
       process.stderr.write(`  provision step "${a.id}" failed: ${err.message}\n`);
       failed = true;

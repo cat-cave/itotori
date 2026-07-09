@@ -51,6 +51,7 @@ import {
 } from "./batch-planner/cli.js";
 import type { ProviderFamily } from "./providers/types.js";
 import { assertOpenRouterZdrAccount } from "./providers/account-zdr.js";
+import { loadExternalEnvFile } from "./env/external-env-file.js";
 import { runReconcileLedgerCostCommand } from "./providers/openrouter-cost-reconciler.js";
 import {
   resolveSceneSummaryProvider,
@@ -230,6 +231,20 @@ export async function runItotoriCliCommand(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  // Load allowlisted live-provider vars from a caller-specified external
+  // env-file (via `--env-file` or `ITOTORI_LOCAL_ENV_FILE`) BEFORE any command
+  // handler reads process.env / constructs a provider — and BEFORE the
+  // `--version` early return, so a specified-but-unreadable file FAILS LOUD
+  // consistently regardless of the command (a bad --env-file is never silently
+  // ignored by an early-return path). Precedence: an already-exported var wins;
+  // only the allowlist loads. Values are never logged — only applied var NAMES.
+  const envFileResult = loadExternalEnvFile({ args, env: process.env });
+  if (envFileResult.path !== undefined && envFileResult.appliedKeys.length > 0) {
+    process.stderr.write(
+      `loaded ${envFileResult.appliedKeys.length} allowlisted var(s) from env file ` +
+        `'${envFileResult.path}': ${envFileResult.appliedKeys.join(", ")}\n`,
+    );
+  }
   if (args.includes("--version") || args.includes("-v")) {
     process.stdout.write(`itotori ${ITOTORI_PRODUCT_VERSION}\n`);
     return;

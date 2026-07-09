@@ -20,8 +20,11 @@
 // in a dev checkout so the seam ships in both an installed artifact and the
 // dev shell — mirroring `resolveKaifuuCli` in `orchestrator/patch-apply-seam.ts`.
 
-import { spawnSync } from "node:child_process";
-import { defaultRepoRoot, resolveNativeCliBin } from "../native-bin/cli-bin-resolver.js";
+import {
+  defaultRepoRoot,
+  resolveNativeCliBin,
+  spawnNativeCliProcess,
+} from "../native-bin/cli-bin-resolver.js";
 
 /**
  * The exit-code / stdout / stderr shape a `runProcess` injection returns.
@@ -171,11 +174,10 @@ function defaultRunUtsushiProcess(
   args: string[],
   env: NodeJS.ProcessEnv,
 ): UtsushiProcessResult {
-  const res = spawnSync(command, args, {
-    env,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  // Route through the ONE sanitized native-CLI spawn boundary so the
+  // live-provider secrets are scrubbed from the child env (structure-export is
+  // a decode tool — it never needs OpenRouter creds).
+  const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
     throw new UtsushiStructureExportError(
       null,
@@ -185,7 +187,7 @@ function defaultRunUtsushiProcess(
   }
   return {
     status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? "",
+    stdout: res.stdout,
+    stderr: res.stderr,
   };
 }

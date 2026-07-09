@@ -21,8 +21,8 @@
 // shell. `runProcess` is the injection seam so CI touches NO real bytes; the
 // env-gated real-Sweetie proof exercises the real `spawnSync` path.
 
-import { spawnSync } from "node:child_process";
 import { resolveKaifuuCli, type KaifuuProcessResult } from "../orchestrator/patch-apply-seam.js";
+import { spawnNativeCliProcess } from "../native-bin/cli-bin-resolver.js";
 
 /**
  * The sourcing + identity inputs every RealLive extract needs. The four
@@ -195,11 +195,10 @@ function defaultRunProcess(
   args: string[],
   env: NodeJS.ProcessEnv,
 ): KaifuuProcessResult {
-  const res = spawnSync(command, args, {
-    env,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  // Route through the ONE sanitized native-CLI spawn boundary so the
+  // live-provider secrets are scrubbed from the child env (extract is a decode
+  // tool — it never needs OpenRouter creds).
+  const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
     throw new KaifuuExtractError(
       null,
@@ -209,7 +208,7 @@ function defaultRunProcess(
   }
   return {
     status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? "",
+    stdout: res.stdout,
+    stderr: res.stderr,
   };
 }

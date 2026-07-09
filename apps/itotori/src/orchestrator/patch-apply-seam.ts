@@ -33,7 +33,6 @@
 // dev checkout so the seam ships in both an installed artifact and the dev
 // shell.
 
-import { spawnSync } from "node:child_process";
 import type {
   AssetDecisionRecord,
   AuthorizationActor,
@@ -53,7 +52,11 @@ import {
 } from "@itotori/localization-bridge-schema";
 import { createHash } from "node:crypto";
 import { AssetDecisionPolicyResolver } from "../asset-decisions/policy-resolver.js";
-import { defaultRepoRoot, resolveNativeCliBin } from "../native-bin/cli-bin-resolver.js";
+import {
+  defaultRepoRoot,
+  resolveNativeCliBin,
+  spawnNativeCliProcess,
+} from "../native-bin/cli-bin-resolver.js";
 import {
   PatchExporter,
   type DraftArtifactBundleLoad,
@@ -461,11 +464,10 @@ function defaultRunProcess(
   args: string[],
   env: NodeJS.ProcessEnv,
 ): KaifuuProcessResult {
-  const res = spawnSync(command, args, {
-    env,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  // Route through the ONE sanitized native-CLI spawn boundary so the
+  // live-provider secrets are scrubbed from the child env (patch-apply is a
+  // byte tool — it never needs OpenRouter creds).
+  const res = spawnNativeCliProcess(command, args, env);
   if (res.error !== undefined) {
     throw new KaifuuPatchApplyError(
       null,
@@ -475,8 +477,8 @@ function defaultRunProcess(
   }
   return {
     status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? "",
+    stdout: res.stdout,
+    stderr: res.stderr,
   };
 }
 
