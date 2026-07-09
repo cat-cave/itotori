@@ -1,0 +1,27 @@
+{
+  "nodeId": "kaifuu-rpgmaker-resolve-deferred-findings",
+  "type": "data",
+  "reason": "Acceptance requires plugin/script recognizer evidence on >=2 real RPG Maker MV/MZ titles, but the local research corpus exposes only one reachable real MV/MZ title: LustMemory.",
+  "owner": "orchestrator",
+  "needed": "Provide or configure at least one additional real RPG Maker MV/MZ title with an accessible www/ tree so the recognizer can assert zero generic/deferred plugin/script buckets or an exact justified opaque-command set across >=2 titles.",
+  "evidence": [
+    {
+      "command": "find /scratch/itotori-research/rpg-maker-mv-mz/extracted -maxdepth 2 -type d -name www 2>/dev/null | sort",
+      "output": "/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www"
+    },
+    {
+      "command": "find /scratch -maxdepth 5 -type d \\( -name www -o -name data -o -name js \\) 2>/dev/null | rg -i 'rpg|lust|memory|frontier|mv|mz|game' | head -300",
+      "output": "/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www"
+    },
+    {
+      "command": "find / -xdev -maxdepth 5 -type f \\( -name System.json -o -name plugins.js \\) 2>/dev/null | head -300",
+      "output": ""
+    },
+    {
+      "command": "rg -n 'deferred finding' crates/kaifuu-rpgmaker",
+      "output": "",
+      "exitCode": 1,
+      "note": "ripgrep exit 1 means no matches."
+    }
+  ]
+}
