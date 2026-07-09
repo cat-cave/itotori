@@ -34,6 +34,22 @@ test("allows resolved MalformedExpression mentions only when explicitly marked h
   assert.deepEqual(resolved.violations, []);
 });
 
+test("requires explicit snapshot markers for dated Traced notes", () => {
+  const bare = scanFixture({
+    "apps/itotori/src/agents/work-scope/carve.ts":
+      "// Traced 2026-07-04 with boot_dispatch_scan.\n",
+  });
+  assertViolation(bare, "dated-trace-without-snapshot-marker");
+
+  for (const marker of ["Snapshot", "Historical", "Observed", "Point-in-time", "Resolved"]) {
+    const marked = scanFixture({
+      "apps/itotori/src/agents/work-scope/carve.ts":
+        `// ${marker}: Traced 2026-07-04 with boot_dispatch_scan.\n`,
+    });
+    assert.deepEqual(marked.violations, [], `expected ${marker} marker to be allowed`);
+  }
+});
+
 test("fails active qd text that points at retired paths without a marker", () => {
   const result = scanFixture({
     "roadmap/spec-dag.json": JSON.stringify({

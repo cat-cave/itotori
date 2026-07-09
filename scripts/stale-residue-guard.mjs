@@ -49,7 +49,7 @@ const stalePremiseRules = [
 const datedTracePattern =
   /\b(?:Traced|INVESTIGATION|REAL-BYTES GAP|GAP)\b[^.\n]{0,120}\b20\d\d-\d\d-\d\d\b|\b20\d\d-\d\d-\d\d\b[^.\n]{0,120}\b(?:Traced|INVESTIGATION|REAL-BYTES GAP|GAP)\b/u;
 const datedTraceMarkers =
-  /\b(?:snapshot|point-in-time|historical|as of|observed|traced|audit|preserved|resolved|landed|current)\b/iu;
+  /\b(?:snapshot|point-in-time|historical|as of|observed|audit|preserved|resolved|landed|current)\b/iu;
 
 export function parseArgs(argv) {
   const options = {
