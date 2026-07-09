@@ -246,7 +246,11 @@ export function classifyOutcome({ status, output }) {
     /error\[E\d{2,4}\]/u.test(output) ||
     /error: could not compile/u.test(output) ||
     /error: linking with/u.test(output) ||
-    /error: aborting due to/u.test(output);
+    /error: aborting due to/u.test(output) ||
+    // rustc parse/resolve forms (require the rustc "expected X, found Y" shape —
+    // not bare "error: expected" which can appear in libtest panic text).
+    /error: expected `.+`, found /u.test(output) ||
+    /error: cannot find (?:value|type|function|macro|crate|trait) /u.test(output);
   if (compileError) return "compile_error";
   if (status === 0) return "escaped";
   return "killed";
