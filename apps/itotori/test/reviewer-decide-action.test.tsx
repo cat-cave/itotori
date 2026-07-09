@@ -285,17 +285,27 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
     expect((body.repairHint as string).length).toBeGreaterThan(0);
   });
 
-  it("a non-canDecide user sees neither decide button (hidden, not just disabled)", async () => {
+  it("a non-canDecide user sees decide buttons DISABLED + EXPLAINED", async () => {
+    // fnd-caps-context — a denied action is disabled + explained (not a
+    // silent hide). The CapGatedButton strip carries the denial reason.
     handleDetail();
     render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide={false} />);
-    // Wait for the ready view to settle so the legacy kind-specific
-    // buttons have had a chance to render and the absence of the decide
-    // strip is observable.
     expect(
       await screen.findByRole("heading", { name: /QA blocker for the decide-action spec/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("main")).toHaveAttribute("data-can-decide", "false");
-    expect(document.querySelector('[data-strip="decide-action"]')).toBeNull();
+    // Target the decide-capability strip (data-cap="decide"), not the
+    // legacy kind-specific Approve which also renders in the action strip.
+    const approve = document.querySelector('button[data-cap="decide"][data-action="approve"]');
+    const queue = document.querySelector(
+      'button[data-cap="decide"][data-action="queue_correction"]',
+    );
+    expect(approve).not.toBeNull();
+    expect(queue).not.toBeNull();
+    expect(approve).toBeDisabled();
+    expect(queue).toBeDisabled();
+    expect(approve).toHaveAttribute("data-cap-allowed", "false");
+    expect(screen.getByRole("note")).toHaveAttribute("data-cap-denial", "decide");
   });
 
   it("surfaces an in-strip error when the typed action API returns a 403 forbidden", async () => {

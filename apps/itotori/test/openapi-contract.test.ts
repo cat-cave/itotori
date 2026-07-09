@@ -115,6 +115,26 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "decisions.record": recordDecisionResponseFixture,
   "benchmarks.record": recordBenchmarkResponseFixture,
   "runtimeEvidence.ingest": runtimeEvidenceIngestResponseFixture,
+  // fnd-caps-context — fully-granted local-user capability view.
+  "auth.capabilities": {
+    schemaVersion: "itotori.auth.capabilities.v0",
+    actorUserId: "local-user",
+    canReadQueue: true,
+    canManageQueue: true,
+    canFlag: true,
+    canDecide: true,
+    canSteer: true,
+    canReveal: true,
+    denials: {
+      flag: null,
+      decide: null,
+      steer: null,
+      reveal: null,
+      queueRead: null,
+      queueManage: null,
+    },
+    denialReasons: [],
+  },
 };
 
 describe("fe-api-openapi-emit: deterministic emit", () => {
