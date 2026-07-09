@@ -2,7 +2,7 @@
 //
 // The user-shaped `itotori extract` command wraps
 // `kaifuu-cli extract --engine reallive`, producing the v0.2 BridgeBundle that
-// `itotori localize` (and `itotori import`) consumes — WITHOUT forcing the
+// `itotori localize` consumes — WITHOUT forcing the
 // caller to know about the Rust binary or `cargo`. Both RealLive modes are
 // wired:
 //

@@ -365,57 +365,21 @@ describe("Itotori CLI handlers", () => {
     expect(writes.get("status.json")).toEqual(dashboardStatusFixture);
   });
 
-  it("validates bridge input before calling the import service", async () => {
+  it("does not expose superseded v1 import/draft/export-patch commands", async () => {
     const services = servicesFixture();
-    const reads = new Map<string, unknown>([["bridge.json", { schemaVersion: "bad" }]]);
 
-    await expect(
-      runItotoriCliCommand(["import", "--bridge", "bridge.json", "--project", "project.json"], {
-        io: jsonStoreFixture(reads, new Map()),
-        migrateDatabase: vi.fn(async () => {}),
-        withServices: async (callback) => await callback(services),
-      }),
-    ).rejects.toThrow("BridgeBundle.schemaVersion");
+    for (const command of ["import", "draft", "export-patch"]) {
+      await expect(
+        runItotoriCliCommand([command], {
+          io: jsonStoreFixture(new Map(), new Map()),
+          migrateDatabase: vi.fn(async () => {}),
+          withServices: async (callback) => await callback(services),
+        }),
+      ).rejects.toThrow(`unknown itotori command: ${command}`);
+    }
 
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
-  });
-
-  it("writes imported project JSON with bridge import status", async () => {
-    const services = servicesFixture();
-    const bridge = projectFixture().bridge;
-    const reads = new Map<string, unknown>([["bridge.json", bridge]]);
-    const writes = new Map<string, unknown>();
-
-    await runItotoriCliCommand(["import", "--bridge", "bridge.json", "--project", "project.json"], {
-      io: jsonStoreFixture(reads, writes),
-      migrateDatabase: vi.fn(async () => {}),
-      withServices: async (callback) => await callback(services),
-    });
-
-    expect(services.projectWorkflow.importBridge).toHaveBeenCalledWith(bridge);
-    expect(writes.get("project.json")).toMatchObject({
-      projectId: "project-1",
-      importStatus: dashboardStatusFixture.importStatus,
-    });
-  });
-
-  it("accepts v0.2 bridge input before calling the import service", async () => {
-    const services = servicesFixture();
-    const bridge = bridgeV02Fixture();
-    const reads = new Map<string, unknown>([["bridge.json", bridge]]);
-    const writes = new Map<string, unknown>();
-
-    await runItotoriCliCommand(["import", "--bridge", "bridge.json", "--project", "project.json"], {
-      io: jsonStoreFixture(reads, writes),
-      migrateDatabase: vi.fn(async () => {}),
-      withServices: async (callback) => await callback(services),
-    });
-
-    expect(services.projectWorkflow.importBridge).toHaveBeenCalledWith(bridge);
-    expect(writes.get("project.json")).toMatchObject({
-      projectId: "project-1",
-      importStatus: dashboardStatusFixture.importStatus,
-    });
+    expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
   });
 
   it("imports manual feedback through the feedback service", async () => {
@@ -919,18 +883,6 @@ function servicesFixture(): ItotoriCliServices {
       })),
       importBridge: vi.fn(async (_bridge: BridgeBundle | BridgeBundleV02) => projectFixture()),
       draftProject: vi.fn(async (project: ProjectState) => project),
-      exportPatch: vi.fn(async (project: ProjectState) => ({
-        project,
-        patchExport: {
-          schemaVersion: "0.1.0",
-          patchExportId: "patch-1",
-          sourceBridgeId: project.bridge.bridgeId,
-          sourceBundleHash: project.bridge.sourceBundleHash,
-          sourceLocale: project.bridge.sourceLocale,
-          targetLocale: project.targetLocale,
-          entries: [],
-        },
-      })),
       ingestRuntimeReport: vi.fn(async (project: ProjectState) => ({
         project,
         result: {
@@ -1016,18 +968,6 @@ function projectFixture(): ProjectState {
       units: [],
     },
   };
-}
-
-function bridgeV02Fixture(): BridgeBundleV02 {
-  return JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  ) as BridgeBundleV02;
 }
 
 const costReportFixture: ProjectCostReport = {

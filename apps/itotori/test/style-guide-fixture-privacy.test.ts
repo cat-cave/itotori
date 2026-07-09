@@ -223,18 +223,6 @@ function servicesFixture(): ItotoriCliServices {
         },
       })),
       draftProject: vi.fn(async (project) => project),
-      exportPatch: vi.fn(async (project) => ({
-        project,
-        patchExport: {
-          schemaVersion: "0.1.0",
-          patchExportId: "patch-1",
-          sourceBridgeId: project.bridge.bridgeId,
-          sourceBundleHash: project.bridge.sourceBundleHash,
-          sourceLocale: project.bridge.sourceLocale,
-          targetLocale: project.targetLocale,
-          entries: [],
-        },
-      })),
       ingestRuntimeReport: vi.fn(async (project) => ({ project, result: {} })),
       ingestPatchResult: vi.fn(async (project) => ({ project, result: {} })),
       ingestConformanceReport: vi.fn(async (project) => ({ project, result: {} })),

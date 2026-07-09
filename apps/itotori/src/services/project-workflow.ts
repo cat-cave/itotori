@@ -20,13 +20,11 @@ import type {
 } from "@itotori/db";
 import type {
   BenchmarkReportV02,
-  BridgeUnit,
   BridgeBundle,
   BridgeBundleV02,
   ConformanceManifestV01,
   ConformanceResultV01,
   FindingRecordV02,
-  PatchExport,
   PatchResultStatusV02,
   PatchResultV02,
   RuntimeEvidenceReportV02,
@@ -55,10 +53,6 @@ import {
   createProviderRunId,
   localOnlyRoutingPosture,
 } from "../providers/types.js";
-import {
-  DeterministicPreExportQaError,
-  runDeterministicPreExportQa,
-} from "./deterministic-pre-export-qa.js";
 import {
   composeProjectOverviewReadModel,
   type ProjectOverviewReadModel,
@@ -248,10 +242,6 @@ export interface ItotoriProjectWorkflowPort {
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
-  exportPatch(project: ProjectState): Promise<{
-    project: ProjectState;
-    patchExport: PatchExport;
-  }>;
   ingestRuntimeReport(
     project: ProjectState,
     runtimeReport: RuntimeReportInput,
@@ -530,58 +520,6 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     }
     await this.repository.saveDrafts(this.actor, nextProject);
     return nextProject;
-  }
-
-  async exportPatch(project: ProjectState): Promise<{
-    project: ProjectState;
-    patchExport: PatchExport;
-  }> {
-    const deterministicQa = runDeterministicPreExportQa(project);
-    if (deterministicQa.failures.length > 0) {
-      for (const finding of deterministicQa.findings) {
-        await this.repository.recordFinding(this.actor, {
-          projectId: project.projectId,
-          localeBranchId: project.localeBranchId,
-          finding,
-          status: "open",
-        });
-      }
-      throw new DeterministicPreExportQaError(deterministicQa.failures);
-    }
-    if (isBridgeBundleV02(project.bridge)) {
-      throw new Error("v0.2 patch export is not supported by the deterministic local exporter");
-    }
-    const entries = project.bridge.units.map((unit, index) => {
-      const targetText = project.drafts[unit.bridgeUnitId];
-      if (!targetText) {
-        throw new Error(`missing draft for ${unit.bridgeUnitId}`);
-      }
-      for (const span of unit.protectedSpans) {
-        if (!targetText.includes(span.raw)) {
-          throw new Error(`draft for ${unit.bridgeUnitId} lost protected span ${span.raw}`);
-        }
-      }
-      return {
-        entryId: id("entry", index + 1),
-        bridgeUnitId: unit.bridgeUnitId,
-        sourceUnitKey: unit.sourceUnitKey,
-        sourceHash: unit.sourceHash,
-        targetText,
-        protectedSpanMappings: protectedSpanMappingsForTarget(unit, targetText),
-      };
-    });
-    const patchExport: PatchExport = {
-      schemaVersion: "0.1.0",
-      patchExportId: id("patch", 1),
-      sourceBridgeId: project.bridge.bridgeId,
-      sourceBundleHash: project.bridge.sourceBundleHash,
-      sourceLocale: project.bridge.sourceLocale,
-      targetLocale: project.targetLocale,
-      entries,
-    };
-    const nextProject: ProjectState = { ...project, patchExport };
-    await this.repository.savePatchExport(this.actor, nextProject, patchExport);
-    return { project: nextProject, patchExport };
   }
 
   async ingestRuntimeReport(
@@ -1445,32 +1383,4 @@ function buildRetainedPartialFinding(patchResult: PatchResultV02): FindingRecord
 function deterministicPatchResultUuid(kind: string, seed: string): string {
   const suffix = createHash("sha256").update(`${kind}:${seed}`).digest("hex").slice(0, 12);
   return `019ed010-0000-7000-8000-${suffix}`;
-}
-
-function isBridgeBundleV02(bridge: BridgeBundle | BridgeBundleV02): bridge is BridgeBundleV02 {
-  return bridge.schemaVersion === "0.2.0";
-}
-
-function protectedSpanMappingsForTarget(
-  unit: BridgeUnit,
-  targetText: string,
-): PatchExport["entries"][number]["protectedSpanMappings"] {
-  let searchStart = 0;
-  return unit.protectedSpans.map((span) => {
-    const targetStartCodeUnit = targetText.indexOf(span.raw, searchStart);
-    if (targetStartCodeUnit < 0) {
-      throw new Error(`draft for ${unit.bridgeUnitId} lost protected span ${span.raw}`);
-    }
-    const targetEndCodeUnit = targetStartCodeUnit + span.raw.length;
-    searchStart = targetEndCodeUnit;
-    return {
-      raw: span.raw,
-      targetStart: utf8ByteLength(targetText.slice(0, targetStartCodeUnit)),
-      targetEnd: utf8ByteLength(targetText.slice(0, targetEndCodeUnit)),
-    };
-  });
-}
-
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
 }

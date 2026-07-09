@@ -38,7 +38,6 @@ import {
   type AssetDecisionsCliPort,
 } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
-import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -260,12 +259,6 @@ export async function runItotoriCliCommand(
     case "dashboard-status":
       await runDashboardStatus(args, dependencies);
       break;
-    case "import":
-      await runImport(args, dependencies);
-      break;
-    case "draft":
-      await runDraft(args, dependencies);
-      break;
     case "agentic-loop-smoke":
       await runAgenticLoopSmoke(args, dependencies);
       break;
@@ -289,9 +282,6 @@ export async function runItotoriCliCommand(
       break;
     case "raw-mtl-baseline-proof":
       await runRawMtlBaselineProof(args, dependencies);
-      break;
-    case "export-patch":
-      await runExportPatch(args, dependencies);
       break;
     case "export-patch-v2":
       await runExportPatchV2(args, dependencies);
@@ -616,27 +606,6 @@ async function runDashboardStatus(
     services.projectWorkflow.getDashboardStatus(),
   );
   dependencies.io.writeJson(outputPath, status);
-}
-
-async function runImport(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  const bridgePath = requiredFlag(args, "--bridge");
-  const projectPath = requiredFlag(args, "--project");
-  const bridge = dependencies.io.readJson(bridgePath);
-  assertBridgeInput(bridge);
-  const project = await dependencies.withServices((services) =>
-    services.projectWorkflow.importBridge(bridge),
-  );
-  dependencies.io.writeJson(projectPath, project);
-}
-
-async function runDraft(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  const projectPath = requiredFlag(args, "--project");
-  const locale = requiredFlag(args, "--locale");
-  const project = readProject(dependencies.io, projectPath);
-  const nextProject = await dependencies.withServices((services) =>
-    services.projectWorkflow.draftProject(project, locale),
-  );
-  dependencies.io.writeJson(projectPath, nextProject);
 }
 
 async function runAgenticLoopSmoke(
@@ -1347,17 +1316,6 @@ function parseRealliveSceneId(value: string): number {
     throw new Error(`extract refused: --scene '${value}' must be a u16 (0..65535)`);
   }
   return parsed;
-}
-
-async function runExportPatch(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  const projectPath = requiredFlag(args, "--project");
-  const outputPath = requiredFlag(args, "--output");
-  const project = readProject(dependencies.io, projectPath);
-  const result = await dependencies.withServices((services) =>
-    services.projectWorkflow.exportPatch(project),
-  );
-  dependencies.io.writeJson(projectPath, result.project);
-  dependencies.io.writeJson(outputPath, result.patchExport);
 }
 
 async function runExportPatchV2(

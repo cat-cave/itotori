@@ -561,9 +561,6 @@ async function serviceFactory<T>(
       getBenchmarkReports,
       importBridge,
       draftProject: vi.fn(async () => projectFixture),
-      exportPatch: vi.fn(async () => {
-        throw new Error("not used");
-      }),
       ingestRuntimeReport: vi.fn(async () => ({
         project: projectFixture,
         result: runtimeIngestResultFixture,
