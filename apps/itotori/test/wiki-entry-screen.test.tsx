@@ -32,8 +32,21 @@ import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const PROJECT_ID = "project-1";
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
+const SOURCE_PROJECT_ID = "project-base-game";
+const SOURCE_LOCALE_BRANCH_ID = "locale-base-game";
 const SOURCE_REVISION_ID = "revision-wiki";
 const GENERATED_AT = new Date("2026-07-06T00:00:00.000Z");
+const LOCAL_WIKI_SCOPE = {
+  inheritance: "local",
+  requestedProjectId: PROJECT_ID,
+  requestedLocaleBranchId: LOCALE_BRANCH_ID,
+  sourceProjectId: PROJECT_ID,
+  sourceLocaleBranchId: LOCALE_BRANCH_ID,
+  brandContextId: null,
+  brandContextKey: null,
+  brandContextName: null,
+  brandContextRole: null,
+} as const;
 
 // A CHARACTER entry with one cited appearance (a unit the heroine is
 // witnessed in) + one relationship (to a second character, witnessed in a
@@ -44,6 +57,7 @@ function heroineEntry(): WikiCharacterEntry {
     kind: "character",
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
+    scope: LOCAL_WIKI_SCOPE,
     sourceRevisionId: SOURCE_REVISION_ID,
     title: "勇者",
     characterId: "勇者",
@@ -97,6 +111,26 @@ function heroineEntry(): WikiCharacterEntry {
   };
 }
 
+function inheritedHeroineEntry(): WikiCharacterEntry {
+  const entry = heroineEntry();
+  return {
+    ...entry,
+    projectId: SOURCE_PROJECT_ID,
+    localeBranchId: SOURCE_LOCALE_BRANCH_ID,
+    scope: {
+      inheritance: "brand_context",
+      requestedProjectId: PROJECT_ID,
+      requestedLocaleBranchId: LOCALE_BRANCH_ID,
+      sourceProjectId: SOURCE_PROJECT_ID,
+      sourceLocaleBranchId: SOURCE_LOCALE_BRANCH_ID,
+      brandContextId: "brand-context-fixture",
+      brandContextKey: "brand-fixture",
+      brandContextName: "Brand Fixture",
+      brandContextRole: "base",
+    },
+  };
+}
+
 // A TERM entry (distinct title from the character so the index pills are
 // unambiguous) with one alias + one reference (a cited unit) + a related-
 // character cross-ref (terminology_alias).
@@ -106,6 +140,7 @@ function magicTermEntry(): WikiTermEntry {
     kind: "term",
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
+    scope: LOCAL_WIKI_SCOPE,
     title: "魔法",
     termId: "term-magic",
     sourceTerm: "魔法",
@@ -147,6 +182,12 @@ function wikiEntriesFixture(overrides: Partial<WikiEntriesReadModel> = {}): Wiki
       kind: null,
     },
     pagination: { total: 2, limit: 100, offset: 0, hasMore: false, nextOffset: null },
+    brandContext: {
+      requestedProjectId: PROJECT_ID,
+      requestedLocaleBranchId: LOCALE_BRANCH_ID,
+      contexts: [],
+      inheritedContextArtifacts: [],
+    },
     entries: [heroineEntry(), magicTermEntry()],
     ...overrides,
   };
@@ -215,6 +256,29 @@ describe("SPA shell — Wiki entry screen", () => {
       expect(ref).toHaveAttribute("data-wiki-cross-ref", "character");
       expect(ref.getAttribute("href")).toContain("/wiki/characters/");
     }
+  });
+
+  it("uses the inherited source branch for citation jump links", async () => {
+    server.use(
+      http.get("*/api/wiki/entries", () =>
+        apiJson(
+          "wiki.entries",
+          wikiEntriesFixture({
+            entries: [inheritedHeroineEntry()],
+            pagination: { total: 1, limit: 100, offset: 0, hasMore: false, nextOffset: null },
+          }),
+        ),
+      ),
+    );
+    render(<App location={WIKI_ROUTE} />);
+
+    const sceneJump = await screen.findByText("scene.001.line.001", { selector: "a" });
+    expect(sceneJump).toHaveAttribute("data-wiki-scene-jump", "bridge-unit-wiki-one");
+    expect(sceneJump).toHaveAttribute(
+      "href",
+      `/play/units/bridge-unit-wiki-one?projectId=${SOURCE_PROJECT_ID}&localeBranchId=${SOURCE_LOCALE_BRANCH_ID}`,
+    );
+    expect(sceneJump.getAttribute("href")).not.toContain(LOCALE_BRANCH_ID);
   });
 
   it("renders the term profile (source ↔ translation) and CrossRef jumps to scenes", async () => {

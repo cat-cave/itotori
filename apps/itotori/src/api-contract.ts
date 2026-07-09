@@ -248,7 +248,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   WikiEntriesReadModel: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.WikiEntriesReadModel,
-      properties: { generatedAt: str, filter: obj, pagination: obj, entries: arr },
+      properties: {
+        generatedAt: str,
+        filter: obj,
+        pagination: obj,
+        brandContext: obj,
+        entries: arr,
+      },
       additionalProperties: false,
       schemaVersion: "wiki.entries.v0.1",
     }),

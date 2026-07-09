@@ -254,7 +254,14 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ReviewerQueuePermissionView: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
-  WikiEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
+  WikiEntriesReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "filter",
+    "pagination",
+    "brandContext",
+    "entries",
+  ],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
   CatalogCompletenessBenchmarkPools: ["targetLanguage", "pools", "publicReport"],
   CatalogConflictReviewReadModel: ["rows"],
@@ -1822,6 +1829,67 @@ export function assertWikiEntriesReadModel(
   if (pagination.nextOffset !== null) {
     assertNonNegativeInteger(pagination.nextOffset, `${label}.pagination.nextOffset`);
   }
+  const brandContext = asStrictRecord(model.brandContext, `${label}.brandContext`, [
+    "requestedProjectId",
+    "requestedLocaleBranchId",
+    "contexts",
+    "inheritedContextArtifacts",
+  ]);
+  assertString(brandContext.requestedProjectId, `${label}.brandContext.requestedProjectId`);
+  assertString(
+    brandContext.requestedLocaleBranchId,
+    `${label}.brandContext.requestedLocaleBranchId`,
+  );
+  const contexts = asArray(brandContext.contexts, `${label}.brandContext.contexts`);
+  for (const [contextIndex, contextValue] of contexts.entries()) {
+    const contextLabel = `${label}.brandContext.contexts[${contextIndex}]`;
+    const context = asStrictRecord(contextValue, contextLabel, [
+      "brandContextId",
+      "contextKey",
+      "name",
+      "requestedRole",
+      "inheritedSources",
+    ]);
+    assertString(context.brandContextId, `${contextLabel}.brandContextId`);
+    assertString(context.contextKey, `${contextLabel}.contextKey`);
+    assertString(context.name, `${contextLabel}.name`);
+    assertString(context.requestedRole, `${contextLabel}.requestedRole`);
+    const inheritedSources = asArray(context.inheritedSources, `${contextLabel}.inheritedSources`);
+    for (const [sourceIndex, sourceValue] of inheritedSources.entries()) {
+      assertWikiEntryScope(sourceValue, `${contextLabel}.inheritedSources[${sourceIndex}]`, [
+        "inheritedCharacterArcs",
+        "inheritedGlossary",
+        "inheritedContext",
+      ]);
+    }
+  }
+  const inheritedArtifacts = asArray(
+    brandContext.inheritedContextArtifacts,
+    `${label}.brandContext.inheritedContextArtifacts`,
+  );
+  for (const [artifactIndex, artifactValue] of inheritedArtifacts.entries()) {
+    const artifactLabel = `${label}.brandContext.inheritedContextArtifacts[${artifactIndex}]`;
+    const artifact = asStrictRecord(artifactValue, artifactLabel, [
+      "contextArtifactId",
+      "projectId",
+      "localeBranchId",
+      "sourceRevisionId",
+      "category",
+      "status",
+      "title",
+      "body",
+      "source",
+    ]);
+    assertString(artifact.contextArtifactId, `${artifactLabel}.contextArtifactId`);
+    assertString(artifact.projectId, `${artifactLabel}.projectId`);
+    assertString(artifact.localeBranchId, `${artifactLabel}.localeBranchId`);
+    assertString(artifact.sourceRevisionId, `${artifactLabel}.sourceRevisionId`);
+    assertString(artifact.category, `${artifactLabel}.category`);
+    assertString(artifact.status, `${artifactLabel}.status`);
+    assertString(artifact.title, `${artifactLabel}.title`);
+    assertString(artifact.body, `${artifactLabel}.body`);
+    assertWikiEntryScope(artifact.source, `${artifactLabel}.source`);
+  }
   const entries = asArray(model.entries, `${label}.entries`);
   for (const [index, entryValue] of entries.entries()) {
     const entryLabel = `${label}.entries[${index}]`;
@@ -1843,6 +1911,39 @@ export function assertWikiEntriesReadModel(
       assertString(relatedRef.label, `${relatedLabel}.label`);
       assertString(relatedRef.relation, `${relatedLabel}.relation`);
     }
+  }
+}
+
+function assertWikiEntryScope(value: unknown, label: string, extraKeys: string[] = []): void {
+  const scope = asStrictRecord(value, label, [
+    "inheritance",
+    "requestedProjectId",
+    "requestedLocaleBranchId",
+    "sourceProjectId",
+    "sourceLocaleBranchId",
+    "brandContextId",
+    "brandContextKey",
+    "brandContextName",
+    "brandContextRole",
+    ...extraKeys,
+  ]);
+  assertString(scope.inheritance, `${label}.inheritance`);
+  assertString(scope.requestedProjectId, `${label}.requestedProjectId`);
+  assertString(scope.requestedLocaleBranchId, `${label}.requestedLocaleBranchId`);
+  assertString(scope.sourceProjectId, `${label}.sourceProjectId`);
+  assertString(scope.sourceLocaleBranchId, `${label}.sourceLocaleBranchId`);
+  assertNullableString(scope.brandContextId, `${label}.brandContextId`);
+  assertNullableString(scope.brandContextKey, `${label}.brandContextKey`);
+  assertNullableString(scope.brandContextName, `${label}.brandContextName`);
+  assertNullableString(scope.brandContextRole, `${label}.brandContextRole`);
+  if (extraKeys.includes("inheritedCharacterArcs")) {
+    assertBoolean(scope.inheritedCharacterArcs, `${label}.inheritedCharacterArcs`);
+  }
+  if (extraKeys.includes("inheritedGlossary")) {
+    assertBoolean(scope.inheritedGlossary, `${label}.inheritedGlossary`);
+  }
+  if (extraKeys.includes("inheritedContext")) {
+    assertBoolean(scope.inheritedContext, `${label}.inheritedContext`);
   }
 }
 

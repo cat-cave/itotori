@@ -8,6 +8,8 @@ import {
   characterRelationshipEvidence,
   characterRelationshipStatusValues,
   characterRelationships,
+  contextArtifactStatusValues,
+  contextArtifacts,
   localeBranches,
   projects,
   sourceUnits,
@@ -15,16 +17,21 @@ import {
   terminologySourceReferences,
   terminologyTermStatusValues,
   terminologyTerms,
+  wikiBrandContextMemberships,
+  wikiBrandContexts,
 } from "../schema.js";
 import type {
   CharacterBioStatus,
   CharacterRelationshipDirection,
   CharacterRelationshipKind,
   CharacterRelationshipStatus,
+  ContextArtifactCategory,
+  ContextArtifactStatus,
   TerminologyAliasKind,
   TerminologySourceReferenceKind,
   TerminologyTermKind,
   TerminologyTermStatus,
+  WikiBrandContextRole,
 } from "../schema.js";
 
 export const WIKI_ENTRIES_SCHEMA_VERSION = "wiki.entries.v0.1" as const;
@@ -68,6 +75,18 @@ export type WikiCitation = {
   citeOrdinal: number;
 };
 
+export type WikiEntryScope = {
+  inheritance: "local" | "brand_context";
+  requestedProjectId: string;
+  requestedLocaleBranchId: string;
+  sourceProjectId: string;
+  sourceLocaleBranchId: string;
+  brandContextId: string | null;
+  brandContextKey: string | null;
+  brandContextName: string | null;
+  brandContextRole: WikiBrandContextRole | null;
+};
+
 export type WikiCharacterRevision = {
   characterBioId: string;
   sourceRevisionId: string;
@@ -92,6 +111,7 @@ export type WikiCharacterEntry = {
   kind: typeof wikiEntryKindValues.character;
   projectId: string;
   localeBranchId: string;
+  scope: WikiEntryScope;
   sourceRevisionId: string;
   title: string;
   characterId: string;
@@ -131,6 +151,7 @@ export type WikiTermEntry = {
   kind: typeof wikiEntryKindValues.term;
   projectId: string;
   localeBranchId: string;
+  scope: WikiEntryScope;
   title: string;
   termId: string;
   sourceTerm: string;
@@ -148,6 +169,39 @@ export type WikiTermEntry = {
 
 export type WikiEntry = WikiCharacterEntry | WikiTermEntry;
 
+export type WikiBrandContextInheritedSource = WikiEntryScope & {
+  inheritedCharacterArcs: boolean;
+  inheritedGlossary: boolean;
+  inheritedContext: boolean;
+};
+
+export type WikiBrandContextSummary = {
+  brandContextId: string;
+  contextKey: string;
+  name: string;
+  requestedRole: WikiBrandContextRole;
+  inheritedSources: WikiBrandContextInheritedSource[];
+};
+
+export type WikiInheritedContextArtifact = {
+  contextArtifactId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  category: ContextArtifactCategory;
+  status: ContextArtifactStatus;
+  title: string;
+  body: string;
+  source: WikiEntryScope;
+};
+
+export type WikiBrandContextReadModel = {
+  requestedProjectId: string;
+  requestedLocaleBranchId: string;
+  contexts: WikiBrandContextSummary[];
+  inheritedContextArtifacts: WikiInheritedContextArtifact[];
+};
+
 export type WikiEntriesReadModel = {
   schemaVersion: typeof WIKI_ENTRIES_SCHEMA_VERSION;
   generatedAt: Date;
@@ -158,6 +212,7 @@ export type WikiEntriesReadModel = {
     kind: WikiEntryKind | null;
   };
   pagination: WikiEntriesPagination;
+  brandContext: WikiBrandContextReadModel;
   entries: WikiEntry[];
 };
 
@@ -184,10 +239,15 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
       throw new Error("wiki.entries offset must be non-negative");
     }
 
+    const scope = await this.resolveBrandContextScope(filter.projectId, filter.localeBranchId);
     const characters =
-      filter.kind === wikiEntryKindValues.term ? [] : await this.loadCharacterEntries(filter);
+      filter.kind === wikiEntryKindValues.term
+        ? []
+        : await this.loadCharacterEntries(filter, sourcesForCharacterArcs(scope.sources));
     const terms =
-      filter.kind === wikiEntryKindValues.character ? [] : await this.loadTermEntries(filter);
+      filter.kind === wikiEntryKindValues.character
+        ? []
+        : await this.loadTermEntries(filter, sourcesForGlossary(scope.sources));
     const allEntries = [...characters, ...terms].sort(compareEntries);
     const entries = allEntries.slice(offset, offset + limit);
     const nextOffset = offset + limit < allEntries.length ? offset + limit : null;
@@ -207,6 +267,15 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
         hasMore: nextOffset !== null,
         nextOffset,
       },
+      brandContext: {
+        requestedProjectId: filter.projectId,
+        requestedLocaleBranchId: filter.localeBranchId,
+        contexts: scope.contexts,
+        inheritedContextArtifacts: await this.loadInheritedContextArtifacts(
+          filter,
+          sourcesForContext(scope.sources),
+        ),
+      },
       entries,
     };
   }
@@ -225,19 +294,26 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     }
   }
 
-  private async loadCharacterEntries(filter: WikiEntriesFilter): Promise<WikiCharacterEntry[]> {
-    const conditions = [
-      eq(characterBios.projectId, filter.projectId),
-      eq(characterBios.localeBranchId, filter.localeBranchId),
-    ];
-    if (filter.sourceRevisionId !== undefined) {
-      conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
+  private async loadCharacterEntries(
+    filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
+  ): Promise<WikiCharacterEntry[]> {
+    const bioRows: Array<ScopedRow<typeof characterBios.$inferSelect>> = [];
+    for (const source of sources) {
+      const conditions = [
+        eq(characterBios.projectId, source.projectId),
+        eq(characterBios.localeBranchId, source.localeBranchId),
+      ];
+      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
+        conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
+      }
+      const rows = await this.db
+        .select()
+        .from(characterBios)
+        .where(and(...conditions))
+        .orderBy(asc(characterBios.characterId), desc(characterBios.generatedAt));
+      bioRows.push(...rows.map((row) => ({ ...row, wikiSource: source })));
     }
-    const bioRows = await this.db
-      .select()
-      .from(characterBios)
-      .where(and(...conditions))
-      .orderBy(asc(characterBios.characterId), desc(characterBios.generatedAt));
     if (bioRows.length === 0) {
       return [];
     }
@@ -267,7 +343,7 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
       });
     }
 
-    const relationshipRows = await this.loadRelationships(filter);
+    const relationshipRows = await this.loadRelationships(filter, sources);
     const relationshipsByCharacter = new Map<string, WikiCharacterRelationship[]>();
     const relatedByCharacter = new Map<string, WikiCrossReference[]>();
     for (const relationship of relationshipRows) {
@@ -286,8 +362,12 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
       });
     }
 
-    const byCharacter = new Map<string, typeof bioRows>();
+    const byCharacter = new Map<string, Array<ScopedRow<typeof characterBios.$inferSelect>>>();
     for (const row of bioRows) {
+      const existing = byCharacter.get(row.characterId);
+      if (existing !== undefined && existing[0]?.wikiSource !== row.wikiSource) {
+        continue;
+      }
       pushMap(byCharacter, row.characterId, row);
     }
 
@@ -303,6 +383,7 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
         kind: wikiEntryKindValues.character,
         projectId: current.projectId,
         localeBranchId: current.localeBranchId,
+        scope: scopeForSource(filter, current.wikiSource),
         sourceRevisionId: current.sourceRevisionId,
         title: characterId,
         characterId,
@@ -330,22 +411,28 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
 
   private async loadRelationships(
     filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
   ): Promise<Array<WikiCharacterRelationship & { fromCharacterId: string }>> {
-    const conditions = [
-      eq(characterRelationships.projectId, filter.projectId),
-      eq(characterRelationships.localeBranchId, filter.localeBranchId),
-    ];
-    if (filter.sourceRevisionId !== undefined) {
-      conditions.push(eq(characterRelationships.sourceRevisionId, filter.sourceRevisionId));
-    }
-    const rows = await this.db
-      .select()
-      .from(characterRelationships)
-      .where(and(...conditions))
-      .orderBy(
-        asc(characterRelationships.fromCharacterId),
-        asc(characterRelationships.toCharacterId),
+    const rows: Array<typeof characterRelationships.$inferSelect> = [];
+    for (const source of sources) {
+      const conditions = [
+        eq(characterRelationships.projectId, source.projectId),
+        eq(characterRelationships.localeBranchId, source.localeBranchId),
+      ];
+      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
+        conditions.push(eq(characterRelationships.sourceRevisionId, filter.sourceRevisionId));
+      }
+      rows.push(
+        ...(await this.db
+          .select()
+          .from(characterRelationships)
+          .where(and(...conditions))
+          .orderBy(
+            asc(characterRelationships.fromCharacterId),
+            asc(characterRelationships.toCharacterId),
+          )),
       );
+    }
     if (rows.length === 0) {
       return [];
     }
@@ -393,16 +480,31 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     }));
   }
 
-  private async loadTermEntries(filter: WikiEntriesFilter): Promise<WikiTermEntry[]> {
-    const conditions = [
-      eq(terminologyTerms.projectId, filter.projectId),
-      eq(terminologyTerms.localeBranchId, filter.localeBranchId),
-    ];
-    const rows = await this.db
-      .select()
-      .from(terminologyTerms)
-      .where(and(...conditions))
-      .orderBy(asc(terminologyTerms.normalizedSourceTerm), asc(terminologyTerms.termId));
+  private async loadTermEntries(
+    filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
+  ): Promise<WikiTermEntry[]> {
+    const rows: Array<ScopedRow<typeof terminologyTerms.$inferSelect>> = [];
+    const claimedTerms = new Set<string>();
+    for (const source of sources) {
+      const sourceRows = await this.db
+        .select()
+        .from(terminologyTerms)
+        .where(
+          and(
+            eq(terminologyTerms.projectId, source.projectId),
+            eq(terminologyTerms.localeBranchId, source.localeBranchId),
+          ),
+        )
+        .orderBy(asc(terminologyTerms.normalizedSourceTerm), asc(terminologyTerms.termId));
+      for (const row of sourceRows) {
+        if (claimedTerms.has(row.normalizedSourceTerm)) {
+          continue;
+        }
+        claimedTerms.add(row.normalizedSourceTerm);
+        rows.push({ ...row, wikiSource: source });
+      }
+    }
     if (rows.length === 0) {
       return [];
     }
@@ -458,7 +560,7 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
       });
     }
 
-    const characterIds = await this.loadCharacterIds(filter);
+    const characterIds = await this.loadCharacterIds(filter, sourcesForCharacterArcs(sources));
     const entries: WikiTermEntry[] = [];
     for (const row of rows) {
       const references = referencesByTerm.get(row.termId) ?? [];
@@ -472,6 +574,7 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
         kind: wikiEntryKindValues.term,
         projectId: row.projectId,
         localeBranchId: row.localeBranchId,
+        scope: scopeForSource(filter, row.wikiSource),
         title: row.sourceTerm,
         termId: row.termId,
         sourceTerm: row.sourceTerm,
@@ -490,20 +593,268 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     return entries;
   }
 
-  private async loadCharacterIds(filter: WikiEntriesFilter): Promise<Set<string>> {
-    const conditions = [
-      eq(characterBios.projectId, filter.projectId),
-      eq(characterBios.localeBranchId, filter.localeBranchId),
-    ];
-    if (filter.sourceRevisionId !== undefined) {
-      conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
+  private async loadCharacterIds(
+    filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
+  ): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const source of sources) {
+      const conditions = [
+        eq(characterBios.projectId, source.projectId),
+        eq(characterBios.localeBranchId, source.localeBranchId),
+      ];
+      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
+        conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
+      }
+      const rows = await this.db
+        .select({ characterId: characterBios.characterId })
+        .from(characterBios)
+        .where(and(...conditions));
+      for (const row of rows) {
+        ids.add(row.characterId);
+      }
     }
-    const rows = await this.db
-      .select({ characterId: characterBios.characterId })
-      .from(characterBios)
-      .where(and(...conditions));
-    return new Set(rows.map((row) => row.characterId));
+    return ids;
   }
+
+  private async resolveBrandContextScope(
+    projectId: string,
+    localeBranchId: string,
+  ): Promise<ResolvedWikiBrandContextScope> {
+    const local = localSource(projectId, localeBranchId);
+    const targetRows = await this.db
+      .select({
+        brandContextId: wikiBrandContextMemberships.brandContextId,
+        contextKey: wikiBrandContexts.contextKey,
+        name: wikiBrandContexts.name,
+        contextRole: wikiBrandContextMemberships.contextRole,
+        inheritsCharacterArcs: wikiBrandContextMemberships.inheritsCharacterArcs,
+        inheritsGlossary: wikiBrandContextMemberships.inheritsGlossary,
+        inheritsContext: wikiBrandContextMemberships.inheritsContext,
+      })
+      .from(wikiBrandContextMemberships)
+      .innerJoin(
+        wikiBrandContexts,
+        eq(wikiBrandContexts.brandContextId, wikiBrandContextMemberships.brandContextId),
+      )
+      .where(
+        and(
+          eq(wikiBrandContextMemberships.projectId, projectId),
+          eq(wikiBrandContextMemberships.localeBranchId, localeBranchId),
+        ),
+      )
+      .orderBy(asc(wikiBrandContexts.name), asc(wikiBrandContextMemberships.contextRole));
+    if (targetRows.length === 0) {
+      return { sources: [local], contexts: [] };
+    }
+
+    const membershipRows = await this.db
+      .select({
+        brandContextId: wikiBrandContextMemberships.brandContextId,
+        contextKey: wikiBrandContexts.contextKey,
+        name: wikiBrandContexts.name,
+        projectId: wikiBrandContextMemberships.projectId,
+        localeBranchId: wikiBrandContextMemberships.localeBranchId,
+        contextRole: wikiBrandContextMemberships.contextRole,
+        inheritanceOrder: wikiBrandContextMemberships.inheritanceOrder,
+        providesCharacterArcs: wikiBrandContextMemberships.providesCharacterArcs,
+        providesGlossary: wikiBrandContextMemberships.providesGlossary,
+        providesContext: wikiBrandContextMemberships.providesContext,
+      })
+      .from(wikiBrandContextMemberships)
+      .innerJoin(
+        wikiBrandContexts,
+        eq(wikiBrandContexts.brandContextId, wikiBrandContextMemberships.brandContextId),
+      )
+      .where(
+        inArray(
+          wikiBrandContextMemberships.brandContextId,
+          targetRows.map((row) => row.brandContextId),
+        ),
+      )
+      .orderBy(
+        asc(wikiBrandContextMemberships.inheritanceOrder),
+        asc(wikiBrandContexts.name),
+        asc(wikiBrandContextMemberships.projectId),
+        asc(wikiBrandContextMemberships.localeBranchId),
+      );
+
+    const inheritedByKey = new Map<string, ScopedWikiSource>();
+    const contexts: WikiBrandContextSummary[] = [];
+    for (const target of targetRows) {
+      const providers = membershipRows.filter(
+        (row) =>
+          row.brandContextId === target.brandContextId &&
+          !(row.projectId === projectId && row.localeBranchId === localeBranchId),
+      );
+      const inheritedSources: WikiBrandContextInheritedSource[] = [];
+      for (const provider of providers) {
+        const inheritedCharacterArcs =
+          target.inheritsCharacterArcs && provider.providesCharacterArcs;
+        const inheritedGlossary = target.inheritsGlossary && provider.providesGlossary;
+        const inheritedContext = target.inheritsContext && provider.providesContext;
+        if (!inheritedCharacterArcs && !inheritedGlossary && !inheritedContext) {
+          continue;
+        }
+        const source: ScopedWikiSource = {
+          inheritance: "brand_context",
+          projectId: provider.projectId,
+          localeBranchId: provider.localeBranchId,
+          brandContextId: provider.brandContextId,
+          brandContextKey: provider.contextKey,
+          brandContextName: provider.name,
+          brandContextRole: provider.contextRole,
+          inheritanceOrder: provider.inheritanceOrder,
+          inheritedCharacterArcs,
+          inheritedGlossary,
+          inheritedContext,
+        };
+        const key = sourceKey(source);
+        if (!inheritedByKey.has(key)) {
+          inheritedByKey.set(key, source);
+        }
+        inheritedSources.push(toInheritedSource(projectId, localeBranchId, source));
+      }
+      contexts.push({
+        brandContextId: target.brandContextId,
+        contextKey: target.contextKey,
+        name: target.name,
+        requestedRole: target.contextRole,
+        inheritedSources,
+      });
+    }
+
+    return { sources: [local, ...inheritedByKey.values()], contexts };
+  }
+
+  private async loadInheritedContextArtifacts(
+    filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
+  ): Promise<WikiInheritedContextArtifact[]> {
+    const artifacts: WikiInheritedContextArtifact[] = [];
+    for (const source of sources) {
+      if (source.inheritance === "local") {
+        continue;
+      }
+      const conditions = [
+        eq(contextArtifacts.projectId, source.projectId),
+        eq(contextArtifacts.localeBranchId, source.localeBranchId),
+        eq(contextArtifacts.status, contextArtifactStatusValues.active),
+      ];
+      if (filter.sourceRevisionId !== undefined) {
+        conditions.push(eq(contextArtifacts.sourceRevisionId, filter.sourceRevisionId));
+      }
+      const rows = await this.db
+        .select()
+        .from(contextArtifacts)
+        .where(and(...conditions))
+        .orderBy(asc(contextArtifacts.category), asc(contextArtifacts.title));
+      for (const row of rows) {
+        artifacts.push({
+          contextArtifactId: row.contextArtifactId,
+          projectId: row.projectId,
+          localeBranchId: row.localeBranchId,
+          sourceRevisionId: row.sourceRevisionId,
+          category: row.category as ContextArtifactCategory,
+          status: row.status as ContextArtifactStatus,
+          title: row.title,
+          body: row.body,
+          source: scopeForSource(filter, source),
+        });
+      }
+    }
+    return artifacts;
+  }
+}
+
+type ScopedWikiSource = {
+  inheritance: "local" | "brand_context";
+  projectId: string;
+  localeBranchId: string;
+  brandContextId: string | null;
+  brandContextKey: string | null;
+  brandContextName: string | null;
+  brandContextRole: WikiBrandContextRole | null;
+  inheritanceOrder: number;
+  inheritedCharacterArcs: boolean;
+  inheritedGlossary: boolean;
+  inheritedContext: boolean;
+};
+
+type ScopedRow<T> = T & { wikiSource: ScopedWikiSource };
+
+type ResolvedWikiBrandContextScope = {
+  sources: ScopedWikiSource[];
+  contexts: WikiBrandContextSummary[];
+};
+
+function localSource(projectId: string, localeBranchId: string): ScopedWikiSource {
+  return {
+    inheritance: "local",
+    projectId,
+    localeBranchId,
+    brandContextId: null,
+    brandContextKey: null,
+    brandContextName: null,
+    brandContextRole: null,
+    inheritanceOrder: 0,
+    inheritedCharacterArcs: true,
+    inheritedGlossary: true,
+    inheritedContext: true,
+  };
+}
+
+function sourcesForCharacterArcs(sources: ScopedWikiSource[]): ScopedWikiSource[] {
+  return sources.filter(
+    (source) => source.inheritance === "local" || source.inheritedCharacterArcs,
+  );
+}
+
+function sourcesForGlossary(sources: ScopedWikiSource[]): ScopedWikiSource[] {
+  return sources.filter((source) => source.inheritance === "local" || source.inheritedGlossary);
+}
+
+function sourcesForContext(sources: ScopedWikiSource[]): ScopedWikiSource[] {
+  return sources.filter((source) => source.inheritance === "local" || source.inheritedContext);
+}
+
+function scopeForSource(filter: WikiEntriesFilter, source: ScopedWikiSource): WikiEntryScope {
+  return {
+    inheritance: source.inheritance,
+    requestedProjectId: filter.projectId,
+    requestedLocaleBranchId: filter.localeBranchId,
+    sourceProjectId: source.projectId,
+    sourceLocaleBranchId: source.localeBranchId,
+    brandContextId: source.brandContextId,
+    brandContextKey: source.brandContextKey,
+    brandContextName: source.brandContextName,
+    brandContextRole: source.brandContextRole,
+  };
+}
+
+function toInheritedSource(
+  requestedProjectId: string,
+  requestedLocaleBranchId: string,
+  source: ScopedWikiSource,
+): WikiBrandContextInheritedSource {
+  return {
+    inheritance: source.inheritance,
+    requestedProjectId,
+    requestedLocaleBranchId,
+    sourceProjectId: source.projectId,
+    sourceLocaleBranchId: source.localeBranchId,
+    brandContextId: source.brandContextId,
+    brandContextKey: source.brandContextKey,
+    brandContextName: source.brandContextName,
+    brandContextRole: source.brandContextRole,
+    inheritedCharacterArcs: source.inheritedCharacterArcs,
+    inheritedGlossary: source.inheritedGlossary,
+    inheritedContext: source.inheritedContext,
+  };
+}
+
+function sourceKey(source: ScopedWikiSource): string {
+  return `${source.projectId}\u0000${source.localeBranchId}`;
 }
 
 function clampLimit(limit: number | undefined): number {

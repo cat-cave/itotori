@@ -2366,6 +2366,9 @@
     "WikiEntriesReadModel": {
       "additionalProperties": false,
       "properties": {
+        "brandContext": {
+          "type": "object"
+        },
         "entries": {
           "type": "array"
         },
@@ -2383,6 +2386,7 @@
         }
       },
       "required": [
+        "brandContext",
         "entries",
         "filter",
         "generatedAt",

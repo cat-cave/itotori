@@ -39,6 +39,16 @@ export const localeBranchStatusValues = {
 export type LocaleBranchStatus =
   (typeof localeBranchStatusValues)[keyof typeof localeBranchStatusValues];
 
+export const wikiBrandContextRoleValues = {
+  base: "base",
+  sequel: "sequel",
+  fandisk: "fandisk",
+  shared: "shared",
+} as const;
+
+export type WikiBrandContextRole =
+  (typeof wikiBrandContextRoleValues)[keyof typeof wikiBrandContextRoleValues];
+
 export const styleGuideVersionStatusValues = {
   draft: "draft",
   approved: "approved",
@@ -1527,8 +1537,89 @@ export const localeBranches = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    uniqueIndex("itotori_locale_branches_project_branch_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+    ),
     index("itotori_locale_branches_project_locale_idx").on(table.projectId, table.targetLocale),
     index("itotori_locale_branches_bundle_idx").on(table.sourceBundleId),
+  ],
+);
+
+export const wikiBrandContexts = pgTable(
+  "itotori_wiki_brand_contexts",
+  {
+    brandContextId: text("brand_context_id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.workspaceId, { onDelete: "cascade" }),
+    contextKey: text("context_key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_wiki_brand_contexts_workspace_key_idx").on(
+      table.workspaceId,
+      table.contextKey,
+    ),
+    index("itotori_wiki_brand_contexts_workspace_name_idx").on(table.workspaceId, table.name),
+  ],
+);
+
+export const wikiBrandContextMemberships = pgTable(
+  "itotori_wiki_brand_context_memberships",
+  {
+    brandContextMembershipId: text("brand_context_membership_id").primaryKey(),
+    brandContextId: text("brand_context_id")
+      .notNull()
+      .references(() => wikiBrandContexts.brandContextId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    contextRole: text("context_role").$type<WikiBrandContextRole>().notNull(),
+    inheritanceOrder: integer("inheritance_order").notNull().default(0),
+    providesCharacterArcs: boolean("provides_character_arcs").notNull().default(true),
+    providesGlossary: boolean("provides_glossary").notNull().default(true),
+    providesContext: boolean("provides_context").notNull().default(true),
+    inheritsCharacterArcs: boolean("inherits_character_arcs").notNull().default(true),
+    inheritsGlossary: boolean("inherits_glossary").notNull().default(true),
+    inheritsContext: boolean("inherits_context").notNull().default(true),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_wiki_brand_context_memberships_scope_idx").on(
+      table.brandContextId,
+      table.projectId,
+      table.localeBranchId,
+    ),
+    index("itotori_wiki_brand_context_memberships_branch_idx").on(
+      table.projectId,
+      table.localeBranchId,
+    ),
+    index("itotori_wiki_brand_context_memberships_context_order_idx").on(
+      table.brandContextId,
+      table.inheritanceOrder,
+      table.contextRole,
+    ),
+    foreignKey({
+      columns: [table.projectId, table.localeBranchId],
+      foreignColumns: [localeBranches.projectId, localeBranches.localeBranchId],
+      name: "itotori_wiki_brand_context_memberships_branch_fk",
+    }).onDelete("cascade"),
   ],
 );
 

@@ -113,6 +113,7 @@ export {
   terminologySourceReferenceKindValues,
   terminologyTermKindValues,
   terminologyTermStatusValues,
+  wikiBrandContextRoleValues,
 } from "./schema.js";
 export type {
   AuthSsoProviderProtocol,
@@ -169,6 +170,7 @@ export type {
   TerminologySourceReferenceKind,
   TerminologyTermKind,
   TerminologyTermStatus,
+  WikiBrandContextRole,
 } from "./schema.js";
 export {
   defaultWorkspaceId,
@@ -376,6 +378,9 @@ export {
 } from "./repositories/wiki-readmodel-repository.js";
 export type {
   ItotoriWikiReadmodelRepositoryPort,
+  WikiBrandContextInheritedSource,
+  WikiBrandContextReadModel,
+  WikiBrandContextSummary,
   WikiCharacterEntry,
   WikiCharacterRelationship,
   WikiCharacterRevision,
@@ -386,6 +391,8 @@ export type {
   WikiEntriesReadModel,
   WikiEntry,
   WikiEntryKind,
+  WikiEntryScope,
+  WikiInheritedContextArtifact,
   WikiTermAlias,
   WikiTermEntry,
   WikiTermReference,

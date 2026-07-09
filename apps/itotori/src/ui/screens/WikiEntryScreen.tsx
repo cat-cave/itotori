@@ -42,7 +42,6 @@ import {
 import type {
   WikiCitation,
   WikiCrossReference,
-  WikiEntriesReadModel,
   WikiEntry as WikiEntryReadModel,
   WikiEntryKind,
   WikiCharacterEntry,
@@ -253,8 +252,6 @@ function WikiEntryReady({
     badge: entryKindBadge(entry),
   }));
 
-  const scope = branchScope(model);
-
   return (
     <section
       className="wiki-entry__body"
@@ -273,7 +270,7 @@ function WikiEntryReady({
       {selectedEntry === null ? (
         <EmptyState title="No entry selected" message="This locale branch has no wiki entries." />
       ) : (
-        <WikiEntryProfile entry={selectedEntry} scope={scope} focus={focus} />
+        <WikiEntryProfile entry={selectedEntry} focus={focus} />
       )}
     </section>
   );
@@ -281,14 +278,13 @@ function WikiEntryReady({
 
 function WikiEntryProfile({
   entry,
-  scope,
   focus,
 }: {
   entry: WikiEntryReadModel;
-  scope: AddressableScope;
   focus: WikiFocus;
 }): ReactNode {
   const focusToken = focus.entryId;
+  const scope = sourceScope(entry);
   if (entry.kind === wikiEntryKindValues.character) {
     return <CharacterProfile entry={entry} scope={scope} focusToken={focusToken} />;
   }
@@ -666,8 +662,11 @@ function SceneJump({
 
 type AddressableScope = { projectId: string | null; localeBranchId: string | null };
 
-function branchScope(model: WikiEntriesReadModel): AddressableScope {
-  return { projectId: model.filter.projectId, localeBranchId: model.filter.localeBranchId };
+function sourceScope(entry: WikiEntryReadModel): AddressableScope {
+  return {
+    projectId: entry.scope.sourceProjectId,
+    localeBranchId: entry.scope.sourceLocaleBranchId,
+  };
 }
 
 /** Resolve the initial entry selection from an addressable focus. */

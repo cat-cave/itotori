@@ -340,6 +340,10 @@ export const migrations = [
     id: "0070_auth_session_admin_tools",
     file: "0070_auth_session_admin_tools.sql",
   },
+  {
+    id: "0071_wiki_brand_contexts",
+    file: "0071_wiki_brand_contexts.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
