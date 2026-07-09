@@ -1899,10 +1899,10 @@ fn is_catalogued_command_opcode(module_id: u8, opcode_u16: u16) -> bool {
             opcode_u16,
             0 | 1 | 2 | 3 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 41 | 100
         ),
-        11 => matches!(opcode_u16, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7),
+        11 => matches!(opcode_u16, 0..=7),
         20 => matches!(opcode_u16, 0 | 1 | 2 | 3 | 4 | 5 | 105 | 106),
         21 => matches!(opcode_u16, 0 | 1 | 5 | 105),
-        22 => matches!(opcode_u16, 0 | 1 | 2),
+        22 => matches!(opcode_u16, 0..=2),
         23 => matches!(opcode_u16, 0 | 1 | 3 | 4 | 5 | 6 | 8 | 15 | 101),
         30 => matches!(opcode_u16, 0 | 2 | 20 | 22 | 31),
         31 => matches!(opcode_u16, 0),
