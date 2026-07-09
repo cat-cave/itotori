@@ -53,6 +53,7 @@ mod encrypted_asset_slice;
 mod escape;
 mod extract;
 mod integration;
+mod ids;
 mod json_locate;
 mod map_common_event;
 mod media_surface;
@@ -131,7 +132,14 @@ pub use plugin_profile::{
 };
 pub use recognize::{RecognizedCommand, recognize_plugin_command};
 
-/// Full result of a game-directory extraction.
+/// Full result of the canonical game-directory extraction.
+///
+/// [`extract_game_dir`] is the only whole-game JSON extraction path consumed
+/// by the CLI and the KAIFUU-112 full-surface integration. The KAIFUU-109 and
+/// KAIFUU-110 APIs are focused, byte-preserving extraction / patch views for
+/// individual files, not alternate game-directory bundle producers. This
+/// keeps bridge-bundle semantics, findings, and directory traversal in one
+/// production path.
 #[derive(Debug, Clone)]
 pub struct RpgMakerExtraction {
     /// The validated localization-bridge bundle (typed + raw JSON).

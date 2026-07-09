@@ -71,12 +71,12 @@
 use std::path::Path;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use kaifuu_core::sha256_hash_bytes;
 
 use crate::codes::{CodeClass, classify};
+use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
 /// The KAIFUU-108 fixture-profile id every KAIFUU-110 unit is stamped with.
@@ -828,38 +828,6 @@ pub fn patch_file(
     patch_file_bytes(source_file, original, &edits)
 }
 
-/// Deterministic UUID7-shaped id from `(namespace, role)` — identical
-/// construction to the crate's bridge producer + the KAIFUU-109 slice.
-fn deterministic_uuid7(namespace: &str, role: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(namespace.as_bytes());
-    hasher.update(b":");
-    hasher.update(role.as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    bytes[6] = (bytes[6] & 0x0F) | 0x70;
-    bytes[8] = (bytes[8] & 0x3F) | 0x80;
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15],
-    )
-}
 
 #[cfg(test)]
 mod tests {

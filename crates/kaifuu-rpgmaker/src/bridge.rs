@@ -15,6 +15,7 @@ use thiserror::Error;
 use kaifuu_core::{BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractValidationError};
 
 use crate::extract::{ProtoUnit, SurfaceKind};
+use crate::ids::deterministic_uuid7;
 
 /// Caller-supplied knobs for [`produce_bundle`]. All fields are required;
 /// there are no silent defaults.
@@ -373,38 +374,4 @@ fn sha256_canonical(bytes: &[u8]) -> String {
         let _ = write!(hex, "{byte:02x}");
     }
     format!("sha256:{hex}")
-}
-
-/// Deterministic UUID7-shaped string from `(namespace, role)` — identical
-/// construction to the RealLive bridge producer so both extractors share
-/// one identifier scheme.
-fn deterministic_uuid7(namespace: &str, role: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(namespace.as_bytes());
-    hasher.update(b":");
-    hasher.update(role.as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    bytes[6] = (bytes[6] & 0x0F) | 0x70;
-    bytes[8] = (bytes[8] & 0x3F) | 0x80;
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15],
-    )
 }
