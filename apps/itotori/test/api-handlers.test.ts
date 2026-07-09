@@ -4433,6 +4433,17 @@ function serviceFixture(): ItotoriApiServices {
         updatedByUserId: "local-user",
       })),
     },
+    playRouteMap: {
+      loadRouteMap: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({
+        schemaVersion: "itotori.play.route-map.v0" as const,
+        generatedAt: "2026-07-08T00:00:00.000Z",
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        nodes: [],
+        edges: [],
+        counts: { fresh: 0, stale: 0, total: 0, choiceCount: 0 },
+      })),
+    },
   };
 }
 

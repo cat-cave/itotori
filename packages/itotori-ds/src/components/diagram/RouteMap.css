@@ -20,13 +20,21 @@
   font-size: var(--ito-text-body);
 }
 
-.itotori-route-map__nodes {
+.itotori-route-map__grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ito-space-16);
+}
+
+.itotori-route-map__col {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--ito-space-10);
+  min-width: 10rem;
 }
 
 .itotori-route-map__node-wrap {
@@ -35,6 +43,7 @@
 
 .itotori-route-map__node {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ito-space-8);
   padding: var(--ito-space-10) var(--ito-space-12);
@@ -44,6 +53,8 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
+  text-align: left;
+  width: 100%;
 }
 
 .itotori-route-map__node:disabled {
@@ -55,8 +66,18 @@
   box-shadow: 0 0 0 1px var(--ito-diagram-node-active-border);
 }
 
+.itotori-route-map__node--issues {
+  border-color: var(--ito-diagram-branch-choice);
+}
+
 .itotori-route-map__node-label {
   font-weight: 600;
+}
+
+.itotori-route-map__node-issues {
+  font-size: var(--ito-text-body);
+  color: var(--ito-diagram-branch-choice);
+  font-family: var(--ito-font-mono, monospace);
 }
 
 .itotori-route-map__edges {

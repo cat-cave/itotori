@@ -129,6 +129,10 @@ import {
   SceneCoverageService,
   type SceneCoverageServicePort,
 } from "../play/scene-coverage-service.js";
+import {
+  RouteMapReadModelService,
+  type RouteMapReadModelPort,
+} from "../play/route-map-read-model.js";
 
 export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
@@ -243,6 +247,7 @@ export type ItotoriApplicationServices = {
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
+  playRouteMap: RouteMapReadModelPort;
   sceneCoverage: SceneCoverageServicePort;
 };
 
@@ -697,6 +702,14 @@ export async function withDatabaseItotoriServices<T>(
           });
         },
       },
+      playRouteMap: new RouteMapReadModelService({
+        routeMaps: {
+          loadRouteMapsByProject: (actor, query) =>
+            routeChoiceMapRepository.loadRouteMapsByProject(actor, query),
+          loadRouteChoicesByProject: (actor, query) =>
+            routeChoiceMapRepository.loadRouteChoicesByProject(actor, query),
+        },
+      }),
       sceneCoverage: new SceneCoverageService({
         coverage: sceneCoverageRepository,
         routeMaps: {

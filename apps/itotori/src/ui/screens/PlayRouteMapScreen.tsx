@@ -1,18 +1,19 @@
-// play-mark-validated + play-routemap-ui — the Play RouteMap with per-scene
-// localization coverage (needs_check / flagged / validated).
+// play-mark-validated + play-routemap-ui — the Play RouteMap route/choice
+// tree with per-scene localization coverage (needs_check / flagged /
+// validated).
 //
-// Loads `play.sceneCoverage` through the typed client, paints nodes via the
-// `@itotori/ds` RouteMap, and lets the user set a scene's coverage state via
-// `play.setSceneCoverage` (Mark validated / Flag / Needs check). Coverage
-// PERSISTS server-side; after a successful write the screen reloads the map so
-// the RouteMap reflects the new state.
-//
-// Rendered INSIDE the shell frame at `/play/routemap`. Game-agnostic: no
-// title is hardcoded; project/branch come from query or projects.status.
+// Loads `play.routeMap` for the route/choice tree and `play.sceneCoverage` for
+// durable validation state. The tree stays route-choice-map shaped
+// (col/row/state/coverage/issues), while the selected route can still be marked
+// validated / flagged / needs_check through `play.setSceneCoverage`.
 
 import { useState, type ReactNode } from "react";
 import { Badge, Panel, RouteMap, type RouteMapNode } from "@itotori/ds";
-import type { ApiPlaySceneCoverageResponse, ApiSceneCoverageState } from "../../api-schema.js";
+import type {
+  ApiPlayRouteMapResponse,
+  ApiPlaySceneCoverageResponse,
+  ApiSceneCoverageState,
+} from "../../api-schema.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -64,7 +65,7 @@ function PlayRouteMapFromStatus(): ReactNode {
         data-state="loading"
       >
         <ShellHeader eyebrow="Play" title="Route map" />
-        <LoadingState label="Loading project context…" />
+        <LoadingState label="Loading project context..." />
       </main>
     );
   }
@@ -84,7 +85,7 @@ function PlayRouteMapFromStatus(): ReactNode {
         <ShellHeader eyebrow="Play" title="Route map" />
         <EmptyState
           title="No locale branch selected"
-          message="Select a locale branch to view scene coverage on the route map."
+          message="Select a locale branch to view the route/choice tree."
         />
       </main>
     );
@@ -100,31 +101,49 @@ function PlayRouteMapForBranch({
   localeBranchId: string;
 }): ReactNode {
   const [reloadKey, setReloadKey] = useState(0);
+  const model = useApiQuery(
+    "play.routeMap",
+    { pathParams: { projectId, localeBranchId } },
+    `play-routemap:tree:${projectId}:${localeBranchId}`,
+  );
   const coverage = useApiQuery(
     "play.sceneCoverage",
     { pathParams: { projectId, localeBranchId } },
     `play-routemap:coverage:${projectId}:${localeBranchId}:${reloadKey}`,
   );
 
+  const state =
+    model.state === "error" || coverage.state === "error"
+      ? "error"
+      : model.state === "loading" || coverage.state === "loading"
+        ? "loading"
+        : model.state === "empty"
+          ? "empty"
+          : "ready";
+
   return (
     <main
       className="itotori-shell play-routemap"
       data-screen="play-routemap"
-      data-state={coverage.state}
+      data-state={state}
       data-locale-branch-id={localeBranchId}
     >
       <ShellHeader eyebrow="Play" title="Route map" />
-      {coverage.state === "loading" && <LoadingState label="Loading route map coverage…" />}
-      {coverage.state === "empty" && (
+      {state === "loading" && <LoadingState label="Loading route map..." />}
+      {state === "empty" && (
         <EmptyState
-          title="No scenes on the route map"
-          message="No route-map nodes or coverage rows were returned for this locale branch."
+          title="No routes on the map"
+          message="No route-map nodes were returned for this locale branch."
         />
       )}
-      {coverage.state === "error" && <ErrorState title="Route map" error={coverage.error} />}
-      {coverage.state === "ready" && (
+      {model.state === "error" && <ErrorState title="Route map" error={model.error} />}
+      {model.state !== "error" && coverage.state === "error" && (
+        <ErrorState title="Route map coverage" error={coverage.error} />
+      )}
+      {model.state === "ready" && state === "ready" && (
         <PlayRouteMapReady
-          model={coverage.data}
+          model={model.data}
+          coverage={coverage.state === "ready" ? coverage.data : null}
           projectId={projectId}
           localeBranchId={localeBranchId}
           onCoverageChanged={() => setReloadKey((k) => k + 1)}
@@ -136,78 +155,130 @@ function PlayRouteMapForBranch({
 
 function PlayRouteMapReady({
   model,
+  coverage,
   projectId,
   localeBranchId,
   onCoverageChanged,
 }: {
-  model: ApiPlaySceneCoverageResponse;
+  model: ApiPlayRouteMapResponse;
+  coverage: ApiPlaySceneCoverageResponse | null;
   projectId: string;
   localeBranchId: string;
   onCoverageChanged: () => void;
 }): ReactNode {
-  const firstId = model.nodes[0]?.sceneId ?? null;
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(firstId);
+  const firstId = model.nodes[0]?.routeKey ?? null;
+  const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(firstId);
   const selected =
-    model.nodes.find((node) => node.sceneId === selectedSceneId) ?? model.nodes[0] ?? null;
+    model.nodes.find((node) => node.routeKey === selectedRouteKey) ?? model.nodes[0] ?? null;
+  const coverageByScene = new Map(coverage?.nodes.map((node) => [node.sceneId, node]) ?? []);
+  const validationCounts = coverage?.counts ?? {
+    validated: 0,
+    flagged: 0,
+    needsCheck: model.nodes.length,
+    total: model.nodes.length,
+  };
 
-  const nodes: RouteMapNode[] = model.nodes.map((node) => ({
-    id: node.sceneId,
-    label: node.label,
-    coverageState: node.coverageState,
-  }));
+  const nodes: RouteMapNode[] = model.nodes.map((node) => {
+    const sceneCoverage = coverageByScene.get(node.routeKey)?.coverageState ?? "needs_check";
+    return {
+      id: node.routeKey,
+      label: node.label,
+      col: node.col,
+      row: node.row,
+      state: node.state,
+      coverage: node.coverage,
+      sceneCoverageState: sceneCoverage,
+      issues: node.issues,
+    };
+  });
   const edges = model.edges.map((edge, index) => ({
-    key: `${edge.choiceKey}:${edge.fromSceneId}:${edge.toSceneId}:${index}`,
-    fromId: edge.fromSceneId,
-    toId: edge.toSceneId,
+    key: `${edge.choiceKey}:${edge.fromRouteKey}:${edge.toRouteKey}:${index}`,
+    fromId: edge.fromRouteKey,
+    toId: edge.toRouteKey,
     label: edge.label,
   }));
+  const selectedCoverage =
+    selected !== null
+      ? (coverageByScene.get(selected.routeKey)?.coverageState ?? "needs_check")
+      : "needs_check";
 
   return (
-    <section className="play-routemap__body" aria-label="Play route map coverage">
+    <section className="play-routemap__body" aria-label="Play route map">
       <Panel
         title="Coverage"
-        eyebrow={`${model.counts.validated} validated · ${model.counts.flagged} flagged · ${model.counts.needsCheck} needs check`}
+        eyebrow={`${model.counts.fresh} fresh · ${model.counts.stale} stale · ${validationCounts.validated} validated`}
         className="play-routemap__counts"
-        data-validated-count={model.counts.validated}
-        data-flagged-count={model.counts.flagged}
-        data-needs-check-count={model.counts.needsCheck}
+        data-fresh-count={model.counts.fresh}
+        data-stale-count={model.counts.stale}
+        data-choice-count={model.counts.choiceCount}
+        data-total-count={model.counts.total}
+        data-validated-count={validationCounts.validated}
+        data-flagged-count={validationCounts.flagged}
+        data-needs-check-count={validationCounts.needsCheck}
       >
         <p className="play-routemap__summary">
+          <Badge status="fresh" tone="ok">
+            fresh {model.counts.fresh}
+          </Badge>{" "}
+          <Badge status="stale" tone="neutral">
+            stale {model.counts.stale}
+          </Badge>{" "}
           <Badge status="validated" tone="ok">
-            validated {model.counts.validated}
+            validated {validationCounts.validated}
           </Badge>{" "}
           <Badge status="flagged" tone="critical">
-            flagged {model.counts.flagged}
+            flagged {validationCounts.flagged}
           </Badge>{" "}
           <Badge status="needs_check" tone="neutral">
-            needs_check {model.counts.needsCheck}
+            needs_check {validationCounts.needsCheck}
           </Badge>
         </p>
       </Panel>
 
       <Panel
         title="Route map"
-        eyebrow={`${model.nodes.length} scene(s)`}
+        eyebrow={`${model.nodes.length} route(s)`}
         className="play-routemap__map"
       >
         <RouteMap
           nodes={nodes}
           edges={edges}
-          activeId={selected?.sceneId ?? null}
-          onSelect={setSelectedSceneId}
+          activeId={selected?.routeKey ?? null}
+          onSelect={setSelectedRouteKey}
           label="Localization route map"
         />
       </Panel>
 
       {selected !== null && (
-        <MarkCoverageStrip
-          sceneId={selected.sceneId}
-          label={selected.label}
-          coverageState={selected.coverageState}
-          projectId={projectId}
-          localeBranchId={localeBranchId}
-          onCoverageChanged={onCoverageChanged}
-        />
+        <>
+          <Panel
+            title={selected.label}
+            eyebrow={`Route ${selected.routeKey} · ${selected.coverage}`}
+            className="play-routemap__detail"
+            data-selected-route-key={selected.routeKey}
+            data-selected-coverage={selected.coverage}
+            data-selected-scene-coverage={selectedCoverage}
+            data-selected-col={selected.col}
+            data-selected-row={selected.row}
+            data-selected-issues={selected.issues}
+          >
+            <p className="play-routemap__detail-summary">{selected.summary}</p>
+            <p className="play-routemap__detail-meta">
+              <code>{selected.routeMapId}</code>
+              {" · "}
+              col {selected.col} / row {selected.row}
+              {selected.issues > 0 ? ` · ${selected.issues} issue(s)` : ""}
+            </p>
+          </Panel>
+          <MarkCoverageStrip
+            sceneId={selected.routeKey}
+            label={selected.label}
+            coverageState={selectedCoverage}
+            projectId={projectId}
+            localeBranchId={localeBranchId}
+            onCoverageChanged={onCoverageChanged}
+          />
+        </>
       )}
     </section>
   );
@@ -280,7 +351,7 @@ function MarkCoverageStrip({
             void setCoverage("validated");
           }}
         >
-          {pending ? "Saving…" : "Mark validated"}
+          {pending ? "Saving..." : "Mark validated"}
         </button>
         <button
           type="button"

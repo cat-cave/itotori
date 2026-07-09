@@ -77,6 +77,7 @@ import {
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
+  type ApiPlayRouteMapResponse,
   type ApiPlaySceneCoverageResponse,
   type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
@@ -109,6 +110,7 @@ import {
   SceneCoverageServiceError,
   type SceneCoverageServicePort,
 } from "./play/scene-coverage-service.js";
+import type { RouteMapReadModelPort } from "./play/route-map-read-model.js";
 import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
@@ -272,6 +274,11 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  /**
+   * play-routemap-ui — Play RouteMap route/choice tree read-model composed
+   * from routeMaps / routeChoices (coverage from map status).
+   */
+  playRouteMap: RouteMapReadModelPort;
   sceneCoverage: Pick<SceneCoverageServicePort, "loadRouteMapCoverage">;
 };
 
@@ -390,6 +397,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
+    },
+    playRouteMap: {
+      loadRouteMap: (input) => services.playRouteMap.loadRouteMap(input),
     },
     sceneCoverage: {
       loadRouteMapCoverage: (input) => services.sceneCoverage.loadRouteMapCoverage(input),
@@ -1173,6 +1183,20 @@ async function routeReadOnlyItotoriApiRequest(
     return methodNotAllowed(["GET"]);
   }
 
+  const playRouteMapRoute = parsePlayRouteMapApiRoute(request.pathname);
+  if (request.method === "GET" && playRouteMapRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: playRouteMapRoute.projectId,
+      localeBranchId: playRouteMapRoute.localeBranchId,
+    });
+    const model = await services.playRouteMap.loadRouteMap({
+      actor: { userId: "local-user" },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+    });
+    return ok("play.routeMap", model);
+  }
+
   const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
   if (request.method === "GET" && assetDecisionRoute !== null) {
     const filter = parseAssetDecisionReadFilter(request.search);
@@ -1276,6 +1300,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/terminology/search" ||
     request.pathname === "/api/wiki/entries" ||
     request.pathname === "/api/queue/health" ||
+    playRouteMapRoute !== null ||
     assetDecisionRoute !== null ||
     request.pathname === "/api/reviewer/queue" ||
     reviewerDetailRoute !== null
@@ -1922,6 +1947,21 @@ function parseAssetDecisionApiRoute(pathname: string): {
   };
 }
 
+function parsePlayRouteMapApiRoute(
+  pathname: string,
+): { projectId: string; localeBranchId: string } | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/route-map\/?$/u.exec(
+    pathname,
+  );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function parseSceneCoverageApiRoute(pathname: string): {
   projectId: string;
   localeBranchId: string;
@@ -2430,6 +2470,7 @@ function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonRes
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
+function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;
 function ok(routeId: "play.sceneCoverage", body: ApiPlaySceneCoverageResponse): ApiJsonResponse;
 function ok(
   routeId: "play.setSceneCoverage",

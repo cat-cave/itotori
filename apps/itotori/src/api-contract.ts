@@ -840,6 +840,68 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       schemaVersion: "itotori.projects.launch-pass.v0",
     }),
 
+  // play-routemap-ui — route/choice tree envelope -------------------------
+  ApiPlayRouteMapNode: () =>
+    object({
+      required: [
+        "routeKey",
+        "routeMapId",
+        "label",
+        "summary",
+        "col",
+        "row",
+        "state",
+        "coverage",
+        "issues",
+      ],
+      properties: {
+        routeKey: str,
+        routeMapId: str,
+        label: str,
+        summary: str,
+        col: num,
+        row: num,
+        state: { enum: ["fresh", "stale"] },
+        coverage: { enum: ["fresh", "stale"] },
+        issues: num,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlayRouteMapEdge: () =>
+    object({
+      required: ["fromRouteKey", "toRouteKey", "choiceKey", "choiceKind", "label"],
+      properties: {
+        fromRouteKey: str,
+        toRouteKey: str,
+        choiceKey: str,
+        choiceKind: str,
+        label: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlayRouteMapCounts: () =>
+    object({
+      required: ["fresh", "stale", "total", "choiceCount"],
+      properties: {
+        fresh: num,
+        stale: num,
+        total: num,
+        choiceCount: num,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlayRouteMapResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
+      properties: {
+        nodes: { type: "array", items: ref("ApiPlayRouteMapNode") },
+        edges: { type: "array", items: ref("ApiPlayRouteMapEdge") },
+        counts: ref("ApiPlayRouteMapCounts"),
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.route-map.v0",
+    }),
+
   // play-mark-validated — scene coverage read/write envelopes --------------
   // Nested node/edge/counts shapes are named components so OpenAPI consumers
   // can enforce coverageState + counts fields (not bare array/object stubs).
@@ -1334,6 +1396,15 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiLaunchPassRequest",
     responseSchema: "ApiLaunchPassResponse",
+  },
+  // play-routemap-ui — Play RouteMap route/choice tree from routeMaps/routeChoices.
+  "play.routeMap": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/route-map",
+    operationId: "playRouteMap",
+    summary: "Play RouteMap route/choice tree with coverage state.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiPlayRouteMapResponse",
   },
   // play-mark-validated — per-scene localization coverage (needs_check /
   // flagged / validated) driving the Play RouteMap.

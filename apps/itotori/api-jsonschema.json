@@ -492,6 +492,144 @@
       ],
       "type": "object"
     },
+    "ApiPlayRouteMapCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "choiceCount": {
+          "type": "number"
+        },
+        "fresh": {
+          "type": "number"
+        },
+        "stale": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "choiceCount",
+        "fresh",
+        "stale",
+        "total"
+      ],
+      "type": "object"
+    },
+    "ApiPlayRouteMapEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "choiceKey": {
+          "type": "string"
+        },
+        "choiceKind": {
+          "type": "string"
+        },
+        "fromRouteKey": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "toRouteKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "choiceKey",
+        "choiceKind",
+        "fromRouteKey",
+        "label",
+        "toRouteKey"
+      ],
+      "type": "object"
+    },
+    "ApiPlayRouteMapNode": {
+      "additionalProperties": false,
+      "properties": {
+        "col": {
+          "type": "number"
+        },
+        "coverage": {
+          "enum": [
+            "fresh",
+            "stale"
+          ]
+        },
+        "issues": {
+          "type": "number"
+        },
+        "label": {
+          "type": "string"
+        },
+        "routeKey": {
+          "type": "string"
+        },
+        "routeMapId": {
+          "type": "string"
+        },
+        "row": {
+          "type": "number"
+        },
+        "state": {
+          "enum": [
+            "fresh",
+            "stale"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "col",
+        "coverage",
+        "issues",
+        "label",
+        "routeKey",
+        "routeMapId",
+        "row",
+        "state",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ApiPlayRouteMapResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/ApiPlayRouteMapCounts"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/ApiPlayRouteMapEdge"
+          },
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {},
+        "nodes": {
+          "items": {
+            "$ref": "#/definitions/ApiPlayRouteMapNode"
+          },
+          "type": "array"
+        },
+        "projectId": {},
+        "schemaVersion": {
+          "const": "itotori.play.route-map.v0"
+        }
+      },
+      "required": [
+        "counts",
+        "edges",
+        "generatedAt",
+        "localeBranchId",
+        "nodes",
+        "projectId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ApiPlaySceneCoverageCounts": {
       "additionalProperties": false,
       "properties": {

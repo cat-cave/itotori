@@ -197,6 +197,7 @@ export type ItotoriApiRouteId =
   // play-mark-validated — per-scene localization coverage for the Play RouteMap.
   // GET loads nodes/edges with coverage state; POST sets a scene's state
   // (needs_check / flagged / validated). Persistence is `itotori_scene_localization_coverage`.
+  | "play.routeMap"
   | "play.sceneCoverage"
   | "play.setSceneCoverage";
 
@@ -470,6 +471,16 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   // schemaVersion const pins the wire shape; a renamed / leaked field fails a
   // contract test instead of silently drifting.
   ApiLaunchPassResponse: ["schemaVersion", "outcome", "passNumber", "startedAt", "refusalMessage"],
+  // play-routemap-ui — route/choice tree envelope.
+  ApiPlayRouteMapResponse: [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "localeBranchId",
+    "nodes",
+    "edges",
+    "counts",
+  ],
   // play-mark-validated — coverage read model + set response (strict).
   ApiPlaySceneCoverageResponse: [
     "schemaVersion",
@@ -882,6 +893,47 @@ export type ApiPlaySetSceneCoverageResponse = {
   updatedByUserId: string;
 };
 
+// play-routemap-ui — route/choice tree read-model response. Coverage is derived
+// from the route-choice map status (Fresh -> fresh, Stale -> stale).
+export type ApiPlayRouteMapCoverageState = "fresh" | "stale";
+
+export type ApiPlayRouteMapNode = {
+  routeKey: string;
+  routeMapId: string;
+  label: string;
+  summary: string;
+  col: number;
+  row: number;
+  state: ApiPlayRouteMapCoverageState;
+  coverage: ApiPlayRouteMapCoverageState;
+  issues: number;
+};
+
+export type ApiPlayRouteMapEdge = {
+  fromRouteKey: string;
+  toRouteKey: string;
+  choiceKey: string;
+  choiceKind: string;
+  label: string;
+};
+
+export type ApiPlayRouteMapCounts = {
+  fresh: number;
+  stale: number;
+  total: number;
+  choiceCount: number;
+};
+
+export type ApiPlayRouteMapResponse = {
+  schemaVersion: "itotori.play.route-map.v0";
+  generatedAt: string;
+  projectId: string;
+  localeBranchId: string;
+  nodes: ApiPlayRouteMapNode[];
+  edges: ApiPlayRouteMapEdge[];
+  counts: ApiPlayRouteMapCounts;
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -928,6 +980,7 @@ export type ItotoriApiResponseBody =
   | ApiRemoveMemberResponse
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
+  | ApiPlayRouteMapResponse
   | ApiPlaySceneCoverageResponse
   | ApiPlaySetSceneCoverageResponse
   | ApiErrorResponse;
@@ -1391,6 +1444,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
+      return;
+    case "play.routeMap":
+      assertPlayRouteMapResponse(value);
       return;
     case "play.sceneCoverage":
       assertPlaySceneCoverageResponse(value);
@@ -5395,6 +5451,68 @@ function assertPlaySceneCoverageCounts(value: unknown, label: string): void {
   assertNonNegativeInteger(counts.flagged, `${label}.flagged`);
   assertNonNegativeInteger(counts.validated, `${label}.validated`);
   assertNonNegativeInteger(counts.total, `${label}.total`);
+}
+
+function assertPlayRouteMapResponse(value: unknown): asserts value is ApiPlayRouteMapResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayRouteMapResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayRouteMapResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.route-map.v0",
+    "ApiPlayRouteMapResponse.schemaVersion",
+  );
+  assertString(response.generatedAt, "ApiPlayRouteMapResponse.generatedAt");
+  assertString(response.projectId, "ApiPlayRouteMapResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlayRouteMapResponse.localeBranchId");
+  if (!Array.isArray(response.nodes)) {
+    throw new ApiValidationError("ApiPlayRouteMapResponse.nodes must be an array");
+  }
+  if (!Array.isArray(response.edges)) {
+    throw new ApiValidationError("ApiPlayRouteMapResponse.edges must be an array");
+  }
+  for (let i = 0; i < response.nodes.length; i += 1) {
+    assertPlayRouteMapNode(response.nodes[i], `ApiPlayRouteMapResponse.nodes[${i}]`);
+  }
+  for (let i = 0; i < response.edges.length; i += 1) {
+    assertPlayRouteMapEdge(response.edges[i], `ApiPlayRouteMapResponse.edges[${i}]`);
+  }
+  assertPlayRouteMapCounts(response.counts, "ApiPlayRouteMapResponse.counts");
+}
+
+function assertPlayRouteMapNode(value: unknown, label: string): asserts value is ApiPlayRouteMapNode {
+  const node = asRecord(value, label);
+  assertString(node.routeKey, `${label}.routeKey`);
+  assertString(node.routeMapId, `${label}.routeMapId`);
+  assertString(node.label, `${label}.label`);
+  assertString(node.summary, `${label}.summary`);
+  assertNonNegativeInteger(node.col, `${label}.col`);
+  assertNonNegativeInteger(node.row, `${label}.row`);
+  assertEnum(node.state, ["fresh", "stale"] as const, `${label}.state`);
+  assertEnum(node.coverage, ["fresh", "stale"] as const, `${label}.coverage`);
+  assertNonNegativeInteger(node.issues, `${label}.issues`);
+}
+
+function assertPlayRouteMapEdge(value: unknown, label: string): asserts value is ApiPlayRouteMapEdge {
+  const edge = asRecord(value, label);
+  assertString(edge.fromRouteKey, `${label}.fromRouteKey`);
+  assertString(edge.toRouteKey, `${label}.toRouteKey`);
+  assertString(edge.choiceKey, `${label}.choiceKey`);
+  assertString(edge.choiceKind, `${label}.choiceKind`);
+  assertString(edge.label, `${label}.label`);
+}
+
+function assertPlayRouteMapCounts(
+  value: unknown,
+  label: string,
+): asserts value is ApiPlayRouteMapCounts {
+  const counts = asRecord(value, label);
+  assertNonNegativeInteger(counts.fresh, `${label}.fresh`);
+  assertNonNegativeInteger(counts.stale, `${label}.stale`);
+  assertNonNegativeInteger(counts.total, `${label}.total`);
+  assertNonNegativeInteger(counts.choiceCount, `${label}.choiceCount`);
 }
 
 function assertPlaySetSceneCoverageResponse(

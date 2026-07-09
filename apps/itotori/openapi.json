@@ -491,6 +491,144 @@
         ],
         "type": "object"
       },
+      "ApiPlayRouteMapCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "choiceCount": {
+            "type": "number"
+          },
+          "fresh": {
+            "type": "number"
+          },
+          "stale": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "choiceCount",
+          "fresh",
+          "stale",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ApiPlayRouteMapEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "choiceKey": {
+            "type": "string"
+          },
+          "choiceKind": {
+            "type": "string"
+          },
+          "fromRouteKey": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "toRouteKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "choiceKey",
+          "choiceKind",
+          "fromRouteKey",
+          "label",
+          "toRouteKey"
+        ],
+        "type": "object"
+      },
+      "ApiPlayRouteMapNode": {
+        "additionalProperties": false,
+        "properties": {
+          "col": {
+            "type": "number"
+          },
+          "coverage": {
+            "enum": [
+              "fresh",
+              "stale"
+            ]
+          },
+          "issues": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "routeMapId": {
+            "type": "string"
+          },
+          "row": {
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "fresh",
+              "stale"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "col",
+          "coverage",
+          "issues",
+          "label",
+          "routeKey",
+          "routeMapId",
+          "row",
+          "state",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "ApiPlayRouteMapResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ApiPlayRouteMapCounts"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlayRouteMapEdge"
+            },
+            "type": "array"
+          },
+          "generatedAt": {},
+          "localeBranchId": {},
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlayRouteMapNode"
+            },
+            "type": "array"
+          },
+          "projectId": {},
+          "schemaVersion": {
+            "const": "itotori.play.route-map.v0"
+          }
+        },
+        "required": [
+          "counts",
+          "edges",
+          "generatedAt",
+          "localeBranchId",
+          "nodes",
+          "projectId",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "ApiPlaySceneCoverageCounts": {
         "additionalProperties": false,
         "properties": {
@@ -4184,6 +4322,93 @@
         },
         "summary": "Candidate assets for localization decisions.",
         "x-itotoriRouteId": "assetDecisions.candidates"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/route-map": {
+      "get": {
+        "operationId": "playRouteMap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlayRouteMapResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Play RouteMap route/choice tree with coverage state.",
+        "x-itotoriRouteId": "play.routeMap"
       }
     },
     "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage": {
