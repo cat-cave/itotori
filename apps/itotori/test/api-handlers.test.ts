@@ -170,6 +170,35 @@ type ApiMutationService =
     }
   | { surface: "authSessions"; method: "listPrincipalSessions" | "revokePrincipalSession" };
 
+function bridgeV02ImportFixture(gameId: string): unknown {
+  const bridge = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as { sourceGame: { gameId: string } };
+  bridge.sourceGame.gameId = gameId;
+  return bridge;
+}
+
+function bootstrapCandidate(workId: string, sourceId: string) {
+  return {
+    workId,
+    canonicalTitle: `Candidate ${workId}`,
+    sourceIds: [
+      {
+        catalogSource: "dlsite",
+        sourceId,
+        externalIdKind: "store_product",
+      },
+    ],
+    adapterId: "adapter-fixture",
+  };
+}
+
 type ApiMutationRoute = {
   route: string;
   service: MutatingProjectWorkflowService;
@@ -3614,6 +3643,35 @@ describe("Itotori API handlers", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+    expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
+  });
+
+  it("rejects candidate bootstrap when the uploaded bridge belongs to a different catalog candidate", async () => {
+    const services = serviceFixture();
+    const bridge = bridgeV02ImportFixture("work-candidate-b");
+
+    const response = await handleItotoriApiRequest(
+      post("/api/imports/bridge", {
+        bridge,
+        bootstrapSelection: {
+          selectedWorkId: "work-candidate-a",
+          candidates: [
+            bootstrapCandidate("work-candidate-a", "source-candidate-a"),
+            bootstrapCandidate("work-candidate-b", "source-candidate-b"),
+          ],
+        },
+      }),
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({
+      code: "bad_request",
+      error: expect.stringContaining(
+        "Selected catalog candidate does not match the uploaded bridge source identity",
+      ),
+    });
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });

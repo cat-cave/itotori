@@ -801,6 +801,25 @@ export type ApiCandidateAssetsResponse = {
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
+  bootstrapSelection?: ApiBootstrapCatalogSelection;
+};
+
+export type ApiBootstrapCatalogSourceId = {
+  catalogSource: CatalogSource;
+  sourceId: string;
+  externalIdKind: CatalogExternalIdKind;
+};
+
+export type ApiBootstrapCatalogCandidate = {
+  workId: string;
+  canonicalTitle: string;
+  sourceIds: ApiBootstrapCatalogSourceId[];
+  adapterId: string | null;
+};
+
+export type ApiBootstrapCatalogSelection = {
+  selectedWorkId: string;
+  candidates: ApiBootstrapCatalogCandidate[];
 };
 
 export type ApiProjectImportResponse = {
@@ -1444,7 +1463,14 @@ export function parseProjectImportRequest(body: unknown): ApiProjectImportReques
   return parseRequest("ApiProjectImportRequest", () => {
     const request = asRecord(body, "ApiProjectImportRequest");
     assertBridgeInput(request.bridge);
-    return { bridge: request.bridge };
+    const bootstrapSelection =
+      request.bootstrapSelection === undefined
+        ? undefined
+        : parseBootstrapCatalogSelection(request.bootstrapSelection, request.bridge);
+    return {
+      bridge: request.bridge,
+      ...(bootstrapSelection === undefined ? {} : { bootstrapSelection }),
+    };
   });
 }
 
@@ -1455,6 +1481,102 @@ export function parseDraftBranchRequest(body: unknown): ApiDraftBranchRequest {
     assertString(request.targetLocale, "ApiDraftBranchRequest.targetLocale");
     return { project: request.project, targetLocale: request.targetLocale };
   });
+}
+
+function parseBootstrapCatalogSelection(
+  value: unknown,
+  bridge: BridgeBundle | BridgeBundleV02,
+): ApiBootstrapCatalogSelection {
+  const selection = asStrictRecord(value, "ApiBootstrapCatalogSelection", [
+    "selectedWorkId",
+    "candidates",
+  ]);
+  assertString(selection.selectedWorkId, "ApiBootstrapCatalogSelection.selectedWorkId");
+  const candidates = parseBootstrapCatalogCandidates(
+    selection.candidates,
+    "ApiBootstrapCatalogSelection.candidates",
+  );
+  const parsed = { selectedWorkId: selection.selectedWorkId, candidates };
+  assertBootstrapSelectionMatchesBridge(parsed, bridge);
+  return parsed;
+}
+
+function parseBootstrapCatalogCandidates(
+  value: unknown,
+  label: string,
+): ApiBootstrapCatalogCandidate[] {
+  const rows = asArray(value, label);
+  if (rows.length === 0) {
+    throw new Error(`${label} must include at least one candidate`);
+  }
+  return rows.map((candidateValue, index) => {
+    const candidateLabel = `${label}[${index}]`;
+    const candidate = asStrictRecord(candidateValue, candidateLabel, [
+      "workId",
+      "canonicalTitle",
+      "sourceIds",
+      "adapterId",
+    ]);
+    assertPublicOpportunityString(candidate.workId, `${candidateLabel}.workId`);
+    assertPublicOpportunityString(candidate.canonicalTitle, `${candidateLabel}.canonicalTitle`);
+    assertCatalogBenchmarkSeedSourceIds(candidate.sourceIds, `${candidateLabel}.sourceIds`);
+    assertNullablePublicOpportunityString(candidate.adapterId, `${candidateLabel}.adapterId`);
+    return {
+      workId: candidate.workId,
+      canonicalTitle: candidate.canonicalTitle,
+      sourceIds: candidate.sourceIds as ApiBootstrapCatalogSourceId[],
+      adapterId: candidate.adapterId,
+    };
+  });
+}
+
+function assertBootstrapSelectionMatchesBridge(
+  selection: ApiBootstrapCatalogSelection,
+  bridge: BridgeBundle | BridgeBundleV02,
+): void {
+  const selected = selection.candidates.find(
+    (candidate) => candidate.workId === selection.selectedWorkId,
+  );
+  if (selected === undefined) {
+    throw new Error("ApiBootstrapCatalogSelection.selectedWorkId must identify a candidate");
+  }
+
+  if (bridge.schemaVersion !== BRIDGE_SCHEMA_VERSION_V02) {
+    return;
+  }
+
+  const bridgeIdentity = bridgeSourceIdentityValues(bridge);
+  const selectedIdentity = catalogCandidateIdentityValues(selected);
+  if (intersects(bridgeIdentity, selectedIdentity)) {
+    return;
+  }
+
+  throw new Error(
+    "Selected catalog candidate does not match the uploaded bridge source identity",
+  );
+}
+
+function bridgeSourceIdentityValues(bridge: BridgeBundleV02): Set<string> {
+  return new Set([bridge.sourceGame.gameId]);
+}
+
+function catalogCandidateIdentityValues(candidate: ApiBootstrapCatalogCandidate): Set<string> {
+  return new Set([
+    candidate.workId,
+    ...candidate.sourceIds.flatMap((sourceId) => [
+      sourceId.sourceId,
+      `${sourceId.catalogSource}:${sourceId.sourceId}`,
+    ]),
+  ]);
+}
+
+function intersects(left: Set<string>, right: Set<string>): boolean {
+  for (const value of left) {
+    if (right.has(value)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function parseRecordFindingRequest(body: unknown): ApiRecordFindingRequest {

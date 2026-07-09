@@ -1,9 +1,13 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import type { ProjectDashboardStatus } from "@itotori/db";
+import type { CatalogOpportunityRow } from "@itotori/db";
 import { Badge, Panel } from "@itotori/ds";
 import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { ApiCallSettledState, ApiClientError, ApiRouteResponse } from "../../api-client.js";
-import { assertBridgeInput, type ApiConfigureAuthSsoSettingsRequest } from "../../api-schema.js";
+import {
+  assertBridgeInput,
+  type ApiConfigureAuthSsoSettingsRequest,
+  type ApiProjectImportRequest,
+} from "../../api-schema.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -19,7 +23,6 @@ type MutationStep =
   | { state: "error"; message: string };
 
 type ImportedProject = ApiRouteResponse<"imports.bridge">["project"];
-type WizardProject = ImportedProject | ProjectDashboardStatus;
 
 export function parseOnboardingRoute(pathname: string): Record<string, never> | null {
   return onboardingRoutePathRegex.test(pathname) ? {} : null;
@@ -28,15 +31,17 @@ export function parseOnboardingRoute(pathname: string): Record<string, never> | 
 export function OnboardingScreen(): ReactNode {
   const identity = useApiQuery("auth.identity", {}, "onboarding:identity");
   const projects = useApiQuery("projects.list", {}, "onboarding:projects");
+  const opportunities = useApiQuery(
+    "catalog.opportunities",
+    {},
+    "onboarding:catalog-opportunities",
+  );
   const [sso, setSso] = useState<MutationStep>({ state: "idle" });
-  const [projectCreate, setProjectCreate] = useState<MutationStep>({ state: "idle" });
-  const [advancedImport, setAdvancedImport] = useState<MutationStep>({ state: "idle" });
-  const [branch, setBranch] = useState<MutationStep>({ state: "idle" });
+  const [bootstrap, setBootstrap] = useState<MutationStep>({ state: "idle" });
   const [bridgeFile, setBridgeFile] = useState<File | null>(null);
-  const [projectName, setProjectName] = useState("Untitled project");
-  const [sourceLocale, setSourceLocale] = useState("ja-JP");
   const [targetLocale, setTargetLocale] = useState("en-US");
-  const [wizardProject, setWizardProject] = useState<WizardProject | null>(null);
+  const [selectedWorkId, setSelectedWorkId] = useState("");
+  const [wizardProject, setWizardProject] = useState<ImportedProject | null>(null);
   const [readyStatus, setReadyStatus] = useState<
     ApiRouteResponse<"branches.draft">["status"] | null
   >(null);
@@ -44,22 +49,21 @@ export function OnboardingScreen(): ReactNode {
   const accountId =
     identity.state === "ready" ? (identity.data.accounts[0]?.accountId ?? null) : null;
   const projectCount = projects.state === "ready" ? projects.data.projects.length : 0;
-  const existingProject =
-    projects.state === "ready" && projects.data.projects.length > 0
-      ? (projects.data.projects[0] ?? null)
-      : null;
-  const branchProject = wizardProject ?? existingProject;
-  const accountSetupReady = sso.state === "ready";
-  const projectReady = branchProject !== null && hasBranchDraftInput(branchProject);
-  const branchDisabledReason = !accountSetupReady
-    ? "Save account setup before creating a locale branch."
-    : branchProject === null
-      ? "Create or import a project before setting a locale branch."
-      : !hasBranchDraftInput(branchProject)
-        ? "Create or import a project with bridge units before setting a locale branch."
-        : projectBranchId(branchProject) === null
-          ? "Choose a project with an available locale branch."
-          : null;
+  const candidateRows =
+    opportunities.state === "ready"
+      ? opportunities.data.rows.filter((row) => row.decision === "candidate")
+      : [];
+  const selectedCandidate =
+    candidateRows.find((row) => row.workId === selectedWorkId) ?? candidateRows[0] ?? null;
+  const candidateReady = selectedCandidate !== null;
+  const bridgeReady = bridgeFile !== null;
+  const bootstrapDisabledReason = !candidateReady
+    ? "Pick a catalog candidate before bootstrapping."
+    : !bridgeReady
+      ? "Choose a bridge JSON export for the selected candidate."
+      : targetLocale.trim().length === 0
+        ? "Target locale is required."
+        : null;
   const readyBranch =
     readyStatus?.localeBranches.find(
       (entry) => entry.localeBranchId === readyStatus.selectedLocaleBranchId,
@@ -97,107 +101,80 @@ export function OnboardingScreen(): ReactNode {
     setSso(stepFromResult(result, "Security setup saved."));
   };
 
-  const createProject = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const bootstrapProject = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    const name = projectName.trim();
-    const locale = sourceLocale.trim();
-    if (name.length === 0) {
-      setProjectCreate({ state: "error", message: "Project name is required." });
+    const candidate = selectedCandidate;
+    const locale = targetLocale.trim();
+    if (candidate === null) {
+      setBootstrap({ state: "error", message: "Pick a catalog candidate before bootstrapping." });
+      return;
+    }
+    if (bridgeFile === null) {
+      setBootstrap({
+        state: "error",
+        message: "Choose a bridge JSON export for the selected candidate.",
+      });
       return;
     }
     if (locale.length === 0) {
-      setProjectCreate({ state: "error", message: "Source language is required." });
+      setBootstrap({ state: "error", message: "Target locale is required." });
       return;
     }
-    setProjectCreate({ state: "loading" });
-    const result = await apiClient.request("imports.bridge", {
-      body: { bridge: projectWizardBridge({ name, sourceLocale: locale }) },
-    });
-    if (result.state === "ready") {
-      setWizardProject(result.data.project);
-      setReadyStatus(null);
-      setProjectCreate({ state: "ready", message: "Project created." });
-      return;
-    }
-    setProjectCreate(stepFromResult(result, "Project created."));
-  };
 
-  const chooseExistingProject = (project: ProjectDashboardStatus): void => {
-    setWizardProject(project);
-    setReadyStatus(null);
-    setProjectCreate({ state: "ready", message: `Using ${project.name}.` });
-  };
-
-  const importBridge = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (bridgeFile === null) {
-      setAdvancedImport({ state: "error", message: "Choose a bridge export file first." });
-      return;
-    }
-    setAdvancedImport({ state: "loading" });
+    setBootstrap({ state: "loading" });
     try {
       const parsed: unknown = JSON.parse(await readFileText(bridgeFile));
       assertBridgeInput(parsed);
-      const result = await apiClient.request("imports.bridge", { body: { bridge: parsed } });
-      if (result.state === "ready") {
-        setWizardProject(result.data.project);
-        setReadyStatus(null);
-        setAdvancedImport({ state: "ready", message: "Bridge project imported." });
+      const bootstrapSelection = bootstrapSelectionFor(candidate.workId, candidateRows);
+      const importRequest: ApiProjectImportRequest = {
+        bridge: parsed,
+        ...(bootstrapSelection === undefined ? {} : { bootstrapSelection }),
+      };
+      const importResult = await apiClient.request("imports.bridge", { body: importRequest });
+      if (importResult.state !== "ready") {
+        setBootstrap(stepFromResult(importResult, "Project imported."));
         return;
       }
-      setAdvancedImport(stepFromResult(result, "Bridge project imported."));
-    } catch (error) {
-      setAdvancedImport({
-        state: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
 
-  const createBranch = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (!accountSetupReady) {
-      setBranch({ state: "error", message: "Save account setup before creating a locale branch." });
-      return;
-    }
-    if (branchProject === null) {
-      setBranch({
-        state: "error",
-        message: "Create or import a project before setting a locale branch.",
+      const branchReadyProject = projectStateForBranch(importResult.data.project, locale);
+      if (branchReadyProject === null) {
+        setBootstrap({
+          state: "error",
+          message: "Imported bridge has no units to draft into a locale branch.",
+        });
+        return;
+      }
+      setWizardProject(branchReadyProject);
+      setReadyStatus(null);
+
+      const branchResult = await apiClient.request("branches.draft", {
+        pathParams: { projectId: branchReadyProject.projectId },
+        body: { project: branchReadyProject, targetLocale: locale },
       });
-      return;
-    }
-    const locale = targetLocale.trim();
-    if (locale.length === 0) {
-      setBranch({ state: "error", message: "Target locale is required." });
-      return;
-    }
-    const branchReadyProject = projectStateForBranch(branchProject, locale);
-    if (branchReadyProject === null) {
-      setBranch({
-        state: "error",
-        message: "Create or import a project with bridge units before setting a locale branch.",
-      });
-      return;
-    }
-    setBranch({ state: "loading" });
-    const result = await apiClient.request("branches.draft", {
-      pathParams: { projectId: branchReadyProject.projectId },
-      body: { project: branchReadyProject, targetLocale: locale },
-    });
-    if (result.state === "ready") {
-      if (!isBranchReady(branchReadyProject, result.data.project)) {
-        setBranch({
+      if (branchResult.state !== "ready") {
+        setBootstrap(stepFromResult(branchResult, "Project bootstrapped."));
+        return;
+      }
+      if (!isBranchReady(branchReadyProject, branchResult.data.project)) {
+        setBootstrap({
           state: "error",
           message: "Locale branch was not created because no units were drafted.",
         });
         return;
       }
-      setReadyStatus(result.data.status);
-      setBranch({ state: "ready", message: "Locale branch created." });
-      return;
+
+      setWizardProject(branchResult.data.project);
+      setReadyStatus(branchResult.data.status);
+      setBootstrap({
+        state: "ready",
+        message: `Project bootstrapped from ${candidate.canonicalTitle}.`,
+      });
+    } catch (error) {
+      setBootstrap({
+        state: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
-    setBranch(stepFromResult(result, "Locale branch created."));
   };
 
   return (
@@ -220,33 +197,29 @@ export function OnboardingScreen(): ReactNode {
             }
           />
           <StepCard
-            phase={phaseFromProjects(projects.state, projectCreate.state, projectReady)}
-            title="Project"
+            phase={phaseFromCatalog(opportunities.state, bootstrap.state, candidateReady)}
+            title="Candidate"
             body={
-              branchProject !== null && hasBranchDraftInput(branchProject)
-                ? `Project ${projectLabel(branchProject)} is ready for locale setup.`
-                : existingProject === null
-                  ? "Create a project with a name and source language."
-                  : `${projectCount} project(s) are visible; create a project with bridge units or import bridge JSON.`
+              selectedCandidate === null
+                ? "Pick a ranked catalog candidate."
+                : `${selectedCandidate.canonicalTitle} is selected for bootstrap.`
             }
           />
           <StepCard
-            phase={phaseFromMutation(branch)}
-            title="Set locale branch"
+            phase={bootstrap.state === "ready" ? "ready" : bridgeReady ? "ready" : "pending"}
+            title="Import bridge"
             body={
-              branchDisabledReason !== null
-                ? branchDisabledReason
-                : `Ready to create ${targetLocale.trim() || "a target locale"} for ${
-                    branchProject?.projectId ?? "the selected project"
-                  }.`
+              bridgeFile === null
+                ? "Choose the bridge JSON exported from the selected candidate."
+                : `${bridgeFile.name} is ready to import.`
             }
           />
           <StepCard
             phase={readyStatus === null ? "pending" : "ready"}
-            title="Next steps"
+            title="Locale branch"
             body={
               readyStatus === null
-                ? "Set the branch to unlock the workspace handoff."
+                ? `Create ${targetLocale.trim() || "the target locale"} and unlock the workspace handoff.`
                 : "Workspace links are ready for localization work."
             }
           />
@@ -292,7 +265,7 @@ export function OnboardingScreen(): ReactNode {
           )}
         </Panel>
 
-        <Panel title="New project" eyebrow="Wizard">
+        <Panel title="Bootstrap project" eyebrow="New project">
           {projects.state === "loading" && <LoadingState label="Loading projects..." />}
           {projects.state === "error" && <ErrorState title="Projects" error={projects.error} />}
           {projects.state === "empty" && (
@@ -301,62 +274,38 @@ export function OnboardingScreen(): ReactNode {
           {projects.state === "ready" && (
             <p className="onboarding-screen__status">{`${projectCount} project(s) already visible.`}</p>
           )}
-          <form className="onboarding-screen__form" onSubmit={(event) => void createProject(event)}>
-            <label className="onboarding-screen__field">
-              <span>Project name</span>
-              <input
-                aria-label="Project name"
-                value={projectName}
-                onChange={(event) => setProjectName(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Source language</span>
-              <input
-                aria-label="Source language"
-                value={sourceLocale}
-                onChange={(event) => setSourceLocale(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <StepActions submitLabel="Create project" step={projectCreate} />
-          </form>
-          {projects.state === "ready" && projects.data.projects.length > 0 && (
-            <div className="onboarding-screen__existing" aria-label="Existing projects">
-              {projects.data.projects.map((project) => (
-                <button
-                  key={project.projectId}
-                  type="button"
-                  onClick={() => chooseExistingProject(project)}
-                >
-                  Use {project.name}
-                </button>
-              ))}
-            </div>
+          {opportunities.state === "loading" && (
+            <LoadingState label="Loading catalog candidates..." />
           )}
-          <details className="onboarding-screen__advanced">
-            <summary>Advanced bridge JSON import</summary>
-            <form
-              className="onboarding-screen__form"
-              onSubmit={(event) => void importBridge(event)}
-            >
-              <label className="onboarding-screen__field">
-                <span>Bridge export</span>
-                <input
-                  aria-label="Bridge export"
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={handleBridgeFile(setBridgeFile)}
-                />
-              </label>
-              <StepActions submitLabel="Import bridge JSON" step={advancedImport} />
-            </form>
-          </details>
-        </Panel>
-
-        <Panel title="Set locale branch" eyebrow="Ready to localize">
-          <form className="onboarding-screen__form" onSubmit={(event) => void createBranch(event)}>
+          {opportunities.state === "error" && (
+            <ErrorState title="Catalog candidates" error={opportunities.error} />
+          )}
+          {opportunities.state === "empty" && (
+            <EmptyState
+              title="Catalog candidates"
+              message="No catalog candidates were returned by the API."
+            />
+          )}
+          <form
+            className="onboarding-screen__form"
+            onSubmit={(event) => void bootstrapProject(event)}
+          >
+            <label className="onboarding-screen__field">
+              <span>Candidate</span>
+              <select
+                aria-label="Candidate"
+                value={selectedCandidate?.workId ?? ""}
+                onChange={(event) => setSelectedWorkId(event.currentTarget.value)}
+                required
+              >
+                {candidateRows.length === 0 && <option value="">No candidates</option>}
+                {candidateRows.map((row) => (
+                  <option key={row.workId} value={row.workId}>
+                    {candidateLabel(row)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="onboarding-screen__field">
               <span>Target locale</span>
               <input
@@ -366,13 +315,28 @@ export function OnboardingScreen(): ReactNode {
                 required
               />
             </label>
+            <label className="onboarding-screen__field">
+              <span>Bridge export</span>
+              <input
+                aria-label="Bridge export"
+                type="file"
+                accept="application/json,.json"
+                onChange={handleBridgeFile(setBridgeFile)}
+              />
+            </label>
             <StepActions
-              submitLabel="Create locale branch"
-              step={branch}
-              disabled={branchDisabledReason !== null}
-              disabledReason={branchDisabledReason}
+              submitLabel="Bootstrap project"
+              step={bootstrap}
+              disabled={bootstrapDisabledReason !== null}
+              disabledReason={bootstrapDisabledReason}
             />
           </form>
+          {selectedCandidate !== null && (
+            <p className="onboarding-screen__status">{candidateSummary(selectedCandidate)}</p>
+          )}
+          {wizardProject !== null && readyStatus === null && bootstrap.state === "loading" && (
+            <p className="onboarding-screen__status">{`${wizardProject.projectId} imported; creating locale branch.`}</p>
+          )}
           {readyStatus !== null && readyHref !== null && (
             <div className="onboarding-screen__handoff">
               <p>{`${readyStatus.name} is ready for localization in ${readyBranch?.targetLocale ?? "the selected locale"}.`}</p>
@@ -441,28 +405,18 @@ function phaseFromIdentity(identityState: string, ssoState: MutationStep["state"
   return identityState === "loading" || ssoState === "loading" ? "loading" : "pending";
 }
 
-function phaseFromProjects(
-  projectsState: string,
+function phaseFromCatalog(
+  catalogState: string,
   importState: MutationStep["state"],
-  hasImportedProject: boolean,
+  hasSelectedCandidate: boolean,
 ): StepPhase {
-  if (importState === "ready" || hasImportedProject) {
+  if (importState === "ready" || hasSelectedCandidate) {
     return "ready";
   }
-  if (importState === "error" || projectsState === "error") {
+  if (importState === "error" || catalogState === "error") {
     return "error";
   }
-  return projectsState === "loading" || importState === "loading" ? "loading" : "pending";
-}
-
-function phaseFromMutation(step: MutationStep): StepPhase {
-  if (step.state === "ready") {
-    return "ready";
-  }
-  if (step.state === "error") {
-    return "error";
-  }
-  return step.state === "loading" ? "loading" : "pending";
+  return catalogState === "loading" || importState === "loading" ? "loading" : "pending";
 }
 
 function stepFromResult<T>(result: ApiCallSettledState<T>, readyMessage: string): MutationStep {
@@ -502,75 +456,11 @@ function readFileText(file: File): Promise<string> {
   });
 }
 
-function projectWizardBridge({
-  name,
-  sourceLocale,
-}: {
-  name: string;
-  sourceLocale: string;
-}): BridgeBundle {
-  const slug = slugify(name);
-  return {
-    schemaVersion: "0.1.0",
-    bridgeId: `wizard-${slug}`,
-    sourceBundleHash: `wizard:${slug}:${sourceLocale}`,
-    sourceLocale,
-    extractorName: "kaifuu-fixture",
-    extractorVersion: "0.0.0",
-    units: [
-      {
-        bridgeUnitId: `wizard-${slug}-unit-1`,
-        sourceUnitKey: `wizard.${slug}.scene.001.line.001`,
-        occurrenceId: `wizard-${slug}-occurrence-1`,
-        sourceHash: `wizard:${slug}:unit-1`,
-        sourceLocale,
-        sourceText: "こんにちは、{player}。",
-        textSurface: "dialogue",
-        protectedSpans: [
-          { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
-        ],
-        patchRef: {
-          assetId: `wizard-${slug}.json`,
-          writeMode: "replace",
-          sourceUnitKey: `wizard.${slug}.scene.001.line.001`,
-        },
-      },
-    ],
-  };
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-|-$/gu, "");
-  return slug.length === 0 ? "project" : slug;
-}
-
-function projectLabel(project: WizardProject): string {
-  return "name" in project ? project.name : project.projectId;
-}
-
-function projectBranchId(project: WizardProject): string | null {
-  if ("bridge" in project) {
-    return project.localeBranchId;
-  }
-  return project.selectedLocaleBranchId ?? project.localeBranches[0]?.localeBranchId ?? null;
-}
-
 function projectStateForBranch(
-  project: WizardProject,
+  project: ImportedProject,
   targetLocale: string,
 ): ImportedProject | null {
-  if ("bridge" in project) {
-    return bridgeHasUnits(project.bridge) ? { ...project, targetLocale } : null;
-  }
-  return null;
-}
-
-function hasBranchDraftInput(project: WizardProject): boolean {
-  return "bridge" in project && bridgeHasUnits(project.bridge) && projectBranchId(project) !== null;
+  return bridgeHasUnits(project.bridge) ? { ...project, targetLocale } : null;
 }
 
 function bridgeHasUnits(bridge: BridgeBundle | BridgeBundleV02): boolean {
@@ -579,4 +469,30 @@ function bridgeHasUnits(bridge: BridgeBundle | BridgeBundleV02): boolean {
 
 function isBranchReady(requestProject: ImportedProject, responseProject: ImportedProject): boolean {
   return Object.keys(responseProject.drafts).length > 0 || bridgeHasUnits(requestProject.bridge);
+}
+
+function candidateLabel(row: CatalogOpportunityRow): string {
+  return `${row.canonicalTitle} (${row.workId})`;
+}
+
+function candidateSummary(row: CatalogOpportunityRow): string {
+  const sourceId = row.sourceIds[0];
+  const sourceLabel =
+    sourceId === undefined ? "no source id" : `${sourceId.catalogSource}:${sourceId.sourceId}`;
+  return `Selected ${row.canonicalTitle}; ${sourceLabel}; adapter ${row.adapterId ?? "unknown"}.`;
+}
+
+function bootstrapSelectionFor(
+  selectedWorkId: string,
+  candidates: CatalogOpportunityRow[],
+): ApiProjectImportRequest["bootstrapSelection"] {
+  return {
+    selectedWorkId,
+    candidates: candidates.map((candidate) => ({
+      workId: candidate.workId,
+      canonicalTitle: candidate.canonicalTitle,
+      sourceIds: candidate.sourceIds,
+      adapterId: candidate.adapterId,
+    })),
+  };
 }

@@ -1070,7 +1070,11 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
 
   // Request bodies ---------------------------------------------------------
   ApiProjectImportRequest: () =>
-    object({ required: ["bridge"], properties: { bridge: obj }, additionalProperties: true }),
+    object({
+      required: ["bridge"],
+      properties: { bridge: obj, bootstrapSelection: obj },
+      additionalProperties: true,
+    }),
   ApiDraftBranchRequest: () =>
     object({
       required: ["project", "targetLocale"],

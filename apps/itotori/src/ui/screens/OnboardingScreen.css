@@ -53,7 +53,8 @@
   font-size: var(--ito-text-small);
 }
 
-.onboarding-screen__field input {
+.onboarding-screen__field input,
+.onboarding-screen__field select {
   width: 100%;
 }
 

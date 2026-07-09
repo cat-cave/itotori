@@ -1676,6 +1676,9 @@
       "ApiProjectImportRequest": {
         "additionalProperties": true,
         "properties": {
+          "bootstrapSelection": {
+            "type": "object"
+          },
           "bridge": {
             "type": "object"
           }

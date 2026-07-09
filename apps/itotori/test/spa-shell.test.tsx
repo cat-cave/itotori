@@ -28,6 +28,7 @@ import { App } from "../src/ui/App.js";
 import { readyContextFixture } from "../src/reviewer/index.js";
 import { workspaceProjectBrowseFixture } from "../src/workspace/index.js";
 import {
+  bridgeFixture,
   bridgeImportResponseFixture,
   branchPolicySettingsFixture,
   bmkCockpitFixture,
@@ -231,7 +232,7 @@ describe("SPA shell — Workbench dashboard", () => {
 });
 
 describe("SPA shell — guided first run", () => {
-  it("walks setup, new-project wizard, locale branch creation, and workspace handoff through typed APIs", async () => {
+  it("walks setup, candidate bootstrap, bridge import, locale branch creation, and workspace handoff through typed APIs", async () => {
     const ssoPosts: unknown[] = [];
     const projectPosts: unknown[] = [];
     const branchPosts: unknown[] = [];
@@ -262,13 +263,15 @@ describe("SPA shell — guided first run", () => {
 
     expect(await screen.findByRole("heading", { name: "Guided setup" })).toBeInTheDocument();
     expect(await screen.findByText("No projects are visible yet.")).toBeInTheDocument();
-    const projectStep = screen.getByRole("region", { name: "Project step" });
-    expect(within(projectStep).getByText("pending")).toBeInTheDocument();
-    const createBranchButton = screen.getByRole("button", { name: "Create locale branch" });
-    expect(createBranchButton).toBeDisabled();
+    const candidateStep = screen.getByRole("region", { name: "Candidate step" });
+    expect(within(candidateStep).getByText("ready")).toBeInTheDocument();
+    const bootstrapButton = screen.getByRole("button", { name: "Bootstrap project" });
+    expect(bootstrapButton).toBeDisabled();
     expect(
-      screen.getAllByText("Save account setup before creating a locale branch.").length,
+      screen.getAllByText("Choose a bridge JSON export for the selected candidate.").length,
     ).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Candidate")).toHaveValue("work-opportunity");
+    expect(screen.getByText(/Selected Opportunity API Fixture/u)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Issuer URL"), {
       target: { value: "https://idp.example.test/oauth2/default" },
@@ -276,32 +279,34 @@ describe("SPA shell — guided first run", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save account setup" }));
     await waitFor(() => expect(ssoPosts).toHaveLength(1));
     expect(await screen.findByText("Security setup saved.")).toBeInTheDocument();
-    expect(createBranchButton).toBeDisabled();
-    expect(
-      screen.getAllByText("Create or import a project before setting a locale branch.").length,
-    ).toBeGreaterThan(0);
-
-    fireEvent.change(screen.getByLabelText("Project name"), {
-      target: { value: "Guided catalog demo" },
-    });
-    fireEvent.change(screen.getByLabelText("Source language"), { target: { value: "ja-JP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-    await waitFor(() => expect(projectPosts).toHaveLength(1));
-    expect(projectPosts[0]).toMatchObject({
-      bridge: {
-        bridgeId: "wizard-guided-catalog-demo",
-        sourceLocale: "ja-JP",
-      },
-    });
-    expect(
-      (projectPosts[0] as { bridge: { units: unknown[] } }).bridge.units.length,
-    ).toBeGreaterThan(0);
-    expect(await screen.findByText("Project created.")).toBeInTheDocument();
-    expect(within(projectStep).getByText("ready")).toBeInTheDocument();
-    expect(createBranchButton).toBeEnabled();
 
     fireEvent.change(screen.getByLabelText("Target locale"), { target: { value: "fr-FR" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create locale branch" }));
+    fireEvent.change(screen.getByLabelText("Bridge export"), {
+      target: {
+        files: [
+          new File([JSON.stringify(bridgeFixture)], "opportunity-api-fixture-bridge.json", {
+            type: "application/json",
+          }),
+        ],
+      },
+    });
+    expect(bootstrapButton).toBeEnabled();
+    fireEvent.click(bootstrapButton);
+
+    await waitFor(() => expect(projectPosts).toHaveLength(1));
+    expect(projectPosts[0]).toMatchObject({
+      bridge: bridgeFixture,
+      bootstrapSelection: {
+        selectedWorkId: "work-opportunity",
+        candidates: [
+          expect.objectContaining({
+            workId: "work-opportunity",
+            canonicalTitle: "Opportunity API Fixture",
+            sourceIds: catalogOpportunitiesFixture.rows[0]?.sourceIds,
+          }),
+        ],
+      },
+    });
     await waitFor(() => expect(branchPosts).toHaveLength(1));
     expect(branchPosts[0]).toMatchObject({
       project: { projectId: bridgeImportResponseFixture.project.projectId },
@@ -310,7 +315,9 @@ describe("SPA shell — guided first run", () => {
     expect(
       (branchPosts[0] as { project: { bridge: { units: unknown[] } } }).project.bridge.units.length,
     ).toBeGreaterThan(0);
-    expect(await screen.findByText("Locale branch created.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Project bootstrapped from Opportunity API Fixture."),
+    ).toBeInTheDocument();
     expect(await screen.findByText("Open workspace scenes")).toHaveAttribute(
       "href",
       `/workspace/scenes?projectId=${encodeURIComponent(
@@ -321,20 +328,10 @@ describe("SPA shell — guided first run", () => {
     );
   });
 
-  it("does not fabricate an empty bridge for an existing visible project", async () => {
-    const ssoPosts: unknown[] = [];
+  it("does not fabricate a bridge when candidate bootstrap has no bridge export", async () => {
     const projectPosts: unknown[] = [];
     const branchPosts: unknown[] = [];
     server.use(
-      http.post("*/api/settings/security/sso", async ({ request }) => {
-        const body = await request.json();
-        ssoPosts.push(body);
-        return apiJson("auth.ssoSettings.configure", {
-          ...(body as object),
-          schemaVersion: "itotori.auth.sso-settings.v0",
-          updatedAt: "2026-07-09T00:00:00.000Z",
-        });
-      }),
       http.post("*/api/imports/bridge", async ({ request }) => {
         projectPosts.push(await request.json());
         return apiJson("imports.bridge", bridgeImportResponseFixture);
@@ -349,26 +346,14 @@ describe("SPA shell — guided first run", () => {
     render(<App location={{ pathname: "/onboarding", search: "" }} />);
 
     expect(await screen.findByText("1 project(s) already visible.")).toBeInTheDocument();
-    const projectStep = screen.getByRole("region", { name: "Project step" });
-    expect(within(projectStep).getByText("pending")).toBeInTheDocument();
-    const createBranchButton = screen.getByRole("button", { name: "Create locale branch" });
-    expect(createBranchButton).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Issuer URL"), {
-      target: { value: "https://idp.example.test/oauth2/default" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save account setup" }));
-    await waitFor(() => expect(ssoPosts).toHaveLength(1));
-    expect(createBranchButton).toBeDisabled();
+    const bootstrapButton = screen.getByRole("button", { name: "Bootstrap project" });
+    expect(bootstrapButton).toBeDisabled();
     expect(
-      screen.getAllByText(
-        "Create or import a project with bridge units before setting a locale branch.",
-      ).length,
+      screen.getAllByText("Choose a bridge JSON export for the selected candidate.").length,
     ).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Target locale"), { target: { value: "fr-FR" } });
-    fireEvent.click(createBranchButton);
-    await waitFor(() => expect(ssoPosts).toHaveLength(1));
+    fireEvent.click(bootstrapButton);
     expect(projectPosts).toHaveLength(0);
     expect(branchPosts).toHaveLength(0);
   });
