@@ -19,6 +19,7 @@
 //!   (runtime port). All of those nodes inherit the same clean-room posture.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -6941,16 +6942,16 @@ impl BgiBytecodeAdapter {
     }
 
     fn source_fingerprint_payload(assets: &[BgiScriptAsset]) -> String {
-        assets
-            .iter()
-            .map(|asset| {
-                format!(
-                    "{}\n{}\n",
-                    asset.relative_path,
-                    sha256_hash_bytes(&asset.bytes)
-                )
-            })
-            .collect::<String>()
+        assets.iter().fold(String::new(), |mut payload, asset| {
+            write!(
+                payload,
+                "{}\n{}\n",
+                asset.relative_path,
+                sha256_hash_bytes(&asset.bytes)
+            )
+            .expect("writing to a String cannot fail");
+            payload
+        })
     }
 
     fn asset_profile(asset: &BgiScriptAsset) -> AssetProfile {
@@ -6990,11 +6991,10 @@ impl BgiBytecodeAdapter {
     fn text_surface_name(surface: BgiBytecodeTextSurface) -> &'static str {
         match surface {
             BgiBytecodeTextSurface::CharacterName => "speaker_name",
-            BgiBytecodeTextSurface::Dialogue => "dialogue",
+            BgiBytecodeTextSurface::Dialogue | BgiBytecodeTextSurface::Other => "dialogue",
             BgiBytecodeTextSurface::Backlog => "backlog",
             BgiBytecodeTextSurface::RubyKanji => "ruby_kanji",
             BgiBytecodeTextSurface::RubyFurigana => "ruby_furigana",
-            BgiBytecodeTextSurface::Other => "dialogue",
             BgiBytecodeTextSurface::FileReference => "file_reference",
         }
     }
