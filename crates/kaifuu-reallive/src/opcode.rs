@@ -348,8 +348,11 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     // We scan forward from `pos + COMMAND_HEADER_LEN`. The argument
     // list is bracketed by `0x28` `(` and `0x29` `)` per documented
     // expression encoding (`expression.cc::ExpressionPiece::ParseArg`,
-    // restated). When the opening `(` is absent the command takes no
-    // bracketed args (`argc == 0` commands often skip the parens).
+    // restated). Some observed commands declare `argc == 0` while still
+    // carrying a parenthesized payload, so we preserve that optional
+    // spelling. If the optional zero-arg list runs into a top-level
+    // element boundary or EOF before `)`, fall back to a no-arg command
+    // instead of making the whole scene fatal.
     let mut consumed = COMMAND_HEADER_LEN;
     let mut args_bytes: Vec<Vec<u8>> = Vec::new();
     if argc > 0 || (pos + consumed < bytes.len() && bytes[pos + consumed] == b'(') {
@@ -385,6 +388,18 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
                     closed = true;
                     break;
                 }
+                opener::META_LINE
+                | opener::META_ENTRYPOINT
+                | opener::COMMAND
+                | opener::META_KIDOKU
+                    if argc == 0 =>
+                {
+                    consumed = COMMAND_HEADER_LEN;
+                    args_bytes.clear();
+                    current_arg.clear();
+                    closed = true;
+                    break;
+                }
                 b',' => {
                     consumed += 1;
                     args_bytes.push(std::mem::take(&mut current_arg));
@@ -396,10 +411,15 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
             }
         }
         if !closed {
-            return Err(RealLiveParseError::TruncatedCommandArgs {
-                offset: pos as u64,
-                argc,
-            });
+            if argc == 0 {
+                consumed = COMMAND_HEADER_LEN;
+                args_bytes.clear();
+            } else {
+                return Err(RealLiveParseError::TruncatedCommandArgs {
+                    offset: pos as u64,
+                    argc,
+                });
+            }
         }
     }
 
@@ -797,6 +817,64 @@ mod tests {
         // MSG opcode 3 is CharacterTextDisplay; other recognised
         // (1..=200) classify as TextDisplay.
         assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
+    }
+
+    #[test]
+    fn zero_arg_command_consumes_optional_parenthesized_payload() {
+        let bytes = &[
+            opener::COMMAND,
+            1,
+            module_id::MSG,
+            5,
+            0,
+            0,
+            0,
+            0,
+            b'(',
+            b'a',
+            b'b',
+            b')',
+            opener::META_LINE,
+            7,
+            0,
+        ];
+        let opcodes = parse_real_bytecode(bytes)
+            .expect("must decode optional zero-arg parenthesized payload");
+        assert_eq!(opcodes.len(), 2);
+        assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
+        assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }));
+    }
+
+    #[test]
+    fn zero_arg_command_followed_by_literal_open_paren_does_not_scan_to_eof() {
+        let bytes = &[
+            opener::COMMAND,
+            1,
+            module_id::MSG,
+            5,
+            0,
+            0,
+            0,
+            0,
+            b'(',
+            b'a',
+            b'b',
+            opener::META_LINE,
+            7,
+            0,
+        ];
+        let opcodes = parse_real_bytecode(bytes)
+            .expect("zero-arg command must not treat literal '(' as args");
+        assert_eq!(opcodes.len(), 3);
+        assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
+        assert!(matches!(
+            &opcodes[1],
+            RealLiveOpcode::Unknown {
+                opcode: b'(',
+                raw_bytes
+            } if raw_bytes == &vec![b'(', b'a', b'b']
+        ));
+        assert!(matches!(opcodes[2], RealLiveOpcode::MetaLine { line: 7 }));
     }
 
     #[test]
