@@ -13,7 +13,9 @@ use utsushi_core::{
     RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
-use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts, replay_scene, replay_until_first_pause};
+use utsushi_reallive::{
+    ReplayEvent, ReplayLog, ReplayOpts, replay_scene, replay_until_first_pause,
+};
 
 use crate::staged_replay::replay_scene_staged;
 
@@ -190,12 +192,9 @@ pub fn emit_textlines_from_result(
         .and_then(Value::as_array)
         .ok_or_else(|| format!("{diagnostic_prefix}.registry_result: missing textLines"))?;
     for line in lines {
-        let index = line
-            .get("index")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| {
-                format!("{diagnostic_prefix}.registry_result: missing text line index")
-            })?;
+        let index = line.get("index").and_then(Value::as_u64).ok_or_else(|| {
+            format!("{diagnostic_prefix}.registry_result: missing text line index")
+        })?;
         let pc = line
             .get("byteOffsetInScene")
             .and_then(Value::as_u64)
@@ -268,10 +267,9 @@ fn required_u16_param(params: &Value, key: &str) -> UtsushiResult<u16> {
         .get(key)
         .and_then(Value::as_u64)
         .ok_or_else(|| format!("utsushi.cli.replay.registry.missing_parameter: {key}"))?;
-    u16::try_from(value)
-        .map_err(|_| {
-            format!("utsushi.cli.replay.registry.invalid_parameter: {key} must be a u16").into()
-        })
+    u16::try_from(value).map_err(|_| {
+        format!("utsushi.cli.replay.registry.invalid_parameter: {key} must be a u16").into()
+    })
 }
 
 fn required_string(

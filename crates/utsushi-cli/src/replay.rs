@@ -10,9 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::json;
-use utsushi_core::{
-    RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
-};
+use utsushi_core::{RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest};
 
 use crate::replay_registry::{
     replay_log_json, replay_parameters, replay_snapshot_parameters, snapshot_json,

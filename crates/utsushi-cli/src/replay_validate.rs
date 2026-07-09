@@ -17,9 +17,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::json;
-use utsushi_core::{
-    RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
-};
+use utsushi_core::{RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest};
 
 use crate::replay_registry::{
     emit_textlines_from_result, replay_log_json, replay_validate_parameters, text_line_count,
@@ -242,8 +240,7 @@ mod tests {
             "/tmp/replay-log.json".into(),
         ];
         let registry = replay_registry();
-        let err =
-            run_replay_validate_command(&args, &registry).expect_err("scene parse must fail");
+        let err = run_replay_validate_command(&args, &registry).expect_err("scene parse must fail");
         assert!(err.to_string().contains("scene_parse"));
     }
 
@@ -258,8 +255,8 @@ mod tests {
             "1".into(),
         ];
         let registry = replay_registry();
-        let err = run_replay_validate_command(&args, &registry)
-            .expect_err("missing --print-replay-log");
+        let err =
+            run_replay_validate_command(&args, &registry).expect_err("missing --print-replay-log");
         assert!(err.to_string().contains("--print-replay-log"));
     }
 
