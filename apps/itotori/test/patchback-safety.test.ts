@@ -177,9 +177,10 @@ describe("reconstructTarget", () => {
 });
 
 describe("normalizeToSjisSafe", () => {
+  // Spawns cargo run of the encoding_rs oracle example — allow cold compile.
   it("uses the same keep-set as the encoding_rs Shift_JIS encoder", () => {
     expect(listSjisEncodableCodepointsForAudit()).toEqual(encodingRsSjisEncodableCodepoints());
-  });
+  }, 120_000);
 
   it("folds curly quotes, dashes, and ellipses to ASCII", () => {
     expect(normalizeToSjisSafe("It’s “fine”—really…")).toBe('It\'s "fine"--really...');
