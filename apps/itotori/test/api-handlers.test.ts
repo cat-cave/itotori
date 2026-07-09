@@ -4,6 +4,7 @@ import * as ts from "typescript";
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  RuntimeRunNotFoundError,
   ItotoriAuthSsoSettingsRepository,
   ItotoriProjectRepository,
   assetLocalizationDecisionAssetKindValues,
@@ -1333,6 +1334,30 @@ describe("Itotori API handlers", () => {
 
     expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledWith("runtime-older");
+  });
+
+  it("returns typed not_found when a requested runtime run no longer exists", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.projectWorkflow.getRuntimeStatus).mockRejectedValueOnce(
+      new RuntimeRunNotFoundError("runtime-run-stale"),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/runtime/v0.2/status",
+        search: "?runtimeRunId=runtime-run-stale",
+      },
+      services,
+    );
+
+    expect(response).toEqual({
+      statusCode: 404,
+      body: {
+        code: "not_found",
+        error: "runtime run runtime-run-stale was not found",
+      },
+    });
   });
 
   it("routes asset-decision active and candidate reads through typed services", async () => {

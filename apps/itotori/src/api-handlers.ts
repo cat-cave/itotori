@@ -1,6 +1,7 @@
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  RuntimeRunNotFoundError,
   assetLocalizationDecisionAssetKindList,
   capabilityLevelValues,
   catalogCandidateMatchStatusValues,
@@ -3144,6 +3145,9 @@ function errorResponse(error: unknown): ApiJsonResponse {
     error instanceof AssetLocalizationDecisionRepositoryError &&
     error.code === "asset_decision_not_found"
   ) {
+    return errorBody(404, "not_found", error.message);
+  }
+  if (error instanceof RuntimeRunNotFoundError) {
     return errorBody(404, "not_found", error.message);
   }
   if (error instanceof SceneCoverageServiceError && error.code === "unknown_scene") {

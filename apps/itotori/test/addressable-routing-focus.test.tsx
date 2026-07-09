@@ -90,6 +90,27 @@ const server = setupServer(
   http.get("*/api/workspace/comparison", () =>
     apiJson("workspace.comparison", comparisonFixture()),
   ),
+  http.get("*/api/runtime/v0.2/status", () =>
+    apiJson("runtime.status", {
+      finalStatus: "hello_world_passed",
+      runtimeRunId: "runtime-run-9",
+      runtimeReportId: "runtime-run-9",
+      runtimeStatus: "passed",
+      fidelityTier: "layout_probe",
+      evidenceTier: null,
+      textEventCount: 0,
+      frameCaptureCount: 0,
+      screenshotArtifactCount: 0,
+      recordingArtifactCount: 0,
+      validationFindingCount: 0,
+      traceEvents: [],
+      findings: [],
+      artifacts: [],
+      approximations: [],
+      unsupportedCapabilities: [],
+      limitations: [],
+    }),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -169,6 +190,27 @@ describe("addressable deep-links resolve + focus", () => {
       expect(main).toHaveAttribute("data-addressable-surface", "runtime");
       unmount();
     }
+  });
+
+  it("renders a stale-link state when a runtime evidence deep-link is not found", async () => {
+    server.use(
+      http.get("*/api/runtime/v0.2/status", () =>
+        new Response(
+          JSON.stringify({
+            code: "not_found",
+            error: "runtime run runtime-run-stale was not found",
+          }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    const href = hrefForAddressable({ kind: "run", id: "runtime-run-stale" });
+    const { pathname, search } = splitHref(href);
+    render(<App location={{ pathname, search }} />);
+
+    const staleState = await screen.findByRole("alert");
+    expect(staleState).toHaveAttribute("data-runtime-run-state", "stale");
+    expect(staleState).toHaveTextContent(/stale|no longer available/i);
   });
 
   // wiki character / term deep-links now render the real WikiEntryScreen

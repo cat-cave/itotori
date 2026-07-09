@@ -228,6 +228,20 @@ export type RuntimeDashboardStatus = {
   limitations: string[];
 };
 
+/**
+ * Raised when a route asks for a specific runtime run that no longer exists.
+ *
+ * This is intentionally distinct from the unscoped "no runtime status" case:
+ * a caller with a stale deep link needs a not-found diagnostic, while an
+ * unscoped dashboard can still describe an empty project state separately.
+ */
+export class RuntimeRunNotFoundError extends Error {
+  constructor(readonly runtimeRunId: string) {
+    super(`runtime run ${runtimeRunId} was not found`);
+    this.name = "RuntimeRunNotFoundError";
+  }
+}
+
 export type RuntimeDashboardTraceEvent = {
   runtimeEventId: string;
   eventKind: string;
@@ -2016,6 +2030,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
 
     const first = result.rows[0] as Record<string, unknown> | undefined;
     if (!first) {
+      if (requestedRuntimeRunId !== null) {
+        throw new RuntimeRunNotFoundError(requestedRuntimeRunId);
+      }
       throw new Error("no Itotori runtime status found");
     }
 

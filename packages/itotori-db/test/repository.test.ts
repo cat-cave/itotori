@@ -15,6 +15,7 @@ import {
 } from "../src/authorization.js";
 import {
   ItotoriProjectRepository,
+  RuntimeRunNotFoundError,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import { migrate, migrations } from "../src/migrations.js";
@@ -463,6 +464,10 @@ describe("ItotoriProjectRepository", () => {
         unsupportedCapabilities: [],
         limitations: [],
       });
+
+      await expect(repo.getRuntimeStatus(localActor, "runtime-run-stale")).rejects.toEqual(
+        new RuntimeRunNotFoundError("runtime-run-stale"),
+      );
     } finally {
       await context.close();
     }

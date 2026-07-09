@@ -183,6 +183,7 @@ export {
   defaultWorkspaceId,
   defaultWorkspaceName,
   ItotoriProjectRepository,
+  RuntimeRunNotFoundError,
 } from "./repositories/project-repository.js";
 export type {
   ArtifactInput,

@@ -3,6 +3,7 @@ import {
   AuthorizationError,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
+  RuntimeRunNotFoundError,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
   localUserId,
@@ -203,6 +204,21 @@ describe("ItotoriProjectWorkflowService", () => {
       name: "AuthorizationError",
       permission: permissionValues.catalogRead,
     });
+  });
+
+  it("preserves the typed stale runtime-run outcome from the repository", async () => {
+    const repository: ItotoriProjectRepositoryPort = {
+      ...repositoryFixture(),
+      getRuntimeStatus: vi.fn(async (_actor, runtimeRunId) => {
+        throw new RuntimeRunNotFoundError(runtimeRunId ?? "missing-runtime-run");
+      }),
+    };
+    const service = new ItotoriProjectWorkflowService(repository, actor, new FakeModelProvider());
+
+    await expect(service.getRuntimeStatus("runtime-run-stale")).rejects.toEqual(
+      new RuntimeRunNotFoundError("runtime-run-stale"),
+    );
+    expect(repository.getRuntimeStatus).toHaveBeenCalledWith(actor, "runtime-run-stale");
   });
 
   it("uses translation memory prefill results to skip provider calls for reused units", async () => {
