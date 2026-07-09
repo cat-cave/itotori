@@ -11,9 +11,18 @@ finer-grained conventions.
 - **`@itotori/ds`** (`packages/itotori-ds/`) — the Dusk Observatory design
   system. React components (`Panel`, `Badge`, `DataTable`, `ProgressBar`,
   `ComparisonPane`, `LocalizationProgress`, `StatReadout`, `BiText`, `NavPills`,
-  `CommandPalette`, `Toast`, …) plus the CSS token set under `tokens/`. The
+  `CommandPalette`, `Pagination`, `RedactionFrame`, `ContestantSwatch`,
+  `Toast`, …) plus the CSS token set under `tokens/`. The
   canonical CSS entry is `@itotori/ds/styles.css` — consumed once at the SPA
-  shell. See [`packages/itotori-ds/README.md`](../packages/itotori-ds/README.md)
+  shell. `Pagination` is the ds-side prev/next pager bound to the typed
+  client's server-side `OffsetPager` (the cost ledger, glossary terms, and
+  any future paginated surface use the same primitive); `RedactionFrame` is
+  the governing redaction-as-toggle primitive — redaction is on by default
+  for committed/shared frames, cap-gated reveal is the ONLY way to unblur
+  locally, and share/export mode forces the blur back on (the rule from
+  `feedback_redaction_is_a_toggle` is the only authority; the
+  `RedactionFrame` component is the ds-side realization). See
+  [`packages/itotori-ds/README.md`](../packages/itotori-ds/README.md)
   for the layout + the patterns downstream nodes copy (className-based
   styling, closed status vocabulary, tokens over literals, sentence case,
   behaviour-first tests).
@@ -44,8 +53,26 @@ finer-grained conventions.
     stateful resource to React via `useSyncExternalStore` so a screen
     re-renders on the transition; `useApiQuery` reissues on `depsKey` change.
   - `screens/` — the parity-ported screens (`DashboardScreen`,
-    `ReviewerQueueScreen`, `ReviewerDetailScreen`, `WorkspaceScreen`, …).
-    Each consumes the typed client and paints with `@itotori/ds`.
+    `ReviewerQueueScreen`, `ReviewerDetailScreen`, `WorkspaceScreen`,
+    `BenchmarkCockpitScreen`, `BenchmarkHeadlineTile`,
+    `PlayScenePickerScreen`, `AddressableFocusScreen`, …) plus the
+    overview panels the dashboard composes (`PassLedgerPanel`,
+    `ProgressInstrumentPanel`, `CostDrilldownPanel`, `DecisionsBand`,
+    `RevisionHistoryComparisonPane`, `RuntimeEvidencePanel`,
+    `CorrectionScopePanel`, …). Each consumes the typed client and paints
+    with `@itotori/ds`. The `PassLedgerPanel` /
+    `ProgressInstrumentPanel` / `BenchmarkHeadlineTile` /
+    `RuntimeEvidencePanel` / `DecisionsBand` overview panels are the
+    overview surface — they each fetch their own read-model through the
+    typed client and settle into `loading | ready | empty | error`
+    independently, so a single failed read degrades only its panel. The
+    `CostDrilldownPanel` composes the cost summary + a paginated
+    ledger bound to the ds `Pagination` primitive; the `RevisionHistoryComparisonPane`
+    uses the `ComparisonPane` component to render the diff. Sensitive
+    runtime-evidence artifacts are wrapped in `<RedactionFrame sensitive>` —
+    the toggle is on by default; `canReveal` is the cap-gated authority
+    that unblurs the frame locally, and `shareRedaction` (set when the
+    screen enters share/export mode) ALWAYS forces the blur back on.
   - `legacy-routes.ts` — the honest, temporary bridge for routes that still
     own their own HTML-string renderers (a tracked follow-on screen per
     route, not a dual path for a replaced view).
@@ -126,3 +153,19 @@ error` states are the contract.
    hex value.
 5. **Behaviour-first tests.** Render the screen with Testing Library, assert
    the rendered DOM + real interactions, never component internals.
+6. **Redaction is a toggle, default-on.** Sensitive runtime-evidence
+   artifacts (any frame an `isSensitiveRuntimeEvidenceArtifact` rule
+   flags) are wrapped in `<RedactionFrame sensitive>`. The toggle is on by
+   default for committed/shared frames — `canReveal` (a capability /
+   permission, NOT a role) is the ONLY authority that unblurs the frame
+   locally, and `shareRedaction` ALWAYS forces the blur back on so an
+   exported screenshot can never leak a sensitive full-fidelity frame
+   (the `feedback_redaction_is_a_toggle` brief is the only authority).
+   `RedactionFrame` is the ds-side realization; screens never hand-roll
+   the blur.
+7. **Pagination is bound to the typed client.** Server-paginated surfaces
+   walk the api-schema `pagination` shape through `OffsetPager`
+   (`apps/itotori/src/api-client.ts`); the ds-side `Pagination` component
+   renders the prev/next pager the user sees. Disabled at bounds; the
+   prev/next buttons remain real `<button>`s so keyboard + screen-reader
+   users get focus + `aria-label` semantics, not div-arrows.

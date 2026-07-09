@@ -1,9 +1,14 @@
 # Itotori Docs
 
-> **Alpha definition (2026-06-24).** The cold-start state of the monorepo
-> lives in [`current-state-2026-06-24.md`](current-state-2026-06-24.md). The
-> redefined alpha gates live at the top of
-> [`project-readiness.md`](project-readiness.md);
+> **Alpha definition (2026-06-24).** The **live cold-start orientation** for
+> the monorepo lives in [`docs/dev/spec-dag.md`](dev/spec-dag.md) (the
+> committed `roadmap/spec-dag.json` is the source of truth — it is what the
+> `qd` CLI and the readiness checklists query). The historical point-in-time
+> snapshot from the 2026-06-24 audit batch is preserved as
+> [`current-state-2026-06-24.md`](current-state-2026-06-24.md); it is
+> intentionally frozen (bannered as a snapshot in its preamble) and is no
+> longer the cold-start entry point. The redefined alpha gates live at the
+> top of [`project-readiness.md`](project-readiness.md);
 > alpha-ready means the architecture-proven dogfood point, not the full
 > `detect → extract → decrypt → decompile → patch → verify → delta-apply`
 > chain. Where this index names `ALPHA-006` (the Sukara/RealLive vertical)

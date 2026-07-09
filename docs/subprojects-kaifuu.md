@@ -98,14 +98,54 @@ unsupported inputs keep `status: "unknown"` while `archiveDetection.status`
 reports the archive/encryption match. The archive matrix covers KiriKiri/XP3,
 Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor archives,
 BGI/Ethornell containers, Ren'Py packed inputs, and unknown archive-like
-variants. Matrix rows use aggregate evidence fields and semantic diagnostics;
+variants. **Matrix rows use aggregate evidence fields and semantic diagnostics;
 they do not claim extraction, decryption, decompilation, patching, image
-replacement, or archive rebuild support. Detection output does not include LLM-style confidence, local
-absolute `gameDir` paths, or private game titles. RPG Maker encrypted asset
-detection counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
-`.png_`/`.m4a_`/`.ogg_` files. Marker-only subtype evidence without a primary
-archive/container match is reported as unknown-variant aggregate evidence
-instead of family-specific key requirements.
+replacement, or archive rebuild support** — the detection matrix is a
+triage surface only, and a matrix match for a row like `wolf-rpg-editor-archives`
+or `bgi-ethornell-containers` is NEVER an adapter support claim. Detection
+output does not include LLM-style confidence, local absolute `gameDir` paths,
+or private game titles. RPG Maker encrypted asset detection counts both
+MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style `.png_`/`.m4a_`/`.ogg_`
+files. Marker-only subtype evidence without a primary archive/container match
+is reported as unknown-variant aggregate evidence instead of family-specific
+key requirements.
+
+### Adapter support claims beyond the detection matrix
+
+The no-patching / no-extraction / no-rebuild scope above applies to the
+detection matrix only. Kaifuu ships **engine-specific adapters** that DO
+prove extract + patch against synthetic fixtures (and, where annotated, real
+bytes) — those claims live on each adapter's own readiness record, not on
+the matrix. As of the 2026-07-08 sweep the shipped adapters with proven
+extract/patch surfaces are:
+
+- **KiriKiri KAG `.ks` plaintext adapter** (`kaifuu-kirikiri`) — null-container
+  plaintext only; see [`kaifuu-adapters/kirikiri-kag.md`](kaifuu-adapters/kirikiri-kag.md).
+- **TyranoScript `.ks` adapter** (`kaifuu-tyrano`) — null-key/null-container
+  layered-pipeline claim at the `patch` level; see
+  [`kaifuu-adapters/tyranoscript.md`](kaifuu-adapters/tyranoscript.md).
+- **RealLive adapter** (`kaifuu-reallive`) — 100% semantic decompiler on
+  real Sweetie HD + Kanon bytes with length-changing patch-back; see
+  [`kaifuu-adapters/reallive.md`](kaifuu-adapters/reallive.md).
+- **Wolf RPG Editor text-table adapter** (`kaifuu-core/wolf_adapter.rs`,
+  KAIFUU-012) — bounded-synthetic extract + patch + repack composition over
+  the KAIFUU-073 encrypted-archive substrate (key resolved by local
+  SecretRef, never emitted), gated on the KAIFUU-120 protection detector
+  (`protected`) + the KAIFUU-121 helper boundary (`key_resolved`); see
+  [`kaifuu-adapters/wolf.md`](kaifuu-adapters/wolf.md).
+- **BGI/Ethornell** — readiness proof ladder (KAIFUU-041 +
+  KAIFUU-126 detector + KAIFUU-127 bytecode parser); the synthetic fixture
+  reaches the `patch` readiness level with byte-exact round-trip proofs;
+  see [`kaifuu-adapters/bgi.md`](kaifuu-adapters/bgi.md).
+
+The matrix's "no extraction / patching / rebuild" sentence above is the
+honest scope of the **detection matrix rows only**; it does NOT mean Kaifuu
+cannot extract or patch any engine — it means a matched row is never, by
+itself, a support claim. Each adapter's record is the source of truth for
+what that specific engine supports, and the adapter capability id
+(`kaifuu-wolf-text-table-adapter` for Wolf, `kaifuu.bgi` / `kaifuu.reallive`
+/ `kaifuu.tyranoscript` / `kaifuu.kirikiri-kag` for the others — see each
+adapter doc's "Adapter id" line) is what downstream ingestion keys on.
 
 `profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
 is compatibility-only and delegates to the same validation, redaction, and atomic

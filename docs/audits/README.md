@@ -3,7 +3,11 @@
 Finding aid for the 2026-06-24 audit batch. Each entry names the question the
 doc answers, its headline finding, and the situation in which an orchestrator
 should consult it. For the cold-start orientation that points at this index,
-see [`../current-state-2026-06-24.md`](../current-state-2026-06-24.md).
+see [`../current-state-2026-06-24.md`](../current-state-2026-06-24.md) — that
+doc is a **point-in-time snapshot** (bannered in its preamble) preserved as
+the historical record of the audit batch; the **live cold-start orientation**
+lives in [`../dev/spec-dag.md`](../dev/spec-dag.md) (the committed
+`roadmap/spec-dag.json` is the source of truth).
 
 > **Post-audit-batch rename note (2026-06-24).** After this audit batch
 > landed, the maintainer redefined the milestone framework into a four-tier

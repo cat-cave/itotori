@@ -1,4 +1,18 @@
-# Current State — 2026-06-24
+# Current State — 2026-06-24 (POINT-IN-TIME SNAPSHOT)
+
+> **Snapshot banner.** This doc is a **point-in-time snapshot** captured at the
+> close of the 2026-06-24 audit batch. It is preserved as the historical
+> record of where the suite stood on that date (the milestone framework
+> rename, the seven real-game-testing-ready gates, the alpha gates, the wave
+> priorities, the staged read-only research surfaces). It is **not** the live
+> orientation — the DAG has grown substantially since (the count, the engine
+> adapters, and the read-only research surfaces named below are all out of
+> date), and engine surfaces that did not exist at that timestamp (notably
+> `Wolf RPG Editor` via KAIFUU-012 and `BGI/Ethornell` via KAIFUU-013) are
+> absent from the engine list below on purpose. **For a live cold-start, read
+> [`docs/dev/spec-dag.md`](dev/spec-dag.md) instead** (the committed
+> `roadmap/spec-dag.json` is the source of truth; the README/audits indices
+> point here as the snapshot, not the live state).
 
 Cold-start orientation for an orchestrator or subagent. Read this first;
 drill into the named audit/research doc only when you need the evidence.
