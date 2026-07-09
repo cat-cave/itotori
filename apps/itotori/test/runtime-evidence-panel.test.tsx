@@ -464,4 +464,109 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
     expect(screen.getAllByText("layout_probe").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("E2").length).toBeGreaterThanOrEqual(1);
   });
+
+  // xs-deep-jumps — the runtime RUN + every finding / trace / artifact source
+  // unit is addressable: the panel renders cross-surface jump links (frame ->
+  // run, finding -> /findings/:id, finding/trace/artifact -> player LINE) via
+  // the EXISTING routing scheme so a reviewer can follow the chain off this
+  // surface. The links carry the bridgeUnitId / findingId / runtimeRunId
+  // verbatim from the read-model — no invented destinations.
+  describe("cross-surface addressable jumps (xs-deep-jumps)", () => {
+    it("renders the runtime RUN as a deep-link to /runs/:runtimeRunId (frame -> run)", async () => {
+      handleStatus();
+      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      await screen.findByRole("heading", { name: "Runtime evidence" });
+      const runJump = document.querySelector(".itotori-runtime-evidence__run-jump");
+      expect(runJump).not.toBeNull();
+      expect(runJump).toHaveAttribute("href", "/runs/runtime-1");
+      expect(runJump).toHaveAttribute("data-jump-kind", "run");
+      expect(runJump).toHaveAttribute("data-jump-id", "runtime-1");
+    });
+
+    it("renders each finding as a deep-link to /findings/:findingId + its source unit as the player LINE", async () => {
+      handleStatus();
+      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
+      const findingsSection = (panel.closest(".itotori-panel") as HTMLElement).querySelector(
+        '[data-runtime-evidence-section="findings"]',
+      ) as HTMLElement;
+
+      // finding -> /findings/:findingId (both findings carry bridgeUnitId).
+      const findingJumps = findingsSection.querySelectorAll(
+        ".itotori-runtime-evidence__finding-jump",
+      );
+      expect(findingJumps).toHaveLength(2);
+      expect(findingJumps[0]).toHaveAttribute("href", "/findings/runtime-1%3Afinding-1");
+      expect(findingJumps[0]).toHaveAttribute("data-jump-kind", "finding");
+      expect(findingJumps[1]).toHaveAttribute("href", "/findings/runtime-1%3Afinding-2");
+
+      // finding -> player LINE (bridgeUnitId is the addressable unit id).
+      const lineJumps = findingsSection.querySelectorAll(".itotori-runtime-evidence__line-jump");
+      expect(lineJumps).toHaveLength(2);
+      expect(lineJumps[0]).toHaveAttribute("href", "/play/units/bridge-unit-1");
+      expect(lineJumps[0]).toHaveAttribute("data-jump-kind", "unit");
+      // The source-unit key remains the visible label.
+      expect(lineJumps[0]).toHaveTextContent("scene.001.line.001");
+    });
+
+    it("renders each trace event + non-sensitive artifact source unit as the player LINE", async () => {
+      handleStatus();
+      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
+      const panelEl = panel.closest(".itotori-panel") as HTMLElement;
+
+      // The first trace event (bridge-unit-1) jumps to the player line; the
+      // second event has a null bridge/source so it degrades to plain text.
+      const traceSection = panelEl.querySelector(
+        '[data-runtime-evidence-section="trace"]',
+      ) as HTMLElement;
+      const traceLineJumps = traceSection.querySelectorAll(".itotori-runtime-evidence__line-jump");
+      expect(traceLineJumps).toHaveLength(1);
+      expect(traceLineJumps[0]).toHaveAttribute("href", "/play/units/bridge-unit-1");
+
+      // Non-sensitive artifacts (trace_log + frame_capture + reference_comparison)
+      // each jump to their bridge unit when present.
+      const nonSensitiveSection = panelEl.querySelector(
+        '[data-runtime-evidence-section="artifacts-non-sensitive"]',
+      ) as HTMLElement;
+      const artifactLineJumps = nonSensitiveSection.querySelectorAll(
+        ".itotori-runtime-evidence__line-jump",
+      );
+      expect(artifactLineJumps.length).toBeGreaterThanOrEqual(1);
+      expect(artifactLineJumps[0]).toHaveAttribute("data-jump-kind", "unit");
+    });
+
+    it("degrades a null bridge/source unit to plain text (no invented jump)", async () => {
+      server.use(
+        http.get(STATUS_PATH, () =>
+          apiJson(
+            "runtime.status",
+            statusFixture({
+              traceEvents: [
+                {
+                  runtimeEventId: "runtime-1:trace-null",
+                  eventKind: "branch_resolved",
+                  bridgeUnitId: null,
+                  sourceUnitKey: null,
+                  draftId: null,
+                  runtimeTargetId: null,
+                  evidenceTier: "E1",
+                  frame: 24,
+                  textPreview: null,
+                  artifactIds: [],
+                },
+              ],
+              findings: [],
+              artifacts: [],
+            }),
+          ),
+        ),
+      );
+      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      await screen.findByRole("heading", { name: "Runtime evidence" });
+      // No jump links render when no row carries a bridge/source unit.
+      expect(document.querySelectorAll(".itotori-runtime-evidence__line-jump")).toHaveLength(0);
+      expect(document.querySelectorAll(".itotori-runtime-evidence__finding-jump")).toHaveLength(0);
+    });
+  });
 });

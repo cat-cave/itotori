@@ -35,6 +35,7 @@ import {
   shouldRedactFrame,
 } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
+import { AddressableJump } from "../addressable-jump.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 
@@ -226,6 +227,20 @@ function RuntimeEvidenceReady({
   return (
     <div className="itotori-runtime-evidence" data-runtime-evidence="ready">
       <div className="itotori-metric-row" aria-label="Runtime evidence tiers">
+        {/* xs-deep-jumps — the runtime RUN is the addressable "frame": a
+            deep-link to /runs/:runtimeRunId lands on the runtime focus
+            surface so a reviewer can jump frame -> run from this panel. */}
+        <StatReadout
+          label="Run"
+          value={
+            <AddressableJump
+              kind="run"
+              id={status.runtimeRunId}
+              fallback={<span>{status.runtimeRunId ?? "—"}</span>}
+              className="itotori-runtime-evidence__run-jump"
+            />
+          }
+        />
         <StatReadout
           label="Fidelity tier"
           value={
@@ -323,8 +338,16 @@ function RuntimeEvidenceTraceTable({
           {
             key: "sourceUnitKey",
             header: "Source unit",
-            render: (event) =>
-              event.sourceUnitKey === null ? "—" : <code>{event.sourceUnitKey}</code>,
+            render: (event) => (
+              <AddressableJump
+                kind="unit"
+                id={event.bridgeUnitId ?? event.sourceUnitKey}
+                fallback={event.sourceUnitKey === null ? "—" : <code>{event.sourceUnitKey}</code>}
+                className="itotori-runtime-evidence__line-jump"
+              >
+                <code>{event.sourceUnitKey ?? event.bridgeUnitId}</code>
+              </AddressableJump>
+            ),
           },
           {
             key: "textPreview",
@@ -378,6 +401,21 @@ function RuntimeEvidenceFindingsTable({
       <DataTable
         caption="Findings"
         columns={[
+          // xs-deep-jumps — the finding id is itself addressable: a deep-link
+          // to /findings/:findingId (the finding -> line -> frame chain entry).
+          {
+            key: "finding",
+            header: "Finding",
+            render: (finding) => (
+              <AddressableJump
+                kind="finding"
+                id={finding.findingId}
+                className="itotori-runtime-evidence__finding-jump"
+              >
+                <code>{finding.findingId}</code>
+              </AddressableJump>
+            ),
+          },
           { key: "kind", header: "Kind", render: (finding) => finding.findingKind },
           {
             key: "severity",
@@ -389,11 +427,23 @@ function RuntimeEvidenceFindingsTable({
             header: "Tier",
             render: (finding) => <Badge status="neutral">{finding.evidenceTier}</Badge>,
           },
+          // xs-deep-jumps — the finding's bridge unit is the player LINE: a
+          // deep-link to /play/units/:bridgeUnitId (finding -> line).
           {
             key: "sourceUnitKey",
             header: "Source unit",
-            render: (finding) =>
-              finding.sourceUnitKey === null ? "—" : <code>{finding.sourceUnitKey}</code>,
+            render: (finding) => (
+              <AddressableJump
+                kind="unit"
+                id={finding.bridgeUnitId ?? finding.sourceUnitKey}
+                fallback={
+                  finding.sourceUnitKey === null ? "—" : <code>{finding.sourceUnitKey}</code>
+                }
+                className="itotori-runtime-evidence__line-jump"
+              >
+                <code>{finding.sourceUnitKey ?? finding.bridgeUnitId}</code>
+              </AddressableJump>
+            ),
           },
           { key: "message", header: "Message", render: (finding) => finding.message },
         ]}
@@ -509,7 +559,14 @@ function RuntimeEvidenceSensitiveArtifacts({
               <div>
                 <dt>Source unit</dt>
                 <dd>
-                  <code>{artifact.sourceUnitKey ?? "—"}</code>
+                  <AddressableJump
+                    kind="unit"
+                    id={artifact.bridgeUnitId ?? artifact.sourceUnitKey}
+                    fallback={<code>{artifact.sourceUnitKey ?? "—"}</code>}
+                    className="itotori-runtime-evidence__line-jump"
+                  >
+                    <code>{artifact.sourceUnitKey ?? artifact.bridgeUnitId ?? "—"}</code>
+                  </AddressableJump>
                 </dd>
               </div>
               <div>
@@ -574,8 +631,18 @@ function RuntimeEvidenceNonSensitiveArtifacts({
           {
             key: "sourceUnitKey",
             header: "Source unit",
-            render: (artifact) =>
-              artifact.sourceUnitKey === null ? "—" : <code>{artifact.sourceUnitKey}</code>,
+            render: (artifact) => (
+              <AddressableJump
+                kind="unit"
+                id={artifact.bridgeUnitId ?? artifact.sourceUnitKey}
+                fallback={
+                  artifact.sourceUnitKey === null ? "—" : <code>{artifact.sourceUnitKey}</code>
+                }
+                className="itotori-runtime-evidence__line-jump"
+              >
+                <code>{artifact.sourceUnitKey ?? artifact.bridgeUnitId}</code>
+              </AddressableJump>
+            ),
           },
           {
             key: "hash",

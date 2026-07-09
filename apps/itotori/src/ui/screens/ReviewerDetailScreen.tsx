@@ -45,6 +45,7 @@ import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { CapGatedButton, useCapsOptional } from "../caps-context.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { apiClient } from "../client.js";
+import { AddressableJump } from "../addressable-jump.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { CorrectionScopePanel } from "./CorrectionScopePanel.js";
@@ -473,6 +474,11 @@ function MissingContext({ label }: { label: string }): ReactNode {
 }
 
 function SourcePanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  // xs-deep-jumps — the source unit's bridgeUnitId is the addressable player
+  // LINE: a deep-link to /play/units/:bridgeUnitId (finding -> line). Scope
+  // forwards the item's project / locale branch when present so the play
+  // surface opens on the same branch.
+  const scope = detailScope(context);
   return (
     <Panel title="Source unit" eyebrow="Source">
       {context.source === null ? (
@@ -480,7 +486,15 @@ function SourcePanel({ context }: { context: ReviewerDetailContext }): ReactNode
       ) : (
         <>
           <p>
-            <code>{context.source.sourceUnitKey}</code> · {context.source.sourceLocale}
+            <AddressableJump
+              kind="unit"
+              id={context.source.bridgeUnitId}
+              {...scope}
+              className="itotori-source-jump"
+            >
+              <code>{context.source.sourceUnitKey}</code>
+            </AddressableJump>{" "}
+            · {context.source.sourceLocale}
           </p>
           <p className="itotori-source-text">{context.source.sourceText}</p>
           {context.source.contextNote !== null && (
@@ -490,6 +504,23 @@ function SourcePanel({ context }: { context: ReviewerDetailContext }): ReactNode
       )}
     </Panel>
   );
+}
+
+/**
+ * xs-deep-jumps — resolve the review item's project / locale-branch scope so a
+ * cross-surface jump carries the same branch context forward. Returns null
+ * scope fields (no query) when the item is absent; the destination surface
+ * then falls back to its own project-status resolution.
+ */
+function detailScope(context: ReviewerDetailContext): {
+  projectId: string | null;
+  localeBranchId: string | null;
+} {
+  const item = context.item;
+  if (item === null) {
+    return { projectId: null, localeBranchId: null };
+  }
+  return { projectId: item.projectId, localeBranchId: item.localeBranchId };
 }
 
 function DraftPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
@@ -729,6 +760,10 @@ function BranchReferencePanel({ context }: { context: ReviewerDetailContext }): 
 }
 
 function QaFindingsPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  // xs-deep-jumps — every QA finding id is itself addressable: a deep-link to
+  // /findings/:findingId so a finding opened on the review surface can be
+  // followed (finding -> line -> frame) via the routing scheme.
+  const scope = detailScope(context);
   return (
     <Panel title="QA findings" eyebrow="Quality">
       {context.qaFindings.length === 0 ? (
@@ -737,6 +772,20 @@ function QaFindingsPanel({ context }: { context: ReviewerDetailContext }): React
         <DataTable
           caption="QA findings"
           columns={[
+            {
+              key: "finding",
+              header: "Finding",
+              render: (f) => (
+                <AddressableJump
+                  kind="finding"
+                  id={f.findingId}
+                  {...scope}
+                  className="itotori-qa-finding-jump"
+                >
+                  <code>{f.findingId}</code>
+                </AddressableJump>
+              ),
+            },
             { key: "category", header: "Category", render: (f) => f.category },
             { key: "severity", header: "Severity", render: (f) => <Badge status={f.severity} /> },
             { key: "summary", header: "Summary", render: (f) => f.summary },
