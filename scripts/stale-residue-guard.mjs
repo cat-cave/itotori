@@ -50,7 +50,8 @@ const stalePremiseRules = [
       /\b(?:select_objbtn|module_sel)\b[^\n]{0,120}\b(?:\(module_type=1,\s*module_id=2\)|\(1,\s*2,\s*(?:3|4)\)|module_type=1)\b|\b(?:\(module_type=1,\s*module_id=2\)|\(1,\s*2,\s*(?:3|4)\)|module_type=1)\b[^\n]{0,120}\b(?:select_objbtn|module_sel)\b/u,
     reason:
       "the real RealLive Sel/select_objbtn coordinate is module_type=0, module_id=2; active docs must not cite the retired module_type=1 coordinate",
-    allowWhen: /\b(?:corrected|earlier|historical|legacy|misread|removed|stale|superseded|wrong)\b/iu,
+    allowWhen:
+      /\b(?:corrected|earlier|historical|legacy|misread|removed|stale|superseded|wrong)\b/iu,
   },
 ];
 
