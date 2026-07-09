@@ -48,6 +48,8 @@ export function DashboardScreen(): ReactNode {
           glance. Read-only legibility; the detailed panels follow. */}
       <LoopSpinePanel />
 
+      <FirstRunPanel projects={projects} />
+
       <DecisionsBand />
 
       <ProgressInstrumentPanel />
@@ -63,6 +65,26 @@ export function DashboardScreen(): ReactNode {
         <QaFindingsPanel decisions={decisions} />
       </section>
     </main>
+  );
+}
+
+function FirstRunPanel({ projects }: { projects: ApiCallState<ApiProjectsResponse> }): ReactNode {
+  const projectCount = projects.state === "ready" ? projects.data.projects.length : 0;
+  const copy =
+    projects.state === "loading"
+      ? "Checking whether this workspace already has a project."
+      : projects.state === "error"
+        ? "Project inventory is unavailable; the guided setup can still show the required dashboard steps."
+        : projectCount === 0
+          ? "No projects are visible yet. Start here to set up the account, create a project, set a locale branch, and open the workspace."
+          : "Open the guided path any time to create another project or set the next locale branch.";
+  return (
+    <Panel title="Guided first run" eyebrow="Setup" className="itotori-panel--first-run">
+      <p>{copy}</p>
+      <p>
+        <a href="/onboarding">Start guided setup</a>
+      </p>
+    </Panel>
   );
 }
 

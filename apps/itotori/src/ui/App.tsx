@@ -30,6 +30,7 @@ import {
 } from "./screens/BenchmarkCockpitScreen.js";
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
+import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
 import {
   PlayScenePickerScreen,
   parsePlayScenePickerRoute,
@@ -233,6 +234,11 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const workspaceRoute = parseWorkspaceRoute(location.pathname, location.search);
   if (workspaceRoute !== null) {
     return <WorkspaceScreen route={workspaceRoute} />;
+  }
+
+  const onboardingRoute = parseOnboardingRoute(location.pathname);
+  if (onboardingRoute !== null) {
+    return <OnboardingScreen />;
   }
 
   const membersRoute = parseMembersRoute(location.pathname, location.search);

@@ -55,6 +55,7 @@ export interface ShellNavItem {
 
 export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "workbench", label: "Workbench", href: "/" },
+  { id: "onboarding", label: "First run", href: "/onboarding" },
   { id: "review", label: "Review", href: "/reviewer-queue" },
   { id: "play", label: "Play", href: "/play" },
   { id: "wiki", label: "Wiki", href: "/wiki" },
@@ -67,6 +68,9 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
 export function activeShellNavId(pathname: string): string {
   if (pathname === "/") {
     return "workbench";
+  }
+  if (pathname === "/onboarding") {
+    return "onboarding";
   }
   if (pathname === "/reviewer-queue" || pathname.startsWith("/reviewer-queue/")) {
     return "review";

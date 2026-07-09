@@ -1,0 +1,104 @@
+.onboarding-screen__grid,
+.onboarding-screen__forms,
+.onboarding-screen__handoff,
+.onboarding-screen__existing,
+.onboarding-screen__advanced {
+  display: grid;
+  gap: var(--ito-space-12);
+}
+
+.onboarding-screen__grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.onboarding-screen__step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ito-space-10);
+}
+
+.onboarding-screen__step-body {
+  display: grid;
+  gap: var(--ito-space-4);
+}
+
+.onboarding-screen__step-body h2,
+.onboarding-screen__step-body h3,
+.onboarding-screen__forms h3 {
+  margin: 0;
+  font-size: var(--ito-text-body);
+}
+
+.onboarding-screen__step-body p,
+.onboarding-screen__forms p,
+.onboarding-screen__handoff p,
+.onboarding-screen__status,
+.onboarding-screen__hint {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+}
+
+.onboarding-screen__form {
+  display: grid;
+  gap: var(--ito-space-10);
+}
+
+.onboarding-screen__field {
+  display: grid;
+  gap: var(--ito-space-4);
+}
+
+.onboarding-screen__field span {
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-small);
+}
+
+.onboarding-screen__field input {
+  width: 100%;
+}
+
+.onboarding-screen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+}
+
+.onboarding-screen__actions button,
+.onboarding-screen__existing button,
+.onboarding-screen__handoff a {
+  min-height: 34px;
+}
+
+.onboarding-screen__actions button,
+.onboarding-screen__existing button,
+.onboarding-screen__advanced summary {
+  cursor: pointer;
+}
+
+.onboarding-screen__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.onboarding-screen__handoff a {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+}
+
+.onboarding-screen__existing {
+  gap: var(--ito-space-8);
+}
+
+.onboarding-screen__existing button {
+  width: fit-content;
+}
+
+.onboarding-screen__advanced {
+  gap: var(--ito-space-10);
+}
+
+.onboarding-screen__advanced summary {
+  color: var(--ito-color-text-muted);
+}
