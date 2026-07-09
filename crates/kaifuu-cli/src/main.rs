@@ -3,13 +3,13 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
-    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
-    DetectionResult, EncryptedMediaProofFixture, EncryptedMediaProofRequest, EngineAdapter,
-    EvidenceStatus, ExtractRequest, GameProfile, GoldenByteEquivalenceMode, GoldenHarnessRequest,
-    HelperBinaryLaunchValidationRequest, HelperCapability, HelperRedactionStatus,
-    HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
-    LocalSecretDirectoryStore, PackedReadinessValidationReport, PartialAdapterCommand,
-    PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
+    AdapterFailure, AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest,
+    DetectionReport, DetectionResult, EncryptedMediaProofFixture, EncryptedMediaProofRequest,
+    EngineAdapter, EvidenceStatus, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
+    GoldenHarnessRequest, HelperBinaryLaunchValidationRequest, HelperCapability,
+    HelperRedactionStatus, HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest,
+    LocalKeyImportSource, LocalSecretDirectoryStore, PackedReadinessValidationReport,
+    PartialAdapterCommand, PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
     PartialDiagnosticSeverity, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
     ProfileRequest, ProofHash, RpgMakerMvMzFixtureKeyValidationRequest, SecretRef,
     SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
@@ -169,11 +169,7 @@ fn run_with_args_and_registry(
             if preflight.status == kaifuu_core::OperationStatus::Failed
                 && preflight.has_preflight_blocking_failure()
             {
-                return Err(format!(
-                    "patch preflight failed: {}",
-                    preflight.failure_codes().join(", ")
-                )
-                .into());
+                return Err(patch_preflight_failure_message(&preflight).into());
             }
             let result = run_patch_with_owned_staging(adapter, &game_dir, &patch_export, &output)?;
             let failed = result.status == kaifuu_core::OperationStatus::Failed;
@@ -3281,11 +3277,7 @@ fn run_patch_with_owned_staging(
     let failed = result.status == kaifuu_core::OperationStatus::Failed;
     if failed && result.has_preflight_blocking_failure() {
         remove_patch_staging_dir(&staging_output)?;
-        return Err(format!(
-            "patch preflight failed: {}",
-            result.failure_codes().join(", ")
-        )
-        .into());
+        return Err(patch_preflight_failure_message(&result).into());
     }
     if let Err(error) = write_json(&staging_output.join("patch-result.json"), &result) {
         remove_patch_staging_dir(&staging_output)?;
@@ -3296,6 +3288,37 @@ fn run_patch_with_owned_staging(
         return Err(error);
     }
     Ok(result)
+}
+
+fn patch_preflight_failure_message(result: &PatchResult) -> String {
+    let details = result
+        .failures
+        .iter()
+        .map(patch_preflight_failure_detail)
+        .collect::<Vec<_>>();
+    if details.is_empty() {
+        "patch preflight failed".to_string()
+    } else {
+        format!("patch preflight failed: {}", details.join("; "))
+    }
+}
+
+fn patch_preflight_failure_detail(failure: &AdapterFailure) -> String {
+    let mut detail = redact_for_log_or_report(&failure.error_code);
+    if !failure.support_boundary.is_empty() {
+        detail.push_str(" (");
+        detail.push_str(&redact_for_log_or_report(&failure.support_boundary));
+        if let Some(remediation) = &failure.remediation {
+            detail.push_str("; remediation ");
+            detail.push_str(&redact_for_log_or_report(remediation));
+        }
+        detail.push(')');
+    } else if let Some(remediation) = &failure.remediation {
+        detail.push_str(" (remediation ");
+        detail.push_str(&redact_for_log_or_report(remediation));
+        detail.push(')');
+    }
+    detail
 }
 
 fn run_golden_command(
@@ -8838,6 +8861,11 @@ mod tests {
         let error = result.unwrap_err().to_string();
         assert!(error.contains("patch preflight failed"), "{error}");
         assert!(error.contains(kaifuu_core::STRING_SLOT_OVERFLOW), "{error}");
+        assert!(error.contains("slot.line.001"), "{error}");
+        assert!(error.contains("byte range 32..37"), "{error}");
+        assert!(error.contains("shorten_translation"), "{error}");
+        assert!(error.contains("encoded target plus terminator"), "{error}");
+        assert!(!error.contains("Overflow"), "{error}");
         assert!(!output_dir.exists());
 
         let _ = fs::remove_dir_all(root);
