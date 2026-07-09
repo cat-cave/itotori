@@ -958,7 +958,10 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             registry,
             mid,
             1064,
-            Arc::new(super::module_obj::ObjButtonOptsOp::new()),
+            Arc::new(super::module_obj::ObjButtonOptsOp::new(
+                Arc::clone(&runtime),
+                plane,
+            )),
         );
     }
 

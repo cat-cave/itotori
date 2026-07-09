@@ -640,23 +640,6 @@ pub struct Vm {
     /// a real control transfer was rewritten to a fall-through). Lets the
     /// driver confirm the modeled event landed on a genuine transfer.
     last_transfer_suppressed: bool,
-    /// The on-screen button-object group a pending `select_objbtn`
-    /// (`sel (0,2,4)`) selects over — the graphical route / love-interest
-    /// and clothing / costume picks. Populated as the linear walk executes
-    /// the scene's button-setup ops: `objbtn_init` (`sel (0,2,20)`) CLEARS
-    /// it and each `objButtonOpts` (`obj (1,{81,82},1064)`) APPENDS one
-    /// button (rlvm's `GraphicsObject::SetButtonOpts` → the button objects a
-    /// `ButtonObjectSelectLongOperation` collects for `group_`). When
-    /// `select_objbtn` dispatches it reads this list to recover the option
-    /// SET (button count + numbers) — the real objbtn scenes carry NO inline
-    /// `{ … }` option block, so the button-setup ops are the only source of
-    /// the option count — then CONSUMES it (the pick resolves through the
-    /// same [`crate::rlop::SelectLongOp`] → store-register seam as a text
-    /// select, and the scene's own `intL[0] = store` + `goto_on(intL[0])`
-    /// drives the branch). Not part of the substrate snapshot: it is
-    /// transient set-then-consumed setup state, empty at every choice
-    /// boundary.
-    objbtn_buttons: Vec<ObjbtnButton>,
 }
 
 /// One selectable on-screen button object recovered from a scene's
@@ -673,14 +656,7 @@ pub struct Vm {
 /// recovered datum is the option COUNT + per-button NUMBER; the render
 /// layer lays the buttons out from that real count (see
 /// [`crate::SpatialChoiceWindow`] / [`crate::ImageGridChoiceWindow`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObjbtnButton {
-    /// 0-based button ordinal (`objButtonOpts` arg 0).
-    pub number: i32,
-    /// Button-group id (`objButtonOpts` arg 1) a `select_objbtn` selects
-    /// over.
-    pub group: i32,
-}
+// Object-button bindings belong to the graphics runtime, not VM state.
 
 impl Vm {
     /// Construct a VM positioned at `(scene, pc)` with empty banks /
@@ -697,35 +673,7 @@ impl Vm {
             post_pc: 0,
             suppress_next_transfer: false,
             last_transfer_suppressed: false,
-            objbtn_buttons: Vec::new(),
         }
-    }
-
-    /// Clear the pending button-object group. Called by `objbtn_init`
-    /// (`sel (0,2,20)`), which rlvm treats as a group-setup boundary: the
-    /// following `objButtonOpts` ops populate a fresh button set.
-    pub fn objbtn_reset(&mut self) {
-        self.objbtn_buttons.clear();
-    }
-
-    /// Append one selectable button to the pending group. Called by
-    /// `objButtonOpts` (`obj (1,{81,82},1064)`) with the button's ordinal
-    /// (`number`) and group id.
-    pub fn objbtn_register(&mut self, number: i32, group: i32) {
-        self.objbtn_buttons.push(ObjbtnButton { number, group });
-    }
-
-    /// Borrow the pending button-object group (the option set a
-    /// `select_objbtn` will present).
-    pub fn objbtn_buttons(&self) -> &[ObjbtnButton] {
-        &self.objbtn_buttons
-    }
-
-    /// Take (and clear) the pending button-object group. Called by
-    /// `select_objbtn` (`sel (0,2,4)`) when it consumes the setup to build
-    /// its option set — the group does not persist past the select.
-    pub fn objbtn_take(&mut self) -> Vec<ObjbtnButton> {
-        std::mem::take(&mut self.objbtn_buttons)
     }
 
     /// Fold the FULL deterministic control state — active `(scene, pc)`,

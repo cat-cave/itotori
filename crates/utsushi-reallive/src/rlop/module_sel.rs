@@ -754,62 +754,21 @@ impl RLOperation for SelectWOp {
     }
 }
 
-/// Build the synthetic option label for one recovered button object. The
-/// real objbtn scenes carry NO inline `{ … }` option text (the on-screen
-/// art is the g00 button sprite), so the pipeline label is a stable ASCII
-/// placeholder keyed on the button's real ordinal — it decodes cleanly
-/// (no `InvalidShiftJis` warning) and the render layer lays the buttons
-/// out from the real recovered count.
-fn objbtn_option_label(number: i32) -> Vec<u8> {
-    format!("objbtn {number}").into_bytes()
-}
-
-/// Dispatch a `select_objbtn` (`sel (0,2,4)`) as a REAL select driven by
-/// the scene's recovered button-object group.
-///
-/// rlvm's `Sel_select_objbtn` pushes a `ButtonObjectSelectLongOperation`
-/// that collects every on-screen graphics object whose button group
-/// matches the select's group, and resolves to the picked button's
-/// number → `set_store_register`. This port mirrors that: the linear walk
-/// has already executed the scene's `objbtn_init` + `objButtonOpts` setup
-/// ops, which populated [`Vm::objbtn_buttons`]. Here we CONSUME that group
-/// ([`Vm::objbtn_take`]) and dispatch it through the ordinary choice seam —
-/// one `choice:<idx>` surface per button, a queued [`SelectLongOp`], and
-/// (on resume) the picked index written to the store register. The scene's
-/// own `intL[0] = store` assignment + `goto_on(intL[0])` then drive the
-/// matching route branch — exactly the bytecode that follows every real
-/// Sweetie `select_objbtn`.
-///
-/// When no button group was set up (the setup ops did not run, or the walk
-/// reached the select without them) the op falls back to the shared
-/// [`dispatch_select`] over its inline args — which, for a real objbtn (no
-/// option block), fail-soft `Advance`s exactly as before.
-///
-/// `variant` selects the audit tag: [`SelectVariant::SelectObjbtn`] (`4`) or the
-/// cancelable [`SelectVariant::SelectObjbtnCancel`] (`14`). Both push the same
-/// `ButtonObjectSelectLongOperation` in rlvm and drive the identical recovered-
-/// button-group path here; the cancelable form's escape-to-cancel affordance is
-/// a render/input-layer concern (see [`OPCODE_SELECT_OBJBTN_CANCEL`]).
+/// `select_objbtn` currently preserves its ordinary inline-argument behavior.
+/// Exact graphics `objButtonOpts` bindings and the foreground inspection query
+/// are separate; collecting a group, resume mapping, and rendering are not
+/// implemented by this selector yet.
 fn dispatch_select_objbtn(
     variant: SelectVariant,
     runtime: &SelRuntime,
     vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
-    let buttons = vm.objbtn_take();
-    if buttons.is_empty() {
-        return dispatch_select(variant, runtime, vm, args);
-    }
-    let synth: Vec<ExprValue> = buttons
-        .iter()
-        .map(|button| ExprValue::Bytes(objbtn_option_label(button.number)))
-        .collect();
-    dispatch_select(variant, runtime, vm, &synth)
+    dispatch_select(variant, runtime, vm, args)
 }
 
-/// `select_objbtn` — object-button (graphical) choice. Unlike the other
-/// three variants it carries NO inline option block; its option set is the
-/// scene's recovered button-object group (see [`dispatch_select_objbtn`]).
+/// `select_objbtn` currently preserves inline-argument dispatch only. The
+/// graphics group query and select/resume mapping are future PR-B work.
 #[derive(Debug)]
 pub struct SelectObjbtnOp {
     runtime: Arc<SelRuntime>,
@@ -852,14 +811,8 @@ impl RLOperation for SelectS3Op {
 }
 
 /// `select_objbtn_cancel` (`sel (0,2,14)`) — the CANCELABLE button-object
-/// select. Mirrors rlvm's `Sel_select_objbtn_cancel`, which pushes the same
-/// `ButtonObjectSelectLongOperation` as `select_objbtn` (`4`) but marks it
-/// `set_cancelable()`. This port dispatches through the identical recovered-
-/// button-group path ([`dispatch_select_objbtn`]) tagged
-/// [`SelectVariant::SelectObjbtnCancel`]; the escape-to-cancel affordance is a
-/// render/input-layer concern not yet modeled on [`SelectLongOp`] (see
-/// [`OPCODE_SELECT_OBJBTN_CANCEL`]). Previously a catalog `Advance` no-op; now a
-/// real Sel op driving the same `goto_on($store)` branch machinery.
+/// select. Group collection and resume mapping are not implemented here; this
+/// currently preserves inline-argument dispatch only.
 #[derive(Debug)]
 pub struct SelectObjbtnCancelOp {
     runtime: Arc<SelRuntime>,
@@ -878,25 +831,21 @@ impl RLOperation for SelectObjbtnCancelOp {
     }
 }
 
-/// `objbtn_init` (`sel (0,2,20)`) — button-object group setup boundary. In
-/// rlvm this is a no-op (`objbtn_init_0/1` have empty bodies); here it
-/// CLEARS the pending [`Vm::objbtn_buttons`] group so the `objButtonOpts`
-/// ops that follow build a fresh option set for the next `select_objbtn`.
-/// Recognized 0-unknown either way; this op gives it its real setup-reset
-/// semantics instead of a catalog `Advance`.
+/// `objbtn_init` (`sel (0,2,20)`) is recognized as an exact no-op. Binding
+/// state lives on graphics objects; selection/resume and rendering remain
+/// separate work.
 #[derive(Debug, Default)]
 pub struct ObjbtnInitOp;
 
 impl ObjbtnInitOp {
-    /// Construct the op (stateless — it mutates the VM's button group).
+    /// Construct the stateless no-op.
     pub fn new() -> Self {
         Self
     }
 }
 
 impl RLOperation for ObjbtnInitOp {
-    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        vm.objbtn_reset();
+    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
         DispatchOutcome::Advance
     }
 }
@@ -935,11 +884,7 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
         SelectVariant::SelectObjbtnCancel.rlop_key(),
         Arc::new(SelectObjbtnCancelOp::new(Arc::clone(&runtime))),
     );
-    // `objbtn_init` — the button-object group-setup boundary. Registered
-    // with its real reset semantics (clears the pending button group) so a
-    // `select_objbtn` that follows recovers a fresh option set. `runtime`
-    // is unused by this op (it mutates the VM's button group), so it is not
-    // threaded in.
+    // `objbtn_init` is a recognized no-op; bindings live on graphics objects.
     registry.register(
         RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_OBJBTN_INIT),
         Arc::new(ObjbtnInitOp::new()),
@@ -1203,6 +1148,15 @@ mod tests {
         assert_eq!(OPCODE_SELECT_OBJBTN_CANCEL, 14);
         // The button-object SETUP opcodes are the real modality signal.
         assert_eq!(SelectVariant::BUTTON_OBJECT_SETUP_OPCODES, &[20u16, 4, 14]);
+    }
+
+    #[test]
+    fn objbtn_init_is_a_noop() {
+        let mut vm = Vm::new(1, 0);
+        assert!(matches!(
+            ObjbtnInitOp::new().dispatch(&mut vm, &[]),
+            DispatchOutcome::Advance
+        ));
     }
 
     #[test]

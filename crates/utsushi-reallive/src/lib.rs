@@ -371,9 +371,9 @@ pub use rlop::module_ctrl::{
 };
 
 pub use vm::{
-    DEFAULT_STEP_BUDGET, InMemorySceneStore, ObjbtnButton, STACK_DEPTH_LIMIT, Scene, SceneId,
-    SceneStore, StackFrame, StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm,
-    VmError, VmEvent, VmWarning,
+    DEFAULT_STEP_BUDGET, InMemorySceneStore, STACK_DEPTH_LIMIT, Scene, SceneId, SceneStore,
+    StackFrame, StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm, VmError,
+    VmEvent, VmWarning,
 };
 
 /// The clean-room boundary statement carried as a publicly reachable

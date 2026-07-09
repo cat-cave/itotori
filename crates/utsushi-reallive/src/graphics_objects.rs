@@ -308,6 +308,17 @@ pub struct GraphicsObject {
     /// render pass skips invisible objects without dereferencing their
     /// image refs.
     pub visible: bool,
+    /// Exact `objButtonOpts(buf, action, se, group, button_number)` binding.
+    pub button_options: Option<ButtonOptions>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ButtonOptions {
+    pub action: i32,
+    pub se: i32,
+    pub group: i32,
+    pub button_number: i32,
 }
 
 impl GraphicsObject {
@@ -329,6 +340,7 @@ impl GraphicsObject {
                 },
             },
             visible: true,
+            button_options: None,
         }
     }
 
@@ -345,6 +357,7 @@ impl GraphicsObject {
             layer_order: 0,
             kind: GraphicsObjectKind::Wipe { colour },
             visible: true,
+            button_options: None,
         }
     }
 }
