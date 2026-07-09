@@ -808,13 +808,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiWorkspaceCorrectionSubmitRequest: () =>
     object({
-      required: [
-        "projectId",
-        "localeBranchId",
-        "targetLocale",
-        "actorUserId",
-        "corrections",
-      ],
+      required: ["projectId", "localeBranchId", "targetLocale", "actorUserId", "corrections"],
       properties: {
         projectId: str,
         localeBranchId: str,

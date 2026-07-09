@@ -199,11 +199,7 @@ function CorrectionDiagnosticBanner({
     return null;
   }
   return (
-    <section
-      className="itotori-diagnostic-banner"
-      role="alert"
-      aria-label="Correction diagnostics"
-    >
+    <section className="itotori-diagnostic-banner" role="alert" aria-label="Correction diagnostics">
       <ul>
         {diagnostics.map((d) => (
           <li key={d.code} data-diagnostic-code={d.code}>
@@ -411,19 +407,16 @@ function CorrectionsView({ model }: { model: WorkspaceCorrectionPreviewReadModel
     })),
   );
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<null | { kind: "ok"; submittedCount: number } | { kind: "error"; message: string }>(
-    null,
-  );
+  const [outcome, setOutcome] = useState<
+    null | { kind: "ok"; submittedCount: number } | { kind: "error"; message: string }
+  >(null);
   const canSubmit =
     model.permission.canManageQueue &&
     model.projectId !== null &&
     model.targetLocale !== null &&
     rows.length > 0;
 
-  function updateRow(
-    reviewItemId: string,
-    patch: Partial<(typeof rows)[number]>,
-  ): void {
+  function updateRow(reviewItemId: string, patch: Partial<(typeof rows)[number]>): void {
     setRows((current) =>
       current.map((row) => (row.reviewItemId === reviewItemId ? { ...row, ...patch } : row)),
     );
@@ -445,7 +438,8 @@ function CorrectionsView({ model }: { model: WorkspaceCorrectionPreviewReadModel
     if (invalid !== undefined) {
       setOutcome({
         kind: "error",
-        message: "Each submitted annotation needs correction text, note, severity, and a valid line or scene scope.",
+        message:
+          "Each submitted annotation needs correction text, note, severity, and a valid line or scene scope.",
       });
       return;
     }
@@ -502,7 +496,9 @@ function CorrectionsView({ model }: { model: WorkspaceCorrectionPreviewReadModel
     <Panel title="Manual corrections" eyebrow={model.localeBranchId}>
       <p className="itotori-subhead">{model.units.length} unit(s) in this correction batch.</p>
       <CorrectionDiagnosticBanner diagnostics={model.diagnostics} />
-      {(!model.permission.canManageQueue || model.projectId === null || model.targetLocale === null) && (
+      {(!model.permission.canManageQueue ||
+        model.projectId === null ||
+        model.targetLocale === null) && (
         <p className="itotori-subhead" role="status">
           {model.permission.canManageQueue
             ? "Correction submit is unavailable until project and target-locale context resolves."

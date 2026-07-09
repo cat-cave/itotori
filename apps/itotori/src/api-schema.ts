@@ -1972,11 +1972,7 @@ export function parseWorkspaceCorrectionSubmitRequest(
       const correction = asRecord(value, correctionLabel);
       assertString(correction.bridgeUnitId, `${correctionLabel}.bridgeUnitId`);
       assertString(correction.sourceRevisionId, `${correctionLabel}.sourceRevisionId`);
-      assertEnum(
-        correction.severity,
-        annotationSeverityList,
-        `${correctionLabel}.severity`,
-      );
+      assertEnum(correction.severity, annotationSeverityList, `${correctionLabel}.severity`);
       assertString(correction.reason, `${correctionLabel}.reason`);
       assertString(correction.correctedText, `${correctionLabel}.correctedText`);
       const scope = parseWorkspaceCorrectionScope(correction.scope, `${correctionLabel}.scope`);
