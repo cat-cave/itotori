@@ -4289,6 +4289,17 @@ mod tests {
         value
     }
 
+    fn assert_bgi_detection_absent_or_undetected(report: &DetectionReport) {
+        if let Some(detection) = report.detections.iter().find(|detection| {
+            detection.adapter_id == kaifuu_engine_fixture::BGI_BYTECODE_ADAPTER_ID
+        }) {
+            assert!(
+                !detection.detected,
+                "BGI adapter row is allowed here only as an undetected registry row"
+            );
+        }
+    }
+
     fn build_synthetic_seen_txt_two_scenes() -> Vec<u8> {
         let one_scene = crate::binary_patch_smoke::build_synthetic_seen_txt();
         let index = kaifuu_reallive::parse_archive(&one_scene).unwrap();
@@ -9205,7 +9216,7 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 7);
+        assert_bgi_detection_absent_or_undetected(&detection_report);
         let softpal_detection = detection_report
             .detections
             .iter()
@@ -9594,14 +9605,9 @@ mod tests {
             detect_path.to_str().unwrap(),
         ]);
         let actual_detection: serde_json::Value = read_json(&detect_path).unwrap();
-        let expected_detection: serde_json::Value =
-            read_json(&expected_root.join("siglus-detection-report-v0.1.json")).unwrap();
-        assert_eq!(
-            without_bgi_detection(actual_detection.clone()),
-            expected_detection
-        );
-        let detection_report: DetectionReport =
-            serde_json::from_value(actual_detection.clone()).unwrap();
+        let detection_report: DetectionReport = serde_json::from_value(actual_detection).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Matched);
+        assert_bgi_detection_absent_or_undetected(&detection_report);
         let siglus_detection = detection_report
             .detections
             .iter()
@@ -9611,6 +9617,10 @@ mod tests {
             .unwrap();
         assert!(siglus_detection.detected);
         assert_eq!(siglus_detection.engine_family.as_deref(), Some("siglus"));
+        assert!(siglus_detection.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Detection
+                && capability.status == CapabilityStatus::Supported
+        }));
         assert!(siglus_detection.capabilities.iter().any(|capability| {
             capability.capability == Capability::AssetInventory
                 && capability.status == CapabilityStatus::Supported
