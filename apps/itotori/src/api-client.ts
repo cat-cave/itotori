@@ -79,6 +79,8 @@ import type {
   ApiRuntimeEvidenceRequest,
   ApiRuntimeEvidenceResponse,
   ApiModelRoutingSettingsResponse,
+  ApiBranchPolicySettingsResponse,
+  ApiSaveBranchPolicySettingsRequest,
   ApiSaveModelRoutingSettingsRequest,
   ApiAcceptMemberInvitationRequest,
   ApiConfigureAuthSsoSettingsRequest,
@@ -284,6 +286,15 @@ interface ItotoriApiRouteTypeMap {
   "settings.modelRouting.save": {
     response: ApiModelRoutingSettingsResponse;
     request: ApiSaveModelRoutingSettingsRequest;
+  };
+  "settings.branchPolicy.get": {
+    response: ApiBranchPolicySettingsResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+  };
+  "settings.branchPolicy.save": {
+    response: ApiBranchPolicySettingsResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    request: ApiSaveBranchPolicySettingsRequest;
   };
   "auth.ssoSettings.configure": {
     response: ApiConfigureAuthSsoSettingsResponse;

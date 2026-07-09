@@ -74,6 +74,7 @@ import {
   parseReviewerBatchPreviewRequest,
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
+  parseSaveBranchPolicySettingsRequest,
   parseSaveModelRoutingSettingsRequest,
   parseConfigureAuthSsoSettingsRequest,
   parseAcceptMemberInvitationRequest,
@@ -122,7 +123,8 @@ import {
   type ApiRevokeAuthSessionRequest,
   type ApiRevokeAuthSessionResponse,
   type ApiModelRoutingSettingsResponse,
-  type ApiSaveModelRoutingSettingsRequest,
+  type ApiBranchPolicySettingsResponse,
+  type ApiSaveBranchPolicySettingsRequest,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -196,6 +198,8 @@ export const apiMutationPermissionGates = {
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
   modelRoutingRead: apiMutationGate("model routing read", "catalogRead"),
   modelRoutingSave: apiMutationGate("model routing save", "draftWrite"),
+  branchPolicyRead: apiMutationGate("branch policy read", "catalogRead"),
+  branchPolicySave: apiMutationGate("branch policy save", "draftWrite"),
   membersList: apiMutationGate("members list", "authMembersManage"),
   billingSeatUsage: apiMutationGate("billing seat usage", "authMembersManage"),
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
@@ -315,6 +319,12 @@ export type ItotoriReadOnlyApiServices = {
   modelRouting: {
     loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
   };
+  branchPolicy: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiBranchPolicySettingsResponse>;
+  };
   authBilling: {
     loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
   };
@@ -372,6 +382,15 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   modelRouting: {
     loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
     saveRoute(input: SaveModelRoutingSettingsInput): Promise<ModelRoutingSettingsRecord>;
+  };
+  branchPolicy: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiBranchPolicySettingsResponse>;
+    saveSettings(
+      input: ApiSaveBranchPolicySettingsRequest,
+    ): Promise<ApiBranchPolicySettingsResponse>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
@@ -481,6 +500,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     modelRouting: {
       loadSettings: (projectId) => services.modelRouting.loadSettings(projectId),
     },
+    branchPolicy: {
+      loadSettings: (input) => services.branchPolicy.loadSettings(input),
+    },
     authBilling: {
       loadSeatUsage: (accountId) => services.authBilling.loadSeatUsage(accountId),
     },
@@ -577,6 +599,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     return methodNotAllowed(["POST"]);
   }
   if (request.pathname === "/api/settings/model-routing") {
+    return methodNotAllowed(["GET", "POST"]);
+  }
+  if (parseBranchPolicySettingsApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["GET", "POST"]);
   }
   if (
@@ -790,10 +815,37 @@ async function routeItotoriApiRequest(
     );
   }
 
+  const branchPolicyRoute = parseBranchPolicySettingsApiRoute(request.pathname);
+  if (request.method === "POST" && branchPolicyRoute !== null) {
+    const body = parseSaveBranchPolicySettingsRequest(request.body);
+    if (
+      body.projectId !== branchPolicyRoute.projectId ||
+      body.localeBranchId !== branchPolicyRoute.localeBranchId
+    ) {
+      throw new ApiValidationError("branch policy path and body scope must match");
+    }
+    await requireApiPermission(services, apiMutationPermissionGates.branchPolicySave);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: branchPolicyRoute.projectId,
+      localeBranchId: branchPolicyRoute.localeBranchId,
+    });
+    return ok(
+      "settings.branchPolicy.save",
+      await services.branchPolicy.saveSettings({
+        ...body,
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+      }),
+    );
+  }
+
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
   }
   if (request.pathname === "/api/settings/model-routing") {
+    return methodNotAllowed(["GET", "POST"]);
+  }
+  if (branchPolicyRoute !== null) {
     return methodNotAllowed(["GET", "POST"]);
   }
 
@@ -1338,6 +1390,22 @@ async function routeReadOnlyItotoriApiRequest(
     return ok(
       "settings.modelRouting.get",
       modelRoutingSettingsResponseBody(await services.modelRouting.loadSettings(projectId)),
+    );
+  }
+
+  const branchPolicyRoute = parseBranchPolicySettingsApiRoute(request.pathname);
+  if (request.method === "GET" && branchPolicyRoute !== null) {
+    await requireApiPermission(services, apiMutationPermissionGates.branchPolicyRead);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: branchPolicyRoute.projectId,
+      localeBranchId: branchPolicyRoute.localeBranchId,
+    });
+    return ok(
+      "settings.branchPolicy.get",
+      await services.branchPolicy.loadSettings({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+      }),
     );
   }
 
@@ -2495,6 +2563,23 @@ function parsePlayFlagApiRoute(pathname: string): {
   };
 }
 
+function parseBranchPolicySettingsApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/settings\/branch-policy\/?$/u.exec(
+      pathname,
+    );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function decodeApiPathSegment(raw: string, label: string): string {
   let decoded: string;
   try {
@@ -2984,6 +3069,14 @@ function ok(
 function ok(
   routeId: "settings.modelRouting.save",
   body: ApiModelRoutingSettingsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "settings.branchPolicy.get",
+  body: ApiBranchPolicySettingsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "settings.branchPolicy.save",
+  body: ApiBranchPolicySettingsResponse,
 ): ApiJsonResponse;
 function ok(
   routeId: "auth.ssoSettings.configure",

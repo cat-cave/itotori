@@ -366,6 +366,25 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiSaveModelRoutingSettingsRequest",
     responseSchema: "ApiModelRoutingSettingsResponse",
   },
+  "settings.branchPolicy.get": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/branch-policy",
+    operationId: "settingsBranchPolicyGet",
+    summary: "Load editable branch policy and glossary reference state for a locale branch.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiBranchPolicySettingsResponse",
+  },
+  "settings.branchPolicy.save": {
+    method: "POST",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/branch-policy",
+    operationId: "settingsBranchPolicySave",
+    summary: "Save editable branch policy for a locale branch and refresh its glossary reference.",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiSaveBranchPolicySettingsRequest",
+    responseSchema: "ApiBranchPolicySettingsResponse",
+  },
   "auth.ssoSettings.configure": {
     method: "POST",
     pathTemplate: "/api/settings/security/sso",

@@ -29,6 +29,7 @@ import { readyContextFixture } from "../src/reviewer/index.js";
 import { workspaceProjectBrowseFixture } from "../src/workspace/index.js";
 import {
   bridgeImportResponseFixture,
+  branchPolicySettingsFixture,
   bmkCockpitFixture,
   catalogOpportunitiesFixture,
   costDrilldownFixture,
@@ -83,6 +84,9 @@ const server = setupServer(
   ),
   http.get("*/api/settings/model-routing", () =>
     apiJson("settings.modelRouting.get", modelRoutingSettingsFixture),
+  ),
+  http.get("*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy", () =>
+    apiJson("settings.branchPolicy.get", branchPolicySettingsFixture),
   ),
   http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture)),
 );
@@ -387,7 +391,7 @@ describe("SPA shell — reviewer detail", () => {
 });
 
 describe("SPA shell — settings", () => {
-  it("routes privacy to SettingsScreen and model routing to ModelRoutingSettingsScreen", async () => {
+  it("routes privacy, model routing, and branch policy settings screens", async () => {
     render(<App location={{ pathname: "/settings/privacy", search: "" }} />);
 
     expect(await screen.findByRole("heading", { name: "Privacy posture" })).toBeInTheDocument();
@@ -414,6 +418,22 @@ describe("SPA shell — settings", () => {
     expect(within(pairsTable).getByText("anthropic/claude-3-5-sonnet")).toBeInTheDocument();
     const routesTable = screen.getByRole("table", { name: "Saved model routing routes" });
     expect(within(routesTable).getByText("draft_translation")).toBeInTheDocument();
+
+    cleanup();
+
+    render(<App location={{ pathname: "/settings/branch-policy", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Branch policy" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Branch policy" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Locale branch policy" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Ruby")).toHaveValue("Preserve ruby annotations on proper nouns.");
+    const referenceTable = screen.getByRole("table", { name: "Branch policy reference state" });
+    expect(within(referenceTable).getByText("branch-policy-reference-1")).toBeInTheDocument();
   });
 
   it("saves a model-routing task route through the typed settings API", async () => {
@@ -456,6 +476,239 @@ describe("SPA shell — settings", () => {
       promptTemplateVersion: "1.0.0",
     });
     expect(await screen.findByText("Saved draft_translation")).toBeInTheDocument();
+  });
+
+  it("saves branch policy through the typed project/branch settings API", async () => {
+    const posts: unknown[] = [];
+    server.use(
+      http.post(
+        "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
+        async ({ request }) => {
+          const body = await request.json();
+          posts.push(body);
+          return apiJson("settings.branchPolicy.save", {
+            ...branchPolicySettingsFixture,
+            latestVersion: {
+              ...branchPolicySettingsFixture.latestVersion!,
+              styleGuideVersionId: "style-guide-version-saved",
+              policy: (body as { policy: typeof branchPolicySettingsFixture.policy }).policy,
+            },
+            branchReference: {
+              ...branchPolicySettingsFixture.branchReference!,
+              styleGuideVersionId: "style-guide-version-saved",
+              updateReason: (body as { updateReason: string }).updateReason,
+            },
+            policy: (body as { policy: typeof branchPolicySettingsFixture.policy }).policy,
+          });
+        },
+      ),
+    );
+
+    render(<App location={{ pathname: "/settings/branch-policy", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Branch policy" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tone"), {
+      target: { value: "Keep narration grounded.\nKeep jokes dry." },
+    });
+    fireEvent.change(screen.getByLabelText("Ruby"), {
+      target: { value: "Preserve ruby annotations." },
+    });
+    fireEvent.change(screen.getByLabelText("Profanity"), {
+      target: { value: "Preserve plot-critical profanity." },
+    });
+    fireEvent.change(screen.getByLabelText("Update reason"), {
+      target: { value: "Tune branch voice" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save branch policy" }));
+
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      expectedPreviousVersionId: "style-guide-version-1",
+      updateReason: "Tune branch voice",
+      policy: {
+        schemaVersion: "style-guide-policy.v0",
+        sections: {
+          tone: [
+            { ruleId: "tone.1", guidance: "Keep narration grounded." },
+            { ruleId: "tone.2", guidance: "Keep jokes dry." },
+          ],
+          formatting: [{ ruleId: "ruby.1", guidance: "Preserve ruby annotations." }],
+          terminology: [{ ruleId: "profanity.1", guidance: "Preserve plot-critical profanity." }],
+        },
+      },
+    });
+    expect(await screen.findByText("Saved style-guide-version-saved")).toBeInTheDocument();
+  });
+
+  it("reloads branch policy editor state before saving after locale branch selection changes", async () => {
+    const branchBLocaleBranchId = "019ed065-0000-7000-8000-000000000110";
+    const branchBSettings = {
+      ...branchPolicySettingsFixture,
+      localeBranchId: branchBLocaleBranchId,
+      targetLocale: "fr-FR",
+      latestVersion: {
+        ...branchPolicySettingsFixture.latestVersion!,
+        styleGuideVersionId: "style-guide-version-branch-b",
+        policy: {
+          ...branchPolicySettingsFixture.policy,
+          sections: {
+            ...branchPolicySettingsFixture.policy.sections,
+            tone: [{ ruleId: "tone.1", guidance: "Use formal branch B voice." }],
+            formatting: [{ ruleId: "ruby.1", guidance: "Drop ruby annotations for branch B." }],
+          },
+        },
+      },
+      branchReference: {
+        ...branchPolicySettingsFixture.branchReference!,
+        referenceId: "branch-policy-reference-2",
+        styleGuideVersionId: "style-guide-version-branch-b",
+      },
+      policy: {
+        ...branchPolicySettingsFixture.policy,
+        sections: {
+          ...branchPolicySettingsFixture.policy.sections,
+          tone: [{ ruleId: "tone.1", guidance: "Use formal branch B voice." }],
+          formatting: [{ ruleId: "ruby.1", guidance: "Drop ruby annotations for branch B." }],
+        },
+      },
+    };
+    const statusWithTwoBranches = {
+      ...dashboardStatusFixture,
+      localeBranches: dashboardStatusFixture.localeBranches.map((branch) =>
+        branch.localeBranchId === branchBLocaleBranchId
+          ? { ...branch, currentStyleGuidePolicyVersionId: "style-guide-version-branch-b" }
+          : branch,
+      ),
+      selectedLocaleBranchId: "locale-1",
+    };
+    const posts: unknown[] = [];
+    server.use(
+      http.get("*/api/projects", () =>
+        apiJson("projects.list", { projects: [statusWithTwoBranches] }),
+      ),
+      http.get("*/api/projects/status", () => apiJson("projects.status", statusWithTwoBranches)),
+      http.get(
+        "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
+        ({ params }) =>
+          apiJson(
+            "settings.branchPolicy.get",
+            params.localeBranchId === branchBLocaleBranchId
+              ? branchBSettings
+              : branchPolicySettingsFixture,
+          ),
+      ),
+      http.post(
+        "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
+        async ({ request }) => {
+          const body = await request.json();
+          posts.push(body);
+          return apiJson("settings.branchPolicy.save", {
+            ...branchBSettings,
+            latestVersion: {
+              ...branchBSettings.latestVersion,
+              styleGuideVersionId: "style-guide-version-branch-b-saved",
+              policy: (body as { policy: typeof branchPolicySettingsFixture.policy }).policy,
+            },
+            branchReference: {
+              ...branchBSettings.branchReference,
+              styleGuideVersionId: "style-guide-version-branch-b-saved",
+              updateReason: (body as { updateReason: string }).updateReason,
+            },
+            policy: (body as { policy: typeof branchPolicySettingsFixture.policy }).policy,
+          });
+        },
+      ),
+    );
+
+    render(<App location={{ pathname: "/settings/branch-policy", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Branch policy" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Tone")).toHaveValue(
+      "Keep narration concise and emotionally direct.",
+    );
+    fireEvent.change(screen.getByLabelText("Tone"), {
+      target: { value: "Branch A unsaved draft must not cross branches." },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Project & branch" }));
+    const switcher = screen.getByRole("menu", { name: "Switch project and locale branch" });
+    const branchGroup = await within(switcher).findByRole("group", { name: "Branch" });
+    fireEvent.click(within(branchGroup).getByText("fr-FR"));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Tone")).toHaveValue("Use formal branch B voice."),
+    );
+    expect(screen.getByLabelText("Ruby")).toHaveValue("Drop ruby annotations for branch B.");
+    fireEvent.click(screen.getByRole("button", { name: "Save branch policy" }));
+
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({
+      projectId: "project-1",
+      localeBranchId: branchBLocaleBranchId,
+      expectedPreviousVersionId: "style-guide-version-branch-b",
+      policy: {
+        sections: {
+          tone: [{ ruleId: "tone.1", guidance: "Use formal branch B voice." }],
+          formatting: [{ ruleId: "ruby.1", guidance: "Drop ruby annotations for branch B." }],
+        },
+      },
+    });
+    expect(JSON.stringify(posts[0])).not.toContain("Branch A unsaved draft");
+  });
+
+  it("shows the latest editable draft when an older approved branch policy exists", async () => {
+    const settingsWithApproved = {
+      ...branchPolicySettingsFixture,
+      latestVersion: {
+        ...branchPolicySettingsFixture.latestVersion!,
+        styleGuideVersionId: "style-guide-version-latest-draft",
+        policy: {
+          ...branchPolicySettingsFixture.policy,
+          sections: {
+            ...branchPolicySettingsFixture.policy.sections,
+            tone: [{ ruleId: "tone.1", guidance: "Latest draft tone." }],
+          },
+        },
+      },
+      approvedVersion: {
+        ...branchPolicySettingsFixture.latestVersion!,
+        styleGuideVersionId: "style-guide-version-approved",
+        status: "approved",
+        approvedAt: "2026-07-08T01:00:00.000Z",
+        policy: {
+          ...branchPolicySettingsFixture.policy,
+          sections: {
+            ...branchPolicySettingsFixture.policy.sections,
+            tone: [{ ruleId: "tone.1", guidance: "Approved older tone." }],
+          },
+        },
+      },
+      policy: {
+        ...branchPolicySettingsFixture.policy,
+        sections: {
+          ...branchPolicySettingsFixture.policy.sections,
+          tone: [{ ruleId: "tone.1", guidance: "Latest draft tone." }],
+        },
+      },
+    };
+    server.use(
+      http.get(
+        "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
+        () => apiJson("settings.branchPolicy.get", settingsWithApproved),
+      ),
+    );
+
+    render(<App location={{ pathname: "/settings/branch-policy", search: "" }} />);
+
+    expect(await screen.findByLabelText("Tone")).toHaveValue("Latest draft tone.");
+    expect(screen.queryByDisplayValue("Approved older tone.")).not.toBeInTheDocument();
+    const referenceTable = screen.getByRole("table", { name: "Branch policy reference state" });
+    expect(
+      within(referenceTable).getByText("style-guide-version-latest-draft"),
+    ).toBeInTheDocument();
+    expect(within(referenceTable).getByText("style-guide-version-approved")).toBeInTheDocument();
   });
 });
 

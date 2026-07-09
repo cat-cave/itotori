@@ -1,0 +1,87 @@
+.branch-policy-settings {
+  display: grid;
+  gap: var(--ito-space-18);
+}
+
+.branch-policy-settings__body {
+  display: grid;
+  gap: var(--ito-space-18);
+}
+
+.branch-policy-settings__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.8fr);
+  gap: var(--ito-space-18);
+  align-items: start;
+}
+
+.branch-policy-settings__form {
+  display: grid;
+  gap: var(--ito-space-14);
+}
+
+.branch-policy-settings__field {
+  display: grid;
+  gap: var(--ito-space-6);
+}
+
+.branch-policy-settings__field span {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text-muted);
+  text-transform: uppercase;
+}
+
+.branch-policy-settings__field input,
+.branch-policy-settings__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-text);
+  font: inherit;
+  line-height: 1.45;
+  padding: var(--ito-space-8) var(--ito-space-10);
+}
+
+.branch-policy-settings__field textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.branch-policy-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-10);
+  align-items: center;
+}
+
+.branch-policy-settings__actions button {
+  min-height: 2.25rem;
+  border: 1px solid var(--ito-color-amber);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-amber);
+  color: var(--ito-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0 var(--ito-space-12);
+}
+
+.branch-policy-settings__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.branch-policy-settings__reference-note {
+  margin: var(--ito-space-10) 0 0;
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-small);
+}
+
+@media (max-width: 56rem) {
+  .branch-policy-settings__grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -190,6 +190,8 @@ export type ItotoriApiRouteId =
   | "runtimeEvidence.ingest"
   | "settings.modelRouting.get"
   | "settings.modelRouting.save"
+  | "settings.branchPolicy.get"
+  | "settings.branchPolicy.save"
   | "auth.ssoSettings.configure"
   | "auth.billing.seatUsage"
   | "auth.members.list"
@@ -387,6 +389,46 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "models",
     "promptPresets",
     "routes",
+  ],
+  ApiBranchPolicyRule: ["ruleId", "guidance"],
+  ApiBranchPolicySections: ["tone", "terminology", "honorifics", "formatting", "protectedSpans"],
+  ApiBranchPolicySourceRevisionReference: ["sourceRevisionId", "revisionKind", "value"],
+  ApiBranchPolicyVersion: [
+    "styleGuideVersionId",
+    "status",
+    "versionSequence",
+    "createdAt",
+    "updatedAt",
+    "approvedAt",
+    "policy",
+  ],
+  ApiBranchPolicyGlossaryReference: [
+    "referenceId",
+    "versionSequence",
+    "styleGuideVersionId",
+    "glossaryContentHash",
+    "glossaryTermCount",
+    "glossaryReviewItemCount",
+    "updateReason",
+    "createdAt",
+  ],
+  ApiBranchPolicySettingsResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "targetLocale",
+    "sourceRevision",
+    "latestVersion",
+    "approvedVersion",
+    "branchReference",
+    "policy",
+  ],
+  ApiSaveBranchPolicySettingsRequest: [
+    "projectId",
+    "localeBranchId",
+    "expectedPreviousVersionId",
+    "updateReason",
+    "policy",
   ],
   ApiSaveModelRoutingSettingsRequest: [
     "projectId",
@@ -898,6 +940,71 @@ export type ApiSaveModelRoutingSettingsRequest = {
   promptTemplateVersion: string;
 };
 
+export type ApiBranchPolicyRule = {
+  ruleId: string;
+  guidance: string;
+};
+
+export type ApiBranchPolicySections = {
+  tone: ApiBranchPolicyRule[];
+  terminology: ApiBranchPolicyRule[];
+  honorifics: ApiBranchPolicyRule[];
+  formatting: ApiBranchPolicyRule[];
+  protectedSpans: ApiBranchPolicyRule[];
+};
+
+export type ApiBranchPolicyPolicy = {
+  schemaVersion: "style-guide-policy.v0";
+  sections: ApiBranchPolicySections;
+};
+
+export type ApiBranchPolicySourceRevisionReference = {
+  sourceRevisionId: string;
+  revisionKind: string;
+  value: string;
+};
+
+export type ApiBranchPolicyVersion = {
+  styleGuideVersionId: string;
+  status: string;
+  versionSequence: number;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  policy: ApiBranchPolicyPolicy;
+};
+
+export type ApiBranchPolicyGlossaryReference = {
+  referenceId: string;
+  versionSequence: number;
+  styleGuideVersionId: string | null;
+  glossaryContentHash: string;
+  glossaryTermCount: number;
+  glossaryReviewItemCount: number;
+  updateReason: string;
+  createdAt: string;
+};
+
+export type ApiBranchPolicySettingsResponse = {
+  schemaVersion: "itotori.settings.branch-policy.v0";
+  projectId: string;
+  localeBranchId: string;
+  targetLocale: string;
+  sourceRevision: ApiBranchPolicySourceRevisionReference;
+  latestVersion: ApiBranchPolicyVersion | null;
+  approvedVersion: ApiBranchPolicyVersion | null;
+  branchReference: ApiBranchPolicyGlossaryReference | null;
+  policy: ApiBranchPolicyPolicy;
+};
+
+export type ApiSaveBranchPolicySettingsRequest = {
+  projectId: string;
+  localeBranchId: string;
+  expectedPreviousVersionId: string | null;
+  updateReason: string;
+  policy: ApiBranchPolicyPolicy;
+};
+
 export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsRequest & {
   schemaVersion: "itotori.auth.sso-settings.v0";
   updatedAt: string;
@@ -1306,6 +1413,7 @@ export type ItotoriApiResponseBody =
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
   | ApiModelRoutingSettingsResponse
+  | ApiBranchPolicySettingsResponse
   | ApiConfigureAuthSsoSettingsResponse
   | ApiMemberInvitationResponse
   | ApiMemberResponse
@@ -1475,6 +1583,32 @@ export function parseSaveModelRoutingSettingsRequest(
       fallbackModelIds: [...fallbackModelIds],
       promptPresetId: request.promptPresetId,
       promptTemplateVersion: request.promptTemplateVersion,
+    };
+  });
+}
+
+export function parseSaveBranchPolicySettingsRequest(
+  body: unknown,
+): ApiSaveBranchPolicySettingsRequest {
+  return parseRequest("ApiSaveBranchPolicySettingsRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiSaveBranchPolicySettingsRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
+    );
+    assertString(request.projectId, "ApiSaveBranchPolicySettingsRequest.projectId");
+    assertString(request.localeBranchId, "ApiSaveBranchPolicySettingsRequest.localeBranchId");
+    assertNullableString(
+      request.expectedPreviousVersionId,
+      "ApiSaveBranchPolicySettingsRequest.expectedPreviousVersionId",
+    );
+    assertString(request.updateReason, "ApiSaveBranchPolicySettingsRequest.updateReason");
+    return {
+      projectId: request.projectId,
+      localeBranchId: request.localeBranchId,
+      expectedPreviousVersionId: request.expectedPreviousVersionId,
+      updateReason: request.updateReason,
+      policy: parseBranchPolicyPolicy(request.policy, "ApiSaveBranchPolicySettingsRequest.policy"),
     };
   });
 }
@@ -1833,6 +1967,10 @@ export function assertItotoriApiResponse(
     case "settings.modelRouting.get":
     case "settings.modelRouting.save":
       assertModelRoutingSettingsResponse(value);
+      return;
+    case "settings.branchPolicy.get":
+    case "settings.branchPolicy.save":
+      assertBranchPolicySettingsResponse(value);
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
@@ -5912,6 +6050,122 @@ function assertModelRoutingSettingsResponse(
   ).entries()) {
     assertModelRoutingRoute(route, `ApiModelRoutingSettingsResponse.routes[${index}]`);
   }
+}
+
+function assertBranchPolicySettingsResponse(
+  value: unknown,
+): asserts value is ApiBranchPolicySettingsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiBranchPolicySettingsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.settings.branch-policy.v0",
+    "ApiBranchPolicySettingsResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiBranchPolicySettingsResponse.projectId");
+  assertString(response.localeBranchId, "ApiBranchPolicySettingsResponse.localeBranchId");
+  assertString(response.targetLocale, "ApiBranchPolicySettingsResponse.targetLocale");
+  assertBranchPolicySourceRevision(
+    response.sourceRevision,
+    "ApiBranchPolicySettingsResponse.sourceRevision",
+  );
+  assertNullableBranchPolicyVersion(
+    response.latestVersion,
+    "ApiBranchPolicySettingsResponse.latestVersion",
+  );
+  assertNullableBranchPolicyVersion(
+    response.approvedVersion,
+    "ApiBranchPolicySettingsResponse.approvedVersion",
+  );
+  assertNullableBranchPolicyReference(
+    response.branchReference,
+    "ApiBranchPolicySettingsResponse.branchReference",
+  );
+  parseBranchPolicyPolicy(response.policy, "ApiBranchPolicySettingsResponse.policy");
+}
+
+function assertBranchPolicySourceRevision(value: unknown, label: string): void {
+  const sourceRevision = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
+  );
+  assertString(sourceRevision.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertString(sourceRevision.revisionKind, `${label}.revisionKind`);
+  assertString(sourceRevision.value, `${label}.value`);
+}
+
+function assertNullableBranchPolicyVersion(value: unknown, label: string): void {
+  if (value === null) {
+    return;
+  }
+  const version = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyVersion);
+  assertString(version.styleGuideVersionId, `${label}.styleGuideVersionId`);
+  assertString(version.status, `${label}.status`);
+  assertNonNegativeInteger(version.versionSequence, `${label}.versionSequence`);
+  assertDateLike(version.createdAt, `${label}.createdAt`);
+  assertDateLike(version.updatedAt, `${label}.updatedAt`);
+  assertNullableString(version.approvedAt, `${label}.approvedAt`);
+  if (version.approvedAt !== null) {
+    assertDateLike(version.approvedAt, `${label}.approvedAt`);
+  }
+  parseBranchPolicyPolicy(version.policy, `${label}.policy`);
+}
+
+function assertNullableBranchPolicyReference(value: unknown, label: string): void {
+  if (value === null) {
+    return;
+  }
+  const reference = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
+  );
+  assertString(reference.referenceId, `${label}.referenceId`);
+  assertNonNegativeInteger(reference.versionSequence, `${label}.versionSequence`);
+  assertNullableString(reference.styleGuideVersionId, `${label}.styleGuideVersionId`);
+  assertString(reference.glossaryContentHash, `${label}.glossaryContentHash`);
+  assertNonNegativeInteger(reference.glossaryTermCount, `${label}.glossaryTermCount`);
+  assertNonNegativeInteger(reference.glossaryReviewItemCount, `${label}.glossaryReviewItemCount`);
+  assertString(reference.updateReason, `${label}.updateReason`);
+  assertDateLike(reference.createdAt, `${label}.createdAt`);
+}
+
+function parseBranchPolicyPolicy(value: unknown, label: string): ApiBranchPolicyPolicy {
+  const policy = asStrictRecord(value, label, ["schemaVersion", "sections"]);
+  assertLiteral(policy.schemaVersion, "style-guide-policy.v0", `${label}.schemaVersion`);
+  return {
+    schemaVersion: "style-guide-policy.v0",
+    sections: parseBranchPolicySections(policy.sections, `${label}.sections`),
+  };
+}
+
+function parseBranchPolicySections(value: unknown, label: string): ApiBranchPolicySections {
+  const sections = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySections,
+  );
+  return {
+    tone: parseBranchPolicyRules(sections.tone, `${label}.tone`),
+    terminology: parseBranchPolicyRules(sections.terminology, `${label}.terminology`),
+    honorifics: parseBranchPolicyRules(sections.honorifics, `${label}.honorifics`),
+    formatting: parseBranchPolicyRules(sections.formatting, `${label}.formatting`),
+    protectedSpans: parseBranchPolicyRules(sections.protectedSpans, `${label}.protectedSpans`),
+  };
+}
+
+function parseBranchPolicyRules(value: unknown, label: string): ApiBranchPolicyRule[] {
+  return asArray(value, label).map((entry, index) => {
+    const ruleLabel = `${label}[${index}]`;
+    const rule = asStrictRecord(entry, ruleLabel, ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyRule);
+    assertString(rule.ruleId, `${ruleLabel}.ruleId`);
+    assertString(rule.guidance, `${ruleLabel}.guidance`);
+    return { ruleId: rule.ruleId, guidance: rule.guidance };
+  });
 }
 
 function assertModelRoutingProvider(

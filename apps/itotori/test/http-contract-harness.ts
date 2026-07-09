@@ -52,6 +52,7 @@ import {
   bmkCockpitFixture,
   bmkCockpitHistoryFixture,
   benchmarkReportsFixture,
+  branchPolicySettingsFixture,
   catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
@@ -508,6 +509,14 @@ const fixtureServices = {
       })),
     })),
     saveRoute: vi.fn(unused),
+  },
+  branchPolicy: {
+    loadSettings: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({
+      ...branchPolicySettingsFixture,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+    })),
+    saveSettings: vi.fn(unused),
   },
   playRouteMap: {
     loadRouteMap: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({

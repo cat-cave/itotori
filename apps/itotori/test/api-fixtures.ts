@@ -17,6 +17,7 @@ import type {
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   ApiAuthIdentityResponse,
+  ApiBranchPolicySettingsResponse,
   ApiDraftBranchRequest,
   ApiDraftBranchResponse,
   ApiErrorResponse,
@@ -297,6 +298,65 @@ export const modelRoutingSettingsFixture: ApiModelRoutingSettingsResponse = {
       updatedAt: "2026-07-08T00:00:00.000Z",
     },
   ],
+};
+
+export const branchPolicySettingsFixture: ApiBranchPolicySettingsResponse = {
+  schemaVersion: "itotori.settings.branch-policy.v0",
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  targetLocale: "en-US",
+  sourceRevision: {
+    sourceRevisionId: "source-revision-1",
+    revisionKind: "bridge",
+    value: "fixture-revision",
+  },
+  latestVersion: {
+    styleGuideVersionId: "style-guide-version-1",
+    status: "draft",
+    versionSequence: 1,
+    createdAt: "2026-07-08T00:00:00.000Z",
+    updatedAt: "2026-07-08T00:00:00.000Z",
+    approvedAt: null,
+    policy: {
+      schemaVersion: "style-guide-policy.v0",
+      sections: {
+        tone: [{ ruleId: "tone.1", guidance: "Keep narration concise and emotionally direct." }],
+        terminology: [
+          { ruleId: "profanity.1", guidance: "Preserve strong language when plot-critical." },
+        ],
+        honorifics: [{ ruleId: "honorifics.1", guidance: "Retain honorifics for named speakers." }],
+        formatting: [{ ruleId: "ruby.1", guidance: "Preserve ruby annotations on proper nouns." }],
+        protectedSpans: [
+          { ruleId: "protected_spans.1", guidance: "Do not edit variables or engine tags." },
+        ],
+      },
+    },
+  },
+  approvedVersion: null,
+  branchReference: {
+    referenceId: "branch-policy-reference-1",
+    versionSequence: 1,
+    styleGuideVersionId: "style-guide-version-1",
+    glossaryContentHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    glossaryTermCount: 2,
+    glossaryReviewItemCount: 1,
+    updateReason: "Fixture branch policy",
+    createdAt: "2026-07-08T00:00:00.000Z",
+  },
+  policy: {
+    schemaVersion: "style-guide-policy.v0",
+    sections: {
+      tone: [{ ruleId: "tone.1", guidance: "Keep narration concise and emotionally direct." }],
+      terminology: [
+        { ruleId: "profanity.1", guidance: "Preserve strong language when plot-critical." },
+      ],
+      honorifics: [{ ruleId: "honorifics.1", guidance: "Retain honorifics for named speakers." }],
+      formatting: [{ ruleId: "ruby.1", guidance: "Preserve ruby annotations on proper nouns." }],
+      protectedSpans: [
+        { ruleId: "protected_spans.1", guidance: "Do not edit variables or engine tags." },
+      ],
+    },
+  },
 };
 
 // ITOTORI-053 — cost drilldown fixture. Carries all three DISTINCT cost

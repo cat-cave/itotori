@@ -62,6 +62,10 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "projects.bmkCockpitHistory", init: { params: { projectId: "project-1" } } },
   { routeId: "jobs.runTable", init: { query: { projectId: "project-1" } } },
   { routeId: "settings.modelRouting.get", init: { query: { projectId: "project-1" } } },
+  {
+    routeId: "settings.branchPolicy.get",
+    init: { params: { projectId: "project-1", localeBranchId: "locale-1" } },
+  },
   { routeId: "runtime.status" },
   { routeId: "catalog.conflicts" },
   { routeId: "catalog.completeness" },

@@ -65,6 +65,7 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "members", label: "Members", href: "/members" },
   { id: "settings-privacy", label: "Privacy", href: "/settings/privacy" },
   { id: "settings-model-routing", label: "Model routing", href: "/settings/model-routing" },
+  { id: "settings-branch-policy", label: "Branch policy", href: "/settings/branch-policy" },
 ];
 
 /** The nav pill id active for a pathname, or "" when no pill matches. */
@@ -103,6 +104,9 @@ export function activeShellNavId(pathname: string): string {
   }
   if (pathname === "/settings/model-routing") {
     return "settings-model-routing";
+  }
+  if (pathname === "/settings/branch-policy") {
+    return "settings-branch-policy";
   }
   // fnd-addressable-routing — run / finding deep-links have no nav pill yet
   // (the runtime surface node owns those); leave the chrome unselected rather

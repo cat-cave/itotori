@@ -6,6 +6,7 @@ import {
   ItotoriAuthSessionService,
   ItotoriAuthSsoSettingsRepository,
   ItotoriBenchmarkRunRepository,
+  ItotoriBranchReferenceRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriEventQueueRepository,
   ItotoriFeedbackRepository,
@@ -25,6 +26,7 @@ import {
   ItotoriSceneCoverageRepository,
   ItotoriSceneSummaryRepository,
   ItotoriStyleGuideFixtureFlowService,
+  ItotoriStyleGuideService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
   ItotoriWikiReadmodelRepository,
@@ -75,16 +77,24 @@ import {
   type ConfigureAuthSsoSettingsInput,
   type AuthSsoSettingsRecord,
   type ActorIdentityRecord,
+  type BranchPolicyGlossaryReferenceRecord,
   type MemberInvitationRecord,
   type MemberRecord,
   type PermissionSetRecord,
+  type StyleGuideVersionRecord,
 } from "@itotori/db";
 import type {
   ApiAcceptMemberInvitationRequest,
+  ApiBranchPolicyGlossaryReference,
+  ApiBranchPolicyPolicy,
+  ApiBranchPolicyRule,
+  ApiBranchPolicySettingsResponse,
+  ApiBranchPolicyVersion,
   ApiInviteMemberRequest,
   ApiPrincipalPermissionSetGrantRequest,
   ApiRemoveMemberRequest,
   ApiRevokeAuthSessionRequest,
+  ApiSaveBranchPolicySettingsRequest,
 } from "../api-schema.js";
 import {
   EngineCapabilityReportService,
@@ -255,6 +265,15 @@ export type ItotoriApplicationServices = {
   modelRouting: {
     loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
     saveRoute(input: SaveModelRoutingSettingsInput): Promise<ModelRoutingSettingsRecord>;
+  };
+  branchPolicy: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiBranchPolicySettingsResponse>;
+    saveSettings(
+      input: ApiSaveBranchPolicySettingsRequest,
+    ): Promise<ApiBranchPolicySettingsResponse>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<MemberRecord[]>;
@@ -451,6 +470,140 @@ function extractRulesFromPolicy(policy: Record<string, unknown>): {
   return out;
 }
 
+async function loadBranchPolicySettings(input: {
+  actor: AuthorizationActor;
+  styleGuideRepository: ItotoriStyleGuideRepository;
+  branchReferenceRepository: ItotoriBranchReferenceRepository;
+  projectId: string;
+  localeBranchId: string;
+}): Promise<ApiBranchPolicySettingsResponse> {
+  const context = await input.styleGuideRepository.getLocaleBranchContext(
+    input.projectId,
+    input.localeBranchId,
+  );
+  if (context === null) {
+    throw new Error(
+      `locale branch ${input.localeBranchId} does not exist for project ${input.projectId}`,
+    );
+  }
+  const [latestVersion, approvedVersion, branchReference] = await Promise.all([
+    input.styleGuideRepository.getLatestVersionByLocaleBranchId(input.localeBranchId),
+    input.styleGuideRepository.getApprovedVersionByLocaleBranchId(input.localeBranchId),
+    input.branchReferenceRepository.resolveBranchPolicyGlossaryReference(input.actor, {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+    }),
+  ]);
+  const activeVersion = latestVersion ?? approvedVersion;
+  return {
+    schemaVersion: "itotori.settings.branch-policy.v0",
+    projectId: context.projectId,
+    localeBranchId: context.localeBranchId,
+    targetLocale: context.targetLocale,
+    sourceRevision: context.sourceRevisionReference,
+    latestVersion: branchPolicyVersionBody(latestVersion),
+    approvedVersion: branchPolicyVersionBody(approvedVersion),
+    branchReference: branchPolicyReferenceBody(branchReference),
+    policy:
+      activeVersion === null
+        ? emptyBranchPolicy()
+        : branchPolicyPolicyBody(activeVersion.policy, activeVersion.styleGuideVersionId),
+  };
+}
+
+function branchPolicyVersionBody(
+  version: StyleGuideVersionRecord | null,
+): ApiBranchPolicyVersion | null {
+  if (version === null) {
+    return null;
+  }
+  return {
+    styleGuideVersionId: version.styleGuideVersionId,
+    status: version.status,
+    versionSequence: version.versionSequence,
+    createdAt: version.createdAt.toISOString(),
+    updatedAt: version.updatedAt.toISOString(),
+    approvedAt: version.approvedAt?.toISOString() ?? null,
+    policy: branchPolicyPolicyBody(version.policy, version.styleGuideVersionId),
+  };
+}
+
+function branchPolicyReferenceBody(
+  reference: BranchPolicyGlossaryReferenceRecord | null,
+): ApiBranchPolicyGlossaryReference | null {
+  if (reference === null) {
+    return null;
+  }
+  return {
+    referenceId: reference.referenceId,
+    versionSequence: reference.versionSequence,
+    styleGuideVersionId: reference.styleGuideVersionId,
+    glossaryContentHash: reference.glossaryContentHash,
+    glossaryTermCount: reference.glossaryTermRefs.length,
+    glossaryReviewItemCount: reference.glossaryReviewItemRefs.length,
+    updateReason: reference.updateReason,
+    createdAt: reference.createdAt.toISOString(),
+  };
+}
+
+function branchPolicyPolicyBody(
+  policy: Record<string, unknown>,
+  fallbackRulePrefix: string,
+): ApiBranchPolicyPolicy {
+  const sections = policy.sections;
+  if (sections === null || typeof sections !== "object" || Array.isArray(sections)) {
+    return emptyBranchPolicy();
+  }
+  const record = sections as Record<string, unknown>;
+  return {
+    schemaVersion: "style-guide-policy.v0",
+    sections: {
+      tone: branchPolicyRules(record.tone, `${fallbackRulePrefix}:tone`),
+      terminology: branchPolicyRules(record.terminology, `${fallbackRulePrefix}:terminology`),
+      honorifics: branchPolicyRules(record.honorifics, `${fallbackRulePrefix}:honorifics`),
+      formatting: branchPolicyRules(record.formatting, `${fallbackRulePrefix}:formatting`),
+      protectedSpans: branchPolicyRules(
+        record.protectedSpans,
+        `${fallbackRulePrefix}:protectedSpans`,
+      ),
+    },
+  };
+}
+
+function branchPolicyRules(value: unknown, fallbackRulePrefix: string): ApiBranchPolicyRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry, index) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    const guidance = typeof record.guidance === "string" ? record.guidance.trim() : "";
+    if (guidance.length === 0) {
+      return [];
+    }
+    const ruleId =
+      typeof record.ruleId === "string" && record.ruleId.trim().length > 0
+        ? record.ruleId.trim()
+        : `${fallbackRulePrefix}:${index + 1}`;
+    return [{ ruleId, guidance }];
+  });
+}
+
+function emptyBranchPolicy(): ApiBranchPolicyPolicy {
+  return {
+    schemaVersion: "style-guide-policy.v0",
+    sections: {
+      tone: [],
+      terminology: [],
+      honorifics: [],
+      formatting: [],
+      protectedSpans: [],
+    },
+  };
+}
+
 export async function withDatabaseItotoriServices<T>(
   options: DatabaseServiceOptions,
   callback: (services: ItotoriApplicationServices) => Promise<T>,
@@ -474,6 +627,8 @@ export async function withDatabaseItotoriServices<T>(
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
+    const styleGuideService = new ItotoriStyleGuideService(styleGuideRepository);
+    const branchReferenceRepository = new ItotoriBranchReferenceRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
     const wikiReadmodelRepository = new ItotoriWikiReadmodelRepository(context.db);
     const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
@@ -753,6 +908,44 @@ export async function withDatabaseItotoriServices<T>(
         loadSettings: (projectId) =>
           modelRoutingSettingsRepository.loadSettings(localUserActor, projectId),
         saveRoute: (input) => modelRoutingSettingsRepository.saveRoute(localUserActor, input),
+      },
+      branchPolicy: {
+        loadSettings: (input) =>
+          loadBranchPolicySettings({
+            actor: localUserActor,
+            styleGuideRepository,
+            branchReferenceRepository,
+            ...input,
+          }),
+        saveSettings: async (input) => {
+          const submitted = await styleGuideService.submitVersion(localUserActor, {
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            expectedPreviousVersionId: input.expectedPreviousVersionId,
+            policy: input.policy,
+          });
+          if (submitted.status !== "created" || submitted.version === undefined) {
+            throw new Error(
+              `branch policy save rejected: ${submitted.diagnostics
+                .map((entry) => entry.message)
+                .join("; ")}`,
+            );
+          }
+          await branchReferenceRepository.updateBranchPolicyGlossaryReference(localUserActor, {
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            styleGuideVersionId: submitted.version.styleGuideVersionId,
+            updateReason: input.updateReason,
+            metadata: { source: "settings.branch-policy" },
+          });
+          return loadBranchPolicySettings({
+            actor: localUserActor,
+            styleGuideRepository,
+            branchReferenceRepository,
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+          });
+        },
       },
       authMembers: {
         listMembers: (accountId) =>

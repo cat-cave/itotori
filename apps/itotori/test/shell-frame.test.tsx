@@ -131,7 +131,7 @@ describe("Shell frame — nav", () => {
     expect(navigate).toHaveBeenCalledWith("/reviewer-queue");
   });
 
-  it("exposes both settings destinations from the shell nav", () => {
+  it("exposes settings destinations from the shell nav", () => {
     const navigate = vi.fn();
     mountFrame({ pathname: "/settings/privacy", search: "" }, navigate);
     expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute("aria-selected", "true");
@@ -146,6 +146,8 @@ describe("Shell frame — nav", () => {
     );
     fireEvent.click(screen.getByRole("tab", { name: "Privacy" }));
     expect(navigate).toHaveBeenCalledWith("/settings/privacy");
+    fireEvent.click(screen.getByRole("tab", { name: "Branch policy" }));
+    expect(navigate).toHaveBeenCalledWith("/settings/branch-policy");
   });
 });
 
@@ -304,6 +306,7 @@ describe("Shell frame — pure helpers", () => {
     expect(activeShellNavId("/settings")).toBe("settings-privacy");
     expect(activeShellNavId("/settings/privacy")).toBe("settings-privacy");
     expect(activeShellNavId("/settings/model-routing")).toBe("settings-model-routing");
+    expect(activeShellNavId("/settings/branch-policy")).toBe("settings-branch-policy");
     // A legacy / unknown route matches no pill.
     expect(activeShellNavId("/asset-decisions")).toBe("");
   });

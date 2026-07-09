@@ -59,6 +59,7 @@ import {
   assertRedactedRuntimeDashboardStatus,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiAcceptMemberInvitationRequest,
+  type ApiSaveBranchPolicySettingsRequest,
   type ApiInviteMemberRequest,
   type ApiSaveModelRoutingSettingsRequest,
   type ApiRemoveMemberRequest,
@@ -90,6 +91,7 @@ import {
   benchmarkReportFixture,
   benchmarkReportsFixture,
   bridgeFixture,
+  branchPolicySettingsFixture,
   catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
@@ -153,6 +155,7 @@ type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
   | { surface: "authSsoSettings"; method: "configureSettings" }
   | { surface: "modelRouting"; method: "loadSettings" | "saveRoute" }
+  | { surface: "branchPolicy"; method: "loadSettings" | "saveSettings" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | {
@@ -189,6 +192,7 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/workspace/corrections",
   "POST /api/settings/security/sso",
   "POST /api/settings/model-routing",
+  "POST /api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
   "POST /api/auth/members/invitations",
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
@@ -228,6 +232,23 @@ const saveModelRoutingRequestFixture = {
   promptPresetId: "itotori-draft-default-v1",
   promptTemplateVersion: "1.0.0",
 } satisfies ApiSaveModelRoutingSettingsRequest;
+
+const saveBranchPolicyRequestFixture = {
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  expectedPreviousVersionId: "style-guide-version-1",
+  updateReason: "API fixture branch policy update",
+  policy: {
+    schemaVersion: "style-guide-policy.v0",
+    sections: {
+      tone: [{ ruleId: "tone.1", guidance: "Keep narration grounded." }],
+      terminology: [{ ruleId: "profanity.1", guidance: "Preserve plot-critical profanity." }],
+      honorifics: [{ ruleId: "honorifics.1", guidance: "Keep honorifics for named speakers." }],
+      formatting: [{ ruleId: "ruby.1", guidance: "Preserve ruby annotations." }],
+      protectedSpans: [{ ruleId: "protected_spans.1", guidance: "Do not edit engine variables." }],
+    },
+  },
+} satisfies ApiSaveBranchPolicySettingsRequest;
 
 const inviteMemberRequestFixture = {
   accountId: "account-local",
@@ -324,6 +345,22 @@ const apiMutationPermissionMatrix = [
     "modelRoutingSave",
     post("/api/settings/model-routing", saveModelRoutingRequestFixture),
     { surface: "modelRouting", method: "saveRoute" },
+  ),
+  apiGateForService(
+    "branchPolicyRead",
+    {
+      method: "GET",
+      pathname: "/api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+    },
+    { surface: "branchPolicy", method: "loadSettings" },
+  ),
+  apiGateForService(
+    "branchPolicySave",
+    post(
+      "/api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+      saveBranchPolicyRequestFixture,
+    ),
+    { surface: "branchPolicy", method: "saveSettings" },
   ),
   apiGateForService(
     "membersList",
@@ -3019,6 +3056,57 @@ describe("Itotori API handlers", () => {
     expect(services.modelRouting.saveRoute).toHaveBeenCalledWith(saveModelRoutingRequestFixture);
   });
 
+  it("loads and saves branch policy through the project/branch settings route", async () => {
+    const services = serviceFixture();
+
+    const loaded = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+      },
+      services,
+    );
+    const saved = await handleItotoriApiRequest(
+      post(
+        "/api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+        saveBranchPolicyRequestFixture,
+      ),
+      services,
+    );
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.body).toMatchObject({
+      schemaVersion: "itotori.settings.branch-policy.v0",
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      policy: {
+        sections: {
+          tone: [{ guidance: "Keep narration concise and emotionally direct." }],
+          honorifics: [{ guidance: "Retain honorifics for named speakers." }],
+          protectedSpans: [{ guidance: "Do not edit variables or engine tags." }],
+          formatting: [{ guidance: "Preserve ruby annotations on proper nouns." }],
+          terminology: [{ guidance: "Preserve strong language when plot-critical." }],
+        },
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.body).toMatchObject({
+      schemaVersion: "itotori.settings.branch-policy.v0",
+      latestVersion: { styleGuideVersionId: "style-guide-version-api-saved" },
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.catalogRead,
+    );
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.branchPolicy.loadSettings).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+    });
+    expect(services.branchPolicy.saveSettings).toHaveBeenCalledWith(saveBranchPolicyRequestFixture);
+  });
+
   it("routes member invite, billing seat usage, accept, list, and remove through typed auth handlers", async () => {
     const services = serviceFixture();
 
@@ -4235,6 +4323,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "modelRouting") {
     return services.modelRouting[service.method];
   }
+  if (service.surface === "branchPolicy") {
+    return services.branchPolicy[service.method];
+  }
   if (service.surface === "authPermissions") {
     return services.authPermissions[service.method];
   }
@@ -4838,6 +4929,29 @@ function serviceFixture(): ItotoriApiServices {
             updatedAt: new Date("2026-07-08T00:00:00.000Z"),
           },
         ],
+      })),
+    },
+    branchPolicy: {
+      loadSettings: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({
+        ...branchPolicySettingsFixture,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+      })),
+      saveSettings: vi.fn(async (input: ApiSaveBranchPolicySettingsRequest) => ({
+        ...branchPolicySettingsFixture,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        latestVersion: {
+          ...branchPolicySettingsFixture.latestVersion!,
+          styleGuideVersionId: "style-guide-version-api-saved",
+          policy: input.policy,
+        },
+        branchReference: {
+          ...branchPolicySettingsFixture.branchReference!,
+          styleGuideVersionId: "style-guide-version-api-saved",
+          updateReason: input.updateReason,
+        },
+        policy: input.policy,
       })),
     },
     authMembers: {
