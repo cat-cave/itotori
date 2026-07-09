@@ -25,7 +25,11 @@ import {
   permissionValues,
   type AuthorizationActor,
 } from "../src/authorization.js";
-import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
+import {
+  ItotoriPrincipalRepository,
+  listAccountPermissionSets,
+  loadPermissionSetAccountId,
+} from "../src/repositories/principal-repository.js";
 import {
   authAccountMemberships,
   authAuditEvents,
@@ -117,6 +121,17 @@ describe("ItotoriPrincipalRepository", () => {
         permissions: [permissionValues.draftWrite, permissionValues.catalogRead],
       });
       expect(set.permissions).toEqual([permissionValues.draftWrite, permissionValues.catalogRead]);
+      await expect(
+        listAccountPermissionSets(context.db, localActor, "account-crux"),
+      ).resolves.toEqual([
+        {
+          ...set,
+          permissions: [permissionValues.catalogRead, permissionValues.draftWrite],
+        },
+      ]);
+      await expect(
+        loadPermissionSetAccountId(context.db, localActor, "permission-set-editor"),
+      ).resolves.toBe("account-crux");
 
       // Grant the set (role assignment) AND a direct override.
       await repo.grantPermissionSet(localActor, {

@@ -258,6 +258,7 @@ export async function listAccountPermissionSets(
   actor: AuthorizationActor,
   accountId: string,
 ): Promise<PermissionSetRecord[]> {
+  // @repository-permission-gate ItotoriPrincipalRepositoryExports.listAccountPermissionSets authPermissionsManage
   await requirePermission(db, actor, permissionValues.authPermissionsManage);
   const sets = await db
     .select({
@@ -294,6 +295,7 @@ export async function loadPermissionSetAccountId(
   actor: AuthorizationActor,
   permissionSetId: string,
 ): Promise<string> {
+  // @repository-permission-gate ItotoriPrincipalRepositoryExports.loadPermissionSetAccountId authPermissionsManage
   await requirePermission(db, actor, permissionValues.authPermissionsManage);
   const rows = await db
     .select({ accountId: authPermissionSets.accountId })

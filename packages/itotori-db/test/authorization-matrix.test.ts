@@ -30,6 +30,8 @@ import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-r
 import {
   type ItotoriPrincipalRepositoryPort,
   ItotoriPrincipalRepository,
+  listAccountPermissionSets,
+  loadPermissionSetAccountId,
 } from "../src/repositories/principal-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
@@ -1143,6 +1145,18 @@ const repositoryPermissionGateMatrix = [
     "authPermissionsManage",
     "principal-repository.test.ts resolve principal permissions coverage",
     (repo) => repo.resolvePrincipalPermissions(deniedActor, "principal-x"),
+  ),
+  principalExportGate(
+    "listAccountPermissionSets",
+    "authPermissionsManage",
+    "principal-repository.test.ts permission set helper coverage",
+    (db) => listAccountPermissionSets(db, deniedActor, "account-denied"),
+  ),
+  principalExportGate(
+    "loadPermissionSetAccountId",
+    "authPermissionsManage",
+    "principal-repository.test.ts permission set helper coverage",
+    (db) => loadPermissionSetAccountId(db, deniedActor, "permission-set-denied"),
   ),
   authSsoSettingsGate(
     "configureSettings",
@@ -2320,6 +2334,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepositoryExports.listAccountPermissionSets",
+          "requiredPermission": "auth.permissions.manage",
+          "successFixture": "principal-repository.test.ts permission set helper coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriPrincipalRepositoryExports.loadPermissionSetAccountId",
+          "requiredPermission": "auth.permissions.manage",
+          "successFixture": "principal-repository.test.ts permission set helper coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuthSsoSettingsRepository.configureSettings",
           "requiredPermission": "auth.sso.manage",
           "successFixture": "auth-sso-settings-repository.test.ts configure settings coverage",
@@ -3038,6 +3064,22 @@ function principalGate(
   });
 }
 
+function principalExportGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (db: ItotoriDatabase) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriPrincipalRepositoryExports",
+    sourceFile: "principal-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: run,
+  });
+}
+
 function authSsoSettingsGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3252,6 +3294,23 @@ function permissionKeyFromRepositoryCall(
 }
 
 function repositoryGateAnnotation(
+  source: string,
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+): RepositoryGateAnnotation | undefined {
+  const candidateNodes = [node, node.parent, node.parent?.parent].filter(
+    (candidate): candidate is ts.Node => candidate !== undefined,
+  );
+  for (const candidate of candidateNodes) {
+    const annotation = repositoryGateAnnotationOnNode(source, sourceFile, candidate);
+    if (annotation !== undefined) {
+      return annotation;
+    }
+  }
+  return undefined;
+}
+
+function repositoryGateAnnotationOnNode(
   source: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
