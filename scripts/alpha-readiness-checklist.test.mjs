@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -24,6 +26,86 @@ import {
 
 const matrix = JSON.parse(readFileSync(resolve(repoRoot, CAPABILITY_MATRIX_PATH), "utf8"));
 const docText = readFileSync(resolve(repoRoot, READINESS_DOC_PATH), "utf8");
+const CAPABILITY_MARKER = "ALPHA-READINESS-CAPABILITY-CLAIMS";
+const CAPABILITY_START = `<!-- ${CAPABILITY_MARKER}:START -->`;
+const CAPABILITY_END = `<!-- ${CAPABILITY_MARKER}:END -->`;
+
+function replaceCapabilityBlock(readinessDocText, replacementBlock) {
+  const startIdx = readinessDocText.indexOf(CAPABILITY_START);
+  const endIdx = readinessDocText.indexOf(CAPABILITY_END);
+  assert.notEqual(startIdx, -1, "readiness doc should contain capability-claim start marker");
+  assert.notEqual(endIdx, -1, "readiness doc should contain capability-claim end marker");
+  assert.ok(endIdx > startIdx, "readiness doc capability-claim markers should be ordered");
+  return [
+    readinessDocText.slice(0, startIdx),
+    replacementBlock,
+    readinessDocText.slice(endIdx + CAPABILITY_END.length),
+  ].join("");
+}
+
+function copyRepoFile(root, relPath) {
+  const dest = join(root, relPath);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(resolve(repoRoot, relPath), dest);
+}
+
+function createChecklistFixture(readinessDocText) {
+  const root = mkdtempSync(join(tmpdir(), "alpha-readiness-checklist-"));
+  const manifest = JSON.parse(readFileSync(resolve(repoRoot, ALPHA_PROOF_MANIFEST_PATH), "utf8"));
+  const artifactPaths = new Set(
+    [
+      ...Object.values(manifest.artifactRefs ?? {}).map((ref) => ref?.uri),
+      ...(manifest.benchmarkOutputRefs ?? []).map((bench) => bench.artifactRef?.uri),
+    ].filter(Boolean),
+  );
+
+  for (const relPath of [
+    "scripts/alpha-readiness-checklist.mjs",
+    CAPABILITY_MATRIX_PATH,
+    ALPHA_PROOF_MANIFEST_PATH,
+    "roadmap/spec-dag.json",
+    JUSTFILE_PATH,
+    ...artifactPaths,
+  ]) {
+    copyRepoFile(root, relPath);
+  }
+
+  const readinessDocPath = join(root, READINESS_DOC_PATH);
+  mkdirSync(dirname(readinessDocPath), { recursive: true });
+  writeFileSync(readinessDocPath, readinessDocText);
+  return root;
+}
+
+function runChecklistInFixture(readinessDocText) {
+  const root = createChecklistFixture(readinessDocText);
+  try {
+    return spawnSync(process.execPath, [join(root, "scripts/alpha-readiness-checklist.mjs")], {
+      cwd: root,
+      encoding: "utf8",
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function renderPaddingReflowedCapabilityBlock() {
+  return renderCapabilityBlock(matrix)
+    .split("\n")
+    .map((line) => {
+      if (line === "| engine family | evidence posture |") {
+        return "| engine family              | evidence posture   |";
+      }
+      if (line === "| --- | --- |") {
+        return "| -------------------------- | ------------------ |";
+      }
+      if (line.startsWith("| `")) {
+        return line.replace(" | ", "        |     ");
+      }
+      return line;
+    })
+    .join("\n")
+    .replace("\n| engine family", "\n\n| engine family");
+}
 
 test("the checklist passes on the real repo", () => {
   const { ok, findings } = runChecklist();
@@ -181,9 +263,38 @@ test("the real repo demo chain passes Check D (no real forbidden tokens)", () =>
 });
 
 test("a drifted capability claim block fails the gate", () => {
-  // Sanity: extractBlock comparison is exact — a mutated matrix would not match
-  // the committed block, so deriveCapabilityClaims must be deterministic.
-  const a = renderCapabilityBlock(matrix);
-  const b = renderCapabilityBlock(matrix);
-  assert.equal(a, b);
+  const reflowedBlock = renderPaddingReflowedCapabilityBlock();
+  assert.equal(
+    normalizeBlock(reflowedBlock),
+    normalizeBlock(renderCapabilityBlock(matrix)),
+    "padding-only table reflow should normalize to the canonical capability block",
+  );
+  const paddingOnly = runChecklistInFixture(replaceCapabilityBlock(docText, reflowedBlock));
+  assert.equal(
+    paddingOnly.status,
+    0,
+    `padding-only capability block reflow should pass\nstdout:\n${paddingOnly.stdout}\nstderr:\n${paddingOnly.stderr}`,
+  );
+
+  const capabilityClaimCount = deriveCapabilityClaims(matrix).length;
+  const driftedBlock = renderCapabilityBlock(matrix)
+    .replace(
+      `Engine families in the generated capability matrix: **${capabilityClaimCount}**.`,
+      `Engine families in the generated capability matrix: **${capabilityClaimCount - 1}**.`,
+    )
+    .replace("| `synthetic_fixture` | positive_adapter |", "| `synthetic_fixture` | readiness_only |");
+  assert.notEqual(
+    normalizeBlock(driftedBlock),
+    normalizeBlock(renderCapabilityBlock(matrix)),
+    "mutated count/posture should be real capability-claim drift",
+  );
+
+  const drifted = runChecklistInFixture(replaceCapabilityBlock(docText, driftedBlock));
+  assert.notEqual(
+    drifted.status,
+    0,
+    `drifted capability block should fail the checklist gate\nstdout:\n${drifted.stdout}\nstderr:\n${drifted.stderr}`,
+  );
+  assert.match(drifted.stdout, /\[alpha-readiness\] \[FAIL\] capability-claims:/u);
+  assert.match(drifted.stderr, /\[alpha-readiness\] FAILED: \d+ blocking finding\(s\)/u);
 });
