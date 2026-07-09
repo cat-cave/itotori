@@ -14,15 +14,16 @@ use crate::error::{SUPPORTED_SCHEMA_VERSIONS, VaultSourceError};
 
 /// Open the catalog read-only.
 ///
-/// Uses a SQLite URI (`file://...?mode=ro`) so the open is genuinely
-/// read-only (the underlying connection refuses any write attempt with
-/// `SQLITE_READONLY`).
+/// Uses a SQLite URI (`file://...?mode=ro&immutable=1`) so the open is
+/// genuinely read-only and never needs write access for journal/WAL sidecars
+/// on the mounted vault.
 pub fn open_catalog(catalog_path: &Path) -> Result<Connection, VaultSourceError> {
     // SQLite URI requires forward slashes; on Windows this is also accepted
-    // by the SQLite URI parser. The `mode=ro` query disables all writes
-    // including journal-mode changes.
+    // by the SQLite URI parser. The `mode=ro` query disables writes; immutable
+    // avoids lock/journal sidecar writes on a vault mount that this adapter
+    // treats as operator-owned, read-only input.
     let path_str = catalog_path.to_string_lossy();
-    let uri = format!("file:{path_str}?mode=ro&immutable=0");
+    let uri = format!("file:{path_str}?mode=ro&immutable=1");
     Connection::open_with_flags(
         &uri,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,

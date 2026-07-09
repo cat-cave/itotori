@@ -5,10 +5,10 @@
 //! (`.mds`/`.mdf`), which are unrealizable under the no-Wine / no-shell-out
 //! laws. That premise is SUPERSEDED: the vault now holds both titles as
 //! **portable installs** (bare `by-id` artifacts), bypassing the DVD copy
-//! protection entirely. So there is no sector-descramble work — this proof is
-//! the same mundane materialize the RealLive corpus already does: resolve each
-//! title BY-ID and extract its plaintext Siglus game tree into throwaway
-//! scratch, strictly read-only against the vault.
+//! protection entirely. So there is no sector-descramble work; this proof is
+//! the same materialize path the RealLive corpus uses: resolve each title BY-ID
+//! and extract its plaintext Siglus game tree into scratch, strictly read-only
+//! against the vault.
 //!
 //! `#[ignore]`d by default; run explicitly with the live vault:
 //!
@@ -18,20 +18,22 @@
 //!   --test live_vault_siglus_test -- --ignored --nocapture
 //! ```
 //!
-//! Materialises both Siglus portable installs BY-ID, confirms the plaintext
-//! Siglus tree (`Scene.pck` + `Gameexe.dat` + `SiglusEngine.exe`), reports file
-//! counts + structural signatures, and runs the Siglus detector profile.
-//! NEVER prints raw copyrighted bytes: file names, counts, sizes, and the
-//! fixed-header structural signature only.
+//! Materializes both Siglus portable installs BY-ID, confirms the plaintext
+//! Siglus tree (`Scene.pck` + `Gameexe.dat` + `SiglusEngine.exe`), and records
+//! a sanitized manifest (file counts, sizes, sha256 prefixes only). It NEVER
+//! prints raw copyrighted bytes, archive header bytes, decrypted text, or full
+//! hashes.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{DetectRequest, EngineAdapter};
 use kaifuu_engine_fixture::SiglusProfileDetectorAdapter;
 use kaifuu_vault_source::{
-    ClaimQuery, LocalCorpusSource, MaterializeOptions, RunOutcome, ScratchConfig, VaultConfig,
+    ClaimQuery, LocalCorpusSource, MaterializeOptions, RetentionPolicy, ScratchConfig, VaultConfig,
     VaultSource,
 };
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 /// "Karetoshi" — Kareshi Inai Reki = Nenrei ... (portable install, VJ007329).
@@ -51,13 +53,27 @@ fn require_live_vault() -> Option<PathBuf> {
     Some(PathBuf::from(root))
 }
 
-/// A throwaway scratch root OUTSIDE the vault. Each call returns a distinct
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crate lives under crates/")
+        .parent()
+        .expect("crates/ lives under workspace root")
+        .to_path_buf()
+}
+
+/// A scratch evidence root OUTSIDE the vault. Each call returns a distinct
 /// directory so parallel tests never clobber one another's extraction.
 fn scratch_base() -> PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let base = std::env::var("ITOTORI_SCRATCH_ROOT").map_or_else(
-        |_| PathBuf::from("/scratch/itotori-vault-siglus-test"),
+        |_| {
+            workspace_root()
+                .join(".tmp")
+                .join("siglus-02-tree-realize")
+                .join("scratch")
+        },
         PathBuf::from,
     );
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -67,8 +83,9 @@ fn scratch_base() -> PathBuf {
 }
 
 /// Recursively find the first directory under `root` that directly contains a
-/// `Scene.pck` file (the Siglus game directory sits at a `<studio>/<title>/`
-/// subpath inside the by-id wrapper).
+/// `Scene.pck` file. The by-id archive can wrap the game directory under
+/// publisher/title subdirectories; the returned directory is the node output
+/// game tree whose top level contains `Scene.pck` and `Gameexe.dat`.
 fn find_siglus_game_dir(root: &Path) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -88,10 +105,62 @@ fn find_siglus_game_dir(root: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Count regular files under `root`, recursively.
-fn count_regular_files(root: &Path) -> u64 {
+#[derive(Debug, Clone, Serialize)]
+struct SiglusTreeManifest {
+    schema_version: &'static str,
+    node_id: &'static str,
+    source: &'static str,
+    generated_by: &'static str,
+    read_only_vault_root: &'static str,
+    scratch_root: String,
+    titles: Vec<SiglusTitleManifest>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SiglusTitleManifest {
+    label: &'static str,
+    canonical_id: &'static str,
+    release_id: i64,
+    artifact_canonical_id: String,
+    game_id: String,
+    run_id: String,
+    game_tree_root: String,
+    regular_file_count: u64,
+    total_size_bytes: u64,
+    required_top_level_files: Vec<RequiredFileManifest>,
+    engine_executable: RequiredFileManifest,
+    detector_variant: String,
+    vault_archive_size_bytes_before: u64,
+    vault_archive_size_bytes_after: u64,
+    vault_archive_mtime_unix_before: Option<i64>,
+    vault_archive_mtime_unix_after: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RequiredFileManifest {
+    name: &'static str,
+    size_bytes: u64,
+    sha256_prefix: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FileStats {
+    count: u64,
+    total_size: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VaultArtifactSnapshot {
+    size_bytes: u64,
+    mtime_unix: Option<i64>,
+}
+
+fn file_stats(root: &Path) -> FileStats {
     let mut stack = vec![root.to_path_buf()];
-    let mut n = 0u64;
+    let mut stats = FileStats {
+        count: 0,
+        total_size: 0,
+    };
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -100,22 +169,13 @@ fn count_regular_files(root: &Path) -> u64 {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);
-            } else {
-                n += 1;
+            } else if p.is_file() {
+                stats.count += 1;
+                stats.total_size += p.metadata().expect("file metadata").len();
             }
         }
     }
-    n
-}
-
-/// Read the first `n` bytes of a file (for structural-signature reporting).
-fn head_bytes(path: &Path, n: usize) -> Vec<u8> {
-    use std::io::Read;
-    let mut f = std::fs::File::open(path).expect("open for header");
-    let mut buf = vec![0u8; n];
-    let got = f.read(&mut buf).expect("read header");
-    buf.truncate(got);
-    buf
+    stats
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -127,17 +187,48 @@ fn hex(bytes: &[u8]) -> String {
     s
 }
 
-fn sha256_file(path: &Path) -> String {
-    let bytes = std::fs::read(path).expect("read for sha256");
+fn sha256_prefix_file(path: &Path) -> String {
+    let mut f = std::fs::File::open(path).expect("open for sha256");
     let mut h = Sha256::new();
-    h.update(&bytes);
-    hex(&h.finalize())
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let got = f.read(&mut buf).expect("read for sha256");
+        if got == 0 {
+            break;
+        }
+        h.update(&buf[..got]);
+    }
+    hex(&h.finalize())[..16].to_string()
 }
 
-/// Characterise a Siglus game directory: confirm the three engine signatures,
-/// count files, and report structural signatures. Runs the Siglus detector and
-/// returns its `detected_variant`. Reports facts only — never raw content.
-fn confirm_and_characterize(label: &str, game_dir: &Path) -> String {
+fn required_file(path: &Path, name: &'static str) -> RequiredFileManifest {
+    RequiredFileManifest {
+        name,
+        size_bytes: path.metadata().expect("required file metadata").len(),
+        sha256_prefix: sha256_prefix_file(path),
+    }
+}
+
+fn snapshot_vault_artifact(path: &Path) -> VaultArtifactSnapshot {
+    let meta = path.metadata().expect("vault artifact metadata");
+    VaultArtifactSnapshot {
+        size_bytes: meta.len(),
+        mtime_unix: meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64),
+    }
+}
+
+fn confirm_and_characterize(
+    label: &'static str,
+    canonical_id: &'static str,
+    game_dir: &Path,
+    mat: &kaifuu_vault_source::MaterializeResult,
+    before: VaultArtifactSnapshot,
+    after: VaultArtifactSnapshot,
+) -> SiglusTitleManifest {
     let scene = game_dir.join("Scene.pck");
     let gameexe = game_dir.join("Gameexe.dat");
     let exe = game_dir.join("SiglusEngine.exe");
@@ -158,51 +249,23 @@ fn confirm_and_characterize(label: &str, game_dir: &Path) -> String {
         game_dir.display()
     );
 
-    let file_count = count_regular_files(game_dir);
     let scene_len = scene.metadata().expect("scene metadata").len();
-    let gameexe_len = gameexe.metadata().expect("gameexe metadata").len();
-    let exe_len = exe.metadata().expect("exe metadata").len();
-
     assert!(
         scene_len as usize >= SCENE_PCK_HEADER_BYTE_LEN,
         "[{label}] Scene.pck must be at least the fixed 0x5C header long"
     );
 
-    let scene_head = head_bytes(&scene, SCENE_PCK_HEADER_BYTE_LEN);
-    let gameexe_head = head_bytes(&gameexe, 16);
-
-    // Structural read of the Scene.pck fixed header: Siglus stores the
-    // SceneList/HeaderPair table offsets/lengths as little-endian u32s in the
-    // first 0x5C bytes. The first u32 echoes the 0x5C header length (the first
-    // table begins immediately after the header). A plaintext (non
-    // header-encrypted) archive shows sane, ascending table offsets here; a
-    // fully-encrypted header shows high-entropy garbage. Factual format fields,
-    // not content. The header index being plaintext means only the per-scene
-    // payloads carry the constant-256-XOR (+ optional per-game second-layer
-    // key); the archive directory itself is readable.
-    let first_table_off =
-        u32::from_le_bytes([scene_head[0], scene_head[1], scene_head[2], scene_head[3]]);
-    let header_plaintext = first_table_off as usize == SCENE_PCK_HEADER_BYTE_LEN;
-    // Trailing 8 bytes of the fixed header: a build/format constant that is
-    // stable across scene tables (compare across the two titles for build
-    // divergence).
-    let header_tail = &scene_head[SCENE_PCK_HEADER_BYTE_LEN - 8..];
-    let exe_sha = sha256_file(&exe);
-
-    // Plaintext Gameexe.dat is UTF-16LE (BOM 0xFF 0xFE, or ASCII-key low bytes
-    // with 0x00 high bytes). Encrypted Gameexe.dat is high-entropy.
-    let utf16le_bom = gameexe_head.starts_with(&[0xFF, 0xFE]);
-    let looks_utf16le = utf16le_bom
-        || (gameexe_head.len() >= 4
-            && gameexe_head[0].is_ascii_graphic()
-            && gameexe_head[1] == 0x00
-            && gameexe_head[2].is_ascii_graphic()
-            && gameexe_head[3] == 0x00);
-
-    assert!(
-        header_plaintext,
-        "[{label}] Scene.pck fixed-header index must be plaintext (first table offset == 0x5C); \
-         a DVD-scrambled or header-encrypted archive would not satisfy this"
+    // Structural read only; bytes are not logged or persisted.
+    let mut scene_head = [0u8; 4];
+    std::fs::File::open(&scene)
+        .expect("open Scene.pck for structural header check")
+        .read_exact(&mut scene_head)
+        .expect("read Scene.pck structural header");
+    let first_table_off = u32::from_le_bytes(scene_head);
+    assert_eq!(
+        first_table_off as usize, SCENE_PCK_HEADER_BYTE_LEN,
+        "[{label}] Scene.pck fixed-header index must be plaintext; a DVD-scrambled \
+         or header-encrypted archive would not satisfy this"
     );
 
     let detector = SiglusProfileDetectorAdapter;
@@ -214,38 +277,50 @@ fn confirm_and_characterize(label: &str, game_dir: &Path) -> String {
         .clone()
         .unwrap_or_else(|| "<none>".to_string());
 
-    eprintln!("[{label}] siglus game dir = {}", game_dir.display());
-    eprintln!(
-        "[{label}] engine signatures present: Scene.pck={scene_len} bytes, \
-         Gameexe.dat={gameexe_len} bytes, SiglusEngine.exe={exe_len} bytes"
+    assert_eq!(
+        before.size_bytes, after.size_bytes,
+        "[{label}] vault archive size must be unchanged after materialize"
     );
-    eprintln!("[{label}] regular file count under game dir = {file_count}");
-    eprintln!(
-        "[{label}] Scene.pck fixed-header[0..0x5C] = {}",
-        hex(&scene_head)
-    );
-    eprintln!(
-        "[{label}] Scene.pck header plaintext = {header_plaintext} (first table offset LE u32 \
-         @0x00 = {first_table_off}, expect 0x5C={SCENE_PCK_HEADER_BYTE_LEN}); \
-         header-tail[0x54..0x5C] = {}",
-        hex(header_tail)
-    );
-    eprintln!("[{label}] SiglusEngine.exe sha256 = {exe_sha}");
-    eprintln!(
-        "[{label}] Gameexe.dat head16 = {}  (utf16le_bom={utf16le_bom}, looks_utf16le={looks_utf16le})",
-        hex(&gameexe_head)
-    );
-    eprintln!(
-        "[{label}] Siglus detector: adapter_id={}, detected={}, engine_family={:?}, variant={variant}",
-        detection.adapter_id, detection.detected, detection.engine_family
+    assert_eq!(
+        before.mtime_unix, after.mtime_unix,
+        "[{label}] vault archive mtime must be unchanged after materialize"
     );
 
-    variant
+    let stats = file_stats(game_dir);
+    eprintln!(
+        "[{label}] materialized plaintext Siglus tree: files={}, total_bytes={}, \
+         required=Scene.pck/Gameexe.dat/SiglusEngine.exe, detector_variant={variant}",
+        stats.count, stats.total_size
+    );
+
+    SiglusTitleManifest {
+        label,
+        canonical_id,
+        release_id: mat.release_id,
+        artifact_canonical_id: mat.artifact_canonical_id.clone(),
+        game_id: mat.game_id.clone(),
+        run_id: mat.run_id.clone(),
+        game_tree_root: game_dir.display().to_string(),
+        regular_file_count: stats.count,
+        total_size_bytes: stats.total_size,
+        required_top_level_files: vec![
+            required_file(&scene, "Scene.pck"),
+            required_file(&gameexe, "Gameexe.dat"),
+        ],
+        engine_executable: required_file(&exe, "SiglusEngine.exe"),
+        detector_variant: variant,
+        vault_archive_size_bytes_before: before.size_bytes,
+        vault_archive_size_bytes_after: after.size_bytes,
+        vault_archive_mtime_unix_before: before.mtime_unix,
+        vault_archive_mtime_unix_after: after.mtime_unix,
+    }
 }
 
-/// Materialise one Siglus title by canonical id, confirm + characterise its
-/// tree, then release the scratch. Returns the detector's `detected_variant`.
-fn materialize_confirm_siglus(label: &str, canonical_id: &str, scratch_root: &Path) -> String {
+fn materialize_confirm_siglus(
+    label: &'static str,
+    canonical_id: &'static str,
+    scratch_root: &Path,
+) -> SiglusTitleManifest {
     let source = VaultSource::open(
         &VaultConfig::default(),
         &ScratchConfig {
@@ -266,9 +341,19 @@ fn materialize_confirm_siglus(label: &str, canonical_id: &str, scratch_root: &Pa
         "[{label}] by-id resolved: release_id={} (canonical_id={canonical_id})",
         candidate.release_id
     );
+    let archive_path =
+        kaifuu_vault_source::resolution::by_id_path(source.vault_root(), canonical_id)
+            .expect("canonical by-id artifact path");
+    let before = snapshot_vault_artifact(&archive_path);
 
     let mat = source
-        .materialize(&candidate, MaterializeOptions::default())
+        .materialize(
+            &candidate,
+            MaterializeOptions {
+                retention: RetentionPolicy::KeepAll,
+                ..MaterializeOptions::default()
+            },
+        )
         .unwrap_or_else(|e| {
             panic!("[{label}] {canonical_id} must materialize from the vault by-id: {e:?}")
         });
@@ -277,58 +362,87 @@ fn materialize_confirm_siglus(label: &str, canonical_id: &str, scratch_root: &Pa
         mat.tree_root.join("_vault/metadata.json").exists(),
         "[{label}] embedded _vault/metadata.json present under the canonical_id wrapper"
     );
-
+    assert_eq!(
+        mat.embedded.canonical_id.as_deref(),
+        Some(canonical_id),
+        "[{label}] embedded canonical_id identity matches the requested artifact"
+    );
+    assert_eq!(
+        mat.artifacts
+            .first()
+            .expect("primary artifact is resolved")
+            .on_disk_path
+            .as_path(),
+        archive_path.as_path(),
+        "[{label}] resolved artifact path is the expected by-id path"
+    );
     let game_dir = find_siglus_game_dir(&mat.tree_root).unwrap_or_else(|| {
         panic!(
-            "[{label}] no Scene.pck found under materialised tree {}",
+            "[{label}] no Scene.pck found under materialized tree {}",
             mat.tree_root.display()
         )
     });
+    let after = snapshot_vault_artifact(&archive_path);
 
-    let variant = confirm_and_characterize(label, &game_dir);
-
-    source
-        .release(&mat, RunOutcome::Success)
-        .expect("release scratch");
-    variant
+    confirm_and_characterize(label, canonical_id, &game_dir, &mat, before, after)
 }
 
 #[test]
 #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
-fn karetoshi_materializes_to_plaintext_siglus_tree() {
+fn materializes_both_siglus_titles_to_plaintext_trees_and_records_manifest() {
     let Some(_vault) = require_live_vault() else {
         eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
         return;
     };
     let scratch = scratch_base();
-    let variant = materialize_confirm_siglus("karetoshi", KARETOSHI_CANONICAL_ID, &scratch);
-    let _ = std::fs::remove_dir_all(&scratch);
-    // The detector now recognises the REAL Siglus archive-header signatures
-    // (Scene.pck `0x5C` header + ascending index-section offsets; Gameexe.dat
-    // zero/`1` prefix + encrypted high-entropy body), so the real pair
-    // classifies as `scene-pck-gameexe-dat-real` at identify level (extraction
-    // /decryption remain unclaimed). Recording the exact variant keeps the
-    // detect-vs-extract boundary honest.
-    eprintln!("[karetoshi] detector variant = {variant}");
-    assert_eq!(
-        variant, "scene-pck-gameexe-dat-real",
-        "real-signature detector must recognise the real Karetoshi Scene.pck/Gameexe.dat pair"
-    );
-}
 
-#[test]
-#[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
-fn gamekoi_materializes_to_plaintext_siglus_tree() {
-    let Some(_vault) = require_live_vault() else {
-        eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
-        return;
+    let titles = vec![
+        materialize_confirm_siglus("karetoshi", KARETOSHI_CANONICAL_ID, &scratch),
+        materialize_confirm_siglus("gamekoi", GAMEKOI_CANONICAL_ID, &scratch),
+    ];
+
+    for title in &titles {
+        assert_eq!(
+            title.detector_variant, "scene-pck-gameexe-dat-real",
+            "real-signature detector must recognise {} Scene.pck/Gameexe.dat pair",
+            title.label
+        );
+        assert!(
+            Path::new(&title.game_tree_root).join("Scene.pck").is_file(),
+            "{} output tree top-level contains Scene.pck",
+            title.label
+        );
+        assert!(
+            Path::new(&title.game_tree_root)
+                .join("Gameexe.dat")
+                .is_file(),
+            "{} output tree top-level contains Gameexe.dat",
+            title.label
+        );
+    }
+
+    let manifest = SiglusTreeManifest {
+        schema_version: "itotori.siglus-02-tree-realize-manifest.v1",
+        node_id: "siglus-02-tree-realize",
+        source: "kaifuu-vault-source/by-id/read-only",
+        generated_by: "crates/kaifuu-vault-source/tests/live_vault_siglus_test.rs",
+        read_only_vault_root: "/archive/vault",
+        scratch_root: scratch.display().to_string(),
+        titles,
     };
-    let scratch = scratch_base();
-    let variant = materialize_confirm_siglus("gamekoi", GAMEKOI_CANONICAL_ID, &scratch);
-    let _ = std::fs::remove_dir_all(&scratch);
-    eprintln!("[gamekoi] detector variant = {variant}");
-    assert_eq!(
-        variant, "scene-pck-gameexe-dat-real",
-        "real-signature detector must recognise the real Gamekoi Scene.pck/Gameexe.dat pair"
+
+    let manifest_bytes =
+        serde_json::to_vec_pretty(&manifest).expect("serialize sanitized Siglus manifest");
+    let worktree_manifest_dir = workspace_root().join(".tmp").join("siglus-02-tree-realize");
+    std::fs::create_dir_all(&worktree_manifest_dir).expect("create manifest dir");
+    let worktree_manifest = worktree_manifest_dir.join("manifest.json");
+    std::fs::write(&worktree_manifest, &manifest_bytes).expect("write worktree manifest");
+    let scratch_manifest = scratch.join("siglus-02-tree-realize-manifest.json");
+    std::fs::write(&scratch_manifest, &manifest_bytes).expect("write scratch manifest");
+
+    eprintln!(
+        "siglus-02-tree-realize manifest written: {} and {}",
+        worktree_manifest.display(),
+        scratch_manifest.display()
     );
 }
