@@ -99,6 +99,21 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
     }
 }
 
+/// The authored speaker marker is meaningful only at the beginning of a text
+/// unit after bridge-injected kidoku prefixes. This inspection helper
+/// intentionally returns only the token, never any surrounding dialogue, so
+/// real-byte diagnostics remain redacted.
+fn leading_inline_name_token(text: &str) -> Option<&str> {
+    let mut authored = text;
+    while let Some(after_prefix) = authored.strip_prefix("<reallive.kidoku ") {
+        let end = after_prefix.find('>')?;
+        authored = &after_prefix[end + 1..];
+    }
+    let rest = authored.strip_prefix('【')?;
+    let close = rest.find('】')?;
+    (!rest[..close].is_empty()).then_some(&rest[..close])
+}
+
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes() {
@@ -301,13 +316,6 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
             );
         }
     }
-    let first_unit = &produced.bundle.units[0];
-    eprintln!(
-        "first unit: sourceText (truncated)='{}' surfaceKind={}",
-        first_unit.source_text.chars().take(40).collect::<String>(),
-        first_unit.surface_kind,
-    );
-
     // ---- Acceptance: at least one reallive.kidoku span. ----
     let units_array = produced.json["units"]
         .as_array()
@@ -316,22 +324,69 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     let mut emitted_parsed_names: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
 
-    // ---- Acceptance: at least one unit's speaker resolved via NAMAE. ----
+    // ---- Acceptance: leading-only, exact-key speaker attribution. ----
+    // Keep private text redacted: validate source marker and output state only.
+    let mut leading_markers = 0usize;
+    let mut known = 0usize;
+    let mut unknown = 0usize;
+    let mut not_applicable = 0usize;
+    for unit in units_array {
+        let source_text = unit["sourceText"]
+            .as_str()
+            .expect("every bridge unit must carry sourceText");
+        let leading_key = leading_inline_name_token(source_text);
+        let speaker = unit["speaker"]
+            .as_object()
+            .expect("every bridge unit must carry a speaker context");
+        let state = speaker["knowledgeState"]
+            .as_str()
+            .expect("speaker knowledgeState must be a string");
+        match (leading_key, state) {
+            (Some(key), "known") => {
+                leading_markers += 1;
+                known += 1;
+                assert_eq!(
+                    speaker["canonicalNameRef"],
+                    format!("reallive:namae:{key}"),
+                    "known speaker canonical ref must be keyed by NAMAE field 1"
+                );
+                assert!(speaker.get("displayName").is_some());
+            }
+            (Some(key), "parser_unknown") => {
+                leading_markers += 1;
+                unknown += 1;
+                assert_eq!(
+                    speaker["rawSpeakerText"], key,
+                    "unknown speaker must retain only its explicit leading marker"
+                );
+            }
+            (None, "not_applicable") => not_applicable += 1,
+            (Some(key), other) => panic!(
+                "leading marker requires known or parser_unknown, got {other} (redacted key length={})",
+                key.chars().count()
+            ),
+            (None, other) => panic!(
+                "unmarked dialogue must be not_applicable, got {other}; speaker carry or non-leading matching regressed"
+            ),
+        }
+    }
+    eprintln!(
+        "speaker attribution (redacted): units={} leading_markers={leading_markers} \
+         known={known} parser_unknown={unknown} not_applicable={not_applicable} namae_rows={namae_entries}",
+        units_array.len(),
+    );
+    assert!(
+        not_applicable > 0,
+        "dialogue scene must include unmarked units to exercise no-carry attribution"
+    );
+    assert!(
+        known + unknown == leading_markers,
+        "every leading marker must be classified exactly once"
+    );
     if namae_entries > 0 {
-        let resolved = units_array
-            .iter()
-            .filter_map(|unit| unit["speaker"].as_object())
-            .filter(|speaker| {
-                let state = speaker.get("knowledgeState").and_then(|v| v.as_str());
-                matches!(state, Some("known"))
-                    || (matches!(state, Some("parser_unknown"))
-                        && speaker.contains_key("rawSpeakerText"))
-            })
-            .count();
-        eprintln!("units with NAMAE-resolved speaker: {resolved}");
         assert!(
-            resolved >= 1,
-            "at least one unit must carry a NAMAE-resolved speaker when the NAMAE table is populated ({namae_entries} entries); got {resolved}"
+            known > 0,
+            "a populated NAMAE table plus this dialogue scene must exercise exact leading-key attribution"
         );
     }
 
