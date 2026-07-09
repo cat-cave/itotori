@@ -99,7 +99,7 @@ describe("ItotoriOidcLoginAdapter", () => {
         authorizationCode: "mock-auth-code",
         redirectUri: "https://itotori.example.test/auth/callback",
         codeVerifier: "mock-pkce-verifier",
-        now: new Date("2026-07-09T10:00:00.000Z"),
+        now: new Date("2099-01-01T10:00:00.000Z"),
         device: {
           userAgent: "vitest oidc adapter",
           ipAddress: "203.0.113.42",
@@ -132,7 +132,7 @@ describe("ItotoriOidcLoginAdapter", () => {
         appliedMappedPermissions: [permissionValues.draftWrite],
       });
       expect(result.session.sessionId.length).toBeGreaterThanOrEqual(32);
-      expect(result.session.expiresAt).toEqual(new Date("2026-07-09T12:00:00.000Z"));
+      expect(result.session.expiresAt).toEqual(new Date("2099-01-01T12:00:00.000Z"));
 
       const identities = await context.db
         .select()
@@ -451,7 +451,7 @@ describe("ItotoriOidcLoginAdapter", () => {
       );
       await context.db
         .update(authAccounts)
-        .set({ disabledAt: new Date("2026-07-09T10:00:00.000Z") })
+        .set({ disabledAt: new Date("2099-01-01T10:00:00.000Z") })
         .where(eq(authAccounts.accountId, defaultLocalAccountId));
       const adapter = new ItotoriOidcLoginAdapter(
         context.db,

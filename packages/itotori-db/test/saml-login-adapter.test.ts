@@ -84,14 +84,14 @@ describe("ItotoriSamlLoginAdapter", () => {
           requestId: "saml-request-123",
           spEntityId: "https://itotori.example.test/saml/sp",
           acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-          notBefore: "2026-07-09T09:55:00.000Z",
-          notOnOrAfter: "2026-07-09T10:05:00.000Z",
+          notBefore: "2099-01-01T09:55:00.000Z",
+          notOnOrAfter: "2099-01-01T10:05:00.000Z",
         }),
         requestId: "saml-request-123",
         spEntityId: "https://itotori.example.test/saml/sp",
         acsUrl: "https://itotori.example.test/api/auth/saml/acs",
         relayState: "account=default",
-        now: new Date("2026-07-09T10:00:00.000Z"),
+        now: new Date("2099-01-01T10:00:00.000Z"),
         device: {
           userAgent: "vitest saml adapter",
           ipAddress: "203.0.113.43",
@@ -106,7 +106,7 @@ describe("ItotoriSamlLoginAdapter", () => {
         appliedMappedPermissions: [permissionValues.draftWrite],
       });
       expect(result.session.sessionId.length).toBeGreaterThanOrEqual(32);
-      expect(result.session.expiresAt).toEqual(new Date("2026-07-09T12:00:00.000Z"));
+      expect(result.session.expiresAt).toEqual(new Date("2099-01-01T12:00:00.000Z"));
 
       const identities = await context.db
         .select()
@@ -219,13 +219,13 @@ describe("ItotoriSamlLoginAdapter", () => {
             requestId: "saml-request-expired",
             spEntityId: "https://itotori.example.test/saml/sp",
             acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-            notBefore: "2026-07-09T09:00:00.000Z",
-            notOnOrAfter: "2026-07-09T09:30:00.000Z",
+            notBefore: "2099-01-01T09:00:00.000Z",
+            notOnOrAfter: "2099-01-01T09:30:00.000Z",
           }),
           requestId: "saml-request-expired",
           spEntityId: "https://itotori.example.test/saml/sp",
           acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-          now: new Date("2026-07-09T10:00:00.000Z"),
+          now: new Date("2099-01-01T10:00:00.000Z"),
         }),
       ).rejects.toThrow(/SAML assertion has expired/u);
       expect(
@@ -260,14 +260,14 @@ describe("ItotoriSamlLoginAdapter", () => {
             requestId: "saml-request-unsigned",
             spEntityId: "https://itotori.example.test/saml/sp",
             acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-            notBefore: "2026-07-09T09:55:00.000Z",
-            notOnOrAfter: "2026-07-09T10:05:00.000Z",
+            notBefore: "2099-01-01T09:55:00.000Z",
+            notOnOrAfter: "2099-01-01T10:05:00.000Z",
             signed: false,
           }),
           requestId: "saml-request-unsigned",
           spEntityId: "https://itotori.example.test/saml/sp",
           acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-          now: new Date("2026-07-09T10:00:00.000Z"),
+          now: new Date("2099-01-01T10:00:00.000Z"),
         }),
       ).rejects.toThrow(/signed assertion/u);
       expect(
@@ -301,13 +301,13 @@ describe("ItotoriSamlLoginAdapter", () => {
             requestId: "saml-request-wrong-audience",
             spEntityId: "https://evil.example.test/saml/sp",
             acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-            notBefore: "2026-07-09T09:55:00.000Z",
-            notOnOrAfter: "2026-07-09T10:05:00.000Z",
+            notBefore: "2099-01-01T09:55:00.000Z",
+            notOnOrAfter: "2099-01-01T10:05:00.000Z",
           }),
           requestId: "saml-request-wrong-audience",
           spEntityId: "https://itotori.example.test/saml/sp",
           acsUrl: "https://itotori.example.test/api/auth/saml/acs",
-          now: new Date("2026-07-09T10:00:00.000Z"),
+          now: new Date("2099-01-01T10:00:00.000Z"),
         }),
       ).rejects.toThrow(/audience mismatch/u);
       expect(
