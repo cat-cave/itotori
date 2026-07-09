@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from "react";
-import { Badge, DataTable, Panel } from "@itotori/ds";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type {
+  ApiAuthBillingSeatUsageResponse,
   ApiMemberRecord,
+  ApiMemberInvitationResponse,
   ApiPermissionSetRecord,
   ApiPrincipalPermissionSetGrantResponse,
 } from "../../api-schema.js";
@@ -80,6 +82,7 @@ function MembersForAccount({
   const [revision, setRevision] = useState(0);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [lastInvitedEmail, setLastInvitedEmail] = useState<string | null>(null);
   const members = useApiQuery(
     "auth.members.list",
     { query: { accountId } },
@@ -90,11 +93,18 @@ function MembersForAccount({
     { query: { accountId } },
     `members:permission-sets:${accountId}:${revision}`,
   );
+  const billing = useApiQuery(
+    "auth.billing.seatUsage",
+    { query: { accountId } },
+    `members:billing:${accountId}:${revision}`,
+  );
 
   const state =
-    members.state === "error" || permissionSets.state === "error"
+    members.state === "error" || permissionSets.state === "error" || billing.state === "error"
       ? "error"
-      : members.state === "loading" || permissionSets.state === "loading"
+      : members.state === "loading" ||
+          permissionSets.state === "loading" ||
+          billing.state === "loading"
         ? "loading"
         : members.state === "empty"
           ? "empty"
@@ -151,36 +161,52 @@ function MembersForAccount({
       {permissionSets.state === "error" && (
         <ErrorState title="Permission sets" error={permissionSets.error} />
       )}
+      {billing.state === "error" && <ErrorState title="Billing" error={billing.error} />}
       {state === "empty" && (
         <EmptyState
           title="Members"
           message="No members or permission sets were returned for this account."
         />
       )}
-      {state === "ready" && members.state === "ready" && permissionSets.state === "ready" && (
-        <MembersReady
-          members={members.data.members}
-          permissionSets={permissionSets.data.permissionSets}
-          pendingKey={pendingKey}
-          mutationError={mutationError}
-          onGrantChange={applyGrantChange}
-        />
-      )}
+      {state === "ready" &&
+        members.state === "ready" &&
+        permissionSets.state === "ready" &&
+        billing.state === "ready" && (
+          <MembersReady
+            members={members.data.members}
+            billing={billing.data}
+            permissionSets={permissionSets.data.permissionSets}
+            pendingKey={pendingKey}
+            mutationError={mutationError}
+            lastInvitedEmail={lastInvitedEmail}
+            onInvited={(email) => {
+              setLastInvitedEmail(email);
+              setRevision((value) => value + 1);
+            }}
+            onGrantChange={applyGrantChange}
+          />
+        )}
     </main>
   );
 }
 
 function MembersReady({
   members,
+  billing,
   permissionSets,
   pendingKey,
   mutationError,
+  lastInvitedEmail,
+  onInvited,
   onGrantChange,
 }: {
   members: readonly ApiMemberRecord[];
+  billing: ApiAuthBillingSeatUsageResponse;
   permissionSets: readonly ApiPermissionSetRecord[];
   pendingKey: string | null;
   mutationError: string | null;
+  lastInvitedEmail: string | null;
+  onInvited(email: string): void;
   onGrantChange(input: {
     member: ApiMemberRecord;
     permissionSet: ApiPermissionSetRecord;
@@ -194,6 +220,13 @@ function MembersReady({
           <p role="alert">{mutationError}</p>
         </Panel>
       )}
+      <BillingSeatPanel billing={billing} />
+      <InviteMemberPanel
+        accountId={billing.accountId}
+        permissionSets={permissionSets}
+        lastInvitedEmail={lastInvitedEmail}
+        onInvited={onInvited}
+      />
       <Panel
         title="Permission grants"
         eyebrow="Permission sets"
@@ -262,6 +295,152 @@ function MembersReady({
   );
 }
 
+function BillingSeatPanel({ billing }: { billing: ApiAuthBillingSeatUsageResponse }): ReactNode {
+  return (
+    <Panel
+      title="Plan and seats"
+      eyebrow={billing.planName}
+      lamps={
+        <Badge status={billing.overSeatLimit ? "failed" : "active"}>
+          {billing.overSeatLimit ? "over limit" : billing.planId}
+        </Badge>
+      }
+    >
+      <div className="members-screen__billing-grid">
+        <StatReadout label="Used seats" value={billing.usedSeats} unit={`/ ${billing.seatLimit}`} />
+        <StatReadout label="Available" value={billing.availableSeats} unit="seats" />
+        <StatReadout label="Pending invites" value={billing.pendingInvitations} />
+        <StatReadout label="Billing" value={formatBillingPeriod(billing.billingPeriod)} />
+      </div>
+    </Panel>
+  );
+}
+
+function InviteMemberPanel({
+  accountId,
+  permissionSets,
+  lastInvitedEmail,
+  onInvited,
+}: {
+  accountId: string;
+  permissionSets: readonly ApiPermissionSetRecord[];
+  lastInvitedEmail: string | null;
+  onInvited(email: string): void;
+}): ReactNode {
+  const [email, setEmail] = useState("");
+  const [selectedPermissionSetIds, setSelectedPermissionSetIds] = useState<string[]>([]);
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<ApiMemberInvitationResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const submitInvite = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    const trimmedEmail = email.trim();
+    if (trimmedEmail.length === 0 || pending) {
+      return;
+    }
+    setPending(true);
+    setResult(null);
+    setError(null);
+    const invitation = await apiClient.request("auth.members.invite", {
+      body: {
+        accountId,
+        email: trimmedEmail,
+        initialPermissionSetIds: selectedPermissionSetIds,
+        expiresAt: inviteExpiryIso(),
+        reason: null,
+        requestId: null,
+      },
+    });
+    setPending(false);
+    if (invitation.state === "ready") {
+      setEmail("");
+      setSelectedPermissionSetIds([]);
+      setResult(invitation.data);
+      onInvited(invitation.data.email);
+      return;
+    }
+    if (invitation.state === "error") {
+      setError(
+        invitation.error.message ?? `Invite failed with status ${String(invitation.error.status)}.`,
+      );
+      return;
+    }
+    setError("Invite returned no invitation record.");
+  };
+
+  return (
+    <Panel
+      title="Invite member"
+      eyebrow="Auth member API"
+      lamps={result === null ? undefined : <Badge status="active">sent</Badge>}
+    >
+      <form className="members-screen__invite" onSubmit={(event) => void submitInvite(event)}>
+        <label className="members-screen__field">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            disabled={pending}
+            required
+            autoComplete="email"
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        <fieldset className="members-screen__invite-sets" disabled={pending}>
+          <legend>Initial permission sets</legend>
+          <div className="members-screen__grant-grid">
+            {permissionSets.map((permissionSet) => {
+              const checked = selectedPermissionSetIds.includes(permissionSet.permissionSetId);
+              return (
+                <label key={permissionSet.permissionSetId} className="members-screen__grant-toggle">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    aria-label={`Include ${permissionSet.name}`}
+                    onChange={() => {
+                      setSelectedPermissionSetIds((current) =>
+                        checked
+                          ? current.filter((id) => id !== permissionSet.permissionSetId)
+                          : [...current, permissionSet.permissionSetId].sort(),
+                      );
+                    }}
+                  />
+                  <span>{permissionSet.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+        <div className="members-screen__actions">
+          <button type="submit" disabled={pending || email.trim().length === 0}>
+            {pending ? "Sending..." : "Send invite"}
+          </button>
+          {(result !== null || lastInvitedEmail !== null) && (
+            <span role="status">{`Invite sent to ${result?.email ?? lastInvitedEmail}`}</span>
+          )}
+          {error !== null && <span role="alert">{error}</span>}
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
 function grantToggleKey(principalId: string, permissionSetId: string): string {
   return `${principalId}:${permissionSetId}`;
+}
+
+function inviteExpiryIso(): string {
+  return new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function formatBillingPeriod(period: ApiAuthBillingSeatUsageResponse["billingPeriod"]): string {
+  switch (period) {
+    case "annual":
+      return "Annual";
+    case "manual":
+      return "Manual";
+    case "monthly":
+      return "Monthly";
+  }
 }

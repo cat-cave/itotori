@@ -67,6 +67,7 @@ export {
   outboxStatusValues,
   providerCostKindValues,
   authProviderClaimKindValues,
+  authBillingPeriodValues,
   authSsoProviderProtocolValues,
   providerRunStatusValues,
   runtimeBridgeUnitRefRoleValues,
@@ -171,7 +172,13 @@ export type {
   TerminologyTermKind,
   TerminologyTermStatus,
   WikiBrandContextRole,
+  AuthBillingPeriod,
 } from "./schema.js";
+export {
+  ItotoriAuthBillingSeatRepository,
+  ItotoriAuthBillingSeatRepositoryError,
+} from "./repositories/auth-billing-seat-repository.js";
+export type { AuthAccountSeatUsageRecord } from "./repositories/auth-billing-seat-repository.js";
 export {
   defaultWorkspaceId,
   defaultWorkspaceName,

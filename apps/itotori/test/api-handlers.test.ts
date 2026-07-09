@@ -156,6 +156,7 @@ type ApiMutationService =
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
     }
+  | { surface: "authBilling"; method: "loadSeatUsage" }
   | {
       surface: "authPermissions";
       method: "listPermissionSets" | "grantPermissionSet" | "revokePermissionSet";
@@ -300,6 +301,15 @@ const apiMutationPermissionMatrix = [
     "membersList",
     { method: "GET", pathname: "/api/auth/members", search: "?accountId=account-local" },
     { surface: "authMembers", method: "listMembers" },
+  ),
+  apiGateForService(
+    "billingSeatUsage",
+    {
+      method: "GET",
+      pathname: "/api/auth/billing/seat-usage",
+      search: "?accountId=account-local",
+    },
+    { surface: "authBilling", method: "loadSeatUsage" },
   ),
   apiGateForService(
     "membersInvite",
@@ -2913,7 +2923,7 @@ describe("Itotori API handlers", () => {
     );
   });
 
-  it("routes member invite, accept, list, and remove through typed auth member handlers", async () => {
+  it("routes member invite, billing seat usage, accept, list, and remove through typed auth handlers", async () => {
     const services = serviceFixture();
 
     const invite = await handleItotoriApiRequest(
@@ -2929,6 +2939,14 @@ describe("Itotori API handlers", () => {
     );
     const list = await handleItotoriApiRequest(
       { method: "GET", pathname: "/api/auth/members", search: "?accountId=account-local" },
+      services,
+    );
+    const billing = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/auth/billing/seat-usage",
+        search: "?accountId=account-local",
+      },
       services,
     );
     const remove = await handleItotoriApiRequest(
@@ -2950,6 +2968,14 @@ describe("Itotori API handlers", () => {
       accountId: "account-local",
       members: [{ membershipId: "membership-api" }],
     });
+    expect(billing.body).toMatchObject({
+      schemaVersion: "itotori.auth.billing-seat-usage.v0",
+      accountId: "account-local",
+      planId: "studio-team",
+      usedSeats: 1,
+      seatLimit: 5,
+      pendingInvitations: 1,
+    });
     expect(remove.body).toMatchObject({
       schemaVersion: "itotori.auth.member-removed.v0",
       removedMember: { membershipId: "membership-api" },
@@ -2960,6 +2986,7 @@ describe("Itotori API handlers", () => {
       acceptMemberInvitationRequestFixture,
     );
     expect(services.authMembers.listMembers).toHaveBeenCalledWith("account-local");
+    expect(services.authBilling.loadSeatUsage).toHaveBeenCalledWith("account-local");
     expect(services.authMembers.removeMember).toHaveBeenCalledWith(
       "membership-api",
       removeMemberRequestFixture,
@@ -3602,6 +3629,13 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "billing seat usage",
+          "requiredPermission": "auth.members.manage",
+          "route": "GET /api/auth/billing/seat-usage",
+          "successFixture": "api-handlers.test.ts billing seat usage success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "members invite",
           "requiredPermission": "auth.members.manage",
           "route": "POST /api/auth/members/invitations",
@@ -4084,6 +4118,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   }
   if (service.surface === "authMembers") {
     return services.authMembers[service.method];
+  }
+  if (service.surface === "authBilling") {
+    return services.authBilling[service.method];
   }
   if (service.surface === "authPermissions") {
     return services.authPermissions[service.method];
@@ -4705,6 +4742,21 @@ function serviceFixture(): ItotoriApiServices {
         displayName: "API Member",
         permissionSetIds: ["permission-set-account-local-reviewer"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    authBilling: {
+      loadSeatUsage: vi.fn(async (accountId: string) => ({
+        accountId,
+        planId: "studio-team",
+        planName: "Studio Team",
+        billingPeriod: "monthly" as const,
+        seatLimit: 5,
+        includedSeats: 5,
+        usedSeats: 1,
+        pendingInvitations: 1,
+        availableSeats: 4,
+        overSeatLimit: false,
+        updatedAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },
     authPermissions: {

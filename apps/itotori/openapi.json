@@ -70,6 +70,66 @@
         ],
         "type": "object"
       },
+      "ApiAuthBillingSeatUsageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "availableSeats": {
+            "type": "number"
+          },
+          "billingPeriod": {
+            "enum": [
+              "monthly",
+              "annual",
+              "manual"
+            ]
+          },
+          "includedSeats": {
+            "type": "number"
+          },
+          "overSeatLimit": {
+            "type": "boolean"
+          },
+          "pendingInvitations": {
+            "type": "number"
+          },
+          "planId": {
+            "type": "string"
+          },
+          "planName": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.billing-seat-usage.v0"
+          },
+          "seatLimit": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "usedSeats": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "accountId",
+          "availableSeats",
+          "billingPeriod",
+          "includedSeats",
+          "overSeatLimit",
+          "pendingInvitations",
+          "planId",
+          "planName",
+          "schemaVersion",
+          "seatLimit",
+          "updatedAt",
+          "usedSeats"
+        ],
+        "type": "object"
+      },
       "ApiAuthCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2716,6 +2776,75 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/billing/seat-usage": {
+      "get": {
+        "operationId": "authBillingSeatUsage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiAuthBillingSeatUsageResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load account plan and seat usage derived from auth memberships.",
+        "x-itotoriRouteId": "auth.billing.seatUsage"
+      }
+    },
     "/api/auth/capabilities": {
       "get": {
         "operationId": "authCapabilities",

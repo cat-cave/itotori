@@ -40,6 +40,7 @@ import {
   type ProjectTelemetryTimeseries,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
+  type AuthAccountSeatUsageRecord,
   type LoadQueueHealthOptions,
   type ActorIdentityRecord,
   type MemberInvitationRecord,
@@ -82,6 +83,7 @@ import {
   parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiAuthCapabilitiesResponse,
+  type ApiAuthBillingSeatUsageResponse,
   type ApiAuthIdentityResponse,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
@@ -188,6 +190,7 @@ export const apiMutationPermissionGates = {
   launchPass: apiMutationGate("launch pass", "draftWrite"),
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
   membersList: apiMutationGate("members list", "authMembersManage"),
+  billingSeatUsage: apiMutationGate("billing seat usage", "authMembersManage"),
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
   membersAccept: apiMutationGate("members accept", "authMembersManage"),
   membersRemove: apiMutationGate("members remove", "authMembersManage"),
@@ -302,6 +305,9 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  authBilling: {
+    loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
+  };
   authPermissions: {
     listPermissionSets(accountId: string): Promise<readonly PermissionSetRecord[]>;
   };
@@ -361,6 +367,9 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authBilling: {
+    loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
   };
   authPermissions: {
     listPermissionSets(accountId: string): Promise<readonly PermissionSetRecord[]>;
@@ -454,6 +463,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
+    },
+    authBilling: {
+      loadSeatUsage: (accountId) => services.authBilling.loadSeatUsage(accountId),
     },
     authPermissions: {
       listPermissionSets: (accountId) => services.authPermissions.listPermissionSets(accountId),
@@ -1096,6 +1108,25 @@ function memberResponseBody(input: ApiMemberRecord): ApiMemberResponse {
   return { schemaVersion: "itotori.auth.member.v0", member: input };
 }
 
+function authBillingSeatUsageResponseBody(
+  input: AuthAccountSeatUsageRecord,
+): ApiAuthBillingSeatUsageResponse {
+  return {
+    schemaVersion: "itotori.auth.billing-seat-usage.v0",
+    accountId: input.accountId,
+    planId: input.planId,
+    planName: input.planName,
+    billingPeriod: input.billingPeriod,
+    seatLimit: input.seatLimit,
+    includedSeats: input.includedSeats,
+    usedSeats: input.usedSeats,
+    pendingInvitations: input.pendingInvitations,
+    availableSeats: input.availableSeats,
+    overSeatLimit: input.overSeatLimit,
+    updatedAt: input.updatedAt.toISOString(),
+  };
+}
+
 function removeMemberResponseBody(input: ApiMemberRecord): ApiRemoveMemberResponse {
   return { schemaVersion: "itotori.auth.member-removed.v0", removedMember: input };
 }
@@ -1253,6 +1284,15 @@ async function routeReadOnlyItotoriApiRequest(
       accountId,
       members: (await services.authMembers.listMembers(accountId)).map(memberRecordBody),
     });
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/auth/billing/seat-usage") {
+    const accountId = parseAuthBillingSeatUsageQuery(request.search);
+    await requireApiPermission(services, apiMutationPermissionGates.billingSeatUsage);
+    return ok(
+      "auth.billing.seatUsage",
+      authBillingSeatUsageResponseBody(await services.authBilling.loadSeatUsage(accountId)),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/auth/permission-sets") {
@@ -1915,6 +1955,16 @@ function parseBmkCockpitHistoryQuery(search = ""): {
 function parseAuthMembersListQuery(search = ""): string {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(params, ["accountId"], "auth members list");
+  const accountId = params.get("accountId");
+  if (accountId === null || accountId.length === 0) {
+    throw new ApiValidationError("accountId is required");
+  }
+  return accountId;
+}
+
+function parseAuthBillingSeatUsageQuery(search = ""): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["accountId"], "auth billing seat usage");
   const accountId = params.get("accountId");
   if (accountId === null || accountId.length === 0) {
     throw new ApiValidationError("accountId is required");
@@ -2857,6 +2907,10 @@ function ok(
   body: ApiConfigureAuthSsoSettingsResponse,
 ): ApiJsonResponse;
 function ok(routeId: "auth.members.list", body: ApiMembersListResponse): ApiJsonResponse;
+function ok(
+  routeId: "auth.billing.seatUsage",
+  body: ApiAuthBillingSeatUsageResponse,
+): ApiJsonResponse;
 function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;

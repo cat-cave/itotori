@@ -344,6 +344,10 @@ export const migrations = [
     id: "0071_wiki_brand_contexts",
     file: "0071_wiki_brand_contexts.sql",
   },
+  {
+    id: "0072_auth_account_billing_seats",
+    file: "0072_auth_account_billing_seats.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -655,6 +655,25 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.auth.members.v0",
     }),
+  ApiAuthBillingSeatUsageResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
+      properties: {
+        accountId: str,
+        planId: str,
+        planName: str,
+        billingPeriod: { enum: ["monthly", "annual", "manual"] },
+        seatLimit: num,
+        includedSeats: num,
+        usedSeats: num,
+        pendingInvitations: num,
+        availableSeats: num,
+        overSeatLimit: bool,
+        updatedAt: str,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.billing-seat-usage.v0",
+    }),
   ApiRemoveMemberRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberRequest,

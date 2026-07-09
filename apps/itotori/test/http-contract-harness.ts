@@ -568,6 +568,21 @@ const fixtureServices = {
       createdAt: new Date("2026-07-08T00:00:00.000Z"),
     })),
   },
+  authBilling: {
+    loadSeatUsage: vi.fn(async (accountId: string) => ({
+      accountId,
+      planId: "studio-team",
+      planName: "Studio Team",
+      billingPeriod: "monthly" as const,
+      seatLimit: 5,
+      includedSeats: 5,
+      usedSeats: 1,
+      pendingInvitations: 0,
+      availableSeats: 4,
+      overSeatLimit: false,
+      updatedAt: new Date("2026-07-08T00:00:00.000Z"),
+    })),
+  },
   authIdentity: {
     loadIdentity: vi.fn(async () => ({
       actorUserId: "local-user",

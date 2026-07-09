@@ -1,6 +1,7 @@
 import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
+  ItotoriAuthBillingSeatRepository,
   ItotoriAuthMemberManagementRepository,
   ItotoriAuthSessionService,
   ItotoriAuthSsoSettingsRepository,
@@ -54,6 +55,7 @@ import {
   type JobsRunTableReadModel,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
+  type AuthAccountSeatUsageRecord,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
   type WikiEntriesFilter,
@@ -255,6 +257,9 @@ export type ItotoriApplicationServices = {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authBilling: {
+    loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
   };
   authPermissions: {
     listPermissionSets(accountId: string): Promise<PermissionSetRecord[]>;
@@ -476,6 +481,7 @@ export async function withDatabaseItotoriServices<T>(
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
     const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
+    const authBillingSeatRepository = new ItotoriAuthBillingSeatRepository(context.db);
     const authSessionService = new ItotoriAuthSessionService(context.db);
     const principalRepository = new ItotoriPrincipalRepository(context.db);
     let actorPrincipalIdPromise: Promise<string> | undefined;
@@ -768,6 +774,10 @@ export async function withDatabaseItotoriServices<T>(
             ...(requestId === null ? {} : { requestId }),
           });
         },
+      },
+      authBilling: {
+        loadSeatUsage: (accountId) =>
+          authBillingSeatRepository.loadSeatUsage(localUserActor, accountId),
       },
       authPermissions: {
         listPermissionSets: (accountId) =>

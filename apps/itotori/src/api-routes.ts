@@ -366,6 +366,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "ApiMembersListResponse",
   },
+  "auth.billing.seatUsage": {
+    method: "GET",
+    pathTemplate: "/api/auth/billing/seat-usage",
+    operationId: "authBillingSeatUsage",
+    summary: "Load account plan and seat usage derived from auth memberships.",
+    pathParams: [],
+    responseSchema: "ApiAuthBillingSeatUsageResponse",
+  },
   "auth.identity": {
     method: "GET",
     pathTemplate: "/api/auth/identity",

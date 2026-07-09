@@ -71,6 +71,66 @@
       ],
       "type": "object"
     },
+    "ApiAuthBillingSeatUsageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "availableSeats": {
+          "type": "number"
+        },
+        "billingPeriod": {
+          "enum": [
+            "monthly",
+            "annual",
+            "manual"
+          ]
+        },
+        "includedSeats": {
+          "type": "number"
+        },
+        "overSeatLimit": {
+          "type": "boolean"
+        },
+        "pendingInvitations": {
+          "type": "number"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "planName": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.billing-seat-usage.v0"
+        },
+        "seatLimit": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "usedSeats": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "accountId",
+        "availableSeats",
+        "billingPeriod",
+        "includedSeats",
+        "overSeatLimit",
+        "pendingInvitations",
+        "planId",
+        "planName",
+        "schemaVersion",
+        "seatLimit",
+        "updatedAt",
+        "usedSeats"
+      ],
+      "type": "object"
+    },
     "ApiAuthCapabilitiesResponse": {
       "additionalProperties": false,
       "properties": {

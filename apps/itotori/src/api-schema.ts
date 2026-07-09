@@ -33,6 +33,7 @@ import type {
   AuthSessionAdminRecord,
   ActorIdentityAccountRecord,
   ActorIdentityRecord,
+  AuthBillingPeriod,
   MemberInvitationRecord,
   MemberRecord,
   ReviewerQueueAction,
@@ -188,6 +189,7 @@ export type ItotoriApiRouteId =
   | "benchmarks.record"
   | "runtimeEvidence.ingest"
   | "auth.ssoSettings.configure"
+  | "auth.billing.seatUsage"
   | "auth.members.list"
   | "auth.members.invite"
   | "auth.members.accept"
@@ -398,6 +400,20 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ],
   ApiMemberResponse: ["schemaVersion", "member"],
   ApiMembersListResponse: ["schemaVersion", "accountId", "members"],
+  ApiAuthBillingSeatUsageResponse: [
+    "schemaVersion",
+    "accountId",
+    "planId",
+    "planName",
+    "billingPeriod",
+    "seatLimit",
+    "includedSeats",
+    "usedSeats",
+    "pendingInvitations",
+    "availableSeats",
+    "overSeatLimit",
+    "updatedAt",
+  ],
   ApiRemoveMemberRequest: ["reason", "requestId"],
   ApiRemoveMemberResponse: ["schemaVersion", "removedMember"],
   ApiPermissionSetRecord: ["permissionSetId", "accountId", "name", "permissions"],
@@ -835,6 +851,21 @@ export type ApiMembersListResponse = {
   members: ApiMemberRecord[];
 };
 
+export type ApiAuthBillingSeatUsageResponse = {
+  schemaVersion: "itotori.auth.billing-seat-usage.v0";
+  accountId: string;
+  planId: string;
+  planName: string;
+  billingPeriod: AuthBillingPeriod;
+  seatLimit: number;
+  includedSeats: number;
+  usedSeats: number;
+  pendingInvitations: number;
+  availableSeats: number;
+  overSeatLimit: boolean;
+  updatedAt: string;
+};
+
 export type ApiAuthSessionRecord = Omit<
   AuthSessionAdminRecord,
   "createdAt" | "expiresAt" | "revokedAt"
@@ -1176,6 +1207,7 @@ export type ItotoriApiResponseBody =
   | ApiMemberInvitationResponse
   | ApiMemberResponse
   | ApiMembersListResponse
+  | ApiAuthBillingSeatUsageResponse
   | ApiRemoveMemberResponse
   | ApiPermissionSetsListResponse
   | ApiPrincipalPermissionSetGrantResponse
@@ -1659,6 +1691,9 @@ export function assertItotoriApiResponse(
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
+      return;
+    case "auth.billing.seatUsage":
+      assertAuthBillingSeatUsageResponse(value);
       return;
     case "auth.members.list":
       assertMembersListResponse(value);
@@ -5746,6 +5781,42 @@ function assertMembersListResponse(value: unknown): asserts value is ApiMembersL
   for (const [index, member] of members.entries()) {
     assertMemberRecord(member, `ApiMembersListResponse.members[${index}]`);
   }
+}
+
+function assertAuthBillingSeatUsageResponse(
+  value: unknown,
+): asserts value is ApiAuthBillingSeatUsageResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiAuthBillingSeatUsageResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthBillingSeatUsageResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.billing-seat-usage.v0",
+    "ApiAuthBillingSeatUsageResponse.schemaVersion",
+  );
+  assertString(response.accountId, "ApiAuthBillingSeatUsageResponse.accountId");
+  assertString(response.planId, "ApiAuthBillingSeatUsageResponse.planId");
+  assertString(response.planName, "ApiAuthBillingSeatUsageResponse.planName");
+  assertEnum(
+    response.billingPeriod,
+    ["monthly", "annual", "manual"] as const,
+    "ApiAuthBillingSeatUsageResponse.billingPeriod",
+  );
+  assertPositiveInteger(response.seatLimit, "ApiAuthBillingSeatUsageResponse.seatLimit");
+  assertNonNegativeInteger(response.includedSeats, "ApiAuthBillingSeatUsageResponse.includedSeats");
+  assertNonNegativeInteger(response.usedSeats, "ApiAuthBillingSeatUsageResponse.usedSeats");
+  assertNonNegativeInteger(
+    response.pendingInvitations,
+    "ApiAuthBillingSeatUsageResponse.pendingInvitations",
+  );
+  assertNonNegativeInteger(
+    response.availableSeats,
+    "ApiAuthBillingSeatUsageResponse.availableSeats",
+  );
+  assertBoolean(response.overSeatLimit, "ApiAuthBillingSeatUsageResponse.overSeatLimit");
+  assertDateLike(response.updatedAt, "ApiAuthBillingSeatUsageResponse.updatedAt");
 }
 
 function assertPermissionSetsListResponse(

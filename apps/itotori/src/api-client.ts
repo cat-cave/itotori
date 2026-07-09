@@ -82,6 +82,7 @@ import type {
   ApiConfigureAuthSsoSettingsRequest,
   ApiConfigureAuthSsoSettingsResponse,
   ApiInviteMemberRequest,
+  ApiAuthBillingSeatUsageResponse,
   ApiMemberInvitationResponse,
   ApiMemberResponse,
   ApiMembersListResponse,
@@ -283,6 +284,9 @@ interface ItotoriApiRouteTypeMap {
     response: ApiMembersListResponse;
     collectionKey: "members";
   };
+  "auth.billing.seatUsage": {
+    response: ApiAuthBillingSeatUsageResponse;
+  };
   "auth.identity": {
     response: ApiAuthIdentityResponse;
   };
@@ -478,6 +482,9 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "projects.costDrilldown": "rows",
   "projects.benchmarks": "reports",
   "jobs.runTable": "rows",
+  "auth.members.list": "members",
+  "auth.permissionSets.list": "permissionSets",
+  "auth.sessions.list": "sessions",
   "play.routeMap": "nodes",
   // play-mark-validated — empty when no RouteMap nodes (no scenes to cover).
   "play.sceneCoverage": "nodes",

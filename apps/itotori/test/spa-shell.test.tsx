@@ -406,9 +406,10 @@ describe("SPA shell — localization workspace", () => {
 });
 
 describe("SPA shell — members", () => {
-  it("lists members and grants a permission set through the typed permission editor API", async () => {
+  it("shows seat usage, invites members, and grants a permission set through typed auth APIs", async () => {
     let directorGranted = false;
     const grantRequests: unknown[] = [];
+    const inviteRequests: unknown[] = [];
     server.use(
       http.get("*/api/auth/members", () =>
         apiJson("auth.members.list", {
@@ -428,6 +429,22 @@ describe("SPA shell — members", () => {
               createdAt: "2026-07-08T00:00:00.000Z",
             },
           ],
+        }),
+      ),
+      http.get("*/api/auth/billing/seat-usage", () =>
+        apiJson("auth.billing.seatUsage", {
+          schemaVersion: "itotori.auth.billing-seat-usage.v0",
+          accountId: "account-local",
+          planId: "studio-team",
+          planName: "Studio Team",
+          billingPeriod: "monthly",
+          seatLimit: 5,
+          includedSeats: 5,
+          usedSeats: 1,
+          pendingInvitations: inviteRequests.length,
+          availableSeats: 4,
+          overSeatLimit: false,
+          updatedAt: "2026-07-08T00:00:00.000Z",
         }),
       ),
       http.get("*/api/auth/permission-sets", () =>
@@ -450,6 +467,22 @@ describe("SPA shell — members", () => {
           ],
         }),
       ),
+      http.post("*/api/auth/members/invitations", async ({ request }) => {
+        const body = await request.json();
+        inviteRequests.push(body);
+        return apiJson("auth.members.invite", {
+          schemaVersion: "itotori.auth.member-invitation.v0",
+          invitationId: "invitation-ui",
+          accountId: "account-local",
+          email: (body as { email: string }).email,
+          initialPermissionSetIds: (body as { initialPermissionSetIds: string[] })
+            .initialPermissionSetIds,
+          expiresAt: (body as { expiresAt: string }).expiresAt,
+          acceptedAt: null,
+          revokedAt: null,
+          createdAt: "2026-07-08T00:00:00.000Z",
+        });
+      }),
       http.post(
         "*/api/auth/principals/:principalId/permission-sets/:permissionSetId/grant",
         async ({ params, request }) => {
@@ -480,7 +513,24 @@ describe("SPA shell — members", () => {
 
     render(<App location={{ pathname: "/members", search: "" }} />);
 
+    expect(await screen.findByRole("heading", { name: "Plan and seats" })).toBeInTheDocument();
+    expect(await screen.findByText("studio-team")).toBeInTheDocument();
+    expect(await screen.findByText("Monthly")).toBeInTheDocument();
     expect(await screen.findByText("API Member")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "new.member@example.test" },
+    });
+    fireEvent.click(screen.getByLabelText("Include Reviewer"));
+    fireEvent.click(screen.getByRole("button", { name: "Send invite" }));
+    await waitFor(() => expect(inviteRequests).toHaveLength(1));
+    expect(inviteRequests[0]).toMatchObject({
+      accountId: "account-local",
+      email: "new.member@example.test",
+      initialPermissionSetIds: ["permission-set-account-local-reviewer"],
+      reason: null,
+      requestId: null,
+    });
+    expect(await screen.findByText("Invite sent to new.member@example.test")).toBeInTheDocument();
     const reviewer = await screen.findByLabelText("Revoke Reviewer for API Member");
     expect(reviewer).toBeChecked();
 

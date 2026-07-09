@@ -4963,6 +4963,45 @@ export const authAccounts = pgTable("itotori_auth_accounts", {
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
 });
 
+export const authBillingPeriodValues = {
+  monthly: "monthly",
+  annual: "annual",
+  manual: "manual",
+} as const;
+
+export type AuthBillingPeriod =
+  (typeof authBillingPeriodValues)[keyof typeof authBillingPeriodValues];
+
+/** Internal account billing plan and seat entitlement. */
+export const authAccountBillingSeats = pgTable(
+  "itotori_auth_account_billing_seats",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => authAccounts.accountId, { onDelete: "cascade" }),
+    planId: text("plan_id").notNull(),
+    planName: text("plan_name").notNull(),
+    seatLimit: integer("seat_limit").notNull(),
+    includedSeats: integer("included_seats").notNull(),
+    billingPeriod: text("billing_period").notNull().$type<AuthBillingPeriod>().default("monthly"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("itotori_auth_account_billing_seats_plan_id_check", sql`length(${table.planId}) > 0`),
+    check("itotori_auth_account_billing_seats_plan_name_check", sql`length(${table.planName}) > 0`),
+    check("itotori_auth_account_billing_seats_seat_limit_check", sql`${table.seatLimit} >= 1`),
+    check(
+      "itotori_auth_account_billing_seats_included_seats_check",
+      sql`${table.includedSeats} >= 0`,
+    ),
+    check(
+      "itotori_auth_account_billing_seats_period_check",
+      sql`${table.billingPeriod} in ('monthly', 'annual', 'manual')`,
+    ),
+  ],
+);
+
 /**
  * The unifying principal supertype: a principal is a human user OR a service
  * principal. Grants, sessions, and audit rows reference a principal by this id
