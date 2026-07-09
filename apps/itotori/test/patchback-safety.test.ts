@@ -1,5 +1,8 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  listSjisEncodableCodepointsForAudit,
   normalizeToSjisSafe,
   reconstructTarget,
   repairJsonObject,
@@ -7,6 +10,22 @@ import {
   stripOutOfBandControlMarkup,
   type ProtectedSpanSkeleton,
 } from "../src/localization/patchback-safety.js";
+
+const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+
+function encodingRsSjisEncodableCodepoints(): readonly number[] {
+  const result = spawnSync(
+    "cargo",
+    ["run", "--quiet", "-p", "kaifuu-reallive", "--example", "sjis_encodable_codepoints"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+  return JSON.parse(result.stdout) as number[];
+}
 
 describe("stripOutOfBandControlMarkup", () => {
   it("removes every kidoku marker and keeps the body", () => {
@@ -158,6 +177,10 @@ describe("reconstructTarget", () => {
 });
 
 describe("normalizeToSjisSafe", () => {
+  it("uses the same keep-set as the encoding_rs Shift_JIS encoder", () => {
+    expect(listSjisEncodableCodepointsForAudit()).toEqual(encodingRsSjisEncodableCodepoints());
+  });
+
   it("folds curly quotes, dashes, and ellipses to ASCII", () => {
     expect(normalizeToSjisSafe("It’s “fine”—really…")).toBe('It\'s "fine"--really...');
   });
