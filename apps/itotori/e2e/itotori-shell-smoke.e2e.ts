@@ -45,13 +45,19 @@ test("dashboard shell navigates to reviewer and workspace surfaces", async ({ pa
 
   await page.getByRole("tab", { name: "Review" }).click();
   await expect(page).toHaveURL(/\/reviewer-queue$/u);
-  await expect(page.locator('main[data-screen="reviewer-queue"][data-state="ready"]')).toBeVisible();
+  await expect(
+    page.locator('main[data-screen="reviewer-queue"][data-state="ready"]'),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Reviewer queue" })).toBeVisible();
 
-  const detailLink = page.locator('main[data-screen="reviewer-queue"] a[href^="/reviewer-queue/"]').first();
+  const detailLink = page
+    .locator('main[data-screen="reviewer-queue"] a[href^="/reviewer-queue/"]')
+    .first();
   await expect(detailLink).toBeVisible();
   await detailLink.click();
-  await expect(page.locator('main[data-screen="reviewer-detail"][data-state="ready"]')).toBeVisible();
+  await expect(
+    page.locator('main[data-screen="reviewer-detail"][data-state="ready"]'),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Source unit" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Workspace" }).click();
@@ -65,9 +71,13 @@ test("dashboard shell navigates to reviewer and workspace surfaces", async ({ pa
   await expect(page.getByRole("heading", { name: /Scene 1:/u })).toBeVisible();
 });
 
-test("reviewer and workspace deep links cold-load through the server fallback", async ({ page }) => {
+test("reviewer and workspace deep links cold-load through the server fallback", async ({
+  page,
+}) => {
   await page.goto(`/reviewer-queue/${reviewerDetailContext.reviewItemId}`);
-  await expect(page.locator('main[data-screen="reviewer-detail"][data-state="ready"]')).toBeVisible();
+  await expect(
+    page.locator('main[data-screen="reviewer-detail"][data-state="ready"]'),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Comparison" })).toBeVisible();
 
   await page.goto(
@@ -82,7 +92,9 @@ test("reviewer and workspace deep links cold-load through the server fallback", 
     `/workspace/comparison?reviewItemId=${encodeURIComponent(reviewerDetailContext.reviewItemId)}`,
   );
   await expect(page.locator('main[data-screen="workspace"][data-view="comparison"]')).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Source / draft / final comparison" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Source / draft / final comparison" }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Comparison", exact: true })).toBeVisible();
 });
 
@@ -199,7 +211,9 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
     });
     return;
   }
-  throw new Error(`Unhandled Itotori fixture API request: ${route.request().method()} ${url.pathname}${url.search}`);
+  throw new Error(
+    `Unhandled Itotori fixture API request: ${route.request().method()} ${url.pathname}${url.search}`,
+  );
 }
 
 async function fulfillJson(

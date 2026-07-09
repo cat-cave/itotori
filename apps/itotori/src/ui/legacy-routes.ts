@@ -9,9 +9,7 @@
 // screen), NOT a dual path for a replaced view.
 
 import { assertBrowserItotoriApiResponse } from "../api-client-guards.js";
-import type {
-  AssetDecisionsRouteParams,
-} from "../asset-decisions/route.js";
+import type { AssetDecisionsRouteParams } from "../asset-decisions/route.js";
 import type {
   ReviewerBatchActionRequest,
   ReviewerBatchActionServicePort,

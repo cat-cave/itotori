@@ -52,10 +52,7 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
  * runtime because it also imports Node-oriented bridge-schema validators that
  * reference `Buffer` during bundle evaluation.
  */
-export function assertBrowserItotoriApiResponse(
-  routeId: ItotoriApiRouteId,
-  body: unknown,
-): void {
+export function assertBrowserItotoriApiResponse(routeId: ItotoriApiRouteId, body: unknown): void {
   const record = assertRecord(body, `response for ${routeId}`);
   for (const key of REQUIRED_RESPONSE_KEYS[routeId] ?? []) {
     if (!(key in record)) {

@@ -38,11 +38,7 @@ import {
   reviewerSingleActionList,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import {
-  ITOTORI_API_ROUTE_IDS,
-  ITOTORI_API_ROUTES,
-  type ItotoriApiRoute,
-} from "./api-routes.js";
+import { ITOTORI_API_ROUTE_IDS, ITOTORI_API_ROUTES, type ItotoriApiRoute } from "./api-routes.js";
 
 // ---------------------------------------------------------------------------
 // JSON value + deterministic sort
