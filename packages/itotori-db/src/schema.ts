@@ -4735,6 +4735,52 @@ export const benchmarkRuns = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// play-mark-validated — per-scene localization coverage (needs_check / flagged /
+// validated). The Play RouteMap paints each node with this state; "Mark
+// validated" writes through this table. Game-agnostic: scene_id is an opaque
+// key (matches scene-summary sceneId / route-map routeKey when shared).
+// ---------------------------------------------------------------------------
+
+export const sceneLocalizationCoverageStateValues = {
+  needsCheck: "needs_check",
+  flagged: "flagged",
+  validated: "validated",
+} as const;
+
+export type SceneLocalizationCoverageState =
+  (typeof sceneLocalizationCoverageStateValues)[keyof typeof sceneLocalizationCoverageStateValues];
+
+export const sceneLocalizationCoverage = pgTable(
+  "itotori_scene_localization_coverage",
+  {
+    coverageId: text("coverage_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sceneId: text("scene_id").notNull(),
+    coverageState: text("coverage_state").$type<SceneLocalizationCoverageState>().notNull(),
+    updatedByUserId: text("updated_by_user_id").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_scene_localization_coverage_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sceneId,
+    ),
+    index("itotori_scene_localization_coverage_branch_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.coverageState,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // auth-001-principal-schema — multi-user principal / account / permission-set
 // identity layer.
 //

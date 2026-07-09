@@ -1,0 +1,90 @@
+/* RouteMap — route/choice tree using diagram tokens only. */
+
+.itotori-route-map {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  color: var(--ito-color-text);
+}
+
+.itotori-route-map--empty {
+  padding: var(--ito-space-16);
+  border: 1px dashed var(--ito-diagram-node-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-diagram-node-bg);
+}
+
+.itotori-route-map__empty {
+  margin: 0;
+  color: var(--ito-color-muted);
+  font-size: var(--ito-font-size-sm);
+}
+
+.itotori-route-map__nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-10);
+}
+
+.itotori-route-map__node-wrap {
+  margin: 0;
+}
+
+.itotori-route-map__node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  padding: var(--ito-space-10) var(--ito-space-12);
+  background: var(--ito-diagram-node-bg);
+  border: 1px solid var(--ito-diagram-node-border);
+  border-radius: var(--ito-radius);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.itotori-route-map__node:disabled {
+  cursor: default;
+}
+
+.itotori-route-map__node--active {
+  border-color: var(--ito-diagram-node-active-border);
+  box-shadow: 0 0 0 1px var(--ito-diagram-node-active-border);
+}
+
+.itotori-route-map__node-label {
+  font-weight: 600;
+}
+
+.itotori-route-map__edges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-6);
+  border-top: 1px solid var(--ito-diagram-edge);
+  padding-top: var(--ito-space-10);
+}
+
+.itotori-route-map__edge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ito-space-6);
+  color: var(--ito-diagram-edge);
+  font-size: var(--ito-font-size-sm);
+  font-family: var(--ito-font-mono, monospace);
+}
+
+.itotori-route-map__edge-arrow {
+  color: var(--ito-diagram-edge-taken);
+}
+
+.itotori-route-map__edge-label {
+  color: var(--ito-diagram-branch-choice);
+  font-family: var(--ito-font-sans, inherit);
+}

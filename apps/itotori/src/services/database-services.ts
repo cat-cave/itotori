@@ -17,6 +17,8 @@ import {
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
+  ItotoriRouteChoiceMapRepository,
+  ItotoriSceneCoverageRepository,
   ItotoriSceneSummaryRepository,
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
@@ -123,6 +125,10 @@ import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
 import type { TelemetryQuery } from "../telemetry/queries.js";
 import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { AuthorizationActor } from "@itotori/db";
+import {
+  SceneCoverageService,
+  type SceneCoverageServicePort,
+} from "../play/scene-coverage-service.js";
 
 export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
@@ -237,6 +243,7 @@ export type ItotoriApplicationServices = {
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
+  sceneCoverage: SceneCoverageServicePort;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -406,6 +413,8 @@ export async function withDatabaseItotoriServices<T>(
     );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
+    const sceneCoverageRepository = new ItotoriSceneCoverageRepository(context.db);
+    const routeChoiceMapRepository = new ItotoriRouteChoiceMapRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
@@ -688,6 +697,15 @@ export async function withDatabaseItotoriServices<T>(
           });
         },
       },
+      sceneCoverage: new SceneCoverageService({
+        coverage: sceneCoverageRepository,
+        routeMaps: {
+          loadRouteMapsByProject: (actor, query) =>
+            routeChoiceMapRepository.loadRouteMapsByProject(actor, query),
+          loadRouteChoicesByProject: (actor, query) =>
+            routeChoiceMapRepository.loadRouteChoicesByProject(actor, query),
+        },
+      }),
     });
   } finally {
     await context.close();

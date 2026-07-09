@@ -441,6 +441,178 @@
       ],
       "type": "object"
     },
+    "ApiPlaySceneCoverageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "flagged": {
+          "type": "number"
+        },
+        "needsCheck": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "validated": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "flagged",
+        "needsCheck",
+        "total",
+        "validated"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySceneCoverageEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "choiceKey": {
+          "type": "string"
+        },
+        "fromSceneId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "toSceneId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "choiceKey",
+        "fromSceneId",
+        "label",
+        "toSceneId"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySceneCoverageNode": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageState": {
+          "enum": [
+            "needs_check",
+            "flagged",
+            "validated"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "routeKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routeMapId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sceneId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageState",
+        "label",
+        "routeKey",
+        "routeMapId",
+        "sceneId"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySceneCoverageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/ApiPlaySceneCoverageCounts"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/ApiPlaySceneCoverageEdge"
+          },
+          "type": "array"
+        },
+        "generatedAt": {},
+        "localeBranchId": {},
+        "nodes": {
+          "items": {
+            "$ref": "#/definitions/ApiPlaySceneCoverageNode"
+          },
+          "type": "array"
+        },
+        "projectId": {},
+        "schemaVersion": {
+          "const": "itotori.play.scene-coverage.v0"
+        }
+      },
+      "required": [
+        "counts",
+        "edges",
+        "generatedAt",
+        "localeBranchId",
+        "nodes",
+        "projectId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySetSceneCoverageRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "coverageState": {
+          "enum": [
+            "needs_check",
+            "flagged",
+            "validated"
+          ]
+        },
+        "sceneId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageState",
+        "sceneId"
+      ],
+      "type": "object"
+    },
+    "ApiPlaySetSceneCoverageResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageState": {
+          "enum": [
+            "needs_check",
+            "flagged",
+            "validated"
+          ]
+        },
+        "localeBranchId": {},
+        "projectId": {},
+        "sceneId": {},
+        "schemaVersion": {
+          "const": "itotori.play.set-scene-coverage.v0"
+        },
+        "updatedAt": {},
+        "updatedByUserId": {}
+      },
+      "required": [
+        "coverageState",
+        "localeBranchId",
+        "projectId",
+        "sceneId",
+        "schemaVersion",
+        "updatedAt",
+        "updatedByUserId"
+      ],
+      "type": "object"
+    },
     "ApiProjectImportRequest": {
       "additionalProperties": true,
       "properties": {

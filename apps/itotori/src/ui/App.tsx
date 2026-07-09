@@ -31,6 +31,7 @@ import {
   parsePlayScenePickerRoute,
   playRouteFromAddressable,
 } from "./screens/PlayScenePickerScreen.js";
+import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
@@ -116,6 +117,13 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const reviewerQueue = parseReviewerQueueRoute(location.pathname, location.search);
   if (reviewerQueue !== null) {
     return <ReviewerQueueScreen route={reviewerQueue} />;
+  }
+
+  // `/play/routemap` — Play RouteMap with per-scene coverage (mark validated).
+  // Matched BEFORE bare `/play` so the more specific path wins.
+  const playRouteMap = parsePlayRouteMapRoute(location.pathname, location.search);
+  if (playRouteMap !== null) {
+    return <PlayRouteMapScreen route={playRouteMap} />;
   }
 
   // `/play` — the Play scene picker (translated-summary navigation + source ↔

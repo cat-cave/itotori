@@ -67,10 +67,13 @@ import {
   parseInviteMemberRequest,
   parseRemoveMemberRequest,
   parseLaunchPassRequest,
+  parsePlaySetSceneCoverageRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
+  type ApiPlaySceneCoverageResponse,
+  type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiConfigureAuthSsoSettingsResponse,
   type ApiAcceptMemberInvitationRequest,
@@ -97,6 +100,10 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
+import {
+  SceneCoverageServiceError,
+  type SceneCoverageServicePort,
+} from "./play/scene-coverage-service.js";
 import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
@@ -158,6 +165,7 @@ export const apiMutationPermissionGates = {
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
   membersAccept: apiMutationGate("members accept", "authMembersManage"),
   membersRemove: apiMutationGate("members remove", "authMembersManage"),
+  setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -260,6 +268,7 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  sceneCoverage: Pick<SceneCoverageServicePort, "loadRouteMapCoverage">;
 };
 
 /**
@@ -308,6 +317,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
+  sceneCoverage: SceneCoverageServicePort;
 };
 
 /**
@@ -376,6 +386,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
+    },
+    sceneCoverage: {
+      loadRouteMapCoverage: (input) => services.sceneCoverage.loadRouteMapCoverage(input),
     },
   };
 }
@@ -464,6 +477,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   ) {
     return methodNotAllowed(["POST"]);
   }
+  if (parseSceneCoverageApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["GET", "POST"]);
+  }
   if (parseProjectRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
   }
@@ -540,6 +556,26 @@ async function routeItotoriApiRequest(
       "workspace.correctionSubmit",
       await services.workspaceCorrections.submitCorrections({ ...body, permission }),
     );
+  }
+
+  const setSceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
+  if (request.method === "POST" && setSceneCoverageRoute !== null) {
+    const body = parsePlaySetSceneCoverageRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.setSceneCoverage);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: setSceneCoverageRoute.projectId,
+      localeBranchId: setSceneCoverageRoute.localeBranchId,
+    });
+    const actorUserId = "local-user";
+    const result = await services.sceneCoverage.setSceneCoverage({
+      actor: { userId: actorUserId },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      sceneId: body.sceneId,
+      coverageState: body.coverageState,
+      updatedByUserId: actorUserId,
+    });
+    return ok("play.setSceneCoverage", result);
   }
 
   if (
@@ -1141,6 +1177,20 @@ async function routeReadOnlyItotoriApiRequest(
         filter,
       ),
     });
+  }
+
+  const sceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
+  if (request.method === "GET" && sceneCoverageRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: sceneCoverageRoute.projectId,
+      localeBranchId: sceneCoverageRoute.localeBranchId,
+    });
+    const model = await services.sceneCoverage.loadRouteMapCoverage({
+      actor: { userId: "local-user" },
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+    });
+    return ok("play.sceneCoverage", model);
   }
 
   if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
@@ -1824,6 +1874,22 @@ function parseAssetDecisionApiRoute(pathname: string): {
   };
 }
 
+function parseSceneCoverageApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/scene-coverage$/u.exec(
+    pathname,
+  );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function decodeApiPathSegment(raw: string, label: string): string {
   let decoded: string;
   try {
@@ -2315,6 +2381,11 @@ function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): 
 function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
+function ok(routeId: "play.sceneCoverage", body: ApiPlaySceneCoverageResponse): ApiJsonResponse;
+function ok(
+  routeId: "play.setSceneCoverage",
+  body: ApiPlaySetSceneCoverageResponse,
+): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };
@@ -2346,6 +2417,9 @@ function errorResponse(error: unknown): ApiJsonResponse {
     error.code === "asset_decision_not_found"
   ) {
     return errorBody(404, "not_found", error.message);
+  }
+  if (error instanceof SceneCoverageServiceError && error.code === "unknown_scene") {
+    return errorBody(400, "bad_request", error.message);
   }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
 }
