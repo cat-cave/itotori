@@ -17,10 +17,15 @@ import {
   type FeedbackType,
   type ManualFeedbackImportInput,
 } from "@itotori/db";
+import {
+  ANNOTATION_SEVERITIES,
+  type AnnotationSeverity,
+  isAnnotationSeverity,
+} from "../annotation.js";
 
 /** Closed ordinal severity scale — mirrors `@itotori/ds` AnnotationComposer. */
-export const PLAY_FLAG_SEVERITIES = ["blocker", "critical", "warning", "note"] as const;
-export type PlayFlagSeverity = (typeof PLAY_FLAG_SEVERITIES)[number];
+export const PLAY_FLAG_SEVERITIES = ANNOTATION_SEVERITIES;
+export type PlayFlagSeverity = AnnotationSeverity;
 
 export type PlayFlagAnnotationInput = {
   projectId: string;
@@ -106,7 +111,7 @@ export function buildPlayFlagFeedbackInput(
   if (note.length === 0) {
     throw new Error("play flag note must be a non-empty string");
   }
-  if (!(PLAY_FLAG_SEVERITIES as readonly string[]).includes(input.severity)) {
+  if (!isAnnotationSeverity(input.severity)) {
     throw new Error(`play flag severity must be one of: ${PLAY_FLAG_SEVERITIES.join(", ")}`);
   }
 

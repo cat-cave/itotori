@@ -30,6 +30,7 @@ import { apiJson } from "./msw-handlers.js";
 import { projectOverviewFixture } from "./api-fixtures.js";
 
 const REVIEW_ITEM_ID = "review-item-rev-corr";
+const PROJECT_ID = "project-rev-corr";
 const LOCALE_BRANCH_ID = "locale-branch-rev-corr";
 const CORRECTIONS_PATH = "*/api/workspace/corrections";
 const OVERVIEW_PATH = "*/api/projects/overview";
@@ -49,7 +50,10 @@ function previewFixture(
       canManageQueue: true,
       denialReasons: [],
     },
+    projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
+    sourceBundleId: null,
+    targetLocale: "en-US",
     units: [
       {
         reviewItemId: REVIEW_ITEM_ID,

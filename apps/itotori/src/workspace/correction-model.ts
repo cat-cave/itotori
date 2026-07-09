@@ -91,7 +91,10 @@ export type WorkspaceCorrectionPreviewReadModel = {
   schemaVersion: "workspace.correction_preview.v0.1";
   generatedAt: Date;
   permission: WorkspaceCorrectionPermissionView;
+  projectId: string | null;
   localeBranchId: string;
+  sourceBundleId: string | null;
+  targetLocale: string | null;
   units: WorkspaceCorrectionPreviewUnit[];
   diagnostics: WorkspaceCorrectionDiagnostic[];
 };

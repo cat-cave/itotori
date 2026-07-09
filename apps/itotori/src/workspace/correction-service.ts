@@ -37,6 +37,7 @@ import {
   type WorkspaceCorrectionEditRecord,
   feedbackTypeValues,
 } from "@itotori/db";
+import type { AnnotationSeverity } from "../annotation.js";
 import { dispositionFor } from "../draft-feedback/batch-service.js";
 import type { ReviewerDetailContext } from "../reviewer/detail-fixtures.js";
 import type { ManualFeedbackImportPort } from "../manual-feedback.js";
@@ -99,6 +100,8 @@ export type WorkspaceCorrectionSubmission = {
   bridgeUnitId: string;
   sourceUnitKey?: string;
   sourceRevisionId: string;
+  severity: AnnotationSeverity;
+  scope: WorkspaceCorrectionScope;
   reason: string;
   correctedText: string;
   draftText?: string;
@@ -113,10 +116,27 @@ export type WorkspaceCorrectionSubmission = {
   metadata?: Record<string, unknown>;
 };
 
+export const workspaceCorrectionScopeKindValues = {
+  line: "line",
+  scene: "scene",
+} as const;
+
+export type WorkspaceCorrectionScopeKind =
+  (typeof workspaceCorrectionScopeKindValues)[keyof typeof workspaceCorrectionScopeKindValues];
+
+export type WorkspaceCorrectionScope =
+  | {
+      kind: "line";
+    }
+  | {
+      kind: "scene";
+      sceneId: string;
+    };
+
 export type SubmitWorkspaceCorrectionsInput = {
   projectId: string;
   localeBranchId: string;
-  sourceBundleId: string;
+  sourceBundleId?: string;
   targetLocale: string;
   actorUserId: string;
   actorDisplayName?: string;
@@ -150,11 +170,16 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
   async loadPreview(
     input: LoadWorkspaceCorrectionPreviewInput,
   ): Promise<WorkspaceCorrectionPreviewReadModel> {
+    let projectId: string | null = null;
+    let targetLocale: string | null = null;
     const base = {
       schemaVersion: "workspace.correction_preview.v0.1" as const,
       generatedAt: this.now(),
       permission: input.permission,
+      projectId,
       localeBranchId: input.localeBranchId,
+      sourceBundleId: null,
+      targetLocale,
     };
     if (!input.permission.canReadQueue) {
       return {
@@ -183,9 +208,11 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
         });
         continue;
       }
+      projectId ??= context.item?.projectId ?? null;
+      targetLocale ??= context.draft?.targetLocale ?? null;
       units.push(previewUnitFromContext(reviewItemId, input.localeBranchId, context));
     }
-    return { ...base, units, diagnostics };
+    return { ...base, projectId, targetLocale, units, diagnostics };
   }
 
   async submitCorrections(
@@ -304,6 +331,8 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
           : { actorDisplayName: input.actorDisplayName }),
         metadata: {
           feedbackType,
+          annotationSeverity: correction.severity,
+          annotationScope: correction.scope,
           sourceUnitKey: correction.sourceUnitKey ?? null,
           ...correction.metadata,
         },
@@ -432,6 +461,13 @@ function validateCorrectionBatch(
     if (correction.bridgeUnitId.trim().length === 0) {
       invalid(index, "bridgeUnitId", "must be non-empty");
     }
+    if (correction.scope.kind === workspaceCorrectionScopeKindValues.scene) {
+      if (correction.scope.sceneId.trim().length === 0) {
+        invalid(index, "scope.sceneId", "must be non-empty for scene-scoped corrections");
+      }
+    } else if (correction.scope.kind !== workspaceCorrectionScopeKindValues.line) {
+      invalid(index, "scope.kind", "must be line or scene");
+    }
   });
 
   return diagnostics;
@@ -446,7 +482,6 @@ function buildFeedbackImportInput(
   const importInput: ManualFeedbackImportInput = {
     projectId: input.projectId,
     localeBranchId: input.localeBranchId,
-    sourceBundleId: input.sourceBundleId,
     targetLocale: input.targetLocale,
     feedbackType,
     reporter: {
@@ -461,16 +496,24 @@ function buildFeedbackImportInput(
       ...(correction.sourceUnitKey === undefined
         ? {}
         : { sourceUnitKey: correction.sourceUnitKey }),
+      ...(correction.scope.kind === workspaceCorrectionScopeKindValues.scene
+        ? { sourceLocation: { sceneId: correction.scope.sceneId } }
+        : {}),
     },
     metadata: {
       workspaceCorrection: true,
       workspaceCorrectionBatchId: batchId,
+      annotationSeverity: correction.severity,
+      annotationScope: correction.scope,
       sourceRevisionId: correction.sourceRevisionId,
       affectedUnitIds: [correction.bridgeUnitId],
       bridgeUnitIds: [correction.bridgeUnitId],
       ...correction.metadata,
     },
   };
+  if (input.sourceBundleId !== undefined) {
+    importInput.sourceBundleId = input.sourceBundleId;
+  }
   if (correction.attachments !== undefined) {
     importInput.attachments = correction.attachments;
   }
@@ -571,6 +614,8 @@ function batchIdFor(input: SubmitWorkspaceCorrectionsInput): string {
       sourceRevisionId: correction.sourceRevisionId,
       correctedText: correction.correctedText,
       reason: correction.reason,
+      severity: correction.severity,
+      scope: correction.scope,
     })),
   });
   return `workspace-correction-batch-${createHash("sha256").update(seed).digest("hex").slice(0, 16)}`;

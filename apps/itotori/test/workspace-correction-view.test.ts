@@ -33,7 +33,10 @@ function previewModel(permission = managePermission): WorkspaceCorrectionPreview
     schemaVersion: "workspace.correction_preview.v0.1",
     generatedAt: new Date("2026-06-30T00:00:00Z"),
     permission,
+    projectId: "project-1",
     localeBranchId: "branch-en",
+    sourceBundleId: null,
+    targetLocale: "en-US",
     units: [
       {
         reviewItemId: "review-item-1",
@@ -88,6 +91,10 @@ describe("renderWorkspaceCorrectionPreviewView", () => {
     expect(html).toContain("hero");
     expect(html).toContain("sha256:abc");
     expect(html).toContain('action="/api/workspace/corrections"');
+    expect(html).toContain('name="corrections[0].correctedText"');
+    expect(html).toContain('name="corrections[0].reason"');
+    expect(html).toContain('name="corrections[0].severity"');
+    expect(html).toContain('name="corrections[0].scope.kind"');
   });
 
   it("hides the submit form and shows a read-only note without queue.manage", () => {

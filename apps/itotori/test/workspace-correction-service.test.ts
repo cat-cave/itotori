@@ -276,6 +276,13 @@ const submitBase = {
   permission: managePermission,
 };
 
+function annotationFields() {
+  return {
+    severity: "warning" as const,
+    scope: { kind: "line" as const },
+  };
+}
+
 describe("WorkspaceCorrectionService — submit", () => {
   it("records durable edit history tied to project/branch/revision/unit/actor/reason and routes through the same feedback path", async () => {
     const { service, feedbackRepo, reviewerQueue, editRepo } = buildService();
@@ -288,6 +295,7 @@ describe("WorkspaceCorrectionService — submit", () => {
           bridgeUnitId: "unit-a",
           sourceUnitKey: "key-a",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Typo: teh -> the",
           correctedText: "The hero speaks.",
           draftText: "Teh hero speaks.",
@@ -295,6 +303,8 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-b",
           sourceRevisionId: SOURCE_REVISION_ID,
+          severity: "critical",
+          scope: { kind: "scene", sceneId: "scene-fixture-1" },
           reason: "Honorific dropped",
           correctedText: "Onii-chan!",
           draftText: "Big brother!",
@@ -327,6 +337,22 @@ describe("WorkspaceCorrectionService — submit", () => {
       reporterNote: "Typo: teh -> the",
       suggestedEdit: "The hero speaks.",
       lineReference: { bridgeUnitId: "unit-a", sourceUnitKey: "key-a" },
+      metadata: {
+        annotationSeverity: "warning",
+        annotationScope: { kind: "line" },
+      },
+    });
+    expect(feedbackRepo.imported[1]).toMatchObject({
+      reporterNote: "Honorific dropped",
+      suggestedEdit: "Onii-chan!",
+      lineReference: {
+        bridgeUnitId: "unit-b",
+        sourceLocation: { sceneId: "scene-fixture-1" },
+      },
+      metadata: {
+        annotationSeverity: "critical",
+        annotationScope: { kind: "scene", sceneId: "scene-fixture-1" },
+      },
     });
 
     // SAME decision queue: the style correction became a `style` reviewer-queue
@@ -354,6 +380,7 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-a",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Typo fix",
           correctedText: "Fixed text.",
         },
@@ -394,6 +421,7 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-a",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Typo fix",
           correctedText: "Fixed text.",
         },
@@ -421,6 +449,7 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-shared",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "EN fix",
           correctedText: "English fix.",
         },
@@ -433,6 +462,7 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-shared",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "FR fix",
           correctedText: "Correction française.",
         },
@@ -457,12 +487,14 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-a",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Valid fix",
           correctedText: "Valid corrected text.",
         },
         {
           bridgeUnitId: "unit-b",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Valid fix two",
           correctedText: "Second valid text.",
         },
@@ -470,6 +502,7 @@ describe("WorkspaceCorrectionService — submit", () => {
           // Correction #3 is invalid: empty corrected text + blank reason.
           bridgeUnitId: "unit-c",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "   ",
           correctedText: "",
         },
@@ -504,6 +537,7 @@ describe("WorkspaceCorrectionService — submit", () => {
         {
           bridgeUnitId: "unit-a",
           sourceRevisionId: SOURCE_REVISION_ID,
+          ...annotationFields(),
           reason: "Missing corrected text",
           correctedText: "",
         },

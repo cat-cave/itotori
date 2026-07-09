@@ -1293,7 +1293,6 @@
         "corrections",
         "localeBranchId",
         "projectId",
-        "sourceBundleId",
         "targetLocale"
       ],
       "type": "object"
@@ -2143,8 +2142,17 @@
         "permission": {
           "$ref": "#/definitions/ReviewerQueuePermissionView"
         },
+        "projectId": {
+          "type": "string"
+        },
         "schemaVersion": {
           "const": "workspace.correction_preview.v0.1"
+        },
+        "sourceBundleId": {
+          "type": "string"
+        },
+        "targetLocale": {
+          "type": "string"
         },
         "units": {
           "type": "array"
@@ -2155,7 +2163,10 @@
         "generatedAt",
         "localeBranchId",
         "permission",
+        "projectId",
         "schemaVersion",
+        "sourceBundleId",
+        "targetLocale",
         "units"
       ],
       "type": "object"

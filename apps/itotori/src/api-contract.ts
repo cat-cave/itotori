@@ -327,7 +327,10 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
+        projectId: str,
         localeBranchId: str,
+        sourceBundleId: str,
+        targetLocale: str,
         units: arr,
         diagnostics: arr,
       },
@@ -808,7 +811,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: [
         "projectId",
         "localeBranchId",
-        "sourceBundleId",
         "targetLocale",
         "actorUserId",
         "corrections",

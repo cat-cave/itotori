@@ -8,9 +8,10 @@
 // with the translated, source-language-free affordances so a reviewer who
 // does not read the source can navigate.
 
-import type { ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Badge, DataTable, Panel } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
+import { apiClient } from "../client.js";
 import type { ItotoriApiRouteId } from "../../api-schema.js";
 import type {
   WorkspaceAssetBrowseReadModel,
@@ -21,9 +22,13 @@ import type {
   WorkspaceSceneBrowseReadModel,
   WorkspaceSearchReadModel,
 } from "../../workspace/read-model.js";
-import type { WorkspaceCorrectionPreviewReadModel } from "../../workspace/correction-model.js";
+import type {
+  WorkspaceCorrectionDiagnostic,
+  WorkspaceCorrectionPreviewReadModel,
+} from "../../workspace/correction-model.js";
 import type { WorkspaceRoute } from "../../workspace/route.js";
 import type { ApiRequestOptionsFor, ApiRouteResponse } from "../../api-client.js";
+import { ANNOTATION_SEVERITIES, type AnnotationSeverity } from "../../annotation.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 
@@ -148,7 +153,12 @@ function WorkspaceRouteBody({ route }: { route: WorkspaceRoute }): ReactNode {
             },
           }}
           depsKey={`workspace.corrections:${route.localeBranchId}:${route.reviewItemIds.join(",")}`}
-          render={(data) => <CorrectionsView model={data} />}
+          render={(data) => (
+            <CorrectionsView
+              key={`${data.localeBranchId}:${data.units.map((unit) => unit.reviewItemId).join(",")}`}
+              model={data}
+            />
+          )}
         />
       );
   }
@@ -169,6 +179,31 @@ function DiagnosticBanner({ diagnostics }: { diagnostics: WorkspaceDiagnostic[] 
   }
   return (
     <section className="itotori-diagnostic-banner" role="alert" aria-label="Workspace diagnostics">
+      <ul>
+        {diagnostics.map((d) => (
+          <li key={d.code} data-diagnostic-code={d.code}>
+            <Badge status="warning">{d.code}</Badge> {d.message}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CorrectionDiagnosticBanner({
+  diagnostics,
+}: {
+  diagnostics: WorkspaceCorrectionDiagnostic[];
+}): ReactNode {
+  if (diagnostics.length === 0) {
+    return null;
+  }
+  return (
+    <section
+      className="itotori-diagnostic-banner"
+      role="alert"
+      aria-label="Correction diagnostics"
+    >
       <ul>
         {diagnostics.map((d) => (
           <li key={d.code} data-diagnostic-code={d.code}>
@@ -362,21 +397,242 @@ function SearchView({ model }: { model: WorkspaceSearchReadModel }): ReactNode {
 }
 
 function CorrectionsView({ model }: { model: WorkspaceCorrectionPreviewReadModel }): ReactNode {
+  const [rows, setRows] = useState(() =>
+    model.units.map((unit) => ({
+      reviewItemId: unit.reviewItemId,
+      bridgeUnitId: unit.bridgeUnitId ?? "",
+      sourceRevisionId: unit.sourceRevisionId ?? "",
+      sourceUnitKey: unit.sourceUnitKey ?? "",
+      correctedText: unit.finalText ?? unit.draftText ?? "",
+      reason: "",
+      severity: "warning" as AnnotationSeverity,
+      scopeKind: "line" as "line" | "scene",
+      sceneId: "",
+    })),
+  );
+  const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState<null | { kind: "ok"; submittedCount: number } | { kind: "error"; message: string }>(
+    null,
+  );
+  const canSubmit =
+    model.permission.canManageQueue &&
+    model.projectId !== null &&
+    model.targetLocale !== null &&
+    rows.length > 0;
+
+  function updateRow(
+    reviewItemId: string,
+    patch: Partial<(typeof rows)[number]>,
+  ): void {
+    setRows((current) =>
+      current.map((row) => (row.reviewItemId === reviewItemId ? { ...row, ...patch } : row)),
+    );
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canSubmit || pending || model.projectId === null || model.targetLocale === null) {
+      return;
+    }
+    const invalid = rows.find(
+      (row) =>
+        row.bridgeUnitId.trim().length === 0 ||
+        row.sourceRevisionId.trim().length === 0 ||
+        row.correctedText.length === 0 ||
+        row.reason.trim().length === 0 ||
+        (row.scopeKind === "scene" && row.sceneId.trim().length === 0),
+    );
+    if (invalid !== undefined) {
+      setOutcome({
+        kind: "error",
+        message: "Each submitted annotation needs correction text, note, severity, and a valid line or scene scope.",
+      });
+      return;
+    }
+
+    setPending(true);
+    setOutcome(null);
+    try {
+      const result = await apiClient.request("workspace.correctionSubmit", {
+        body: {
+          projectId: model.projectId,
+          localeBranchId: model.localeBranchId,
+          ...(model.sourceBundleId === null ? {} : { sourceBundleId: model.sourceBundleId }),
+          targetLocale: model.targetLocale,
+          actorUserId: model.permission.actorUserId,
+          corrections: rows.map((row) => ({
+            bridgeUnitId: row.bridgeUnitId,
+            sourceRevisionId: row.sourceRevisionId,
+            ...(row.sourceUnitKey.length > 0 ? { sourceUnitKey: row.sourceUnitKey } : {}),
+            severity: row.severity,
+            scope:
+              row.scopeKind === "scene"
+                ? { kind: "scene" as const, sceneId: row.sceneId.trim() }
+                : { kind: "line" as const },
+            reason: row.reason.trim(),
+            correctedText: row.correctedText,
+          })),
+        },
+      });
+      if (result.state === "ready") {
+        setOutcome({ kind: "ok", submittedCount: result.data.submittedCount });
+      } else if (result.state === "error") {
+        setOutcome({
+          kind: "error",
+          message: `${result.error.code ?? "error"}: ${result.error.message ?? `status ${result.error.status}`}`,
+        });
+      } else {
+        setOutcome({ kind: "error", message: "Correction submit returned no result." });
+      }
+    } catch (error) {
+      setOutcome({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Correction submit failed.",
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (!model.permission.canReadQueue) {
+    return <DeniedShell permission={model.permission} />;
+  }
+
   return (
     <Panel title="Manual corrections" eyebrow={model.localeBranchId}>
       <p className="itotori-subhead">{model.units.length} unit(s) in this correction batch.</p>
-      <DataTable
-        caption="Correction units"
-        columns={[
-          { key: "item", header: "Review item", render: (u) => <code>{u.reviewItemId}</code> },
-          { key: "source", header: "Source", render: (u) => u.sourceText ?? "—" },
-          { key: "draft", header: "Draft", render: (u) => u.draftText ?? "—" },
-          { key: "final", header: "Final", render: (u) => u.finalText ?? "—" },
-        ]}
-        rows={model.units}
-        getRowKey={(u, i) => `${u.reviewItemId}:${i}`}
-        emptyLabel="No correction units."
-      />
+      <CorrectionDiagnosticBanner diagnostics={model.diagnostics} />
+      {(!model.permission.canManageQueue || model.projectId === null || model.targetLocale === null) && (
+        <p className="itotori-subhead" role="status">
+          {model.permission.canManageQueue
+            ? "Correction submit is unavailable until project and target-locale context resolves."
+            : "queue.manage is required to submit corrections."}
+        </p>
+      )}
+      <form
+        className="workspace-correction-editor"
+        data-role="annotation-editor"
+        data-can-submit={canSubmit ? "true" : "false"}
+        onSubmit={(event) => {
+          void submit(event);
+        }}
+      >
+        {model.units.length === 0 && <p className="itotori-empty-copy">No correction units.</p>}
+        {model.units.map((unit) => {
+          const row = rows.find((entry) => entry.reviewItemId === unit.reviewItemId);
+          if (row === undefined) {
+            return null;
+          }
+          return (
+            <fieldset
+              key={unit.reviewItemId}
+              className="workspace-correction-editor__unit"
+              data-review-item-id={unit.reviewItemId}
+            >
+              <legend>
+                <code>{unit.reviewItemId}</code>
+              </legend>
+              <div className="workspace-correction-editor__context">
+                <p>
+                  <strong>Source</strong> {unit.sourceText ?? "—"}
+                </p>
+                <p>
+                  <strong>Draft</strong> {unit.draftText ?? "—"}
+                </p>
+              </div>
+              <label>
+                <span>Correction text</span>
+                <textarea
+                  name={`${unit.reviewItemId}:correctedText`}
+                  required
+                  rows={3}
+                  value={row.correctedText}
+                  disabled={!canSubmit || pending}
+                  onChange={(event) => {
+                    updateRow(unit.reviewItemId, { correctedText: event.target.value });
+                  }}
+                />
+              </label>
+              <label>
+                <span>Note</span>
+                <textarea
+                  name={`${unit.reviewItemId}:reason`}
+                  required
+                  rows={2}
+                  value={row.reason}
+                  disabled={!canSubmit || pending}
+                  onChange={(event) => {
+                    updateRow(unit.reviewItemId, { reason: event.target.value });
+                  }}
+                />
+              </label>
+              <label>
+                <span>Severity</span>
+                <select
+                  name={`${unit.reviewItemId}:severity`}
+                  value={row.severity}
+                  disabled={!canSubmit || pending}
+                  onChange={(event) => {
+                    updateRow(unit.reviewItemId, {
+                      severity: event.target.value as AnnotationSeverity,
+                    });
+                  }}
+                >
+                  {ANNOTATION_SEVERITIES.map((severity) => (
+                    <option key={severity} value={severity}>
+                      {severity}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Scope</span>
+                <select
+                  name={`${unit.reviewItemId}:scope`}
+                  value={row.scopeKind}
+                  disabled={!canSubmit || pending}
+                  onChange={(event) => {
+                    updateRow(unit.reviewItemId, {
+                      scopeKind: event.target.value === "scene" ? "scene" : "line",
+                    });
+                  }}
+                >
+                  <option value="line">line</option>
+                  <option value="scene">scene</option>
+                </select>
+              </label>
+              {row.scopeKind === "scene" && (
+                <label>
+                  <span>Scene id</span>
+                  <input
+                    name={`${unit.reviewItemId}:sceneId`}
+                    type="text"
+                    required
+                    value={row.sceneId}
+                    disabled={!canSubmit || pending}
+                    onChange={(event) => {
+                      updateRow(unit.reviewItemId, { sceneId: event.target.value });
+                    }}
+                  />
+                </label>
+              )}
+            </fieldset>
+          );
+        })}
+        <button type="submit" disabled={!canSubmit || pending}>
+          {pending ? "Submitting..." : "Submit corrections"}
+        </button>
+      </form>
+      {outcome?.kind === "ok" && (
+        <p role="status" data-correction-submit="ok">
+          Submitted {outcome.submittedCount} correction(s).
+        </p>
+      )}
+      {outcome?.kind === "error" && (
+        <p role="alert" data-correction-submit="error">
+          {outcome.message}
+        </p>
+      )}
     </Panel>
   );
 }

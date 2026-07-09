@@ -113,14 +113,17 @@ import {
   workspaceCorrectionDiagnosticCodeValues,
   workspaceCorrectionDispositionValues,
 } from "./workspace/correction-model.js";
+import { ANNOTATION_SEVERITIES } from "./annotation.js";
 import type {
   WorkspaceCorrectionPreviewReadModel,
   WorkspaceCorrectionSubmitReadModel,
 } from "./workspace/correction-model.js";
 import type {
   SubmitWorkspaceCorrectionsInput,
+  WorkspaceCorrectionScope,
   WorkspaceCorrectionSubmission,
 } from "./workspace/correction-service.js";
+import { workspaceCorrectionScopeKindValues } from "./workspace/correction-service.js";
 import type {
   ProjectOverviewBenchmarkHeadline,
   ProjectOverviewPassLedgerPage,
@@ -450,7 +453,10 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "schemaVersion",
     "generatedAt",
     "permission",
+    "projectId",
     "localeBranchId",
+    "sourceBundleId",
+    "targetLocale",
     "units",
     "diagnostics",
   ],
@@ -1791,6 +1797,8 @@ const workspaceCorrectionDiagnosticCodeList = Object.values(
 );
 const workspaceCorrectionDispositionList = Object.values(workspaceCorrectionDispositionValues);
 const feedbackTypeList = Object.values(feedbackTypeValues);
+const annotationSeverityList = [...ANNOTATION_SEVERITIES];
+const workspaceCorrectionScopeKindList = Object.values(workspaceCorrectionScopeKindValues);
 
 function assertWorkspaceCorrectionDiagnostics(value: unknown, label: string): void {
   const diagnostics = asArray(value, label);
@@ -1813,7 +1821,10 @@ export function assertWorkspaceCorrectionPreviewReadModel(
   assertLiteral(model.schemaVersion, "workspace.correction_preview.v0.1", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertNullableString(model.projectId, `${label}.projectId`);
   assertString(model.localeBranchId, `${label}.localeBranchId`);
+  assertNullableString(model.sourceBundleId, `${label}.sourceBundleId`);
+  assertNullableString(model.targetLocale, `${label}.targetLocale`);
   const units = asArray(model.units, `${label}.units`);
   for (const [index, unitValue] of units.entries()) {
     const unitLabel = `${label}.units[${index}]`;
@@ -1951,7 +1962,6 @@ export function parseWorkspaceCorrectionSubmitRequest(
     const request = asRecord(body, "ApiWorkspaceCorrectionSubmitRequest");
     assertString(request.projectId, "ApiWorkspaceCorrectionSubmitRequest.projectId");
     assertString(request.localeBranchId, "ApiWorkspaceCorrectionSubmitRequest.localeBranchId");
-    assertString(request.sourceBundleId, "ApiWorkspaceCorrectionSubmitRequest.sourceBundleId");
     assertString(request.targetLocale, "ApiWorkspaceCorrectionSubmitRequest.targetLocale");
     assertString(request.actorUserId, "ApiWorkspaceCorrectionSubmitRequest.actorUserId");
     const corrections = asArray(
@@ -1962,11 +1972,19 @@ export function parseWorkspaceCorrectionSubmitRequest(
       const correction = asRecord(value, correctionLabel);
       assertString(correction.bridgeUnitId, `${correctionLabel}.bridgeUnitId`);
       assertString(correction.sourceRevisionId, `${correctionLabel}.sourceRevisionId`);
+      assertEnum(
+        correction.severity,
+        annotationSeverityList,
+        `${correctionLabel}.severity`,
+      );
       assertString(correction.reason, `${correctionLabel}.reason`);
       assertString(correction.correctedText, `${correctionLabel}.correctedText`);
+      const scope = parseWorkspaceCorrectionScope(correction.scope, `${correctionLabel}.scope`);
       const parsed: WorkspaceCorrectionSubmission = {
         bridgeUnitId: correction.bridgeUnitId,
         sourceRevisionId: correction.sourceRevisionId,
+        severity: correction.severity,
+        scope,
         reason: correction.reason,
         correctedText: correction.correctedText,
       };
@@ -1991,11 +2009,14 @@ export function parseWorkspaceCorrectionSubmitRequest(
     const result: ApiWorkspaceCorrectionSubmitRequest = {
       projectId: request.projectId,
       localeBranchId: request.localeBranchId,
-      sourceBundleId: request.sourceBundleId,
       targetLocale: request.targetLocale,
       actorUserId: request.actorUserId,
       corrections,
     };
+    if (request.sourceBundleId !== undefined) {
+      assertString(request.sourceBundleId, "ApiWorkspaceCorrectionSubmitRequest.sourceBundleId");
+      result.sourceBundleId = request.sourceBundleId;
+    }
     if (request.batchLabel !== undefined) {
       assertString(request.batchLabel, "ApiWorkspaceCorrectionSubmitRequest.batchLabel");
       result.batchLabel = request.batchLabel;
@@ -2009,6 +2030,19 @@ export function parseWorkspaceCorrectionSubmitRequest(
     }
     return result;
   });
+}
+
+function parseWorkspaceCorrectionScope(value: unknown, label: string): WorkspaceCorrectionScope {
+  const scope = asRecord(value, label);
+  assertEnum(scope.kind, workspaceCorrectionScopeKindList, `${label}.kind`);
+  if (scope.kind === workspaceCorrectionScopeKindValues.scene) {
+    assertString(scope.sceneId, `${label}.sceneId`);
+    if (scope.sceneId.trim().length === 0) {
+      throw new ApiValidationError(`${label}.sceneId must be non-empty`);
+    }
+    return { kind: "scene", sceneId: scope.sceneId };
+  }
+  return { kind: "line" };
 }
 
 export function assertWorkspaceProjectBrowseReadModel(

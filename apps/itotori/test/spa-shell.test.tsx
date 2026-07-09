@@ -21,7 +21,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { App } from "../src/ui/App.js";
 import { readyContextFixture } from "../src/reviewer/index.js";
@@ -140,5 +140,117 @@ describe("SPA shell — localization workspace", () => {
     const main = screen.getByRole("main");
     expect(main).toHaveAttribute("data-screen", "workspace");
     expect(main).toHaveAttribute("data-view", "projects");
+  });
+
+  it("submits line/scene correction annotations through the typed workspace correction route", async () => {
+    const posts: unknown[] = [];
+    server.use(
+      http.get("*/api/workspace/corrections", () =>
+        apiJson("workspace.correctionPreview", {
+          schemaVersion: "workspace.correction_preview.v0.1",
+          generatedAt: "2026-07-09T00:00:00.000Z",
+          permission: {
+            actorUserId: "reviewer-1",
+            canReadQueue: true,
+            canManageQueue: true,
+            denialReasons: [],
+          },
+          projectId: "project-1",
+          localeBranchId: "locale-1",
+          sourceBundleId: null,
+          targetLocale: "en-US",
+          units: [
+            {
+              reviewItemId: "review-item-1",
+              localeBranchId: "locale-1",
+              sourceRevisionId: "source-revision-1",
+              bridgeUnitId: "bridge-unit-1",
+              sourceUnitKey: "unit.key.1",
+              sourceLocale: "ja-JP",
+              sourceText: "源文",
+              targetLocale: "en-US",
+              draftText: "Draft text.",
+              finalText: null,
+              styleGuidePolicyVersionId: null,
+              styleGuidePolicyStatus: null,
+              glossary: [],
+              runtimeEvidenceLinks: [],
+              screenshotArtifactHashes: [],
+              diagnostics: [],
+            },
+          ],
+          diagnostics: [],
+        }),
+      ),
+      http.post("*/api/workspace/corrections", async ({ request }) => {
+        const body = await request.json();
+        posts.push(body);
+        return apiJson("workspace.correctionSubmit", {
+          schemaVersion: "workspace.correction_submit.v0.1",
+          generatedAt: "2026-07-09T00:00:01.000Z",
+          permission: {
+            actorUserId: "reviewer-1",
+            canReadQueue: true,
+            canManageQueue: true,
+            denialReasons: [],
+          },
+          localeBranchId: "locale-1",
+          batchId: "workspace-correction-batch-test",
+          batchLabel: null,
+          submittedCount: 1,
+          edits: [],
+          repairCandidateReportIds: [],
+          decisionQueueReportIds: [],
+          needsContextReportIds: [],
+          affectedBridgeUnitIds: ["bridge-unit-1"],
+          writebacks: [],
+          scheduledRerunJobIds: [],
+          diagnostics: [],
+        });
+      }),
+    );
+
+    render(
+      <App
+        location={{
+          pathname: "/workspace/corrections",
+          search: "?localeBranchId=locale-1&reviewItemIds=review-item-1",
+        }}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Manual corrections" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Correction text"), {
+      target: { value: "Corrected text." },
+    });
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "Scene-level consistency issue." },
+    });
+    fireEvent.change(screen.getByLabelText("Severity"), { target: { value: "critical" } });
+    fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "scene" } });
+    fireEvent.change(screen.getByLabelText("Scene id"), { target: { value: "scene-alpha" } });
+    fireEvent.click(screen.getByRole("button", { name: /Submit corrections/i }));
+
+    await waitFor(() => {
+      expect(posts).toHaveLength(1);
+    });
+    expect(posts[0]).toMatchObject({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      targetLocale: "en-US",
+      actorUserId: "reviewer-1",
+      corrections: [
+        {
+          bridgeUnitId: "bridge-unit-1",
+          sourceRevisionId: "source-revision-1",
+          sourceUnitKey: "unit.key.1",
+          severity: "critical",
+          scope: { kind: "scene", sceneId: "scene-alpha" },
+          reason: "Scene-level consistency issue.",
+          correctedText: "Corrected text.",
+        },
+      ],
+    });
+    expect(await screen.findByText("Submitted 1 correction(s).")).toBeInTheDocument();
   });
 });

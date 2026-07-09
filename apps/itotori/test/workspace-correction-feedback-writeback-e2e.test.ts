@@ -125,6 +125,8 @@ describe.skipIf(!databaseUrl)(
             {
               bridgeUnitId: ids.unitA,
               sourceRevisionId,
+              severity: "warning",
+              scope: { kind: "line" },
               reason: "Draft dropped the greeting + honorific",
               correctedText: CORRECTED_TARGET,
               draftText: "morning",
@@ -133,6 +135,8 @@ describe.skipIf(!databaseUrl)(
             {
               bridgeUnitId: ids.unitTerm,
               sourceRevisionId,
+              severity: "warning",
+              scope: { kind: "line" },
               reason: "Canonical honorific",
               correctedText: GLOSSARY_CORRECTED,
               sourceTerm: GLOSSARY_SOURCE_TERM,

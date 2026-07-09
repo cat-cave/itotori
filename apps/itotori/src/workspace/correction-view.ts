@@ -16,6 +16,7 @@ import type {
   WorkspaceCorrectionPreviewReadModel,
   WorkspaceCorrectionPreviewUnit,
 } from "./correction-model.js";
+import { ANNOTATION_SEVERITIES } from "../annotation.js";
 
 export function renderWorkspaceCorrectionPreviewView(
   model: WorkspaceCorrectionPreviewReadModel,
@@ -29,7 +30,7 @@ export function renderWorkspaceCorrectionPreviewView(
     );
   }
   const canSubmit = model.permission.canManageQueue;
-  const units = model.units.map(renderPreviewUnit).join("");
+  const units = model.units.map((unit, index) => renderPreviewUnit(unit, index)).join("");
   return `
     <main class="itotori-shell workspace-correction-preview" data-state="ready"
       data-view="correction-preview"
@@ -45,14 +46,28 @@ export function renderWorkspaceCorrectionPreviewView(
       </header>
       ${renderDiagnosticBanner(model.diagnostics)}
       <section class="correction-units" aria-label="Units to correct">
-        ${units === "" ? `<p class="empty">No units selected for correction.</p>` : units}
+        ${
+          canSubmit
+            ? `<form class="correction-submit" method="post" action="/api/workspace/corrections"
+                data-locale-branch-id="${escapeHtml(model.localeBranchId)}"
+                data-project-id="${escapeHtml(model.projectId ?? "")}"
+                data-target-locale="${escapeHtml(model.targetLocale ?? "")}">
+                <input type="hidden" name="projectId" value="${escapeHtml(model.projectId ?? "")}" />
+                <input type="hidden" name="localeBranchId" value="${escapeHtml(model.localeBranchId)}" />
+                <input type="hidden" name="targetLocale" value="${escapeHtml(model.targetLocale ?? "")}" />
+                ${model.sourceBundleId === null ? "" : `<input type="hidden" name="sourceBundleId" value="${escapeHtml(model.sourceBundleId)}" />`}
+                <input type="hidden" name="actorUserId" value="${escapeHtml(model.permission.actorUserId)}" />
+                ${units === "" ? `<p class="empty">No units selected for correction.</p>` : units}
+                <button type="submit">Submit corrections</button>
+              </form>`
+            : units === ""
+              ? `<p class="empty">No units selected for correction.</p>`
+              : units
+        }
       </section>
       ${
         canSubmit
-          ? `<form class="correction-submit" method="post" action="/api/workspace/corrections"
-              data-locale-branch-id="${escapeHtml(model.localeBranchId)}">
-              <button type="submit">Submit corrections</button>
-            </form>`
+          ? ""
           : `<p class="correction-readonly" role="note">Read-only: the
               <code>queue.manage</code> permission is required to submit corrections.</p>`
       }
@@ -60,7 +75,7 @@ export function renderWorkspaceCorrectionPreviewView(
   `;
 }
 
-function renderPreviewUnit(unit: WorkspaceCorrectionPreviewUnit): string {
+function renderPreviewUnit(unit: WorkspaceCorrectionPreviewUnit, index: number): string {
   const glossary = unit.glossary
     .map(
       (entry) => `
@@ -116,6 +131,43 @@ function renderPreviewUnit(unit: WorkspaceCorrectionPreviewUnit): string {
         <h4>Runtime / screenshot evidence</h4>
         ${runtime === "" ? `<p class="empty">No runtime evidence linked.</p>` : `<ul>${runtime}</ul>`}
       </div>
+      <fieldset class="correction-editor" data-role="annotation-editor">
+        <legend>Annotation</legend>
+        <input type="hidden" name="corrections[${index}].bridgeUnitId"
+          value="${escapeHtml(unit.bridgeUnitId ?? "")}" />
+        <input type="hidden" name="corrections[${index}].sourceRevisionId"
+          value="${escapeHtml(unit.sourceRevisionId ?? "")}" />
+        <input type="hidden" name="corrections[${index}].sourceUnitKey"
+          value="${escapeHtml(unit.sourceUnitKey ?? "")}" />
+        <label>
+          <span>Correction text</span>
+          <textarea name="corrections[${index}].correctedText" required rows="3">${escapeHtml(unit.finalText ?? unit.draftText ?? "")}</textarea>
+        </label>
+        <label>
+          <span>Note</span>
+          <textarea name="corrections[${index}].reason" required rows="2"></textarea>
+        </label>
+        <label>
+          <span>Severity</span>
+          <select name="corrections[${index}].severity" required>
+            ${ANNOTATION_SEVERITIES.map(
+              (severity) =>
+                `<option value="${escapeHtml(severity)}"${severity === "warning" ? " selected" : ""}>${escapeHtml(severity)}</option>`,
+            ).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Scope</span>
+          <select name="corrections[${index}].scope.kind" required>
+            <option value="line" selected>line</option>
+            <option value="scene">scene</option>
+          </select>
+        </label>
+        <label>
+          <span>Scene id</span>
+          <input name="corrections[${index}].scope.sceneId" type="text" />
+        </label>
+      </fieldset>
     </article>
   `;
 }
