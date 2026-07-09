@@ -1951,7 +1951,7 @@ fn is_coverage_manifest_opcode(module_id: u8, opcode_u16: u16) -> bool {
         (85, 1000),
         (90, 1004),
         (90, 1066),
-        (90, 2004)
+        (90, 2004),
     ];
     TUPLES.binary_search(&(module_id, opcode_u16)).is_ok()
 }
