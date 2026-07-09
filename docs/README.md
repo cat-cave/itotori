@@ -24,11 +24,13 @@ These docs describe the monorepo as a three-project suite:
 
 ## User-facing docs (start here)
 
-New users start with [alpha-readiness.md](alpha-readiness.md) (the checked alpha
-readiness README) and [install.md](install.md) (fresh-clone setup + the
-public-fixture demo), then [security-and-limitations.md](security-and-limitations.md)
-for the security posture, legal boundaries, and honest limitations. The alpha
-readiness checklist command
+New users start with the root [README.md](../README.md) user quickstart
+(`itotori` install → `init` → `localize-game` → review → output), then
+[install.md](install.md) (fresh-clone setup + the public-fixture demo), then
+[alpha-readiness.md](alpha-readiness.md) (checked alpha readiness) and
+[security-and-limitations.md](security-and-limitations.md) for the security
+posture, legal boundaries, and honest limitations. The alpha readiness checklist
+command
 ([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs),
 `just alpha-readiness-checklist`) re-derives those readiness claims from the
 generated capability + benchmark artifacts so the docs cannot drift.
