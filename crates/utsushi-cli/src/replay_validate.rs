@@ -17,7 +17,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::json;
-use utsushi_core::{RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest};
+use utsushi_core::{
+    RuntimeAdapter, RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
+};
 
 use crate::replay_registry::{
     emit_textlines_from_result, replay_log_json, replay_validate_parameters, text_line_count,
@@ -106,10 +108,7 @@ pub fn run_replay_validate_command(
         .map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
 
     let text_line_count = text_line_count(&result, "utsushi.cli.replay_validate")?;
-    println!(
-        "{REPLAY_OK_CODE}: scene={scene_id} textline_count={}",
-        text_line_count,
-    );
+    println!("{REPLAY_OK_CODE}: scene={scene_id} textline_count={text_line_count}");
     Ok(())
 }
 
@@ -119,7 +118,7 @@ fn run_registry_replay_validate(
     seen_path: &std::path::Path,
     parameters: serde_json::Value,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    let descriptor = registry.adapter(engine).map(|adapter| adapter.descriptor());
+    let descriptor = registry.adapter(engine).map(RuntimeAdapter::descriptor);
     let Some(descriptor) = descriptor else {
         return Err(registry_diagnostic(
             "utsushi.cli.replay_validate.registry_adapter_not_found",
@@ -158,7 +157,7 @@ fn registry_diagnostic(
                 let capabilities = descriptor
                     .capabilities
                     .into_iter()
-                    .map(|capability| capability.as_str())
+                    .map(RuntimeCapability::as_str)
                     .collect::<Vec<_>>();
                 json!({
                     "name": descriptor.name,

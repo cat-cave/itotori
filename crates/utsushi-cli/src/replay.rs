@@ -10,7 +10,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::json;
-use utsushi_core::{RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest};
+use utsushi_core::{
+    RuntimeAdapter, RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
+};
 
 use crate::replay_registry::{
     replay_log_json, replay_parameters, replay_snapshot_parameters, snapshot_json,
@@ -70,7 +72,7 @@ fn run_registry_replay(
     seen_path: &std::path::Path,
     parameters: serde_json::Value,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    let descriptor = registry.adapter(engine).map(|adapter| adapter.descriptor());
+    let descriptor = registry.adapter(engine).map(RuntimeAdapter::descriptor);
     let Some(descriptor) = descriptor else {
         return Err(registry_diagnostic(
             "utsushi.cli.replay.registry_adapter_not_found",
@@ -109,7 +111,7 @@ fn registry_diagnostic(
                 let capabilities = descriptor
                     .capabilities
                     .into_iter()
-                    .map(|capability| capability.as_str())
+                    .map(RuntimeCapability::as_str)
                     .collect::<Vec<_>>();
                 json!({
                     "name": descriptor.name,
