@@ -989,6 +989,12 @@ export {
   ItotoriOidcLoginAdapterError,
   oidcExternalIdentityProviderKey,
 } from "./repositories/oidc-login-adapter.js";
+export {
+  HttpPostSamlProtocolClient,
+  ItotoriSamlLoginAdapter,
+  ItotoriSamlLoginAdapterError,
+  samlExternalIdentityProviderKey,
+} from "./repositories/saml-login-adapter.js";
 export type {
   OidcAuthorizationCodeLoginInput,
   OidcLoginResult,
@@ -998,6 +1004,13 @@ export type {
   OidcUserInfoInput,
   OidcUserInfoResult,
 } from "./repositories/oidc-login-adapter.js";
+export type {
+  SamlAssertionResult,
+  SamlAssertionValidationInput,
+  SamlHttpPostLoginInput,
+  SamlLoginResult,
+  SamlProtocolClient,
+} from "./repositories/saml-login-adapter.js";
 export type {
   AccountRecord,
   AddPermissionToSetInput,

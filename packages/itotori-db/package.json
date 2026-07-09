@@ -22,8 +22,10 @@
   },
   "dependencies": {
     "@itotori/localization-bridge-schema": "workspace:*",
+    "@xmldom/xmldom": "^0.9.10",
     "drizzle-orm": "^0.45.2",
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",
