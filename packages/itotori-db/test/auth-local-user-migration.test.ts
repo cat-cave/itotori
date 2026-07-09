@@ -149,7 +149,7 @@ describe("auth-003 local operator migration", () => {
         ).resolves.toBeUndefined();
       }
 
-      // The gated repository read agrees (the operator holds auth.admin via the set).
+      // The gated repository read agrees (the operator holds auth.permissions.manage via the set).
       const repo = new ItotoriPrincipalRepository(context.db);
       const resolved = await repo.resolvePrincipalPermissions(
         operatorActor,
@@ -167,7 +167,7 @@ describe("auth-003 local operator migration", () => {
       await bootstrapDefaultAccountPrincipal(context.db);
       const repo = new ItotoriPrincipalRepository(context.db);
 
-      // The operator (which holds auth.admin via its own set) edits the set.
+      // The operator (which holds auth.permissions.manage via its own set) edits the set.
       await repo.removePermissionFromSet(operatorActor, {
         actorPrincipalId: localOperatorPrincipalId,
         permissionSetId: localOperatorAllPermissionsSetId(),

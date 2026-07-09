@@ -10,9 +10,10 @@
 // never role-based. A "role" is ONLY a permission_set (a data bundle of
 // permission rows). Nothing here branches authorization on a role; every
 // resolved authorization decision is an exact-match permission. Every mutation
-// AND read here is gated on the `auth.admin` permission (administering the auth
-// layer is itself a privileged action), enforced through `requirePermission`
-// against the existing single-user substrate — which stays intact.
+// Account/principal administration stays gated on `auth.admin`; permission
+// editor operations (grant/revoke direct permissions, grant/revoke permission
+// sets, and edit permission sets) are gated on the narrower
+// `auth.permissions.manage` permission.
 
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -291,7 +292,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: CreatePermissionSetInput,
   ): Promise<PermissionSetRecord> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     const permissions = [...new Set(input.permissions)];
     return this.db.transaction(async (tx) => {
       await tx.insert(authPermissionSets).values({
@@ -334,7 +335,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: AddPermissionToSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const set = await this.requirePermissionSet(tx, input.permissionSetId);
       await tx
@@ -363,7 +364,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: RemovePermissionFromSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const set = await this.requirePermissionSet(tx, input.permissionSetId);
       await tx
@@ -392,7 +393,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: RenamePermissionSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       await this.requirePermissionSet(tx, input.permissionSetId);
       await tx
@@ -427,7 +428,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: DeletePermissionSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const set = await this.requirePermissionSet(tx, input.permissionSetId);
       const grants = await tx
@@ -472,7 +473,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: GrantPermissionSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const setRows = await tx
         .select({ accountId: authPermissionSets.accountId })
@@ -520,7 +521,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: RevokePermissionSetInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const deleted = await tx
         .delete(authPrincipalPermissionSetGrants)
@@ -552,7 +553,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: GrantDirectPermissionInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       await tx.insert(authPrincipalPermissionGrants).values({
         principalId: input.targetPrincipalId,
@@ -607,7 +608,7 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     actor: AuthorizationActor,
     input: RevokeDirectPermissionInput,
   ): Promise<void> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     await this.db.transaction(async (tx) => {
       const deleted = await tx
         .delete(authPrincipalPermissionGrants)
@@ -679,16 +680,16 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
    * to it. This is how a permission-set ("role") resolves to concrete
    * permissions — the model never branches on a role string.
    *
-   * This gated read enforces `auth.admin` and then delegates the union to the
-   * single authoritative resolver, `resolvePrincipalEffectivePermissions` — the
-   * SAME primitive `requirePermission` consults — so there is exactly one
+   * This editor read enforces `auth.permissions.manage` and then delegates the
+   * union to the single authoritative resolver, `resolvePrincipalEffectivePermissions`
+   * — the SAME primitive `requirePermission` consults — so there is exactly one
    * resolver of effective permissions in the codebase.
    */
   async resolvePrincipalPermissions(
     actor: AuthorizationActor,
     principalId: string,
   ): Promise<Permission[]> {
-    await requirePermission(this.db, actor, permissionValues.authAdmin);
+    await requirePermission(this.db, actor, permissionValues.authPermissionsManage);
     const permissions = await resolvePrincipalEffectivePermissions(this.db, principalId);
     return [...permissions].sort();
   }
@@ -813,3 +814,6 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
     });
   }
 }
+
+export const authPermissionsManagePermission =
+  permissionValues.authPermissionsManage satisfies Permission;

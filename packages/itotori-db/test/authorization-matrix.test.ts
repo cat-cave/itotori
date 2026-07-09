@@ -1073,49 +1073,49 @@ const repositoryPermissionGateMatrix = [
   ),
   principalGate(
     "createPermissionSet",
-    "authAdmin",
+    "authPermissionsManage",
     "principal-repository.test.ts create permission set coverage",
     (repo) => repo.createPermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
     "addPermissionToSet",
-    "authAdmin",
+    "authPermissionsManage",
     "permission-set-model.test.ts add permission to set coverage",
     (repo) => repo.addPermissionToSet(deniedActor, undefined as never),
   ),
   principalGate(
     "removePermissionFromSet",
-    "authAdmin",
+    "authPermissionsManage",
     "permission-set-model.test.ts remove permission from set coverage",
     (repo) => repo.removePermissionFromSet(deniedActor, undefined as never),
   ),
   principalGate(
     "renamePermissionSet",
-    "authAdmin",
+    "authPermissionsManage",
     "permission-set-model.test.ts rename permission set coverage",
     (repo) => repo.renamePermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
     "deletePermissionSet",
-    "authAdmin",
+    "authPermissionsManage",
     "permission-set-model.test.ts delete permission set coverage",
     (repo) => repo.deletePermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
     "grantPermissionSet",
-    "authAdmin",
+    "authPermissionsManage",
     "principal-repository.test.ts grant permission set coverage",
     (repo) => repo.grantPermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
     "revokePermissionSet",
-    "authAdmin",
+    "authPermissionsManage",
     "auth-grant-audit-log.test.ts revoke permission set coverage",
     (repo) => repo.revokePermissionSet(deniedActor, undefined as never),
   ),
   principalGate(
     "grantDirectPermission",
-    "authAdmin",
+    "authPermissionsManage",
     "principal-repository.test.ts grant direct permission coverage",
     (repo) => repo.grantDirectPermission(deniedActor, undefined as never),
   ),
@@ -1127,7 +1127,7 @@ const repositoryPermissionGateMatrix = [
   ),
   principalGate(
     "revokeDirectPermission",
-    "authAdmin",
+    "authPermissionsManage",
     "auth-grant-audit-log.test.ts revoke direct permission coverage",
     (repo) => repo.revokeDirectPermission(deniedActor, undefined as never),
   ),
@@ -1139,7 +1139,7 @@ const repositoryPermissionGateMatrix = [
   ),
   principalGate(
     "resolvePrincipalPermissions",
-    "authAdmin",
+    "authPermissionsManage",
     "principal-repository.test.ts resolve principal permissions coverage",
     (repo) => repo.resolvePrincipalPermissions(deniedActor, "principal-x"),
   ),
@@ -1181,17 +1181,19 @@ const repositoryPermissionGateMatrix = [
  * `authManagementOperations` is the EXHAUSTIVE list of public methods on
  * `ItotoriPrincipalRepository` (the auth-management surface: principal/account/
  * permission-set CRUD, direct + set grant/revoke, and the gated principal
- * reads). Every entry is gated on `auth.admin` and registered in
- * `repositoryPermissionGateMatrix` with a success fixture and a denial fixture.
+ * reads). Account/principal administration is gated on `auth.admin`; permission
+ * editor operations are gated on `auth.permissions.manage`. Every entry is
+ * registered in `repositoryPermissionGateMatrix` with a success fixture and a
+ * denial fixture.
  * The `satisfies` clause keeps each entry honest against
  * `ItotoriPrincipalRepositoryPort`; the runtime exhaustiveness assertion in the
  * `auth-management operation matrix (auth-007)` group makes the list EXHAUSTIVE
  * against the actual class's public methods, so adding a new auth-management
  * method without registering it here fails the test. The per-operation
- * assertions then require each listed operation to carry an `auth.admin` matrix
- * entry AND an `auth.admin` `requirePermission` call in source — closing the gap
- * the generic repository source-gate scan cannot: an auth-management method
- * that forgets its `requirePermission` call entirely.
+ * assertions then require each listed operation to carry its expected matrix
+ * entry AND matching `requirePermission` call in source — closing the gap the
+ * generic repository source-gate scan cannot: an auth-management method that
+ * forgets its `requirePermission` call entirely.
  */
 const authManagementOperations = [
   "createAccount",
@@ -1209,6 +1211,23 @@ const authManagementOperations = [
   "loadPrincipal",
   "resolvePrincipalPermissions",
 ] as const satisfies readonly (keyof ItotoriPrincipalRepositoryPort)[];
+
+const authManagementOperationPermissionKeys = {
+  createAccount: "authAdmin",
+  createPrincipal: "authAdmin",
+  createPermissionSet: "authPermissionsManage",
+  addPermissionToSet: "authPermissionsManage",
+  removePermissionFromSet: "authPermissionsManage",
+  renamePermissionSet: "authPermissionsManage",
+  deletePermissionSet: "authPermissionsManage",
+  grantPermissionSet: "authPermissionsManage",
+  revokePermissionSet: "authPermissionsManage",
+  grantDirectPermission: "authPermissionsManage",
+  mapProviderClaimToDirectPermission: "authAdmin",
+  revokeDirectPermission: "authPermissionsManage",
+  loadPrincipal: "authAdmin",
+  resolvePrincipalPermissions: "authPermissionsManage",
+} as const satisfies Record<(typeof authManagementOperations)[number], PermissionKey>;
 
 describe("repository permission gate matrix", () => {
   it("names each permission-gated repository/API-adjacent mutation with fixtures", () => {
@@ -2210,49 +2229,49 @@ describe("repository permission gate matrix", () => {
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.createPermissionSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "principal-repository.test.ts create permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.addPermissionToSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "permission-set-model.test.ts add permission to set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.removePermissionFromSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "permission-set-model.test.ts remove permission from set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.renamePermissionSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "permission-set-model.test.ts rename permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.deletePermissionSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "permission-set-model.test.ts delete permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.grantPermissionSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "principal-repository.test.ts grant permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.revokePermissionSet",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "auth-grant-audit-log.test.ts revoke permission set coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.grantDirectPermission",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "principal-repository.test.ts grant direct permission coverage",
         },
         {
@@ -2264,7 +2283,7 @@ describe("repository permission gate matrix", () => {
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.revokeDirectPermission",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "auth-grant-audit-log.test.ts revoke direct permission coverage",
         },
         {
@@ -2276,7 +2295,7 @@ describe("repository permission gate matrix", () => {
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.resolvePrincipalPermissions",
-          "requiredPermission": "auth.admin",
+          "requiredPermission": "auth.permissions.manage",
           "successFixture": "principal-repository.test.ts resolve principal permissions coverage",
         },
         {
@@ -2454,7 +2473,7 @@ describe("auth-management operation matrix (auth-007)", () => {
   });
 
   it.each(authManagementOperations)(
-    "gates ItotoriPrincipalRepository.%s on auth.admin with success and denial fixtures",
+    "gates ItotoriPrincipalRepository.%s on its expected auth permission with success and denial fixtures",
     (operation) => {
       const entry = authManagementMatrixEntries.find((e) => e.mutation === operation);
       expect(
@@ -2464,14 +2483,15 @@ describe("auth-management operation matrix (auth-007)", () => {
       if (entry === undefined) {
         return;
       }
+      const expectedPermissionKey = authManagementOperationPermissionKeys[operation];
       expect(
         entry.permissionKey,
-        `ItotoriPrincipalRepository.${operation} must be gated on auth.admin`,
-      ).toBe("authAdmin");
+        `ItotoriPrincipalRepository.${operation} must be gated on ${expectedPermissionKey}`,
+      ).toBe(expectedPermissionKey);
       expect(
         entry.requiredPermission,
-        `ItotoriPrincipalRepository.${operation} must require permission auth.admin`,
-      ).toBe(permissionValues.authAdmin);
+        `ItotoriPrincipalRepository.${operation} must require permission ${permissionValues[expectedPermissionKey]}`,
+      ).toBe(permissionValues[expectedPermissionKey]);
       expect(
         entry.successFixture,
         `ItotoriPrincipalRepository.${operation} must reference a success fixture`,
@@ -2484,20 +2504,21 @@ describe("auth-management operation matrix (auth-007)", () => {
   );
 
   it.each(authManagementOperations)(
-    "calls requirePermission(authAdmin) in source for ItotoriPrincipalRepository.%s",
+    "calls requirePermission with the expected permission in source for ItotoriPrincipalRepository.%s",
     (operation) => {
       const gate = principalSourceGates.find((g) => g.mutation === operation);
       expect(
         gate,
-        `ItotoriPrincipalRepository.${operation} must call requirePermission(authAdmin) in principal-repository.ts`,
+        `ItotoriPrincipalRepository.${operation} must call requirePermission in principal-repository.ts`,
       ).toBeDefined();
       if (gate === undefined) {
         return;
       }
+      const expectedPermissionKey = authManagementOperationPermissionKeys[operation];
       expect(
         gate.permissionKey,
-        `ItotoriPrincipalRepository.${operation} source gate must be auth.admin`,
-      ).toBe("authAdmin");
+        `ItotoriPrincipalRepository.${operation} source gate must be ${expectedPermissionKey}`,
+      ).toBe(expectedPermissionKey);
     },
   );
 });

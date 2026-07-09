@@ -276,7 +276,7 @@ describe("ItotoriPrincipalRepository", () => {
     }
   });
 
-  it("refuses every gated method without auth.admin (a denied actor is rejected)", async () => {
+  it("refuses representative gated methods without their required auth permission", async () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriPrincipalRepository(context.db);

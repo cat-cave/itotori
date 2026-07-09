@@ -105,22 +105,24 @@ after the database has been migrated.
 
 ## Permission Matrix
 
-| Permission            | Current gate                                                                    |
-| --------------------- | ------------------------------------------------------------------------------- |
-| `project.import`      | Import a bridge bundle into Itotori project state                               |
-| `draft.write`         | Persist draft translations                                                      |
-| `patch.export`        | Persist patch export metadata                                                   |
-| `runtime.ingest`      | Persist runtime verification evidence and status                                |
-| `feedback.import`     | Import manual feedback and playtest notes                                       |
-| `queue.manage`        | Append, claim, retry, complete durable jobs; mutate reviewer-queue items        |
-| `queue.read`          | Read durable queue event / job internals and browse reviewer-queue items        |
-| `catalog.read`        | Read catalog work identity and provenance records                               |
-| `catalog.write`       | Persist catalog work identity and provenance                                    |
-| `audit.write`         | Record and resolve audit findings                                               |
-| `style_guide.approve` | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
-| `auth.admin`          | Administer principals, accounts, permission sets, and grants (multi-user auth)  |
-| `auth.sso.manage`     | Configure account OIDC/SAML providers, security settings, and session policy    |
-| `system.reset`        | Reset local hello-world persisted state                                         |
+| Permission                | Current gate                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `project.import`          | Import a bridge bundle into Itotori project state                               |
+| `draft.write`             | Persist draft translations                                                      |
+| `patch.export`            | Persist patch export metadata                                                   |
+| `runtime.ingest`          | Persist runtime verification evidence and status                                |
+| `feedback.import`         | Import manual feedback and playtest notes                                       |
+| `queue.manage`            | Append, claim, retry, complete durable jobs; mutate reviewer-queue items        |
+| `queue.read`              | Read durable queue event / job internals and browse reviewer-queue items        |
+| `catalog.read`            | Read catalog work identity and provenance records                               |
+| `catalog.write`           | Persist catalog work identity and provenance                                    |
+| `audit.write`             | Record and resolve audit findings                                               |
+| `style_guide.approve`     | Approve a style-guide policy version (a higher-trust action than `draft.write`) |
+| `auth.admin`              | Administer auth accounts, principals, and provider-claim mappings               |
+| `auth.sso.manage`         | Configure account OIDC/SAML providers, security settings, and session policy    |
+| `auth.members.manage`     | Invite, list, accept, and remove account members                                |
+| `auth.permissions.manage` | Grant/revoke direct permissions and permission sets; edit permission sets       |
+| `system.reset`            | Reset local hello-world persisted state                                         |
 
 Project dashboard reads do not currently require a permission gate. Catalog
 reads are gated because local corpus scan entries can carry private-library
@@ -178,14 +180,16 @@ and the permissions of every permission-set granted to it
 (`itotori_auth_principal_permission_set_grants`). There is no role column used
 for authorization branching anywhere; authorization always resolves to an
 exact-match permission via `requirePermission`. Administering this layer is
-itself gated on `auth.admin` (see `ItotoriPrincipalRepository`).
+itself permission-gated (see `ItotoriPrincipalRepository`): account/principal
+administration stays under `auth.admin`, while permission editor operations use
+`auth.permissions.manage`.
 
 ## Permission-Set Model (auth-004)
 
 A permission set is a **first-class, editable, data-driven** bundle — the only
 thing a "role" may ever be. `ItotoriPrincipalRepository` exposes the full CRUD,
-every method gated on `auth.admin` and recorded in the permission-set audit
-trail (`itotori_auth_permission_set_audit_events`, migration
+every method gated on `auth.permissions.manage` and recorded in the
+permission-set audit trail (`itotori_auth_permission_set_audit_events`, migration
 `0060_auth_permission_set_model`):
 
 - `createPermissionSet` — create a named set with an initial permission list
@@ -241,13 +245,12 @@ scoped (`permission-set-<accountId>-<key>`). No seed is granted `auth.admin` or
 The authorization-matrix test
 (`packages/itotori-db/test/authorization-matrix.test.ts`) is the invariant guard
 for the auth-management API surface: **every auth-management operation is
-permission-gated on `auth.admin` and registered in the matrix with a success
-fixture and a denial fixture.** The auth-management surface is
-`ItotoriPrincipalRepository` — principal/account/permission-set CRUD, direct +
-set grant/revoke, and the gated principal reads (`loadPrincipal`,
-`resolvePrincipalPermissions`). Administering the auth layer is itself a
-privileged action, so every public method on `ItotoriPrincipalRepositoryPort`
-carries an `auth.admin` gate.
+permission-gated on its exact auth permission and registered in the matrix with
+a success fixture and a denial fixture.** The auth-management surface is
+`ItotoriPrincipalRepository` — principal/account administration, permission-set
+CRUD, direct + set grant/revoke, and the gated principal reads (`loadPrincipal`,
+`resolvePrincipalPermissions`). Account/principal administration carries
+`auth.admin`; permission editor operations carry `auth.permissions.manage`.
 
 The matrix test enforces this with three layers:
 
@@ -256,8 +259,8 @@ The matrix test enforces this with three layers:
    entry (catches a gate with no fixture).
 2. An **explicit auth-management-group check** (`authManagementOperations`) that
    enumerates every `ItotoriPrincipalRepositoryPort` method and asserts each is
-   registered with `auth.admin` + success + denial fixtures AND has an
-   `auth.admin` `requirePermission` call in source. The list is
+   registered with its expected exact permission + success + denial fixtures AND
+   has a matching `requirePermission` call in source. The list is
    **runtime-exhaustive** against the actual public methods of
    `ItotoriPrincipalRepository` (read from source via the TypeScript AST), so
    adding a new auth-management method to the class without listing it fails the
@@ -266,14 +269,14 @@ The matrix test enforces this with three layers:
    auth-management method that forgets its `requirePermission` call entirely.
 3. Per-entry denial fixtures run against an isolated migrated Postgres schema,
    proving the gate actually throws `AuthorizationError` for an actor missing
-   `auth.admin`.
+   the expected exact permission.
 
 A new auth-management mutation therefore cannot ship un-gated or
 un-registered: it must be added to the class, listed in
 `authManagementOperations` (exhaustiveness-enforced), call
-`requirePermission(authAdmin)`, and carry success + denial matrix fixtures.
-Beta member/settings APIs (auth-012/013/014) will register their gates here
-when built.
+`requirePermission(...)` for its exact permission, and carry success + denial
+matrix fixtures. Beta member/settings APIs register their gates here as they
+land.
 
 ## Local Operator Migration (auth-003)
 

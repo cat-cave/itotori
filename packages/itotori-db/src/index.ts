@@ -956,6 +956,7 @@ export type {
   SetSceneCoverageInput,
 } from "./repositories/scene-coverage-repository.js";
 export {
+  authPermissionsManagePermission,
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
 } from "./repositories/principal-repository.js";

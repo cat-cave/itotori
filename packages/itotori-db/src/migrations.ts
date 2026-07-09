@@ -332,6 +332,10 @@ export const migrations = [
     id: "0068_scene_localization_coverage",
     file: "0068_scene_localization_coverage.sql",
   },
+  {
+    id: "0069_auth_permissions_manage_permission",
+    file: "0069_auth_permissions_manage_permission.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

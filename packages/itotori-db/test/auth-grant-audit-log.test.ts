@@ -61,6 +61,181 @@ async function bootstrap(
 }
 
 describe("auth grant/revoke audit log (auth-005)", () => {
+  it("permission editor API is gated by auth.permissions.manage and audits effective-permission changes", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriPrincipalRepository(context.db);
+      await bootstrap(repo, context.db);
+      await repo.createPrincipal(localActor, {
+        kind: "human_user",
+        principalId: "principal-permission-manager",
+        userId: "user-permission-manager",
+        displayName: "Permission Manager",
+      });
+      await repo.createPrincipal(localActor, {
+        kind: "human_user",
+        principalId: "principal-admin-only",
+        userId: "user-admin-only",
+        displayName: "Admin Only",
+      });
+      await repo.grantDirectPermission(localActor, {
+        actorPrincipalId: "principal-admin",
+        targetPrincipalId: "principal-permission-manager",
+        permission: permissionValues.authPermissionsManage,
+        reason: "delegate permission editing",
+        requestId: "req-delegate-permission-manager",
+      });
+      await repo.grantDirectPermission(localActor, {
+        actorPrincipalId: "principal-admin",
+        targetPrincipalId: "principal-admin-only",
+        permission: permissionValues.authAdmin,
+        reason: "delegate account administration only",
+        requestId: "req-delegate-admin-only",
+      });
+
+      const managerActor: AuthorizationActor = { userId: "user-permission-manager" };
+      const adminOnlyActor: AuthorizationActor = { userId: "user-admin-only" };
+
+      await expect(
+        repo.grantDirectPermission(adminOnlyActor, {
+          actorPrincipalId: "principal-admin-only",
+          targetPrincipalId: "principal-target",
+          permission: permissionValues.draftWrite,
+        }),
+      ).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: permissionValues.authPermissionsManage,
+      });
+
+      await repo.createPermissionSet(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        permissionSetId: "permission-set-editor-api",
+        accountId: "account-audit",
+        name: "Editor API",
+        permissions: [permissionValues.queueRead],
+        reason: "create editable bundle",
+        requestId: "req-editor-create-set",
+      });
+
+      await repo.grantDirectPermission(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        targetPrincipalId: "principal-target",
+        permission: permissionValues.draftWrite,
+        reason: "temporary drafting access",
+        requestId: "req-editor-grant-direct",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual([
+        permissionValues.draftWrite,
+      ]);
+
+      await repo.revokeDirectPermission(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        targetPrincipalId: "principal-target",
+        permission: permissionValues.draftWrite,
+        reason: "temporary drafting access ended",
+        requestId: "req-editor-revoke-direct",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual([]);
+
+      await repo.grantPermissionSet(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        targetPrincipalId: "principal-target",
+        permissionSetId: "permission-set-editor-api",
+        reason: "assign queue bundle",
+        requestId: "req-editor-grant-set",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual([
+        permissionValues.queueRead,
+      ]);
+
+      await repo.addPermissionToSet(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        permissionSetId: "permission-set-editor-api",
+        permission: permissionValues.patchExport,
+        reason: "extend bundle",
+        requestId: "req-editor-add-set-permission",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual(
+        [permissionValues.patchExport, permissionValues.queueRead].sort(),
+      );
+
+      await repo.removePermissionFromSet(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        permissionSetId: "permission-set-editor-api",
+        permission: permissionValues.queueRead,
+        reason: "narrow bundle",
+        requestId: "req-editor-remove-set-permission",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual([
+        permissionValues.patchExport,
+      ]);
+
+      await repo.revokePermissionSet(managerActor, {
+        actorPrincipalId: "principal-permission-manager",
+        targetPrincipalId: "principal-target",
+        permissionSetId: "permission-set-editor-api",
+        reason: "remove queue bundle",
+        requestId: "req-editor-revoke-set",
+      });
+      expect(await repo.resolvePrincipalPermissions(managerActor, "principal-target")).toEqual([]);
+
+      const principalAuditRows = await context.db
+        .select()
+        .from(authAuditEvents)
+        .where(eq(authAuditEvents.targetPrincipalId, "principal-target"));
+      const principalAuditByRequestId = new Map(
+        principalAuditRows.map((row) => [row.requestId, row]),
+      );
+      for (const requestId of [
+        "req-editor-grant-direct",
+        "req-editor-revoke-direct",
+        "req-editor-grant-set",
+        "req-editor-revoke-set",
+      ]) {
+        expect(principalAuditByRequestId.get(requestId)).toMatchObject({
+          actorPrincipalId: "principal-permission-manager",
+          targetPrincipalId: "principal-target",
+          requestId,
+        });
+      }
+      expect(principalAuditByRequestId.get("req-editor-grant-direct")).toMatchObject({
+        action: "granted",
+        permission: permissionValues.draftWrite,
+        permissionSetId: null,
+      });
+      expect(principalAuditByRequestId.get("req-editor-revoke-set")).toMatchObject({
+        action: "revoked",
+        permission: null,
+        permissionSetId: "permission-set-editor-api",
+      });
+
+      const setAuditRows = await context.db
+        .select()
+        .from(authPermissionSetAuditEvents)
+        .where(eq(authPermissionSetAuditEvents.permissionSetId, "permission-set-editor-api"));
+      const setAuditByRequestId = new Map(setAuditRows.map((row) => [row.requestId, row]));
+      expect(setAuditRows).toHaveLength(3);
+      expect(setAuditByRequestId.get("req-editor-create-set")).toMatchObject({
+        actorPrincipalId: "principal-permission-manager",
+        action: "set_created",
+        setName: "Editor API",
+        permission: null,
+      });
+      expect(setAuditByRequestId.get("req-editor-add-set-permission")).toMatchObject({
+        actorPrincipalId: "principal-permission-manager",
+        action: "permission_added",
+        permission: permissionValues.patchExport,
+      });
+      expect(setAuditByRequestId.get("req-editor-remove-set-permission")).toMatchObject({
+        actorPrincipalId: "principal-permission-manager",
+        action: "permission_removed",
+        permission: permissionValues.queueRead,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records a complete audit event for every principal-scoped grant AND revoke", async () => {
     const context = await isolatedMigratedContext();
     try {
