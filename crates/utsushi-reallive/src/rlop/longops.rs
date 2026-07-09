@@ -358,7 +358,6 @@ pub enum ObjectSelectOutcome {
 impl ObjectSelectLongOp {
     pub const SELECTED_SENTINEL_PENDING: u16 = 0xFFFF;
 
-    #[cfg(test)]
     pub(crate) fn try_new(
         id: LongOpId,
         return_values: Vec<i32>,
@@ -509,7 +508,6 @@ impl ObjectSelectLongOp {
     }
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ObjectSelectLongOpBuildError {
     TooManyReturnValues { observed: usize },
@@ -742,6 +740,22 @@ impl LongOpScheduler for HeadlessInputScheduler {
                     // malformed; resume anyway (the VM emits a typed
                     // ChoiceResumeMalformed warning) so the headless walk
                     // never deadlocks on it.
+                    self.other_advanced = self.other_advanced.saturating_add(1);
+                }
+                LongOpReadiness::Ready
+            }
+            Some(OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                if let Ok(mut select) = ObjectSelectLongOp::try_from_longop(head) {
+                    let index = self
+                        .policy
+                        .resolve(self.choice_cursor, select.choice_count());
+                    select.select(index);
+                    let LongOp { id, private_state } = select.into_longop();
+                    head.id = id;
+                    head.private_state = private_state;
+                    self.choice_cursor += 1;
+                    self.choices_made = self.choices_made.saturating_add(1);
+                } else {
                     self.other_advanced = self.other_advanced.saturating_add(1);
                 }
                 LongOpReadiness::Ready
@@ -995,21 +1009,23 @@ mod tests {
 
     #[test]
     fn headless_scheduler_is_deterministic_across_identical_drives() {
-        let choices = vec![b"a".to_vec(), b"b".to_vec()];
         let run = || {
-            let mut sched = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
+            let mut sched = HeadlessInputScheduler::new(HeadlessChoicePolicy::Fixed(1));
             let mut picks = Vec::new();
             for _ in 0..3 {
-                let mut head = SelectLongOp::new(LongOpId(6), choices.clone()).into_longop();
+                let mut head = ObjectSelectLongOp::try_new(LongOpId(6), vec![7, 2])
+                    .expect("bounded")
+                    .into_longop();
                 sched.poll(&mut head);
                 picks.push(
-                    SelectLongOp::try_from_longop(&head)
+                    ObjectSelectLongOp::try_from_longop(&head)
                         .expect("decode")
-                        .chosen(),
+                        .outcome(),
                 );
             }
             picks
         };
+        assert_eq!(run(), vec![ObjectSelectOutcome::DisplayIndex(1); 3]);
         assert_eq!(run(), run());
     }
 }

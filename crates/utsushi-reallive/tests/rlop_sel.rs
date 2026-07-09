@@ -27,10 +27,12 @@ use std::sync::{Arc, Mutex};
 
 use utsushi_core::EvidenceTier;
 use utsushi_core::substrate::{ChoiceIndex, SinkCapability, SinkResult, TextLine, TextSurfaceSink};
+use utsushi_reallive::rlop::{OBJECT_SELECT_PRIVATE_STATE_MAGIC, ObjectSelectLongOp};
 use utsushi_reallive::{
-    BytecodeElement, ChoiceInputScheduler, DispatchOutcome, ExprValue, Gameexe, InMemorySceneStore,
-    LongOpId, NeverReadyScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT_OBJBTN,
-    OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3, OPCODE_SELECT_W, RlopKey,
+    BytecodeElement, ChoiceInputScheduler, DispatchOutcome, ExprValue, Gameexe, GraphicsLayer,
+    GraphicsObject, GraphicsPlane, GraphicsRuntime, InMemorySceneStore, LongOpId,
+    NeverReadyScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL,
+    OPCODE_SELECT_S, OPCODE_SELECT_S3, OPCODE_SELECT_W, ObjButtonOptsOp, RLOperation, RlopKey,
     RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT, Scene,
     SelRuntime, SelectLongOp, SelectVariant, StepOutcome, Vm, VmEvent, register_sel_rlops,
 };
@@ -431,12 +433,47 @@ fn scheduler_keeps_vm_suspended_until_choice_recorded() {
 }
 
 // ---------------------------------------------------------------------
-// objbtn variant exercises the same dispatch shape
+// objbtn carrier is built from graphics bindings
 // ---------------------------------------------------------------------
 
 #[test]
-fn select_objbtn_emits_choices_like_other_variants() {
-    let (sink, runtime) = build_runtime(None);
+fn select_objbtn_yields_slot_ordered_object_carrier_without_text() {
+    let sink: Arc<CollectingSink> = Arc::new(CollectingSink::new());
+    let graphics = Arc::new(GraphicsRuntime::new());
+    graphics.with_stack_mut(|stack| {
+        for (layer, slot) in [
+            (GraphicsLayer::ForegroundObject, 11),
+            (GraphicsLayer::ForegroundObject, 3),
+            (GraphicsLayer::ForegroundObject, 6),
+            (GraphicsLayer::BackgroundObject, 1),
+        ] {
+            stack
+                .set_layer(layer, slot, GraphicsObject::image("test"))
+                .expect("slot");
+        }
+    });
+    let runtime = Arc::new(SelRuntime::with_graphics(
+        Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
+        Arc::clone(&graphics),
+    ));
+    let mut bind_vm = Vm::new(1, 0);
+    for (plane, slot, group, number) in [
+        (GraphicsPlane::Foreground, 11, 5, 2),
+        (GraphicsPlane::Foreground, 3, 5, 7),
+        (GraphicsPlane::Foreground, 6, 9, 99),
+        (GraphicsPlane::Background, 1, 5, 42),
+    ] {
+        ObjButtonOptsOp::new(Arc::clone(&graphics), plane).dispatch(
+            &mut bind_vm,
+            &[
+                ExprValue::Int(slot as i32),
+                ExprValue::Int(0),
+                ExprValue::Int(0),
+                ExprValue::Int(group),
+                ExprValue::Int(number),
+            ],
+        );
+    }
     let mut registry = RlopRegistry::new();
     register_sel_rlops(&mut registry, Arc::clone(&runtime));
     let op = registry
@@ -447,18 +484,25 @@ fn select_objbtn_emits_choices_like_other_variants() {
         ))
         .expect("select_objbtn registered");
     let mut vm = Vm::new(1, 0);
-    let outcome = op.dispatch(&mut vm, &[ExprValue::Bytes(b"go".to_vec())]);
-    assert!(matches!(outcome, DispatchOutcome::Yield { .. }));
-    let lines = sink.drain();
-    assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].text, "go");
-    // Recognition (0-unknown preserved): the objbtn variant dispatches like
-    // every other select and emits the plain `choice:<idx>` base surface.
-    // Dispatch no longer tags a graphical marker — the graphical-vs-text
-    // modality is derived from the surrounding SelectionControl ops at the
-    // render / analysis layer (see `select_modality`), not per-command.
-    assert_eq!(lines[0].text_surface.as_deref(), Some("choice:0"));
-    // The real select_objbtn opcode is 4 (rlvm), a button-object SETUP op.
+    let DispatchOutcome::Yield {
+        longop_id,
+        private_state,
+    } = op.dispatch(&mut vm, &[ExprValue::Int(5)])
+    else {
+        panic!("object candidates must yield");
+    };
+    assert_eq!(private_state[0], OBJECT_SELECT_PRIVATE_STATE_MAGIC);
+    let carrier = ObjectSelectLongOp::try_from_longop(&utsushi_reallive::LongOp::new(
+        longop_id,
+        private_state,
+    ))
+    .expect("object carrier");
+    assert_eq!(carrier.return_values(), &[7, 2]);
+    assert_eq!(
+        carrier.outcome(),
+        utsushi_reallive::rlop::ObjectSelectOutcome::Pending
+    );
+    assert!(sink.drain().is_empty());
     assert_eq!(OPCODE_SELECT_OBJBTN, 4);
 }
 

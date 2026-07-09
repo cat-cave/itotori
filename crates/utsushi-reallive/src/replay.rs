@@ -1061,7 +1061,10 @@ fn mount_registry_handles(
 
     // Selection (choices). Backed by the same text sink so choice lines
     // surface through the substrate text surface.
-    let sel_runtime = Arc::new(SelRuntime::with_sink(Arc::clone(&sink)));
+    let sel_runtime = Arc::new(SelRuntime::with_graphics(
+        Arc::clone(&sink),
+        Arc::clone(&graphics_runtime),
+    ));
     register_sel_rlops(&mut registry, sel_runtime);
 
     // System (fixed-seed clock/RNG → deterministic replay).

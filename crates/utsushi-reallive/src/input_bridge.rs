@@ -44,8 +44,9 @@ use utsushi_core::input::{InputError, InputEvent};
 use utsushi_core::replay::{ReplayLog, ReplayLogBuilder, ReplayMetadata};
 
 use crate::rlop::{
-    HeadlessChoicePolicy, LongOp, LongOpReadiness, LongOpScheduler, PAUSE_PRIVATE_STATE_MAGIC,
-    PauseLongOp, SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
+    HeadlessChoicePolicy, LongOp, LongOpReadiness, LongOpScheduler,
+    OBJECT_SELECT_PRIVATE_STATE_MAGIC, ObjectSelectLongOp, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
 };
 
 /// Adapter name recorded in a captured [`ReplayLog`]'s metadata.
@@ -63,6 +64,9 @@ pub enum PendingYield {
     /// ([`SelectLongOp`]). Resolved by committing an option index.
     Select {
         /// Number of options the prompt presents.
+        choice_count: usize,
+    },
+    ObjectSelect {
         choice_count: usize,
     },
     /// Any other longop shape (no user-visible gate). Resumed immediately.
@@ -83,6 +87,14 @@ impl PendingYield {
                 // resolves to index 0 rather than deadlocking.
                 Err(_) => PendingYield::Select { choice_count: 0 },
             },
+            Some(OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                match ObjectSelectLongOp::try_from_longop(head) {
+                    Ok(select) => PendingYield::ObjectSelect {
+                        choice_count: select.choice_count(),
+                    },
+                    Err(_) => PendingYield::ObjectSelect { choice_count: 0 },
+                }
+            }
             _ => PendingYield::Other,
         }
     }
@@ -138,7 +150,7 @@ impl InputSource for HeadlessSource {
     fn next_event(&mut self, pending: PendingYield) -> Option<InputEvent> {
         Some(match pending {
             PendingYield::Pause | PendingYield::Other => InputEvent::advance(),
-            PendingYield::Select { choice_count } => {
+            PendingYield::Select { choice_count } | PendingYield::ObjectSelect { choice_count } => {
                 let index = self.policy.resolve(self.choice_cursor, choice_count);
                 self.choice_cursor += 1;
                 InputEvent::choice(index)
@@ -416,6 +428,17 @@ impl BridgeScheduler {
                 }
                 self.choices_made = self.choices_made.saturating_add(1);
             }
+            PendingYield::ObjectSelect { choice_count } => {
+                if let Ok(mut select) = ObjectSelectLongOp::try_from_longop(head) {
+                    let ceiling = choice_count.saturating_sub(1) as u16;
+                    let index = chosen.unwrap_or(self.nav_cursor).min(ceiling);
+                    select.select(index);
+                    let LongOp { id, private_state } = select.into_longop();
+                    head.id = id;
+                    head.private_state = private_state;
+                }
+                self.choices_made = self.choices_made.saturating_add(1);
+            }
             PendingYield::Other => {
                 self.other_advanced = self.other_advanced.saturating_add(1);
             }
@@ -506,9 +529,16 @@ mod tests {
         assert_eq!(sched.poll(&mut pause), LongOpReadiness::Ready);
         assert!(PauseLongOp::try_from_longop(&pause).unwrap().dismissed());
 
-        let mut select = select_head(3);
+        let mut select = ObjectSelectLongOp::try_new(LongOpId(2), vec![7, 2, 9])
+            .expect("bounded")
+            .into_longop();
         assert_eq!(sched.poll(&mut select), LongOpReadiness::Ready);
-        assert_eq!(chosen_index(&select), Some(1));
+        assert_eq!(
+            ObjectSelectLongOp::try_from_longop(&select)
+                .expect("object select")
+                .outcome(),
+            crate::rlop::ObjectSelectOutcome::DisplayIndex(1)
+        );
         assert_eq!(sched.pauses_advanced(), 1);
         assert_eq!(sched.choices_made(), 1);
     }
