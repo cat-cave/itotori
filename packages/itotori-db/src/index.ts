@@ -959,6 +959,17 @@ export {
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
 } from "./repositories/principal-repository.js";
+export {
+  createOpaqueSessionId,
+  ItotoriAuthSessionService,
+  ItotoriAuthSessionServiceError,
+} from "./repositories/auth-session-service.js";
+export type {
+  AuthSessionRecord,
+  CreateLoginSessionInput,
+  LoginProviderTokenBundle,
+  ResolvedAuthSessionActor,
+} from "./repositories/auth-session-service.js";
 export type {
   AccountRecord,
   AddPermissionToSetInput,

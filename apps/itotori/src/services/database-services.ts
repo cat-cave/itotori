@@ -2,6 +2,7 @@ import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
   ItotoriAuthMemberManagementRepository,
+  ItotoriAuthSessionService,
   ItotoriAuthSsoSettingsRepository,
   ItotoriBenchmarkRunRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
@@ -92,7 +93,7 @@ import type {
 import type { TerminologyTermSnapshot } from "../batch-planner/shapes.js";
 import {
   ItotoriAuthorizationService,
-  localUserActor,
+  localUserActor as defaultLocalUserActor,
   type ItotoriAuthorizationPort,
 } from "../auth.js";
 import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
@@ -124,7 +125,7 @@ import {
 import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
 import type { TelemetryQuery } from "../telemetry/queries.js";
 import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-handlers.js";
-import type { AuthorizationActor } from "@itotori/db";
+import type { AuthorizationActor, ItotoriDatabase } from "@itotori/db";
 import {
   SceneCoverageService,
   type SceneCoverageServicePort,
@@ -253,7 +254,13 @@ export type ItotoriApplicationServices = {
 
 export type ItotoriServiceFactory = <T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
+  options?: ItotoriServiceFactoryOptions,
 ) => Promise<T>;
+
+export type ItotoriServiceFactoryOptions = {
+  actor?: AuthorizationActor;
+  sessionId?: string;
+};
 
 /**
  * ITOTORI-043 — the least-privilege factory for the read-only (query) API
@@ -268,6 +275,7 @@ export type ItotoriServiceFactory = <T>(
  */
 export type ItotoriReadOnlyServiceFactory = <T>(
   callback: (services: ItotoriReadOnlyApiServices) => Promise<T>,
+  options?: ItotoriServiceFactoryOptions,
 ) => Promise<T>;
 
 /**
@@ -278,7 +286,8 @@ export type ItotoriReadOnlyServiceFactory = <T>(
 export function toReadOnlyServiceFactory(
   factory: ItotoriServiceFactory,
 ): ItotoriReadOnlyServiceFactory {
-  return (callback) => factory((services) => callback(readOnlyApiServices(services)));
+  return (callback, options) =>
+    factory((services) => callback(readOnlyApiServices(services)), options);
 }
 
 /**
@@ -298,6 +307,8 @@ export function withDatabaseReadOnlyApiServices<T>(
 export type DatabaseServiceOptions = {
   databaseUrl?: string;
   bootstrapLocalUser?: boolean;
+  actor?: AuthorizationActor;
+  sessionId?: string;
 };
 
 export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
@@ -401,6 +412,7 @@ export async function withDatabaseItotoriServices<T>(
       await bootstrapLocalUser(context.db);
       await bootstrapDefaultAccountPrincipal(context.db);
     }
+    const localUserActor = await resolveDatabaseServiceActor(context.db, options);
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
@@ -726,4 +738,20 @@ export async function withDatabaseItotoriServices<T>(
   } finally {
     await context.close();
   }
+}
+
+async function resolveDatabaseServiceActor(
+  db: ItotoriDatabase,
+  options: DatabaseServiceOptions,
+): Promise<AuthorizationActor> {
+  if (options.actor !== undefined) {
+    return options.actor;
+  }
+  if (options.sessionId !== undefined && options.sessionId.trim() !== "") {
+    const resolved = await new ItotoriAuthSessionService(db).resolveActorFromSessionId(
+      options.sessionId,
+    );
+    return resolved?.actor ?? { userId: "unauthenticated-session" };
+  }
+  return defaultLocalUserActor;
 }

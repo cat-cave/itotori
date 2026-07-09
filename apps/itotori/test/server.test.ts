@@ -34,6 +34,7 @@ const getProjectOverview = vi.fn(async () => projectOverviewFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
 const { createItotoriServer, startItotoriServer } = await import("../src/server.js");
+const { itotoriSessionCookieName } = await import("../src/auth-session-cookie.js");
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -388,6 +389,36 @@ describe("Itotori server API contracts", () => {
 });
 
 describe("itotori-043-followup transport-level read-only routing", () => {
+  it("passes the opaque auth session cookie to the selected API service factory", async () => {
+    const seenSessionIds: (string | undefined)[] = [];
+    const sessionAwareFactory = vi.fn(
+      async <T>(
+        callback: (services: ItotoriApplicationServices) => Promise<T>,
+        options?: { sessionId?: string },
+      ) => {
+        seenSessionIds.push(options?.sessionId);
+        return serviceFactory(callback);
+      },
+    );
+    const server = createItotoriServer({
+      serviceFactory: sessionAwareFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/projects/status`, {
+        headers: { cookie: `theme=dark; ${itotoriSessionCookieName}=opaque-session-123` },
+      });
+
+      expect(response.status).toBe(200);
+      await response.json();
+      expect(seenSessionIds).toEqual(["opaque-session-123"]);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("dispatches a GET through the read-only service factory (never the full one)", async () => {
     const fullFactory = vi.fn(serviceFactory);
     const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));

@@ -13,6 +13,7 @@ import {
   type ItotoriServiceFactory,
   type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
+import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -38,7 +39,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     options.publicFixtureArtifactRoot ?? new URL("../../../fixtures/public/", import.meta.url);
   const serviceFactory =
     options.serviceFactory ??
-    ((callback) => withDatabaseItotoriServices(databaseOptions(options), callback));
+    ((callback, serviceOptions) =>
+      withDatabaseItotoriServices({ ...databaseOptions(options), ...serviceOptions }, callback));
   // itotori-043-followup-transport-level-readonly-routing — GET (read-only)
   // requests are served through the read-only service factory so a GET can
   // NEVER reach a mutation service: the factory hands the handler only the
@@ -61,6 +63,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
           search: url.search,
           body,
         };
+        const sessionId = parseItotoriSessionCookie(request.headers.cookie);
+        const serviceOptions = sessionId === undefined ? undefined : { sessionId };
         // itotori-043-followup-transport-level-readonly-routing — dispatch by
         // HTTP method at the transport boundary: a GET runs through the
         // read-only factory + read-only handler (least-privilege, no mutation
@@ -68,10 +72,14 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         // handler, preserving the existing mutation routing and 405 behavior.
         const apiResponse =
           method === "GET"
-            ? await readOnlyServiceFactory((services) =>
-                handleReadOnlyItotoriApiRequest(apiRequest, services),
+            ? await readOnlyServiceFactory(
+                (services) => handleReadOnlyItotoriApiRequest(apiRequest, services),
+                serviceOptions,
               )
-            : await serviceFactory((services) => handleItotoriApiRequest(apiRequest, services));
+            : await serviceFactory(
+                (services) => handleItotoriApiRequest(apiRequest, services),
+                serviceOptions,
+              );
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
