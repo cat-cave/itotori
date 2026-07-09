@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { createInterface } from "node:readline/promises";
 import {
   assertConformanceManifestV01,
   assertConformanceResultV01,
@@ -136,6 +138,8 @@ import {
   type RunUtsushiStructureResult,
 } from "./structure-export/utsushi-structure-seam.js";
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
+import { buildHelpText } from "./help-text.js";
+import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -224,6 +228,12 @@ export type ItotoriCliDependencies = {
   migrateDatabase(): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
   nativeCli?: NativeCliRunner;
+  /**
+   * Optional override for the `itotori init` guided-setup dependencies.
+   * In production the CLI constructs real readline/fs deps; tests inject
+   * a mock to avoid interactive I/O.
+   */
+  initDeps?: InitCommandDeps;
 };
 
 export async function runItotoriCliCommand(
@@ -243,6 +253,11 @@ export async function runItotoriCliCommand(
       `loaded ${envFileResult.appliedKeys.length} allowlisted var(s) from env file ` +
         `'${envFileResult.path}': ${envFileResult.appliedKeys.join(", ")}\n`,
     );
+  }
+  if (args.includes("--help") || args.includes("-h")) {
+    const allCommands = args.includes("--all");
+    process.stdout.write(`${buildHelpText(allCommands)}\n`);
+    return;
   }
   if (args.includes("--version") || args.includes("-v")) {
     process.stdout.write(`itotori ${ITOTORI_PRODUCT_VERSION}\n`);
@@ -373,6 +388,12 @@ export async function runItotoriCliCommand(
       break;
     case "queue-health":
       await runQueueHealthHandler(args, dependencies);
+      break;
+    case "help":
+      process.stdout.write(`${buildHelpText(args.includes("--all"))}\n`);
+      break;
+    case "init":
+      await runInitHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -1818,6 +1839,37 @@ async function runAlphaReadinessHandler(
       `alpha-readiness decision='fail'; failing gates: ${report.failedGateIds.join(", ")}; see ${outputDir}/alpha-readiness-report.json`,
     );
   }
+}
+
+async function runInitHandler(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  const initDeps: InitCommandDeps = dependencies.initDeps ?? constructDefaultInitDeps(dependencies);
+  await runInitCommand(args, initDeps);
+}
+
+function constructDefaultInitDeps(dependencies: ItotoriCliDependencies): InitCommandDeps {
+  void dependencies;
+  return {
+    env: process.env,
+    existsPath: (path) => existsSync(path),
+    writeText: (path, contents, mode) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, contents, { mode: mode ?? 0o600 });
+      if (mode !== undefined) {
+        chmodSync(path, mode);
+      }
+    },
+    prompt: async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        return await rl.question(question);
+      } finally {
+        rl.close();
+      }
+    },
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  };
 }
 
 function requiredFlag(args: string[], name: string): string {
