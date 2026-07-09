@@ -4301,14 +4301,43 @@ function serviceFixture(): ItotoriApiServices {
           ? { ...workspaceComparisonFixture(), reviewItemId, permission }
           : workspaceDeniedComparisonFixture(reviewItemId),
       ),
-      loadSearch: vi.fn(async ({ projectId, localeBranchId, query, mode, permission }) => ({
-        ...workspaceSearchFixture(),
-        projectId,
-        localeBranchId,
-        query,
-        mode: mode ?? "all",
-        permission,
-      })),
+      loadSearch: vi.fn(
+        async ({ projectId, localeBranchId, query, mode, permission, canReadCatalog }) => {
+          const fixture = workspaceSearchFixture();
+          const results = canReadCatalog
+            ? [
+                ...fixture.results,
+                {
+                  resultKind: "run" as const,
+                  matchKind: "entity" as const,
+                  id: "run-draft-api-1",
+                  title: "draft scene greeting",
+                  subtitle: "succeeded · provider-fixture",
+                  targetPath: "/jobs?projectId=project-itotori-040&runId=run-draft-api-1",
+                  localeBranchId: fixture.localeBranchId,
+                  sourceArtifactId: "ledger-run-api-1",
+                  bridgeUnitRef: "draft-job-api-1",
+                  sourceRevisionId: null,
+                  sourceLocale: null,
+                  targetLocale: null,
+                  snippet: "provider-run-api-1",
+                  score: 0.5,
+                  matchRefId: "run-draft-api-1",
+                },
+              ]
+            : fixture.results;
+          return {
+            ...fixture,
+            projectId,
+            localeBranchId,
+            query,
+            mode: mode ?? "all",
+            permission,
+            results,
+            pagination: { ...fixture.pagination, total: results.length },
+          };
+        },
+      ),
     },
     workspaceCorrections: {
       loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
@@ -4687,7 +4716,7 @@ describe("Itotori API handlers — localization workspace (ITOTORI-040)", () => 
         method: "GET",
         pathname: "/api/workspace/search",
         search:
-          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=世界&mode=all",
+          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=世界&mode=all&limit=10&offset=20",
       },
       services,
     );
@@ -4704,6 +4733,40 @@ describe("Itotori API handlers — localization workspace (ITOTORI-040)", () => 
     expect(services.workspace.loadComparison).toHaveBeenCalledWith(
       expect.objectContaining({ reviewItemId: "reviewer-queue-itotori-040" }),
     );
+    expect(services.workspace.loadSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 10, offset: 20 }),
+    );
+  });
+
+  it("omits run-table results from workspace search for queue.read-only callers", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.catalogRead) {
+        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+      }
+    });
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/search",
+        search:
+          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=%E4%B8%96%E7%95%8C&mode=all",
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(services.workspace.loadSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canReadCatalog: false,
+        permission: expect.objectContaining({ canReadQueue: true }),
+      }),
+    );
+    const serialized = JSON.stringify(response.body);
+    expect(serialized).toContain("search-document-itotori-040");
+    expect(serialized).not.toContain("provider-run-api-1");
+    expect(serialized).not.toContain("run-draft-api-1");
   });
 
   it("rejects unknown query params and missing branch scope", async () => {

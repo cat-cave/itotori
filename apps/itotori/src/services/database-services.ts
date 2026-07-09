@@ -469,6 +469,9 @@ export async function withDatabaseItotoriServices<T>(
           assetDecisionRepository.loadCandidateAssets(localUserActor, projectId, localeBranchId),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
         searchTerminology: (input) => terminologyRepository.searchTerms(localUserActor, input),
+        loadRunTable: (input) =>
+          draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, input),
+        loadReviewerDashboard: (input) => reviewerQueueApiService.loadDashboard(input),
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
     });

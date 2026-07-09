@@ -99,6 +99,7 @@ import type { ReviewerBatchExecuteResult } from "./reviewer/batch-execute.js";
 import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
 import {
   workspaceDiagnosticCodeValues,
+  workspaceSearchResultKindValues,
   workspaceSearchModeValues,
 } from "./workspace/read-model.js";
 import type {
@@ -437,6 +438,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "query",
     "normalizedQuery",
     "mode",
+    "pagination",
     "results",
     "droppedOpaqueCount",
     "diagnostics",
@@ -2176,12 +2178,21 @@ export function assertWorkspaceSearchReadModel(
   assertString(model.query, `${label}.query`);
   assertString(model.normalizedQuery, `${label}.normalizedQuery`);
   assertEnum(model.mode, workspaceSearchModeList, `${label}.mode`);
+  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
   assertNonNegativeInteger(model.droppedOpaqueCount, `${label}.droppedOpaqueCount`);
   const results = asArray(model.results, `${label}.results`);
+  if (results.length > Number((model.pagination as { limit: unknown }).limit)) {
+    throw new Error(`${label}.results must not exceed pagination.limit`);
+  }
   for (const [index, resultValue] of results.entries()) {
     const resultLabel = `${label}.results[${index}]`;
     const result = asStrictRecord(resultValue, resultLabel, [
+      "resultKind",
       "matchKind",
+      "id",
+      "title",
+      "subtitle",
+      "targetPath",
       "localeBranchId",
       "sourceArtifactId",
       "bridgeUnitRef",
@@ -2192,7 +2203,20 @@ export function assertWorkspaceSearchReadModel(
       "score",
       "matchRefId",
     ]);
-    assertEnum(result.matchKind, ["exact", "terminology"] as const, `${resultLabel}.matchKind`);
+    assertEnum(
+      result.resultKind,
+      Object.values(workspaceSearchResultKindValues),
+      `${resultLabel}.resultKind`,
+    );
+    assertEnum(
+      result.matchKind,
+      ["exact", "terminology", "entity", "action"] as const,
+      `${resultLabel}.matchKind`,
+    );
+    assertString(result.id, `${resultLabel}.id`);
+    assertString(result.title, `${resultLabel}.title`);
+    assertNullableString(result.subtitle, `${resultLabel}.subtitle`);
+    assertString(result.targetPath, `${resultLabel}.targetPath`);
     // Acceptance: every search result MUST cite a locale branch id, a
     // source artifact id, and a bridge unit ref (never an opaque snippet).
     assertString(result.localeBranchId, `${resultLabel}.localeBranchId`);

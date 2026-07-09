@@ -19,6 +19,7 @@ import type {
   AssetDecisionRecord,
   BridgeUnitTextRecord,
   CandidateAssetRecord,
+  JobsRunTableReadModel,
   LoadSceneSummariesQuery,
   LocaleBranchIdentity,
   ProjectDashboardStatus,
@@ -29,10 +30,12 @@ import type {
   TerminologySearchReadModel,
 } from "@itotori/db";
 import { sceneSummaryStatusValues } from "@itotori/db";
+import type { ReviewerQueueDashboardReadModel } from "../reviewer/api-service.js";
 import type { ReviewerDetailContext } from "../reviewer/detail-fixtures.js";
 import { reviewerDetailDiagnosticCodeValues } from "../reviewer/detail-fixtures.js";
 import {
   workspaceDiagnosticCodeValues,
+  workspaceSearchResultKindValues,
   workspaceSearchModeValues,
   type WorkspaceAssetBrowseReadModel,
   type WorkspaceAssetEntry,
@@ -48,6 +51,7 @@ import {
   type WorkspaceSceneContext,
   type WorkspaceSceneUnit,
   type WorkspaceSearchMode,
+  type WorkspaceSearchPagination,
   type WorkspaceSearchReadModel,
   type WorkspaceSearchResult,
 } from "./read-model.js";
@@ -70,6 +74,15 @@ export interface LocalizationWorkspaceReadPort {
   loadCandidateAssets(projectId: string, localeBranchId: string): Promise<CandidateAssetRecord[]>;
   searchExact(input: SearchExactInput): Promise<SearchExactToolResult>;
   searchTerminology(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
+  loadRunTable(input: {
+    projectId: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<JobsRunTableReadModel>;
+  loadReviewerDashboard(input: {
+    localeBranchId: string;
+    permission: WorkspacePermissionView;
+  }): Promise<ReviewerQueueDashboardReadModel>;
   loadComparisonContext(input: {
     reviewItemId: string;
     permission: WorkspacePermissionView;
@@ -110,6 +123,8 @@ export type LoadWorkspaceSearchInput = {
   query: string;
   mode?: WorkspaceSearchMode;
   limit?: number;
+  offset?: number;
+  canReadCatalog: boolean;
   permission: WorkspacePermissionView;
 };
 
@@ -406,6 +421,8 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
 
   async loadSearch(input: LoadWorkspaceSearchInput): Promise<WorkspaceSearchReadModel> {
     const mode = input.mode ?? workspaceSearchModeValues.all;
+    const limit = normalizeSearchLimit(input.limit);
+    const offset = normalizeSearchOffset(input.offset);
     const base = {
       schemaVersion: "workspace.search.v0.1" as const,
       generatedAt: this.now(),
@@ -419,6 +436,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       return {
         ...base,
         normalizedQuery: input.query.trim().toLowerCase(),
+        pagination: searchPagination(0, limit, offset),
         results: [],
         droppedOpaqueCount: 0,
         diagnostics: [permissionDeniedDiagnostic(input.permission)],
@@ -428,6 +446,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
     const results: WorkspaceSearchResult[] = [];
     let droppedOpaqueCount = 0;
     let normalizedQuery = input.query.trim().toLowerCase();
+    const upstreamLimit = Math.min(100, limit + offset);
 
     if (mode === workspaceSearchModeValues.all || mode === workspaceSearchModeValues.exact) {
       const exactInput: SearchExactInput = {
@@ -435,11 +454,11 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         localeBranchId: input.localeBranchId,
         query: input.query,
       };
-      if (input.limit !== undefined) {
-        exactInput.limit = input.limit;
-      }
+      exactInput.limit = upstreamLimit;
       const exact = await this.deps.readPort.searchExact(exactInput);
-      normalizedQuery = exact.normalizedQuery;
+      if (normalizedQuery.length > 0) {
+        normalizedQuery = exact.normalizedQuery;
+      }
       for (const match of exact.matches) {
         if (match.localeBranchId !== input.localeBranchId) {
           diagnostics.push(
@@ -458,7 +477,12 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
           continue;
         }
         results.push({
+          resultKind: workspaceSearchResultKindValues.unit,
           matchKind: "exact",
+          id: match.searchDocumentId,
+          title: match.exactTerm,
+          subtitle: match.sourceArtifactId,
+          targetPath: workspaceComparisonRoutePath(match.searchDocumentId),
           localeBranchId: match.localeBranchId,
           sourceArtifactId: match.sourceArtifactId,
           bridgeUnitRef,
@@ -478,9 +502,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         localeBranchId: input.localeBranchId,
         query: input.query,
       };
-      if (input.limit !== undefined) {
-        terminologyInput.limit = input.limit;
-      }
+      terminologyInput.limit = upstreamLimit;
       const terminology = await this.deps.readPort.searchTerminology(terminologyInput);
       for (const result of terminology.results) {
         const term = result.term;
@@ -498,7 +520,17 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
           continue;
         }
         results.push({
+          resultKind: workspaceSearchResultKindValues.term,
           matchKind: "terminology",
+          id: term.termId,
+          title: term.sourceTerm,
+          subtitle: term.preferredTranslation,
+          targetPath: workspaceSearchRoutePath({
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            query: term.sourceTerm,
+            mode: workspaceSearchModeValues.terminology,
+          }),
           localeBranchId: term.localeBranchId,
           sourceArtifactId: term.termId,
           bridgeUnitRef,
@@ -512,6 +544,208 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       }
     }
 
+    if (mode === workspaceSearchModeValues.all) {
+      const query = normalizedQuery;
+      const sceneSummaries = await this.deps.readPort.loadSceneSummaries({
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+      });
+      const branchSceneSummaries = sceneSummaries.filter((summary) => {
+        if (summary.localeBranchId === input.localeBranchId) {
+          return true;
+        }
+        diagnostics.push(
+          branchConflationDiagnostic("scene search match", summary.localeBranchId, input),
+        );
+        return false;
+      });
+      const bridgeUnitIds = [
+        ...new Set(
+          branchSceneSummaries.flatMap((summary) =>
+            summary.citations.map((citation) => citation.bridgeUnitId),
+          ),
+        ),
+      ];
+      const bridgeUnits = await this.deps.readPort.loadBridgeUnitsForSummary(bridgeUnitIds);
+      const characters = new Map<string, { name: string; bridgeUnitId: string; sceneId: string }>();
+      for (const summary of branchSceneSummaries) {
+        if (searchTextMatches(query, [summary.sceneId, summary.summaryText, summary.status])) {
+          results.push({
+            resultKind: workspaceSearchResultKindValues.scene,
+            matchKind: "entity",
+            id: summary.sceneSummaryId,
+            title: summary.sceneId,
+            subtitle: summary.summaryText,
+            targetPath: workspaceSceneRoutePath(
+              input.projectId,
+              input.localeBranchId,
+              summary.sceneId,
+            ),
+            localeBranchId: input.localeBranchId,
+            sourceArtifactId: summary.sceneSummaryId,
+            bridgeUnitRef: summary.citations[0]?.bridgeUnitId ?? summary.sceneId,
+            sourceRevisionId: summary.sourceRevisionId,
+            sourceLocale: null,
+            targetLocale: summary.summaryLocale,
+            snippet: summary.summaryText,
+            score: entityScore(query, [summary.sceneId, summary.summaryText]),
+            matchRefId: summary.sceneSummaryId,
+          });
+        }
+        for (const citation of summary.citations) {
+          const unit = bridgeUnits.get(citation.bridgeUnitId);
+          if (unit === undefined) {
+            continue;
+          }
+          if (unit.speaker !== null) {
+            characters.set(unit.speaker, {
+              name: unit.speaker,
+              bridgeUnitId: unit.bridgeUnitId,
+              sceneId: summary.sceneId,
+            });
+          }
+          if (
+            searchTextMatches(query, [
+              unit.bridgeUnitId,
+              unit.sourceUnitKey,
+              unit.speaker,
+              unit.sourceText,
+              unit.occurrenceId,
+            ])
+          ) {
+            results.push({
+              resultKind: workspaceSearchResultKindValues.unit,
+              matchKind: "entity",
+              id: unit.bridgeUnitId,
+              title: unit.sourceUnitKey,
+              subtitle: unit.speaker,
+              targetPath: workspaceComparisonRoutePath(unit.bridgeUnitId),
+              localeBranchId: input.localeBranchId,
+              sourceArtifactId: unit.bridgeUnitId,
+              bridgeUnitRef: unit.bridgeUnitId,
+              sourceRevisionId: summary.sourceRevisionId,
+              sourceLocale: null,
+              targetLocale: summary.summaryLocale,
+              snippet: unit.sourceText,
+              score: entityScore(query, [unit.sourceUnitKey, unit.speaker, unit.sourceText]),
+              matchRefId: unit.bridgeUnitId,
+            });
+          }
+        }
+      }
+      for (const character of characters.values()) {
+        if (!searchTextMatches(query, [character.name])) {
+          continue;
+        }
+        results.push({
+          resultKind: workspaceSearchResultKindValues.character,
+          matchKind: "entity",
+          id: `character:${character.name}`,
+          title: character.name,
+          subtitle: `Seen in ${character.sceneId}`,
+          targetPath: workspaceSceneRoutePath(
+            input.projectId,
+            input.localeBranchId,
+            character.sceneId,
+          ),
+          localeBranchId: input.localeBranchId,
+          sourceArtifactId: `character:${character.name}`,
+          bridgeUnitRef: character.bridgeUnitId,
+          sourceRevisionId: null,
+          sourceLocale: null,
+          targetLocale: null,
+          snippet: character.name,
+          score: entityScore(query, [character.name]),
+          matchRefId: character.name,
+        });
+      }
+
+      if (input.canReadCatalog) {
+        const runTable = await this.deps.readPort.loadRunTable({
+          projectId: input.projectId,
+          limit: upstreamLimit,
+          offset: 0,
+        });
+        for (const run of runTable.rows) {
+          if (run.localeBranchId !== input.localeBranchId) {
+            continue;
+          }
+          if (
+            !searchTextMatches(query, [
+              run.runId,
+              run.providerRunId,
+              run.task,
+              run.status,
+              run.servedModel,
+              run.servedProvider,
+            ])
+          ) {
+            continue;
+          }
+          results.push({
+            resultKind: workspaceSearchResultKindValues.run,
+            matchKind: "entity",
+            id: run.runId,
+            title: run.task,
+            subtitle: `${run.status} · ${run.servedProvider}`,
+            targetPath: `/jobs?projectId=${encodeURIComponent(input.projectId)}&runId=${encodeURIComponent(run.runId)}`,
+            localeBranchId: run.localeBranchId,
+            sourceArtifactId: run.ledgerEntryId,
+            bridgeUnitRef: run.draftJobId,
+            sourceRevisionId: null,
+            sourceLocale: null,
+            targetLocale: null,
+            snippet: run.providerRunId ?? run.runId,
+            score: entityScore(query, [run.runId, run.providerRunId, run.task, run.status]),
+            matchRefId: run.runId,
+          });
+        }
+      }
+
+      const dashboard = await this.deps.readPort.loadReviewerDashboard({
+        localeBranchId: input.localeBranchId,
+        permission: input.permission,
+      });
+      for (const row of dashboard.rows) {
+        if (
+          !searchTextMatches(query, [
+            row.reviewItemId,
+            row.summary,
+            row.findingId,
+            row.itemKind,
+            row.state,
+            row.sourceItemRef,
+          ])
+        ) {
+          continue;
+        }
+        results.push({
+          resultKind: workspaceSearchResultKindValues.finding,
+          matchKind: "entity",
+          id: row.findingId ?? row.reviewItemId,
+          title: row.summary,
+          subtitle: `${row.itemKind} · ${row.state}`,
+          targetPath: row.detailPath,
+          localeBranchId: row.localeBranchId,
+          sourceArtifactId: row.sourceItemRef,
+          bridgeUnitRef: row.sourceItemRef,
+          sourceRevisionId: row.sourceRevisionId,
+          sourceLocale: null,
+          targetLocale: null,
+          snippet: row.summary,
+          score: entityScore(query, [row.summary, row.findingId, row.reviewItemId]),
+          matchRefId: row.reviewItemId,
+        });
+      }
+
+      for (const action of workspaceSearchActions(input)) {
+        if (!searchTextMatches(query, [action.title, action.subtitle])) {
+          continue;
+        }
+        results.push(action);
+      }
+    }
+
     if (droppedOpaqueCount > 0) {
       diagnostics.push({
         code: workspaceDiagnosticCodeValues.opaqueSearchResultDropped,
@@ -520,11 +754,14 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
     }
 
     results.sort((left, right) => right.score - left.score);
+    const total = results.length;
+    const pageResults = results.slice(offset, offset + limit);
 
     return {
       ...base,
       normalizedQuery,
-      results,
+      pagination: searchPagination(total, limit, offset),
+      results: pageResults,
       droppedOpaqueCount,
       diagnostics,
     };
@@ -661,6 +898,180 @@ function bridgeUnitRefFromProvenance(provenance: Record<string, unknown>): strin
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function normalizeSearchLimit(limit: number | undefined): number {
+  return limit === undefined ? 25 : Math.min(limit, 100);
+}
+
+function normalizeSearchOffset(offset: number | undefined): number {
+  return offset === undefined ? 0 : offset;
+}
+
+function searchPagination(total: number, limit: number, offset: number): WorkspaceSearchPagination {
+  const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+  const hasMore = offset + limit < total;
+  return {
+    total,
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    pageCount,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
+  };
+}
+
+function searchTextMatches(query: string, values: readonly (string | null | undefined)[]): boolean {
+  if (query.length === 0) {
+    return true;
+  }
+  return values.some((value) => value?.toLowerCase().includes(query) ?? false);
+}
+
+function entityScore(query: string, values: readonly (string | null | undefined)[]): number {
+  if (query.length === 0) {
+    return 0.25;
+  }
+  for (const value of values) {
+    const normalized = value?.toLowerCase();
+    if (normalized === undefined) {
+      continue;
+    }
+    if (normalized === query) {
+      return 0.95;
+    }
+    if (normalized.startsWith(query)) {
+      return 0.8;
+    }
+    if (normalized.includes(query)) {
+      return 0.6;
+    }
+  }
+  return 0.1;
+}
+
+function workspaceSearchActions(input: LoadWorkspaceSearchInput): WorkspaceSearchResult[] {
+  const actions: WorkspaceSearchResult[] = [
+    workspaceSearchAction(input, {
+      id: "action:workspace.search",
+      title: "Search workspace",
+      subtitle: "Find scenes, units, characters, terms, runs, findings, and actions",
+      targetPath: workspaceSearchRoutePath({
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        query: input.query,
+        mode: workspaceSearchModeValues.all,
+      }),
+      score: 0.5,
+    }),
+    workspaceSearchAction(input, {
+      id: "action:workspace.scenes",
+      title: "Browse scenes",
+      subtitle: "Open translated scene summaries",
+      targetPath: workspaceSceneRoutePath(input.projectId, input.localeBranchId),
+      score: 0.45,
+    }),
+    workspaceSearchAction(input, {
+      id: "action:workspace.assets",
+      title: "Browse assets",
+      subtitle: "Open localizable asset decisions",
+      targetPath: workspaceAssetRoutePath(input.projectId, input.localeBranchId),
+      score: 0.45,
+    }),
+    workspaceSearchAction(input, {
+      id: "action:workspace.corrections",
+      title: "Open corrections",
+      subtitle: "Preview manual correction scope",
+      targetPath: workspaceCorrectionsRoutePath(input.localeBranchId),
+      score: 0.4,
+    }),
+  ];
+  if (input.permission.canManageQueue) {
+    actions.push(
+      workspaceSearchAction(input, {
+        id: "action:workspace.submitCorrections",
+        title: "Submit corrections",
+        subtitle: "Apply reviewed manual corrections",
+        targetPath: workspaceCorrectionsRoutePath(input.localeBranchId),
+        score: 0.35,
+      }),
+    );
+  }
+  return actions;
+}
+
+function workspaceSearchAction(
+  input: LoadWorkspaceSearchInput,
+  action: {
+    id: string;
+    title: string;
+    subtitle: string;
+    targetPath: string;
+    score: number;
+  },
+): WorkspaceSearchResult {
+  return {
+    resultKind: workspaceSearchResultKindValues.action,
+    matchKind: "action",
+    id: action.id,
+    title: action.title,
+    subtitle: action.subtitle,
+    targetPath: action.targetPath,
+    localeBranchId: input.localeBranchId,
+    sourceArtifactId: action.id,
+    bridgeUnitRef: action.id,
+    sourceRevisionId: null,
+    sourceLocale: null,
+    targetLocale: null,
+    snippet: action.subtitle,
+    score: action.score,
+    matchRefId: action.id,
+  };
+}
+
+function workspaceSceneRoutePath(
+  projectId: string,
+  localeBranchId: string,
+  sceneId?: string,
+): string {
+  const params = new URLSearchParams({ projectId, localeBranchId });
+  if (sceneId !== undefined) {
+    params.set("sceneId", sceneId);
+  }
+  return `/workspace/scenes?${params.toString()}`;
+}
+
+function workspaceAssetRoutePath(projectId: string, localeBranchId: string): string {
+  const params = new URLSearchParams({ projectId, localeBranchId });
+  return `/workspace/assets?${params.toString()}`;
+}
+
+function workspaceComparisonRoutePath(reviewItemId: string): string {
+  const params = new URLSearchParams({ reviewItemId });
+  return `/workspace/comparison?${params.toString()}`;
+}
+
+function workspaceSearchRoutePath(input: {
+  projectId: string;
+  localeBranchId: string;
+  query: string;
+  mode?: WorkspaceSearchMode;
+}): string {
+  const params = new URLSearchParams({
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    query: input.query,
+  });
+  if (input.mode !== undefined) {
+    params.set("mode", input.mode);
+  }
+  return `/workspace/search?${params.toString()}`;
+}
+
+function workspaceCorrectionsRoutePath(localeBranchId: string): string {
+  const params = new URLSearchParams({ localeBranchId });
+  return `/workspace/corrections?${params.toString()}`;
+}
+
 export function workspaceSceneBrowsePath(projectId: string, localeBranchId: string): string {
   return `/api/workspace/scenes?projectId=${encodeURIComponent(projectId)}&localeBranchId=${encodeURIComponent(localeBranchId)}`;
 }
@@ -678,6 +1089,8 @@ export function workspaceSearchPath(input: {
   localeBranchId: string;
   query: string;
   mode?: WorkspaceSearchMode;
+  limit?: number;
+  offset?: number;
 }): string {
   const params = new URLSearchParams({
     projectId: input.projectId,
@@ -686,6 +1099,12 @@ export function workspaceSearchPath(input: {
   });
   if (input.mode !== undefined) {
     params.set("mode", input.mode);
+  }
+  if (input.limit !== undefined) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.offset !== undefined) {
+    params.set("offset", String(input.offset));
   }
   return `/api/workspace/search?${params.toString()}`;
 }

@@ -1,6 +1,10 @@
 // ITOTORI-040 — public surface of the localization reviewer workspace.
 
-export { workspaceDiagnosticCodeValues, workspaceSearchModeValues } from "./read-model.js";
+export {
+  workspaceDiagnosticCodeValues,
+  workspaceSearchModeValues,
+  workspaceSearchResultKindValues,
+} from "./read-model.js";
 export type {
   WorkspaceAssetBrowseReadModel,
   WorkspaceAssetEntry,
@@ -17,8 +21,10 @@ export type {
   WorkspaceSceneContext,
   WorkspaceSceneUnit,
   WorkspaceSearchMode,
+  WorkspaceSearchPagination,
   WorkspaceSearchReadModel,
   WorkspaceSearchResult,
+  WorkspaceSearchResultKind,
 } from "./read-model.js";
 
 export {

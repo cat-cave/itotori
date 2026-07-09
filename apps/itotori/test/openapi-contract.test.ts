@@ -57,6 +57,13 @@ import {
   terminologySearchFixture,
   wikiEntriesFixture,
 } from "./api-fixtures.js";
+import {
+  workspaceAssetBrowseFixture,
+  workspaceComparisonFixture,
+  workspaceProjectBrowseFixture,
+  workspaceSceneBrowseFixture,
+  workspaceSearchFixture,
+} from "../src/workspace/fixtures.js";
 
 const OPENAPI_PATH = fileURLToPath(new URL("../openapi.json", import.meta.url));
 const JSON_SCHEMA_PATH = fileURLToPath(new URL("../api-jsonschema.json", import.meta.url));
@@ -109,6 +116,11 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "catalog.opportunities": catalogOpportunitiesFixture,
   "terminology.search": terminologySearchFixture,
   "wiki.entries": wikiEntriesFixture,
+  "workspace.projects": workspaceProjectBrowseFixture(),
+  "workspace.scenes": workspaceSceneBrowseFixture(),
+  "workspace.assets": workspaceAssetBrowseFixture(),
+  "workspace.comparison": workspaceComparisonFixture(),
+  "workspace.search": workspaceSearchFixture(),
   "imports.bridge": bridgeImportResponseFixture,
   "branches.draft": draftBranchResponseFixture,
   "findings.record": recordFindingResponseFixture,

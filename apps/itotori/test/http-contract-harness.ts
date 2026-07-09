@@ -67,6 +67,13 @@ import {
   terminologySearchFixture,
   wikiEntriesFixture,
 } from "./api-fixtures.js";
+import {
+  workspaceAssetBrowseFixture,
+  workspaceComparisonFixture,
+  workspaceProjectBrowseFixture,
+  workspaceSceneBrowseFixture,
+  workspaceSearchFixture,
+} from "../src/workspace/fixtures.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -441,11 +448,36 @@ const fixtureServices = {
     loadDetailContext: vi.fn(unused),
   },
   workspace: {
-    loadProjectBrowse: vi.fn(unused),
-    loadSceneBrowse: vi.fn(unused),
-    loadAssetBrowse: vi.fn(unused),
-    loadComparison: vi.fn(unused),
-    loadSearch: vi.fn(unused),
+    loadProjectBrowse: vi.fn(async ({ permission }) => ({
+      ...workspaceProjectBrowseFixture(),
+      permission,
+    })),
+    loadSceneBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
+      ...workspaceSceneBrowseFixture(),
+      projectId,
+      localeBranchId,
+      permission,
+    })),
+    loadAssetBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
+      ...workspaceAssetBrowseFixture(),
+      projectId,
+      localeBranchId,
+      permission,
+    })),
+    loadComparison: vi.fn(async ({ reviewItemId, permission }) => ({
+      ...workspaceComparisonFixture(),
+      reviewItemId,
+      permission,
+    })),
+    loadSearch: vi.fn(async ({ projectId, localeBranchId, query, mode, offset, permission }) => ({
+      ...workspaceSearchFixture(),
+      projectId,
+      localeBranchId,
+      query,
+      mode: mode ?? "all",
+      pagination: { ...workspaceSearchFixture().pagination, offset: offset ?? 0 },
+      permission,
+    })),
   },
   workspaceCorrections: {
     loadPreview: vi.fn(unused),

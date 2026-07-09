@@ -71,6 +71,29 @@ export const workspaceSearchModeValues = {
 export type WorkspaceSearchMode =
   (typeof workspaceSearchModeValues)[keyof typeof workspaceSearchModeValues];
 
+export const workspaceSearchResultKindValues = {
+  scene: "scene",
+  unit: "unit",
+  character: "character",
+  term: "term",
+  run: "run",
+  finding: "finding",
+  action: "action",
+} as const;
+
+export type WorkspaceSearchResultKind =
+  (typeof workspaceSearchResultKindValues)[keyof typeof workspaceSearchResultKindValues];
+
+export type WorkspaceSearchPagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
 // ---------------------------------------------------------------------------
 // Project / locale-branch browse
 // ---------------------------------------------------------------------------
@@ -251,7 +274,12 @@ export type WorkspaceComparisonReadModel = {
  * `droppedOpaqueCount`.
  */
 export type WorkspaceSearchResult = {
-  matchKind: "exact" | "terminology";
+  resultKind: WorkspaceSearchResultKind;
+  matchKind: "exact" | "terminology" | "entity" | "action";
+  id: string;
+  title: string;
+  subtitle: string | null;
+  targetPath: string;
   localeBranchId: string;
   sourceArtifactId: string;
   bridgeUnitRef: string;
@@ -274,6 +302,7 @@ export type WorkspaceSearchReadModel = {
   query: string;
   normalizedQuery: string;
   mode: WorkspaceSearchMode;
+  pagination: WorkspaceSearchPagination;
   results: WorkspaceSearchResult[];
   /** Hits dropped because they lacked the required citations. */
   droppedOpaqueCount: number;

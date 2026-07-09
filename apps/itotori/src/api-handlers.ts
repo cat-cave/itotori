@@ -1153,10 +1153,11 @@ async function routeReadOnlyItotoriApiRequest(
       services,
       parseActorUserIdQuery(request.search),
     );
+    const canReadCatalog = await resolveProjectReadPermission(services);
     const searchInput = parseWorkspaceSearchQuery(request.search);
     return ok(
       "workspace.search",
-      await services.workspace.loadSearch({ ...searchInput, permission }),
+      await services.workspace.loadSearch({ ...searchInput, permission, canReadCatalog }),
     );
   }
 
@@ -1825,14 +1826,16 @@ function parseWorkspaceComparisonQuery(search = ""): string {
   return requiredNonEmptyParam(params, "reviewItemId");
 }
 
-function parseWorkspaceSearchQuery(search = ""): Omit<LoadWorkspaceSearchInput, "permission"> {
+function parseWorkspaceSearchQuery(
+  search = "",
+): Omit<LoadWorkspaceSearchInput, "canReadCatalog" | "permission"> {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
     params,
-    ["projectId", "localeBranchId", "query", "mode", "limit", "actorUserId"],
+    ["projectId", "localeBranchId", "query", "mode", "limit", "offset", "actorUserId"],
     "workspace search",
   );
-  const input: Omit<LoadWorkspaceSearchInput, "permission"> = {
+  const input: Omit<LoadWorkspaceSearchInput, "canReadCatalog" | "permission"> = {
     projectId: requiredNonEmptyParam(params, "projectId"),
     localeBranchId: requiredNonEmptyParam(params, "localeBranchId"),
     query: requiredQueryParam(params, "query"),
@@ -1856,6 +1859,14 @@ function parseWorkspaceSearchQuery(search = ""): Omit<LoadWorkspaceSearchInput, 
       throw new ApiValidationError("limit must be an integer from 1 through 100");
     }
     input.limit = parsedLimit;
+  }
+  const offset = params.get("offset");
+  if (offset !== null) {
+    const parsedOffset = Number(offset);
+    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
+      throw new ApiValidationError("offset must be a non-negative integer");
+    }
+    input.offset = parsedOffset;
   }
   return input;
 }

@@ -2206,6 +2206,9 @@
         "normalizedQuery": {
           "type": "string"
         },
+        "pagination": {
+          "type": "object"
+        },
         "permission": {
           "$ref": "#/definitions/ReviewerQueuePermissionView"
         },
@@ -2229,6 +2232,7 @@
         "localeBranchId",
         "mode",
         "normalizedQuery",
+        "pagination",
         "permission",
         "projectId",
         "query",

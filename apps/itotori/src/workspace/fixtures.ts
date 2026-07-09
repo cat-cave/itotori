@@ -10,6 +10,7 @@ import type { WorkspacePermissionView } from "./read-model.js";
 import {
   workspaceDiagnosticCodeValues,
   workspaceSearchModeValues,
+  workspaceSearchResultKindValues,
   type WorkspaceAssetBrowseReadModel,
   type WorkspaceComparisonReadModel,
   type WorkspaceProjectBrowseReadModel,
@@ -205,9 +206,23 @@ export function workspaceSearchFixture(
     query: "世界",
     normalizedQuery: "世界",
     mode: workspaceSearchModeValues.all,
+    pagination: {
+      total: 1,
+      limit: 25,
+      offset: 0,
+      page: 1,
+      pageCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    },
     results: [
       {
+        resultKind: workspaceSearchResultKindValues.unit,
         matchKind: "exact",
+        id: "search-document-itotori-040",
+        title: "世界",
+        subtitle: "bridge-unit-itotori-040-1",
+        targetPath: "/workspace/comparison?reviewItemId=search-document-itotori-040",
         localeBranchId: itotori040FixtureLocaleBranchId,
         sourceArtifactId: "bridge-unit-itotori-040-1",
         bridgeUnitRef: "bridge-unit-itotori-040-1",

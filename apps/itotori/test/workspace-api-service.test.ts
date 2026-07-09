@@ -12,6 +12,7 @@ import type {
   AssetDecisionRecord,
   BridgeUnitTextRecord,
   CandidateAssetRecord,
+  JobsRunTableReadModel,
   LoadSceneSummariesQuery,
   LocaleBranchIdentity,
   ProjectDashboardStatus,
@@ -28,7 +29,10 @@ import {
   type WorkspacePermissionView,
 } from "../src/workspace/index.js";
 import { readyContextFixture, staleContextFixture } from "../src/reviewer/index.js";
-import type { ReviewerDetailContext } from "../src/reviewer/index.js";
+import type {
+  ReviewerDetailContext,
+  ReviewerQueueDashboardReadModel,
+} from "../src/reviewer/index.js";
 
 const PROJECT_ID = "project-itotori-040";
 const BRANCH_ID = "locale-branch-en";
@@ -273,6 +277,88 @@ function terminologyResult(opts: {
   };
 }
 
+function runTable(): JobsRunTableReadModel {
+  return {
+    schemaVersion: "jobs.run_table.v0.1",
+    generatedAt: NOW.toISOString(),
+    filter: { projectId: PROJECT_ID },
+    pagination: {
+      total: 1,
+      limit: 25,
+      offset: 0,
+      page: 1,
+      pageCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    },
+    rows: [
+      {
+        runId: "run-draft-1",
+        ledgerEntryId: "ledger-run-1",
+        draftJobId: "draft-job-1",
+        draftJobAttemptId: "draft-job-attempt-1",
+        providerRunId: "provider-run-1",
+        jobId: "job-1",
+        projectId: PROJECT_ID,
+        localeBranchId: BRANCH_ID,
+        task: "draft scene greeting",
+        status: "succeeded",
+        servedModel: "model-fixture",
+        servedProvider: "provider-fixture",
+        zdr: true,
+        cost: { unit: "USD", amount: "0.000001" },
+        tokens: { in: 10, out: 5, total: 15 },
+        fallback: { used: false, plan: [], chain: [] },
+        createdAt: NOW.toISOString(),
+      },
+    ],
+  };
+}
+
+function reviewerDashboard(): ReviewerQueueDashboardReadModel {
+  return {
+    schemaVersion: "reviewer.queue_dashboard.v0.1",
+    localeBranchId: BRANCH_ID,
+    generatedAt: NOW,
+    permission: permission(),
+    rows: [
+      {
+        reviewItemId: "reviewer-queue-finding-1",
+        projectId: PROJECT_ID,
+        localeBranchId: BRANCH_ID,
+        sourceRevisionId: SOURCE_REVISION_ID,
+        itemKind: "qa",
+        sourceItemRef: "bridge-unit-1",
+        summary: "Major semantic drift in the greeting line",
+        priority: 10,
+        state: "pending",
+        dashboardState: "pending",
+        lastAction: null,
+        batchActionId: null,
+        findingId: "finding-semantic-drift-1",
+        decisionId: null,
+        detailPath: "/reviewer/queue/reviewer-queue-finding-1/detail",
+        selectedForBatch: false,
+        createdAt: NOW,
+        updatedAt: NOW,
+        resolvedAt: null,
+      },
+    ],
+    aggregate: {
+      pending: 1,
+      resolved: 0,
+      deferred: 0,
+      escalated: 0,
+      batch_applied: 0,
+    },
+    defaultBatchRequest: {
+      action: "approve",
+      actorUserId: "local-user",
+      selections: [],
+    },
+  };
+}
+
 type StubOverrides = Partial<LocalizationWorkspaceReadPort>;
 
 function makeService(overrides: StubOverrides = {}): LocalizationWorkspaceApiService {
@@ -292,6 +378,11 @@ function makeService(overrides: StubOverrides = {}): LocalizationWorkspaceApiSer
     searchExact: async (_input: SearchExactInput) => exactResult(),
     searchTerminology: async (_input: TerminologySearchInput) =>
       terminologyResult({ withBridgeUnit: true }),
+    loadRunTable: async () => runTable(),
+    loadReviewerDashboard: async ({ permission: view }) => ({
+      ...reviewerDashboard(),
+      permission: view,
+    }),
     loadComparisonContext: async () => readyContextFixture(),
     ...overrides,
   };
@@ -556,6 +647,7 @@ describe("LocalizationWorkspaceApiService.loadSearch", () => {
       projectId: PROJECT_ID,
       localeBranchId: BRANCH_ID,
       query: "世界",
+      canReadCatalog: true,
       permission: permission(),
     });
     expect(model.results.length).toBeGreaterThanOrEqual(2);
@@ -569,6 +661,75 @@ describe("LocalizationWorkspaceApiService.loadSearch", () => {
     expect(model.droppedOpaqueCount).toBe(0);
   });
 
+  it("builds a unified palette index across scenes, units, characters, terms, runs, findings, and actions", async () => {
+    const model = await makeService().loadSearch({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      query: "",
+      canReadCatalog: true,
+      permission: permission({ canManageQueue: true }),
+    });
+    expect(new Set(model.results.map((result) => result.resultKind))).toEqual(
+      new Set(["scene", "unit", "character", "term", "run", "finding", "action"]),
+    );
+    expect(model.results.find((result) => result.resultKind === "scene")?.title).toBe("scene.001");
+    expect(model.results.find((result) => result.resultKind === "character")?.title).toBe(
+      "Heroine",
+    );
+    expect(model.results.find((result) => result.resultKind === "run")?.id).toBe("run-draft-1");
+    expect(model.results.find((result) => result.resultKind === "finding")?.id).toBe(
+      "finding-semantic-drift-1",
+    );
+  });
+
+  it("omits run-table hits for queue.read-only callers without leaking run identifiers", async () => {
+    let runTableLoaded = false;
+    const service = makeService({
+      loadRunTable: async () => {
+        runTableLoaded = true;
+        return runTable();
+      },
+    });
+
+    const model = await service.loadSearch({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      query: "",
+      canReadCatalog: false,
+      permission: permission({ canManageQueue: true }),
+    });
+
+    expect(runTableLoaded).toBe(false);
+    expect(model.results.some((result) => result.resultKind === "run")).toBe(false);
+    expect(new Set(model.results.map((result) => result.resultKind))).toEqual(
+      new Set(["scene", "unit", "character", "term", "finding", "action"]),
+    );
+    const serialized = JSON.stringify(model);
+    expect(serialized).not.toContain("provider-run-1");
+    expect(serialized).not.toContain("run-draft-1");
+  });
+
+  it("returns an offset-paginated search page", async () => {
+    const model = await makeService().loadSearch({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      query: "",
+      limit: 3,
+      offset: 3,
+      canReadCatalog: true,
+      permission: permission(),
+    });
+    expect(model.results).toHaveLength(3);
+    expect(model.pagination).toMatchObject({
+      total: expect.any(Number),
+      limit: 3,
+      offset: 3,
+      page: 2,
+      hasMore: true,
+      nextOffset: 6,
+    });
+  });
+
   it("drops opaque terminology hits without a bridge-unit citation", async () => {
     const service = makeService({
       searchTerminology: async () => terminologyResult({ withBridgeUnit: false }),
@@ -578,6 +739,7 @@ describe("LocalizationWorkspaceApiService.loadSearch", () => {
       localeBranchId: BRANCH_ID,
       query: "世界",
       mode: "terminology",
+      canReadCatalog: true,
       permission: permission(),
     });
     expect(model.results).toHaveLength(0);
@@ -599,6 +761,7 @@ describe("LocalizationWorkspaceApiService.loadSearch", () => {
       localeBranchId: BRANCH_ID,
       query: "世界",
       mode: "exact",
+      canReadCatalog: true,
       permission: permission(),
     });
     expect(model.results).toHaveLength(0);

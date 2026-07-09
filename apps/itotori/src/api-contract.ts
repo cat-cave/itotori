@@ -314,6 +314,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         query: str,
         normalizedQuery: str,
         mode: str,
+        pagination: obj,
         results: arr,
         droppedOpaqueCount: num,
         diagnostics: arr,

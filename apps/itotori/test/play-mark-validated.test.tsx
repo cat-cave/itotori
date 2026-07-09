@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // play-mark-validated — behavior-first test for per-scene coverage + RouteMap.
 //
-// Mounts the REAL `PlayRouteMapScreen` over msw-intercepted `play.routeMap`,
-// `play.sceneCoverage`, and `play.setSceneCoverage` and asserts the OBSERVABLE
+// Mounts the REAL `PlayRouteMapScreen` over msw-intercepted
+// `play.sceneCoverage` / `play.setSceneCoverage` and asserts the OBSERVABLE
 // behavior:
 //
 //   1. the RouteMap paints each scene's coverage state from the read-model;
@@ -27,49 +27,8 @@ import type {
 import { PlayRouteMapScreen } from "../src/ui/screens/PlayRouteMapScreen.js";
 import { apiJson } from "./msw-handlers.js";
 
-const ROUTE_MAP_PATH = "*/api/projects/:projectId/locale-branches/:localeBranchId/route-map";
 const COVERAGE_PATH = "*/api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage";
-
-function routeMapResponse(
-  nodes: ApiPlaySceneCoverageResponse["nodes"],
-): ApiPlayRouteMapResponse {
-  const routeNodes = nodes.map((node, index) => ({
-    routeKey: node.routeKey,
-    routeMapId: node.routeMapId,
-    label: node.label,
-    summary: `${node.label} summary`,
-    col: index,
-    row: 0,
-    state: "fresh" as const,
-    coverage: "fresh" as const,
-    issues: 0,
-  }));
-  return {
-    schemaVersion: "itotori.play.route-map.v0",
-    generatedAt: "2026-07-08T00:00:00.000Z",
-    projectId: "project-1",
-    localeBranchId: "locale-1",
-    nodes: routeNodes,
-    edges:
-      routeNodes.length >= 2
-        ? [
-            {
-              fromRouteKey: routeNodes[0]!.routeKey,
-              toRouteKey: routeNodes[1]!.routeKey,
-              choiceKey: "choice-1",
-              choiceKind: "RouteBranch",
-              label: "Go further",
-            },
-          ]
-        : [],
-    counts: {
-      fresh: routeNodes.length,
-      stale: 0,
-      total: routeNodes.length,
-      choiceCount: routeNodes.length >= 2 ? 1 : 0,
-    },
-  };
-}
+const ROUTE_MAP_PATH = "*/api/projects/:projectId/locale-branches/:localeBranchId/route-map";
 
 function coverageResponse(
   nodes: ApiPlaySceneCoverageResponse["nodes"],
@@ -115,6 +74,55 @@ const initialNodes: ApiPlaySceneCoverageResponse["nodes"] = [
   },
 ];
 
+function routeMapResponse(
+  coverageNodes: ApiPlaySceneCoverageResponse["nodes"],
+): ApiPlayRouteMapResponse {
+  const nodes = coverageNodes.map((node, index) => ({
+    routeKey: node.sceneId,
+    routeMapId: node.routeMapId,
+    label: node.label,
+    summary: `${node.label} route summary.`,
+    col: index,
+    row: 0,
+    state: "fresh" as const,
+    coverage: "fresh" as const,
+    issues: 0,
+  }));
+  const edges: ApiPlayRouteMapResponse["edges"] =
+    nodes.length >= 2
+      ? [
+          {
+            fromRouteKey: nodes[0]!.routeKey,
+            toRouteKey: nodes[1]!.routeKey,
+            choiceKey: "choice-1",
+            choiceKind: "RouteBranch",
+            label: "Go further",
+          },
+        ]
+      : [];
+  return {
+    schemaVersion: "itotori.play.route-map.v0",
+    generatedAt: "2026-07-08T00:00:00.000Z",
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    nodes,
+    edges,
+    counts: {
+      fresh: nodes.length,
+      stale: 0,
+      total: nodes.length,
+      choiceCount: edges.length,
+    },
+  };
+}
+
+function mockRouteMapAndCoverage(model: ApiPlaySceneCoverageResponse): void {
+  server.use(
+    http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse(model.nodes))),
+    http.get(COVERAGE_PATH, () => apiJson("play.sceneCoverage", model)),
+  );
+}
+
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -127,10 +135,7 @@ afterAll(() => server.close());
 
 describe("play-mark-validated — PlayRouteMapScreen", () => {
   it("renders RouteMap nodes with coverage from the read-model", async () => {
-    server.use(
-      http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse(initialNodes))),
-      http.get(COVERAGE_PATH, () => apiJson("play.sceneCoverage", coverageResponse(initialNodes))),
-    );
+    mockRouteMapAndCoverage(coverageResponse(initialNodes));
 
     render(<PlayRouteMapScreen route={{ projectId: "project-1", localeBranchId: "locale-1" }} />);
 
@@ -152,7 +157,7 @@ describe("play-mark-validated — PlayRouteMapScreen", () => {
     const posts: unknown[] = [];
 
     server.use(
-      http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse(initialNodes))),
+      http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse(store.nodes))),
       http.get(COVERAGE_PATH, () => apiJson("play.sceneCoverage", store)),
       http.post(COVERAGE_PATH, async ({ request }) => {
         const body = (await request.json()) as {
@@ -205,9 +210,8 @@ describe("play-mark-validated — PlayRouteMapScreen", () => {
   });
 
   it("surfaces a write error as a visible alert (never silent success)", async () => {
+    mockRouteMapAndCoverage(coverageResponse(initialNodes));
     server.use(
-      http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse(initialNodes))),
-      http.get(COVERAGE_PATH, () => apiJson("play.sceneCoverage", coverageResponse(initialNodes))),
       http.post(
         COVERAGE_PATH,
         () =>
@@ -230,10 +234,7 @@ describe("play-mark-validated — PlayRouteMapScreen", () => {
   });
 
   it("settles into empty when the coverage read-model has no nodes", async () => {
-    server.use(
-      http.get(ROUTE_MAP_PATH, () => apiJson("play.routeMap", routeMapResponse([]))),
-      http.get(COVERAGE_PATH, () => apiJson("play.sceneCoverage", coverageResponse([]))),
-    );
+    mockRouteMapAndCoverage(coverageResponse([]));
 
     render(<PlayRouteMapScreen route={{ projectId: "project-1", localeBranchId: "locale-1" }} />);
 

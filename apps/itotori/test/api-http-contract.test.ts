@@ -77,6 +77,19 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
     routeId: "wiki.entries",
     init: { query: { projectId: "project-1", localeBranchId: "locale-1" } },
   },
+  {
+    routeId: "workspace.search",
+    init: {
+      query: {
+        projectId: "project-itotori-040",
+        localeBranchId: "locale-branch-itotori-040",
+        query: "世界",
+        mode: "all",
+        limit: 10,
+        offset: 0,
+      },
+    },
+  },
 ];
 
 describe("fe-http-contract-harness: read-model /api routes over real loopback HTTP", () => {
