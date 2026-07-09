@@ -1,0 +1,16 @@
+/* Storybook-only chrome (NOT part of the shipped DS). Mirrors gallery body
+   defaults so stories paint on the night page without host CSS. */
+html,
+body,
+#storybook-root {
+  margin: 0;
+  background: var(--ito-color-page);
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  min-height: 100%;
+}
+
+/* Give interactive stories a little room without fighting component CSS. */
+.sb-show-main.sb-main-padded {
+  padding: var(--ito-space-16, 1rem);
+}

@@ -22,7 +22,9 @@ src/
     data/DataTable · ProgressBar · ComparisonPane · LocalizationProgress · StatReadout
     localization/BiText   navigation/NavPills · CommandPalette   feedback/Toast
     <Name>.tsx + <Name>.css co-located; components.css @imports them
-  gallery/              the component gallery (visual reference + test surface)
+  gallery/              lightweight component gallery (vite demo surface)
+  stories/              Storybook CSF stories — design-review catalog + play tests
+.storybook/             Storybook harness config (fe-ds-storybook-harness)
 test/                   behaviour-first component tests (Vitest + jsdom + Testing Library)
 ```
 
@@ -49,10 +51,29 @@ test/                   behaviour-first component tests (Vitest + jsdom + Testin
 ## Scripts
 
 - `pnpm --filter @itotori/ds build` — tsc emits the library (JS + `.d.ts`).
-- `pnpm --filter @itotori/ds test` — Vitest component tests (jsdom).
-- `pnpm --filter @itotori/ds typecheck` — `tsc --noEmit` over library + gallery + tests.
-- `pnpm --filter @itotori/ds gallery:dev` — serve the gallery.
+- `pnpm --filter @itotori/ds test` — Vitest component tests (jsdom), including
+  Storybook play-function runners via `composeStories`.
+- `pnpm --filter @itotori/ds typecheck` — `tsc --noEmit` over library + gallery +
+  Storybook stories + tests.
+- `pnpm --filter @itotori/ds storybook` — design-review catalog (Storybook UI).
+- `pnpm --filter @itotori/ds storybook:build` — static Storybook build (CI-friendly
+  compile gate; output `storybook-static/`, gitignored).
+- `pnpm --filter @itotori/ds gallery:dev` — serve the lightweight gallery.
 - `pnpm --filter @itotori/ds gallery:build` — build the gallery for the browser.
+
+## Storybook harness
+
+Storybook is the **component behavior surface + design-review catalog** for the
+ported DS (decision: Trevor 2026-07-07, node `fe-ds-storybook-harness`). There is
+one CSF story file per public component under `src/stories/`, with play-function
+interaction tests for interactive surfaces. Play bodies run:
+
+1. in the Storybook Interactions panel during design review, and
+2. deterministically in CI via Vitest + `composeStories` (jsdom) — see
+   `test/stories.test.tsx`.
+
+Visual-regression baselines are a follow-on node (`fe-ds-visual-regression`);
+this harness only stands up the catalog + play surface.
 
 ## Fonts
 
