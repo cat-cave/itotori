@@ -68,6 +68,24 @@ test("fails active qd text that points at retired paths without a marker", () =>
   assertViolation(result, "retired-localize-sweetie-hd-preset");
 });
 
+test("fails active select_objbtn module_type=1 coordinates", () => {
+  const result = scanFixture({
+    "crates/utsushi-reallive/src/rlop/module_ctrl.rs":
+      "//! `module_sel` at `(module_type=1, module_id=2)` handles select_objbtn.\n",
+  });
+
+  assertViolation(result, "select-objbtn-stale-module-type-one-coordinate");
+});
+
+test("allows historical select_objbtn coordinate correction notes", () => {
+  const result = scanFixture({
+    "crates/utsushi-reallive/src/rlop/module_sel.rs":
+      "//! Historical note: select_objbtn was wrongly registered at `(module_type=1, module_id=2)`.\n",
+  });
+
+  assert.deepEqual(result.violations, []);
+});
+
 test("scopes stale premise allow markers to local match context", () => {
   const bare = scanFixture({
     "docs/README.md": "Load presets/localize-sweetie-hd.pair-policy.json for new runs.\n",

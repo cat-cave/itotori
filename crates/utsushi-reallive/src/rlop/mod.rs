@@ -309,9 +309,10 @@ impl RlopRegistry {
     /// Registration is **displacement-free**: every stored op is
     /// non-`None`, so a `key` that is already present would clobber a
     /// live op. That is always a registrar bug (two families claiming the
-    /// same `(module_type, module_id, opcode)` — e.g. the historical
-    /// `msg.pause` / `sel.select_objbtn` collision at `(1, 5, 3)` caused
-    /// by mislabelled `module_id`s), so it **panics** rather than
+    /// same `(module_type, module_id, opcode)` — e.g. the historical bad
+    /// `(1, 5, 3)` registry key that collapsed `msg.pause` and
+    /// `sel.select_objbtn` through mislabelled `module_id`s), so it
+    /// **panics** rather than
     /// silently overwriting. This turns any future key collision into a
     /// loud failure at registration/test time instead of a silent
     /// mis-dispatch at runtime.
@@ -329,8 +330,9 @@ impl RlopRegistry {
         assert!(
             !self.entries.contains_key(&key),
             "RlopRegistry key collision: {key} is already registered; a second registrar would \
-             displace a live op (this is the class of bug the mislabelled-module_id `(1, 5, 3)` \
-             msg.pause/sel.select_objbtn collision was — fix the offending module_id/opcode)"
+             displace a live op (this is the class of bug exposed by the historical bad \
+             `(1, 5, 3)` msg.pause/sel.select_objbtn registry key — fix the offending \
+             module_id/opcode)"
         );
         self.entries.insert(key, op)
     }

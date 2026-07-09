@@ -203,7 +203,7 @@ fn synthetic_scene_emits_one_text_line_and_reaches_first_pause() {
     );
     // The scene ends in a `msg.pause` command. With the corrected
     // module ids (msg=3, so pause is (1, 3, 3), distinct from
-    // sel.select_objbtn at (1, 2, 3)) the pause op is dispatched and
+    // sel.select_objbtn at (0, 2, 4)) the pause op is dispatched and
     // yields, so the replay MUST reach FirstPauseReached — not silently
     // run to EndOfScene (which is what a clobbered/misdispatched pause
     // key would produce). This is the end-to-end proof the (1, 5, 3)

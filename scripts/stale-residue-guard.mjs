@@ -44,6 +44,14 @@ const stalePremiseRules = [
       "qd-wrapper-era tests were removed; active roadmap text must point at surviving qdcli-native evidence",
     allowWhen: /\b(?:removed|stale|historical|repair|no such file|returns 0|missing)\b/iu,
   },
+  {
+    id: "select-objbtn-stale-module-type-one-coordinate",
+    pattern:
+      /\b(?:select_objbtn|module_sel)\b[^\n]{0,120}\b(?:\(module_type=1,\s*module_id=2\)|\(1,\s*2,\s*(?:3|4)\)|module_type=1)\b|\b(?:\(module_type=1,\s*module_id=2\)|\(1,\s*2,\s*(?:3|4)\)|module_type=1)\b[^\n]{0,120}\b(?:select_objbtn|module_sel)\b/u,
+    reason:
+      "the real RealLive Sel/select_objbtn coordinate is module_type=0, module_id=2; active docs must not cite the retired module_type=1 coordinate",
+    allowWhen: /\b(?:corrected|earlier|historical|legacy|misread|removed|stale|superseded|wrong)\b/iu,
+  },
 ];
 
 const datedTracePattern =
@@ -88,7 +96,7 @@ export function listTrackedFiles(root) {
     cwd: root,
     encoding: "utf8",
   });
-  if (result.error) {
+  if (result.error && result.status !== 0) {
     throw result.error;
   }
   if (result.status !== 0) {
