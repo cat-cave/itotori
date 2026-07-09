@@ -66,7 +66,7 @@ Some(SEMANTIC_RFC3339_INSTANT_MALFORMED)` (`crates/kaifuu-core/src/lib.rs`).
 - TypeScript: `Rfc3339InstantValidationError` with `.code ==
 RFC3339_INSTANT_MALFORMED_CODE` (`packages/localization-bridge-schema/src/index.ts`).
 - Utsushi: `ObservationHookValidationError` with `.code() ==
-  SEMANTIC_RFC3339_INSTANT_MALFORMED` (`crates/utsushi-core/src/lib.rs`).
+SEMANTIC_RFC3339_INSTANT_MALFORMED` (`crates/utsushi-core/src/lib.rs`).
 
 The v0.1 conformance ingestion validator
 (`packages/localization-bridge-schema/src/conformance.ts :: assertRecordedAt`)
@@ -89,7 +89,7 @@ rfc3339_instant_parity_matrix_matches_typescript_validator`
 - TypeScript:
   `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.test.ts`
 - Utsushi: `cargo test -p utsushi-core
-  rfc3339_instant_parity_matrix_matches_observation_hook_validator`
+rfc3339_instant_parity_matrix_matches_observation_hook_validator`
 
 Accept rows must pass; reject rows must fail with
 `itotori.contract.rfc3339_instant_malformed` in every validator.
