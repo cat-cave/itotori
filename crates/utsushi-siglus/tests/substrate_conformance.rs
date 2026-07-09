@@ -26,8 +26,9 @@
 //!    can quietly grow a non-facade dependency the other lacks.
 
 use utsushi_core::substrate::{
-    AssetPackage, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, RunnerCancellation, SinkSet,
+    AssetPackage, CapabilityStance, EnginePort, EnginePortError, EvidenceTier, FidelityTier,
+    LifecycleStage, PortCapability, PortManifest, PortRequest, PortShutdownOutcome,
+    RunnerCancellation, SinkSet,
 };
 
 use utsushi_siglus::{UNIMPLEMENTED_MESSAGE, UtsushiSiglusPort, UtsushiSiglusPortContext};
@@ -55,8 +56,8 @@ fn scaffold_constructs_through_facade_only() {
     assert_eq!(manifest.abi_version, 1);
     assert_eq!(manifest.id, "utsushi-siglus");
     assert!(
-        manifest.capabilities.contains(&PortCapability::Launch),
-        "manifest must declare the Launch capability via the facade"
+        manifest.capabilities.is_empty(),
+        "the inert Siglus scaffold must not claim wired runtime capabilities"
     );
     assert_eq!(
         manifest.evidence_tier_max,
@@ -70,6 +71,32 @@ fn scaffold_constructs_through_facade_only() {
     );
     let sink_set: &SinkSet = EnginePort::sink_set(&port);
     assert!(sink_set.drain_text().is_empty());
+}
+
+#[test]
+fn scaffold_manifest_capability_gaps_are_declared_pending_for_parity() {
+    let profile = UtsushiSiglusPort::PARITY_PROFILE;
+    profile
+        .validate()
+        .expect("Siglus parity profile is structurally valid");
+    for capability in [
+        PortCapability::Launch,
+        PortCapability::Observe,
+        PortCapability::Capture,
+        PortCapability::Shutdown,
+        PortCapability::Snapshot,
+        PortCapability::DeterministicReplay,
+    ] {
+        assert!(
+            !profile.wires(capability),
+            "inert Siglus scaffold must not wire {capability:?}"
+        );
+        assert_eq!(
+            profile.stance(capability),
+            Some(CapabilityStance::Pending),
+            "inert Siglus scaffold must declare {capability:?} as dev-Pending"
+        );
+    }
 }
 
 #[test]

@@ -53,9 +53,10 @@
 //!   this file fails to compile — blocking the API drift from landing
 //!   without a paired conformance update.
 //! - **Manifest shape:** Both ports declare identical
-//!   `REQUIRED_LIFECYCLE_STAGES` slices, identical `PortCapability`
-//!   sets, identical evidence/fidelity tier ceilings, and identical
-//!   `abi_version` values through the facade's `PortManifest` type.
+//!   `REQUIRED_LIFECYCLE_STAGES` slices and identical `abi_version` values
+//!   through the facade's `PortManifest` type. RealLive declares the
+//!   capabilities it actually wires; the inert Siglus scaffold declares none
+//!   and carries the peer-wired gaps as dev-`Pending` in its parity profile.
 //! - **VFS shape:** Both ports' inert context types expose an
 //!   `Option<Arc<dyn AssetPackage>>` asset-package slot. The
 //!   `AssetPackage` trait object is **the** facade carrier for VFS
@@ -88,11 +89,11 @@ use std::sync::Arc;
 
 use utsushi_core::RuntimeOperation;
 use utsushi_core::substrate::{
-    AssetPackage, AudioEvent, AudioEventSink, CaptureOutcome, EnginePort, EnginePortError,
-    EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage,
-    PortCapability, PortRequest, REQUIRED_LIFECYCLE_STAGES, RunnerCancellation, SinkSet, Snapshot,
-    SnapshotError, SnapshotRequest, SnapshotStore, StatePath, TextLine, TextSurfaceSink,
-    take_snapshot,
+    AssetPackage, AudioEvent, AudioEventSink, CapabilityStance, CaptureOutcome, EnginePort,
+    EnginePortError, EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable,
+    LifecycleStage, PortCapability, PortRequest, REQUIRED_LIFECYCLE_STAGES, RunnerCancellation,
+    SinkSet, Snapshot, SnapshotError, SnapshotRequest, SnapshotStore, StatePath, TextLine,
+    TextSurfaceSink, take_snapshot,
 };
 
 use utsushi_reallive::{RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT, UtsushiReallivePort};
@@ -143,9 +144,10 @@ fn both_ports_satisfy_facade_engine_port_bound_at_compile_time() {
 // ---------------------------------------------------------------------
 // §2. Manifest-shape conformance.
 //
-// Both ports' manifests share identical capability sets, identical
-// required lifecycle stages, identical evidence/fidelity tier ceilings,
-// and identical ABI versions through the facade's `PortManifest` type.
+// Both ports' manifests share identical required lifecycle stages and ABI
+// versions through the facade's `PortManifest` type. Capability declarations
+// are intentionally asymmetric: RealLive claims only wired behaviour, while
+// the inert Siglus scaffold carries peer-wired capabilities as dev-Pending.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -178,13 +180,11 @@ fn both_ports_declare_identical_required_lifecycle_stages() {
 }
 
 #[test]
-fn both_ports_share_the_required_capability_baseline() {
-    // RealLive is now the REAL port (it drives the substrate sinks from
-    // real bytes) while Siglus is still a scaffold, so the two no longer
-    // declare IDENTICAL capability sets. What they still share is the
-    // required lifecycle capability baseline; RealLive additionally
-    // declares the port-driven Snapshot + DeterministicReplay capabilities
-    // it exercises in its lifecycle.
+fn reallive_wires_capabilities_siglus_declares_pending_gaps() {
+    // RealLive is the real port (it drives the substrate sinks from real
+    // bytes) while Siglus is still an inert scaffold. Therefore Siglus must
+    // not claim the required lifecycle capabilities as wired in its manifest;
+    // it carries those peer-wired gaps as dev-Pending in its parity profile.
     let siglus_caps: std::collections::HashSet<PortCapability> = UtsushiSiglusPort::MANIFEST
         .capabilities
         .iter()
@@ -195,6 +195,10 @@ fn both_ports_share_the_required_capability_baseline() {
         .iter()
         .copied()
         .collect();
+    assert!(
+        siglus_caps.is_empty(),
+        "the inert Siglus scaffold must not declare wired capabilities",
+    );
     for required in [
         PortCapability::Launch,
         PortCapability::Observe,
@@ -202,19 +206,34 @@ fn both_ports_share_the_required_capability_baseline() {
         PortCapability::Shutdown,
     ] {
         assert!(
-            siglus_caps.contains(&required) && reallive_caps.contains(&required),
-            "both ports must declare the required capability {required:?}",
+            reallive_caps.contains(&required),
+            "the real RealLive port must declare the required capability {required:?}",
+        );
+        assert_eq!(
+            UtsushiSiglusPort::PARITY_PROFILE.stance(required),
+            Some(CapabilityStance::Pending),
+            "the inert Siglus scaffold must declare {required:?} as dev-Pending",
         );
     }
     assert!(
         reallive_caps.is_superset(&siglus_caps),
-        "the real RealLive port's capability set must be a superset of the Siglus scaffold's",
+        "the real RealLive port's capability set must be a superset of the empty Siglus scaffold set",
     );
     assert!(
         reallive_caps.contains(&PortCapability::Snapshot)
             && reallive_caps.contains(&PortCapability::DeterministicReplay),
         "the real RealLive port declares the port-driven Snapshot + DeterministicReplay capabilities",
     );
+    for pending in [
+        PortCapability::Snapshot,
+        PortCapability::DeterministicReplay,
+    ] {
+        assert_eq!(
+            UtsushiSiglusPort::PARITY_PROFILE.stance(pending),
+            Some(CapabilityStance::Pending),
+            "the inert Siglus scaffold must declare {pending:?} as dev-Pending",
+        );
+    }
 }
 
 #[test]

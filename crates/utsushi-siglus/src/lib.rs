@@ -7,8 +7,8 @@
 //! the [`utsushi-reallive`](../utsushi_reallive/index.html) port: every
 //! substrate symbol this crate consumes is sourced through
 //! `utsushi_core::substrate::*`, and the
-//! `EnginePort` lifecycle surface matches the RealLive scaffold byte-for-byte
-//! at the manifest level.
+//! `EnginePort` lifecycle method shape matches the RealLive surface without
+//! claiming any wired runtime capability in the manifest.
 //!
 //! Like the RealLive scaffold, this crate is intentionally a **scaffold
 //! only**: every lifecycle method returns a typed
@@ -203,17 +203,19 @@ impl UtsushiSiglusPort {
     /// Audit-grade manifest declaration. Mirrors
     /// [`EnginePort::MANIFEST`] for direct introspection without going
     /// through the trait.
+    ///
+    /// This scaffold deliberately declares no wired capabilities: every
+    /// lifecycle method still returns [`UNIMPLEMENTED_MESSAGE`], so claiming
+    /// `Launch` / `Observe` / `Capture` / `Shutdown` here would overstate the
+    /// runtime surface. The required lifecycle method list remains present as
+    /// the trait contract; capability parity intent is recorded in
+    /// [`Self::PARITY_PROFILE`] as dev-`Pending`.
     pub const MANIFEST: PortManifest = PortManifest {
         id: PORT_ID,
         name: "Utsushi Siglus Engine Port (scaffold)",
         version: PORT_VERSION,
         abi_version: 1,
-        capabilities: &[
-            PortCapability::Launch,
-            PortCapability::Observe,
-            PortCapability::Capture,
-            PortCapability::Shutdown,
-        ],
+        capabilities: &[],
         required_methods: REQUIRED_LIFECYCLE_STAGES,
         optional_methods: &[],
         env_schema: &[],
@@ -221,22 +223,44 @@ impl UtsushiSiglusPort {
         evidence_tier_max: EvidenceTier::E1,
         limitations: &[
             "UTSUSHI-147 cross-engine substrate-alignment scaffold only: every lifecycle method returns a typed Lifecycle error.",
+            "No runtime capabilities are wired yet; lifecycle capability intent is declared as dev-Pending in the parity profile until real Siglus behaviour replaces the scaffold.",
             "siglus_rs is referenced as a research anchor only; no siglus_rs source is vendored, linked, or mechanically translated.",
             "Real Siglus VM behaviour is out of alpha scope; this scaffold pins the substrate-facade contract a future behavioural Siglus port must reproduce.",
         ],
     };
 
     /// Cross-engine capability parity profile (UTSUSHI parity gate). This
-    /// substrate-alignment scaffold wires the four required lifecycle
-    /// capabilities and declares the port-driven `Snapshot` /
-    /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) as
-    /// dev-`Pending`: the future behavioural Siglus VM will drive them, but
-    /// they are not built here yet. They are NOT `NotApplicable` — a Siglus
-    /// interpreter can snapshot/replay exactly as RealLive does — so the
-    /// parity gate keeps them visible as a dev gap, never a permanent hole.
+    /// substrate-alignment scaffold wires no runtime capability yet. The four
+    /// lifecycle capabilities and the port-driven `Snapshot` /
+    /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) are
+    /// explicit dev-`Pending` declarations: the future behavioural Siglus VM
+    /// will drive them, but this scaffold does not. They are NOT
+    /// `NotApplicable` — a Siglus interpreter can launch, observe, capture,
+    /// shut down, snapshot, and replay — so the parity gate keeps them visible
+    /// as dev gaps, never permanent holes.
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
         manifest: Self::MANIFEST,
         declarations: &[
+            CapabilityDeclaration {
+                capability: PortCapability::Launch,
+                stance: CapabilityStance::Pending,
+                note: "dev: the behavioural Siglus VM launch path is not built in this scaffold yet; every lifecycle method still returns a typed scaffold error.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::Observe,
+                stance: CapabilityStance::Pending,
+                note: "dev: the behavioural Siglus VM observation path is not built in this scaffold yet; no text/frame/audio sinks are driven.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::Capture,
+                stance: CapabilityStance::Pending,
+                note: "dev: Siglus capture evidence awaits the behavioural VM/render path; the scaffold produces no capture artifact.",
+            },
+            CapabilityDeclaration {
+                capability: PortCapability::Shutdown,
+                stance: CapabilityStance::Pending,
+                note: "dev: deterministic Siglus shutdown awaits a real runtime state machine; the scaffold only returns a typed Lifecycle error.",
+            },
             CapabilityDeclaration {
                 capability: PortCapability::Snapshot,
                 stance: CapabilityStance::Pending,
