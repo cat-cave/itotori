@@ -18,6 +18,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import previewAnnotations from "../.storybook/preview.js";
+import * as annotationComposerStories from "../src/stories/AnnotationComposer.stories.js";
 import * as badgeStories from "../src/stories/Badge.stories.js";
 import * as biTextStories from "../src/stories/BiText.stories.js";
 import * as commandPaletteStories from "../src/stories/CommandPalette.stories.js";
@@ -42,6 +43,7 @@ afterEach(() => {
 
 /** Public component symbols that must have a design-review story. */
 const PUBLIC_COMPONENTS = [
+  "AnnotationComposer",
   "Badge",
   "Panel",
   "DataTable",
@@ -59,6 +61,7 @@ const PUBLIC_COMPONENTS = [
 ] as const;
 
 const storyModules = {
+  AnnotationComposer: annotationComposerStories,
   Badge: badgeStories,
   Panel: panelStories,
   DataTable: dataTableStories,

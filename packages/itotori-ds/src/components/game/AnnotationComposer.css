@@ -1,0 +1,142 @@
+/*
+ * AnnotationComposer — in-the-moment note → review finding.
+ * Severity chips consume the `--ito-severity-*` ordinal ramp (MISSING-TOKENS §5).
+ * No raw colour literals.
+ */
+
+.itotori-annotation-composer {
+  display: grid;
+  gap: var(--ito-space-10);
+  padding: var(--ito-space-10);
+  background: var(--ito-color-surface);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+}
+
+.itotori-annotation-composer[data-disabled="true"] {
+  opacity: 0.72;
+}
+
+.itotori-annotation-composer__context {
+  margin: 0;
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-body);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-annotation-composer__legend {
+  display: block;
+  margin-block-end: var(--ito-space-4);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-annotation-composer__severity {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.itotori-annotation-composer__severity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-4);
+}
+
+.itotori-annotation-composer__severity-chip {
+  appearance: none;
+  border: 1px solid var(--ito-color-border);
+  background: var(--ito-color-raised);
+  color: var(--ito-color-text-muted);
+  border-radius: var(--ito-radius-pill);
+  padding: var(--ito-space-4) var(--ito-space-10);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.itotori-annotation-composer__severity-chip:disabled {
+  cursor: not-allowed;
+}
+
+.itotori-annotation-composer__severity-chip[data-severity="blocker"] {
+  color: var(--ito-severity-blocker);
+  border-color: var(--ito-severity-blocker-border);
+  background: var(--ito-severity-blocker-bg);
+}
+
+.itotori-annotation-composer__severity-chip[data-severity="critical"] {
+  color: var(--ito-severity-critical);
+  border-color: var(--ito-severity-critical-border);
+  background: var(--ito-severity-critical-bg);
+}
+
+.itotori-annotation-composer__severity-chip[data-severity="warning"] {
+  color: var(--ito-severity-warning);
+  border-color: var(--ito-severity-warning-border);
+  background: var(--ito-severity-warning-bg);
+}
+
+.itotori-annotation-composer__severity-chip[data-severity="note"] {
+  color: var(--ito-severity-note);
+  border-color: var(--ito-severity-note-border);
+  background: var(--ito-severity-note-bg);
+}
+
+.itotori-annotation-composer__severity-chip--selected,
+.itotori-annotation-composer__severity-chip[data-selected="true"] {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 1px;
+  color: var(--ito-color-text);
+}
+
+.itotori-annotation-composer__field {
+  display: grid;
+  gap: var(--ito-space-4);
+}
+
+.itotori-annotation-composer__note,
+.itotori-annotation-composer__category {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  resize: vertical;
+}
+
+.itotori-annotation-composer__note:focus,
+.itotori-annotation-composer__category:focus {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.itotori-annotation-composer__submit {
+  appearance: none;
+  justify-self: start;
+  border: 1px solid var(--ito-color-amber);
+  background: var(--ito-color-amber);
+  color: var(--ito-color-ink-on-accent);
+  border-radius: var(--ito-radius);
+  padding: var(--ito-space-8) var(--ito-space-12);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.itotori-annotation-composer__submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

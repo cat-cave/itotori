@@ -63,4 +63,21 @@
   --ito-contestant-self-nocontext: #7fb3d5; /* self w/o context — soft blue */
   --ito-contestant-fan: #e07ab8; /* fan-edited MTL — orchid */
   --ito-contestant-mtl: #9aa5b8; /* raw MTL baseline — cool grey */
+
+  /* Annotation severity ramp (MISSING-TOKENS §5) — an ORDINAL severity axis
+   * for AnnotationComposer chips + finding rows. Distinct from the three-tone
+   * badge status palette (pass/fail): severity encodes how bad a finding is,
+   * not whether a run succeeded. Ordered high → low. */
+  --ito-severity-blocker: #f4737e; /* coral — highest, blocks ship */
+  --ito-severity-blocker-bg: #2c1622;
+  --ito-severity-blocker-border: #6e3242;
+  --ito-severity-critical: #ff6ca0; /* sakura — severe but not blocking */
+  --ito-severity-critical-bg: #2c1622;
+  --ito-severity-critical-border: #6e3242;
+  --ito-severity-warning: #ffb648; /* amber — needs attention */
+  --ito-severity-warning-bg: #2a2210;
+  --ito-severity-warning-border: #6e5230;
+  --ito-severity-note: #9a8dc4; /* muted lavender — informational */
+  --ito-severity-note-bg: #2a2246;
+  --ito-severity-note-border: #3a3160;
 }

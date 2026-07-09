@@ -31,6 +31,7 @@ import {
   type CostDrilldownFilter,
   type CostDrilldownPage,
   type DashboardDecisionReadModel,
+  feedbackContextStatusValues,
   type JobsRunTableReadModel,
   type LoadJobsRunTableOptions,
   type Permission,
@@ -72,12 +73,14 @@ import {
   parseRemoveMemberRequest,
   parseLaunchPassRequest,
   parsePlaySetSceneCoverageRequest,
+  parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiAuthCapabilitiesResponse,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
   type ApiPlayRouteMapResponse,
+  type ApiPlayFlagAnnotationResponse,
   type ApiPlaySceneCoverageResponse,
   type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
@@ -111,6 +114,8 @@ import {
   type SceneCoverageServicePort,
 } from "./play/scene-coverage-service.js";
 import type { RouteMapReadModelPort } from "./play/route-map-read-model.js";
+import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
+import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
@@ -172,6 +177,9 @@ export const apiMutationPermissionGates = {
   membersAccept: apiMutationGate("members accept", "authMembersManage"),
   membersRemove: apiMutationGate("members remove", "authMembersManage"),
   setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
+  // play-flag-composer — canFlag is feedback.import (playtester flags into
+  // the reviewer queue via ManualFeedbackImport).
+  flagAnnotation: apiMutationGate("play flag annotation", "feedbackImport"),
 } as const;
 
 export type ApiJsonResponse = {
@@ -329,6 +337,8 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
   };
   sceneCoverage: SceneCoverageServicePort;
+  /** play-flag-composer — ManualFeedbackImport creates the reviewer queue item. */
+  manualFeedback: ManualFeedbackImportPort;
 };
 
 /**
@@ -494,6 +504,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   if (parseSceneCoverageApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["GET", "POST"]);
   }
+  if (parsePlayFlagApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["POST"]);
+  }
   if (parseProjectRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
   }
@@ -590,6 +603,50 @@ async function routeItotoriApiRequest(
       updatedByUserId: actorUserId,
     });
     return ok("play.setSceneCoverage", result);
+  }
+
+  const flagRoute = parsePlayFlagApiRoute(request.pathname);
+  if (request.method === "POST" && flagRoute !== null) {
+    const body = parsePlayFlagAnnotationRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.flagAnnotation);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: flagRoute.projectId,
+      localeBranchId: flagRoute.localeBranchId,
+    });
+    const actorUserId = body.actorUserId ?? "local-user";
+    const importInput = buildPlayFlagFeedbackInput({
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      targetLocale: body.targetLocale,
+      note: body.note,
+      severity: body.severity as PlayFlagSeverity,
+      actorUserId,
+      ...(body.category === undefined ? {} : { category: body.category }),
+      ...(body.bridgeUnitId === undefined ? {} : { bridgeUnitId: body.bridgeUnitId }),
+      ...(body.sourceUnitKey === undefined ? {} : { sourceUnitKey: body.sourceUnitKey }),
+      ...(body.sourceBundleId === undefined ? {} : { sourceBundleId: body.sourceBundleId }),
+      ...(body.sourceRevisionId === undefined ? {} : { sourceRevisionId: body.sourceRevisionId }),
+      ...(body.sceneId === undefined ? {} : { sceneId: body.sceneId }),
+      ...(body.suggestedEdit === undefined ? {} : { suggestedEdit: body.suggestedEdit }),
+      ...(body.actorDisplayName === undefined ? {} : { actorDisplayName: body.actorDisplayName }),
+    });
+    const result = await services.manualFeedback.importManualFeedback(importInput);
+    const response: ApiPlayFlagAnnotationResponse = {
+      schemaVersion: "itotori.play.flag-annotation.v0",
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      feedbackReportId: result.feedbackReportId,
+      feedbackEvidenceId: result.feedbackEvidenceId,
+      severity: body.severity,
+      category: (body.category ?? "").trim(),
+      note: body.note.trim(),
+      triageLabel: result.triageLabel,
+      contextStatus: result.contextStatus,
+      queueEnqueued:
+        !result.duplicate && result.contextStatus === feedbackContextStatusValues.contextualized,
+      duplicate: result.duplicate,
+    };
+    return ok("play.flagAnnotation", response);
   }
 
   if (
@@ -1989,6 +2046,20 @@ function parseSceneCoverageApiRoute(pathname: string): {
   };
 }
 
+function parsePlayFlagApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/flags$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function decodeApiPathSegment(raw: string, label: string): string {
   let decoded: string;
   try {
@@ -2487,6 +2558,7 @@ function ok(
   routeId: "play.setSceneCoverage",
   body: ApiPlaySetSceneCoverageResponse,
 ): ApiJsonResponse;
+function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };

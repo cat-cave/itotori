@@ -34,6 +34,10 @@ import {
   playRouteFromAddressable,
 } from "./screens/PlayScenePickerScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
+import {
+  PlayFlagComposerScreen,
+  parsePlayFlagComposerRoute,
+} from "./screens/PlayFlagComposerScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import {
@@ -193,6 +197,12 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const playRouteMap = parsePlayRouteMapRoute(location.pathname, location.search);
   if (playRouteMap !== null) {
     return <PlayRouteMapScreen route={playRouteMap} />;
+  }
+
+  // `/play/flag` — AnnotationComposer flag → reviewer queue (canFlag).
+  const playFlag = parsePlayFlagComposerRoute(location.pathname, location.search);
+  if (playFlag !== null) {
+    return <PlayFlagComposerScreen route={playFlag} />;
   }
 
   // `/play` — the Play scene picker (translated-summary navigation + source ↔

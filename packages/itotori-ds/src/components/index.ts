@@ -49,3 +49,11 @@ export type {
   RouteMapNode,
   RouteMapProps,
 } from "./diagram/RouteMap.js";
+
+// game
+export { ANNOTATION_SEVERITIES, AnnotationComposer } from "./game/AnnotationComposer.js";
+export type {
+  AnnotationComposerProps,
+  AnnotationComposerValue,
+  AnnotationSeverity,
+} from "./game/AnnotationComposer.js";

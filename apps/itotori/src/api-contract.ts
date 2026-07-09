@@ -969,6 +969,38 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.play.set-scene-coverage.v0",
     }),
+
+  // play-flag-composer — AnnotationComposer submit envelopes
+  ApiPlayFlagAnnotationRequest: () =>
+    object({
+      required: ["note", "severity", "targetLocale"],
+      properties: {
+        note: str,
+        severity: { enum: ["blocker", "critical", "warning", "note"] },
+        category: str,
+        targetLocale: str,
+        bridgeUnitId: str,
+        sourceUnitKey: str,
+        sourceBundleId: str,
+        sourceRevisionId: str,
+        sceneId: str,
+        suggestedEdit: str,
+        actorUserId: str,
+        actorDisplayName: str,
+      },
+      additionalProperties: true,
+    }),
+  ApiPlayFlagAnnotationResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
+      properties: {
+        severity: { enum: ["blocker", "critical", "warning", "note"] },
+        queueEnqueued: bool,
+        duplicate: bool,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.flag-annotation.v0",
+    }),
 };
 
 /** Materialize the component table with `$ref`s pointing at `prefix` + name. */
@@ -1425,6 +1457,17 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId", "localeBranchId"],
     requestSchema: "ApiPlaySetSceneCoverageRequest",
     responseSchema: "ApiPlaySetSceneCoverageResponse",
+  },
+  // play-flag-composer — in-the-moment AnnotationComposer note → reviewer queue
+  // via ManualFeedbackImport (feedback.import / canFlag). Severity-scaled.
+  "play.flagAnnotation": {
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/flags",
+    operationId: "playFlagAnnotation",
+    summary: "Compose a playtest flag (AnnotationComposer) into the reviewer queue.",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiPlayFlagAnnotationRequest",
+    responseSchema: "ApiPlayFlagAnnotationResponse",
   },
 };
 

@@ -135,6 +135,7 @@ type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
   | { surface: "authSsoSettings"; method: "configureSettings" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
+  | { surface: "manualFeedback"; method: "importManualFeedback" }
   | {
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
@@ -166,6 +167,7 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
+  "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
 ]);
 
 const authSsoSettingsRequestFixture = {
@@ -297,6 +299,17 @@ const apiMutationPermissionMatrix = [
       coverageState: "validated",
     }),
     { surface: "sceneCoverage", method: "setSceneCoverage" },
+  ),
+  apiGateForService(
+    "flagAnnotation",
+    post("/api/projects/project-1/locale-branches/locale-1/flags", {
+      note: "Line overflows the textbox.",
+      severity: "warning",
+      targetLocale: "en-US",
+      bridgeUnitId: "bridge-unit-1",
+      category: "layout",
+    }),
+    { surface: "manualFeedback", method: "importManualFeedback" },
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
@@ -3410,6 +3423,13 @@ describe("Itotori API handlers", () => {
           "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
           "successFixture": "api-handlers.test.ts set scene coverage success fixture",
         },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "play flag annotation",
+          "requiredPermission": "feedback.import",
+          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
+          "successFixture": "api-handlers.test.ts play flag annotation success fixture",
+        },
       ]
     `);
   });
@@ -3828,6 +3848,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "sceneCoverage") {
     return services.sceneCoverage[service.method];
   }
+  if (service.surface === "manualFeedback") {
+    return services.manualFeedback[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
@@ -3836,6 +3859,12 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
     /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/scene-coverage$/u.exec(request.pathname);
   if (request.method === "POST" && sceneCoverageRoute !== null) {
     return "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage";
+  }
+  const flagRoute = /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/flags$/u.exec(
+    request.pathname,
+  );
+  if (request.method === "POST" && flagRoute !== null) {
+    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags";
   }
   const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
   if (request.method === "POST" && projectRoute?.[1]) {
@@ -4471,6 +4500,19 @@ function serviceFixture(): ItotoriApiServices {
         nodes: [],
         edges: [],
         counts: { fresh: 0, stale: 0, total: 0, choiceCount: 0 },
+      })),
+    },
+    manualFeedback: {
+      importManualFeedback: vi.fn(async () => ({
+        feedbackReportId: "feedback-report-api",
+        feedbackEvidenceId: "feedback-evidence-api",
+        feedbackSourceId: "feedback-source-api",
+        dedupeKey: "feedback:manual:api",
+        triageLabel: "objective_defect_candidate" as const,
+        reportStatus: "open" as const,
+        contextStatus: "contextualized" as const,
+        reportCount: 1,
+        duplicate: false,
       })),
     },
   };

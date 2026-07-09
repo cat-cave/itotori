@@ -47,6 +47,8 @@ import {
   type ApiLaunchPassRequest,
   type ApiLaunchPassResponse,
   type ApiPlayRouteMapResponse,
+  type ApiPlayFlagAnnotationRequest,
+  type ApiPlayFlagAnnotationResponse,
   type ApiPlaySceneCoverageResponse,
   type ApiPlaySetSceneCoverageRequest,
   type ApiPlaySetSceneCoverageResponse,
@@ -314,6 +316,12 @@ interface ItotoriApiRouteTypeMap {
     response: ApiPlaySetSceneCoverageResponse;
     pathParams: { projectId: string; localeBranchId: string };
     request: ApiPlaySetSceneCoverageRequest;
+  };
+  // play-flag-composer — AnnotationComposer note → reviewer queue.
+  "play.flagAnnotation": {
+    response: ApiPlayFlagAnnotationResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    request: ApiPlayFlagAnnotationRequest;
   };
 }
 

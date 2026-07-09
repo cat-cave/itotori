@@ -72,18 +72,19 @@ step confirms it isn't already covered under `interface`/`data-viz` before addin
 - **Verify.** Confirm which player-vs-snapshot values already exist under
   `interface` and add only the missing overlay + redaction tokens.
 
-## 5. Annotation severity scale (`--ito-severity-*`)
+## 5. Annotation severity scale (`--ito-severity-*`) — SHIPPED
 
 - **Need.** AnnotationComposer / QA findings use a severity scale
   (blocker / critical / warning / note); confirm a dedicated ramp exists vs.
   reusing status tones.
-- **Plan.** Add `--ito-severity-{blocker,critical,warning,note}` as an ordered
-  ramp (a severity axis is not the same as the pass/fail status axis). Feeds the
-  AnnotationComposer chips and finding rows.
+- **Status.** Added `--ito-severity-{blocker,critical,warning,note}` (+ bg /
+  border companions) on `tokens/colors.css`. Consumed by
+  `AnnotationComposer` severity chips (`packages/itotori-ds` game group).
 - **Consumers.** Review findings, in-scene AnnotationComposer, the pending-
   decisions band.
 - **Verify.** `blocker`/`warning` appear in the closed status vocabulary but as
-  _badge statuses_; a severity **ramp** (ordinal) is the distinct need.
+  _badge statuses_; the severity **ramp** (ordinal) is the distinct need —
+  now a real token group, not a badge-tone reuse.
 
 ## 6. Pass-ledger / iteration state (`--ito-iter-*`)
 

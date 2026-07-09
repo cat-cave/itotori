@@ -491,6 +491,103 @@
         ],
         "type": "object"
       },
+      "ApiPlayFlagAnnotationRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "actorDisplayName": {
+            "type": "string"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "sceneId": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocker",
+              "critical",
+              "warning",
+              "note"
+            ]
+          },
+          "sourceBundleId": {
+            "type": "string"
+          },
+          "sourceRevisionId": {
+            "type": "string"
+          },
+          "sourceUnitKey": {
+            "type": "string"
+          },
+          "suggestedEdit": {
+            "type": "string"
+          },
+          "targetLocale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "note",
+          "severity",
+          "targetLocale"
+        ],
+        "type": "object"
+      },
+      "ApiPlayFlagAnnotationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {},
+          "contextStatus": {},
+          "duplicate": {
+            "type": "boolean"
+          },
+          "feedbackEvidenceId": {},
+          "feedbackReportId": {},
+          "localeBranchId": {},
+          "note": {},
+          "projectId": {},
+          "queueEnqueued": {
+            "type": "boolean"
+          },
+          "schemaVersion": {
+            "const": "itotori.play.flag-annotation.v0"
+          },
+          "severity": {
+            "enum": [
+              "blocker",
+              "critical",
+              "warning",
+              "note"
+            ]
+          },
+          "triageLabel": {}
+        },
+        "required": [
+          "category",
+          "contextStatus",
+          "duplicate",
+          "feedbackEvidenceId",
+          "feedbackReportId",
+          "localeBranchId",
+          "note",
+          "projectId",
+          "queueEnqueued",
+          "schemaVersion",
+          "severity",
+          "triageLabel"
+        ],
+        "type": "object"
+      },
       "ApiPlayRouteMapCounts": {
         "additionalProperties": false,
         "properties": {
@@ -4326,6 +4423,103 @@
         },
         "summary": "Candidate assets for localization decisions.",
         "x-itotoriRouteId": "assetDecisions.candidates"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/flags": {
+      "post": {
+        "operationId": "playFlagAnnotation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPlayFlagAnnotationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlayFlagAnnotationResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Compose a playtest flag (AnnotationComposer) into the reviewer queue.",
+        "x-itotoriRouteId": "play.flagAnnotation"
       }
     },
     "/api/projects/{projectId}/locale-branches/{localeBranchId}/route-map": {

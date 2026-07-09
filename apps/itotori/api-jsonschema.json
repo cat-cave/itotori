@@ -492,6 +492,103 @@
       ],
       "type": "object"
     },
+    "ApiPlayFlagAnnotationRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "actorDisplayName": {
+          "type": "string"
+        },
+        "actorUserId": {
+          "type": "string"
+        },
+        "bridgeUnitId": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "sceneId": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "blocker",
+            "critical",
+            "warning",
+            "note"
+          ]
+        },
+        "sourceBundleId": {
+          "type": "string"
+        },
+        "sourceRevisionId": {
+          "type": "string"
+        },
+        "sourceUnitKey": {
+          "type": "string"
+        },
+        "suggestedEdit": {
+          "type": "string"
+        },
+        "targetLocale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note",
+        "severity",
+        "targetLocale"
+      ],
+      "type": "object"
+    },
+    "ApiPlayFlagAnnotationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {},
+        "contextStatus": {},
+        "duplicate": {
+          "type": "boolean"
+        },
+        "feedbackEvidenceId": {},
+        "feedbackReportId": {},
+        "localeBranchId": {},
+        "note": {},
+        "projectId": {},
+        "queueEnqueued": {
+          "type": "boolean"
+        },
+        "schemaVersion": {
+          "const": "itotori.play.flag-annotation.v0"
+        },
+        "severity": {
+          "enum": [
+            "blocker",
+            "critical",
+            "warning",
+            "note"
+          ]
+        },
+        "triageLabel": {}
+      },
+      "required": [
+        "category",
+        "contextStatus",
+        "duplicate",
+        "feedbackEvidenceId",
+        "feedbackReportId",
+        "localeBranchId",
+        "note",
+        "projectId",
+        "queueEnqueued",
+        "schemaVersion",
+        "severity",
+        "triageLabel"
+      ],
+      "type": "object"
+    },
     "ApiPlayRouteMapCounts": {
       "additionalProperties": false,
       "properties": {

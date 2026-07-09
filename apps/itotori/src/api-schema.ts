@@ -200,7 +200,10 @@ export type ItotoriApiRouteId =
   // (needs_check / flagged / validated). Persistence is `itotori_scene_localization_coverage`.
   | "play.routeMap"
   | "play.sceneCoverage"
-  | "play.setSceneCoverage";
+  | "play.setSceneCoverage"
+  // play-flag-composer — in-the-moment AnnotationComposer flag → reviewer queue
+  // via ManualFeedbackImport (feedback.import / canFlag).
+  | "play.flagAnnotation";
 
 export type ApiErrorResponse = {
   error: string;
@@ -501,6 +504,21 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "coverageState",
     "updatedAt",
     "updatedByUserId",
+  ],
+  // play-flag-composer — AnnotationComposer submit result (severity-scaled flag).
+  ApiPlayFlagAnnotationResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "feedbackReportId",
+    "feedbackEvidenceId",
+    "severity",
+    "category",
+    "note",
+    "triageLabel",
+    "contextStatus",
+    "queueEnqueued",
+    "duplicate",
   ],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
@@ -936,6 +954,59 @@ export type ApiPlayRouteMapResponse = {
   counts: ApiPlayRouteMapCounts;
 };
 
+/** Closed ordinal severity scale for play-flag-composer (annotation-severity tokens). */
+export type ApiPlayFlagSeverity = "blocker" | "critical" | "warning" | "note";
+
+export const API_PLAY_FLAG_SEVERITIES = [
+  "blocker",
+  "critical",
+  "warning",
+  "note",
+] as const satisfies readonly ApiPlayFlagSeverity[];
+
+/**
+ * play-flag-composer — request body for composing an in-the-moment playtest
+ * flag. projectId + localeBranchId live on the URL path.
+ */
+export type ApiPlayFlagAnnotationRequest = {
+  note: string;
+  severity: ApiPlayFlagSeverity;
+  /** Free-form category (tone / layout / glossary / …). */
+  category?: string;
+  targetLocale: string;
+  bridgeUnitId?: string;
+  sourceUnitKey?: string;
+  sourceBundleId?: string;
+  sourceRevisionId?: string;
+  sceneId?: string;
+  suggestedEdit?: string;
+  actorUserId?: string;
+  actorDisplayName?: string;
+};
+
+/**
+ * play-flag-composer — response after ManualFeedbackImport enqueues the flag
+ * into the reviewer queue (when contextualized).
+ */
+export type ApiPlayFlagAnnotationResponse = {
+  schemaVersion: "itotori.play.flag-annotation.v0";
+  projectId: string;
+  localeBranchId: string;
+  feedbackReportId: string;
+  feedbackEvidenceId: string;
+  severity: ApiPlayFlagSeverity;
+  category: string;
+  note: string;
+  triageLabel: string;
+  contextStatus: string;
+  /**
+   * True when the import was contextualized (and therefore the manual-feedback
+   * service enqueues a reviewer-queue item). False for needs_context flags.
+   */
+  queueEnqueued: boolean;
+  duplicate: boolean;
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -985,6 +1056,7 @@ export type ItotoriApiResponseBody =
   | ApiPlayRouteMapResponse
   | ApiPlaySceneCoverageResponse
   | ApiPlaySetSceneCoverageResponse
+  | ApiPlayFlagAnnotationResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -1455,6 +1527,9 @@ export function assertItotoriApiResponse(
       return;
     case "play.setSceneCoverage":
       assertPlaySetSceneCoverageResponse(value);
+      return;
+    case "play.flagAnnotation":
+      assertPlayFlagAnnotationResponse(value);
       return;
   }
 }
@@ -5568,6 +5643,94 @@ function assertPlaySetSceneCoverageResponse(
   );
   assertString(response.updatedAt, "ApiPlaySetSceneCoverageResponse.updatedAt");
   assertString(response.updatedByUserId, "ApiPlaySetSceneCoverageResponse.updatedByUserId");
+}
+
+/**
+ * play-flag-composer — parse + validate the AnnotationComposer submit body.
+ * projectId + localeBranchId live on the URL path; the body carries the note,
+ * severity ramp, and optional unit/scene anchors.
+ */
+export function parsePlayFlagAnnotationRequest(body: unknown): ApiPlayFlagAnnotationRequest {
+  return parseRequest("ApiPlayFlagAnnotationRequest", () => {
+    const request = asRecord(body, "ApiPlayFlagAnnotationRequest");
+    assertString(request.note, "ApiPlayFlagAnnotationRequest.note");
+    if (request.note.trim().length === 0) {
+      throw new ApiValidationError("ApiPlayFlagAnnotationRequest.note must be non-empty");
+    }
+    assertEnum(request.severity, API_PLAY_FLAG_SEVERITIES, "ApiPlayFlagAnnotationRequest.severity");
+    assertString(request.targetLocale, "ApiPlayFlagAnnotationRequest.targetLocale");
+    if (request.targetLocale.trim().length === 0) {
+      throw new ApiValidationError("ApiPlayFlagAnnotationRequest.targetLocale must be non-empty");
+    }
+    const parsed: ApiPlayFlagAnnotationRequest = {
+      note: request.note.trim(),
+      severity: request.severity,
+      targetLocale: request.targetLocale.trim(),
+    };
+    if (request.category !== undefined) {
+      assertString(request.category, "ApiPlayFlagAnnotationRequest.category");
+      parsed.category = request.category;
+    }
+    if (request.bridgeUnitId !== undefined) {
+      assertString(request.bridgeUnitId, "ApiPlayFlagAnnotationRequest.bridgeUnitId");
+      parsed.bridgeUnitId = request.bridgeUnitId;
+    }
+    if (request.sourceUnitKey !== undefined) {
+      assertString(request.sourceUnitKey, "ApiPlayFlagAnnotationRequest.sourceUnitKey");
+      parsed.sourceUnitKey = request.sourceUnitKey;
+    }
+    if (request.sourceBundleId !== undefined) {
+      assertString(request.sourceBundleId, "ApiPlayFlagAnnotationRequest.sourceBundleId");
+      parsed.sourceBundleId = request.sourceBundleId;
+    }
+    if (request.sourceRevisionId !== undefined) {
+      assertString(request.sourceRevisionId, "ApiPlayFlagAnnotationRequest.sourceRevisionId");
+      parsed.sourceRevisionId = request.sourceRevisionId;
+    }
+    if (request.sceneId !== undefined) {
+      assertString(request.sceneId, "ApiPlayFlagAnnotationRequest.sceneId");
+      parsed.sceneId = request.sceneId;
+    }
+    if (request.suggestedEdit !== undefined) {
+      assertString(request.suggestedEdit, "ApiPlayFlagAnnotationRequest.suggestedEdit");
+      parsed.suggestedEdit = request.suggestedEdit;
+    }
+    if (request.actorUserId !== undefined) {
+      assertString(request.actorUserId, "ApiPlayFlagAnnotationRequest.actorUserId");
+      parsed.actorUserId = request.actorUserId;
+    }
+    if (request.actorDisplayName !== undefined) {
+      assertString(request.actorDisplayName, "ApiPlayFlagAnnotationRequest.actorDisplayName");
+      parsed.actorDisplayName = request.actorDisplayName;
+    }
+    return parsed;
+  });
+}
+
+function assertPlayFlagAnnotationResponse(
+  value: unknown,
+): asserts value is ApiPlayFlagAnnotationResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayFlagAnnotationResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.flag-annotation.v0",
+    "ApiPlayFlagAnnotationResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiPlayFlagAnnotationResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlayFlagAnnotationResponse.localeBranchId");
+  assertString(response.feedbackReportId, "ApiPlayFlagAnnotationResponse.feedbackReportId");
+  assertString(response.feedbackEvidenceId, "ApiPlayFlagAnnotationResponse.feedbackEvidenceId");
+  assertEnum(response.severity, API_PLAY_FLAG_SEVERITIES, "ApiPlayFlagAnnotationResponse.severity");
+  assertString(response.category, "ApiPlayFlagAnnotationResponse.category");
+  assertString(response.note, "ApiPlayFlagAnnotationResponse.note");
+  assertString(response.triageLabel, "ApiPlayFlagAnnotationResponse.triageLabel");
+  assertString(response.contextStatus, "ApiPlayFlagAnnotationResponse.contextStatus");
+  assertBoolean(response.queueEnqueued, "ApiPlayFlagAnnotationResponse.queueEnqueued");
+  assertBoolean(response.duplicate, "ApiPlayFlagAnnotationResponse.duplicate");
 }
 
 function parseAuthSsoProviderConfig(value: unknown, label: string): ApiAuthSsoProviderConfig {
