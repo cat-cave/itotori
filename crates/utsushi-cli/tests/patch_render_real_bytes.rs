@@ -1,5 +1,5 @@
 //! kaifuu-utsushi-patch-to-render-path — real-bytes end-to-end acceptance for
-//! the composed `utsushi-cli patch-render` command.
+//! the composed patch / replay / render paths.
 //!
 //! Proves the whole patch→render chain on REAL Sweetie HD bytes through the
 //! single shipped, config-parameterized command (no hard-coded game path or
@@ -36,7 +36,8 @@ use std::path::Path;
 use std::process::Command;
 
 use kaifuu_reallive::{
-    BridgeOpts, SceneHeader, Xor2DecScene, compiler_version_uses_xor2, decompress_avg32,
+    BridgeOpts, PatchbackOpts, SceneHeader, TranslatedBundleV02, TranslationScope, Xor2DecScene,
+    apply_translated_bundle, compiler_version_uses_xor2, decompress_avg32,
     gameexe::parse_gameexe_inventory, parse_archive, produce_bundle, recover_archive_cipher,
 };
 
@@ -164,8 +165,228 @@ fn build_translated_bundle_json(seen_bytes: &[u8], gameexe_bytes: &[u8]) -> Stri
     serde_json::to_string_pretty(&translated_value).expect("serialize translated bundle")
 }
 
+fn build_patched_seen_from_bundle_json(seen_bytes: &[u8], bundle_json: &str) -> Vec<u8> {
+    let translated_value: serde_json::Value =
+        serde_json::from_str(bundle_json).expect("translated bundle JSON parses");
+    let translated =
+        TranslatedBundleV02::from_json(&translated_value).expect("translated bundle schema");
+    apply_translated_bundle(
+        seen_bytes,
+        &translated,
+        &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+    )
+    .expect("apply_translated_bundle must patch the dialogue scene")
+}
+
+/// Count observed replay `text_line` bodies containing `needle`, checking both
+/// the UTF-8 convenience body and the byte-stable Shift-JIS hex fallback.
+fn observed_replay_matches(replay_log: &serde_json::Value, needle: &str) -> (usize, usize) {
+    let events = replay_log["events"].as_array().cloned().unwrap_or_default();
+    let mut text_lines = 0usize;
+    let mut matching = 0usize;
+    for event in &events {
+        if event["kind"].as_str() != Some("text_line") {
+            continue;
+        }
+        text_lines += 1;
+        let body_utf8 = event["bodyUtf8"].as_str().unwrap_or_default();
+        let mut observed = body_utf8.contains(needle);
+        if !observed && let Some(hex) = event["bodyShiftJisHex"].as_str() {
+            let bytes = decode_hex(hex);
+            let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&bytes);
+            observed = decoded.contains(needle);
+        }
+        if observed {
+            matching += 1;
+        }
+    }
+    (text_lines, matching)
+}
+
+fn decode_hex(hex: &str) -> Vec<u8> {
+    let bytes = hex.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        let hi = (bytes[i] as char).to_digit(16).unwrap_or(0);
+        let lo = (bytes[i + 1] as char).to_digit(16).unwrap_or(0);
+        out.push(((hi << 4) | lo) as u8);
+        i += 2;
+    }
+    out
+}
+
 fn cli_bin() -> &'static str {
     env!("CARGO_BIN_EXE_utsushi-cli")
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
+    let Some(seen_path) = real_corpus::seen_txt_path() else {
+        real_corpus::require_real_bytes(
+            "patch_replay_then_render_single_real_scene_renders_patched_dialogue",
+        );
+        return;
+    };
+    let gameexe_path = real_corpus::gameexe_ini_path().expect("Gameexe.ini path");
+    let game_dir = seen_path
+        .parent()
+        .expect("Seen.txt has a parent directory")
+        .to_path_buf();
+
+    let seen_bytes = fs::read(&seen_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
+    let gameexe_bytes = fs::read(&gameexe_path).expect("read Gameexe.ini");
+
+    // 1. Patch a real scene via the same translated-bundle + patchback seam
+    //    used by the shipped localization pipeline.
+    let bundle_json = build_translated_bundle_json(&seen_bytes, &gameexe_bytes);
+    let patched_bytes = build_patched_seen_from_bundle_json(&seen_bytes, &bundle_json);
+    assert_ne!(
+        patched_bytes, seen_bytes,
+        "patched Seen.txt must differ from the source before replay/render validation"
+    );
+
+    let work_dir = std::env::temp_dir().join(format!(
+        "utsushi-cli-patch-replay-render-{}-{}",
+        std::process::id(),
+        DIALOGUE_SCENE_ID
+    ));
+    let _ = fs::remove_dir_all(&work_dir);
+    fs::create_dir_all(&work_dir).expect("create work dir");
+    let patched_seen = work_dir.join("patched").join("Seen.txt");
+    fs::create_dir_all(patched_seen.parent().expect("patched Seen parent"))
+        .expect("create patched dir");
+    fs::write(&patched_seen, &patched_bytes).expect("write patched Seen.txt");
+
+    // 2. Replay the exact patched bytes through the real replay-validate
+    //    binary and assert the VM observes the translated dialogue.
+    let replay_log_path = work_dir.join("replay-log.json");
+    let replay_output = Command::new(cli_bin())
+        .args([
+            "replay-validate",
+            "--engine",
+            "reallive",
+            "--seen",
+            &patched_seen.display().to_string(),
+            "--scene",
+            &DIALOGUE_SCENE_ID.to_string(),
+            "--print-replay-log",
+            &replay_log_path.display().to_string(),
+            "--print-textlines",
+        ])
+        .output()
+        .expect("spawn utsushi-cli replay-validate");
+    let replay_stdout = String::from_utf8_lossy(&replay_output.stdout);
+    let replay_stderr = String::from_utf8_lossy(&replay_output.stderr);
+    eprintln!("replay-validate stdout:\n{replay_stdout}");
+    if !replay_output.status.success() {
+        panic!(
+            "replay-validate failed (status {:?}):\n{replay_stderr}",
+            replay_output.status.code()
+        );
+    }
+    assert!(
+        replay_stdout.contains("utsushi.reallive.replay_observed_textlines_emitted"),
+        "replay-validate must report observed textline evidence; got:\n{replay_stdout}"
+    );
+    let replay_log: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&replay_log_path).expect("read replay-log.json"))
+            .expect("replay-log.json parses");
+    let (replay_textlines, replay_matches) = observed_replay_matches(&replay_log, EXPECT_CONTAINS);
+    assert!(
+        replay_matches > 0,
+        "replay-validate must observe the patched translated text before render; got \
+         {replay_matches}/{replay_textlines} matching text_line(s)"
+    );
+
+    // 3. Render those same patched bytes and assert the localized text layer
+    //    contains the patched dialogue, with public-frame redaction on.
+    let artifact_root = work_dir.join("artifacts");
+    let private_root = work_dir.join("private-render");
+    let render_evidence_path = work_dir.join("render-evidence.json");
+    let render_output = Command::new(cli_bin())
+        .args([
+            "render-validate",
+            "--engine",
+            "reallive",
+            "--seen",
+            &patched_seen.display().to_string(),
+            "--scene",
+            &DIALOGUE_SCENE_ID.to_string(),
+            "--gameexe",
+            &gameexe_path.display().to_string(),
+            "--game-dir",
+            &game_dir.display().to_string(),
+            "--artifact-root",
+            &artifact_root.display().to_string(),
+            "--private-artifact-root",
+            &private_root.display().to_string(),
+            "--source-seen",
+            &seen_path.display().to_string(),
+            "--redaction",
+            "on",
+            "--expect-text-contains",
+            EXPECT_CONTAINS,
+            "--run-id",
+            "patch-replay-render-real-bytes",
+            "--output",
+            &render_evidence_path.display().to_string(),
+        ])
+        .output()
+        .expect("spawn utsushi-cli render-validate");
+    let render_stdout = String::from_utf8_lossy(&render_output.stdout);
+    let render_stderr = String::from_utf8_lossy(&render_output.stderr);
+    eprintln!("render-validate stdout:\n{render_stdout}");
+    if !render_output.status.success() {
+        panic!(
+            "render-validate failed (status {:?}):\n{render_stderr}",
+            render_output.status.code()
+        );
+    }
+    assert!(
+        render_stdout.contains("utsushi.reallive.render_validate_screenshot_ok"),
+        "render-validate must emit screenshot evidence; got:\n{render_stdout}"
+    );
+
+    let render_evidence: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&render_evidence_path).expect("read render-evidence.json"),
+    )
+    .expect("render-evidence.json parses");
+    assert_eq!(render_evidence["engine"], "reallive");
+    assert_eq!(render_evidence["sceneId"], DIALOGUE_SCENE_ID);
+    assert_eq!(render_evidence["evidenceTier"], "E2");
+    assert_eq!(render_evidence["redaction"], "on");
+    assert_eq!(
+        render_evidence["containsExpected"], true,
+        "rendered frame text layer must contain the patched translated line"
+    );
+    assert_eq!(render_evidence["renderedLineCount"], 1);
+    assert!(
+        render_evidence["renderedTextSha256"]
+            .as_str()
+            .is_some_and(|sha| sha.len() == 64),
+        "render evidence must commit to the rendered text layer"
+    );
+    assert!(
+        !find_pngs(&artifact_root).is_empty(),
+        "render-validate must emit a redacted public PNG under {}",
+        artifact_root.display()
+    );
+    assert!(
+        !find_pngs(&private_root).is_empty(),
+        "render-validate must emit a private full-fidelity PNG under {}",
+        private_root.display()
+    );
+
+    eprintln!(
+        "patch->replay->render OK: scene {DIALOGUE_SCENE_ID} replay_matches={replay_matches}/\
+         {replay_textlines} redaction={} contains_expected={}",
+        render_evidence["redaction"], render_evidence["containsExpected"],
+    );
+
+    let _ = fs::remove_dir_all(&work_dir);
 }
 
 #[test]
