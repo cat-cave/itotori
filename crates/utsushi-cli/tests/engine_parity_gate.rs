@@ -1,18 +1,21 @@
 //! Cross-engine capability **parity conformance gate**.
 //!
 //! Feature-parity across ALL engine ports is a CI-enforced invariant, not a
-//! hope. This test is the enforcement point: it collects the
-//! `PARITY_PROFILE` every registered engine adapter publishes and runs the
-//! `utsushi-core` parity gate over the whole set. It goes RED if any engine
-//! lacks a capability another engine wires, unless that gap is an
-//! explicitly-declared dev-`Pending` (a delegation scaffold still being
-//! wired) or a uniform framework limitation (a capability no engine wires
-//! yet).
+//! hope. This test is the enforcement point: `build.rs` scans every
+//! `utsushi-*` workspace crate that depends on `utsushi-core` and implements
+//! `EnginePort`, generates imports for each discovered `PARITY_PROFILE`, and
+//! this test runs the `utsushi-core` parity gate over that generated set. It
+//! goes RED if any engine lacks a capability another engine wires, unless that
+//! gap is an explicitly-declared dev-`Pending` (a delegation scaffold still
+//! being wired) or a uniform framework limitation (a capability no engine
+//! wires yet).
 //!
-//! `utsushi-cli` is the crate that can see every engine port (the three ports
-//! it does not use in production are pulled in dev-only, see Cargo.toml), so
-//! the gate lives here. `just ci-utsushi` runs `cargo test -p utsushi-cli`,
-//! which is how this gate is wired into CI.
+//! `utsushi-cli` is the crate that can see every engine port (ports it does
+//! not use in production are pulled in dev-only, see Cargo.toml), so the gate
+//! lives here. `just ci-utsushi` runs `cargo test -p utsushi-cli`, which is
+//! how this gate is wired into CI. Adding a new `EnginePort` crate without
+//! making it visible to this crate, exporting its port type, or publishing a
+//! `PARITY_PROFILE` fails during the generated registry build/compile.
 //!
 //! To PROVE the gate has teeth, flip any engine's `Snapshot` /
 //! `DeterministicReplay` declaration from `Pending` to `NotApplicable` (or
@@ -26,52 +29,26 @@ use utsushi_core::substrate::{
 };
 
 use utsushi_fixture::FixtureEnginePort;
-use utsushi_kirikiri_xp3::KirikiriXp3EnginePort;
 use utsushi_reallive::UtsushiReallivePort;
-use utsushi_rpgmaker_mv::UtsushiRpgmakerMvPort;
-use utsushi_rpgmaker_mv_mz::RpgMakerMvMzEnginePort;
-use utsushi_siglus::UtsushiSiglusPort;
 
-/// Every registered engine port's parity profile. Adding a new engine-port
-/// crate REQUIRES adding its `PARITY_PROFILE` here — the id-set assertion
-/// below fails otherwise, so a new engine cannot silently escape the gate.
-fn registered_engine_profiles() -> Vec<EngineParityProfile> {
-    vec![
-        FixtureEnginePort::PARITY_PROFILE,
-        UtsushiReallivePort::PARITY_PROFILE,
-        UtsushiSiglusPort::PARITY_PROFILE,
-        KirikiriXp3EnginePort::PARITY_PROFILE,
-        UtsushiRpgmakerMvPort::PARITY_PROFILE,
-        RpgMakerMvMzEnginePort::PARITY_PROFILE,
-    ]
-}
-
-/// The engine-port ids the gate is expected to cover. Pinned so that adding
-/// an engine crate without registering its profile above (or removing one)
-/// fails loudly rather than shrinking the parity surface silently.
-const EXPECTED_ENGINE_PORT_IDS: &[&str] = &[
-    "utsushi-fixture",
-    "utsushi-reallive",
-    "utsushi-siglus",
-    "utsushi-kirikiri-xp3",
-    "utsushi-rpgmaker-mv",
-    "utsushi-rpgmaker-mv-mz",
-];
+include!(concat!(env!("OUT_DIR"), "/engine_parity_registry.rs"));
 
 #[test]
-fn registered_profile_set_matches_the_expected_engine_ports() {
-    let mut ids: Vec<&str> = registered_engine_profiles()
-        .iter()
-        .map(EngineParityProfile::id)
-        .collect();
-    ids.sort_unstable();
-    let mut expected: Vec<&str> = EXPECTED_ENGINE_PORT_IDS.to_vec();
-    expected.sort_unstable();
+fn generated_profile_set_matches_the_discovered_engine_ports() {
+    let profiles = registered_engine_profiles();
+    let ids: Vec<&str> = profiles.iter().map(EngineParityProfile::id).collect();
     assert_eq!(
-        ids, expected,
-        "the registered engine-port parity profile set drifted from the expected set; \
-         a new engine port must register its PARITY_PROFILE in this gate",
+        ids.len(),
+        DISCOVERED_ENGINE_PORT_IMPLS.len(),
+        "the generated registry must emit one parity profile per discovered EnginePort impl",
     );
+    for ((crate_name, type_name), profile) in DISCOVERED_ENGINE_PORT_IMPLS.iter().zip(&profiles) {
+        assert_eq!(
+            profile.id(),
+            *crate_name,
+            "generated profile for {crate_name}::{type_name} should carry the crate's stable port id",
+        );
+    }
 }
 
 #[test]
