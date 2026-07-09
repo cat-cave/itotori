@@ -21,13 +21,14 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use utsushi_core::substrate::CaptureOutcome;
 use utsushi_core::{
-    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, CaptureOutcome,
-    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
-    FrameArtifactSink, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
-    RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult,
-    SinkSet, TextLine, TextSurfaceSink,
+    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, EngineParityProfile,
+    EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink,
+    LifecycleStage, ObservationArtifactRef, ObservationBridgeRef, PortCapability, PortManifest,
+    PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, RuntimeArtifactKind,
+    RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, TextLine,
+    TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy

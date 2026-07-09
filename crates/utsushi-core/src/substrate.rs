@@ -73,7 +73,7 @@ pub use crate::conformance::{
 
 // --- Port + sinks bridge (UTSUSHI-025/056, refactored in UTSUSHI-224) -
 pub use crate::port::{
-    EnginePort, EnginePortAdapter, EnginePortError, LifecycleStage, MomentId,
+    CaptureOutcome, EnginePort, EnginePortAdapter, EnginePortError, LifecycleStage, MomentId,
     OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
     PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner, RunnerCancellation,
     RunnerObservation, RunnerOutcome,

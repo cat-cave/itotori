@@ -34,8 +34,7 @@
 //!   second-engine concern.
 //! - **The fixture observes the substrate facade as a shared surface,
 //!   not as a per-engine fork.** The two engines are co-loaded here
-//!   only via `utsushi_core::substrate::*` (plus the documented
-//!   `CaptureOutcome` reach-around mirrored on both). Engine-internal
+//!   only via `utsushi_core::substrate::*`. Engine-internal
 //!   types from `utsushi_reallive::*` or `utsushi_siglus::*` are
 //!   referenced only as `EnginePort` implementors — never to peek at
 //!   per-engine state.
@@ -74,9 +73,8 @@
 //! - **Substrate-API-drift regression:** A source scan of both
 //!   scaffolds' `lib.rs` extracts every `utsushi_core::*` import; the
 //!   facade-leaf import sets are required to be **identical** across
-//!   engines (except for an explicitly-allowlisted set), and any
-//!   non-facade reach-around (`utsushi_core::CaptureOutcome`) is
-//!   required to be symmetric.
+//!   engines (except for an explicitly-allowlisted set), and
+//!   `CaptureOutcome` is required to flow through the facade.
 //! - **Lineage-extension notes:** Asserts
 //!   `docs/research/reallive-engine.md` Appendix M is present and
 //!   carries the per-sub-node engine-specific boundary notes, plus the
@@ -84,16 +82,18 @@
 //!   accomplishes.
 
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use utsushi_core::RuntimeOperation;
 use utsushi_core::substrate::{
-    AssetPackage, AudioEvent, AudioEventSink, EnginePort, EnginePortError, EvidenceTier,
-    FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage, PortCapability,
-    PortRequest, REQUIRED_LIFECYCLE_STAGES, RunnerCancellation, SinkSet, Snapshot, SnapshotError,
-    SnapshotRequest, SnapshotStore, StatePath, TextLine, TextSurfaceSink, take_snapshot,
+    AssetPackage, AudioEvent, AudioEventSink, CaptureOutcome, EnginePort, EnginePortError,
+    EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage,
+    PortCapability, PortRequest, REQUIRED_LIFECYCLE_STAGES, RunnerCancellation, SinkSet, Snapshot,
+    SnapshotError, SnapshotRequest, SnapshotStore, StatePath, TextLine, TextSurfaceSink,
+    take_snapshot,
 };
-use utsushi_core::{CaptureOutcome as SubstrateCaptureOutcome, RuntimeOperation};
 
 use utsushi_reallive::{RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT, UtsushiReallivePort};
 use utsushi_siglus::{
@@ -376,18 +376,11 @@ fn snapshot_free_function_path_is_reachable_through_facade_for_both_engines() {
 }
 
 #[test]
-fn substrate_capture_outcome_reach_around_is_named_explicitly() {
-    // The `CaptureOutcome` type is the **single** non-facade
-    // reach-around on both ports. This file names it through the
-    // `utsushi_core::CaptureOutcome` path the scaffolds use, then
-    // constructs a value through its typed `new` constructor. If the
-    // substrate facade ever re-exports `CaptureOutcome`, both
-    // scaffolds drop the reach-around at the same time and this test
-    // shrinks accordingly (the
-    // `capture_outcome_reach_around_is_symmetric_across_engines`
-    // assertion catches the asymmetry if only one side drops it).
-    let outcome: SubstrateCaptureOutcome =
-        SubstrateCaptureOutcome::new("artifacts/utsushi/runtime/cross-engine-substrate-alignment");
+fn substrate_capture_outcome_is_reachable_through_facade() {
+    // `CaptureOutcome` is the typed `EnginePort::capture` return value,
+    // so it is part of the stable engine-port substrate surface.
+    let outcome: CaptureOutcome =
+        CaptureOutcome::new("artifacts/utsushi/runtime/cross-engine-substrate-alignment");
     assert_eq!(
         outcome.artifact_uri,
         "artifacts/utsushi/runtime/cross-engine-substrate-alignment"
@@ -400,22 +393,20 @@ fn substrate_capture_outcome_reach_around_is_named_explicitly() {
 // Parses both crates' `src/lib.rs` and asserts:
 //
 // - Every `utsushi_core::*` path either reaches the substrate facade
-//   (`substrate`) or one of the load-bearing crate-root reach-arounds
-//   (`CaptureOutcome`, `RuntimeOperation`). No subsystem reach-around
+//   (`substrate`) or one allowed crate-root helper (`RuntimeOperation`
+//   plus managed-artifact materialization helpers). No subsystem reach-around
 //   is permitted (`vfs`, `port`, `clock`, `replay`, etc. directly).
 // - The set of `utsushi_core::substrate::*` facade leaves the Siglus
 //   port reaches is **identical** to the corresponding scaffold-baseline
 //   set the RealLive port reaches (after subtracting RealLive's
 //   post-scaffold behavioural imports).
-// - The `utsushi_core::CaptureOutcome` crate-root reach-around appears
-//   on both ports' `lib.rs` files or on neither — symmetric across
-//   engines, never just one side.
+// - `CaptureOutcome` appears in the facade import set and never as a
+//   crate-root reach-around.
 // ---------------------------------------------------------------------
 
 const REALLIVE_LIB_SRC: &str = include_str!("../../utsushi-reallive/src/lib.rs");
-// The real RealLive port's substrate-facade imports (and the single
-// `CaptureOutcome` crate-root reach-around) live in the port module, not
-// the crate root — the cross-engine drift guards scan both.
+// The real RealLive port's substrate-facade imports live in the port
+// module, not the crate root — the cross-engine drift guards scan both.
 const REALLIVE_ENGINE_PORT_SRC: &str = include_str!("../../utsushi-reallive/src/engine_port.rs");
 const SIGLUS_LIB_SRC: &str = include_str!("../src/lib.rs");
 
@@ -430,6 +421,7 @@ const SIGLUS_SCAFFOLD_FACADE_LEAVES: &[&str] = &[
     // part of the shared scaffold baseline both engines hold.
     "CapabilityDeclaration",
     "CapabilityStance",
+    "CaptureOutcome",
     "EngineParityProfile",
     "EnginePort",
     "EnginePortError",
@@ -535,6 +527,28 @@ fn collect_utsushi_core_paths(src: &str) -> Vec<String> {
     paths
 }
 
+fn collect_utsushi_core_paths_from_sources(sources: &[&str]) -> Vec<String> {
+    let mut paths = Vec::new();
+    for src in sources {
+        paths.extend(collect_utsushi_core_paths(src));
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn collect_rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for entry in fs::read_dir(dir).expect("read source directory") {
+        let entry = entry.expect("read source directory entry");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+}
+
 fn subsystem_root(path: &str) -> Option<&str> {
     let stripped = path.strip_prefix("utsushi_core::")?;
     Some(stripped.split("::").next().unwrap_or(stripped))
@@ -621,10 +635,18 @@ fn collect_facade_leaves(src: &str) -> BTreeSet<String> {
 
 #[test]
 fn no_subsystem_root_reach_around_on_either_port() {
-    let reallive_paths = collect_utsushi_core_paths(REALLIVE_LIB_SRC);
+    let mut reallive_paths = collect_utsushi_core_paths(REALLIVE_LIB_SRC);
+    reallive_paths.extend(collect_utsushi_core_paths(REALLIVE_ENGINE_PORT_SRC));
+    reallive_paths.sort();
+    reallive_paths.dedup();
     let siglus_paths = collect_utsushi_core_paths(SIGLUS_LIB_SRC);
 
-    let allowed_crate_root_reachfor = ["CaptureOutcome", "RuntimeOperation"];
+    let allowed_crate_root_reachfor = [
+        "RuntimeArtifactKind",
+        "RuntimeArtifactRoot",
+        "RuntimeOperation",
+        "runtime_artifact_uri",
+    ];
     let forbidden_subsystem_roots = [
         "vfs",
         "clock",
@@ -640,7 +662,10 @@ fn no_subsystem_root_reach_around_on_either_port() {
     ];
 
     for (port_label, paths) in [
-        ("utsushi-reallive (lib.rs)", &reallive_paths),
+        (
+            "utsushi-reallive (lib.rs + engine_port.rs)",
+            &reallive_paths,
+        ),
         ("utsushi-siglus (lib.rs)", &siglus_paths),
     ] {
         for path in paths {
@@ -699,37 +724,74 @@ fn substrate_facade_leaf_baseline_matches_across_engines() {
 }
 
 #[test]
-fn capture_outcome_reach_around_is_symmetric_across_engines() {
-    // The real RealLive port's `CaptureOutcome` reach-around lives in its
-    // `engine_port` module (its `capture` signature forces it), so the
-    // RealLive-side scan unions lib.rs + engine_port.rs.
-    let mut reallive_paths = collect_utsushi_core_paths(REALLIVE_LIB_SRC);
-    reallive_paths.extend(collect_utsushi_core_paths(REALLIVE_ENGINE_PORT_SRC));
-    let siglus_paths = collect_utsushi_core_paths(SIGLUS_LIB_SRC);
+fn engine_port_crates_import_capture_outcome_through_substrate_facade() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = manifest_dir
+        .parent()
+        .expect("utsushi-siglus crate has workspace crates parent");
 
-    let reallive_reaches = reallive_paths
-        .iter()
-        .any(|p| p == "utsushi_core::CaptureOutcome");
-    let siglus_reaches = siglus_paths
-        .iter()
-        .any(|p| p == "utsushi_core::CaptureOutcome");
-    assert_eq!(
-        reallive_reaches, siglus_reaches,
-        "scaffold-structural crate-root reach-around `utsushi_core::CaptureOutcome` is asymmetric \
-         between scaffolds (reallive={reallive_reaches}, siglus={siglus_reaches}) — the facade \
-         omission must apply to both engines or neither",
-    );
-    // The reach-around is mandatory until the facade re-exports
-    // CaptureOutcome — both scaffolds must reach it through the crate
-    // root. If both stop reaching it (because the facade was extended),
-    // the assertion below trips and the test author is forced to
-    // shrink the allow-list deliberately.
+    let mut engine_port_crates = Vec::new();
+    for crate_entry in fs::read_dir(crates_dir).expect("read workspace crates directory") {
+        let crate_entry = crate_entry.expect("read workspace crate entry");
+        let crate_dir = crate_entry.path();
+        if !crate_dir.is_dir() {
+            continue;
+        }
+        let crate_name = crate_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("crate directory has UTF-8 name");
+        if !crate_name.starts_with("utsushi-") || crate_name == "utsushi-core" {
+            continue;
+        }
+
+        let src_dir = crate_dir.join("src");
+        if !src_dir.is_dir() {
+            continue;
+        }
+        let mut rs_files = Vec::new();
+        collect_rs_files(&src_dir, &mut rs_files);
+
+        let mut sources = Vec::new();
+        let mut implements_engine_port = false;
+        for path in rs_files {
+            let src = fs::read_to_string(&path).expect("read Rust source");
+            implements_engine_port |= src.contains("impl EnginePort for");
+            sources.push(src);
+        }
+
+        if implements_engine_port {
+            engine_port_crates.push((crate_name.to_string(), sources));
+        }
+    }
+    engine_port_crates.sort_by(|(left, _), (right, _)| left.cmp(right));
+
     assert!(
-        reallive_reaches && siglus_reaches,
-        "both scaffolds expected to reach `utsushi_core::CaptureOutcome` (facade omission); \
-         if the facade has been extended to re-export CaptureOutcome, drop this assertion AND \
-         remove the reach-around from both scaffolds in the same change (no-legacy-compat).",
+        !engine_port_crates.is_empty(),
+        "source scan must discover non-core EnginePort crates",
     );
+
+    for (port_label, sources) in engine_port_crates {
+        let source_refs: Vec<&str> = sources.iter().map(String::as_str).collect();
+        let paths = collect_utsushi_core_paths_from_sources(&source_refs);
+        let root_reaches: Vec<&str> = paths
+            .iter()
+            .filter_map(|p| (p == "utsushi_core::CaptureOutcome").then_some(p.as_str()))
+            .collect();
+        assert!(
+            root_reaches.is_empty(),
+            "{port_label} must import CaptureOutcome through `utsushi_core::substrate::*`, \
+             not crate root (root_paths={root_reaches:?})",
+        );
+
+        let facade_reaches = paths
+            .iter()
+            .any(|p| p == "utsushi_core::substrate::CaptureOutcome");
+        assert!(
+            facade_reaches,
+            "{port_label} must import facade `CaptureOutcome` for its EnginePort::capture return",
+        );
+    }
 }
 
 // ---------------------------------------------------------------------

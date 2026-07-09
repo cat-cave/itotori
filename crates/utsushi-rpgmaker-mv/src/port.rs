@@ -12,31 +12,24 @@
 //!
 //! # Substrate-facade containment
 //!
-//! Every `utsushi_core::*` symbol is sourced through
-//! `utsushi_core::substrate::*`, with three documented reach-arounds the
-//! facade does not (yet) re-export, each forced by the `capture`
-//! lifecycle's signature and the managed-artifact-store contract:
-//! [`SubstrateCaptureOutcome`] (the `EnginePort::capture` return type — the
-//! same reach-around `utsushi-reallive` and `utsushi-siglus` carry),
-//! [`runtime_artifact_uri`] and [`RuntimeArtifactKind`] (mint the managed
-//! trace-log URI). These are named here, grep-pinnably, so a future facade
-//! revision that lifts the capture-store surface drops the reach-around.
+//! Every `utsushi_core::*` lifecycle symbol is sourced through
+//! `utsushi_core::substrate::*`, including [`SubstrateCaptureOutcome`] (the
+//! `EnginePort::capture` return type). The only documented crate-root
+//! reach-arounds left here are [`runtime_artifact_uri`] and
+//! [`RuntimeArtifactKind`], which mint the managed trace-log URI.
 
 use std::sync::{Arc, Mutex};
 
 use utsushi_core::substrate::{
     AssetId, AudioEvent, AudioEventSink, CapabilityDeclaration, CapabilityStance,
-    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
-    FrameArtifactSink, Inspectable, LifecycleStage, ObservationBridgeRef, PortCapability,
-    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkCapability,
-    SinkError, SinkKind, SinkResult, SinkSet, SnapshotError, StatePath, StateTree, StateValue,
-    TextLine, TextSurfaceSink,
+    CaptureOutcome as SubstrateCaptureOutcome, EngineParityProfile, EnginePort, EnginePortError,
+    EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage,
+    ObservationBridgeRef, PortCapability, PortManifest, PortRequest, PortShutdownOutcome,
+    REQUIRED_LIFECYCLE_STAGES, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet,
+    SnapshotError, StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
 };
-// Forced reach-arounds: the substrate facade does not re-export the
-// capture-artifact-store surface. `CaptureOutcome` is the typed return of
-// `EnginePort::capture`; `runtime_artifact_uri` + `RuntimeArtifactKind`
-// mint the managed trace-log URI the artifact is written under.
-use utsushi_core::CaptureOutcome as SubstrateCaptureOutcome;
+// Forced reach-arounds: `runtime_artifact_uri` + `RuntimeArtifactKind` mint the
+// managed trace-log URI the artifact is written under.
 use utsushi_core::{RuntimeArtifactKind, runtime_artifact_uri};
 
 use crate::event_data::{DataDir, DataLayout, EventDataError, MessageLine, TextRole, load_program};

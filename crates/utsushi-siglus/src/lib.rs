@@ -5,9 +5,8 @@
 //! Utsushi workspace. Its sole load-bearing role at the alpha gate is to
 //! prove the UTSUSHI-120 substrate facade is engine-extensible *beyond*
 //! the [`utsushi-reallive`](../utsushi_reallive/index.html) port: every
-//! `utsushi_core::*` symbol this crate consumes is sourced through
-//! `utsushi_core::substrate::*` (plus the same crate-root reach-around
-//! that `utsushi-reallive` carries for `CaptureOutcome`), and the
+//! substrate symbol this crate consumes is sourced through
+//! `utsushi_core::substrate::*`, and the
 //! `EnginePort` lifecycle surface matches the RealLive scaffold byte-for-byte
 //! at the manifest level.
 //!
@@ -55,16 +54,11 @@
 //!
 //! # Substrate-facade containment
 //!
-//! Every `utsushi_core::*` import in this crate is sourced through
-//! `utsushi_core::substrate::*`. The single non-facade reach-around is
-//! `utsushi_core::CaptureOutcome` (renamed [`SubstrateCaptureOutcome`]
-//! to make the audit site grep-pinnable). That symbol is named by the
-//! `EnginePort::capture` return type and is currently only reachable at
-//! the crate root; the same omission is carried by the RealLive
-//! scaffold, and the cross-engine substrate-alignment fixture asserts
-//! the omission is symmetric across both engines (so a future facade
-//! revision that lifts `CaptureOutcome` into `utsushi_core::substrate`
-//! drops the reach-around from both engines together — never just one).
+//! Every substrate import in this crate is sourced through
+//! `utsushi_core::substrate::*`, including [`CaptureOutcome`]. The
+//! cross-engine substrate-alignment fixture asserts the scaffold does
+//! not grow a direct `utsushi_core::port::*` or crate-root substrate
+//! dependency.
 //!
 //! # Surface
 //!
@@ -96,21 +90,10 @@ pub mod vm_impl_map;
 use std::sync::Arc;
 
 use utsushi_core::substrate::{
-    AssetPackage, CapabilityDeclaration, CapabilityStance, EngineParityProfile, EnginePort,
-    EnginePortError, EvidenceTier, FidelityTier, LifecycleStage, PortCapability, PortManifest,
-    PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
+    AssetPackage, CapabilityDeclaration, CapabilityStance, CaptureOutcome, EngineParityProfile,
+    EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage, PortCapability,
+    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
 };
-// `CaptureOutcome` is the typed return value of `EnginePort::capture` and
-// is therefore load-bearing for any implementor. It is currently reachable
-// only via the crate root (`utsushi_core::CaptureOutcome`) — the substrate
-// facade in `crates/utsushi-core/src/substrate.rs` does not yet re-export
-// it. This is the **single** non-facade `utsushi_core::*` import in this
-// crate; it is forced by the `EnginePort::capture` signature, not chosen.
-// The same reach-around lives in `utsushi-reallive::lib`. The cross-engine
-// substrate-alignment fixture pins the reach-around as symmetric across
-// both engines so a future facade revision that lifts `CaptureOutcome`
-// into `utsushi_core::substrate` drops it from both ports together.
-use utsushi_core::CaptureOutcome as SubstrateCaptureOutcome;
 
 /// Stable port id used by the manifest and by audit tooling. Matches the
 /// `EngineFamily::Siglus` -> `"utsushi-siglus"` mapping in
@@ -307,10 +290,7 @@ impl EnginePort for UtsushiSiglusPort {
         &self.sink_set
     }
 
-    fn capture(
-        &mut self,
-        request: &PortRequest<'_>,
-    ) -> Result<SubstrateCaptureOutcome, EnginePortError> {
+    fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
         request.cancellation.check(LifecycleStage::Capture)?;
         Err(unimplemented_lifecycle(LifecycleStage::Capture))
     }

@@ -51,19 +51,11 @@
 pub mod conformance;
 
 use utsushi_core::substrate::{
-    CapabilityDeclaration, CapabilityStance, EngineParityProfile, EnginePort, EnginePortError,
-    EvidenceTier, FidelityTier, LifecycleStage, PortCapability, PortManifest, PortRequest,
-    PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
+    CapabilityDeclaration, CapabilityStance, CaptureOutcome as SubstrateCaptureOutcome,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,
+    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
+    SinkSet,
 };
-// The single non-facade `utsushi_core::*` import, forced by the
-// `EnginePort::capture` return type. `CaptureOutcome` is currently
-// reachable only at the crate root — the substrate facade does not yet
-// re-export it — so the same documented reach-around the `utsushi-siglus`
-// and `utsushi-reallive` scaffolds carry is repeated here (renamed to make
-// the audit site grep-pinnable). A future facade revision that lifts
-// `CaptureOutcome` into `utsushi_core::substrate` drops it from all ports
-// together.
-use utsushi_core::CaptureOutcome as SubstrateCaptureOutcome;
 
 /// Stable port id. Matches the `EngineFamily::RpgmakerMv` manifest prefix
 /// `"utsushi-rpgmaker-mv"` (`impl_map::EngineFamily::manifest_prefix`) —

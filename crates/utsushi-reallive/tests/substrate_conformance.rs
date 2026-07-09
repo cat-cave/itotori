@@ -11,10 +11,8 @@
 //! refactor moves one of these symbols out of the facade, this test breaks
 //! at the import statement. It pairs with the acceptance grep that asserts
 //! `src/lib.rs` / `src/engine_port.rs` reach `utsushi_core` substrate types
-//! through the facade (the only non-facade root types they touch —
-//! `CaptureOutcome`, `RuntimeArtifactRoot`, `runtime_artifact_uri` — are
-//! public crate-root types the facade does not (yet) re-export, exactly as
-//! `render_pipeline.rs` reaches them).
+//! through the facade. Managed artifact helpers remain public crate-root
+//! helpers because they are outside the engine-port substrate type surface.
 
 #[path = "support/port_support.rs"]
 mod port_support;

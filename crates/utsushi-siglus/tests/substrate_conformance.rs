@@ -19,14 +19,11 @@
 //!    a future substrate refactor moves one of these symbols out of the
 //!    facade, this test breaks at the import statement.
 //! 2. **At the scaffold's import site**: `src/lib.rs` itself imports
-//!    every `utsushi_core::*` symbol through `utsushi_core::substrate::*`
-//!    (with the one documented `CaptureOutcome` crate-root reach-around
-//!    mirroring the RealLive scaffold). The cross-engine
-//!    substrate-alignment fixture in
+//!    every substrate symbol through `utsushi_core::substrate::*`. The
+//!    cross-engine substrate-alignment fixture in
 //!    `tests/cross_engine_substrate_alignment.rs` audits the
-//!    `utsushi_core::*` import surface of both scaffolds and asserts the
-//!    reach-around is symmetric — neither port can quietly grow a
-//!    non-facade dependency the other lacks.
+//!    `utsushi_core::*` import surface of both scaffolds so neither port
+//!    can quietly grow a non-facade dependency the other lacks.
 
 use utsushi_core::substrate::{
     AssetPackage, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,

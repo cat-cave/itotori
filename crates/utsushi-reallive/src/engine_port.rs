@@ -44,19 +44,14 @@ use std::sync::{Arc, Mutex};
 
 use utsushi_core::substrate::{
     AssetPackage, AudioEvent, AudioEventSink, CapabilityDeclaration, CapabilityStance,
-    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
-    FrameArtifactSink, LifecycleStage, PortCapability, PortManifest, PortRequest,
+    CaptureOutcome, EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier,
+    FrameArtifact, FrameArtifactSink, LifecycleStage, PortCapability, PortManifest, PortRequest,
     PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkCapability, SinkResult, SinkSet, TextLine,
     TextSurfaceSink,
 };
-// `CaptureOutcome`, `RuntimeArtifactRoot`, `RuntimeArtifactKind`, and
-// `runtime_artifact_uri` are not (yet) re-exported through the substrate
-// facade; they are public crate-root types. `render_pipeline.rs` reaches
-// them the same way — the facade lint scopes to `substrate.rs`/docs only,
-// so a consumer crate reaching a public root type is not a facade breach.
-use utsushi_core::{
-    CaptureOutcome, RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri,
-};
+// `RuntimeArtifactRoot`, `RuntimeArtifactKind`, and `runtime_artifact_uri`
+// remain public crate-root helpers used to materialize managed artifacts.
+use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri};
 
 use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventPayload};
 use crate::gameexe::MessageWindowConfig;

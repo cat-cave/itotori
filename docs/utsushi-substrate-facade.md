@@ -34,7 +34,7 @@ contract drift loud at build time.
 | Embed capability surface      | UTSUSHI-024      | `EmbedCapability`, `EmbedCapabilityId`, `EmbedCapabilityStatus`, `EmbedError` | You declare the observable surface a host embed exposes. |
 | Reference recorder            | UTSUSHI-060      | `ReferenceRecorder`, `InMemoryReferenceRecorder`                              | You produce a reference trace from a fixture run.        |
 | Conformance manifest + checks | UTSUSHI-025..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck`   | You declare or evaluate conformance.                     |
-| Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`                                | You expose an engine port to the runner.                 |
+| Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`, `CaptureOutcome`              | You expose an engine port to the runner.                 |
 | Redaction policy              | UTSUSHI-056      | `reject_unredacted_local_paths`                                               | You sweep an outgoing artifact for host-path leakage.    |
 
 The facade also re-exports the universal `EvidenceTier` and
