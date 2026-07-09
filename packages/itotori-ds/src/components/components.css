@@ -19,3 +19,5 @@
 @import "./feedback/Toast.css";
 @import "./diagram/RouteMap.css";
 @import "./game/AnnotationComposer.css";
+@import "./game/ScenePlayer.css";
+@import "./wiki/WikiEntry.css";

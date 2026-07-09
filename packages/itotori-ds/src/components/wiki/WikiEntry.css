@@ -1,0 +1,74 @@
+.itotori-wiki-entry {
+  --itotori-wiki-entry-gap: var(--ito-space-12);
+}
+
+.itotori-wiki-entry__id {
+  display: inline-block;
+  margin-block-end: var(--itotori-wiki-entry-gap);
+  color: var(--ito-color-cyan);
+}
+
+.itotori-wiki-entry__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0 0 var(--itotori-wiki-entry-gap);
+  background: var(--ito-color-divider);
+  border: 1px solid var(--ito-color-divider);
+  border-radius: var(--ito-radius-tight);
+  overflow: hidden;
+}
+
+.itotori-wiki-entry__fact {
+  display: grid;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  background: var(--ito-color-code-well);
+}
+
+.itotori-wiki-entry__fact dt {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-wiki-entry__fact dd {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--ito-color-text);
+}
+
+.itotori-wiki-entry__fact-value--mono {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-cyan);
+}
+
+.itotori-wiki-entry__body {
+  display: grid;
+  gap: var(--itotori-wiki-entry-gap);
+}
+
+.itotori-wiki-entry__crossrefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-6);
+  margin-block-start: var(--itotori-wiki-entry-gap);
+}
+
+.itotori-wiki-entry__crossref {
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  padding: var(--ito-space-1) var(--ito-space-8);
+  color: var(--ito-color-cyan);
+  background: var(--ito-color-code-well);
+  font-family: var(--ito-font-mono);
+  text-decoration: none;
+}
+
+.itotori-wiki-entry__crossref:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 1px;
+}

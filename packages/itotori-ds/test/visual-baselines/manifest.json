@@ -12,7 +12,7 @@
   "colorScheme": "dark",
   "reducedMotion": "reduce",
   "maxDiffPixels": 0,
-  "storyCount": 33,
+  "storyCount": 37,
   "stories": [
     {
       "id": "core-badge--default",
@@ -191,6 +191,22 @@
       "sha256": "sha256:e1af429781c0c5f193c0d2091c18d4b10a07c10f0e8fa5884eeec6fde16868b1"
     },
     {
+      "id": "game-sceneplayer--default",
+      "title": "game/ScenePlayer",
+      "name": "Default",
+      "importPath": "./src/stories/ScenePlayer.stories.tsx",
+      "baseline": "game-sceneplayer--default.png",
+      "sha256": "sha256:1dfd228ee26e631441803a3e07bbc111d2b16ac61f340022fd58856d1f8ebe23"
+    },
+    {
+      "id": "game-sceneplayer--with-annotation",
+      "title": "game/ScenePlayer",
+      "name": "With Annotation",
+      "importPath": "./src/stories/ScenePlayer.stories.tsx",
+      "baseline": "game-sceneplayer--with-annotation.png",
+      "sha256": "sha256:6182f1c21c3dfff772379d77115064dee9466bc9d7b0e5eaee86d45c184446d6"
+    },
+    {
       "id": "layout-panel--default",
       "title": "layout/Panel",
       "name": "Default",
@@ -277,6 +293,22 @@
       "importPath": "./src/stories/Pagination.stories.tsx",
       "baseline": "navigation-pagination--default.png",
       "sha256": "sha256:026d45ee7fb74864381bbbc04c3c1e07143ec4b7903572979a4e9cf62a5964c3"
+    },
+    {
+      "id": "wiki-wikientry--default",
+      "title": "wiki/WikiEntry",
+      "name": "Default",
+      "importPath": "./src/stories/WikiEntry.stories.tsx",
+      "baseline": "wiki-wikientry--default.png",
+      "sha256": "sha256:de7403d9273273b796200122c303e159eb15b735788c88dee4198c8c39605a8d"
+    },
+    {
+      "id": "wiki-wikientry--stale-scene",
+      "title": "wiki/WikiEntry",
+      "name": "Stale Scene",
+      "importPath": "./src/stories/WikiEntry.stories.tsx",
+      "baseline": "wiki-wikientry--stale-scene.png",
+      "sha256": "sha256:c80678cd777e029c484d77b0a5baae6424676396555297a8eb281d4f1b657a67"
     }
   ]
 }

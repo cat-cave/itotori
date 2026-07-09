@@ -57,3 +57,14 @@ export type {
   AnnotationComposerValue,
   AnnotationSeverity,
 } from "./game/AnnotationComposer.js";
+export { ScenePlayer } from "./game/ScenePlayer.js";
+export type { ScenePlayerMode, ScenePlayerProps } from "./game/ScenePlayer.js";
+
+// wiki
+export { WikiEntry } from "./wiki/WikiEntry.js";
+export type {
+  WikiEntryCrossRef,
+  WikiEntryFact,
+  WikiEntryKind,
+  WikiEntryProps,
+} from "./wiki/WikiEntry.js";

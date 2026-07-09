@@ -30,12 +30,20 @@
 // are asserted.
 
 import { useState, type ReactNode } from "react";
-import { Badge, BiText, DataTable, NavPills, Panel, type NavPillItem } from "@itotori/ds";
+import {
+  Badge,
+  BiText,
+  DataTable,
+  NavPills,
+  Panel,
+  WikiEntry as DsWikiEntry,
+  type NavPillItem,
+} from "@itotori/ds";
 import type {
   WikiCitation,
   WikiCrossReference,
   WikiEntriesReadModel,
-  WikiEntry,
+  WikiEntry as WikiEntryReadModel,
   WikiEntryKind,
   WikiCharacterEntry,
   WikiTermEntry,
@@ -276,7 +284,7 @@ function WikiEntryProfile({
   scope,
   focus,
 }: {
-  entry: WikiEntry;
+  entry: WikiEntryReadModel;
   scope: AddressableScope;
   focus: WikiFocus;
 }): ReactNode {
@@ -302,19 +310,23 @@ function CharacterProfile({
   focusToken: string | null;
 }): ReactNode {
   return (
-    <Panel
+    <DsWikiEntry
       title={entry.title}
-      eyebrow={`Character · ${entry.bio.locale}`}
+      kind="character"
+      locale={entry.bio.locale}
+      identifier={entry.characterId}
+      status={entry.bio.status}
+      stale={entry.bio.stale}
       className="wiki-entry__profile"
       data-wiki-kind="character"
       data-character-id={entry.characterId}
       data-addressable-focus={focusToken ?? undefined}
       data-addressable-focused={focusToken !== null ? "true" : undefined}
-      lamps={
-        <Badge status={entry.bio.status} tone={entry.bio.stale ? "neutral" : "ok"}>
-          {entry.bio.stale ? "stale" : "fresh"}
-        </Badge>
-      }
+      facts={[
+        { label: "Character", value: entry.characterId, mono: true },
+        { label: "Appearances", value: entry.appearances.length },
+        { label: "Relationships", value: entry.relationships.length },
+      ]}
     >
       <p className="wiki-entry__bio" data-wiki-bio={entry.characterId}>
         {entry.bio.text}
@@ -414,7 +426,7 @@ function CharacterProfile({
           />
         </section>
       )}
-    </Panel>
+    </DsWikiEntry>
   );
 }
 
@@ -433,15 +445,22 @@ function TermProfile({
   focusToken: string | null;
 }): ReactNode {
   return (
-    <Panel
+    <DsWikiEntry
       title={entry.title}
-      eyebrow={`Term · ${entry.termKind}`}
+      kind="term"
+      locale={entry.termKind}
+      identifier={entry.termId}
+      status={entry.status}
       className="wiki-entry__profile"
       data-wiki-kind="term"
       data-term-id={entry.termId}
       data-addressable-focus={focusToken ?? undefined}
       data-addressable-focused={focusToken !== null ? "true" : undefined}
-      lamps={<Badge status={entry.status}>{entry.status}</Badge>}
+      facts={[
+        { label: "Term", value: entry.termId, mono: true },
+        { label: "Aliases", value: entry.aliases.length },
+        { label: "References", value: entry.references.length },
+      ]}
     >
       <BiText
         sourceLocale={entry.sourceLocale}
@@ -503,7 +522,7 @@ function TermProfile({
       </section>
 
       <CrossReferenceList related={entry.related} scope={scope} />
-    </Panel>
+    </DsWikiEntry>
   );
 }
 
@@ -669,7 +688,7 @@ function initialWikiSelection(model: ApiWikiEntriesResponse, focus: WikiFocus): 
 }
 
 /** A short kind badge for the entry index (the title distinguishes entries). */
-function entryKindBadge(entry: WikiEntry): ReactNode {
+function entryKindBadge(entry: WikiEntryReadModel): ReactNode {
   return entry.kind === wikiEntryKindValues.character ? "char" : "term";
 }
 

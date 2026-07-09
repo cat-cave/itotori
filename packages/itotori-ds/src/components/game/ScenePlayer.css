@@ -1,0 +1,126 @@
+.itotori-scene-player {
+  display: grid;
+  gap: var(--ito-space-10);
+  color: var(--ito-color-text);
+}
+
+.itotori-scene-player__chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ito-space-10);
+  min-block-size: 40px;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  background: var(--ito-menu-title-bg);
+  border: 1px solid var(--ito-menu-border);
+  border-radius: var(--ito-radius) var(--ito-radius) 0 0;
+  box-shadow: inset 0 1px 0 var(--ito-bevel-top-highlight);
+}
+
+.itotori-scene-player__title,
+.itotori-scene-player__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  min-inline-size: 0;
+}
+
+.itotori-scene-player__eyebrow {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-amber);
+}
+
+.itotori-scene-player__unit {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ito-color-cyan);
+}
+
+.itotori-scene-player__control {
+  inline-size: 30px;
+  block-size: 30px;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-text);
+  cursor: pointer;
+}
+
+.itotori-scene-player__control:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.itotori-scene-player__control:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.itotori-scene-player__stage {
+  position: relative;
+  overflow: hidden;
+  min-block-size: 320px;
+  border-radius: 0 0 var(--ito-radius) var(--ito-radius);
+  background:
+    linear-gradient(180deg, var(--ito-command-active-bg), transparent 46%),
+    var(--ito-color-code-well);
+}
+
+.itotori-scene-player__frame {
+  min-block-size: 320px;
+  display: grid;
+  place-items: center;
+}
+
+.itotori-scene-player__frame > img,
+.itotori-scene-player__frame > video,
+.itotori-scene-player__frame > canvas {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 100%;
+}
+
+.itotori-scene-player__placeholder {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-scene-player__textbox {
+  position: absolute;
+  inset-inline: var(--ito-space-16);
+  inset-block-end: var(--ito-space-16);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-code-well);
+  box-shadow: var(--ito-shadow-panel);
+}
+
+.itotori-scene-player__annotation {
+  display: grid;
+}
+
+@media (max-width: 720px) {
+  .itotori-scene-player__chrome {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .itotori-scene-player__stage,
+  .itotori-scene-player__frame {
+    min-block-size: 240px;
+  }
+
+  .itotori-scene-player__textbox {
+    position: static;
+    margin: var(--ito-space-10);
+  }
+}

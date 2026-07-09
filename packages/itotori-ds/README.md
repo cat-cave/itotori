@@ -7,6 +7,8 @@ tokens + components, so the patterns here are the precedent.
 
 Source of truth for the design language:
 [`docs/design/itotori-design-system.md`](../../docs/design/itotori-design-system.md).
+Component parity notes and the live DesignSync research gap are recorded in
+[`PARITY.md`](./PARITY.md).
 
 ## Layout
 
@@ -21,6 +23,7 @@ src/
     core/Badge           layout/Panel
     data/DataTable · ProgressBar · ComparisonPane · LocalizationProgress · StatReadout
     localization/BiText   navigation/NavPills · CommandPalette   feedback/Toast
+    game/ScenePlayer · AnnotationComposer   wiki/WikiEntry
     <Name>.tsx + <Name>.css co-located; components.css @imports them
   gallery/              lightweight component gallery (vite demo surface)
   stories/              Storybook CSF stories — design-review catalog + play tests

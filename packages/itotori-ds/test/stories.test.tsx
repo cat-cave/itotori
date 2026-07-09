@@ -31,8 +31,10 @@ import * as paginationStories from "../src/stories/Pagination.stories.js";
 import * as panelStories from "../src/stories/Panel.stories.js";
 import * as progressBarStories from "../src/stories/ProgressBar.stories.js";
 import * as redactionFrameStories from "../src/stories/RedactionFrame.stories.js";
+import * as scenePlayerStories from "../src/stories/ScenePlayer.stories.js";
 import * as statReadoutStories from "../src/stories/StatReadout.stories.js";
 import * as toastStories from "../src/stories/Toast.stories.js";
+import * as wikiEntryStories from "../src/stories/WikiEntry.stories.js";
 
 // Apply preview decorators/parameters so composeStories matches the UI.
 setProjectAnnotations([previewAnnotations]);
@@ -58,6 +60,8 @@ const PUBLIC_COMPONENTS = [
   "CommandPalette",
   "Pagination",
   "Toast",
+  "ScenePlayer",
+  "WikiEntry",
 ] as const;
 
 const storyModules = {
@@ -76,6 +80,8 @@ const storyModules = {
   CommandPalette: commandPaletteStories,
   Pagination: paginationStories,
   Toast: toastStories,
+  ScenePlayer: scenePlayerStories,
+  WikiEntry: wikiEntryStories,
 } as const;
 
 describe("Storybook catalog completeness", () => {

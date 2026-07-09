@@ -9,7 +9,7 @@
 // does not read the source can navigate.
 
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Badge, DataTable, Panel } from "@itotori/ds";
+import { Badge, BiText, ComparisonPane, DataTable, Panel } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import { apiClient } from "../client.js";
 import type { ItotoriApiRouteId } from "../../api-schema.js";
@@ -346,19 +346,55 @@ function ComparisonView({ model }: { model: WorkspaceComparisonReadModel }): Rea
   if (!model.permission.canReadQueue) {
     return <DeniedShell permission={model.permission} />;
   }
+  const source = model.cells.find((cell) => cell.side === "source") ?? null;
+  const draft = model.cells.find((cell) => cell.side === "draft") ?? null;
+  const final = model.cells.find((cell) => cell.side === "final") ?? null;
   return (
     <>
       <DiagnosticBanner diagnostics={model.diagnostics} />
       <Panel title="Comparison" eyebrow={model.reviewItemId}>
         {model.contextNote !== null && <p className="itotori-context-note">{model.contextNote}</p>}
-        {model.cells.map((cell, i) => (
-          <div key={`${cell.side}:${i}`} className="itotori-comparison-cell" data-side={cell.side}>
-            <p className="itotori-eyebrow">
-              {cell.label} · {cell.locale}
-            </p>
-            <p>{cell.text}</p>
+        {source !== null && draft !== null ? (
+          <div className="itotori-workspace-comparison-stack">
+            <BiText
+              sourceLocale={source.locale}
+              targetLocale={draft.locale}
+              source={source.text}
+              translation={final?.text ?? draft.text}
+              speaker={model.sourceUnitKey ?? model.bridgeUnitId ?? undefined}
+            />
+            <ComparisonPane
+              unit={model.bridgeUnitId ?? model.sourceUnitKey ?? model.reviewItemId}
+              sourceLabel={source.label}
+              draftLabel={draft.label}
+              draftMeta={<Badge status={model.hasFinal ? "accepted" : "in_review"} />}
+              source={source.text}
+              draft={draft.text}
+            />
+            {final !== null && (
+              <ComparisonPane
+                unit={model.bridgeUnitId ?? model.sourceUnitKey ?? model.reviewItemId}
+                sourceLabel={draft.label}
+                draftLabel={final.label}
+                draftMeta={<Badge status="accepted" />}
+                source={draft.text}
+                draft={final.text}
+              />
+            )}
           </div>
-        ))}
+        ) : (
+          <DataTable
+            caption="Comparison cells"
+            columns={[
+              { key: "side", header: "Side", render: (cell) => cell.side },
+              { key: "locale", header: "Locale", render: (cell) => <code>{cell.locale}</code> },
+              { key: "text", header: "Text", render: (cell) => cell.text },
+            ]}
+            rows={model.cells}
+            getRowKey={(cell, i) => `${cell.side}:${i}`}
+            emptyLabel="No comparison cells."
+          />
+        )}
         {model.runtimeEvidenceLinks.length > 0 && (
           <DataTable
             caption="Runtime evidence"
