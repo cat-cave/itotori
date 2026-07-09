@@ -512,10 +512,12 @@ function makeDeps(options: {
   };
 }
 
-function realDeps(options: {
-  env?: Record<string, string | undefined>;
-  logs?: string[];
-} = {}): InitCommandDeps {
+function realDeps(
+  options: {
+    env?: Record<string, string | undefined>;
+    logs?: string[];
+  } = {},
+): InitCommandDeps {
   const env = options.env ?? process.env;
   const logs = options.logs;
   return {

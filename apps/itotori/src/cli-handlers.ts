@@ -1918,7 +1918,10 @@ function resolveWorktreeRoot(env: Record<string, string | undefined>): string {
 }
 
 function stableNumber(root: string): number {
-  return Number.parseInt(createHash("sha256").update(realRoot(root)).digest("hex").slice(0, 12), 16);
+  return Number.parseInt(
+    createHash("sha256").update(realRoot(root)).digest("hex").slice(0, 12),
+    16,
+  );
 }
 
 function realRoot(root: string): string {
@@ -1952,7 +1955,10 @@ function provisionLocalPostgresContainer(databaseUrl: string): { ok: boolean; me
   try {
     parsed = new URL(databaseUrl);
   } catch {
-    return { ok: false, message: "Could not auto-start local Postgres because DATABASE_URL is invalid." };
+    return {
+      ok: false,
+      message: "Could not auto-start local Postgres because DATABASE_URL is invalid.",
+    };
   }
 
   const port = parsed.port || "5432";
