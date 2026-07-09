@@ -330,10 +330,10 @@ pub use rlop::module_str::{
 
 pub use rlop::module_obj::{
     BgCanvas, DEFAULT_FADE_TICKS_PER_MS, DcAllocation, FADE_PRIVATE_STATE_MAGIC, FadeLongOp,
-    FadeLongOpDecodeError, FadeSchedule, GraphicsRuntime, GraphicsRuntimeWarning,
-    GraphicsStateSnapshot, OBJ_BG_MODULE_ID, OBJ_BG_MODULE_TYPE, OBJ_FG_MODULE_ID,
-    OBJ_FG_MODULE_TYPE, OBJ_MGMT_MODULE_ID, OBJ_MGMT_MODULE_TYPE, OPCODE_OBJ_BUTTON_OPTS,
-    ObjButtonOptsOp,
+    FadeLongOpDecodeError, FadeSchedule, ForegroundButtonCandidate, GraphicsRuntime,
+    GraphicsRuntimeWarning, GraphicsStateSnapshot, OBJ_BG_MODULE_ID, OBJ_BG_MODULE_TYPE,
+    OBJ_FG_MODULE_ID, OBJ_FG_MODULE_TYPE, OBJ_MGMT_MODULE_ID, OBJ_MGMT_MODULE_TYPE,
+    OPCODE_OBJ_BUTTON_OPTS, ObjButtonOptsOp,
 };
 
 pub use rlop::module_render::{

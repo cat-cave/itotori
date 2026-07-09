@@ -286,6 +286,14 @@ pub struct GraphicsRuntime {
     inner: Mutex<GraphicsRuntimeInner>,
 }
 
+/// Immutable foreground object-button candidate detached from runtime state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForegroundButtonCandidate {
+    pub slot: usize,
+    pub options: ButtonOptions,
+    pub visible: bool,
+}
+
 struct GraphicsRuntimeInner {
     stack: GraphicsObjectStack,
     dc_allocations: Vec<DcAllocation>,
@@ -392,6 +400,25 @@ impl GraphicsRuntime {
                     .get_layer(GraphicsLayer::ForegroundObject, slot)?
                     .button_options?;
                 (options.group == group).then_some((slot, options))
+            })
+            .collect()
+    }
+
+    /// Exact foreground bindings for `group`, scanned in ascending slot order.
+    /// Visibility is reported but never filters a candidate.
+    pub fn foreground_button_candidates(&self, group: i32) -> Vec<ForegroundButtonCandidate> {
+        let guard = self.lock_inner();
+        (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            .filter_map(|slot| {
+                let object = guard
+                    .stack
+                    .get_layer(GraphicsLayer::ForegroundObject, slot)?;
+                let options = object.button_options?;
+                (options.group == group).then_some(ForegroundButtonCandidate {
+                    slot,
+                    options,
+                    visible: object.visible,
+                })
             })
             .collect()
     }
@@ -871,6 +898,62 @@ mod tests {
             op.dispatch(&mut vm, &args);
         }
         assert!(runtime.foreground_button_group(3).is_empty());
+    }
+
+    #[test]
+    fn candidates_are_slot_ordered_detached_and_keep_invisible_foreground_only() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            for slot in [2, 5, 7] {
+                stack
+                    .set_layer(
+                        GraphicsLayer::ForegroundObject,
+                        slot,
+                        GraphicsObject::image("f"),
+                    )
+                    .unwrap();
+            }
+            stack
+                .set_layer(
+                    GraphicsLayer::BackgroundObject,
+                    1,
+                    GraphicsObject::image("b"),
+                )
+                .unwrap();
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 7)
+                .unwrap()
+                .visible = false;
+        });
+        let mut vm = vm();
+        for (plane, slot, group, number) in [
+            (GraphicsPlane::Foreground, 7, 4, 70),
+            (GraphicsPlane::Foreground, 5, 8, 50),
+            (GraphicsPlane::Foreground, 2, 4, 20),
+            (GraphicsPlane::Background, 1, 4, 10),
+        ] {
+            ObjButtonOptsOp::new(Arc::clone(&runtime), plane).dispatch(
+                &mut vm,
+                &[int(slot), int(1), int(2), int(group), int(number)],
+            );
+        }
+        let candidates = runtime.foreground_button_candidates(4);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.slot)
+                .collect::<Vec<_>>(),
+            vec![2, 7]
+        );
+        assert_eq!(candidates[1].options.button_number, 70);
+        assert!(!candidates[1].visible);
+        runtime.with_stack_mut(|stack| {
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 2)
+                .unwrap()
+                .button_options = None
+        });
+        assert_eq!(candidates[0].options.button_number, 20);
     }
 
     #[test]
