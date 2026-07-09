@@ -118,6 +118,91 @@ async function routeItotoriApiRequest(request, services) {
 }
 `;
 
+const reviewerQueueUncovered = `
+async function routeItotoriApiRequest(request, services) {
+  const reviewerRoute = parseReviewerMutationRoute(request.pathname);
+  if (request.method === "POST" && reviewerRoute !== null) {
+    const body = parseReviewerSingleActionRequest(request.body, reviewerRoute.reviewItemId);
+    return ok("reviewer.itemAction", await services.reviewerQueue.actionSingleItem({
+      actor: { userId: body.actorUserId },
+      request: body,
+      permission: {
+        actorUserId: body.actorUserId,
+        canReadQueue: true,
+        canManageQueue: true,
+        denialReasons: [],
+      },
+    }));
+  }
+}
+`;
+
+const reviewerQueueCovered = `
+async function routeItotoriApiRequest(request, services) {
+  const reviewerRoute = parseReviewerMutationRoute(request.pathname);
+  if (request.method === "POST" && reviewerRoute !== null) {
+    const body = parseReviewerSingleActionRequest(request.body, reviewerRoute.reviewItemId);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok("reviewer.itemAction", await services.reviewerQueue.actionSingleItem({
+      actor: { userId: body.actorUserId },
+      request: body,
+      permission,
+    }));
+  }
+}
+`;
+
+const workspaceCorrectionsUncovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
+    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
+    return ok("workspace.correctionSubmit", await services.workspaceCorrections.submitCorrections({
+      ...body,
+      permission: {
+        actorUserId: body.actorUserId,
+        canReadQueue: true,
+        canManageQueue: true,
+        denialReasons: [],
+      },
+    }));
+  }
+}
+`;
+
+const workspaceCorrectionsCovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
+    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok("workspace.correctionSubmit", await services.workspaceCorrections.submitCorrections({
+      ...body,
+      permission,
+    }));
+  }
+}
+`;
+
+const assetDecisionsUncovered = `
+async function routeItotoriApiRequest(request, services) {
+  const assetRoute = parseAssetDecisionMutationRoute(request.pathname);
+  if (request.method === "POST" && assetRoute !== null) {
+    const body = parseAssetDecisionRecordRequest(request.body);
+    return ok("assetDecisions.record", await services.assetDecisions.recordDecision(body));
+  }
+}
+`;
+
+const assetDecisionsCovered = `
+async function routeItotoriApiRequest(request, services) {
+  const assetRoute = parseAssetDecisionMutationRoute(request.pathname);
+  if (request.method === "POST" && assetRoute !== null) {
+    const body = parseAssetDecisionRecordRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.assetDecisionRecord);
+    return ok("assetDecisions.record", await services.assetDecisions.recordDecision(body));
+  }
+}
+`;
+
 describe("SHARED-026 shape-robust API mutation-permission guard", () => {
   it.each([
     { form: "route-table entry", source: routeTableUncovered, method: "importBridge" },
@@ -127,6 +212,21 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
       method: "recordDecision",
     },
     { form: "helper-predicate if", source: helperPredicateUncovered, method: "recordFinding" },
+    {
+      form: "reviewerQueue permission-view route",
+      source: reviewerQueueUncovered,
+      method: "actionSingleItem",
+    },
+    {
+      form: "workspaceCorrections permission-view route",
+      source: workspaceCorrectionsUncovered,
+      method: "submitCorrections",
+    },
+    {
+      form: "assetDecisions write port route",
+      source: assetDecisionsUncovered,
+      method: "recordDecision",
+    },
   ])("FAILS on an uncovered mutating route declared as a $form", ({ source, method }) => {
     const uncovered = findUncoveredProjectWorkflowMutations(source, FILE);
     expect(uncovered).toHaveLength(1);
@@ -138,8 +238,11 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
     { form: "switch on a non-projectRoute discriminant", source: otherSwitchCovered },
     { form: "helper-predicate if", source: helperPredicateCovered },
     { form: "aliased requireApiPermission helper", source: aliasedRequireApiPermissionCovered },
+    { form: "reviewerQueue resolved permission view", source: reviewerQueueCovered },
+    { form: "workspaceCorrections resolved permission view", source: workspaceCorrectionsCovered },
+    { form: "assetDecisions explicit API permission gate", source: assetDecisionsCovered },
   ])(
-    "passes the same $form once a requireApiPermission gate precedes the mutation",
+    "passes the same $form once the matching API permission gate covers the mutation",
     ({ source }) => {
       expect(findUncoveredProjectWorkflowMutations(source, FILE)).toEqual([]);
     },
@@ -150,6 +253,18 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
       async function routeItotoriApiRequest(request, services) {
         if (request.method === "GET" && request.pathname === "/api/projects/status") {
           return ok("projects.status", await services.projectWorkflow.getDashboardStatus());
+        }
+        if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
+          return ok("reviewer.queue", await services.reviewerQueue.loadDashboard());
+        }
+        if (request.method === "GET" && request.pathname === "/api/workspace/corrections") {
+          return ok(
+            "workspace.correctionPreview",
+            await services.workspaceCorrections.loadPreview(),
+          );
+        }
+        if (request.method === "GET" && request.pathname === "/api/assets/decisions") {
+          return ok("assetDecisions.active", await services.assetDecisions.loadActiveDecisions());
         }
       }
     `;
