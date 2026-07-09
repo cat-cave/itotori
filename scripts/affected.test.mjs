@@ -44,7 +44,7 @@ function workspacePackagesByPrefix(prefix) {
 
 function parseJustRecipeBody(justfile, recipeName) {
   const lines = justfile.split(/\r?\n/);
-  const recipeStart = lines.findIndex((line) => line === `${recipeName}:`);
+  const recipeStart = lines.findIndex((line) => line.startsWith(`${recipeName}:`));
   assert.notEqual(recipeStart, -1, `justfile must declare ${recipeName}`);
 
   const body = [];
@@ -255,6 +255,19 @@ test("affected + lanes: the alpha-public-fixture + iteration suites select alpha
     assert.ok(lanes.includes("alpha-proof"), `${p} lane selection includes alpha-proof`);
     assert.ok(!lanes.includes("ci"), `${p} stays fine-grained, not the full ci sentinel`);
   }
+});
+
+test("alpha-proof runs every alpha and iteration sibling Node unit suite", () => {
+  const justfile = readFileSync("justfile", "utf8");
+  const alphaProofBody = parseJustRecipeBody(justfile, "alpha-proof");
+  const unitTestBody = parseJustRecipeBody(justfile, "alpha-iteration-unit-test");
+
+  assert.match(justfile, /^alpha-proof: alpha-iteration-unit-test$/m);
+  assert.match(alphaProofBody, /^\s*pnpm exec vp run alpha:public-fixture$/m);
+  assert.match(
+    unitTestBody,
+    /^\s*node --test suite\/scripts\/alpha-public-fixture\/\*\.test\.mjs suite\/scripts\/itotori-fixture-iteration\/\*\.test\.mjs suite\/scripts\/itotori-iteration-fixture\/\*\.test\.mjs$/m,
+  );
 });
 
 test("affected + lanes: a packages/spec-dag-dashboard diff selects the full ci gate", () => {

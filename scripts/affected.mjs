@@ -111,8 +111,10 @@ export function affectedTasks(changedPaths) {
       path.startsWith("suite/scripts/itotori-fixture-iteration/") ||
       path.startsWith("suite/scripts/itotori-iteration-fixture/")
     ) {
-      // These suites are EXECUTED by the alpha-proof gate (`vp run
-      // alpha:public-fixture`), not by `just check`, so route them there.
+      // alpha-proof runs the focused sibling Node unit suites through
+      // `alpha-iteration-unit-test`, then executes the public-fixture
+      // vertical. Route every source or test change in these directories to
+      // that gate; `just check` does not run these suites.
       add(tasks, "alpha-proof");
     } else if (path.startsWith("suite/scripts/localize-project/")) {
       add(tasks, "localize-project-test");

@@ -124,6 +124,14 @@ test-ratio:
 localize-project-test:
     node --test suite/scripts/localize-project/*.test.mjs
 
+# The alpha public-fixture vertical and both fixture-iteration composers have
+# focused Node unit suites alongside their end-to-end drivers.  Keep those
+# suites in the alpha-proof gate so a change to their pure composition,
+# validation, or linkage logic cannot pass CI solely because the happy-path
+# vertical still completes.
+alpha-iteration-unit-test:
+    node --test suite/scripts/alpha-public-fixture/*.test.mjs suite/scripts/itotori-fixture-iteration/*.test.mjs suite/scripts/itotori-iteration-fixture/*.test.mjs
+
 # UNIV-011: targeted mutation/property coverage for the highest-risk packages.
 # The TS mutation-survivor guard (localization-bridge-schema) rejects a
 # committed invalid fixture per schema/delta/protected-span/permission
@@ -513,7 +521,7 @@ style-guide-fixture-flow-db-strict:
 # on the same public fixture id, source revision, locale branch, and content
 # hashes. Public-fixture-only and deterministic: no DB, no creds, no private
 # corpora, no success-string assertion.
-alpha-proof:
+alpha-proof: alpha-iteration-unit-test
     pnpm exec vp run alpha:public-fixture
     pnpm exec vp run alpha:public-fixture-validate
 
