@@ -44,7 +44,7 @@
       "name": "Default",
       "importPath": "./src/stories/ComparisonPane.stories.tsx",
       "baseline": "data-comparisonpane--default.png",
-      "sha256": "sha256:cccf34619e4682c8eff5f14a56ebdb5fa71bf9b543f0dc47b0a0a989d0f2ffc1"
+      "sha256": "sha256:3e19a733da7712b2d7e72b40cdc70e9eeed40bfb1fe4c813e52b1b0e14a20e74"
     },
     {
       "id": "data-contestantswatch--all-roles",
@@ -172,7 +172,7 @@
       "name": "Viewport Queue",
       "importPath": "./src/stories/Toast.stories.tsx",
       "baseline": "feedback-toast--viewport-queue.png",
-      "sha256": "sha256:c7afd99c52522d92739a03a7e94af6349e63e122c7cd4f62b8df10ecd616b281"
+      "sha256": "sha256:491e3f255c1ce3b4b47828e57a34ddc1f5449f7643a6a5516af84d4de9cd26f0"
     },
     {
       "id": "game-annotationcomposer--default",
@@ -196,7 +196,7 @@
       "name": "Default",
       "importPath": "./src/stories/ScenePlayer.stories.tsx",
       "baseline": "game-sceneplayer--default.png",
-      "sha256": "sha256:1dfd228ee26e631441803a3e07bbc111d2b16ac61f340022fd58856d1f8ebe23"
+      "sha256": "sha256:cc592c4e01b2182e17212f30c9634433a4e6b69caff971da76b994cece9f5b7f"
     },
     {
       "id": "game-sceneplayer--with-annotation",
@@ -204,7 +204,7 @@
       "name": "With Annotation",
       "importPath": "./src/stories/ScenePlayer.stories.tsx",
       "baseline": "game-sceneplayer--with-annotation.png",
-      "sha256": "sha256:6182f1c21c3dfff772379d77115064dee9466bc9d7b0e5eaee86d45c184446d6"
+      "sha256": "sha256:2486e51b27dbd6f60fa42547602aeaa7b2523e99e9286bf078cd76dc820dbff8"
     },
     {
       "id": "layout-panel--default",
@@ -236,7 +236,7 @@
       "name": "Default",
       "importPath": "./src/stories/BiText.stories.tsx",
       "baseline": "localization-bitext--default.png",
-      "sha256": "sha256:0fb5eed83f88c310e0eb57b68d820dd19f5fd186e41b3a778f8ceb5552260fe2"
+      "sha256": "sha256:b0be7258d98117dbb52262870bf282bfe808fa2c7c3b7b3915411e9a41cba9e7"
     },
     {
       "id": "navigation-commandpalette--closed",
