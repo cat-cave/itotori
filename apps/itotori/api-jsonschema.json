@@ -377,6 +377,248 @@
       ],
       "type": "object"
     },
+    "ApiBranchPolicyGlossaryReference": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "glossaryContentHash": {
+          "type": "string"
+        },
+        "glossaryReviewItemCount": {
+          "type": "number"
+        },
+        "glossaryTermCount": {
+          "type": "number"
+        },
+        "referenceId": {
+          "type": "string"
+        },
+        "styleGuideVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updateReason": {
+          "type": "string"
+        },
+        "versionSequence": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "createdAt",
+        "glossaryContentHash",
+        "glossaryReviewItemCount",
+        "glossaryTermCount",
+        "referenceId",
+        "styleGuideVersionId",
+        "updateReason",
+        "versionSequence"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicyPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "style-guide-policy.v0"
+        },
+        "sections": {
+          "$ref": "#/definitions/ApiBranchPolicySections"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "sections"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicyRule": {
+      "additionalProperties": false,
+      "properties": {
+        "guidance": {
+          "type": "string"
+        },
+        "ruleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guidance",
+        "ruleId"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicySections": {
+      "additionalProperties": false,
+      "properties": {
+        "formatting": {
+          "items": {
+            "$ref": "#/definitions/ApiBranchPolicyRule"
+          },
+          "type": "array"
+        },
+        "honorifics": {
+          "items": {
+            "$ref": "#/definitions/ApiBranchPolicyRule"
+          },
+          "type": "array"
+        },
+        "protectedSpans": {
+          "items": {
+            "$ref": "#/definitions/ApiBranchPolicyRule"
+          },
+          "type": "array"
+        },
+        "terminology": {
+          "items": {
+            "$ref": "#/definitions/ApiBranchPolicyRule"
+          },
+          "type": "array"
+        },
+        "tone": {
+          "items": {
+            "$ref": "#/definitions/ApiBranchPolicyRule"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "formatting",
+        "honorifics",
+        "protectedSpans",
+        "terminology",
+        "tone"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicySettingsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "approvedVersion": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/ApiBranchPolicyVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branchReference": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/ApiBranchPolicyGlossaryReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latestVersion": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/ApiBranchPolicyVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/definitions/ApiBranchPolicyPolicy"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.settings.branch-policy.v0"
+        },
+        "sourceRevision": {
+          "$ref": "#/definitions/ApiBranchPolicySourceRevisionReference"
+        },
+        "targetLocale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approvedVersion",
+        "branchReference",
+        "latestVersion",
+        "localeBranchId",
+        "policy",
+        "projectId",
+        "schemaVersion",
+        "sourceRevision",
+        "targetLocale"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicySourceRevisionReference": {
+      "additionalProperties": false,
+      "properties": {
+        "revisionKind": {
+          "type": "string"
+        },
+        "sourceRevisionId": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revisionKind",
+        "sourceRevisionId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ApiBranchPolicyVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "approvedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/definitions/ApiBranchPolicyPolicy"
+        },
+        "status": {
+          "type": "string"
+        },
+        "styleGuideVersionId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "versionSequence": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "approvedAt",
+        "createdAt",
+        "policy",
+        "status",
+        "styleGuideVersionId",
+        "updatedAt",
+        "versionSequence"
+      ],
+      "type": "object"
+    },
     "ApiCandidateAssetsResponse": {
       "additionalProperties": false,
       "properties": {
@@ -1762,6 +2004,37 @@
         "patchResultId",
         "runtimeReportId",
         "status"
+      ],
+      "type": "object"
+    },
+    "ApiSaveBranchPolicySettingsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedPreviousVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/definitions/ApiBranchPolicyPolicy"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "updateReason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expectedPreviousVersionId",
+        "localeBranchId",
+        "policy",
+        "projectId",
+        "updateReason"
       ],
       "type": "object"
     },

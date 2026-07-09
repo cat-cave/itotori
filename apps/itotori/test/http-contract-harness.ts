@@ -411,7 +411,25 @@ const fixtureServices = {
   },
   projectWorkflow: {
     reset: vi.fn(async () => {}),
-    listLocaleBranchIdentities: vi.fn(async () => []),
+    // Ownership oracle used by requireOwnedBranchScope (branch-policy, play, wiki, …).
+    // Must include project-1/locale-1 so READ_MODEL_CASES for settings.branchPolicy.get
+    // return 200 rather than foreign_branch 403.
+    listLocaleBranchIdentities: vi.fn(async (projectId: string) => {
+      const owned: Record<string, string[]> = {
+        "project-1": ["locale-1", "019ed006-0000-7000-8000-0000000000b1"],
+        "project-itotori-040": ["locale-branch-itotori-040"],
+      };
+      return (owned[projectId] ?? []).map((localeBranchId) => ({
+        localeBranchId,
+        projectId,
+        sourceBundleId: `${projectId}:source-bundle`,
+        sourceBundleRevisionId: `${projectId}:source-bundle:rev-1`,
+        sourceLocale: "ja-JP",
+        targetLocale: "en-US",
+        branchName: localeBranchId,
+        status: "active" as const,
+      }));
+    }),
     getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
     getProjectOverview: vi.fn(async () => projectOverviewFixture),
     getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),

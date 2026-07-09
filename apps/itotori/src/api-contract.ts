@@ -636,6 +636,102 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: false,
     }),
+  ApiBranchPolicyRule: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyRule,
+      properties: { ruleId: str, guidance: str },
+      additionalProperties: false,
+    }),
+  ApiBranchPolicySections: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySections,
+      properties: {
+        tone: { type: "array", items: ref("ApiBranchPolicyRule") },
+        terminology: { type: "array", items: ref("ApiBranchPolicyRule") },
+        honorifics: { type: "array", items: ref("ApiBranchPolicyRule") },
+        formatting: { type: "array", items: ref("ApiBranchPolicyRule") },
+        protectedSpans: { type: "array", items: ref("ApiBranchPolicyRule") },
+      },
+      additionalProperties: false,
+    }),
+  ApiBranchPolicyPolicy: (ref) =>
+    object({
+      required: ["schemaVersion", "sections"],
+      properties: {
+        sections: ref("ApiBranchPolicySections"),
+      },
+      additionalProperties: false,
+      schemaVersion: "style-guide-policy.v0",
+    }),
+  ApiBranchPolicySourceRevisionReference: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySourceRevisionReference,
+      properties: {
+        sourceRevisionId: str,
+        revisionKind: str,
+        value: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiBranchPolicyVersion: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyVersion,
+      properties: {
+        styleGuideVersionId: str,
+        status: str,
+        versionSequence: num,
+        createdAt: str,
+        updatedAt: str,
+        approvedAt: nullableStr,
+        policy: ref("ApiBranchPolicyPolicy"),
+      },
+      additionalProperties: false,
+    }),
+  ApiBranchPolicyGlossaryReference: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicyGlossaryReference,
+      properties: {
+        referenceId: str,
+        versionSequence: num,
+        styleGuideVersionId: nullableStr,
+        glossaryContentHash: str,
+        glossaryTermCount: num,
+        glossaryReviewItemCount: num,
+        updateReason: str,
+        createdAt: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiBranchPolicySettingsResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiBranchPolicySettingsResponse,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        targetLocale: str,
+        sourceRevision: ref("ApiBranchPolicySourceRevisionReference"),
+        latestVersion: { oneOf: [ref("ApiBranchPolicyVersion"), { type: "null" }] },
+        approvedVersion: { oneOf: [ref("ApiBranchPolicyVersion"), { type: "null" }] },
+        branchReference: {
+          oneOf: [ref("ApiBranchPolicyGlossaryReference"), { type: "null" }],
+        },
+        policy: ref("ApiBranchPolicyPolicy"),
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.settings.branch-policy.v0",
+    }),
+  ApiSaveBranchPolicySettingsRequest: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveBranchPolicySettingsRequest,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        expectedPreviousVersionId: nullableStr,
+        updateReason: str,
+        policy: ref("ApiBranchPolicyPolicy"),
+      },
+      additionalProperties: false,
+    }),
   ApiConfigureAuthSsoSettingsRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,

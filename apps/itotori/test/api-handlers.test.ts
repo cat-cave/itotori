@@ -3820,6 +3820,20 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "branch policy read",
+          "requiredPermission": "catalog.read",
+          "route": "GET /api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+          "successFixture": "api-handlers.test.ts branch policy read success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "branch policy save",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/projects/project-1/locale-branches/locale-1/settings/branch-policy",
+          "successFixture": "api-handlers.test.ts branch policy save success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "members list",
           "requiredPermission": "auth.members.manage",
           "route": "GET /api/auth/members",

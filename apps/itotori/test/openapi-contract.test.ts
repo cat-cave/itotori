@@ -383,18 +383,18 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 58 routes (no route left un-teethed)", () => {
-    // 58 routes: each has a response body; the mutation + reviewer/workspace
+  it("covers a body for every one of the 60 routes (no route left un-teethed)", () => {
+    // 60 routes: each has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
     // bmk-cockpit contributes two GET read models; play-mark-validated adds
     // the scene coverage GET + POST pair; play-routemap-ui adds routeMap;
-    // play-flag-composer adds flagAnnotation; model-routing settings adds
-    // a GET + POST settings pair.
+    // play-flag-composer adds flagAnnotation; model-routing and branch-policy
+    // settings each add a GET + POST settings pair.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(58);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(60);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });
