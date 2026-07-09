@@ -60,11 +60,12 @@ describe("projects.overview read model", () => {
         limit: 2,
         offset: 0,
       };
-      const [progress, decisions, cost, costDrilldown, benchmarkReports, passRows] =
+      const [progress, decisions, cost, telemetry, costDrilldown, benchmarkReports, passRows] =
         await Promise.all([
           service.getDashboardStatus(),
           service.getDashboardDecisions(project.projectId),
           service.getCostReport(project.projectId),
+          service.getTelemetryTimeseries(project.projectId),
           service.getCostDrilldown(costDrilldownFilter),
           service.getBenchmarkReports(project.projectId),
           passLedger.loadPassesForBranch(actor, project.localeBranchId),
@@ -81,6 +82,7 @@ describe("projects.overview read model", () => {
       expect(overview.progress).toEqual(progress);
       expect(overview.decisions).toEqual(decisions);
       expect(overview.cost).toEqual(cost);
+      expect(overview.telemetry).toEqual(telemetry);
       expect(overview.costDrilldown).toEqual(costDrilldown);
       expect(overview.passLedger).toMatchObject({
         filter: { projectId: project.projectId, localeBranchId: project.localeBranchId },
@@ -273,6 +275,7 @@ describe("projects.overview read model", () => {
         status: statusForProjectB,
         decisions: emptyDecisions(),
         cost: statusForProjectB.cost,
+        telemetry: emptyTelemetryTimeseries(),
         costDrilldown: emptyCostDrilldown(),
         benchmarkReports: [],
         options: { projectId: "project-a" },
@@ -342,6 +345,18 @@ function emptyCostDrilldown(): Parameters<
     },
     rows: [],
   } as unknown as Parameters<typeof composeProjectOverviewReadModel>[0]["costDrilldown"];
+}
+
+function emptyTelemetryTimeseries(): Parameters<
+  typeof composeProjectOverviewReadModel
+>[0]["telemetry"] {
+  return {
+    projectId: "project-b",
+    bucket: "day",
+    rows: [],
+    throughputSeries: [],
+    costPerRunSeries: [],
+  };
 }
 
 function scopedBenchmarkReport(localeBranchId: string): BenchmarkReportV02 {

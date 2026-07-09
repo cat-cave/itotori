@@ -28,6 +28,7 @@ import type { ReactNode } from "react";
 import type { CostDrilldownRow, ProjectCostReport } from "@itotori/db";
 import { Badge, DataTable, Pagination, Panel, ProgressBar, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
+import type { ProjectOverviewReadModel } from "../../project-overview-read-model.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useOffsetPager } from "../use-offset-pager.js";
 import {
@@ -45,10 +46,16 @@ const COST_DRILLDOWN_PAGE_SIZE = 10;
 // so the dashboard does not re-issue `projects.cost`).
 // ---------------------------------------------------------------------------
 
-export function CostDrilldownPanel({ cost }: { cost: ApiCallState<ProjectCostReport> }): ReactNode {
+export function CostDrilldownPanel({
+  cost,
+  overview,
+}: {
+  cost: ApiCallState<ProjectCostReport>;
+  overview?: ApiCallState<ProjectOverviewReadModel> | undefined;
+}): ReactNode {
   return (
     <section className="itotori-cost-panels" aria-label="Model cost">
-      <CostSummaryPanel cost={cost} />
+      <CostSummaryPanel cost={cost} overview={overview} />
       <CostLedgerPanel />
     </section>
   );
@@ -62,7 +69,8 @@ export function CostDrilldownPanel({ cost }: { cost: ApiCallState<ProjectCostRep
  */
 export function CostDrilldown(): ReactNode {
   const cost = useApiQuery("projects.cost", {}, "cost");
-  return <CostDrilldownPanel cost={cost} />;
+  const overview = useApiQuery("projects.overview", {}, "cost:overview-telemetry");
+  return <CostDrilldownPanel cost={cost} overview={overview} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +79,14 @@ export function CostDrilldown(): ReactNode {
 // here so the cost surface is one cohesive panel group.)
 // ---------------------------------------------------------------------------
 
-function CostSummaryPanel({ cost }: { cost: ApiCallState<ProjectCostReport> }): ReactNode {
+function CostSummaryPanel({
+  cost,
+  overview,
+}: {
+  cost: ApiCallState<ProjectCostReport>;
+  overview?: ApiCallState<ProjectOverviewReadModel> | undefined;
+}): ReactNode {
+  const telemetry = overview?.state === "ready" ? overview.data.telemetry : undefined;
   return (
     <Panel
       title="Model cost"
@@ -84,17 +99,24 @@ function CostSummaryPanel({ cost }: { cost: ApiCallState<ProjectCostReport> }): 
         <EmptyState title="Model cost" message="No cost report was returned by the API." />
       )}
       {cost.state === "error" && <ErrorState title="Model cost" error={cost.error} />}
-      {cost.state === "ready" && <CostSummary cost={cost.data} />}
+      {cost.state === "ready" && <CostSummary cost={cost.data} telemetry={telemetry} />}
     </Panel>
   );
 }
 
-function CostSummary({ cost }: { cost: ProjectCostReport }): ReactNode {
+function CostSummary({
+  cost,
+  telemetry,
+}: {
+  cost: ProjectCostReport;
+  telemetry?: ProjectOverviewReadModel["telemetry"] | undefined;
+}): ReactNode {
   const target = INDIE_LOCALIZATION_COST_TARGET_MICROS_USD;
   const spent = cost.billedMicrosUsd;
   const percentage = target <= 0 ? 0 : Math.round((spent / target) * 100);
   const remaining = target - spent;
   const overBudget = remaining < 0;
+  const latestCostPerRun = telemetry?.rows.at(-1)?.costPerRunMicrosUsd;
   return (
     <>
       <div className="itotori-cost-target" aria-label="Indie localization cost target">
@@ -117,7 +139,17 @@ function CostSummary({ cost }: { cost: ProjectCostReport }): ReactNode {
       />
       <div className="itotori-metric-row" aria-label="Cost totals">
         <StatReadout label="Billed" value={formatMicrosUsd(cost.billedMicrosUsd)} mono />
-        <StatReadout label="Runs" value={cost.runCount} />
+        <StatReadout
+          label="Runs"
+          value={cost.runCount}
+          {...(telemetry !== undefined ? { series: telemetry.throughputSeries } : {})}
+        />
+        <StatReadout
+          label="Cost / run"
+          value={latestCostPerRun === undefined ? "—" : formatMicrosUsd(latestCostPerRun)}
+          {...(telemetry !== undefined ? { series: telemetry.costPerRunSeries } : {})}
+          mono
+        />
         <StatReadout label="Zero-cost runs" value={cost.zeroRunCount} />
         <StatReadout
           label="TM avoided"

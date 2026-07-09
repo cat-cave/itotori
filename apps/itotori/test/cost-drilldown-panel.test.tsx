@@ -23,7 +23,7 @@ import "@testing-library/jest-dom/vitest";
 import type { CostDrilldownPage, CostDrilldownRow, ProjectCostReport } from "@itotori/db";
 import { CostDrilldown } from "../src/ui/screens/CostDrilldownPanel.js";
 import { apiJson } from "./msw-handlers.js";
-import { costDrilldownFixture, costReportFixture } from "./api-fixtures.js";
+import { costDrilldownFixture, costReportFixture, projectOverviewFixture } from "./api-fixtures.js";
 
 // The three fixture rows each carry one of the DISTINCT cost states
 // (billed / zero / unknown) — the canonical state-variety seed.
@@ -31,6 +31,7 @@ const STATE_ROWS = costDrilldownFixture.rows;
 
 const server = setupServer(
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
+  http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
   http.get("*/api/projects/cost/drilldown", () =>
     apiJson("projects.costDrilldown", costDrilldownFixture),
   ),
@@ -107,6 +108,15 @@ describe("Overview cost / ZDR drilldown — summary + ledger", () => {
     expect(totals).toHaveTextContent(
       String(costReportFixture.translationMemoryReuse.providerCallAvoidedCount),
     );
+  });
+
+  it("renders telemetry sparklines from the projects.overview ledger timeseries", async () => {
+    render(<CostDrilldown />);
+
+    const totals = await screen.findByLabelText("Cost totals");
+    expect(totals).toHaveTextContent("Cost / run");
+    expect(totals).toHaveTextContent("$0.000640");
+    expect(within(totals).getAllByLabelText("trend")).toHaveLength(2);
   });
 
   it("renders each ledger row's cost state (billed / zero / unknown) + the served pair", async () => {

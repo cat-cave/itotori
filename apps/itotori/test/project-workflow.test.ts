@@ -136,6 +136,7 @@ describe("ItotoriProjectWorkflowService", () => {
         return costReportFixture;
       }),
       getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
+      getProjectTelemetryTimeseries: vi.fn(async () => emptyTelemetryTimeseriesFixture()),
     };
 
     const authorizedService = new ItotoriProjectWorkflowService(
@@ -1160,11 +1161,22 @@ function emptyDrilldownPageFixture(): CostDrilldownPage {
   };
 }
 
+function emptyTelemetryTimeseriesFixture() {
+  return {
+    projectId: "project-test",
+    bucket: "day" as const,
+    rows: [],
+    throughputSeries: [],
+    costPerRunSeries: [],
+  };
+}
+
 function ledgerFixture(): ItotoriModelLedgerRepositoryPort {
   return {
     recordProviderRun: vi.fn(async () => costReportFixture.recentRuns[0]!),
     getProjectCostReport: vi.fn(async () => costReportFixture),
     getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
+    getProjectTelemetryTimeseries: vi.fn(async () => emptyTelemetryTimeseriesFixture()),
   };
 }
 
@@ -1206,6 +1218,7 @@ function driftDetectingLedgerFixture(): ItotoriModelLedgerRepositoryPort {
     }),
     getProjectCostReport: vi.fn(async () => costReportFixture),
     getCostLedgerDrilldown: vi.fn(async () => emptyDrilldownPageFixture()),
+    getProjectTelemetryTimeseries: vi.fn(async () => emptyTelemetryTimeseriesFixture()),
   };
 }
 

@@ -37,6 +37,7 @@ import {
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
+  type ProjectTelemetryTimeseries,
   type QueueHealthReadModel,
   type LoadQueueHealthOptions,
   type MemberInvitationRecord,
@@ -1003,6 +1004,7 @@ async function routeReadOnlyItotoriApiRequest(
         : redactProjectOverviewReadModel(overview, {
             progress: redactProjectDashboardStatus(overview.progress),
             cost: redactProjectCostReport(overview.cost),
+            telemetry: redactProjectTelemetryTimeseries(overview.telemetry),
             costDrilldown: redactCostDrilldownPage(overview.costDrilldown),
           }),
     );
@@ -1495,6 +1497,17 @@ function redactProjectCostReport(cost: ProjectCostReport): ProjectCostReport {
       ...cost.translationMemoryReuse,
       recentEvents: [],
     },
+  };
+}
+
+function redactProjectTelemetryTimeseries(
+  telemetry: ProjectTelemetryTimeseries,
+): ProjectTelemetryTimeseries {
+  return {
+    ...telemetry,
+    rows: [],
+    throughputSeries: [],
+    costPerRunSeries: [],
   };
 }
 

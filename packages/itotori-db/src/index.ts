@@ -215,6 +215,8 @@ export type {
   ItotoriModelLedgerRepositoryPort,
   LedgerJsonRecord,
   ProjectCostReport,
+  ProjectTelemetryTimeseries,
+  ProjectTelemetryTimeseriesBucket,
   PromptPresetLedgerInput,
   ProviderRunCostSummary,
   ProviderRunLedgerInput,

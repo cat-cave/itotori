@@ -14,6 +14,7 @@ import type {
   LocaleBranchIdentity,
   ProjectCostReport,
   ProjectDashboardStatus,
+  ProjectTelemetryTimeseries,
   ProviderRunLedgerInput,
   RuntimeDashboardStatus,
 } from "@itotori/db";
@@ -363,9 +364,10 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         ? { projectId }
         : {}),
     };
-    const [decisions, cost, costDrilldown, benchmarkReports] = await Promise.all([
+    const [decisions, cost, telemetry, costDrilldown, benchmarkReports] = await Promise.all([
       this.getDashboardDecisions(projectId),
       this.getCostReport(projectId),
+      this.getTelemetryTimeseries(projectId),
       this.getCostDrilldown(costDrilldownFilter),
       this.getBenchmarkReports(projectId),
     ]);
@@ -374,6 +376,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       status,
       decisions,
       cost,
+      telemetry,
       costDrilldown,
       benchmarkReports,
       ...(this.passLedger !== undefined ? { passLedgerRepository: this.passLedger } : {}),
@@ -403,6 +406,13 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     // this internal caller. The HTTP handler additionally redacts for
     // unprivileged callers.
     return await this.modelLedger.getCostLedgerDrilldown(this.actor, filter);
+  }
+
+  async getTelemetryTimeseries(projectId?: string): Promise<ProjectTelemetryTimeseries> {
+    if (!this.modelLedger) {
+      return emptyTelemetryTimeseries(projectId ?? "unknown");
+    }
+    return await this.modelLedger.getProjectTelemetryTimeseries(this.actor, projectId);
   }
 
   async getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]> {
@@ -1280,6 +1290,16 @@ function emptyCostReport(projectId: string): ProjectCostReport {
     })),
     recentRuns: [],
     translationMemoryReuse: emptyTranslationMemoryReuseCostReport(),
+  };
+}
+
+function emptyTelemetryTimeseries(projectId: string): ProjectTelemetryTimeseries {
+  return {
+    projectId,
+    bucket: "day",
+    rows: [],
+    throughputSeries: [],
+    costPerRunSeries: [],
   };
 }
 

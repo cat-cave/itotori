@@ -197,6 +197,62 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
+  it("builds provider-run throughput and cost-per-run timeseries from the persisted ledger", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-series-day-1a", "billed", 1200, {
+          startedAt: "2026-06-16T10:15:00.000Z",
+          completedAt: "2026-06-16T10:15:01.000Z",
+        }),
+      );
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-series-day-2a", "billed", 600, {
+          startedAt: "2026-06-17T10:15:00.000Z",
+          completedAt: "2026-06-17T10:15:01.000Z",
+        }),
+      );
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-series-day-2b", "zero", 0, {
+          startedAt: "2026-06-17T11:15:00.000Z",
+          completedAt: "2026-06-17T11:15:01.000Z",
+        }),
+      );
+
+      const timeseries = await ledger.getProjectTelemetryTimeseries(localActor, "project-test");
+
+      expect(timeseries).toEqual({
+        projectId: "project-test",
+        bucket: "day",
+        rows: [
+          {
+            bucketStart: "2026-06-16T00:00:00.000Z",
+            runCount: 1,
+            billedMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+            costPerRunMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+          },
+          {
+            bucketStart: "2026-06-17T00:00:00.000Z",
+            runCount: 2,
+            billedMicrosUsd: 600, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+            costPerRunMicrosUsd: 300, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+          },
+        ],
+        throughputSeries: [1, 2],
+        costPerRunSeries: [1200, 300],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects ledger writes attempting to revive a legacy cost-kind value", async () => {
     // ITOTORI-225 — every layer (typed input, validation, SQL CHECK) must
     // refuse a write that tries to insert 'unknown'/'provider_estimate'/

@@ -1333,6 +1333,26 @@ export const projectOverviewFixture: ProjectOverviewReadModel = {
   progress: dashboardStatusFixture,
   decisions: dashboardDecisionsFixture,
   cost: costReportFixture,
+  telemetry: {
+    projectId: dashboardStatusFixture.projectId,
+    bucket: "day",
+    rows: [
+      {
+        bucketStart: "2026-06-16T00:00:00.000Z",
+        runCount: 1,
+        billedMicrosUsd: 900,
+        costPerRunMicrosUsd: 900,
+      },
+      {
+        bucketStart: "2026-06-17T00:00:00.000Z",
+        runCount: 2,
+        billedMicrosUsd: 1280,
+        costPerRunMicrosUsd: 640,
+      },
+    ],
+    throughputSeries: [1, 2],
+    costPerRunSeries: [900, 640],
+  },
   costDrilldown: costDrilldownFixture,
   passLedger: {
     filter: {

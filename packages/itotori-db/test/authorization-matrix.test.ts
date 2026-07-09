@@ -159,6 +159,12 @@ const repositoryPermissionGateMatrix = [
     "model-ledger-repository.test.ts cost drilldown coverage",
     (repo) => repo.getCostLedgerDrilldown(deniedActor, { projectId: "project-denied" }),
   ),
+  modelLedgerGate(
+    "getProjectTelemetryTimeseries",
+    "catalogRead",
+    "model-ledger-repository.test.ts telemetry timeseries coverage",
+    (repo) => repo.getProjectTelemetryTimeseries(deniedActor, "project-denied"),
+  ),
   queueGate(
     "appendOutboxEvent",
     "queueManage",
@@ -1318,6 +1324,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriModelLedgerRepository.getCostLedgerDrilldown",
           "requiredPermission": "catalog.read",
           "successFixture": "model-ledger-repository.test.ts cost drilldown coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriModelLedgerRepository.getProjectTelemetryTimeseries",
+          "requiredPermission": "catalog.read",
+          "successFixture": "model-ledger-repository.test.ts telemetry timeseries coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

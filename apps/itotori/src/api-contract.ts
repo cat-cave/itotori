@@ -415,6 +415,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         progress: ref("ProjectDashboardStatus"),
         decisions: ref("DashboardDecisionReadModel"),
         cost: ref("ProjectCostReport"),
+        telemetry: obj,
         costDrilldown: ref("CostDrilldownPage"),
         passLedger: obj,
         benchmarkHeadline: obj,

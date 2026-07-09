@@ -1687,6 +1687,9 @@
           },
           "schemaVersion": {
             "const": "projects.overview.v0.1"
+          },
+          "telemetry": {
+            "type": "object"
           }
         },
         "required": [
@@ -1699,7 +1702,8 @@
           "passLedger",
           "progress",
           "projectId",
-          "schemaVersion"
+          "schemaVersion",
+          "telemetry"
         ],
         "type": "object"
       },

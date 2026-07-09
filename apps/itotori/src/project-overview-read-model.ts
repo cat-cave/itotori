@@ -7,6 +7,7 @@ import type {
   LocalizationPassLedgerRecord,
   ProjectCostReport,
   ProjectDashboardStatus,
+  ProjectTelemetryTimeseries,
 } from "@itotori/db";
 import type { AuthorizationActor } from "@itotori/db";
 
@@ -83,6 +84,7 @@ export type ProjectOverviewReadModel = {
   progress: ProjectDashboardStatus;
   decisions: DashboardDecisionReadModel;
   cost: ProjectCostReport;
+  telemetry: ProjectTelemetryTimeseries;
   costDrilldown: CostDrilldownPage;
   passLedger: ProjectOverviewPassLedgerPage;
   benchmarkHeadline: ProjectOverviewBenchmarkHeadline;
@@ -153,6 +155,7 @@ export type ComposeProjectOverviewInput = {
   status: ProjectDashboardStatus;
   decisions: DashboardDecisionReadModel;
   cost: ProjectCostReport;
+  telemetry: ProjectTelemetryTimeseries;
   costDrilldown: CostDrilldownPage;
   benchmarkReports: readonly BenchmarkReportSummary[];
   passLedgerRepository?: ItotoriLocalizationPassLedgerRepositoryPort;
@@ -192,6 +195,7 @@ export async function composeProjectOverviewReadModel(
     progress: input.status,
     decisions: input.decisions,
     cost: input.cost,
+    telemetry: input.telemetry,
     costDrilldown: input.costDrilldown,
     passLedger,
     benchmarkHeadline: {
@@ -246,6 +250,7 @@ export function redactProjectOverviewReadModel(
   redactions: {
     progress: ProjectDashboardStatus;
     cost: ProjectCostReport;
+    telemetry: ProjectTelemetryTimeseries;
     costDrilldown: CostDrilldownPage;
   },
 ): ProjectOverviewReadModel {
@@ -253,6 +258,7 @@ export function redactProjectOverviewReadModel(
     ...overview,
     progress: redactions.progress,
     cost: redactions.cost,
+    telemetry: redactions.telemetry,
     costDrilldown: redactions.costDrilldown,
     passLedger: {
       ...overview.passLedger,

@@ -34,6 +34,7 @@ export function DashboardScreen(): ReactNode {
   const status = useApiQuery("projects.status", {}, "status");
   const decisions = useApiQuery("projects.decisions", {}, "decisions");
   const cost = useApiQuery("projects.cost", {}, "cost");
+  const overview = useApiQuery("projects.overview", {}, "dashboard:overview-telemetry");
 
   return (
     <main className="itotori-shell" data-screen="dashboard" data-state={projects.state}>
@@ -58,7 +59,7 @@ export function DashboardScreen(): ReactNode {
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />
         <ReviewerQueuePanel status={status} />
-        <CostDrilldownPanel cost={cost} />
+        <CostDrilldownPanel cost={cost} overview={overview} />
         <QaFindingsPanel decisions={decisions} />
       </section>
     </main>

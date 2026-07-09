@@ -206,6 +206,21 @@ export type ProjectCostReport = {
   translationMemoryReuse: TranslationMemoryReuseCostReport;
 };
 
+export type ProjectTelemetryTimeseriesBucket = {
+  bucketStart: string;
+  runCount: number;
+  billedMicrosUsd: number;
+  costPerRunMicrosUsd: number;
+};
+
+export type ProjectTelemetryTimeseries = {
+  projectId: string;
+  bucket: "day";
+  rows: ProjectTelemetryTimeseriesBucket[];
+  throughputSeries: number[];
+  costPerRunSeries: number[];
+};
+
 /**
  * ITOTORI-230 — per-(modelId, providerId) counts split by whether the
  * captured routing posture had `zdr = true` on the wire. The query
@@ -379,6 +394,16 @@ export interface ItotoriModelLedgerRepositoryPort {
     actor: AuthorizationActor,
     filter?: CostDrilldownFilter,
   ): Promise<CostDrilldownPage>;
+  /**
+   * ovw-telemetry-sparklines — day-bucketed provider-run throughput and
+   * cost-per-run telemetry sourced from provider_runs + cost_ledger_entries.
+   * Uses the same privileged ledger-read permission as the cost report because
+   * it exposes model-call volume and spend trends.
+   */
+  getProjectTelemetryTimeseries(
+    actor: AuthorizationActor,
+    projectId?: string,
+  ): Promise<ProjectTelemetryTimeseries>;
   /**
    * ITOTORI-230 — count provider runs per (modelId, providerId) over
    * the window, split by whether the captured routing posture has
@@ -624,6 +649,42 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         nextOffset: hasMore ? offset + limit : null,
       },
       rows,
+    };
+  }
+
+  async getProjectTelemetryTimeseries(
+    actor: AuthorizationActor,
+    projectId?: string,
+  ): Promise<ProjectTelemetryTimeseries> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const targetProjectId = projectId ?? (await this.latestProjectId());
+    const result = await this.db.execute(sql`
+      select
+        date_trunc('day', pr.started_at) as bucket_start,
+        count(*)::int as run_count,
+        coalesce(sum(cle.amount_micros_usd), 0)::text as billed_micros_usd
+      from ${providerRuns} pr
+      left join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
+      where pr.project_id = ${targetProjectId}
+      group by bucket_start
+      order by bucket_start asc
+    `);
+    const rows = (result.rows as Array<Record<string, unknown>>).map((row) => {
+      const runCount = Number(row.run_count ?? 0);
+      const billedMicrosUsd = Number(row.billed_micros_usd ?? 0);
+      return {
+        bucketStart: timestampToIso(row.bucket_start),
+        runCount,
+        billedMicrosUsd,
+        costPerRunMicrosUsd: runCount === 0 ? 0 : billedMicrosUsd / runCount,
+      };
+    });
+    return {
+      projectId: targetProjectId,
+      bucket: "day",
+      rows,
+      throughputSeries: rows.map((row) => row.runCount),
+      costPerRunSeries: rows.map((row) => row.costPerRunMicrosUsd),
     };
   }
 
@@ -1513,8 +1574,7 @@ function drilldownRowFromRow(row: Record<string, unknown>): CostDrilldownRow {
     systemId: nullableString(row.system_id),
     taskKind: String(row.task_kind),
     status: String(row.status),
-    startedAt:
-      row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+    startedAt: timestampToIso(row.started_at),
     cost: drilldownCostFromRow(row),
     provider: {
       providerId: String(row.provider_id),
@@ -1535,8 +1595,7 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     providerRunId: String(row.provider_run_id),
     taskKind: String(row.task_kind),
     status: String(row.status),
-    startedAt:
-      row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+    startedAt: timestampToIso(row.started_at),
     structuredOutputMode: String(row.structured_output_mode),
     retryCount: Number(row.retry_count ?? 0),
     errorClasses: stringArray(row.error_classes),
@@ -1563,6 +1622,10 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     totalTokens: nullableNumber(row.total_tokens),
     routingPosture: recordOrEmpty(row.routing_posture),
   };
+}
+
+function timestampToIso(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 }
 
 function translationMemoryReuseFromRow(

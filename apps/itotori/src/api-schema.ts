@@ -28,6 +28,7 @@ import type {
   JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
+  ProjectTelemetryTimeseries,
   QueueHealthReadModel,
   MemberInvitationRecord,
   MemberRecord,
@@ -298,6 +299,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "progress",
     "decisions",
     "cost",
+    "telemetry",
     "costDrilldown",
     "passLedger",
     "benchmarkHeadline",
@@ -4842,12 +4844,63 @@ export function assertProjectOverviewReadModel(
   assertProjectDashboardStatus(model.progress, `${label}.progress`);
   assertDashboardDecisionReadModel(model.decisions, `${label}.decisions`);
   assertProjectCostReport(model.cost, `${label}.cost`);
+  assertProjectTelemetryTimeseries(model.telemetry, `${label}.telemetry`);
   assertProjectCostDrilldownResponse(model.costDrilldown, `${label}.costDrilldown`);
   assertProjectOverviewPassLedgerPage(model.passLedger, `${label}.passLedger`);
   assertProjectOverviewBenchmarkHeadline(model.benchmarkHeadline, `${label}.benchmarkHeadline`);
   // ovw-launch-pass-action — the server-derived steer capability the Overview
   // launch-pass action gates itself on.
   assertBoolean(model.canSteer, `${label}.canSteer`);
+}
+
+function assertProjectTelemetryTimeseries(
+  value: unknown,
+  label: string,
+): asserts value is ProjectTelemetryTimeseries {
+  const telemetry = asStrictRecord(value, label, [
+    "projectId",
+    "bucket",
+    "rows",
+    "throughputSeries",
+    "costPerRunSeries",
+  ]);
+  assertString(telemetry.projectId, `${label}.projectId`);
+  assertLiteral(telemetry.bucket, "day", `${label}.bucket`);
+  const rows = asArray(telemetry.rows, `${label}.rows`);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
+      "bucketStart",
+      "runCount",
+      "billedMicrosUsd",
+      "costPerRunMicrosUsd",
+    ]);
+    assertDateLike(row.bucketStart, `${label}.rows[${index}].bucketStart`);
+    assertNonNegativeInteger(row.runCount, `${label}.rows[${index}].runCount`);
+    assertNonNegativeInteger(row.billedMicrosUsd, `${label}.rows[${index}].billedMicrosUsd`);
+    assertNonNegativeNumber(row.costPerRunMicrosUsd, `${label}.rows[${index}].costPerRunMicrosUsd`);
+  }
+  const throughputSeries = assertNumberSeries(
+    telemetry.throughputSeries,
+    `${label}.throughputSeries`,
+  );
+  const costPerRunSeries = assertNumberSeries(
+    telemetry.costPerRunSeries,
+    `${label}.costPerRunSeries`,
+  );
+  if (throughputSeries.length !== rows.length) {
+    throw new Error(`${label}.throughputSeries length must match rows length`);
+  }
+  if (costPerRunSeries.length !== rows.length) {
+    throw new Error(`${label}.costPerRunSeries length must match rows length`);
+  }
+}
+
+function assertNumberSeries(value: unknown, label: string): unknown[] {
+  const series = asArray(value, label);
+  for (const [index, item] of series.entries()) {
+    assertNonNegativeNumber(item, `${label}[${index}]`);
+  }
+  return series;
 }
 
 function assertProjectOverviewPassLedgerPage(
