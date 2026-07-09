@@ -674,6 +674,56 @@
         ],
         "type": "object"
       },
+      "ApiPermissionSetRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissionSetId": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accountId",
+          "name",
+          "permissionSetId",
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "ApiPermissionSetsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "permissionSets": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPermissionSetRecord"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.permission-sets.v0"
+          }
+        },
+        "required": [
+          "accountId",
+          "permissionSets",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "ApiPlayFlagAnnotationRequest": {
         "additionalProperties": true,
         "properties": {
@@ -1078,6 +1128,67 @@
           "schemaVersion",
           "updatedAt",
           "updatedByUserId"
+        ],
+        "type": "object"
+      },
+      "ApiPrincipalPermissionSetGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "ApiPrincipalPermissionSetGrantResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "granted",
+              "revoked"
+            ]
+          },
+          "permissionSetId": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.permission-set-grant.v0"
+          },
+          "updatedMember": {
+            "$ref": "#/components/schemas/ApiMemberRecord"
+          }
+        },
+        "required": [
+          "action",
+          "permissionSetId",
+          "principalId",
+          "schemaVersion",
+          "updatedMember"
         ],
         "type": "object"
       },
@@ -3063,6 +3174,269 @@
         },
         "summary": "Remove a member and revoke account-scoped permission-set grants.",
         "x-itotoriRouteId": "auth.members.remove"
+      }
+    },
+    "/api/auth/permission-sets": {
+      "get": {
+        "operationId": "authPermissionSetsList",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPermissionSetsListResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "List account permission sets available for member grants.",
+        "x-itotoriRouteId": "auth.permissionSets.list"
+      }
+    },
+    "/api/auth/principals/{principalId}/permission-sets/{permissionSetId}/grant": {
+      "post": {
+        "operationId": "authPermissionSetsGrant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "permissionSetId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPrincipalPermissionSetGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPrincipalPermissionSetGrantResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Grant a permission set to an account principal.",
+        "x-itotoriRouteId": "auth.permissionSets.grant"
+      }
+    },
+    "/api/auth/principals/{principalId}/permission-sets/{permissionSetId}/revoke": {
+      "post": {
+        "operationId": "authPermissionSetsRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "permissionSetId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPrincipalPermissionSetGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPrincipalPermissionSetGrantResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Revoke a permission set from an account principal.",
+        "x-itotoriRouteId": "auth.permissionSets.revoke"
       }
     },
     "/api/auth/principals/{principalId}/sessions": {

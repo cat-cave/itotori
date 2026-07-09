@@ -35,6 +35,8 @@ import {
   createDatabaseContext,
   databaseUrlFromEnv,
   localOperatorPrincipalId,
+  listAccountPermissionSets,
+  loadPermissionSetAccountId,
   migrate,
   type ItotoriCatalogExactExternalIdLinkerPort,
   type ItotoriCatalogFuzzyCandidateGeneratorPort,
@@ -70,10 +72,12 @@ import {
   type ActorIdentityRecord,
   type MemberInvitationRecord,
   type MemberRecord,
+  type PermissionSetRecord,
 } from "@itotori/db";
 import type {
   ApiAcceptMemberInvitationRequest,
   ApiInviteMemberRequest,
+  ApiPrincipalPermissionSetGrantRequest,
   ApiRemoveMemberRequest,
   ApiRevokeAuthSessionRequest,
 } from "../api-schema.js";
@@ -251,6 +255,19 @@ export type ItotoriApplicationServices = {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authPermissions: {
+    listPermissionSets(accountId: string): Promise<PermissionSetRecord[]>;
+    grantPermissionSet(input: {
+      principalId: string;
+      permissionSetId: string;
+      request: ApiPrincipalPermissionSetGrantRequest;
+    }): Promise<MemberRecord>;
+    revokePermissionSet(input: {
+      principalId: string;
+      permissionSetId: string;
+      request: ApiPrincipalPermissionSetGrantRequest;
+    }): Promise<MemberRecord>;
   };
   authSessions: {
     listPrincipalSessions(principalId: string): Promise<AuthSessionAdminRecord[]>;
@@ -750,6 +767,50 @@ export async function withDatabaseItotoriServices<T>(
           });
         },
       },
+      authPermissions: {
+        listPermissionSets: (accountId) =>
+          listAccountPermissionSets(context.db, localUserActor, accountId),
+        grantPermissionSet: async ({ principalId, permissionSetId, request }) => {
+          const { reason, requestId } = request;
+          await principalRepository.grantPermissionSet(localUserActor, {
+            actorPrincipalId: await resolveActorPrincipalId(),
+            targetPrincipalId: principalId,
+            permissionSetId,
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+          const accountId = await loadPermissionSetAccountId(
+            context.db,
+            localUserActor,
+            permissionSetId,
+          );
+          return loadMemberByPrincipalId({
+            accountId,
+            principalId,
+            listMembers: (id) => authMemberManagementRepository.listMembers(localUserActor, id),
+          });
+        },
+        revokePermissionSet: async ({ principalId, permissionSetId, request }) => {
+          const { reason, requestId } = request;
+          const accountId = await loadPermissionSetAccountId(
+            context.db,
+            localUserActor,
+            permissionSetId,
+          );
+          await principalRepository.revokePermissionSet(localUserActor, {
+            actorPrincipalId: await resolveActorPrincipalId(),
+            targetPrincipalId: principalId,
+            permissionSetId,
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+          return loadMemberByPrincipalId({
+            accountId,
+            principalId,
+            listMembers: (id) => authMemberManagementRepository.listMembers(localUserActor, id),
+          });
+        },
+      },
       authSessions: {
         listPrincipalSessions: async (principalId) =>
           authSessionService.listPrincipalSessions(localUserActor, {
@@ -821,4 +882,17 @@ async function resolveDatabaseServiceActorPrincipalId(
     throw new Error(`authenticated actor ${actor.userId} has no principal identity`);
   }
   return identity.principalId;
+}
+
+async function loadMemberByPrincipalId(input: {
+  accountId: string;
+  principalId: string;
+  listMembers(accountId: string): Promise<readonly MemberRecord[]>;
+}): Promise<MemberRecord> {
+  const members = await input.listMembers(input.accountId);
+  const member = members.find((entry) => entry.principalId === input.principalId);
+  if (member === undefined) {
+    throw new Error(`principal ${input.principalId} is not a member of account ${input.accountId}`);
+  }
+  return member;
 }

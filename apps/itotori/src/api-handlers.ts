@@ -44,6 +44,7 @@ import {
   type ActorIdentityRecord,
   type MemberInvitationRecord,
   type MemberRecord,
+  type PermissionSetRecord,
   type RuntimeDashboardStatus,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
@@ -74,6 +75,7 @@ import {
   parseAcceptMemberInvitationRequest,
   parseInviteMemberRequest,
   parseRemoveMemberRequest,
+  parsePrincipalPermissionSetGrantRequest,
   parseRevokeAuthSessionRequest,
   parseLaunchPassRequest,
   parsePlaySetSceneCoverageRequest,
@@ -104,6 +106,10 @@ import {
   type ApiMemberRecord,
   type ApiMemberResponse,
   type ApiMembersListResponse,
+  type ApiPermissionSetRecord,
+  type ApiPermissionSetsListResponse,
+  type ApiPrincipalPermissionSetGrantRequest,
+  type ApiPrincipalPermissionSetGrantResponse,
   type ApiRemoveMemberRequest,
   type ApiRemoveMemberResponse,
   type ApiAuthSessionRecord,
@@ -185,6 +191,9 @@ export const apiMutationPermissionGates = {
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
   membersAccept: apiMutationGate("members accept", "authMembersManage"),
   membersRemove: apiMutationGate("members remove", "authMembersManage"),
+  permissionSetsList: apiMutationGate("permission sets list", "authPermissionsManage"),
+  permissionSetsGrant: apiMutationGate("permission set grant", "authPermissionsManage"),
+  permissionSetsRevoke: apiMutationGate("permission set revoke", "authPermissionsManage"),
   sessionsList: apiMutationGate("sessions list", "authSessionsManage"),
   sessionsRevoke: apiMutationGate("sessions revoke", "authSessionsManage"),
   setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
@@ -293,6 +302,9 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  authPermissions: {
+    listPermissionSets(accountId: string): Promise<readonly PermissionSetRecord[]>;
+  };
   authIdentity: {
     loadIdentity(): Promise<ActorIdentityRecord>;
   };
@@ -349,6 +361,19 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authPermissions: {
+    listPermissionSets(accountId: string): Promise<readonly PermissionSetRecord[]>;
+    grantPermissionSet(input: {
+      principalId: string;
+      permissionSetId: string;
+      request: ApiPrincipalPermissionSetGrantRequest;
+    }): Promise<MemberRecord>;
+    revokePermissionSet(input: {
+      principalId: string;
+      permissionSetId: string;
+      request: ApiPrincipalPermissionSetGrantRequest;
+    }): Promise<MemberRecord>;
   };
   authSessions: {
     listPrincipalSessions(principalId: string): Promise<readonly AuthSessionAdminRecord[]>;
@@ -429,6 +454,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
+    },
+    authPermissions: {
+      listPermissionSets: (accountId) => services.authPermissions.listPermissionSets(accountId),
     },
     authIdentity: {
       loadIdentity: () => services.authIdentity.loadIdentity(),
@@ -523,6 +551,12 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     request.pathname === "/api/auth/members/invitations" ||
     parseAuthMemberAcceptRoute(request.pathname) !== null ||
     parseAuthMemberRemoveRoute(request.pathname) !== null
+  ) {
+    return methodNotAllowed(["POST"]);
+  }
+  if (
+    parseAuthPermissionSetGrantRoute(request.pathname) !== null ||
+    parseAuthPermissionSetRevokeRoute(request.pathname) !== null
   ) {
     return methodNotAllowed(["POST"]);
   }
@@ -756,10 +790,52 @@ async function routeItotoriApiRequest(
     );
   }
 
+  const permissionSetGrantRoute = parseAuthPermissionSetGrantRoute(request.pathname);
+  if (request.method === "POST" && permissionSetGrantRoute !== null) {
+    const body = parsePrincipalPermissionSetGrantRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.permissionSetsGrant);
+    const updatedMember = await services.authPermissions.grantPermissionSet({
+      principalId: permissionSetGrantRoute.principalId,
+      permissionSetId: permissionSetGrantRoute.permissionSetId,
+      request: body,
+    });
+    return ok(
+      "auth.permissionSets.grant",
+      principalPermissionSetGrantResponseBody({
+        principalId: permissionSetGrantRoute.principalId,
+        permissionSetId: permissionSetGrantRoute.permissionSetId,
+        action: "granted",
+        updatedMember: memberRecordBody(updatedMember),
+      }),
+    );
+  }
+
+  const permissionSetRevokeRoute = parseAuthPermissionSetRevokeRoute(request.pathname);
+  if (request.method === "POST" && permissionSetRevokeRoute !== null) {
+    const body = parsePrincipalPermissionSetGrantRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.permissionSetsRevoke);
+    const updatedMember = await services.authPermissions.revokePermissionSet({
+      principalId: permissionSetRevokeRoute.principalId,
+      permissionSetId: permissionSetRevokeRoute.permissionSetId,
+      request: body,
+    });
+    return ok(
+      "auth.permissionSets.revoke",
+      principalPermissionSetGrantResponseBody({
+        principalId: permissionSetRevokeRoute.principalId,
+        permissionSetId: permissionSetRevokeRoute.permissionSetId,
+        action: "revoked",
+        updatedMember: memberRecordBody(updatedMember),
+      }),
+    );
+  }
+
   if (
     request.pathname === "/api/auth/members/invitations" ||
     memberAcceptRoute !== null ||
-    memberRemoveRoute !== null
+    memberRemoveRoute !== null ||
+    permissionSetGrantRoute !== null ||
+    permissionSetRevokeRoute !== null
   ) {
     return methodNotAllowed(["POST"]);
   }
@@ -1024,6 +1100,41 @@ function removeMemberResponseBody(input: ApiMemberRecord): ApiRemoveMemberRespon
   return { schemaVersion: "itotori.auth.member-removed.v0", removedMember: input };
 }
 
+function permissionSetRecordBody(input: PermissionSetRecord): ApiPermissionSetRecord {
+  return {
+    permissionSetId: input.permissionSetId,
+    accountId: input.accountId,
+    name: input.name,
+    permissions: [...input.permissions],
+  };
+}
+
+function permissionSetsListResponseBody(input: {
+  accountId: string;
+  permissionSets: readonly PermissionSetRecord[];
+}): ApiPermissionSetsListResponse {
+  return {
+    schemaVersion: "itotori.auth.permission-sets.v0",
+    accountId: input.accountId,
+    permissionSets: input.permissionSets.map(permissionSetRecordBody),
+  };
+}
+
+function principalPermissionSetGrantResponseBody(input: {
+  principalId: string;
+  permissionSetId: string;
+  action: "granted" | "revoked";
+  updatedMember: ApiMemberRecord;
+}): ApiPrincipalPermissionSetGrantResponse {
+  return {
+    schemaVersion: "itotori.auth.permission-set-grant.v0",
+    principalId: input.principalId,
+    permissionSetId: input.permissionSetId,
+    action: input.action,
+    updatedMember: input.updatedMember,
+  };
+}
+
 /**
  * ITOTORI-043 — the READ-ONLY (query) route handler. It receives ONLY the
  * read-only dependency surface, so it is structurally unable to reach a
@@ -1142,6 +1253,18 @@ async function routeReadOnlyItotoriApiRequest(
       accountId,
       members: (await services.authMembers.listMembers(accountId)).map(memberRecordBody),
     });
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/auth/permission-sets") {
+    const accountId = parseAuthPermissionSetsListQuery(request.search);
+    await requireApiPermission(services, apiMutationPermissionGates.permissionSetsList);
+    return ok(
+      "auth.permissionSets.list",
+      permissionSetsListResponseBody({
+        accountId,
+        permissionSets: await services.authPermissions.listPermissionSets(accountId),
+      }),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/auth/identity") {
@@ -1428,6 +1551,7 @@ async function routeReadOnlyItotoriApiRequest(
     bmkCockpitRoute !== null ||
     request.pathname === "/api/jobs/run-table" ||
     request.pathname === "/api/auth/members" ||
+    request.pathname === "/api/auth/permission-sets" ||
     request.pathname === "/api/auth/identity" ||
     request.pathname === "/api/auth/capabilities" ||
     request.pathname === "/api/hello/status" ||
@@ -1798,6 +1922,16 @@ function parseAuthMembersListQuery(search = ""): string {
   return accountId;
 }
 
+function parseAuthPermissionSetsListQuery(search = ""): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["accountId"], "auth permission sets list");
+  const accountId = params.get("accountId");
+  if (accountId === null || accountId.length === 0) {
+    throw new ApiValidationError("accountId is required");
+  }
+  return accountId;
+}
+
 function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOptions {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
@@ -2108,6 +2242,48 @@ function parseAuthSessionRevokeRoute(
     return null;
   }
   return { principalId: decodeURIComponent(match[1]), sessionId: decodeURIComponent(match[2]) };
+}
+
+function parseAuthPermissionSetGrantRoute(
+  pathname: string,
+): { principalId: string; permissionSetId: string } | null {
+  const match = /^\/api\/auth\/principals\/([^/]+)\/permission-sets\/([^/]+)\/grant$/u.exec(
+    pathname,
+  );
+  if (
+    match === null ||
+    match[1] === undefined ||
+    match[1].length === 0 ||
+    match[2] === undefined ||
+    match[2].length === 0
+  ) {
+    return null;
+  }
+  return {
+    principalId: decodeURIComponent(match[1]),
+    permissionSetId: decodeURIComponent(match[2]),
+  };
+}
+
+function parseAuthPermissionSetRevokeRoute(
+  pathname: string,
+): { principalId: string; permissionSetId: string } | null {
+  const match = /^\/api\/auth\/principals\/([^/]+)\/permission-sets\/([^/]+)\/revoke$/u.exec(
+    pathname,
+  );
+  if (
+    match === null ||
+    match[1] === undefined ||
+    match[1].length === 0 ||
+    match[2] === undefined ||
+    match[2].length === 0
+  ) {
+    return null;
+  }
+  return {
+    principalId: decodeURIComponent(match[1]),
+    permissionSetId: decodeURIComponent(match[2]),
+  };
 }
 
 /**
@@ -2684,6 +2860,18 @@ function ok(routeId: "auth.members.list", body: ApiMembersListResponse): ApiJson
 function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
+function ok(
+  routeId: "auth.permissionSets.list",
+  body: ApiPermissionSetsListResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "auth.permissionSets.grant",
+  body: ApiPrincipalPermissionSetGrantResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "auth.permissionSets.revoke",
+  body: ApiPrincipalPermissionSetGrantResponse,
+): ApiJsonResponse;
 function ok(routeId: "auth.sessions.list", body: ApiAuthSessionsListResponse): ApiJsonResponse;
 function ok(routeId: "auth.sessions.revoke", body: ApiRevokeAuthSessionResponse): ApiJsonResponse;
 function ok(routeId: "auth.identity", body: ApiAuthIdentityResponse): ApiJsonResponse;

@@ -253,6 +253,60 @@ export class ItotoriPrincipalRepositoryError extends Error {
   }
 }
 
+export async function listAccountPermissionSets(
+  db: ItotoriDatabase,
+  actor: AuthorizationActor,
+  accountId: string,
+): Promise<PermissionSetRecord[]> {
+  await requirePermission(db, actor, permissionValues.authPermissionsManage);
+  const sets = await db
+    .select({
+      permissionSetId: authPermissionSets.permissionSetId,
+      accountId: authPermissionSets.accountId,
+      name: authPermissionSets.name,
+    })
+    .from(authPermissionSets)
+    .where(eq(authPermissionSets.accountId, accountId));
+
+  const records: PermissionSetRecord[] = [];
+  for (const set of sets) {
+    const permissions = await db
+      .select({ permission: authPermissionSetPermissions.permission })
+      .from(authPermissionSetPermissions)
+      .where(eq(authPermissionSetPermissions.permissionSetId, set.permissionSetId));
+    records.push({
+      permissionSetId: set.permissionSetId,
+      accountId: set.accountId,
+      name: set.name,
+      permissions: permissions.map((row) => row.permission).sort(),
+    });
+  }
+
+  return records.sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) ||
+      left.permissionSetId.localeCompare(right.permissionSetId),
+  );
+}
+
+export async function loadPermissionSetAccountId(
+  db: ItotoriDatabase,
+  actor: AuthorizationActor,
+  permissionSetId: string,
+): Promise<string> {
+  await requirePermission(db, actor, permissionValues.authPermissionsManage);
+  const rows = await db
+    .select({ accountId: authPermissionSets.accountId })
+    .from(authPermissionSets)
+    .where(eq(authPermissionSets.permissionSetId, permissionSetId))
+    .limit(1);
+  const accountId = rows[0]?.accountId;
+  if (accountId === undefined) {
+    throw new ItotoriPrincipalRepositoryError(`permission set ${permissionSetId} does not exist`);
+  }
+  return accountId;
+}
+
 /** The transaction handle drizzle passes to `db.transaction(async (tx) => …)`. */
 type PrincipalTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
 

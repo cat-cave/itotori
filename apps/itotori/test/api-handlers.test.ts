@@ -156,6 +156,10 @@ type ApiMutationService =
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
     }
+  | {
+      surface: "authPermissions";
+      method: "listPermissionSets" | "grantPermissionSet" | "revokePermissionSet";
+    }
   | { surface: "authSessions"; method: "listPrincipalSessions" | "revokePrincipalSession" };
 
 type ApiMutationRoute = {
@@ -314,6 +318,27 @@ const apiMutationPermissionMatrix = [
     "membersRemove",
     post("/api/auth/members/membership-api/remove", removeMemberRequestFixture),
     { surface: "authMembers", method: "removeMember" },
+  ),
+  apiGateForService(
+    "permissionSetsList",
+    { method: "GET", pathname: "/api/auth/permission-sets", search: "?accountId=account-local" },
+    { surface: "authPermissions", method: "listPermissionSets" },
+  ),
+  apiGateForService(
+    "permissionSetsGrant",
+    post(
+      "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-director/grant",
+      { reason: null, requestId: null },
+    ),
+    { surface: "authPermissions", method: "grantPermissionSet" },
+  ),
+  apiGateForService(
+    "permissionSetsRevoke",
+    post(
+      "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+      { reason: null, requestId: null },
+    ),
+    { surface: "authPermissions", method: "revokePermissionSet" },
   ),
   apiGateForService(
     "sessionsList",
@@ -2941,6 +2966,69 @@ describe("Itotori API handlers", () => {
     );
   });
 
+  it("routes permission-set list, grant, and revoke through the permission editor handlers", async () => {
+    const services = serviceFixture();
+
+    const list = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/auth/permission-sets", search: "?accountId=account-local" },
+      services,
+    );
+    const grant = await handleItotoriApiRequest(
+      post(
+        "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-director/grant",
+        { reason: null, requestId: null },
+      ),
+      services,
+    );
+    const revoke = await handleItotoriApiRequest(
+      post(
+        "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+        { reason: null, requestId: null },
+      ),
+      services,
+    );
+
+    expect(list.body).toMatchObject({
+      schemaVersion: "itotori.auth.permission-sets.v0",
+      accountId: "account-local",
+      permissionSets: [
+        { permissionSetId: "permission-set-account-local-reviewer", name: "Reviewer" },
+        { permissionSetId: "permission-set-account-local-director", name: "Director" },
+      ],
+    });
+    expect(grant.body).toMatchObject({
+      schemaVersion: "itotori.auth.permission-set-grant.v0",
+      principalId: "principal-api-member",
+      permissionSetId: "permission-set-account-local-director",
+      action: "granted",
+      updatedMember: {
+        principalId: "principal-api-member",
+        permissionSetIds: [
+          "permission-set-account-local-director",
+          "permission-set-account-local-reviewer",
+        ],
+      },
+    });
+    expect(revoke.body).toMatchObject({
+      schemaVersion: "itotori.auth.permission-set-grant.v0",
+      principalId: "principal-api-member",
+      permissionSetId: "permission-set-account-local-reviewer",
+      action: "revoked",
+      updatedMember: { principalId: "principal-api-member", permissionSetIds: [] },
+    });
+    expect(services.authPermissions.listPermissionSets).toHaveBeenCalledWith("account-local");
+    expect(services.authPermissions.grantPermissionSet).toHaveBeenCalledWith({
+      principalId: "principal-api-member",
+      permissionSetId: "permission-set-account-local-director",
+      request: { reason: null, requestId: null },
+    });
+    expect(services.authPermissions.revokePermissionSet).toHaveBeenCalledWith({
+      principalId: "principal-api-member",
+      permissionSetId: "permission-set-account-local-reviewer",
+      request: { reason: null, requestId: null },
+    });
+  });
+
   it("routes principal session inspection and revocation through typed auth session handlers", async () => {
     const services = serviceFixture();
 
@@ -3535,6 +3623,27 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "permission sets list",
+          "requiredPermission": "auth.permissions.manage",
+          "route": "GET /api/auth/permission-sets",
+          "successFixture": "api-handlers.test.ts permission sets list success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "permission set grant",
+          "requiredPermission": "auth.permissions.manage",
+          "route": "POST /api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-director/grant",
+          "successFixture": "api-handlers.test.ts permission set grant success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "permission set revoke",
+          "requiredPermission": "auth.permissions.manage",
+          "route": "POST /api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+          "successFixture": "api-handlers.test.ts permission set revoke success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "sessions list",
           "requiredPermission": "auth.sessions.manage",
           "route": "GET /api/auth/principals/principal-api-member/sessions",
@@ -3975,6 +4084,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   }
   if (service.surface === "authMembers") {
     return services.authMembers[service.method];
+  }
+  if (service.surface === "authPermissions") {
+    return services.authPermissions[service.method];
   }
   if (service.surface === "authSessions") {
     return services.authSessions[service.method];
@@ -4592,6 +4704,48 @@ function serviceFixture(): ItotoriApiServices {
         email: "member@example.test",
         displayName: "API Member",
         permissionSetIds: ["permission-set-account-local-reviewer"],
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    authPermissions: {
+      listPermissionSets: vi.fn(async (accountId: string) => [
+        {
+          permissionSetId: "permission-set-account-local-reviewer",
+          accountId,
+          name: "Reviewer",
+          permissions: [
+            permissionValues.draftWrite,
+            permissionValues.queueManage,
+            permissionValues.queueRead,
+          ],
+        },
+        {
+          permissionSetId: "permission-set-account-local-director",
+          accountId,
+          name: "Director",
+          permissions: [permissionValues.patchExport, permissionValues.projectImport],
+        },
+      ]),
+      grantPermissionSet: vi.fn(async ({ principalId, permissionSetId }) => ({
+        membershipId: "membership-api",
+        accountId: "account-local",
+        userId: "user-api-member",
+        principalId,
+        email: "member@example.test",
+        displayName: "API Member",
+        permissionSetIds: ["permission-set-account-local-reviewer", permissionSetId].sort(),
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+      revokePermissionSet: vi.fn(async ({ principalId, permissionSetId }) => ({
+        membershipId: "membership-api",
+        accountId: "account-local",
+        userId: "user-api-member",
+        principalId,
+        email: "member@example.test",
+        displayName: "API Member",
+        permissionSetIds: ["permission-set-account-local-reviewer"].filter(
+          (id) => id !== permissionSetId,
+        ),
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },

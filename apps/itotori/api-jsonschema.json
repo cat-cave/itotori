@@ -675,6 +675,56 @@
       ],
       "type": "object"
     },
+    "ApiPermissionSetRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "permissionSetId": {
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accountId",
+        "name",
+        "permissionSetId",
+        "permissions"
+      ],
+      "type": "object"
+    },
+    "ApiPermissionSetsListResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "permissionSets": {
+          "items": {
+            "$ref": "#/definitions/ApiPermissionSetRecord"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.permission-sets.v0"
+        }
+      },
+      "required": [
+        "accountId",
+        "permissionSets",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ApiPlayFlagAnnotationRequest": {
       "additionalProperties": true,
       "properties": {
@@ -1079,6 +1129,67 @@
         "schemaVersion",
         "updatedAt",
         "updatedByUserId"
+      ],
+      "type": "object"
+    },
+    "ApiPrincipalPermissionSetGrantRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reason",
+        "requestId"
+      ],
+      "type": "object"
+    },
+    "ApiPrincipalPermissionSetGrantResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "granted",
+            "revoked"
+          ]
+        },
+        "permissionSetId": {
+          "type": "string"
+        },
+        "principalId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.permission-set-grant.v0"
+        },
+        "updatedMember": {
+          "$ref": "#/definitions/ApiMemberRecord"
+        }
+      },
+      "required": [
+        "action",
+        "permissionSetId",
+        "principalId",
+        "schemaVersion",
+        "updatedMember"
       ],
       "type": "object"
     },

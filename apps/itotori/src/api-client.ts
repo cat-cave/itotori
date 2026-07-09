@@ -85,6 +85,9 @@ import type {
   ApiMemberInvitationResponse,
   ApiMemberResponse,
   ApiMembersListResponse,
+  ApiPermissionSetsListResponse,
+  ApiPrincipalPermissionSetGrantRequest,
+  ApiPrincipalPermissionSetGrantResponse,
   ApiRemoveMemberRequest,
   ApiRemoveMemberResponse,
   ApiAuthSessionsListResponse,
@@ -300,6 +303,20 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRemoveMemberResponse;
     pathParams: { membershipId: string };
     request: ApiRemoveMemberRequest;
+  };
+  "auth.permissionSets.list": {
+    response: ApiPermissionSetsListResponse;
+    collectionKey: "permissionSets";
+  };
+  "auth.permissionSets.grant": {
+    response: ApiPrincipalPermissionSetGrantResponse;
+    pathParams: { principalId: string; permissionSetId: string };
+    request: ApiPrincipalPermissionSetGrantRequest;
+  };
+  "auth.permissionSets.revoke": {
+    response: ApiPrincipalPermissionSetGrantResponse;
+    pathParams: { principalId: string; permissionSetId: string };
+    request: ApiPrincipalPermissionSetGrantRequest;
   };
   "auth.sessions.list": {
     response: ApiAuthSessionsListResponse;

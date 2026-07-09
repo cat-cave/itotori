@@ -707,6 +707,48 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.auth.member-removed.v0",
     }),
+  ApiPermissionSetRecord: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
+      properties: {
+        permissionSetId: str,
+        accountId: str,
+        name: str,
+        permissions: { type: "array", items: str },
+      },
+      additionalProperties: false,
+    }),
+  ApiPermissionSetsListResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
+      properties: {
+        accountId: str,
+        permissionSets: { type: "array", items: ref("ApiPermissionSetRecord") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.permission-sets.v0",
+    }),
+  ApiPrincipalPermissionSetGrantRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
+      properties: {
+        reason: { oneOf: [str, { type: "null" }] },
+        requestId: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiPrincipalPermissionSetGrantResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
+      properties: {
+        principalId: str,
+        permissionSetId: str,
+        action: { enum: ["granted", "revoked"] },
+        updatedMember: ref("ApiMemberRecord"),
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.permission-set-grant.v0",
+    }),
   ApiAuthIdentityAccount: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityAccount,

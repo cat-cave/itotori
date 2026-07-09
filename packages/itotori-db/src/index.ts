@@ -959,6 +959,8 @@ export {
   authPermissionsManagePermission,
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
+  listAccountPermissionSets,
+  loadPermissionSetAccountId,
 } from "./repositories/principal-repository.js";
 export {
   createOpaqueSessionId,

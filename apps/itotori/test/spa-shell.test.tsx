@@ -256,3 +256,95 @@ describe("SPA shell — localization workspace", () => {
     expect(await screen.findByText("Submitted 1 correction(s).")).toBeInTheDocument();
   });
 });
+
+describe("SPA shell — members", () => {
+  it("lists members and grants a permission set through the typed permission editor API", async () => {
+    let directorGranted = false;
+    const grantRequests: unknown[] = [];
+    server.use(
+      http.get("*/api/auth/members", () =>
+        apiJson("auth.members.list", {
+          schemaVersion: "itotori.auth.members.v0",
+          accountId: "account-local",
+          members: [
+            {
+              membershipId: "membership-api",
+              accountId: "account-local",
+              userId: "user-api-member",
+              principalId: "principal-api-member",
+              email: "member@example.test",
+              displayName: "API Member",
+              permissionSetIds: directorGranted
+                ? ["permission-set-account-local-director", "permission-set-account-local-reviewer"]
+                : ["permission-set-account-local-reviewer"],
+              createdAt: "2026-07-08T00:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+      http.get("*/api/auth/permission-sets", () =>
+        apiJson("auth.permissionSets.list", {
+          schemaVersion: "itotori.auth.permission-sets.v0",
+          accountId: "account-local",
+          permissionSets: [
+            {
+              permissionSetId: "permission-set-account-local-reviewer",
+              accountId: "account-local",
+              name: "Reviewer",
+              permissions: ["queue.read", "queue.manage"],
+            },
+            {
+              permissionSetId: "permission-set-account-local-director",
+              accountId: "account-local",
+              name: "Director",
+              permissions: ["project.import", "patch.export"],
+            },
+          ],
+        }),
+      ),
+      http.post(
+        "*/api/auth/principals/:principalId/permission-sets/:permissionSetId/grant",
+        async ({ params, request }) => {
+          grantRequests.push(await request.json());
+          directorGranted = true;
+          return apiJson("auth.permissionSets.grant", {
+            schemaVersion: "itotori.auth.permission-set-grant.v0",
+            principalId: String(params.principalId),
+            permissionSetId: String(params.permissionSetId),
+            action: "granted",
+            updatedMember: {
+              membershipId: "membership-api",
+              accountId: "account-local",
+              userId: "user-api-member",
+              principalId: String(params.principalId),
+              email: "member@example.test",
+              displayName: "API Member",
+              permissionSetIds: [
+                "permission-set-account-local-director",
+                "permission-set-account-local-reviewer",
+              ],
+              createdAt: "2026-07-08T00:00:00.000Z",
+            },
+          });
+        },
+      ),
+    );
+
+    render(<App location={{ pathname: "/members", search: "" }} />);
+
+    expect(await screen.findByText("API Member")).toBeInTheDocument();
+    const reviewer = await screen.findByLabelText("Revoke Reviewer for API Member");
+    expect(reviewer).toBeChecked();
+
+    const director = await screen.findByLabelText("Grant Director for API Member");
+    expect(director).not.toBeChecked();
+    fireEvent.click(director);
+
+    await waitFor(() => {
+      expect(grantRequests).toEqual([{ reason: null, requestId: null }]);
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Revoke Director for API Member")).toBeChecked();
+    });
+  });
+});

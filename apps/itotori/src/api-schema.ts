@@ -192,6 +192,9 @@ export type ItotoriApiRouteId =
   | "auth.members.invite"
   | "auth.members.accept"
   | "auth.members.remove"
+  | "auth.permissionSets.list"
+  | "auth.permissionSets.grant"
+  | "auth.permissionSets.revoke"
   | "auth.sessions.list"
   | "auth.sessions.revoke"
   | "auth.identity"
@@ -390,6 +393,16 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiMembersListResponse: ["schemaVersion", "accountId", "members"],
   ApiRemoveMemberRequest: ["reason", "requestId"],
   ApiRemoveMemberResponse: ["schemaVersion", "removedMember"],
+  ApiPermissionSetRecord: ["permissionSetId", "accountId", "name", "permissions"],
+  ApiPermissionSetsListResponse: ["schemaVersion", "accountId", "permissionSets"],
+  ApiPrincipalPermissionSetGrantRequest: ["reason", "requestId"],
+  ApiPrincipalPermissionSetGrantResponse: [
+    "schemaVersion",
+    "principalId",
+    "permissionSetId",
+    "action",
+    "updatedMember",
+  ],
   ApiAuthSessionRecord: [
     "sessionId",
     "principalId",
@@ -885,6 +898,32 @@ export type ApiRemoveMemberResponse = {
   removedMember: ApiMemberRecord;
 };
 
+export type ApiPermissionSetRecord = {
+  permissionSetId: string;
+  accountId: string;
+  name: string;
+  permissions: string[];
+};
+
+export type ApiPermissionSetsListResponse = {
+  schemaVersion: "itotori.auth.permission-sets.v0";
+  accountId: string;
+  permissionSets: ApiPermissionSetRecord[];
+};
+
+export type ApiPrincipalPermissionSetGrantRequest = {
+  reason: string | null;
+  requestId: string | null;
+};
+
+export type ApiPrincipalPermissionSetGrantResponse = {
+  schemaVersion: "itotori.auth.permission-set-grant.v0";
+  principalId: string;
+  permissionSetId: string;
+  action: "granted" | "revoked";
+  updatedMember: ApiMemberRecord;
+};
+
 /**
  * ovw-launch-pass-action — request body for the launch-pass mutation. The
  * Overview action wires through the typed client. The body carries the locale
@@ -1131,6 +1170,8 @@ export type ItotoriApiResponseBody =
   | ApiMemberResponse
   | ApiMembersListResponse
   | ApiRemoveMemberResponse
+  | ApiPermissionSetsListResponse
+  | ApiPrincipalPermissionSetGrantResponse
   | ApiAuthSessionsListResponse
   | ApiRevokeAuthSessionResponse
   | ApiAuthIdentityResponse
@@ -1328,6 +1369,21 @@ export function parseRemoveMemberRequest(body: unknown): ApiRemoveMemberRequest 
     );
     assertNullableString(request.reason, "ApiRemoveMemberRequest.reason");
     assertNullableString(request.requestId, "ApiRemoveMemberRequest.requestId");
+    return { reason: request.reason, requestId: request.requestId };
+  });
+}
+
+export function parsePrincipalPermissionSetGrantRequest(
+  body: unknown,
+): ApiPrincipalPermissionSetGrantRequest {
+  return parseRequest("ApiPrincipalPermissionSetGrantRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPrincipalPermissionSetGrantRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantRequest,
+    );
+    assertNullableString(request.reason, "ApiPrincipalPermissionSetGrantRequest.reason");
+    assertNullableString(request.requestId, "ApiPrincipalPermissionSetGrantRequest.requestId");
     return { reason: request.reason, requestId: request.requestId };
   });
 }
@@ -1608,6 +1664,13 @@ export function assertItotoriApiResponse(
       return;
     case "auth.members.remove":
       assertRemoveMemberResponse(value);
+      return;
+    case "auth.permissionSets.list":
+      assertPermissionSetsListResponse(value);
+      return;
+    case "auth.permissionSets.grant":
+    case "auth.permissionSets.revoke":
+      assertPrincipalPermissionSetGrantResponse(value);
       return;
     case "auth.sessions.list":
       assertAuthSessionsListResponse(value);
@@ -5582,6 +5645,58 @@ function assertMembersListResponse(value: unknown): asserts value is ApiMembersL
   }
 }
 
+function assertPermissionSetsListResponse(
+  value: unknown,
+): asserts value is ApiPermissionSetsListResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPermissionSetsListResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetsListResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.permission-sets.v0",
+    "ApiPermissionSetsListResponse.schemaVersion",
+  );
+  assertString(response.accountId, "ApiPermissionSetsListResponse.accountId");
+  const permissionSets = asArray(
+    response.permissionSets,
+    "ApiPermissionSetsListResponse.permissionSets",
+  );
+  for (const [index, permissionSet] of permissionSets.entries()) {
+    assertPermissionSetRecord(
+      permissionSet,
+      `ApiPermissionSetsListResponse.permissionSets[${index}]`,
+    );
+  }
+}
+
+function assertPrincipalPermissionSetGrantResponse(
+  value: unknown,
+): asserts value is ApiPrincipalPermissionSetGrantResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPrincipalPermissionSetGrantResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPrincipalPermissionSetGrantResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.permission-set-grant.v0",
+    "ApiPrincipalPermissionSetGrantResponse.schemaVersion",
+  );
+  assertString(response.principalId, "ApiPrincipalPermissionSetGrantResponse.principalId");
+  assertString(response.permissionSetId, "ApiPrincipalPermissionSetGrantResponse.permissionSetId");
+  assertEnum(
+    response.action,
+    ["granted", "revoked"] as const,
+    "ApiPrincipalPermissionSetGrantResponse.action",
+  );
+  assertMemberRecord(
+    response.updatedMember,
+    "ApiPrincipalPermissionSetGrantResponse.updatedMember",
+  );
+}
+
 function assertAuthSessionsListResponse(
   value: unknown,
 ): asserts value is ApiAuthSessionsListResponse {
@@ -5717,6 +5832,21 @@ function assertMemberRecord(value: unknown, label: string): asserts value is Api
   assertString(member.displayName, `${label}.displayName`);
   assertStringArray(member.permissionSetIds, `${label}.permissionSetIds`);
   assertDateLike(member.createdAt, `${label}.createdAt`);
+}
+
+function assertPermissionSetRecord(
+  value: unknown,
+  label: string,
+): asserts value is ApiPermissionSetRecord {
+  const permissionSet = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPermissionSetRecord,
+  );
+  assertString(permissionSet.permissionSetId, `${label}.permissionSetId`);
+  assertString(permissionSet.accountId, `${label}.accountId`);
+  assertString(permissionSet.name, `${label}.name`);
+  assertStringArray(permissionSet.permissions, `${label}.permissions`);
 }
 
 function assertAuthSessionRecord(
