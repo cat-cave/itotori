@@ -2383,6 +2383,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthBillingSeatRepository.loadSeatUsage",
+          "requiredPermission": "auth.members.manage",
+          "successFixture": "auth-billing-seat-repository.test.ts load seat usage coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuthSessionService.listPrincipalSessions",
           "requiredPermission": "auth.sessions.manage",
           "successFixture": "auth-session-service.test.ts list principal sessions coverage",
