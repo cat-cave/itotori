@@ -26,6 +26,12 @@ import { useApiQuery } from "./use-api-resource.js";
 import { formatMicrosUsd } from "./format.js";
 import { RedactionToggle } from "./redaction-governor.js";
 import { ShellCommandPalette } from "./command-palette.js";
+import {
+  ProjectBranchSwitcher,
+  resolveEffectiveSelection,
+  serverSelectionFromStatus,
+} from "./project-branch-switcher.js";
+import { NO_SHELL_SELECTION, ShellSelectionProvider, useShellSelection } from "./shell-selection.js";
 import type { AppLocation } from "./App.js";
 
 // ---------------------------------------------------------------------------
@@ -204,7 +210,13 @@ function ZdrPostureValue({ read }: { read: ZdrPostureRead }): ReactNode {
 // OWN read, so one failed read degrades only its cell (never the whole bar).
 // ---------------------------------------------------------------------------
 
-function ProjectCell({ status }: { status: ApiCallState<ProjectDashboardStatus> }): ReactNode {
+function ProjectCell({
+  status,
+  name,
+}: {
+  status: ApiCallState<ProjectDashboardStatus>;
+  name: string | null;
+}): ReactNode {
   return (
     <div className="itotori-shell-frame__stat" data-shell-stat="project">
       <span className="itotori-shell-frame__stat-label">Project</span>
@@ -215,14 +227,19 @@ function ProjectCell({ status }: { status: ApiCallState<ProjectDashboardStatus> 
         {status.state === "error" && (
           <span className="itotori-shell-frame__unavailable">unavailable</span>
         )}
-        {status.state === "ready" && <span data-project-name>{status.data.name}</span>}
+        {status.state === "ready" && <span data-project-name>{name ?? "unavailable"}</span>}
       </span>
     </div>
   );
 }
 
-function BranchCell({ status }: { status: ApiCallState<ProjectDashboardStatus> }): ReactNode {
-  const branch = status.state === "ready" ? selectedBranch(status.data) : null;
+function BranchCell({
+  status,
+  targetLocale,
+}: {
+  status: ApiCallState<ProjectDashboardStatus>;
+  targetLocale: string | null;
+}): ReactNode {
   return (
     <div className="itotori-shell-frame__stat" data-shell-stat="branch">
       <span className="itotori-shell-frame__stat-label">Branch</span>
@@ -234,9 +251,7 @@ function BranchCell({ status }: { status: ApiCallState<ProjectDashboardStatus> }
           <span className="itotori-shell-frame__unavailable">unavailable</span>
         )}
         {status.state === "ready" && (
-          <span data-branch-locale={branch?.targetLocale ?? ""}>
-            {branch?.targetLocale ?? "none selected"}
-          </span>
+          <span data-branch-locale={targetLocale ?? ""}>{targetLocale ?? "none selected"}</span>
         )}
       </span>
     </div>
@@ -245,11 +260,13 @@ function BranchCell({ status }: { status: ApiCallState<ProjectDashboardStatus> }
 
 function SourceToBranchCell({
   status,
+  sourceLocale,
+  branchTargetLocale,
 }: {
   status: ApiCallState<ProjectDashboardStatus>;
+  sourceLocale: string | null;
+  branchTargetLocale: string | null;
 }): ReactNode {
-  const branch = status.state === "ready" ? selectedBranch(status.data) : null;
-  const source = status.state === "ready" ? status.data.sourceLocale : null;
   return (
     <div className="itotori-shell-frame__stat" data-shell-stat="source-to-branch">
       <span className="itotori-shell-frame__stat-label">Source → Branch</span>
@@ -262,7 +279,7 @@ function SourceToBranchCell({
         )}
         {status.state === "ready" && (
           <span data-source-to-branch>
-            {source} → {branch?.targetLocale ?? "—"}
+            {sourceLocale ?? "—"} → {branchTargetLocale ?? "—"}
           </span>
         )}
       </span>
@@ -289,33 +306,34 @@ function LiveCostCell({ cost }: { cost: ApiCallState<ProjectCostReport> }): Reac
   );
 }
 
-function selectedBranch(
-  status: ProjectDashboardStatus,
-): { localeBranchId: string; targetLocale: string } | null {
-  const id = status.selectedLocaleBranchId;
-  if (id === null) {
-    return null;
-  }
-  const match = status.localeBranches.find((branch) => branch.localeBranchId === id);
-  if (match === undefined) {
-    return null;
-  }
-  return { localeBranchId: match.localeBranchId, targetLocale: match.targetLocale };
-}
-
 // ---------------------------------------------------------------------------
 // ShellStatusBar — the persistent status bar. Renders the four read-model
 // facts (project+branch, source->branch, ZDR posture, live cost), each cell
 // settling independently. The bar's overall phase is the worst of its reads
 // so a test / observer can read the frame posture at a glance.
+//
+// The Project / Branch / Source cells render the EFFECTIVE selection (server
+// selection reconciled with the shell switcher's client override) so picking
+// a project / locale branch in the switcher updates the chrome — the same
+// client-state model the hi-fi studio store uses. The loading / error phase
+// of those cells is still driven by the `projects.status` read (the project
+// context read), so a failed read degrades only those cells.
 // ---------------------------------------------------------------------------
+
+type EffectiveContext = {
+  projectName: string | null;
+  sourceLocale: string | null;
+  branchTargetLocale: string | null;
+};
 
 function ShellStatusBar({
   status,
   cost,
+  effective,
 }: {
   status: ApiCallState<ProjectDashboardStatus>;
   cost: ApiCallState<ProjectCostReport>;
+  effective: EffectiveContext;
 }): ReactNode {
   const phase = statusBarPhase(status, cost);
   return (
@@ -325,9 +343,13 @@ function ShellStatusBar({
       aria-label="Shell status bar"
       data-shell-status={phase}
     >
-      <ProjectCell status={status} />
-      <BranchCell status={status} />
-      <SourceToBranchCell status={status} />
+      <ProjectCell status={status} name={effective.projectName} />
+      <BranchCell status={status} targetLocale={effective.branchTargetLocale} />
+      <SourceToBranchCell
+        status={status}
+        sourceLocale={effective.sourceLocale}
+        branchTargetLocale={effective.branchTargetLocale}
+      />
       <ZdrPostureCell cost={cost} />
       <LiveCostCell cost={cost} />
     </div>
@@ -348,8 +370,13 @@ function statusBarPhase(
 }
 
 // ---------------------------------------------------------------------------
-// ShellFrame — the public frame. Issues the two status-bar reads THROUGH the
-// typed client and renders nav + status bar + the routed screen inside.
+// ShellFrame — the public frame. Issues the status-bar reads THROUGH the
+// typed client (`projects.status` + `projects.cost`) and, for the switcher +
+// the effective-selection resolution, `projects.list` (each project carries
+// its locale branches, so the switcher + the status bar resolve the effective
+// project / branch from the one reachable hierarchy). Renders nav + status
+// bar + the routed screen inside, wrapped in the shell selection provider the
+// switcher drives.
 // ---------------------------------------------------------------------------
 
 export function ShellFrame({
@@ -361,18 +388,74 @@ export function ShellFrame({
   navigate?: (path: string) => void;
   children: ReactNode;
 }): ReactNode {
+  return (
+    <ShellSelectionProvider>
+      <ShellFrameInner location={location} navigate={navigate}>
+        {children}
+      </ShellFrameInner>
+    </ShellSelectionProvider>
+  );
+}
+
+function ShellFrameInner({
+  location,
+  navigate,
+  children,
+}: {
+  location: AppLocation;
+  navigate: (path: string) => void;
+  children: ReactNode;
+}): ReactNode {
   const status = useApiQuery("projects.status", {}, "shell-frame:status");
   const cost = useApiQuery("projects.cost", {}, "shell-frame:cost");
+  const list = useApiQuery("projects.list", {}, "shell-frame:projects");
+  const shellSel = useShellSelection();
+
+  const serverSelection = serverSelectionFromStatus(
+    status.state === "ready" ? status.data : null,
+  );
+  const effectiveSelection = resolveEffectiveSelection(
+    serverSelection,
+    shellSel?.override ?? NO_SHELL_SELECTION,
+  );
+
+  // Resolve the effective project (name + source locale + branches) from the
+  // `projects.list` hierarchy; fall back to the active `projects.status` row
+  // when the list has not settled yet AND the effective project IS the active
+  // project (the no-override default — so the bar renders the server values
+  // immediately, before the list read resolves).
+  const listProjects = list.state === "ready" ? list.data.projects : [];
+  const statusProject = status.state === "ready" ? status.data : null;
+  const effectiveProject: ProjectDashboardStatus | null =
+    effectiveSelection.projectId === null
+      ? null
+      : (listProjects.find((project) => project.projectId === effectiveSelection.projectId) ??
+          (statusProject !== null && statusProject.projectId === effectiveSelection.projectId
+            ? statusProject
+            : null));
+  const effectiveBranch =
+    effectiveSelection.localeBranchId === null
+      ? null
+      : (effectiveProject?.localeBranches.find(
+          (branch) => branch.localeBranchId === effectiveSelection.localeBranchId,
+        ) ?? null);
+  const effective: EffectiveContext = {
+    projectName: effectiveProject?.name ?? null,
+    sourceLocale: effectiveProject?.sourceLocale ?? null,
+    branchTargetLocale: effectiveBranch?.targetLocale ?? null,
+  };
+
   return (
     <div className="itotori-shell-frame" data-shell-frame="true">
       <header className="itotori-shell-frame__chrome">
         <ShellNav location={location} navigate={navigate} />
         <div className="itotori-shell-toolbar" data-shell-toolbar="true">
+          <ProjectBranchSwitcher serverSelection={serverSelection} />
           <ShellCommandPalette navigate={navigate} />
           <RedactionToggle />
         </div>
       </header>
-      <ShellStatusBar status={status} cost={cost} />
+      <ShellStatusBar status={status} cost={cost} effective={effective} />
       <div className="itotori-shell-frame__content">{children}</div>
     </div>
   );

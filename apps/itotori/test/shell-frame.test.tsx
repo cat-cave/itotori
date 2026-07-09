@@ -40,6 +40,12 @@ import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 const server = setupServer(
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
+  // shell-project-branch-switcher — the switcher mounted in the toolbar +
+  // the status bar's effective-selection resolution read the project hierarchy
+  // through `projects.list` (each project carries its locale branches).
+  http.get("*/api/projects", () =>
+    apiJson("projects.list", { projects: [dashboardStatusFixture] }),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
