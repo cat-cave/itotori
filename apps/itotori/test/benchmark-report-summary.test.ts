@@ -73,6 +73,36 @@ describe("summarizeBenchmarkReportMetadata", () => {
     ]);
   });
 
+  it("counts a dangling evaluation finding id as a false positive", () => {
+    const report = {
+      findingRecords: [{ findingId: "f1", seededDefectId: "s1" }],
+      seededDefectOracle: [{ seededDefectId: "s1", matchedFindingIds: ["f1"] }],
+      qaAgentEvaluations: [
+        {
+          qaAgentId: "agent-a",
+          qaAgentVersion: "1.0.0",
+          evaluatedSystemId: "sys",
+          findingIds: ["f1", "missing-finding"],
+          metrics: {
+            seededPrecision: 0.5,
+            seededRecall: 1,
+            f1: 2 / 3,
+            findingsEmitted: 2,
+            scorableFindings: 2,
+          },
+        },
+      ],
+    } as unknown as BenchmarkReportV02;
+
+    expect(summarizeQaAgents(report)).toEqual([
+      expect.objectContaining({
+        truePositives: 1,
+        falsePositives: 1,
+        falseNegatives: 0,
+      }),
+    ]);
+  });
+
   // ITOTORI-027 — the harness excludes unscorable findings from the FP count
   // (`evaluateQaAgents`: `else if (recorded.unscorable !== true) { ... push FP ... }`).
   // `buildLlmQaFinding` persists `unscorable: true` on the finding record,

@@ -57,10 +57,11 @@ export function summarizeBenchmarkReportMetadata(
  * report's oracle + finding records:
  *   - truePositives  : the agent's findings that matched a seeded defect
  *   - falsePositives : the agent's findings on an un-seeded location that
- *                      COULD be scored against the oracle (eligible). Findings
- *                      stamped `unscorable: true` by the harness are EXCLUDED
- *                      from the false-positive count — same exclusion the
- *                      in-memory harness applies (`recorded.unscorable !== true`
+ *                      COULD be scored against the oracle (eligible), plus a
+ *                      referenced finding id that is absent from the report.
+ *                      Findings stamped `unscorable: true` by the harness are
+ *                      EXCLUDED from the false-positive count — same exclusion
+ *                      the in-memory harness applies (`recorded.unscorable !== true`
  *                      before counting the unit as a FP).
  *   - falseNegatives : seeded defects no finding of the agent covered
  * This mirrors the harness's location-based matching (a finding carries
@@ -80,6 +81,10 @@ export function summarizeQaAgents(report: BenchmarkReportV02): BenchmarkQaAgentS
     for (const findingId of evaluation.findingIds) {
       const finding = findingById.get(findingId);
       if (finding === undefined) {
+        // A persisted evaluation must not silently erase a referenced finding
+        // that is absent from this report. It cannot substantiate a seeded
+        // defect, so count the data-integrity mismatch as a false positive.
+        falsePositives += 1;
         continue;
       }
       if (finding.seededDefectId !== undefined) {
