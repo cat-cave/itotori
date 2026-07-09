@@ -18,10 +18,7 @@ import { http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import type {
-  ApiPlayRouteMapResponse,
-  ApiPlaySceneCoverageResponse,
-} from "../src/api-schema.js";
+import type { ApiPlayRouteMapResponse, ApiPlaySceneCoverageResponse } from "../src/api-schema.js";
 import { PlayRouteMapScreen } from "../src/ui/screens/PlayRouteMapScreen.js";
 import { apiJson } from "./msw-handlers.js";
 
@@ -197,9 +194,7 @@ describe("play-routemap-ui — PlayRouteMapScreen", () => {
     fireEvent.click(document.querySelector('[data-route-id="route-branch-a"]')!);
 
     await waitFor(() => {
-      expect(
-        document.querySelector('[data-selected-route-key="route-branch-a"]'),
-      ).not.toBeNull();
+      expect(document.querySelector('[data-selected-route-key="route-branch-a"]')).not.toBeNull();
     });
     const detail = document.querySelector('[data-selected-route-key="route-branch-a"]');
     expect(detail?.getAttribute("data-selected-coverage")).toBe("stale");
@@ -237,10 +232,13 @@ describe("play-routemap-ui — PlayRouteMapScreen", () => {
       http.get(
         ROUTE_MAP_PATH,
         () =>
-          new Response(JSON.stringify({ code: "internal_error", error: "route map backend down" }), {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify({ code: "internal_error", error: "route map backend down" }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            },
+          ),
       ),
       http.get(SCENE_COVERAGE_PATH, () => apiJson("play.sceneCoverage", sceneCoverageResponse())),
     );

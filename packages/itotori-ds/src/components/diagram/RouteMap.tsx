@@ -16,12 +16,7 @@ import { Badge } from "../core/Badge.js";
  * (`needs_check` / `flagged` / `validated`) so one diagram component serves
  * both the read-model tree and the mark-validated surface.
  */
-export type RouteMapCoverageState =
-  | "fresh"
-  | "stale"
-  | "needs_check"
-  | "flagged"
-  | "validated";
+export type RouteMapCoverageState = "fresh" | "stale" | "needs_check" | "flagged" | "validated";
 
 export type RouteMapNode = {
   id: string;

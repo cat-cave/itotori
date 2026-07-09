@@ -24,11 +24,7 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import type {
-  WikiCharacterEntry,
-  WikiEntriesReadModel,
-  WikiTermEntry,
-} from "@itotori/db";
+import type { WikiCharacterEntry, WikiEntriesReadModel, WikiTermEntry } from "@itotori/db";
 import { App } from "../src/ui/App.js";
 import { hrefForAddressable } from "../src/ui/addressable-routing.js";
 import { apiJson, authCapabilitiesMswHandler } from "./msw-handlers.js";
@@ -68,9 +64,7 @@ function heroineEntry(): WikiCharacterEntry {
         citeOrdinal: 1,
       },
     ],
-    related: [
-      { refKind: "character", refId: "王女", label: "王女", relation: "Friendship" },
-    ],
+    related: [{ refKind: "character", refId: "王女", label: "王女", relation: "Friendship" }],
     relationships: [
       {
         characterRelationshipId: "rel-hero-princess",
@@ -142,9 +136,7 @@ function magicTermEntry(): WikiTermEntry {
   };
 }
 
-function wikiEntriesFixture(
-  overrides: Partial<WikiEntriesReadModel> = {},
-): WikiEntriesReadModel {
+function wikiEntriesFixture(overrides: Partial<WikiEntriesReadModel> = {}): WikiEntriesReadModel {
   return {
     schemaVersion: "wiki.entries.v0.1",
     generatedAt: GENERATED_AT,

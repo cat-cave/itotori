@@ -5506,7 +5506,10 @@ function assertPlayRouteMapResponse(value: unknown): asserts value is ApiPlayRou
   assertPlayRouteMapCounts(response.counts, "ApiPlayRouteMapResponse.counts");
 }
 
-function assertPlayRouteMapNode(value: unknown, label: string): asserts value is ApiPlayRouteMapNode {
+function assertPlayRouteMapNode(
+  value: unknown,
+  label: string,
+): asserts value is ApiPlayRouteMapNode {
   const node = asRecord(value, label);
   assertString(node.routeKey, `${label}.routeKey`);
   assertString(node.routeMapId, `${label}.routeMapId`);
@@ -5519,7 +5522,10 @@ function assertPlayRouteMapNode(value: unknown, label: string): asserts value is
   assertNonNegativeInteger(node.issues, `${label}.issues`);
 }
 
-function assertPlayRouteMapEdge(value: unknown, label: string): asserts value is ApiPlayRouteMapEdge {
+function assertPlayRouteMapEdge(
+  value: unknown,
+  label: string,
+): asserts value is ApiPlayRouteMapEdge {
   const edge = asRecord(value, label);
   assertString(edge.fromRouteKey, `${label}.fromRouteKey`);
   assertString(edge.toRouteKey, `${label}.toRouteKey`);

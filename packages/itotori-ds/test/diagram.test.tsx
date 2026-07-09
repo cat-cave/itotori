@@ -31,10 +31,7 @@ const nodes: RouteMapNode[] = [
 describe("diagram / RouteMap", () => {
   it("renders nodes with coverage badges and choice edges", () => {
     render(
-      <RouteMap
-        nodes={nodes}
-        edges={[{ key: "e1", fromId: "r1", toId: "r2", label: "Choose" }]}
-      />,
+      <RouteMap nodes={nodes} edges={[{ key: "e1", fromId: "r1", toId: "r2", label: "Choose" }]} />,
     );
     const map = document.querySelector('[data-component="route-map"]');
     expect(map?.getAttribute("data-node-count")).toBe("2");
@@ -44,9 +41,7 @@ describe("diagram / RouteMap", () => {
     );
     expect(document.querySelector('[data-route-id="r2"]')?.getAttribute("data-issues")).toBe("2");
     expect(screen.getByText("2 issues")).toBeInTheDocument();
-    expect(document.querySelector('[data-from="r1"][data-to="r2"]')?.textContent).toMatch(
-      /Choose/,
-    );
+    expect(document.querySelector('[data-from="r1"][data-to="r2"]')?.textContent).toMatch(/Choose/);
   });
 
   it("invokes onSelect when a node is clicked", async () => {

@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import type { RouteChoiceRecord, RouteMapRecord } from "@itotori/db";
 import { composePlayRouteMapReadModel } from "../src/play/route-map-read-model.js";
 
-function route(overrides: Partial<RouteMapRecord> & Pick<RouteMapRecord, "routeKey">): RouteMapRecord {
+function route(
+  overrides: Partial<RouteMapRecord> & Pick<RouteMapRecord, "routeKey">,
+): RouteMapRecord {
   return {
     routeMapId: overrides.routeMapId ?? `rm-${overrides.routeKey}`,
     projectId: "project-1",

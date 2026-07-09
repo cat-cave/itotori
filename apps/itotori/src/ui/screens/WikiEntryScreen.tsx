@@ -316,7 +316,10 @@ function CharacterProfile({
         {entry.bio.text}
       </p>
 
-      <section className="wiki-entry__appearances" data-wiki-appearance-count={entry.appearances.length}>
+      <section
+        className="wiki-entry__appearances"
+        data-wiki-appearance-count={entry.appearances.length}
+      >
         <h3 className="wiki-entry__subhead">Appearances</h3>
         <CitationTable
           caption="Cited units"
@@ -326,7 +329,10 @@ function CharacterProfile({
         />
       </section>
 
-      <section className="wiki-entry__relationships" data-wiki-relationship-count={entry.relationships.length}>
+      <section
+        className="wiki-entry__relationships"
+        data-wiki-relationship-count={entry.relationships.length}
+      >
         <h3 className="wiki-entry__subhead">Relationships</h3>
         {entry.relationships.length === 0 ? (
           <p className="wiki-entry__empty">No relationships were recorded for this character.</p>
@@ -374,7 +380,10 @@ function CharacterProfile({
       <CrossReferenceList related={entry.related} scope={scope} />
 
       {entry.revisions.length > 0 && (
-        <section className="wiki-entry__revisions" data-wiki-revision-count={entry.revisions.length}>
+        <section
+          className="wiki-entry__revisions"
+          data-wiki-revision-count={entry.revisions.length}
+        >
           <h3 className="wiki-entry__subhead">Revisions</h3>
           <DataTable
             caption="Bio revisions"
@@ -458,7 +467,10 @@ function TermProfile({
         />
       </section>
 
-      <section className="wiki-entry__references" data-wiki-reference-count={entry.references.length}>
+      <section
+        className="wiki-entry__references"
+        data-wiki-reference-count={entry.references.length}
+      >
         <h3 className="wiki-entry__subhead">References</h3>
         <DataTable
           caption="Cited units"
@@ -619,11 +631,7 @@ function SceneJump({
   }
   const href = hrefForAddressable({ kind: "unit", id: citation.bridgeUnitId, ...scope });
   return (
-    <a
-      href={href}
-      className="wiki-entry__scene-jump"
-      data-wiki-scene-jump={citation.bridgeUnitId}
-    >
+    <a href={href} className="wiki-entry__scene-jump" data-wiki-scene-jump={citation.bridgeUnitId}>
       {label}
     </a>
   );
@@ -662,10 +670,7 @@ function entryKindBadge(entry: WikiEntry): ReactNode {
 }
 
 /** Map a cross reference onto its addressable href (null when unresolvable). */
-function crossRefHref(
-  crossRef: WikiCrossReference,
-  scope: AddressableScope,
-): string | null {
+function crossRefHref(crossRef: WikiCrossReference, scope: AddressableScope): string | null {
   switch (crossRef.refKind) {
     case "character":
       return hrefForAddressable({ kind: "character", id: crossRef.refId, ...scope });
