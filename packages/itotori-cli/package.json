@@ -1,0 +1,26 @@
+{
+  "name": "itotori",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Installable itotori CLI — the localization command surface as a self-contained bundle.",
+  "license": "UNLICENSED",
+  "bin": {
+    "itotori": "./bin/itotori.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "engines": {
+    "node": ">=24.14.0"
+  }
+}

@@ -61,6 +61,7 @@ check:
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/native-deps.test.mjs
+    node --test scripts/itotori-installable-package.test.mjs
     node --test scripts/alpha-proof-gate.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
@@ -153,6 +154,23 @@ alpha-public-fixture-test:
 build:
     pnpm exec vp run ts:build
     cargo build --workspace
+
+# itotori-installable-package-artifact: build the publishable, self-contained
+# itotori CLI bundle (packages/itotori-cli). Produces dist/cli.js (the `itotori`
+# bin — a single esbuild ESM bundle of the CLI + all workspace deps, so an
+# installed bin needs no monorepo node_modules) + the 68 migration SQL files at
+# the path @itotori/db's migrate() resolves. Asserts the package version equals
+# ITOTORI_PRODUCT_VERSION. Verified by the
+# `node --test scripts/itotori-installable-package.test.mjs` suite in `just check`
+# (which also runs `npm pack` + install + `itotori --version` from the install).
+itotori-package-build:
+    node packages/itotori-cli/build.mjs
+
+# itotori-installable-package-artifact: `npm pack` the installable package into a
+# tarball at packages/itotori-cli/itotori-<version>.tgz (the publish artifact).
+# Build first so dist/ + migrations/ are included in the tarball.
+itotori-package-pack: itotori-package-build
+    cd packages/itotori-cli && npm pack
 
 itotori-scale-build:
     pnpm --filter @itotori/localization-bridge-schema build
