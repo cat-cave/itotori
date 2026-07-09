@@ -38,6 +38,7 @@ decisions (leap seconds rejected), and the shared semantic rejection code
 [`docs/contracts/rfc3339-instant-acceptance.md`](contracts/rfc3339-instant-acceptance.md).
 The shared accept/reject matrix at
 `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json`
-is run through both validators
+is run through all three validators
 (`cargo test -p kaifuu-core rfc3339_instant_parity_matrix_matches_typescript_validator`
-and `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.test.ts`).
+and `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.test.ts`, plus
+`cargo test -p utsushi-core rfc3339_instant_parity_matrix_matches_observation_hook_validator`).

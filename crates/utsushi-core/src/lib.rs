@@ -166,6 +166,57 @@ pub(crate) fn looks_like_local_path_public(value: &str) -> bool {
 /// via `?`/`From` at the boundary.
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
+/// Shared cross-validator semantic code emitted when an observation-hook
+/// runtime-evidence timestamp is not a valid RFC3339 date-time instant.
+///
+/// This matches the Kaifuu Rust and localization-bridge-schema TypeScript
+/// validators. See `docs/contracts/rfc3339-instant-acceptance.md`.
+pub const SEMANTIC_RFC3339_INSTANT_MALFORMED: &str = "itotori.contract.rfc3339_instant_malformed";
+
+/// Typed observation-hook runtime-evidence validation rejection.
+///
+/// The runtime-evidence validator otherwise uses the crate-wide heterogeneous
+/// [`UtsushiResult`] boundary. This type preserves a stable semantic code for
+/// timestamp rejections, so callers do not need to parse its display message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObservationHookValidationError {
+    code: &'static str,
+    field: String,
+    message: String,
+}
+
+impl ObservationHookValidationError {
+    fn malformed_rfc3339_instant(field: &str) -> Self {
+        Self {
+            code: SEMANTIC_RFC3339_INSTANT_MALFORMED,
+            field: field.to_string(),
+            message: format!(
+                "observation hook event field {field} must be a valid RFC3339 timestamp instant"
+            ),
+        }
+    }
+
+    /// Stable semantic code for this rejection.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+
+    /// Runtime-evidence field that failed validation.
+    #[must_use]
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+}
+
+impl std::fmt::Display for ObservationHookValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ObservationHookValidationError {}
+
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
 // UTSUSHI-224: the legacy `deleted-hook-envelope` enum + its schema version
@@ -2481,10 +2532,7 @@ fn validate_rfc3339_instant_metadata(field: &str, value: &str) -> UtsushiResult<
     if is_valid_rfc3339_instant(value) {
         Ok(())
     } else {
-        Err(format!(
-            "observation hook event field {field} must be a valid RFC3339 timestamp instant"
-        )
-        .into())
+        Err(ObservationHookValidationError::malformed_rfc3339_instant(field).into())
     }
 }
 
@@ -4734,6 +4782,80 @@ mod tests {
             rendered.contains("evidenceTier must not exceed"),
             "rendered={rendered}"
         );
+    }
+
+    /// The Utsushi observation-hook timestamp validator shares the exact
+    /// accept/reject boundary and semantic rejection code used by the Kaifuu
+    /// Rust and localization-bridge-schema TypeScript validators.
+    #[test]
+    fn rfc3339_instant_parity_matrix_matches_observation_hook_validator() {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct MatrixRow {
+            id: String,
+            value: Value,
+            expected: String,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ParityMatrix {
+            semantic_code: String,
+            rows: Vec<MatrixRow>,
+        }
+
+        let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(
+            "packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json",
+        );
+        let matrix: ParityMatrix = serde_json::from_str(
+            &fs::read_to_string(&fixture_path).expect("parity matrix fixture should be readable"),
+        )
+        .expect("parity matrix fixture should be valid JSON");
+
+        assert_eq!(
+            matrix.semantic_code, SEMANTIC_RFC3339_INSTANT_MALFORMED,
+            "matrix must pin the shared cross-validator semantic code",
+        );
+        assert!(
+            matrix.rows.iter().any(|row| row.expected == "accept")
+                && matrix.rows.iter().any(|row| row.expected == "reject"),
+            "matrix must cover both accept and reject",
+        );
+
+        for row in &matrix.rows {
+            let value = row
+                .value
+                .as_str()
+                .unwrap_or_else(|| panic!("row {} value must be a JSON string", row.id));
+            let result = validate_rfc3339_instant_metadata("matrix", value);
+            match row.expected.as_str() {
+                "accept" => assert!(
+                    result.is_ok(),
+                    "row {} ({value:?}) should be ACCEPTED, got {result:?}",
+                    row.id,
+                ),
+                "reject" => {
+                    let error = result
+                        .expect_err(&format!("row {} ({value:?}) should be REJECTED", row.id));
+                    let semantic_error = error
+                        .downcast_ref::<ObservationHookValidationError>()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "row {} rejection should be ObservationHookValidationError, got {error:?}",
+                                row.id
+                            )
+                        });
+                    assert_eq!(
+                        semantic_error.code(),
+                        SEMANTIC_RFC3339_INSTANT_MALFORMED,
+                        "row {} rejection must carry the shared semantic code",
+                        row.id,
+                    );
+                    assert_eq!(semantic_error.field(), "matrix");
+                }
+                other => panic!("row {} has unknown expected value {other}", row.id),
+            }
+        }
     }
 
     const HARNESS_STDOUT_SENTINEL: &str = "UTSUSHI-STDOUT-CAPTURE-SENTINEL-6f3a2d";

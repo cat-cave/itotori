@@ -1,11 +1,12 @@
 # RFC3339 Instant Acceptance (canonical, cross-language)
 
-`SHARED-019`. Both contract validators for the shared v0.2 fixture suite —
-Rust `crates/kaifuu-core/src/contracts.rs :: validate_rfc3339_instant` and
-TypeScript `packages/localization-bridge-schema/src/index.ts ::
-assertRfc3339Instant` — enforce the SAME RFC3339 date-time instant acceptance
-rule. A timestamp accepted by one validator is accepted by the other; a
-timestamp rejected by one is rejected by the other with the SAME semantic code.
+`SHARED-019`. The Rust `crates/kaifuu-core/src/contracts.rs ::
+validate_rfc3339_instant`, TypeScript
+`packages/localization-bridge-schema/src/index.ts :: assertRfc3339Instant`,
+and Utsushi observation-hook runtime-evidence validator enforce the SAME
+RFC3339 date-time instant acceptance rule. A timestamp accepted by one
+validator is accepted by the others; a timestamp rejected by one is rejected
+by the others with the SAME semantic code.
 
 ## Canonical accepted form
 
@@ -64,6 +65,8 @@ itotori.contract.rfc3339_instant_malformed
 Some(SEMANTIC_RFC3339_INSTANT_MALFORMED)` (`crates/kaifuu-core/src/lib.rs`).
 - TypeScript: `Rfc3339InstantValidationError` with `.code ==
 RFC3339_INSTANT_MALFORMED_CODE` (`packages/localization-bridge-schema/src/index.ts`).
+- Utsushi: `ObservationHookValidationError` with `.code() ==
+  SEMANTIC_RFC3339_INSTANT_MALFORMED` (`crates/utsushi-core/src/lib.rs`).
 
 The v0.1 conformance ingestion validator
 (`packages/localization-bridge-schema/src/conformance.ts :: assertRecordedAt`)
@@ -79,15 +82,17 @@ The shared accept/reject matrix is committed at:
 packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json
 ```
 
-It is executed against BOTH validators and both must agree on every row:
+It is executed against all THREE validators and all must agree on every row:
 
 - Rust: `cargo test -p kaifuu-core
 rfc3339_instant_parity_matrix_matches_typescript_validator`
 - TypeScript:
   `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.test.ts`
+- Utsushi: `cargo test -p utsushi-core
+  rfc3339_instant_parity_matrix_matches_observation_hook_validator`
 
 Accept rows must pass; reject rows must fail with
-`itotori.contract.rfc3339_instant_malformed` in both languages.
+`itotori.contract.rfc3339_instant_malformed` in every validator.
 
 ## Divergence removed
 
