@@ -3,12 +3,21 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct EnginePortImpl {
     crate_name: String,
     crate_ident: String,
     type_name: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct WorkspacePackage {
+    id: String,
+    name: String,
+    manifest_path: PathBuf,
+    dependencies: BTreeSet<String>,
 }
 
 fn main() {
@@ -29,30 +38,50 @@ fn main() {
         manifest_dir.join("Cargo.toml").display()
     );
 
-    let workspace_cargo = read_to_string(&workspace_root.join("Cargo.toml"));
-    let workspace_members = workspace_members(&workspace_cargo);
-    let cli_cargo = read_to_string(&manifest_dir.join("Cargo.toml"));
+    let workspace_manifest_path = workspace_root.join("Cargo.toml");
+    let workspace_metadata = cargo_metadata(&workspace_manifest_path);
+    let workspace_packages = workspace_packages_from_metadata(&workspace_metadata);
+    let cli_dependencies = workspace_packages
+        .iter()
+        .find(|package| package.name == "utsushi-cli")
+        .unwrap_or_else(|| panic!("cargo metadata did not include utsushi-cli"))
+        .dependencies
+        .clone();
+    let engine_impls = discover_engine_impls(&workspace_packages, &cli_dependencies);
 
+    assert!(
+        !engine_impls.is_empty(),
+        "workspace scan discovered no utsushi EnginePort implementors"
+    );
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set for build scripts"));
+    let generated_path = out_dir.join("engine_parity_registry.rs");
+    fs::write(&generated_path, generated_registry(&engine_impls))
+        .unwrap_or_else(|error| panic!("write {}: {error}", generated_path.display()));
+}
+
+fn discover_engine_impls(
+    workspace_packages: &[WorkspacePackage],
+    cli_dependencies: &BTreeSet<String>,
+) -> BTreeSet<EnginePortImpl> {
     let mut engine_impls = BTreeSet::new();
-    for member in &workspace_members {
-        if !member.starts_with("crates/utsushi-") {
-            continue;
-        }
-
-        let crate_dir = workspace_root.join(member);
-        let crate_manifest_path = crate_dir.join("Cargo.toml");
-        let crate_manifest = read_to_string(&crate_manifest_path);
-        let crate_name = package_name(&crate_manifest)
-            .unwrap_or_else(|| panic!("{} has no [package] name", crate_manifest_path.display()));
-
+    for package in workspace_packages {
+        let crate_name = &package.name;
         if crate_name == "utsushi-core" || crate_name == "utsushi-cli" {
             continue;
         }
-        if !manifest_depends_on_utsushi_core(&crate_manifest) {
+        if !package.dependencies.contains("utsushi-core") {
             continue;
         }
 
+        let crate_manifest_path = &package.manifest_path;
         println!("cargo:rerun-if-changed={}", crate_manifest_path.display());
+        let crate_dir = crate_manifest_path.parent().unwrap_or_else(|| {
+            panic!(
+                "cargo metadata manifest path has no parent: {}",
+                crate_manifest_path.display()
+            )
+        });
         let src_dir = crate_dir.join("src");
         if !src_dir.is_dir() {
             continue;
@@ -77,7 +106,7 @@ fn main() {
             "{crate_name} implements EnginePort but does not publish a PARITY_PROFILE"
         );
         assert!(
-            manifest_declares_dependency(&cli_cargo, &crate_name),
+            cli_dependencies.contains(crate_name),
             "{crate_name} implements EnginePort but is not visible to utsushi-cli; \
              add it to crates/utsushi-cli/Cargo.toml so the generated parity gate can import it"
         );
@@ -92,121 +121,102 @@ fn main() {
         }
     }
 
-    assert!(
-        !engine_impls.is_empty(),
-        "workspace scan discovered no utsushi EnginePort implementors"
-    );
-
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set for build scripts"));
-    let generated_path = out_dir.join("engine_parity_registry.rs");
-    fs::write(&generated_path, generated_registry(&engine_impls))
-        .unwrap_or_else(|error| panic!("write {}: {error}", generated_path.display()));
+    engine_impls
 }
 
 fn read_to_string(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
 
-fn workspace_members(workspace_cargo: &str) -> BTreeSet<String> {
-    let mut members = BTreeSet::new();
-    let mut in_members = false;
+fn cargo_metadata(workspace_manifest_path: &Path) -> serde_json::Value {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+        ])
+        .arg(workspace_manifest_path)
+        .output()
+        .unwrap_or_else(|error| {
+            panic!(
+                "run cargo metadata for {}: {error}",
+                workspace_manifest_path.display()
+            )
+        });
+    assert!(
+        output.status.success(),
+        "cargo metadata failed for {}:\n{}",
+        workspace_manifest_path.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "parse cargo metadata JSON for {}: {error}",
+            workspace_manifest_path.display()
+        )
+    })
+}
 
-    for line in workspace_cargo.lines() {
-        let trimmed = strip_toml_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if in_members {
-            collect_quoted_strings(trimmed, &mut members);
-            if trimmed.contains(']') {
-                in_members = false;
+fn workspace_packages_from_metadata(metadata: &serde_json::Value) -> Vec<WorkspacePackage> {
+    let workspace_members: BTreeSet<&str> = metadata["workspace_members"]
+        .as_array()
+        .unwrap_or_else(|| panic!("cargo metadata JSON missing workspace_members array"))
+        .iter()
+        .map(|member| {
+            member
+                .as_str()
+                .unwrap_or_else(|| panic!("cargo metadata workspace member id is not a string"))
+        })
+        .collect();
+    let mut packages: Vec<WorkspacePackage> = metadata["packages"]
+        .as_array()
+        .unwrap_or_else(|| panic!("cargo metadata JSON missing packages array"))
+        .iter()
+        .filter(|package| {
+            let id = package["id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("cargo metadata package id is not a string"));
+            workspace_members.contains(id)
+        })
+        .map(|package| {
+            let id = package["id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("cargo metadata package id is not a string"))
+                .to_string();
+            let name = package["name"]
+                .as_str()
+                .unwrap_or_else(|| panic!("cargo metadata package {id} has no string name"))
+                .to_string();
+            let manifest_path =
+                PathBuf::from(package["manifest_path"].as_str().unwrap_or_else(|| {
+                    panic!("cargo metadata package {id} has no string manifest_path")
+                }));
+            let dependencies = package["dependencies"]
+                .as_array()
+                .unwrap_or_else(|| panic!("cargo metadata package {id} has no dependencies array"))
+                .iter()
+                .map(|dependency| {
+                    dependency["name"]
+                        .as_str()
+                        .unwrap_or_else(|| {
+                            panic!("cargo metadata dependency in package {id} has no string name")
+                        })
+                        .to_string()
+                })
+                .collect();
+            WorkspacePackage {
+                id,
+                name,
+                manifest_path,
+                dependencies,
             }
-            continue;
-        }
-        if trimmed.starts_with("members") && trimmed.contains('[') {
-            in_members = true;
-            collect_quoted_strings(trimmed, &mut members);
-            if trimmed.contains(']') {
-                in_members = false;
-            }
-        }
-    }
-
-    members
-}
-
-fn collect_quoted_strings(line: &str, output: &mut BTreeSet<String>) {
-    let mut rest = line;
-    while let Some(start) = rest.find('"') {
-        let after_start = &rest[start + 1..];
-        let Some(end) = after_start.find('"') else {
-            return;
-        };
-        output.insert(after_start[..end].to_string());
-        rest = &after_start[end + 1..];
-    }
-}
-
-fn package_name(manifest: &str) -> Option<String> {
-    let mut in_package = false;
-    for line in manifest.lines() {
-        let trimmed = strip_toml_comment(line).trim();
-        if trimmed == "[package]" {
-            in_package = true;
-            continue;
-        }
-        if trimmed.starts_with('[') {
-            in_package = false;
-            continue;
-        }
-        if in_package && let Some(raw_name) = trimmed.strip_prefix("name = ") {
-            return unquote(raw_name.trim()).map(ToOwned::to_owned);
-        }
-    }
-    None
-}
-
-fn manifest_depends_on_utsushi_core(manifest: &str) -> bool {
-    manifest_declares_dependency(manifest, "utsushi-core")
-}
-
-fn manifest_declares_dependency(manifest: &str, dependency_name: &str) -> bool {
-    let mut in_dependencies = false;
-    let table_name = format!("[{dependency_name}]");
-    let dependency_prefix = format!("{dependency_name} ");
-    let inline_dependency_prefix = format!("{dependency_name}.");
-
-    for line in manifest.lines() {
-        let trimmed = strip_toml_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.starts_with('[') {
-            in_dependencies = matches!(
-                trimmed,
-                "[dependencies]" | "[dev-dependencies]" | "[build-dependencies]"
-            ) || trimmed.ends_with(&table_name);
-            continue;
-        }
-        if in_dependencies
-            && (trimmed.starts_with(&dependency_prefix)
-                || trimmed.starts_with(&inline_dependency_prefix))
-        {
-            return true;
-        }
-    }
-    false
-}
-
-fn strip_toml_comment(line: &str) -> &str {
-    line.split_once('#')
-        .map_or(line, |(before_comment, _)| before_comment)
-}
-
-fn unquote(raw: &str) -> Option<&str> {
-    raw.strip_prefix('"')?
-        .split_once('"')
-        .map(|(value, _)| value)
+        })
+        .collect();
+    packages.sort_by(|left, right| left.manifest_path.cmp(&right.manifest_path));
+    packages
 }
 
 fn collect_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
@@ -312,4 +322,111 @@ fn generated_registry(engine_impls: &BTreeSet<EnginePortImpl>) -> String {
     }
     generated.push_str("];\n");
     generated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EnginePortImpl, discover_engine_impls, workspace_packages_from_metadata};
+    use serde_json::json;
+    use std::collections::BTreeSet;
+    use std::env;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn metadata_driven_discovery_finds_engine_crate_with_atypical_manifest_layout() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after unix epoch")
+            .as_nanos();
+        let root = env::temp_dir().join(format!(
+            "utsushi-cli-build-script-discovery-{}-{unique}",
+            std::process::id()
+        ));
+        let crate_dir = root.join("crates").join("utsushi-atypical");
+        let src_dir = crate_dir.join("src");
+        fs::create_dir_all(&src_dir)
+            .unwrap_or_else(|error| panic!("create {}: {error}", src_dir.display()));
+        fs::write(
+            crate_dir.join("Cargo.toml"),
+            r#"
+[package]
+edition.workspace = true
+name = "utsushi-atypical"
+version = "0.0.0"
+
+[dependencies]
+"core-facade" = { package = "utsushi-core", path = "../utsushi-core" }
+"#,
+        )
+        .unwrap_or_else(|error| panic!("write atypical Cargo.toml: {error}"));
+        fs::write(
+            src_dir.join("lib.rs"),
+            r"
+pub struct OddPort;
+
+impl utsushi_core::substrate::EnginePort for OddPort {}
+
+impl OddPort {
+    pub const PARITY_PROFILE: () = ();
+}
+",
+        )
+        .unwrap_or_else(|error| panic!("write atypical lib.rs: {error}"));
+
+        let cli_manifest = root
+            .join("crates")
+            .join("utsushi-cli")
+            .join("Cargo.toml")
+            .to_string_lossy()
+            .into_owned();
+        let engine_manifest = crate_dir.join("Cargo.toml").to_string_lossy().into_owned();
+        let metadata = json!({
+            "workspace_members": [
+                "path+file:///tmp/utsushi-cli#0.0.0",
+                "path+file:///tmp/utsushi-atypical#0.0.0"
+            ],
+            "packages": [
+                {
+                    "id": "path+file:///tmp/utsushi-cli#0.0.0",
+                    "name": "utsushi-cli",
+                    "manifest_path": cli_manifest,
+                    "dependencies": [
+                        { "name": "utsushi-atypical", "rename": null }
+                    ]
+                },
+                {
+                    "id": "path+file:///tmp/utsushi-atypical#0.0.0",
+                    "name": "utsushi-atypical",
+                    "manifest_path": engine_manifest,
+                    "dependencies": [
+                        { "name": "utsushi-core", "rename": "core-facade" }
+                    ]
+                }
+            ]
+        });
+        let packages = workspace_packages_from_metadata(&metadata);
+        let cli_dependencies = packages
+            .iter()
+            .find(|package| package.name == "utsushi-cli")
+            .expect("synthetic metadata includes utsushi-cli")
+            .dependencies
+            .clone();
+
+        let discovered = discover_engine_impls(&packages, &cli_dependencies);
+
+        assert_eq!(
+            discovered,
+            BTreeSet::from([EnginePortImpl {
+                crate_name: "utsushi-atypical".to_string(),
+                crate_ident: "utsushi_atypical".to_string(),
+                type_name: "OddPort".to_string(),
+            }]),
+            "Cargo metadata must make renamed/quoted dependency declarations discoverable",
+        );
+
+        if let Err(error) = fs::remove_dir_all(&root) {
+            eprintln!("failed to remove {}: {error}", root.display());
+        }
+    }
 }
