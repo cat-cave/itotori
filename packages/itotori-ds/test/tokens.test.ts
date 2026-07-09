@@ -160,3 +160,53 @@ describe("design-system token foundation / components reference tokens, never li
     expect([...dangling.entries()]).toEqual([]);
   });
 });
+
+describe("design-system token foundation / reconciled missing-token candidates", () => {
+  it("defines the semantic tokens flagged by the design brief", () => {
+    const tokenCss = [...SPECCED_TOKEN_GROUPS].map((g) => read(`tokens/${g}.css`));
+    const defined = definedTokens(tokenCss);
+    const required = [
+      "--ito-cost-billed-ink",
+      "--ito-cost-zero-muted",
+      "--ito-cost-unknown-ink",
+      "--ito-cost-unknown-dash",
+      "--ito-privacy-ok-fg",
+      "--ito-privacy-ok-bg",
+      "--ito-privacy-ok-border",
+      "--ito-contestant-official",
+      "--ito-contestant-self",
+      "--ito-contestant-self-nocontext",
+      "--ito-contestant-fan",
+      "--ito-contestant-mtl",
+      "--ito-render-scrim",
+      "--ito-render-textbox-bg",
+      "--ito-render-textbox-border",
+      "--ito-render-textbox-blur",
+      "--ito-render-nameplate-bg",
+      "--ito-render-nameplate-fg",
+      "--ito-render-nameplate-border",
+      "--ito-redact-blur",
+      "--ito-redact-overlay",
+      "--ito-redact-fg",
+      "--ito-redact-border",
+      "--ito-severity-blocker",
+      "--ito-severity-critical",
+      "--ito-severity-warning",
+      "--ito-severity-note",
+      "--ito-pass-current-border",
+      "--ito-pass-next-border",
+      "--ito-pass-accepted-delta",
+      "--ito-pass-superseded-fg",
+      "--ito-pass-diff-added",
+      "--ito-pass-diff-removed",
+      "--ito-locale-source-accent",
+      "--ito-locale-source-bg",
+      "--ito-locale-source-border",
+      "--ito-locale-target-accent",
+      "--ito-locale-target-bg",
+      "--ito-locale-target-border",
+    ];
+
+    expect(required.filter((name) => !defined.has(name))).toEqual([]);
+  });
+});

@@ -91,32 +91,24 @@ status-bar / selection / bevels / layers / data-viz) · `forms` (fields / toggle
 utilities: `.itotori-scanlines/-stripes-run/-sweep/-caret/-live-dot/-glow/-lift/-riser/-frame`,
 all suppressed under `prefers-reduced-motion`).
 
-## Missing / to-spec tokens (flagged for the design system to add)
+## Reconciled missing-token candidates
 
-Reasoned from itotori's surface needs vs. the current groups — candidates to spec into
-`tokens/` so the hi-fi + port don't invent ad-hoc values:
+Verified against the repo live `packages/itotori-ds/tokens/*.css` for
+`ds-spec-missing-tokens`. Hi-fi + port work must use these tokens instead of ad-hoc
+values.
 
-1. **Cost / spend semantics** — the drilldown distinguishes **billed vs zero vs unknown**
-   cost as distinct states (`cost.state`); there's a data-viz group but no explicit
-   _cost-state_ token trio (billed-ink / zero-muted / unknown-dashed). Spec them.
-2. **ZDR / privacy posture** — `zdr=true; data_collection=none` is first-class evidence;
-   needs a dedicated posture token/badge tone (a "privacy-ok" signal distinct from generic ok).
-3. **Benchmark contestant tiers** — raw-MTL / fan / official / Itotori-with/without-context
-   want a stable 4–5 swatch **contestant palette** (comparative, colour-blind-safe) for
-   the benchmark surface, beyond the 3-tone status badges.
-4. **Frame / render overlay** — the composited in-scene textbox over a game render needs
-   overlay tokens (scrim opacity, textbox blur/tint, nameplate) — partially in `interface`
-   (player-vs-snapshot) but the **redaction** state (redacted vs full-fidelity frame) has
-   no token.
-5. **Annotation severity scale** — AnnotationComposer/QA findings use a severity scale
-   (blocker/critical/warning/note); confirm a dedicated severity ramp exists vs. reusing
-   status tones.
-6. **Pass-ledger / iteration state** — pass N vs N+1, accepted-delta, superseded — an
-   iteration/diff token set for the multi-pass loop.
-7. **Locale-branch identity** — source vs target locale colour identity (LocaleBranchSwitch)
-   as a token, so branch chrome is consistent across surfaces.
-   (These are candidates — verify against the live `tokens/*.css` before adding; some may
-   already exist under `interface`/`data-viz`.)
+| Surface need | Token coverage | Value | Usage note |
+| --- | --- | --- | --- |
+| Cost billed | `--ito-cost-billed-ink` | `var(--ito-color-text)` | Text for measured billed micros (`cost.state="billed"`). |
+| Cost zero | `--ito-cost-zero-muted` | `var(--ito-color-text-muted)` | Muted text for known zero/no-op spend (`cost.state="zero"`). |
+| Cost unknown | `--ito-cost-unknown-ink`, `--ito-cost-unknown-dash` | `#cbbdf2`, `#6f6394` | Unknown spend reads as unmeasured, with dashed chrome; do not render as zero. |
+| ZDR / privacy posture | `--ito-privacy-ok-fg`, `--ito-privacy-ok-bg`, `--ito-privacy-ok-border` | `#8ff5dc`, `#102f30`, `#34766f` | Explicit privacy badge tone for `zdr=true; data_collection=none`, distinct from generic ok status. |
+| Benchmark contestant tiers | `--ito-contestant-official`, `--ito-contestant-self`, `--ito-contestant-self-nocontext`, `--ito-contestant-fan`, `--ito-contestant-mtl` | `#c08bff`, `#ffe066`, `#7fb3d5`, `#e07ab8`, `#9aa5b8` | Stable colour-blind-safer categorical swatches for official, Itotori, Itotori without context, fan, and raw MTL contestants. |
+| Render overlay | `--ito-render-scrim`, `--ito-render-textbox-bg`, `--ito-render-textbox-border`, `--ito-render-textbox-blur`, `--ito-render-textbox-shadow`, `--ito-render-nameplate-bg`, `--ito-render-nameplate-fg`, `--ito-render-nameplate-border` | `rgba(9, 6, 16, 0.34)`, `rgba(16, 12, 28, 0.88)`, `rgba(243, 239, 255, 0.18)`, `blur(6px)`, `0 18px 42px -20px rgba(0, 0, 0, 0.86)`, `rgba(42, 22, 42, 0.92)`, `var(--ito-color-sakura)`, `rgba(255, 108, 160, 0.46)` | ScenePlayer textbox/speaker overlay over game frames. |
+| Redaction state | `--ito-redact-blur`, `--ito-redact-overlay`, `--ito-redact-fg`, `--ito-redact-border` | `18px`, `rgba(21, 16, 31, 0.78)`, `var(--ito-color-amber)`, `var(--ito-tone-critical-border)` | Redacted shareable frames/screenshots; full-fidelity reveal must remove the redacted state, not override values. |
+| Annotation severity | `--ito-severity-blocker`, `--ito-severity-critical`, `--ito-severity-warning`, `--ito-severity-note` plus matching `*-bg` and `*-border` tokens | `#f4737e`, `#ff6ca0`, `#ffb648`, `#9a8dc4` | Ordinal finding severity for AnnotationComposer and QA rows; do not reuse pass/fail badge tone as severity. |
+| Pass-ledger iteration/diff | `--ito-pass-current-border`, `--ito-pass-next-border`, `--ito-pass-accepted-delta`, `--ito-pass-superseded-fg`, `--ito-pass-diff-added`, `--ito-pass-diff-removed` | `var(--ito-color-amber)`, `var(--ito-color-cyan)`, `var(--ito-color-mint)`, `#7d719e`, `rgba(69, 230, 173, 0.18)`, `rgba(244, 115, 126, 0.18)` | Pass N / N+1 ledger rows and accepted/superseded/diff cells in the iterative loop. |
+| Locale branch identity | `--ito-locale-source-accent`, `--ito-locale-source-bg`, `--ito-locale-source-border`, `--ito-locale-target-accent`, `--ito-locale-target-bg`, `--ito-locale-target-border` | `var(--ito-color-cyan)`, `#122735`, `#2d6672`, `var(--ito-color-sakura)`, `#2a162a`, `#743653` | Source→target branch chrome for LocaleBranchSwitch, BiText, ComparisonPane, and the persistent status bar. |
 
 ## Incorporation status
 

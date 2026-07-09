@@ -87,8 +87,9 @@ Design these as a cohesive whole, not isolated pages. Emphasis on layout + how t
 
 ## Flag back to us
 
-- Any **missing token** you need (see the candidates in `docs/design/itotori-design-system.md`
-  §"Missing / to-spec tokens" — extend that list).
+- Any **missing token** you need (first check the reconciled token coverage in
+  `docs/design/itotori-design-system.md` §"Reconciled missing-token candidates"; extend
+  that list only for genuinely new gaps).
 - Any **new component** the layouts require that the system lacks.
 - Any surface where product intent is ambiguous — ask; don't invent workflow.
 

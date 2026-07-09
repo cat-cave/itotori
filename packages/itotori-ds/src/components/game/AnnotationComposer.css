@@ -1,6 +1,6 @@
 /*
  * AnnotationComposer — in-the-moment note → review finding.
- * Severity chips consume the `--ito-severity-*` ordinal ramp (MISSING-TOKENS §5).
+ * Severity chips consume the reconciled `--ito-severity-*` ordinal ramp.
  * No raw colour literals.
  */
 

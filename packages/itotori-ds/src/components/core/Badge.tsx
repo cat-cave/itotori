@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cx } from "../../cx.js";
 import { statusTone } from "../../status.js";
+import type { StatusTone } from "../../status.js";
 
 export interface BadgeProps {
   /**
@@ -9,7 +10,7 @@ export interface BadgeProps {
    */
   status: string;
   /** Override the auto-derived tone in the rare case a status needs it. */
-  tone?: "neutral" | "ok" | "critical";
+  tone?: StatusTone;
   /** Optional label; defaults to the (lowercase) status string itself. */
   children?: ReactNode;
   className?: string;

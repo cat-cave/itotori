@@ -38,13 +38,45 @@
   --ito-statusbar-fg: var(--ito-color-text-muted);
   --ito-statusbar-border: var(--ito-color-border);
 
+  /* Locale branch identity — source vs target branch chrome. Use these for
+   * LocaleBranchSwitch, BiText locale chips, comparison panes, and the
+   * persistent source→branch status-bar segment. */
+  --ito-locale-source-accent: var(--ito-color-cyan);
+  --ito-locale-source-bg: #122735;
+  --ito-locale-source-border: #2d6672;
+  --ito-locale-target-accent: var(--ito-color-sakura);
+  --ito-locale-target-bg: #2a162a;
+  --ito-locale-target-border: #743653;
+
   /* Data-viz — progress + sparkline + comparison surfaces */
   --ito-dataviz-track: #17122a; /* progress track well */
   --ito-dataviz-fill: var(--ito-color-mint); /* the evidence fill */
   --ito-dataviz-fill-pending: #4a3f74;
   --ito-dataviz-spark: var(--ito-color-cyan);
   --ito-dataviz-grid-line: var(--ito-color-divider);
-  --ito-compare-source-bg: #1a1530;
-  --ito-compare-draft-bg: #191f2c;
+  --ito-compare-source-bg: var(--ito-locale-source-bg);
+  --ito-compare-draft-bg: var(--ito-locale-target-bg);
   --ito-compare-gutter: var(--ito-color-divider);
+
+  /* Frame / render overlay — composited VN textbox over a game render. Use
+   * these for the in-scene dialogue layer; redacted-vs-full-fidelity frame
+   * state remains in effects.css (`--ito-redact-*`). */
+  --ito-render-scrim: rgba(9, 6, 16, 0.34);
+  --ito-render-textbox-bg: rgba(16, 12, 28, 0.88);
+  --ito-render-textbox-border: rgba(243, 239, 255, 0.18);
+  --ito-render-textbox-blur: blur(6px);
+  --ito-render-textbox-shadow: 0 18px 42px -20px rgba(0, 0, 0, 0.86);
+  --ito-render-nameplate-bg: rgba(42, 22, 42, 0.92);
+  --ito-render-nameplate-fg: var(--ito-color-sakura);
+  --ito-render-nameplate-border: rgba(255, 108, 160, 0.46);
+
+  /* Pass-ledger / iteration state — pass N vs N+1 and diff outcomes in the
+   * multi-pass loop. Current/next are structural; accepted/superseded/diff are
+   * row and cell states in pass-ledger tables. */
+  --ito-pass-current-border: var(--ito-color-amber);
+  --ito-pass-next-border: var(--ito-color-cyan);
+  --ito-pass-accepted-delta: var(--ito-color-mint);
+  --ito-pass-superseded-fg: #7d719e;
+  --ito-pass-diff-added: rgba(69, 230, 173, 0.18);
+  --ito-pass-diff-removed: rgba(244, 115, 126, 0.18);
 }

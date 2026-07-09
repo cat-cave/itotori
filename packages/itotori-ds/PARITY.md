@@ -61,9 +61,10 @@ places that need a future live DesignSync audit.
   product coupling.
 - Exact card/demo layout spacing may differ from the live `.card.html` demos.
   The current CSS follows the token values in `docs/design/itotori-design-system.md`.
-- Several token groups remain provisional or to-spec in `MISSING-TOKENS.md`
-  (`cost`, `posture`, `iteration`, and `locale branch` identity). Components
-  reuse existing tokens until those groups are verified against live
-  `tokens/*.css`.
+- The repo token layer now includes the semantic groups that were previously
+  tracked in `MISSING-TOKENS.md` (`cost`, `privacy posture`, `render overlay`,
+  `redaction`, `contestant`, `severity`, `pass iteration`, and `locale branch`
+  identity). A future live DesignSync audit may still retarget exact values, but
+  hi-fi and port work no longer need placeholder colours for those semantics.
 - Fonts remain host-provided. The package declares font stacks but does not ship
   Google Fonts, matching `README.md`.

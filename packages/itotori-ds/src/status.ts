@@ -25,8 +25,11 @@ export const STATUS_VOCABULARY = [
 
 export type Status = (typeof STATUS_VOCABULARY)[number];
 
-/** The three badge tones the design language allows. */
-export type StatusTone = "neutral" | "ok" | "critical";
+/**
+ * Badge tones. `privacy` is explicit-only for the ZDR posture signal; product
+ * statuses still derive to the three status tones below.
+ */
+export type StatusTone = "neutral" | "ok" | "critical" | "privacy";
 
 const OK_STATUSES = new Set<string>([
   "proven",

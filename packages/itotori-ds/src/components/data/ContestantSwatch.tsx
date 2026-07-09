@@ -18,7 +18,7 @@ export interface ContestantSwatchProps {
 
 /**
  * ContestantSwatch — a categorical colour chip keyed off the contestant role,
- * painted from the `--ito-contestant-*` token group (MISSING-TOKENS §3). The
+ * painted from the reconciled `--ito-contestant-*` token group. The
  * benchmark cockpit composes one ahead of each contestant label so the
  * comparative field reads at a glance, never collapsing a contestant onto a
  * semantic status hue (amber / mint / coral).

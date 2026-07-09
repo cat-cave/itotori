@@ -26,3 +26,9 @@
   background: var(--ito-tone-critical-bg);
   color: var(--ito-tone-critical-fg);
 }
+
+.itotori-badge--privacy {
+  border-color: var(--ito-privacy-ok-border);
+  background: var(--ito-privacy-ok-bg);
+  color: var(--ito-privacy-ok-fg);
+}

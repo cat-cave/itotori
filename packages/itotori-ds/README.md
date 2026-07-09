@@ -45,7 +45,8 @@ test/                   behaviour tests + committed Storybook visual baselines
 3. **Status is a closed vocabulary → derived tone.** Never pick a badge colour by
    hand; pass the product status to `<Badge status={…} />` / `statusTone(…)`.
 4. **Tokens, never literals.** Reference `--ito-*` variables; never inline a hex
-   value. Missing tokens are specced in `MISSING-TOKENS.md`, not invented.
+   value. The previously flagged missing semantic groups are reconciled in
+   `MISSING-TOKENS.md` and pinned by `test/tokens.test.ts`.
 5. **Sentence case, mono machine-tokens, icon-light, no emoji, and every
    animation is suppressed under `prefers-reduced-motion`** (see `effects.css`).
 6. **Behaviour-first tests.** Assert rendered DOM + real interactions
@@ -106,5 +107,5 @@ it, set one of those env vars before running `visual:test` or `visual:update`.
 The four families (Chakra Petch / DotGothic16 / Zen Kaku Gothic New / Space Mono)
 are an art-direction choice and are **not repo-shipped**. `fonts.css` declares the
 stacks with graceful system fallbacks; a host opts into the web fonts (the gallery
-`index.html` links Google Fonts). See `MISSING-TOKENS.md` for the seven token
-groups the design doc flags as still-to-spec.
+`index.html` links Google Fonts). See `MISSING-TOKENS.md` for the reconciled
+semantic groups that hi-fi and port work must consume.

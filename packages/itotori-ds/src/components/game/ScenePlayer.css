@@ -68,7 +68,7 @@
   min-block-size: 320px;
   border-radius: 0 0 var(--ito-radius) var(--ito-radius);
   background:
-    linear-gradient(180deg, var(--ito-command-active-bg), transparent 46%),
+    linear-gradient(180deg, var(--ito-render-scrim), transparent 46%),
     var(--ito-color-code-well);
 }
 
@@ -98,10 +98,11 @@
   position: absolute;
   inset-inline: var(--ito-space-16);
   inset-block-end: var(--ito-space-16);
-  border: 1px solid var(--ito-color-border);
+  border: 1px solid var(--ito-render-textbox-border);
   border-radius: var(--ito-radius);
-  background: var(--ito-color-code-well);
-  box-shadow: var(--ito-shadow-panel);
+  background: var(--ito-render-textbox-bg);
+  box-shadow: var(--ito-render-textbox-shadow);
+  backdrop-filter: var(--ito-render-textbox-blur);
 }
 
 .itotori-scene-player__annotation {

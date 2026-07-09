@@ -31,4 +31,16 @@ describe("core / Badge", () => {
       expect(["neutral", "ok", "critical"]).toContain(statusTone(status));
     }
   });
+
+  it("supports explicit privacy posture tone without changing status derivation", () => {
+    render(
+      <Badge status="zdr" tone="privacy">
+        zdr=true
+      </Badge>,
+    );
+    const badge = screen.getByText("zdr=true");
+    expect(badge).toHaveAttribute("data-tone", "privacy");
+    expect(badge).toHaveClass("itotori-badge--privacy");
+    expect(statusTone("zdr")).toBe("neutral");
+  });
 });

@@ -11,7 +11,13 @@
   font-size: var(--ito-text-pixel-tight);
   letter-spacing: var(--ito-tracking-pixel);
   text-transform: uppercase;
-  color: var(--ito-color-sakura);
+  display: inline-flex;
+  align-self: flex-start;
+  color: var(--ito-render-nameplate-fg);
+  background: var(--ito-render-nameplate-bg);
+  border: 1px solid var(--ito-render-nameplate-border);
+  border-radius: var(--ito-radius-pill);
+  padding: var(--ito-space-1) var(--ito-space-8);
   margin-bottom: var(--ito-space-8);
 }
 
@@ -25,16 +31,27 @@
   display: flex;
   flex-direction: column;
   gap: var(--ito-space-4);
+  padding-inline-start: var(--ito-space-8);
+  border-inline-start: 2px solid transparent;
 }
 .itotori-bitext__line--source .itotori-bitext__text {
   color: var(--ito-color-text-muted);
+}
+.itotori-bitext__line--source {
+  border-inline-start-color: var(--ito-locale-source-border);
+}
+.itotori-bitext__line--target {
+  border-inline-start-color: var(--ito-locale-target-border);
 }
 
 .itotori-bitext__locale {
   align-self: flex-start;
   font-family: var(--ito-font-mono);
   font-size: var(--ito-text-pixel-tight);
-  color: var(--ito-color-cyan);
+  color: var(--ito-locale-target-accent);
+}
+.itotori-bitext__line--source .itotori-bitext__locale {
+  color: var(--ito-locale-source-accent);
 }
 
 .itotori-bitext__text {

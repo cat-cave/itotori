@@ -1,11 +1,10 @@
 /*
  * ContestantSwatch — a categorical colour chip keyed off the contestant role.
- * Consumes the `--ito-contestant-*` token group (MISSING-TOKENS §3) so the
+ * Consumes the reconciled `--ito-contestant-*` token group so the
  * benchmark cockpit paints a STABLE comparative palette (official / self /
  * self_nocontext / fan / mtl) that never collapses onto the semantic status
  * hues (amber / mint / coral). The role is carried by `data-contestant`, never a
- * literal colour — a downstream design-project token sync retargets every
- * swatch by editing the token, not this rule.
+ * literal colour; retarget swatches by editing the token, not this rule.
  */
 
 .itotori-contestant-swatch {

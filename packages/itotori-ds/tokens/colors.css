@@ -51,23 +51,36 @@
   --ito-color-focus-ring: #ffb648;
   --ito-color-selection: rgba(255, 182, 72, 0.28);
 
+  /* Cost / spend state trio — use when a spend cell carries `cost.state`.
+   * billed = real billed micros, zero = a known free/no-op cost, unknown = not
+   * measured yet. Unknown is paired with a dashed border token so it never reads
+   * as a zero-dollar result. */
+  --ito-cost-billed-ink: var(--ito-color-text);
+  --ito-cost-zero-muted: var(--ito-color-text-muted);
+  --ito-cost-unknown-ink: #cbbdf2;
+  --ito-cost-unknown-dash: #6f6394;
+
+  /* ZDR / privacy posture — explicit posture tone for `zdr=true;
+   * data_collection=none`, distinct from generic ok-mint status badges. */
+  --ito-privacy-ok-fg: #8ff5dc;
+  --ito-privacy-ok-bg: #102f30;
+  --ito-privacy-ok-border: #34766f;
+
   /* Benchmark contestant palette — a stable 5-swatch COMPARATIVE categorical
-   * set for the benchmark cockpit (MISSING-TOKENS §3). Chosen for categorical
-   * distinctness under the common colour-vision deficiencies, varying BOTH hue
-   * and lightness; deliberately NOT the semantic status hues (amber / mint /
-   * coral) so a contestant swatch is never confused with a pass / fail tone.
-   * Provisional values, pending a sync to the live design project's tokens/*.css
-   * (the same retarget path the port used for the other specced gaps). */
+   * set for the benchmark cockpit. Chosen for categorical distinctness under
+   * the common colour-vision deficiencies, varying BOTH hue and lightness;
+   * deliberately NOT the semantic status hues (amber / mint / coral) so a
+   * contestant swatch is never confused with a pass / fail tone. */
   --ito-contestant-official: #c08bff; /* the reference localization — violet */
   --ito-contestant-self: #ffe066; /* the system under test — yellow */
   --ito-contestant-self-nocontext: #7fb3d5; /* self w/o context — soft blue */
   --ito-contestant-fan: #e07ab8; /* fan-edited MTL — orchid */
   --ito-contestant-mtl: #9aa5b8; /* raw MTL baseline — cool grey */
 
-  /* Annotation severity ramp (MISSING-TOKENS §5) — an ORDINAL severity axis
-   * for AnnotationComposer chips + finding rows. Distinct from the three-tone
-   * badge status palette (pass/fail): severity encodes how bad a finding is,
-   * not whether a run succeeded. Ordered high → low. */
+  /* Annotation severity ramp — an ORDINAL severity axis for
+   * AnnotationComposer chips + finding rows. Distinct from the status badge
+   * palette: severity encodes how bad a finding is, not whether a run
+   * succeeded. Ordered high → low. */
   --ito-severity-blocker: #f4737e; /* coral — highest, blocks ship */
   --ito-severity-blocker-bg: #2c1622;
   --ito-severity-blocker-border: #6e3242;

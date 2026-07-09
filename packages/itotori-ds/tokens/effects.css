@@ -9,7 +9,7 @@
   --ito-glow-amber: 0 0 0 1px rgba(255, 182, 72, 0.35), 0 0 18px -6px rgba(255, 182, 72, 0.6);
   --ito-glow-mint: 0 0 14px -6px rgba(69, 230, 173, 0.7);
 
-  /* Redaction overlay (MISSING-TOKENS.md §4 — frame/render overlay + redaction).
+  /* Redaction overlay (frame/render overlay + redaction).
    * Per [[feedback_redaction_is_a_toggle]]: redaction is a TOGGLE, default on
    * for committed/shared frames, OFF-able only for cap-gated private reveal.
    * shareRedaction (share/export) ALWAYS wins — even if canReveal is true. */
