@@ -470,7 +470,7 @@ fn insert_artifacts_and_links(
             "artifacts/by-sha/{}/{}/{}.7z",
             &meta.sha256[0..2],
             &meta.sha256[2..4],
-            &meta.sha256
+            meta.sha256
         );
         conn.execute(
             "INSERT INTO artifacts (id, sha256, size_bytes, artifact_kind, vault_path)

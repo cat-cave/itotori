@@ -14,9 +14,10 @@
 //!   about RealLive's format was confirmed by reading rlvm, the hypothesis
 //!   is re-derived and re-tested against publicly observable bytes before
 //!   being encoded here.
-//! - The RealLive detector is identify-only. Extraction, decompilation, and
-//!   patching live in KAIFUU-173/KAIFUU-174 (Kaifuu) and UTSUSHI-146
-//!   (runtime port). All of those nodes inherit the same clean-room posture.
+//! - The RealLive adapter includes identification/profile, Scene/SEEN
+//!   inventory/extraction, and limited length-preserving patch-back. Runtime
+//!   support remains in Utsushi. All of those slices inherit the same
+//!   clean-room posture.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -87,7 +88,7 @@ const REALLIVE_SEEN_GAN_MAGIC: &[u8] = b"GAN\x01";
 const REALLIVE_GAMEEXE_INI_MAGIC: &[u8] = b"# RealLive Gameexe.ini fixture";
 const REALLIVE_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000172001";
 const REALLIVE_GAME_ID: &str = "kaifuu-reallive-synthetic-scene-seen";
-const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
+const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive adapter identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures, inventories Scene/SEEN assets, extracts text slots, and supports limited length-preserving slot patch-back; decryption, non-text extraction, length-changing patch-back, and runtime support are not claimed.";
 // RealLive Gameexe.ini ASCII prefixes recognized as positive engine evidence.
 // All are documented on Haeleth's RLDEV site
 // (https://dev.haeleth.net/rldev.shtml) and observable in any RealLive title's
@@ -131,9 +132,10 @@ pub struct SiglusProfileDetectorAdapter;
 //   RealLive's format was confirmed by reading rlvm, the hypothesis is
 //   re-derived and re-tested against publicly observable bytes before being
 //   encoded here.
-// - This detector is identify-only. Extraction, decompilation, and patching
-//   live in KAIFUU-173/KAIFUU-174 (Kaifuu) and UTSUSHI-146 (runtime port).
-//   All of those nodes inherit the same clean-room posture.
+// - This adapter includes identification/profile, Scene/SEEN inventory and
+//   extraction, and limited length-preserving patch-back. Runtime support
+//   remains in Utsushi. All of those slices inherit the same clean-room
+//   posture.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RealLiveProfileDetectorAdapter;
 
@@ -4140,9 +4142,12 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                         .to_string(),
                     "image-overlaid text inside .g00 is not in scope".to_string(),
                 ]),
-                CapabilityLevelStatus::unsupported(
-                    "no full patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-preserving slot replacement",
-                ),
+                CapabilityLevelStatus::partial(vec![
+                    "length-preserving Scene/SEEN slot replacement only; length-changing edits return kaifuu.reallive.patchback_offset_overflow Fatal"
+                        .to_string(),
+                    "image-overlaid text inside .g00 and non-text assets are not patched by the RealLive adapter"
+                        .to_string(),
+                ]),
             ),
         )
         .with_access_contract(LayeredAccessCapabilityContract {
@@ -6436,8 +6441,8 @@ mod tests {
     }
 
     #[test]
-    fn reallive_detector_level_matrix_extract_partial_patch_unsupported() {
-        use kaifuu_core::CapabilityLevel;
+    fn reallive_adapter_level_matrix_extract_and_patch_are_partial() {
+        use kaifuu_core::{CapabilityLevel, CapabilityLevelStatus};
         let matrix = RealLiveProfileDetectorAdapter.capabilities().level_matrix;
         assert_eq!(matrix.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
         assert!(matrix.supports(CapabilityLevel::Identify));
@@ -6445,8 +6450,17 @@ mod tests {
         // Extract is Partial per plan: Scene parser covers text only.
         assert!(!matrix.supports(CapabilityLevel::Extract));
         assert!(matrix.extract.is_partial());
-        // No full patch path yet at this slice.
-        assert!(matrix.patch.is_unsupported());
+        // Patch is Partial per KAIFUU-174: slot-only and length-preserving.
+        assert!(!matrix.supports(CapabilityLevel::Patch));
+        assert!(matrix.patch.is_partial());
+        if let CapabilityLevelStatus::Partial { limitations } = &matrix.patch {
+            assert!(
+                limitations
+                    .iter()
+                    .any(|limitation| limitation.contains("length-preserving")),
+                "expected length-preserving patch limitation"
+            );
+        }
     }
 
     #[test]
