@@ -24,7 +24,9 @@ use crate::wolf_protection_detector::{WOLF_ENGINE_FAMILY, WolfProtectionProfile}
 use crate::{
     CodecTransform, HelperRedactionStatus, KaifuuResult, KeyMaterialKind, KeyValidationMethod,
     KeyValidationProof, OperationStatus, ProofHash, SecretRef, SecretRefScheme, SurfaceTransform,
-    deterministic_id, read_json, redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    deterministic_id, read_json, redact_for_log_or_report,
+    secret_holder::{SecretRefSecretResolver, ZeroizingSecretBytes},
+    sha256_hash_bytes, stable_json,
 };
 
 /// Stable marker prefix for typed display errors from this module.
@@ -137,75 +139,31 @@ impl WolfEncryptedSmokeFixture {
     }
 }
 
-/// Resolved archive key. Raw bytes are private, redacted in `Debug`, and
-/// zeroized on drop.
+/// Resolved archive key. Raw material lives in the shared non-`Clone`,
+/// zeroizing, `Debug`-redacting secret-holder primitive.
 ///
 /// # Secret boundary
 ///
-/// The raw-key constructor [`WolfEncryptedArchiveKey::from_resolved_bytes`] is
-/// PRIVATE to this module: no crate-wide code can mint a raw-key holder from
-/// arbitrary bytes. Every consumer (the KAIFUU-012 adapter, the KAIFUU-058
-/// profiled production driver) obtains a key ONLY by resolving a [`SecretRef`]
-/// through [`WolfEncryptedFixtureSecretResolver`], which hands the key back BY
-/// REF and never copies the raw bytes back out. This mirrors the KAIFUU-057
-/// `Xp3CryptKey` boundary: the holder + its raw-bytes constructor stay
-/// module-private and keys are only minted inside the owning module via the
-/// controlled resolve path.
-pub(crate) struct WolfEncryptedArchiveKey {
-    bytes: Vec<u8>,
+/// There is no Wolf-specific raw-key constructor. Every consumer obtains a key
+/// by resolving a [`SecretRef`] through [`WolfEncryptedFixtureSecretResolver`],
+/// which hands the key back BY REF and never copies raw bytes out.
+pub(crate) type WolfEncryptedArchiveKey = ZeroizingSecretBytes;
+
+pub(crate) trait WolfEncryptedArchiveKeyExt {
+    /// sha256 over the raw key material — a one-way proof hash, never the bytes.
+    fn material_hash(&self) -> Result<ProofHash, WolfEncryptedSmokeError>;
+
+    fn apply_filter(&self, data: &[u8]) -> Vec<u8>;
 }
 
-impl WolfEncryptedArchiveKey {
-    /// PRIVATE raw-key constructor. Deliberately NOT `pub(crate)`: minting a
-    /// raw-key holder from arbitrary bytes must only happen inside this module,
-    /// via [`WolfEncryptedFixtureSecretResolver`]. See the type-level
-    /// "Secret boundary" note.
-    fn from_resolved_bytes(bytes: Vec<u8>) -> Self {
-        Self { bytes }
-    }
-
-    /// Resolved key length in bytes. Reportable (a count, never the bytes).
-    pub(crate) fn byte_len(&self) -> usize {
-        self.bytes.len()
-    }
-
-    /// sha256 over the raw key material — a one-way proof hash, never the bytes.
-    pub(crate) fn material_hash(&self) -> Result<ProofHash, WolfEncryptedSmokeError> {
-        proof_hash(&self.bytes)
+impl WolfEncryptedArchiveKeyExt for WolfEncryptedArchiveKey {
+    fn material_hash(&self) -> Result<ProofHash, WolfEncryptedSmokeError> {
+        ProofHash::new(self.sha256_material_hash())
+            .map_err(|message| WolfEncryptedSmokeError::Internal { message })
     }
 
     fn apply_filter(&self, data: &[u8]) -> Vec<u8> {
-        if self.bytes.is_empty() {
-            return data.to_vec();
-        }
-        data.iter()
-            .enumerate()
-            .map(|(index, byte)| byte ^ self.bytes[index % self.bytes.len()] ^ 0x73)
-            .collect()
-    }
-
-    pub(crate) fn appears_in(&self, haystack: &[u8]) -> bool {
-        !self.bytes.is_empty()
-            && self.bytes.len() <= haystack.len()
-            && haystack
-                .windows(self.bytes.len())
-                .any(|window| window == self.bytes)
-    }
-}
-
-impl Drop for WolfEncryptedArchiveKey {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
-    }
-}
-
-impl fmt::Debug for WolfEncryptedArchiveKey {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("WolfEncryptedArchiveKey")
-            .field("bytes", &"[REDACTED:kaifuu.secret_redacted]")
-            .field("byte_len", &self.bytes.len())
-            .finish()
+        self.apply_xor_filter(data, None, false, 0x73)
     }
 }
 
@@ -218,37 +176,37 @@ impl fmt::Debug for WolfEncryptedArchiveKey {
 /// must not be duplicated past this boundary.
 #[derive(Debug)]
 pub struct WolfEncryptedFixtureSecretResolver {
-    entries: Vec<(String, WolfEncryptedArchiveKey)>,
+    entries: SecretRefSecretResolver,
 }
 
 impl WolfEncryptedFixtureSecretResolver {
     pub fn fixture_default() -> Self {
+        Self::from_entries(vec![(
+            WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF.to_string(),
+            SYNTHETIC_FIXTURE_KEY.to_vec(),
+        )])
+    }
+
+    /// Build a resolver from `(secret_ref, raw_bytes)` entries. This
+    /// module-private fixture entry consumes synthetic raw key bytes and
+    /// immediately mints them into the shared zeroize-on-drop holder.
+    fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
         Self {
-            entries: vec![(
-                WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF.to_string(),
-                WolfEncryptedArchiveKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec()),
-            )],
+            entries: SecretRefSecretResolver::from_entries(entries),
         }
     }
 
-    /// Build a resolver from `(secret_ref, raw_bytes)` entries. This is the ONLY
-    /// controlled crate-wide construction entry that turns raw key bytes into a
-    /// zeroize-on-drop [`WolfEncryptedArchiveKey`]: the raw bytes are consumed
-    /// here and minted into the private holder inside this module, so no
-    /// crate-wide `from_resolved_bytes(raw)` constructor is exposed. Mirrors the
-    /// KAIFUU-057 `FixtureSecretResolver::from_entries` boundary.
-    pub(crate) fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
+    /// Build a resolver by binding declared secret refs to existing key
+    /// holders. No raw key material leaves a holder; the shared resolver mints
+    /// fresh zeroize-on-drop holders internally.
+    pub(crate) fn from_key_refs(entries: Vec<(String, &WolfEncryptedArchiveKey)>) -> Self {
         Self {
-            entries: entries
-                .into_iter()
-                .map(|(secret_ref, bytes)| {
-                    (
-                        secret_ref,
-                        WolfEncryptedArchiveKey::from_resolved_bytes(bytes),
-                    )
-                })
-                .collect(),
+            entries: SecretRefSecretResolver::from_secret_refs(entries),
         }
+    }
+
+    fn into_key(self, secret_ref: &SecretRef) -> Option<WolfEncryptedArchiveKey> {
+        self.entries.into_resolved(secret_ref)
     }
 
     /// Resolve `secret_ref` to fixture-safe key material BY REF, or a typed
@@ -261,9 +219,7 @@ impl WolfEncryptedFixtureSecretResolver {
         secret_ref: &SecretRef,
     ) -> Result<&WolfEncryptedArchiveKey, WolfEncryptedSmokeError> {
         self.entries
-            .iter()
-            .find(|(candidate, _)| candidate == secret_ref.as_str())
-            .map(|(_, key)| key)
+            .resolve(secret_ref)
             .ok_or_else(|| WolfEncryptedSmokeError::MissingSecret {
                 requirement_id: requirement_id.to_string(),
                 secret_ref_scheme: secret_ref.scheme(),
@@ -274,8 +230,17 @@ impl WolfEncryptedFixtureSecretResolver {
     /// runtime no-leak guard so callers never need direct access to the key
     /// bytes.
     pub(crate) fn any_key_appears_in(&self, haystack: &[u8]) -> bool {
-        self.entries.iter().any(|(_, key)| key.appears_in(haystack))
+        self.entries.any_key_appears_in(haystack)
     }
+}
+
+fn wolf_key_from_secret_ref_entry(
+    secret_ref: &SecretRef,
+    bytes: Vec<u8>,
+) -> WolfEncryptedArchiveKey {
+    WolfEncryptedFixtureSecretResolver::from_entries(vec![(secret_ref.as_str().to_string(), bytes)])
+        .into_key(secret_ref)
+        .expect("newly inserted Wolf key must resolve by its SecretRef")
 }
 
 /// Fatal errors for the smoke.
@@ -541,7 +506,9 @@ impl WolfEncryptedSmokeReport {
 
 /// Build the synthetic encrypted Wolf-like archive.
 pub fn build_synthetic_wolf_encrypted_archive() -> Vec<u8> {
-    let key = WolfEncryptedArchiveKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+    let secret_ref =
+        SecretRef::new(WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF).expect("fixture ref is valid");
+    let key = wolf_key_from_secret_ref_entry(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
     let members = FIXTURE_MEMBERS
         .iter()
         .map(|(member_id, text)| WolfPlainMember {
@@ -1076,20 +1043,19 @@ mod tests {
 
     #[test]
     fn key_debug_is_redacted() {
-        let key = WolfEncryptedArchiveKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let secret_ref = SecretRef::new(WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF).unwrap();
+        let key = wolf_key_from_secret_ref_entry(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
         let debug = format!("{key:?}");
         assert!(debug.contains("[REDACTED:kaifuu.secret_redacted]"));
         assert!(!debug.contains("K073-WOLF-FIXTURE"));
     }
 
     #[test]
-    fn from_entries_is_the_controlled_construction_path() {
-        // The ONLY crate-wide way to turn raw bytes into a key holder is the
-        // resolver's `from_entries` controlled entry; it mints the private
-        // zeroize-on-drop holder inside this module and hands it back BY REF.
-        // (There is no crate-wide `WolfEncryptedArchiveKey::from_resolved_bytes`
-        // raw-key constructor — that constructor is module-private, which is
-        // what makes this the sole minting path for downstream crate code.)
+    fn from_entries_is_module_private_fixture_construction_path() {
+        // The raw-entry constructor is module-private: it mints synthetic
+        // fixture bytes into the shared zeroize-on-drop holder and hands keys
+        // back BY REF. Crate-visible callers must bind refs to existing holders
+        // through `from_key_refs`.
         let secret_ref = WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF.to_string();
         let raw = b"synthetic-controlled-entry-key".to_vec();
         let resolver =

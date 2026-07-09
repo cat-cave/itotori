@@ -40,8 +40,9 @@ use thiserror::Error;
 
 use kaifuu_core::{
     HelperRedactionStatus, KaifuuResult, KeyMaterialKind, KeyValidationMethod, KeyValidationProof,
-    OperationStatus, ProofHash, SecretRef, redact_for_log_or_report, sha256_hash_bytes,
-    stable_json,
+    OperationStatus, ProofHash, SecretRef, redact_for_log_or_report,
+    secret_holder::{SecretRefSecretResolver, ZeroizingSecretBytes},
+    sha256_hash_bytes, stable_json,
 };
 
 /// Schema version of the known-key smoke fixture + report.
@@ -74,6 +75,7 @@ const GAMEEXE_SMOKE_MAGIC: &[u8; 14] = b"KSIG-GXE-SMOKE";
 /// is fixture material, never a retail key; it is the only place raw key bytes
 /// exist, and they never leave [`KnownKeyMaterial`].
 const SYNTHETIC_KNOWN_KEY: &[u8; 16] = b"KSIG-SMOKE-KEY01";
+const SYNTHETIC_KNOWN_KEY_SECRET_REF: &str = "local-secret:siglus-known-key-smoke-fixture";
 
 /// On-wire compression flag byte for the uncompressed-within-profile case.
 const COMPRESSION_UNCOMPRESSED: u8 = 0;
@@ -184,50 +186,36 @@ pub struct SiglusKnownKeyProfile {
 ///
 /// The KAIFUU-022 pure adapter ([`crate::adapter`]) reuses this holder as the
 /// single place raw key bytes ever live: it constructs one via
-/// [`KnownKeyMaterial::from_resolved_bytes`] from an *already-resolved* secret
+/// a shared [`ZeroizingSecretBytes`] holder from an *already-resolved* secret
 /// ref (the adapter never does key discovery) and passes it to the key-injected
 /// `*_with` primitives below.
 pub(crate) struct KnownKeyMaterial {
-    bytes: Vec<u8>,
+    holder: ZeroizingSecretBytes,
 }
 
 impl KnownKeyMaterial {
-    /// Wrap already-resolved raw key bytes. The bytes came from the key
-    /// discovery / secret-store layer — this holder only guarantees they are
-    /// never serialized, logged, or written past this boundary.
-    pub(crate) fn from_resolved_bytes(bytes: Vec<u8>) -> Self {
-        Self { bytes }
+    pub(crate) fn from_holder(holder: ZeroizingSecretBytes) -> Self {
+        Self { holder }
     }
 
     pub(crate) fn byte_len(&self) -> usize {
-        self.bytes.len()
+        self.holder.byte_len()
     }
 
     /// One-way sha256 commitment to the key bytes (never the bytes themselves).
     pub(crate) fn material_hash(&self) -> KaifuuResult<ProofHash> {
-        Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
+        Ok(ProofHash::new(self.holder.sha256_material_hash())?)
     }
 
     pub(crate) fn xor_cycle(&self, data: &[u8]) -> Vec<u8> {
-        xor_cycled(data, &self.bytes)
+        self.holder.apply_xor_filter(data, None, false, 0)
     }
 
     /// Reject-on-secret probe: does the raw key material appear as a contiguous
     /// byte window inside `haystack`? Used to refuse writing any artifact that
     /// would leak the key. Returns only a boolean — never the bytes.
     pub(crate) fn appears_in(&self, haystack: &[u8]) -> bool {
-        if self.bytes.is_empty() || self.bytes.len() > haystack.len() {
-            return false;
-        }
-        haystack
-            .windows(self.bytes.len())
-            .any(|window| window == self.bytes)
-    }
-}
-
-impl Drop for KnownKeyMaterial {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
+        self.holder.appears_in(haystack)
     }
 }
 
@@ -236,9 +224,22 @@ impl std::fmt::Debug for KnownKeyMaterial {
         formatter
             .debug_struct("KnownKeyMaterial")
             .field("bytes", &"[REDACTED:kaifuu.secret_redacted]")
-            .field("byte_len", &self.bytes.len())
+            .field("byte_len", &self.holder.byte_len())
             .finish()
     }
+}
+
+fn known_key_material_from_resolved_secret(
+    secret_ref: &SecretRef,
+    raw_material: Vec<u8>,
+) -> KnownKeyMaterial {
+    let holder = SecretRefSecretResolver::from_entries(vec![(
+        secret_ref.as_str().to_string(),
+        raw_material,
+    )])
+    .into_resolved(secret_ref)
+    .expect("newly inserted Siglus key must resolve by its SecretRef");
+    KnownKeyMaterial::from_holder(holder)
 }
 
 /// Resolve the profile's known key to in-process material.
@@ -247,10 +248,8 @@ impl std::fmt::Debug for KnownKeyMaterial {
 /// a real scoped run this seam is where the KAIFUU-069 validated key-ref would
 /// be consumed; either way the raw bytes never cross this boundary except
 /// inside [`KnownKeyMaterial`].
-fn resolve_known_key(_profile: &SiglusKnownKeyProfile) -> KnownKeyMaterial {
-    KnownKeyMaterial {
-        bytes: SYNTHETIC_KNOWN_KEY.to_vec(),
-    }
+fn resolve_known_key(profile: &SiglusKnownKeyProfile) -> KnownKeyMaterial {
+    known_key_material_from_resolved_secret(&profile.secret_ref, SYNTHETIC_KNOWN_KEY.to_vec())
 }
 
 // --- Extraction results (in-memory; text never enters the report) -----------
@@ -714,9 +713,11 @@ fn verify_scene_patch(
 
 /// Build the synthetic profiled `Scene` container (uncompressed-within-profile).
 pub fn build_synthetic_scene_fixture() -> Vec<u8> {
-    let key = KnownKeyMaterial {
-        bytes: SYNTHETIC_KNOWN_KEY.to_vec(),
-    };
+    let key = known_key_material_from_resolved_secret(
+        &SecretRef::new(SYNTHETIC_KNOWN_KEY_SECRET_REF)
+            .expect("static synthetic secret ref is valid"),
+        SYNTHETIC_KNOWN_KEY.to_vec(),
+    );
     let records: Vec<(u32, Vec<u8>)> = FIXTURE_SCENE_UNITS
         .iter()
         .enumerate()
@@ -748,9 +749,11 @@ pub fn build_synthetic_out_of_profile_scene_fixture() -> Vec<u8> {
 
 /// Build the synthetic profiled `Gameexe` container.
 pub fn build_synthetic_gameexe_fixture() -> Vec<u8> {
-    let key = KnownKeyMaterial {
-        bytes: SYNTHETIC_KNOWN_KEY.to_vec(),
-    };
+    let key = known_key_material_from_resolved_secret(
+        &SecretRef::new(SYNTHETIC_KNOWN_KEY_SECRET_REF)
+            .expect("static synthetic secret ref is valid"),
+        SYNTHETIC_KNOWN_KEY.to_vec(),
+    );
     let records: Vec<(Vec<u8>, Vec<u8>)> = FIXTURE_GAMEEXE_ENTRIES
         .iter()
         .map(|(config_key, value)| {
@@ -965,17 +968,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-// --- Text + key helpers -----------------------------------------------------
-
-fn xor_cycled(data: &[u8], key: &[u8]) -> Vec<u8> {
-    if key.is_empty() {
-        return data.to_vec();
-    }
-    data.iter()
-        .enumerate()
-        .map(|(index, byte)| byte ^ key[index % key.len()])
-        .collect()
-}
+// --- Text helpers -----------------------------------------------------------
 
 pub(crate) fn utf16le_encode(text: &str) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len() * 2);
@@ -1474,9 +1467,11 @@ mod tests {
 
     #[test]
     fn key_material_is_redacted_and_zeroized_in_debug() {
-        let key = KnownKeyMaterial {
-            bytes: SYNTHETIC_KNOWN_KEY.to_vec(),
-        };
+        let key = known_key_material_from_resolved_secret(
+            &SecretRef::new(SYNTHETIC_KNOWN_KEY_SECRET_REF)
+                .expect("static synthetic secret ref is valid"),
+            SYNTHETIC_KNOWN_KEY.to_vec(),
+        );
         let rendered = format!("{key:?}");
         assert!(rendered.contains("REDACTED"));
         assert!(!rendered.contains(&String::from_utf8_lossy(SYNTHETIC_KNOWN_KEY).into_owned()));

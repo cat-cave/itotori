@@ -54,7 +54,9 @@ use kaifuu_core::{
     KeyValidationProof, OperationStatus, PLAIN_XP3_MANIFEST_SCHEMA_VERSION,
     PLAIN_XP3_MANIFEST_VARIANT, PlainXp3Archive, PlainXp3ArchiveEntry, PlainXp3ArchiveSegment,
     ProofHash, SecretRef, SecretRefScheme, compute_adler32, encode_xp3, read_json,
-    read_plain_xp3_archive, redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    read_plain_xp3_archive, redact_for_log_or_report,
+    secret_holder::{SecretRefSecretResolver, ZeroizingSecretBytes},
+    sha256_hash_bytes, stable_json,
 };
 use std::path::Path;
 
@@ -208,79 +210,28 @@ impl KirikiriXp3Surface {
 
 // --- Module-private key holder ----------------------------------------------
 
-/// The resolved crypt key. Raw material is crate-private, never serialized,
-/// redacted in `Debug`, and zeroized on drop.
-pub(crate) struct Xp3CryptKey {
-    bytes: Vec<u8>,
-}
+/// The resolved crypt key. Raw material lives in the shared non-`Clone`,
+/// zeroizing, `Debug`-redacting secret-holder primitive.
+pub(crate) type Xp3CryptKey = ZeroizingSecretBytes;
 
-impl Xp3CryptKey {
-    /// Wrap already-resolved raw key bytes. The bytes came from the secret-ref
-    /// resolver — this holder only guarantees they are never serialized,
-    /// logged, or returned past this boundary.
-    pub(crate) fn from_resolved_bytes(bytes: Vec<u8>) -> Self {
-        Self { bytes }
-    }
-
-    pub(crate) fn byte_len(&self) -> usize {
-        self.bytes.len()
-    }
-
+pub(crate) trait Xp3CryptKeyExt {
     /// One-way sha-256 commitment to the key bytes (never the bytes themselves).
-    pub(crate) fn material_hash(&self) -> Result<ProofHash, Xp3CryptError> {
-        ProofHash::new(sha256_hash_bytes(&self.bytes))
-            .map_err(|message| Xp3CryptError::Internal { message })
-    }
+    fn material_hash(&self) -> Result<ProofHash, Xp3CryptError>;
 
     /// Apply the fixture crypt filter for a declared, data-driven crypt
     /// [`Xp3CryptScheme`]. Every scheme is its own inverse (all-XOR), so this
     /// both enciphers and deciphers.
-    pub(crate) fn apply_filter(&self, scheme: Xp3CryptScheme, data: &[u8]) -> Vec<u8> {
-        if self.bytes.is_empty() {
-            return data.to_vec();
-        }
-        let mut out: Vec<u8> = data
-            .iter()
-            .enumerate()
-            .map(|(index, byte)| {
-                let mut transformed = byte ^ self.bytes[index % self.bytes.len()];
-                if scheme.position_xor {
-                    transformed ^= index as u8;
-                }
-                transformed
-            })
-            .collect();
-        if let Some(first) = out.first_mut() {
-            *first ^= scheme.first_byte_xor;
-        }
-        out
-    }
-
-    /// Does the raw key material appear as a contiguous window inside
-    /// `haystack`? Used by the no-leak assertion. Returns only a boolean.
-    pub(crate) fn appears_in(&self, haystack: &[u8]) -> bool {
-        if self.bytes.is_empty() || self.bytes.len() > haystack.len() {
-            return false;
-        }
-        haystack
-            .windows(self.bytes.len())
-            .any(|window| window == self.bytes)
-    }
+    fn apply_filter(&self, scheme: Xp3CryptScheme, data: &[u8]) -> Vec<u8>;
 }
 
-impl Drop for Xp3CryptKey {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
+impl Xp3CryptKeyExt for Xp3CryptKey {
+    fn material_hash(&self) -> Result<ProofHash, Xp3CryptError> {
+        ProofHash::new(self.sha256_material_hash())
+            .map_err(|message| Xp3CryptError::Internal { message })
     }
-}
 
-impl std::fmt::Debug for Xp3CryptKey {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Xp3CryptKey")
-            .field("bytes", &"[REDACTED:kaifuu.secret_redacted]")
-            .field("byte_len", &self.bytes.len())
-            .finish()
+    fn apply_filter(&self, scheme: Xp3CryptScheme, data: &[u8]) -> Vec<u8> {
+        self.apply_xor_filter(data, Some(scheme.first_byte_xor), scheme.position_xor, 0)
     }
 }
 
@@ -305,25 +256,31 @@ impl std::fmt::Debug for Xp3CryptKey {
 /// ever be formatted. Deliberately NOT `Clone`: the resolved key must not be
 /// duplicated past this boundary.
 pub struct FixtureSecretResolver {
-    /// `(secret-ref string, fixture-safe key holder)`.
-    entries: Vec<(String, Xp3CryptKey)>,
+    entries: SecretRefSecretResolver,
 }
 
 impl FixtureSecretResolver {
     /// The default fixture resolver: the valid ref → the correct fixture key,
     /// the wrong ref → a distinct wrong key. Any other ref is missing.
     pub fn fixture_default() -> Self {
+        Self::from_entries(vec![
+            (
+                XP3_CRYPT_VALID_SECRET_REF.to_string(),
+                SYNTHETIC_FIXTURE_KEY.to_vec(),
+            ),
+            (
+                XP3_CRYPT_WRONG_SECRET_REF.to_string(),
+                SYNTHETIC_WRONG_KEY.to_vec(),
+            ),
+        ])
+    }
+
+    /// Build a resolver from `(secret_ref, raw_bytes)` entries. This is the
+    /// controlled construction entry: raw bytes are immediately minted into the
+    /// shared zeroizing holder and are thereafter resolved only by `SecretRef`.
+    fn from_entries(entries: Vec<(String, Vec<u8>)>) -> Self {
         Self {
-            entries: vec![
-                (
-                    XP3_CRYPT_VALID_SECRET_REF.to_string(),
-                    Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec()),
-                ),
-                (
-                    XP3_CRYPT_WRONG_SECRET_REF.to_string(),
-                    Xp3CryptKey::from_resolved_bytes(SYNTHETIC_WRONG_KEY.to_vec()),
-                ),
-            ],
+            entries: SecretRefSecretResolver::from_entries(entries),
         }
     }
 
@@ -336,16 +293,12 @@ impl FixtureSecretResolver {
     /// struct.
     pub(crate) fn from_key_refs(entries: Vec<(String, &Xp3CryptKey)>) -> Self {
         Self {
-            entries: entries
-                .into_iter()
-                .map(|(secret_ref, key)| {
-                    (
-                        secret_ref,
-                        Xp3CryptKey::from_resolved_bytes(key.bytes.clone()),
-                    )
-                })
-                .collect(),
+            entries: SecretRefSecretResolver::from_secret_refs(entries),
         }
+    }
+
+    fn into_key(self, secret_ref: &SecretRef) -> Option<Xp3CryptKey> {
+        self.entries.into_resolved(secret_ref)
     }
 
     /// Resolve `secret_ref` to fixture-safe key material BY REF, or a typed
@@ -358,9 +311,7 @@ impl FixtureSecretResolver {
         secret_ref: &SecretRef,
     ) -> Result<&Xp3CryptKey, Xp3CryptError> {
         self.entries
-            .iter()
-            .find(|(candidate, _)| candidate == secret_ref.as_str())
-            .map(|(_, key)| key)
+            .resolve(secret_ref)
             .ok_or_else(|| Xp3CryptError::MissingSecret {
                 requirement_id: requirement_id.to_string(),
                 secret_ref_scheme: secret_ref.scheme(),
@@ -371,7 +322,7 @@ impl FixtureSecretResolver {
     /// `haystack`? Used by the no-leak guard so registry/resolver-held bytes are
     /// covered, not just the serialized report.
     pub(crate) fn any_key_appears_in(&self, haystack: &[u8]) -> bool {
-        self.entries.iter().any(|(_, key)| key.appears_in(haystack))
+        self.entries.any_key_appears_in(haystack)
     }
 }
 
@@ -381,18 +332,19 @@ impl std::fmt::Debug for FixtureSecretResolver {
         // are safe to show (they are the reportable identifiers); the holders
         // are already `Debug`-redacting but we render only their count + refs so
         // no key bytes can ever be reached through this impl.
-        let refs: Vec<&str> = self
-            .entries
-            .iter()
-            .map(|(secret_ref, _)| secret_ref.as_str())
-            .collect();
         formatter
             .debug_struct("FixtureSecretResolver")
             .field("entries", &self.entries.len())
-            .field("secret_refs", &refs)
+            .field("secret_refs", &self.entries.refs())
             .field("key_material", &"[REDACTED:kaifuu.secret_redacted]")
             .finish()
     }
+}
+
+fn module_private_fixture_secret_holder(secret_ref: &SecretRef, bytes: Vec<u8>) -> Xp3CryptKey {
+    FixtureSecretResolver::from_entries(vec![(secret_ref.as_str().to_string(), bytes)])
+        .into_key(secret_ref)
+        .expect("newly inserted XP3 key must resolve by its SecretRef")
 }
 
 // --- Errors -----------------------------------------------------------------
@@ -459,7 +411,8 @@ pub enum Xp3CryptError {
 /// The `adlr` chunk stores the adler-32 of the **plaintext** (KiriKiri
 /// semantics), so a correct key reproduces it and a wrong key does not.
 pub fn build_synthetic_crypt_xp3() -> Vec<u8> {
-    let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+    let secret_ref = SecretRef::new(XP3_CRYPT_VALID_SECRET_REF).expect("fixture ref is valid");
+    let key = module_private_fixture_secret_holder(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
     let members: Vec<(String, Vec<u8>)> = FIXTURE_MEMBERS
         .iter()
         .map(|(path, text)| ((*path).to_string(), text.as_bytes().to_vec()))
@@ -1070,7 +1023,8 @@ mod tests {
 
     #[test]
     fn filter_is_its_own_inverse() {
-        let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let secret_ref = SecretRef::new(XP3_CRYPT_VALID_SECRET_REF).unwrap();
+        let key = module_private_fixture_secret_holder(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
         let plaintext = b"the quick brown fox\x00\x01\xff";
         for profile in [
             Xp3CryptoProfile::XorSimpleCryptFixture,
@@ -1087,7 +1041,8 @@ mod tests {
     fn distinct_profiles_produce_distinct_ciphertext() {
         // Two profiled crypt schemes, same key → different ciphertext. Proves the
         // scheme is genuinely data-driven, not a single hard-coded transform.
-        let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let secret_ref = SecretRef::new(XP3_CRYPT_VALID_SECRET_REF).unwrap();
+        let key = module_private_fixture_secret_holder(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
         let plaintext = b"synthetic-kirikiri-profiled-crypt-sample-0123456789";
         let simple = key.apply_filter(Xp3CryptoProfile::XorSimpleCryptFixture.scheme(), plaintext);
         let position = key.apply_filter(
@@ -1176,7 +1131,8 @@ mod tests {
 
     #[test]
     fn key_is_redacted_and_zeroized_in_debug() {
-        let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let secret_ref = SecretRef::new(XP3_CRYPT_VALID_SECRET_REF).unwrap();
+        let key = module_private_fixture_secret_holder(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
         let rendered = format!("{key:?}");
         assert!(rendered.contains("REDACTED"));
         assert!(!rendered.contains(&String::from_utf8_lossy(SYNTHETIC_FIXTURE_KEY).into_owned()));
@@ -1211,7 +1167,8 @@ mod tests {
     fn no_leak_probe_detects_key_in_bytes() {
         // Sanity: the appears_in probe actually detects the key when present,
         // so the no-leak assertions are meaningful.
-        let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
+        let secret_ref = SecretRef::new(XP3_CRYPT_VALID_SECRET_REF).unwrap();
+        let key = module_private_fixture_secret_holder(&secret_ref, SYNTHETIC_FIXTURE_KEY.to_vec());
         let mut haystack = b"prefix".to_vec();
         haystack.extend_from_slice(SYNTHETIC_FIXTURE_KEY);
         assert!(key.appears_in(&haystack));

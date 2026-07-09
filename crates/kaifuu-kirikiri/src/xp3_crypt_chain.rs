@@ -61,8 +61,8 @@ use std::path::Path;
 
 use crate::xp3_crypt::{
     FixtureSecretResolver, XP3_CRYPT_CONTAINER, XP3_CRYPT_ENGINE_FAMILY, Xp3CryptError,
-    Xp3CryptFixture, Xp3CryptMemberDigest, Xp3CryptoProfile, decrypt_and_extract, decrypt_members,
-    encode_encrypted_xp3, resolve_container_bytes,
+    Xp3CryptFixture, Xp3CryptKeyExt, Xp3CryptMemberDigest, Xp3CryptoProfile, decrypt_and_extract,
+    decrypt_members, encode_encrypted_xp3, resolve_container_bytes,
 };
 use crate::xp3_patch::{
     Xp3PatchError, Xp3PatchManifest, Xp3PatchReport, apply_replacements,

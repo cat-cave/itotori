@@ -59,12 +59,14 @@ use thiserror::Error;
 use kaifuu_core::{
     HelperCapabilityLevel, HelperDiagnosticCode, HelperRedactionStatus, HelperResult, KaifuuResult,
     KeyMaterialKind, KeyValidationMethod, KeyValidationProof, OperationStatus, ProofHash,
-    SecretRef, deterministic_id, redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    SecretRef, deterministic_id, redact_for_log_or_report,
+    secret_holder::{SecretRefSecretResolver, ZeroizingSecretBytes},
+    sha256_hash_bytes, stable_json,
 };
 
 use crate::xp3_crypt::{
-    FixtureSecretResolver, KirikiriXp3Surface, Xp3CryptKey, Xp3CryptoProfile, decrypt_members,
-    encode_encrypted_xp3,
+    FixtureSecretResolver, KirikiriXp3Surface, Xp3CryptKey, Xp3CryptKeyExt, Xp3CryptoProfile,
+    decrypt_members, encode_encrypted_xp3,
 };
 use crate::xp3_patch::{Xp3TextReplacement, apply_replacements};
 
@@ -213,8 +215,8 @@ impl Xp3ProductionError {
 /// The raw key material NEVER lives in a `pub`, `Debug`-deriving field. Both the
 /// ground-truth archive key and the operator's resolved key evidence are held
 /// ONLY inside the module-private, zeroize-on-drop, `Debug`-redacting
-/// [`Xp3CryptKey`] holder (constructed via [`Xp3ProductionVariant::new`]); the
-/// fields are private and the manual [`std::fmt::Debug`] impl redacts them. The
+/// [`ZeroizingSecretBytes`] holder (required by [`Xp3ProductionVariant::new`]);
+/// the fields are private and the manual [`std::fmt::Debug`] impl redacts them. The
 /// non-secret fields (ids, crypt profile, surface, refs, helper workflow,
 /// member surfaces, replacements, claim) stay public.
 pub struct Xp3ProductionVariant {
@@ -256,10 +258,13 @@ pub struct Xp3ProductionVariant {
 }
 
 impl Xp3ProductionVariant {
-    /// Construct a variant, confining the raw archive key + resolved key
-    /// evidence bytes to the zeroize-on-drop [`Xp3CryptKey`] holder immediately.
-    /// This is the ONLY way to supply key material to a variant — there is no
-    /// `pub` raw-key field to write to.
+    /// Construct a variant from already-confined secret holders.
+    ///
+    /// The XP3 production surface deliberately has no public raw-key
+    /// constructor: callers must pass zeroize-on-drop [`ZeroizingSecretBytes`]
+    /// holders that were minted by a secret-ref resolver. This keeps raw bytes
+    /// out of the public variant API and forces the same holder discipline the
+    /// decrypt path uses.
     #[expect(clippy::too_many_arguments)]
     #[must_use]
     pub fn new(
@@ -273,8 +278,8 @@ impl Xp3ProductionVariant {
         members: Vec<(String, String)>,
         replacements: Vec<Xp3TextReplacement>,
         claimed: bool,
-        archive_key: Vec<u8>,
-        resolved_key_evidence: Option<Vec<u8>>,
+        archive_key: ZeroizingSecretBytes,
+        resolved_key_evidence: Option<ZeroizingSecretBytes>,
     ) -> Self {
         Self {
             variant_id,
@@ -287,16 +292,16 @@ impl Xp3ProductionVariant {
             members,
             replacements,
             claimed,
-            archive_key: Xp3CryptKey::from_resolved_bytes(archive_key),
-            resolved_key_evidence: resolved_key_evidence.map(Xp3CryptKey::from_resolved_bytes),
+            archive_key,
+            resolved_key_evidence,
         }
     }
 
-    /// Replace (or clear) the operator's resolved key evidence, re-confining any
-    /// raw bytes to the zeroize-on-drop holder. Models a run where the resolved
-    /// key is absent, wrong, or supplied.
-    pub fn set_resolved_key_evidence(&mut self, bytes: Option<Vec<u8>>) {
-        self.resolved_key_evidence = bytes.map(Xp3CryptKey::from_resolved_bytes);
+    /// Replace (or clear) the operator's resolved key evidence. Any supplied
+    /// key must already be confined to the zeroize-on-drop holder. Models a run
+    /// where the resolved key is absent, wrong, or supplied.
+    pub fn set_resolved_key_evidence(&mut self, key: Option<ZeroizingSecretBytes>) {
+        self.resolved_key_evidence = key;
     }
 
     /// The declared expected member ids (in archive order).
@@ -999,13 +1004,22 @@ fn proof_hash(bytes: &[u8]) -> Result<ProofHash, Xp3ProductionError> {
         .map_err(|message| Xp3ProductionError::Internal { message })
 }
 
+fn private_fixture_secret_holder(secret_ref: &SecretRef, bytes: Vec<u8>) -> ZeroizingSecretBytes {
+    SecretRefSecretResolver::from_entries(vec![(secret_ref.as_str().to_string(), bytes)])
+        .into_resolved(secret_ref)
+        .expect("newly inserted production fixture key must resolve by its SecretRef")
+}
+
 // --- Synthetic registry (public, reproducible fixture) ----------------------
 
 /// Deterministic synthetic builders. No corpus bytes, no retail names, no real
 /// keys — only clearly-synthetic authored surfaces + obviously-fake fixture
 /// keys, and public secret **refs**.
 pub mod synthetic {
-    use super::{Xp3HelperWorkflow, Xp3ProductionRegistry, Xp3ProductionVariant, deterministic_id};
+    use super::{
+        Xp3HelperWorkflow, Xp3ProductionRegistry, Xp3ProductionVariant, deterministic_id,
+        private_fixture_secret_holder,
+    };
     use crate::xp3_crypt::{KirikiriXp3Surface, Xp3CryptoProfile};
     use crate::xp3_patch::Xp3TextReplacement;
     use kaifuu_core::{
@@ -1080,7 +1094,9 @@ pub mod synthetic {
         let a_requirement = "kaifuu-k057-xp3-simple-key".to_string();
         let a_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-simple-crypt-key")
             .expect("synthetic secret ref is valid");
-        let a_key = b"K057-XP3-SIMPLEKEY01".to_vec();
+        let a_archive_key = private_fixture_secret_holder(&a_ref, b"K057-XP3-SIMPLEKEY01".to_vec());
+        let a_resolved_key =
+            private_fixture_secret_holder(&a_ref, b"K057-XP3-SIMPLEKEY01".to_vec());
         let variant_a = Xp3ProductionVariant::new(
             "kaifuu-k057-xp3-simple-crypt".to_string(),
             Xp3CryptoProfile::XorSimpleCryptFixture,
@@ -1106,15 +1122,18 @@ pub mod synthetic {
                 replace: "[localized-k057-simple-line-0-JA-longer]".to_string(),
             }],
             true,
-            a_key.clone(),
-            Some(a_key),
+            a_archive_key,
+            Some(a_resolved_key),
         );
 
         // Variant B: XorPositionCryptFixture, manual-entry-helper-gated key.
         let b_requirement = "kaifuu-k057-xp3-position-key".to_string();
         let b_ref = SecretRef::new("prompt:kaifuu/k057/xp3-position-archive-password")
             .expect("synthetic secret ref is valid");
-        let b_key = b"K057-XP3-POSITIONKEY02".to_vec();
+        let b_archive_key =
+            private_fixture_secret_holder(&b_ref, b"K057-XP3-POSITIONKEY02".to_vec());
+        let b_resolved_key =
+            private_fixture_secret_holder(&b_ref, b"K057-XP3-POSITIONKEY02".to_vec());
         let variant_b = Xp3ProductionVariant::new(
             "kaifuu-k057-xp3-position-crypt".to_string(),
             Xp3CryptoProfile::XorPositionCryptFixture,
@@ -1144,14 +1163,16 @@ pub mod synthetic {
                 replace: "[localized-k057-position-line-0-JA]".to_string(),
             }],
             true,
-            b_key.clone(),
-            Some(b_key),
+            b_archive_key,
+            Some(b_resolved_key),
         );
 
         // Variant C: explicitly NOT claimed — a research-tier scheme the profile
         // does not advance to a claim (out of scope).
         let c_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-research-only")
             .expect("synthetic secret ref is valid");
+        let c_archive_key =
+            private_fixture_secret_holder(&c_ref, b"K057-XP3-RESEARCHKEY0".to_vec());
         let variant_c = Xp3ProductionVariant::new(
             "kaifuu-k057-xp3-research-only".to_string(),
             Xp3CryptoProfile::XorSimpleCryptFixture,
@@ -1166,7 +1187,7 @@ pub mod synthetic {
             )],
             vec![],
             false,
-            b"K057-XP3-RESEARCHKEY0".to_vec(),
+            c_archive_key,
             None,
         );
 
@@ -1304,7 +1325,11 @@ mod tests {
         // trips the adlr integrity check — a loud bug at the extract stage, never
         // a silent pass.
         let mut registry = registry();
-        registry.variants[0].set_resolved_key_evidence(Some(b"K057-XP3-WRONGKEY0000".to_vec()));
+        let secret_ref = registry.variants[0].secret_ref.clone();
+        registry.variants[0].set_resolved_key_evidence(Some(private_fixture_secret_holder(
+            &secret_ref,
+            b"K057-XP3-WRONGKEY0000".to_vec(),
+        )));
         let err =
             run_xp3_production(&registry, "KAIFUU-057").expect_err("wrong key evidence is a bug");
         match err {
@@ -1434,17 +1459,13 @@ mod tests {
         // Xp3CryptKey holder and has a manual redacting Debug. Building a resolver
         // over the synthetic keys and formatting it must never emit key bytes,
         // while the (safe) secret ref is still shown.
-        let a_key = Xp3CryptKey::from_resolved_bytes(b"K057-XP3-SIMPLEKEY01".to_vec());
-        let b_key = Xp3CryptKey::from_resolved_bytes(b"K057-XP3-POSITIONKEY02".to_vec());
+        let a_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-simple-crypt-key").unwrap();
+        let b_ref = SecretRef::new("prompt:kaifuu/k057/xp3-position-archive-password").unwrap();
+        let a_key = private_fixture_secret_holder(&a_ref, b"K057-XP3-SIMPLEKEY01".to_vec());
+        let b_key = private_fixture_secret_holder(&b_ref, b"K057-XP3-POSITIONKEY02".to_vec());
         let resolver = FixtureSecretResolver::from_key_refs(vec![
-            (
-                "local-secret:kaifuu/k057/xp3-simple-crypt-key".to_string(),
-                &a_key,
-            ),
-            (
-                "prompt:kaifuu/k057/xp3-position-archive-password".to_string(),
-                &b_key,
-            ),
+            (a_ref.as_str().to_string(), &a_key),
+            (b_ref.as_str().to_string(), &b_key),
         ]);
         for rendered in [format!("{resolver:?}"), format!("{resolver:#?}")] {
             for key in ["K057-XP3-SIMPLEKEY01", "K057-XP3-POSITIONKEY02"] {
@@ -1518,7 +1539,7 @@ mod tests {
             // archive_key bytes == the (verbatim-emitted) variant_id → a
             // registry-held raw key that lands in the report, unseen by any
             // resolver (this variant is unclaimed, so it is never resolved).
-            planted_id.as_bytes().to_vec(),
+            private_fixture_secret_holder(&original.secret_ref, planted_id.as_bytes().to_vec()),
             None,
         );
         registry.variants[unclaimed] = planted;

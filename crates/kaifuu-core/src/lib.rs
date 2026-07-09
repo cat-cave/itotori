@@ -10,6 +10,8 @@ use std::ffi::CString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod secret_holder;
+
 /// Crate-wide result whose error is intentionally the boxed trait object.
 ///
 /// `kaifuu-core` spans detection, extraction, patch-back, profiling and

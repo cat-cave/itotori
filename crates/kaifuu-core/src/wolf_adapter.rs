@@ -64,7 +64,7 @@ use serde::{Deserialize, Serialize};
 use crate::registry::capability::CapabilityLevelStatus;
 use crate::wolf_encrypted_smoke::{
     WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID, WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID,
-    WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF, WolfEncryptedCryptoProfile,
+    WOLF_ENCRYPTED_SMOKE_VALID_SECRET_REF, WolfEncryptedArchiveKeyExt, WolfEncryptedCryptoProfile,
     WolfEncryptedFixtureSecretResolver, WolfEncryptedSmokeError, WolfPlainMember,
     build_synthetic_wolf_encrypted_archive, decrypt_archive_members, pack_encrypted_archive,
 };

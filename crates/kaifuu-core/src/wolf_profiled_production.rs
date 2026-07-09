@@ -24,9 +24,9 @@ use crate::wolf_adapter::{
     decode_wolf_text_table, encode_wolf_text_table,
 };
 use crate::wolf_encrypted_smoke::{
-    WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID, WolfEncryptedCryptoProfile,
-    WolfEncryptedFixtureSecretResolver, WolfEncryptedSmokeError, WolfPlainMember,
-    decrypt_archive_members, pack_encrypted_archive,
+    WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID, WolfEncryptedArchiveKey, WolfEncryptedArchiveKeyExt,
+    WolfEncryptedCryptoProfile, WolfEncryptedFixtureSecretResolver, WolfEncryptedSmokeError,
+    WolfPlainMember, decrypt_archive_members, pack_encrypted_archive,
 };
 use crate::wolf_helper_boundary::WolfHelperBoundaryKind;
 use crate::wolf_protection_detector::{WOLF_ENGINE_FAMILY, WolfProtectionProfile};
@@ -35,7 +35,8 @@ use crate::{
     HelperExecutionFilesystemAccess, HelperExecutionSummary, HelperProvenance, HelperRedaction,
     HelperRedactionStatus, HelperResult, HelperResultSecretRef, KaifuuResult, KeyMaterialKind,
     KeyValidationMethod, KeyValidationProof, OperationStatus, ProofHash, SecretRef,
-    deterministic_id, redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    deterministic_id, redact_for_log_or_report, secret_holder::SecretRefSecretResolver,
+    sha256_hash_bytes, stable_json,
 };
 
 pub const WOLF_PROFILED_PRODUCTION_MARKER: &str = "kaifuu.wolf.profiled_production";
@@ -191,21 +192,35 @@ impl WolfProfiledProductionVariant {
 
 /// Build a resolver from `(secret_ref, fixture label)` entries.
 ///
-/// The raw key material is derived from each label and minted into a
-/// zeroize-on-drop holder ONLY inside the owning `wolf_encrypted_smoke` module,
-/// through the controlled [`WolfEncryptedFixtureSecretResolver::from_entries`]
-/// construction entry. This module never touches the raw-key holder constructor
-/// directly, so the "keys are only minted via the resolve path" invariant holds
-/// crate-wide (mirrors the KAIFUU-057 `Xp3CryptKey` boundary).
+/// Raw fixture material is first confined in shared zeroize-on-drop holders,
+/// then the Wolf resolver binds refs to those holders. The resolver's
+/// crate-visible construction path never accepts raw bytes.
 fn resolver_from_fixture_labels(
     entries: Vec<(String, &'static str)>,
 ) -> WolfEncryptedFixtureSecretResolver {
-    WolfEncryptedFixtureSecretResolver::from_entries(
-        entries
-            .into_iter()
-            .map(|(secret_ref, label)| (secret_ref, fixture_key_material(label)))
+    let holders = entries
+        .into_iter()
+        .map(|(secret_ref, label)| {
+            let secret_ref = SecretRef::new(secret_ref).expect("fixture secret ref is valid");
+            let holder = private_fixture_secret_holder(&secret_ref, fixture_key_material(label));
+            (secret_ref.as_str().to_string(), holder)
+        })
+        .collect::<Vec<_>>();
+    WolfEncryptedFixtureSecretResolver::from_key_refs(
+        holders
+            .iter()
+            .map(|(secret_ref, holder)| (secret_ref.clone(), holder))
             .collect(),
     )
+}
+
+fn private_fixture_secret_holder(
+    secret_ref: &SecretRef,
+    bytes: Vec<u8>,
+) -> WolfEncryptedArchiveKey {
+    SecretRefSecretResolver::from_entries(vec![(secret_ref.as_str().to_string(), bytes)])
+        .into_resolved(secret_ref)
+        .expect("newly inserted Wolf production key must resolve by its SecretRef")
 }
 
 /// Profiled variant registry. Raw fixture key material is held only in private

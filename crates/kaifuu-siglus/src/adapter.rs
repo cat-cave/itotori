@@ -49,7 +49,8 @@ use thiserror::Error;
 use kaifuu_core::{
     HelperRedactionStatus, KaifuuResult, KeyMaterialKind, KeyValidationMethod, KeyValidationProof,
     OperationStatus, ProofHash, SecretRef, atomic_write_bytes, atomic_write_text,
-    redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    redact_for_log_or_report, secret_holder::SecretRefSecretResolver, sha256_hash_bytes,
+    stable_json,
 };
 
 use crate::known_key_smoke::{
@@ -131,7 +132,13 @@ impl ResolvedSiglusKey {
                 method: format!("{:?}", validation.method),
             });
         }
-        let material = KnownKeyMaterial::from_resolved_bytes(raw_material);
+        let holder = SecretRefSecretResolver::from_entries(vec![(
+            secret_ref.as_str().to_string(),
+            raw_material,
+        )])
+        .into_resolved(&secret_ref)
+        .expect("newly inserted Siglus key must resolve by its SecretRef");
+        let material = KnownKeyMaterial::from_holder(holder);
         let recomputed = material
             .material_hash()
             .map_err(|error| AdapterError::Internal {
