@@ -39,7 +39,14 @@
 // (`just doctor` / `just provision-native-deps`); this artifact is the bin +
 // the compiled CLI surface that consumes them.
 
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,11 +82,12 @@ if (pkgJson.version !== PRODUCT_VERSION) {
   );
 }
 
+const NODE_SHEBANG = "#!/usr/bin/env node";
+
 // A `require` for the bundled CJS deps (pg) to call into Node built-ins from
-// the ESM output. Prepended as a banner; the shebang must remain the first
-// line so `bin` is executable on POSIX.
-const BANNER = `#!/usr/bin/env node
-import { createRequire as __itotoriCreateRequire } from "node:module";
+// the ESM output. Prepended as a banner after esbuild preserves the entrypoint
+// shebang.
+const BANNER = `import { createRequire as __itotoriCreateRequire } from "node:module";
 const require = __itotoriCreateRequire(import.meta.url);
 `;
 
@@ -114,6 +122,8 @@ try {
   throw err;
 }
 
+normalizeCliShebang();
+
 // Ship the migration SQL files the bundle's `migrate()` reads at runtime.
 rmSync(MIGRATIONS_OUT, { recursive: true, force: true });
 mkdirSync(MIGRATIONS_OUT, { recursive: true });
@@ -144,4 +154,13 @@ function readProductVersion() {
     );
   }
   return m[1];
+}
+
+function normalizeCliShebang() {
+  const src = readFileSync(OUT_FILE, "utf8");
+  const body = src.replace(/^(?:#![^\n]*(?:\n|$))+/u, "");
+  const normalized = `${NODE_SHEBANG}\n${body}`;
+  if (normalized !== src) {
+    writeFileSync(OUT_FILE, normalized);
+  }
 }

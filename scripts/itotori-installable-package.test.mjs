@@ -79,10 +79,24 @@ describe("itotori installable package — built bin", () => {
     }
   });
 
-  test("dist/cli.js exists with a node shebang", () => {
+  test("dist/cli.js exists with exactly one node shebang before the banner", () => {
     assert.ok(existsSync(distCli), "dist/cli.js was produced by the build");
-    const head = readFileSync(distCli, "utf8").slice(0, 100);
-    assert.ok(head.startsWith("#!/usr/bin/env node"), "the bin has a node shebang");
+    const contents = readFileSync(distCli, "utf8");
+    const leadingShebangLines =
+      contents
+        .match(/^(?:#![^\n]*(?:\n|$))+/u)?.[0]
+        .trimEnd()
+        .split("\n") ?? [];
+    assert.deepEqual(
+      leadingShebangLines,
+      ["#!/usr/bin/env node"],
+      "dist/cli.js must have exactly one leading node shebang",
+    );
+    assert.match(
+      contents,
+      /^#!\/usr\/bin\/env node\nimport \{ createRequire as __itotoriCreateRequire \} from "node:module";\nconst require = __itotoriCreateRequire\(import\.meta\.url\);\n/u,
+      "the createRequire banner must immediately follow the shebang",
+    );
   });
 
   test("itotori --version reports the product semver", () => {
