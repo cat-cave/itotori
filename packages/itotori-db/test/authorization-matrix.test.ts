@@ -28,6 +28,7 @@ import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriLocalizationPassLedgerRepository } from "../src/repositories/localization-pass-ledger-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
+import { ItotoriModelRoutingSettingsRepository } from "../src/repositories/model-routing-settings-repository.js";
 import {
   type ItotoriPrincipalRepositoryPort,
   ItotoriPrincipalRepository,
@@ -1194,6 +1195,18 @@ const repositoryPermissionGateMatrix = [
     "authMembersManage",
     "auth-billing-seat-repository.test.ts load seat usage coverage",
     (repo) => repo.loadSeatUsage(deniedActor, "account-denied"),
+  ),
+  modelRoutingSettingsGate(
+    "loadSettings",
+    "catalogRead",
+    "model-routing-settings-repository.test.ts load settings coverage",
+    (repo) => repo.loadSettings(deniedActor, "project-denied"),
+  ),
+  modelRoutingSettingsGate(
+    "saveRoute",
+    "draftWrite",
+    "model-routing-settings-repository.test.ts save route coverage",
+    (repo) => repo.saveRoute(deniedActor, undefined as never),
   ),
   authSessionServiceGate(
     "listPrincipalSessions",
@@ -3138,6 +3151,22 @@ function authBillingSeatGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuthBillingSeatRepository(db)),
+  });
+}
+
+function modelRoutingSettingsGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriModelRoutingSettingsRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriModelRoutingSettingsRepository",
+    sourceFile: "model-routing-settings-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriModelRoutingSettingsRepository(db)),
   });
 }
 
