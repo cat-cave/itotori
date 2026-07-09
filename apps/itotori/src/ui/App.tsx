@@ -28,6 +28,10 @@ import {
   BenchmarkCockpitScreen,
   isBenchmarkCockpitRoute,
 } from "./screens/BenchmarkCockpitScreen.js";
+import {
+  CatalogCandidateBrowserScreen,
+  isCatalogCandidateBrowserRoute,
+} from "./screens/CatalogCandidateBrowserScreen.js";
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
@@ -257,6 +261,11 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   // actionable backlog diagnostic). Rendered inside the shell frame.
   if (isBenchmarkCockpitRoute(location.pathname)) {
     return <BenchmarkCockpitScreen />;
+  }
+
+  // `/catalog` - ranked candidate browser backed by catalog.opportunities.
+  if (isCatalogCandidateBrowserRoute(location.pathname)) {
+    return <CatalogCandidateBrowserScreen />;
   }
 
   return <DashboardScreen />;

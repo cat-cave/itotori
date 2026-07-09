@@ -60,6 +60,7 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "play", label: "Play", href: "/play" },
   { id: "wiki", label: "Wiki", href: "/wiki" },
   { id: "benchmark", label: "Benchmark", href: "/benchmark" },
+  { id: "catalog", label: "Catalog", href: "/catalog" },
   { id: "workspace", label: "Workspace", href: "/workspace" },
   { id: "members", label: "Members", href: "/members" },
 ];
@@ -85,6 +86,9 @@ export function activeShellNavId(pathname: string): string {
   }
   if (pathname === "/benchmark" || pathname.startsWith("/benchmark/")) {
     return "benchmark";
+  }
+  if (pathname === "/catalog" || pathname.startsWith("/catalog/")) {
+    return "catalog";
   }
   if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
     return "workspace";

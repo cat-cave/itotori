@@ -281,6 +281,7 @@ describe("Shell frame — pure helpers", () => {
     expect(activeShellNavId("/")).toBe("workbench");
     expect(activeShellNavId("/reviewer-queue")).toBe("review");
     expect(activeShellNavId("/reviewer-queue/some-item")).toBe("review");
+    expect(activeShellNavId("/catalog")).toBe("catalog");
     expect(activeShellNavId("/workspace")).toBe("workspace");
     expect(activeShellNavId("/workspace/scenes")).toBe("workspace");
     // A legacy / unknown route matches no pill.
