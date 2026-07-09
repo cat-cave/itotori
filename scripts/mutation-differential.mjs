@@ -239,11 +239,14 @@ export function applyMutation(source, mutation) {
  * not a legitimate kill).
  */
 export function classifyOutcome({ status, output }) {
+  // Only treat *rustc* failures as INVALID mutations. Do not match broad
+  // phrases like `error: expected` — cargo/libtest panic output can include
+  // those substrings when a mutant *compiles* but assertions fail (a kill).
   const compileError =
     /error\[E\d{2,4}\]/u.test(output) ||
     /error: could not compile/u.test(output) ||
-    /error: expected /u.test(output) ||
-    /error: cannot find/u.test(output);
+    /error: linking with/u.test(output) ||
+    /error: aborting due to/u.test(output);
   if (compileError) return "compile_error";
   if (status === 0) return "escaped";
   return "killed";
@@ -316,8 +319,14 @@ function prepareSandbox() {
   });
 
   // Isolated target dir so the sandbox cold-builds into its own space and never
-  // fights (or invalidates) the live worktree's CARGO_TARGET_DIR.
-  const env = { ...process.env, CARGO_TARGET_DIR: targetDir };
+  // fights (or invalidates) the live worktree's CARGO_TARGET_DIR. Disable
+  // incremental compilation so a restored source file after a prior mutation
+  // cannot re-use a stale mutant artifact and produce false compile_errors.
+  const env = {
+    ...process.env,
+    CARGO_TARGET_DIR: targetDir,
+    CARGO_INCREMENTAL: "0",
+  };
   return {
     root: srcRoot,
     env,
