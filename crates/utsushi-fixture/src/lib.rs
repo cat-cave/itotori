@@ -4,10 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
-    RuntimeAdapterDescriptor, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
-    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
-    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
+    EnginePortAdapter, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeRequest, UtsushiResult,
 };
 
 pub mod engine_port;
@@ -38,13 +35,18 @@ pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_
 /// type that previously held this constant was deleted by UTSUSHI-224.
 pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL: &str = "0.1.0-alpha";
 
-pub struct FixtureRuntimeAdapter;
+pub struct FixtureRuntimeAdapter {
+    inner: EnginePortAdapter<FixtureEnginePort>,
+}
 
 impl FixtureRuntimeAdapter {
     pub const NAME: &'static str = "utsushi-fixture";
 
     pub fn new() -> Self {
-        Self
+        Self {
+            inner: EnginePortAdapter::new(FixtureEnginePort::new())
+                .expect("fixture engine port manifest must be valid"),
+        }
     }
 }
 
@@ -56,82 +58,22 @@ impl Default for FixtureRuntimeAdapter {
 
 impl RuntimeAdapter for FixtureRuntimeAdapter {
     fn descriptor(&self) -> RuntimeAdapterDescriptor {
-        RuntimeAdapterDescriptor {
-            name: Self::NAME.to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            fidelity_tier: FidelityTier::LayoutProbe,
-            evidence_tier_ceiling: EvidenceTier::E2,
-            capability_contract: fixture_capability_contract(),
-            capabilities: vec![
-                RuntimeCapability::Trace,
-                RuntimeCapability::FrameCapture,
-                RuntimeCapability::SmokeValidation,
-            ],
-            approximation_tiers: vec![ApproximationTier::DeterministicFixture],
-            diagnostics: vec![],
-            limitations: vec![
-                "Synthetic fixture runtime only; no commercial engine behavior is emulated."
-                    .to_string(),
-                "Frame captures are deterministic screenshot references, not pixel comparisons."
-                    .to_string(),
-                "Branch discovery is not implemented for the current fixture source format."
-                    .to_string(),
-            ],
-        }
+        self.inner.descriptor()
     }
 
     fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        let source = read_source(request.input_root)?;
-        let unit = first_unit(&source)?;
-        let descriptor = self.descriptor();
-        Ok(runtime_report(
-            &descriptor,
-            &source,
-            RuntimeReportInput {
-                trace_events: vec![trace_event(unit, 1)?],
-                observation_events: vec![text_observation_hook_event(
-                    &descriptor,
-                    &source,
-                    unit,
-                    1,
-                    EvidenceTier::E1,
-                )?],
-                captures: vec![],
-                operation: RuntimeOperationLabel::Trace,
-                fidelity_tier: FidelityTier::TraceOnly,
-                evidence_tier: EvidenceTier::E1,
-                limitation: "Runtime trace reached fixture text; no frame was captured.",
-            },
-        ))
+        read_source(request.input_root)?;
+        self.inner.trace(request)
     }
 
     fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        let source = read_source(request.input_root)?;
-        let unit = first_unit(&source)?;
-        let descriptor = self.descriptor();
-        let capture = capture_event(unit, 1)?;
-        let observation_events = vec![
-            text_observation_hook_event(&descriptor, &source, unit, 1, EvidenceTier::E1)?,
-            frame_observation_hook_event(&descriptor, &source, unit, &capture, 1)?,
-        ];
-        materialize_fixture_capture(request, &capture)?;
-        Ok(runtime_report(
-            &descriptor,
-            &source,
-            RuntimeReportInput {
-                trace_events: vec![trace_event(unit, 1)?],
-                observation_events,
-                captures: vec![capture],
-                operation: RuntimeOperationLabel::Capture,
-                fidelity_tier: FidelityTier::LayoutProbe,
-                evidence_tier: EvidenceTier::E2,
-                limitation: "Fixture capture produced a screenshot reference; no pixel comparison was performed.",
-            },
-        ))
+        read_source(request.input_root)?;
+        self.inner.capture(request)
     }
 
     fn smoke_validate(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        self.capture(request)
+        read_source(request.input_root)?;
+        self.inner.smoke_validate(request)
     }
 }
 
@@ -142,12 +84,14 @@ pub fn trace_fixture(input_root: &Path) -> UtsushiResult<Value> {
 
 pub fn capture_fixture(input_root: &Path) -> UtsushiResult<Value> {
     let adapter = FixtureRuntimeAdapter::new();
-    adapter.capture(&RuntimeRequest::new(input_root))
+    let artifact_root = input_root.join("runtime-artifacts");
+    adapter.capture(&RuntimeRequest::new(input_root).with_artifact_root(&artifact_root))
 }
 
 pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
     let adapter = FixtureRuntimeAdapter::new();
-    adapter.smoke_validate(&RuntimeRequest::new(input_root))
+    let artifact_root = input_root.join("runtime-artifacts");
+    adapter.smoke_validate(&RuntimeRequest::new(input_root).with_artifact_root(&artifact_root))
 }
 
 /// Engine family the fixture runtime adapter attempts when it reads an
@@ -259,265 +203,10 @@ pub(crate) fn first_unit(source: &Value) -> UtsushiResult<&Value> {
         .ok_or_else(|| "source has no units".into())
 }
 
-#[derive(Clone, Copy)]
-enum RuntimeOperationLabel {
-    Trace,
-    Capture,
-}
-
-impl RuntimeOperationLabel {
-    fn as_core_operation(self) -> utsushi_core::RuntimeOperation {
-        match self {
-            Self::Trace => utsushi_core::RuntimeOperation::Trace,
-            Self::Capture => utsushi_core::RuntimeOperation::Capture,
-        }
-    }
-
-    fn features_used(self) -> Vec<RuntimePlaybackFeature> {
-        match self {
-            Self::Trace => vec![
-                RuntimePlaybackFeature::StaticTrace,
-                RuntimePlaybackFeature::TextTrace,
-                RuntimePlaybackFeature::InstrumentationHooks,
-            ],
-            Self::Capture => vec![
-                RuntimePlaybackFeature::StaticTrace,
-                RuntimePlaybackFeature::TextTrace,
-                RuntimePlaybackFeature::FrameCapture,
-                RuntimePlaybackFeature::InstrumentationHooks,
-            ],
-        }
-    }
-}
-
-fn fixture_capability_contract() -> RuntimeCapabilityContract {
-    RuntimeCapabilityContract::new(
-        RuntimeCapabilityClass::LaunchCapture,
-        FidelityTier::LayoutProbe,
-        EvidenceTier::E2,
-        vec![
-            RuntimeFeatureSupport::supported(
-                RuntimePlaybackFeature::StaticTrace,
-                EvidenceTier::E1,
-                "Reads fixture source JSON and emits deterministic text reachability trace events.",
-            ),
-            RuntimeFeatureSupport::supported(
-                RuntimePlaybackFeature::Launch,
-                EvidenceTier::E1,
-                "Launches the synthetic fixture playback model without invoking a commercial engine.",
-            ),
-            RuntimeFeatureSupport::supported(
-                RuntimePlaybackFeature::TextTrace,
-                EvidenceTier::E1,
-                "Reports the first reachable fixture text unit as observed runtime text.",
-            ),
-            RuntimeFeatureSupport::partial(
-                RuntimePlaybackFeature::FrameCapture,
-                EvidenceTier::E2,
-                "Emits deterministic frame metadata and a portable artifact reference.",
-                vec![
-                    "Frame metadata is fixture-generated and is not a live engine screenshot."
-                        .to_string(),
-                ],
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::BranchDiscovery,
-                "Branch discovery is not implemented for the current fixture source format.",
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::Jump,
-                "Controlled jump targets are outside the base fixture contract.",
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::Snapshot,
-                "Snapshot save and restore are outside the base fixture contract.",
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::Screenshot,
-                "The fixture does not capture live engine screenshots.",
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::Recording,
-                "The fixture does not record playback video.",
-            ),
-            RuntimeFeatureSupport::partial(
-                RuntimePlaybackFeature::InstrumentationHooks,
-                EvidenceTier::E2,
-                "Emits deterministic observation hook envelopes for fixture text and frame evidence.",
-                vec![
-                    "Observation hook events are fixture-generated and are not live commercial engine callbacks."
-                        .to_string(),
-                ],
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::VmStateInspection,
-                "The fixture does not expose VM state inspection.",
-            ),
-            RuntimeFeatureSupport::unsupported(
-                RuntimePlaybackFeature::ReferenceComparison,
-                "The fixture is not a reference VM and performs no reference comparison.",
-            ),
-        ],
-        vec![
-            "Synthetic fixture runtime only; no commercial engine behavior is emulated."
-                .to_string(),
-            "Capture support is deterministic metadata, not live-engine screenshot capture."
-                .to_string(),
-        ],
-    )
-}
-
-struct RuntimeReportInput {
-    trace_events: Vec<Value>,
-    observation_events: Vec<Value>,
-    captures: Vec<Value>,
-    operation: RuntimeOperationLabel,
-    fidelity_tier: FidelityTier,
-    evidence_tier: EvidenceTier,
-    limitation: &'static str,
-}
-
-fn runtime_report(
-    descriptor: &RuntimeAdapterDescriptor,
-    source: &Value,
-    input: RuntimeReportInput,
-) -> Value {
-    let RuntimeReportInput {
-        trace_events,
-        observation_events,
-        captures,
-        operation,
-        fidelity_tier,
-        evidence_tier,
-        limitation,
-    } = input;
-    let affected_bridge_unit_refs = trace_events
-        .iter()
-        .filter_map(|event| event.get("bridgeUnitRef").cloned())
-        .collect::<Vec<_>>();
-    let mut limitations = descriptor.limitations.clone();
-    if !limitations.iter().any(|entry| entry == limitation) {
-        limitations.push(limitation.to_string());
-    }
-    json!({
-        "schemaVersion": "0.2.0",
-        "runtimeReportId": deterministic_uuid("runtime-report", 1),
-        "sourceLocale": source["sourceLocale"].as_str().unwrap_or("und"),
-        "adapterName": descriptor.name,
-        "adapterVersion": descriptor.version,
-        "fidelityTier": fidelity_tier.as_str(),
-        "evidenceTier": evidence_tier.as_str(),
-        "runtimeCapabilities": descriptor.capability_contract.to_json(),
-        "controlledPlaybackSession": ControlledPlaybackSession {
-            session_id: deterministic_uuid("session", 1),
-            adapter_name: descriptor.name.clone(),
-            adapter_version: descriptor.version.clone(),
-            capability_class: descriptor.capability_contract.capability_class,
-            requested_operation: operation.as_core_operation(),
-            status: "passed".to_string(),
-            fidelity_tier,
-            evidence_tier,
-            features_used: operation.features_used(),
-            limitations: limitations.clone(),
-        }.to_json(),
-        "status": "passed",
-        "createdAt": "2026-06-17T00:00:00.000Z",
-        "traceEvents": trace_events,
-        "observationHookEvents": observation_events,
-        "branchEvents": [],
-        "captures": captures,
-        "recordings": [],
-        "approximations": [
-            {
-                "approximationId": deterministic_uuid("approximation", 1),
-                "approximationTier": ApproximationTier::DeterministicFixture.as_str(),
-                "scope": "fixture runtime",
-                "description": "Fixture runtime emits deterministic trace and capture evidence without reference-runtime pixel comparison.",
-                "affectedBridgeUnitRefs": affected_bridge_unit_refs,
-                "evidenceTierCeiling": evidence_tier.as_str()
-            }
-        ],
-        "validationFindings": [],
-        "limitations": limitations
-    })
-}
-
-fn text_observation_hook_event(
-    descriptor: &RuntimeAdapterDescriptor,
-    source: &Value,
-    unit: &Value,
-    frame: usize,
-    evidence_tier: EvidenceTier,
-) -> UtsushiResult<Value> {
-    let bridge_ref_value = observation_bridge_ref_value(unit, 1)?;
-    Ok(json!({
-        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
-        "eventId": deterministic_uuid("observation-text", frame),
-        "observedAt": "2026-06-17T00:00:00.000Z",
-        "eventKind": "text",
-        "runtimeTargetId": runtime_target_id(source),
-        "adapterId": adapter_id_value(descriptor),
-        "evidenceTier": evidence_tier.as_str(),
-        "environment": fixture_environment_value(source),
-        "sourceRevision": source_revision_value(source),
-        "bridgeRefs": [bridge_ref_value],
-        "redaction": {"status": "not_required"},
-        "payload": {
-            "payloadKind": "text",
-            "text": unit["targetText"]
-                .as_str()
-                .or_else(|| unit["sourceText"].as_str())
-                .unwrap_or(""),
-            "speaker": unit["speaker"].as_str(),
-            "textSurface": unit["textSurface"].as_str(),
-        },
-    }))
-}
-
-fn frame_observation_hook_event(
-    descriptor: &RuntimeAdapterDescriptor,
-    source: &Value,
-    unit: &Value,
-    capture: &Value,
-    frame: u64,
-) -> UtsushiResult<Value> {
-    let bridge_ref_value = observation_bridge_ref_value(unit, 1)?;
-    Ok(json!({
-        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
-        "eventId": deterministic_uuid("observation-frame", frame as usize),
-        "observedAt": "2026-06-17T00:00:00.000Z",
-        "eventKind": "frame",
-        "runtimeTargetId": runtime_target_id(source),
-        "adapterId": adapter_id_value(descriptor),
-        "evidenceTier": EvidenceTier::E2.as_str(),
-        "environment": fixture_environment_value(source),
-        "sourceRevision": source_revision_value(source),
-        "bridgeRefs": [bridge_ref_value],
-        "redaction": {"status": "not_required"},
-        "payload": {
-            "payloadKind": "frame",
-            "frame": frame,
-            "width": capture["width"].as_u64(),
-            "height": capture["height"].as_u64(),
-            "artifactRef": capture["artifactRef"].clone(),
-        },
-    }))
-}
-
 fn adapter_id_value(descriptor: &RuntimeAdapterDescriptor) -> Value {
     json!({
         "name": descriptor.name,
         "version": descriptor.version,
-    })
-}
-
-fn fixture_environment_value(source: &Value) -> Value {
-    json!({
-        "runtime": "fixture",
-        "engine": "utsushi-fixture",
-        "platform": std::env::consts::OS,
-        "display": "none",
-        "locale": source["sourceLocale"].as_str(),
     })
 }
 
@@ -544,60 +233,6 @@ fn runtime_target_id(source: &Value) -> String {
     )
 }
 
-fn trace_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
-    Ok(json!({
-        "traceEventId": deterministic_uuid("runtime-trace", frame),
-        "eventKind": "text_observed",
-        "bridgeUnitRef": bridge_unit_ref(unit, 1)?,
-        "frame": frame,
-        "traceKey": require_str(unit, "sourceUnitKey")?,
-        "observedText": unit["targetText"]
-            .as_str()
-            .or_else(|| unit["sourceText"].as_str())
-            .unwrap_or("")
-    }))
-}
-
-fn capture_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
-    let artifact_id = deterministic_uuid("screenshot", frame);
-    let uri = runtime_artifact_uri(
-        &deterministic_uuid("runtime-report", 1),
-        RuntimeArtifactKind::Screenshot,
-        &artifact_id,
-    )?;
-    Ok(json!({
-        "captureId": deterministic_uuid("capture", frame),
-        "bridgeUnitRef": bridge_unit_ref(unit, 1)?,
-        "evidenceTier": EvidenceTier::E2.as_str(),
-        "frame": frame,
-        "width": 320,
-        "height": 180,
-        "nonZeroPixels": 57600,
-        "artifactRef": {
-            "artifactId": artifact_id,
-            "artifactKind": "screenshot",
-            "uri": uri,
-            "mediaType": "image/png"
-        }
-    }))
-}
-
-fn materialize_fixture_capture(request: &RuntimeRequest<'_>, capture: &Value) -> UtsushiResult<()> {
-    let Some(artifact_root) = request.artifact_root else {
-        return Ok(());
-    };
-    let uri = capture["artifactRef"]["uri"]
-        .as_str()
-        .ok_or("fixture capture missing artifactRef.uri")?;
-    let root = RuntimeArtifactRoot::new(artifact_root);
-    root.prepare()?;
-    root.write_bytes(
-        uri,
-        b"utsushi fixture deterministic screenshot placeholder\n",
-    )?;
-    Ok(())
-}
-
 pub(crate) fn bridge_unit_ref(unit: &Value, index: usize) -> UtsushiResult<Value> {
     Ok(json!({
         "bridgeUnitId": legacy_fixture_id("bridge-unit", index),
@@ -620,26 +255,14 @@ pub(crate) fn legacy_fixture_id(kind: &str, index: usize) -> String {
     format!("019ed000-0000-7000-8000-{compact}{index:04}")
 }
 
-pub(crate) fn deterministic_uuid(kind: &str, index: usize) -> String {
-    let kind_code = match kind {
-        "runtime-report" => 0x1000,
-        "runtime-trace" => 0x2000,
-        "capture" => 0x3000,
-        "screenshot" => 0x4000,
-        "approximation" => 0x5000,
-        "session" => 0x6000,
-        "observation-text" => 0x7000,
-        "observation-frame" => 0x7100,
-        _ => 0xf000,
-    };
-    format!("019ed003-0000-7000-8000-{kind_code:08x}{index:04x}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use utsushi_core::{RuntimeAdapterRegistry, RuntimeOperation};
+    use utsushi_core::{
+        ApproximationTier, EvidenceTier, FidelityTier, RuntimeAdapterRegistry, RuntimeCapability,
+        RuntimeCapabilityClass, RuntimeOperation, RuntimePlaybackFeature,
+    };
 
     fn temp_game(name: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -673,6 +296,84 @@ mod tests {
         )
         .unwrap();
         dir
+    }
+
+    fn collect_report_artifact_uris(value: &Value, uris: &mut Vec<String>) {
+        match value {
+            Value::Object(object) => {
+                if let Some(uri) = object.get("artifactUri").and_then(Value::as_str) {
+                    uris.push(uri.to_string());
+                }
+                if let Some(artifact_ref) = object.get("artifactRef").and_then(Value::as_object)
+                    && let Some(uri) = artifact_ref.get("uri").and_then(Value::as_str)
+                {
+                    uris.push(uri.to_string());
+                }
+                for child in object.values() {
+                    collect_report_artifact_uris(child, uris);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    collect_report_artifact_uris(item, uris);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn assert_artifact_ref_ids_match_uri_filenames(value: &Value) {
+        match value {
+            Value::Object(object) => {
+                if let Some(artifact_ref) = object.get("artifactRef").and_then(Value::as_object) {
+                    let artifact_id = artifact_ref
+                        .get("artifactId")
+                        .and_then(Value::as_str)
+                        .expect("artifactRef.artifactId");
+                    let uri = artifact_ref
+                        .get("uri")
+                        .and_then(Value::as_str)
+                        .expect("artifactRef.uri");
+                    let relative = utsushi_core::validate_runtime_artifact_uri(uri)
+                        .expect("artifactRef.uri must be a managed runtime artifact URI");
+                    let file_stem = relative
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .expect("artifactRef.uri filename stem");
+                    assert_eq!(
+                        artifact_id, file_stem,
+                        "artifactRef.artifactId must match artifactRef.uri filename stem for {uri}"
+                    );
+                }
+                for child in object.values() {
+                    assert_artifact_ref_ids_match_uri_filenames(child);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    assert_artifact_ref_ids_match_uri_filenames(item);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn assert_report_artifact_links_materialized(report: &Value, artifact_root: &std::path::Path) {
+        let mut uris = Vec::new();
+        collect_report_artifact_uris(report, &mut uris);
+        assert!(!uris.is_empty(), "report must contain artifact links");
+        assert_artifact_ref_ids_match_uri_filenames(report);
+
+        let root = utsushi_core::RuntimeArtifactRoot::new(artifact_root);
+        for uri in uris {
+            let path = root
+                .artifact_path(&uri)
+                .unwrap_or_else(|error| panic!("artifact uri must resolve: {uri}: {error}"));
+            assert!(
+                path.is_file(),
+                "reported artifact uri must be materialized: {uri} -> {path:?}"
+            );
+        }
     }
 
     #[test]
@@ -759,7 +460,7 @@ mod tests {
         assert!(descriptor.supports(RuntimeCapability::FrameCapture));
         assert!(descriptor.supports(RuntimeCapability::SmokeValidation));
         assert!(!descriptor.supports(RuntimeCapability::BranchDiscovery));
-        assert!(descriptor.uses_approximation(ApproximationTier::DeterministicFixture));
+        assert!(descriptor.uses_approximation(ApproximationTier::None));
         assert_eq!(
             descriptor.capability_contract.capability_class,
             RuntimeCapabilityClass::LaunchCapture
@@ -784,36 +485,16 @@ mod tests {
                 .features
                 .iter()
                 .any(|feature| {
-                    feature.feature == RuntimePlaybackFeature::Snapshot
-                        && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
-                })
-        );
-        assert!(
-            descriptor
-                .capability_contract
-                .features
-                .iter()
-                .any(|feature| {
                     feature.feature == RuntimePlaybackFeature::InstrumentationHooks
-                        && feature.status == utsushi_core::RuntimeFeatureStatus::Partial
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Supported
                         && feature.evidence_tier_ceiling == Some(EvidenceTier::E2)
-                })
-        );
-        assert!(
-            descriptor
-                .capability_contract
-                .features
-                .iter()
-                .any(|feature| {
-                    feature.feature == RuntimePlaybackFeature::Recording
-                        && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
                 })
         );
         assert!(
             descriptor
                 .limitations
                 .iter()
-                .any(|limitation| limitation.contains("no commercial engine behavior"))
+                .any(|limitation| limitation.contains("Synthetic fixture engine port"))
         );
     }
 
@@ -833,11 +514,17 @@ mod tests {
             .unwrap();
 
         assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
-        assert_eq!(report["evidenceTier"], "E1");
-        assert_eq!(report["fidelityTier"], "trace_only");
-        assert_eq!(
-            report["controlledPlaybackSession"]["requestedOperation"],
-            "trace"
+        assert_eq!(report["operation"], "trace");
+        assert_eq!(report["schemaVersion"], "0.2.0");
+        assert_eq!(report["shutdownStatus"], "clean");
+        let observations = report["sinkObservations"].as_array().unwrap();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0]["sink"], "text_surface");
+        let mut artifact_uris = Vec::new();
+        collect_report_artifact_uris(&report, &mut artifact_uris);
+        assert!(
+            artifact_uris.is_empty(),
+            "registry trace reports must not contain screenshot/frame artifact refs: {artifact_uris:?}"
         );
         let _ = fs::remove_dir_all(game_dir);
     }
@@ -865,99 +552,25 @@ mod tests {
     #[test]
     fn smoke_fixture_serializes_v02_referenced_capture_evidence() {
         let game_dir = temp_game("smoke");
+        let artifact_root = game_dir.join("runtime-artifacts");
         let report = smoke_fixture(&game_dir).unwrap();
 
         assert_eq!(report["schemaVersion"], "0.2.0");
         assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
-        assert_eq!(report["evidenceTier"], "E2");
-        assert_eq!(report["fidelityTier"], "layout_probe");
-        assert_eq!(
-            report["runtimeCapabilities"]["capabilityClass"],
-            "launch_capture"
-        );
-        assert_eq!(report["runtimeCapabilities"]["evidenceTierCeiling"], "E2");
-        assert!(
-            report["runtimeCapabilities"]["features"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| {
-                    feature["feature"] == "instrumentation_hooks"
-                        && feature["status"] == "partial"
-                        && feature["evidenceTierCeiling"] == "E2"
-                })
-        );
-        assert!(
-            report["runtimeCapabilities"]["features"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| {
-                    feature["feature"] == "screenshot" && feature["status"] == "unsupported"
-                })
-        );
-        assert_eq!(
-            report["controlledPlaybackSession"]["capabilityClass"],
-            "launch_capture"
-        );
-        assert_eq!(
-            report["controlledPlaybackSession"]["requestedOperation"],
-            "capture"
-        );
-        assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E2");
-        assert!(
-            report["controlledPlaybackSession"]["featuresUsed"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| feature == "instrumentation_hooks")
-        );
-        assert_eq!(report["traceEvents"].as_array().unwrap().len(), 1);
-        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
-        assert_eq!(
-            report["observationHookEvents"][0]["schemaVersion"],
-            FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
-        );
-        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
-        assert_eq!(
-            report["observationHookEvents"][0]["payload"]["payloadKind"],
-            "text"
-        );
-        assert_eq!(report["observationHookEvents"][0]["evidenceTier"], "E1");
-        assert_eq!(
-            report["observationHookEvents"][0]["runtimeTargetId"],
-            "fixture:hello-fixture"
-        );
-        assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
-        assert_eq!(report["observationHookEvents"][1]["evidenceTier"], "E2");
-        assert_eq!(
-            report["observationHookEvents"][1]["payload"]["artifactRef"]["uri"],
-            report["captures"][0]["artifactRef"]["uri"]
-        );
+        assert_eq!(report["operation"], "smoke_validation");
+        assert_eq!(report["shutdownStatus"], "clean");
+        let observations = report["sinkObservations"].as_array().unwrap();
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0]["sink"], "text_surface");
+        assert_eq!(observations[0]["payload"]["text"], "Hello, {player}.");
+        assert_eq!(observations[1]["sink"], "frame_artifact");
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            report["captures"][0]["artifactRef"]["uri"],
-            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png"
-        );
-        assert!(report["captures"][0].get("bytes").is_none());
-        assert!(report["captures"][0].get("data").is_none());
-        assert_eq!(
-            report["approximations"][0]["approximationTier"],
-            "deterministic_fixture"
-        );
-        assert_eq!(report["approximations"][0]["evidenceTierCeiling"], "E2");
-        let limitations = report["limitations"].as_array().unwrap();
-        assert!(limitations.iter().any(|limitation| {
-            limitation
-                .as_str()
-                .unwrap()
-                .contains("no commercial engine behavior")
-        }));
-        assert!(
-            limitations
-                .iter()
-                .any(|limitation| limitation.as_str().unwrap().contains("no pixel comparison"))
-        );
+        let artifact_uri = report["captures"][0]["artifactUri"].as_str().unwrap();
+        let artifact_path = utsushi_core::RuntimeArtifactRoot::new(&artifact_root)
+            .artifact_path(artifact_uri)
+            .unwrap();
+        assert!(artifact_path.is_file());
+        assert_report_artifact_links_materialized(&report, &artifact_root);
         let _ = fs::remove_dir_all(game_dir);
     }
 
@@ -967,21 +580,18 @@ mod tests {
         let report = trace_fixture(&game_dir).unwrap();
 
         assert_eq!(report["schemaVersion"], "0.2.0");
-        assert_eq!(report["evidenceTier"], "E1");
-        assert_eq!(report["fidelityTier"], "trace_only");
-        assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E1");
-        assert!(
-            report["controlledPlaybackSession"]["featuresUsed"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| feature == "instrumentation_hooks")
-        );
+        assert_eq!(report["operation"], "trace");
+        assert_eq!(report["shutdownStatus"], "clean");
         assert_eq!(report["captures"].as_array().unwrap().len(), 0);
-        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 1);
-        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
-        assert_eq!(report["observationHookEvents"][0]["evidenceTier"], "E1");
-        assert_eq!(report["approximations"][0]["evidenceTierCeiling"], "E1");
+        let observations = report["sinkObservations"].as_array().unwrap();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0]["sink"], "text_surface");
+        let mut artifact_uris = Vec::new();
+        collect_report_artifact_uris(&report, &mut artifact_uris);
+        assert!(
+            artifact_uris.is_empty(),
+            "trace reports must not contain screenshot/frame artifact refs: {artifact_uris:?}"
+        );
         let _ = fs::remove_dir_all(game_dir);
     }
 
@@ -997,9 +607,7 @@ mod tests {
         let report = adapter
             .capture(&RuntimeRequest::new(&game_dir).with_artifact_root(&artifact_root))
             .unwrap();
-        let uri = report["captures"][0]["artifactRef"]["uri"]
-            .as_str()
-            .unwrap();
+        let uri = report["captures"][0]["artifactUri"].as_str().unwrap();
         let artifact_path = utsushi_core::RuntimeArtifactRoot::new(&artifact_root)
             .artifact_path(uri)
             .unwrap();
@@ -1013,6 +621,7 @@ mod tests {
         assert!(artifact_path.starts_with(&artifact_root));
         let contents = fs::read_to_string(artifact_path).unwrap();
         assert!(contents.contains("deterministic screenshot placeholder"));
+        assert_report_artifact_links_materialized(&report, &artifact_root);
         let _ = fs::remove_dir_all(root);
     }
 }

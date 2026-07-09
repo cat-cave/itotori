@@ -1,8 +1,8 @@
 //! UTSUSHI-224 alpha-gate test for the substrate sinks-bridge: drive a
 //! 10-tick run of [`utsushi_fixture::FixtureEnginePort`] through the
-//! substrate [`utsushi_core::Runner`] and assert the runner drains a
-//! non-empty mix of text + frame emissions per the documented per-tick
-//! ordering invariant.
+//! substrate [`utsushi_core::Runner`] and assert the runner drains text-only
+//! trace observations and capture-time frame emissions per the documented
+//! per-tick ordering invariant.
 //!
 //! `utsushi-fixture` is a production crate (not test code), so this
 //! exercise satisfies the audit constraint "≥1 non-test consumer of the
@@ -51,20 +51,20 @@ fn fixture_engine_port_pushes_text_then_frame_through_substrate_sinks() {
     artifact_root.prepare().expect("prepare artifact root");
 
     let mut port = FixtureEnginePort::new();
-    let request = PortRequest::new(&input_root, "fixture-bridge-run", RuntimeOperation::Trace)
+    let request = PortRequest::new(&input_root, "fixture-bridge-run", RuntimeOperation::Capture)
         .with_artifact_root(&artifact_root);
     let runner = Runner::new();
 
     let outcome = runner
-        .run_trace(&mut port, &request)
-        .expect("fixture engine port run_trace succeeds");
+        .run_capture(&mut port, &request)
+        .expect("fixture engine port run_capture succeeds");
 
     let text_total: usize = outcome.observations.iter().map(|t| t.text.len()).sum();
     let frame_total: usize = outcome.observations.iter().map(|t| t.frames.len()).sum();
     let audio_total: usize = outcome.observations.iter().map(|t| t.audio.len()).sum();
 
     // The fixture script has 10 text units; the port pushes one text
-    // line per observe tick + one trailing frame emission.
+    // line per observe tick + one trailing frame emission for capture.
     assert_eq!(
         text_total, 10,
         "expected one text emission per fixture unit"
@@ -78,6 +78,36 @@ fn fixture_engine_port_pushes_text_then_frame_through_substrate_sinks() {
     // empty tick (end-of-stream). Ticks with non-empty drains are the
     // ones surfaced into `outcome.observations`.
     assert_eq!(outcome.observations.len(), 11);
+}
+
+#[test]
+fn fixture_engine_port_trace_does_not_emit_dangling_frame_artifact_refs() {
+    let (_input_dir, input_root) = write_fixture_source();
+    let artifact_dir = tempfile::TempDir::new().expect("artifact tempdir");
+    let artifact_root = RuntimeArtifactRoot::new(artifact_dir.path().to_path_buf());
+    artifact_root.prepare().expect("prepare artifact root");
+
+    let mut port = FixtureEnginePort::new();
+    let request = PortRequest::new(&input_root, "fixture-bridge-run", RuntimeOperation::Trace)
+        .with_artifact_root(&artifact_root);
+    let runner = Runner::new();
+
+    let outcome = runner
+        .run_trace(&mut port, &request)
+        .expect("fixture engine port run_trace succeeds");
+
+    let text_total: usize = outcome.observations.iter().map(|t| t.text.len()).sum();
+    let frame_total: usize = outcome.observations.iter().map(|t| t.frames.len()).sum();
+
+    assert_eq!(
+        text_total, 10,
+        "expected one text emission per fixture unit"
+    );
+    assert_eq!(
+        frame_total, 0,
+        "trace must not emit screenshot/frame artifact refs because capture does not materialize them"
+    );
+    assert_eq!(outcome.observations.len(), 10);
 }
 
 #[test]

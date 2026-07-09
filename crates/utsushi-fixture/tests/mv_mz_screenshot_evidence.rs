@@ -19,6 +19,27 @@ use utsushi_fixture::mv_mz_screenshot_evidence::{
     capture_metadata_from_fixture, mv_mz_screenshot_evidence_report,
 };
 
+fn collect_artifact_ref_uris(value: &Value, uris: &mut Vec<String>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(artifact_ref) = object.get("artifactRef").and_then(Value::as_object)
+                && let Some(uri) = artifact_ref.get("uri").and_then(Value::as_str)
+            {
+                uris.push(uri.to_string());
+            }
+            for child in object.values() {
+                collect_artifact_ref_uris(child, uris);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_artifact_ref_uris(item, uris);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mvmz_screenshot_evidence")
 }
@@ -159,6 +180,25 @@ fn materializes_synthetic_screenshots_into_managed_artifact_root() {
     let serialized = serde_json::to_string(&report).unwrap();
     assert!(!serialized.contains(work.to_string_lossy().as_ref()));
     let _ = std::fs::remove_dir_all(work);
+}
+
+#[test]
+fn committed_fixture_report_has_no_dangling_screenshot_artifact_refs() {
+    let report = mv_mz_screenshot_evidence_report(&fixture_root(), None).unwrap();
+    let mut uris = Vec::new();
+    collect_artifact_ref_uris(&report, &mut uris);
+    uris.sort();
+    uris.dedup();
+    assert_eq!(uris.len(), 3);
+
+    let root = RuntimeArtifactRoot::new(fixture_root().join("artifact-store"));
+    for uri in uris {
+        let path = root.artifact_path(&uri).unwrap();
+        assert!(
+            path.is_file(),
+            "screenshot artifactRef must be materialized: {uri}"
+        );
+    }
 }
 
 #[test]

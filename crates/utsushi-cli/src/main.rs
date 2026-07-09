@@ -11,6 +11,7 @@ mod structure;
 mod trace_kag;
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde_json::{Value, json};
 use utsushi_core::{
@@ -20,8 +21,7 @@ use utsushi_core::{
 const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
-static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
-    utsushi_fixture::FixtureRuntimeAdapter;
+static FIXTURE_RUNTIME_ADAPTER: OnceLock<utsushi_fixture::FixtureRuntimeAdapter> = OnceLock::new();
 static BROWSER_LAUNCH_ADAPTER: utsushi_fixture::BrowserLaunchAdapter =
     utsushi_fixture::BrowserLaunchAdapter::new();
 static NWJS_LAUNCH_ADAPTER: utsushi_fixture::NwjsLaunchAdapter =
@@ -43,7 +43,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn runtime_registry() -> RuntimeAdapterRegistry<'static> {
     let mut registry = RuntimeAdapterRegistry::new();
     registry
-        .register(&FIXTURE_RUNTIME_ADAPTER)
+        .register(FIXTURE_RUNTIME_ADAPTER.get_or_init(utsushi_fixture::FixtureRuntimeAdapter::new))
         .expect("fixture runtime adapter descriptor is valid");
     registry
         .register(&BROWSER_LAUNCH_ADAPTER)
@@ -191,7 +191,17 @@ fn run_cli_with_registry(
             let input_root = PathBuf::from(args.get(1).ok_or("missing game_dir")?);
             let output = flag(args, "--output")?;
             let adapter_name = selected_adapter_name(args, registry)?;
-            let artifact_root = optional_flag(args, "--artifact-root").map(PathBuf::from);
+            let artifact_root = if let Some(path) = optional_flag(args, "--artifact-root") {
+                Some(PathBuf::from(path))
+            } else if matches!(
+                operation,
+                RuntimeOperation::Capture | RuntimeOperation::SmokeValidation
+            ) && adapter_name == DEFAULT_ADAPTER_NAME
+            {
+                Some(PathBuf::from(output).with_extension("artifacts"))
+            } else {
+                None
+            };
             let mut request = RuntimeRequest::new(&input_root);
             if let Some(artifact_root) = artifact_root.as_deref() {
                 request = request.with_artifact_root(artifact_root);
@@ -905,31 +915,18 @@ mod tests {
             report["adapterName"],
             utsushi_fixture::FixtureRuntimeAdapter::NAME
         );
-        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
-        assert!(
-            report["runtimeCapabilities"]["features"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| {
-                    feature["feature"] == "instrumentation_hooks"
-                        && feature["status"] == "partial"
-                        && feature["evidenceTierCeiling"] == "E2"
-                })
-        );
-        assert!(
-            report["controlledPlaybackSession"]["featuresUsed"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|feature| feature == "instrumentation_hooks")
-        );
-        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
-        assert_eq!(
-            report["observationHookEvents"][0]["schemaVersion"],
-            utsushi_fixture::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
-        );
-        assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
+        assert_eq!(report["operation"], "smoke_validation");
+        let observations = report["sinkObservations"].as_array().unwrap();
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0]["sink"], "text_surface");
+        assert_eq!(observations[1]["sink"], "frame_artifact");
+        assert_eq!(report["captures"].as_array().unwrap().len(), 1);
+        let default_artifact_root = output.with_extension("artifacts");
+        let artifact_uri = report["captures"][0]["artifactUri"].as_str().unwrap();
+        let artifact_path = utsushi_core::RuntimeArtifactRoot::new(&default_artifact_root)
+            .artifact_path(artifact_uri)
+            .unwrap();
+        assert!(artifact_path.is_file());
         assert!(output.is_file());
         let _ = fs::remove_dir_all(root);
     }

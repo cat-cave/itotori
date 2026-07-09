@@ -6,9 +6,10 @@
 //! [`FixtureObservationSinks`] container (text + frame buffers shaped as
 //! `Mutex<Vec<_>>`) and pushes one [`TextLine`] emission per
 //! [`EnginePort::observe`] call until the fixture source is exhausted,
-//! followed by one [`FrameArtifact`] emission for the last text observed.
-//! The runner drains the sinks per tick (text → frame → audio) as
-//! documented on [`utsushi_core::Runner::tick`].
+//! followed by one [`FrameArtifact`] emission for capture/smoke operations.
+//! Trace stays text-only so it never reports a frame artifact URI without the
+//! capture stage materializing that file. The runner drains the sinks per tick
+//! (text → frame → audio) as documented on [`utsushi_core::Runner::tick`].
 //!
 //! The audio sink is intentionally left absent: the fixture has no audio
 //! source, and the substrate's `SinkCapability::Unsupported` posture is
@@ -25,8 +26,8 @@ use utsushi_core::{
     EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
     FrameArtifactSink, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef,
     PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
-    RUNTIME_ARTIFACT_URI_ROOT, RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError,
-    SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
+    RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult,
+    SinkSet, TextLine, TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy
@@ -38,6 +39,7 @@ pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
 const FIXTURE_PORT_ID: &str = "utsushi-fixture";
 const FIXTURE_PORT_VERSION: &str = "0.0.0";
+const FIXTURE_CAPTURE_ARTIFACT_ID: &str = "019ed003-0000-7000-8000-000000000004";
 
 /// Collector text sink the fixture engine port owns. Buffers emissions
 /// in a `Mutex<Vec<TextLine>>` and surfaces them to the runner via
@@ -322,36 +324,44 @@ impl EnginePort for FixtureEnginePort {
             });
         }
 
-        // Build the deterministic frame artifact (announced last). We
-        // hand the runner an `ObservationArtifactRef` shaped like a real
-        // managed runtime URI so the frame validator's policy check
-        // accepts it; the bytes themselves are only materialised when
-        // `capture` runs and there is an artifact root available.
-        let run_id = format!("019ed003-0000-7000-8000-{:032x}", 0x1u128);
-        let artifact_id = format!("019ed003-0000-7000-8000-{:032x}", 0x4u128);
-        let uri = format!("{RUNTIME_ARTIFACT_URI_ROOT}/{run_id}/screenshots/{artifact_id}.png");
-        let bridge_ref = ObservationBridgeRef {
-            bridge_unit_id: Some(deterministic_bridge_unit_id(&game_id, 0)),
-            source_unit_key: units[0]
-                .get("sourceUnitKey")
-                .and_then(Value::as_str)
-                .map(ToString::to_string),
-            runtime_object_id: None,
-        };
-        self.queued_frames.push(FrameArtifact {
-            frame_id: artifact_id.clone(),
-            evidence_tier: EvidenceTier::E2,
-            artifact_ref: ObservationArtifactRef {
-                artifact_id,
-                artifact_kind: "screenshot".to_string(),
-                uri,
-                media_type: Some("image/png".to_string()),
-            },
-            width: Some(320),
-            height: Some(180),
-            frame_index: 1,
-            bridge_ref: Some(bridge_ref),
-        });
+        if !matches!(request.operation, utsushi_core::RuntimeOperation::Trace) {
+            // Capture/smoke reports must not announce a frame artifact URI that
+            // differs from the file materialised by `capture`. Trace does not
+            // run the capture stage, so it must not queue this screenshot ref.
+            let artifact_id = FIXTURE_CAPTURE_ARTIFACT_ID.to_string();
+            let uri = utsushi_core::runtime_artifact_uri(
+                request.run_id,
+                RuntimeArtifactKind::Screenshot,
+                &artifact_id,
+            )
+            .map_err(|error| EnginePortError::Lifecycle {
+                stage: LifecycleStage::Launch,
+                message: format!("fixture capture uri build failed: {error}"),
+                source: None,
+            })?;
+            let bridge_ref = ObservationBridgeRef {
+                bridge_unit_id: Some(deterministic_bridge_unit_id(&game_id, 0)),
+                source_unit_key: units[0]
+                    .get("sourceUnitKey")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                runtime_object_id: None,
+            };
+            self.queued_frames.push(FrameArtifact {
+                frame_id: artifact_id.clone(),
+                evidence_tier: EvidenceTier::E2,
+                artifact_ref: ObservationArtifactRef {
+                    artifact_id,
+                    artifact_kind: "screenshot".to_string(),
+                    uri,
+                    media_type: Some("image/png".to_string()),
+                },
+                width: Some(320),
+                height: Some(180),
+                frame_index: 1,
+                bridge_ref: Some(bridge_ref),
+            });
+        }
 
         self.state = PortState::Launched;
         Ok(())
@@ -411,7 +421,7 @@ impl EnginePort for FixtureEnginePort {
         let uri = utsushi_core::runtime_artifact_uri(
             request.run_id,
             RuntimeArtifactKind::Screenshot,
-            "fixture-capture-001",
+            FIXTURE_CAPTURE_ARTIFACT_ID,
         )
         .map_err(|error| EnginePortError::Lifecycle {
             stage: LifecycleStage::Capture,

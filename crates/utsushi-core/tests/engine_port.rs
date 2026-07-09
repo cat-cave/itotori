@@ -22,7 +22,7 @@ use utsushi_core::{
     PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, RUNTIME_ARTIFACT_URI_ROOT,
     Runner, RunnerCancellation, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeArtifactKind,
     RuntimeArtifactRoot, RuntimeOperation, RuntimeRequest, SinkCapability, SinkResult, SinkSet,
-    TextLine, TextSurfaceSink, port::conformance,
+    TextLine, TextSurfaceSink, port::conformance, validate_runtime_evidence_report_value,
 };
 
 // ===================================================================
@@ -266,8 +266,8 @@ impl EnginePort for ReferencePort {
             })?;
         let uri = utsushi_core::runtime_artifact_uri(
             request.run_id,
-            RuntimeArtifactKind::ConformanceReport,
-            "reference-capture",
+            RuntimeArtifactKind::Screenshot,
+            "0190a000-0000-7000-8000-000000000201",
         )
         .map_err(|error| EnginePortError::Lifecycle {
             stage: LifecycleStage::Capture,
@@ -275,7 +275,7 @@ impl EnginePort for ReferencePort {
             source: None,
         })?;
         let path = root
-            .write_bytes(&uri, b"{\"synthetic\":true}\n")
+            .write_bytes(&uri, b"\x89PNG\r\n\x1a\nsynthetic reference capture\n")
             .map_err(|error| EnginePortError::Lifecycle {
                 stage: LifecycleStage::Capture,
                 message: format!("artifact write failed: {error}"),
@@ -1250,6 +1250,33 @@ fn engine_port_adapter_trace_runs_lifecycle_and_returns_sink_shaped_observations
     assert_eq!(value["adapterVersion"], "0.0.0");
     assert_eq!(value["schemaVersion"], "0.2.0");
     assert_eq!(value["operation"], "trace");
+    validate_runtime_evidence_report_value(&value)
+        .expect("adapter trace report must satisfy RuntimeEvidenceReportV02");
+    assert_eq!(
+        value["runtimeReportId"],
+        "0190a000-0000-7000-8000-000000000001"
+    );
+    assert_eq!(value["fidelityTier"], "layout_probe");
+    assert_eq!(value["evidenceTier"], "E1");
+    assert_eq!(
+        value["traceEvents"].as_array().expect("trace events").len(),
+        0
+    );
+    assert_eq!(
+        value["branchEvents"]
+            .as_array()
+            .expect("branch events")
+            .len(),
+        0
+    );
+    assert_eq!(value["captures"].as_array().expect("captures").len(), 0);
+    assert_eq!(
+        value["observationHookEvents"]
+            .as_array()
+            .expect("observationHookEvents")
+            .len(),
+        1
+    );
     // UTSUSHI-224: the adapter's wire shape is now `sinkObservations` —
     // a sink-shaped array — rather than the deleted hook envelope. At
     // least the text emission the reference port pushes during observe
@@ -1283,11 +1310,20 @@ fn engine_port_adapter_capture_hydrates_managed_artifact_root_from_raw_path() {
         .capture(&request)
         .expect("capture via adapter succeeds");
     assert_eq!(value["operation"], "capture");
+    validate_runtime_evidence_report_value(&value)
+        .expect("adapter capture report must satisfy RuntimeEvidenceReportV02");
+    assert_eq!(value["evidenceTier"], "E2");
     let captures = value["captures"].as_array().expect("captures array");
     let artifact_uri = captures
         .first()
         .and_then(|capture| capture["artifactUri"].as_str())
         .expect("capture artifact uri present");
+    let artifact_ref = &captures[0]["artifactRef"];
+    assert_eq!(artifact_ref["uri"].as_str().unwrap(), artifact_uri);
+    assert_eq!(
+        artifact_ref["artifactId"].as_str().unwrap(),
+        "0190a000-0000-7000-8000-000000000201"
+    );
 
     let resolved = RuntimeArtifactRoot::new(artifact_dir.path())
         .artifact_path(artifact_uri)
