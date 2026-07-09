@@ -142,6 +142,14 @@ export type LocalizeFullProjectDeps = {
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide?: StyleGuidePolicyV0Draft;
+  /**
+   * Optional caller-resolved per-unit context extension. The command composes
+   * this with its decoded-structure resolver so full-project callers can feed
+   * work-scoped effective context (shared inherited glossary/characters/style
+   * continuity + per-work overrides) without this driver inventing a manifest
+   * schema or title-specific mapping.
+   */
+  resolveUnitContext?: DrivenUnitContextResolver;
   afterExecutor?: (
     result: ProjectDrivenExecutorResult,
   ) => Promise<ProjectDrivenExecutorResult> | ProjectDrivenExecutorResult;
@@ -286,8 +294,12 @@ export async function runLocalizeFullProjectCommand(
       run: () => parseNarrativeStructure(structureJson),
     });
   }
-  const resolveUnitContext =
+  const structureUnitContext =
     structure === undefined ? undefined : buildStructureResolver(structure, defaultSceneId);
+  const resolveUnitContext = composeDrivenUnitContextResolvers(
+    structureUnitContext,
+    deps.resolveUnitContext,
+  );
 
   const feedbackNotesByUnit =
     config.feedbackNotesByUnit === undefined
@@ -447,6 +459,29 @@ export function buildStructureResolver(
       return undefined;
     }
     return { narrativeStructure: structure, sceneId };
+  };
+}
+
+export function composeDrivenUnitContextResolvers(
+  base: DrivenUnitContextResolver | undefined,
+  overlay: DrivenUnitContextResolver | undefined,
+): DrivenUnitContextResolver | undefined {
+  if (base === undefined) {
+    return overlay;
+  }
+  if (overlay === undefined) {
+    return base;
+  }
+  return (args) => {
+    const baseContext = base(args);
+    const overlayContext = overlay(args);
+    if (baseContext === undefined) {
+      return overlayContext;
+    }
+    if (overlayContext === undefined) {
+      return baseContext;
+    }
+    return { ...baseContext, ...overlayContext };
   };
 }
 

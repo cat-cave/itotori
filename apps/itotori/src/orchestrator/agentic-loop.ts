@@ -67,6 +67,7 @@ import {
   type TranslationInvocationResult,
   type TranslationProtectedSpanInput,
   type TranslationStyleGuideRule,
+  type TranslationWorkScopeContext,
 } from "../agents/translation/shapes.js";
 import { QaAgent } from "../agents/qa/agent.js";
 import {
@@ -348,6 +349,13 @@ export type AgenticLoopUnitInput = {
    * byte-identical to a blank first pass. Generic — no game-specific fields.
    */
   priorPassFeedback?: PriorPassFeedback;
+  /**
+   * itotori-crosswork-context-injection — resolved effective scope for the
+   * unit's work (shared context inherited, per-work overrides applied). The
+   * translation prompt consumes it directly as continuity context; the same
+   * resolved members are also threaded via `glossary` / `knownCharacters`.
+   */
+  workScopeContext?: TranslationWorkScopeContext;
 };
 
 // ---------------------------------------------------------------------------
@@ -507,6 +515,7 @@ export async function runAgenticLoopForUnit(
     agentLabel: "translation-primary",
     structuredContext: contextResult.structuredContext,
     contextArtifactRefs: contextResult.contextArtifactRefs,
+    workScopeContext: input.workScopeContext,
     // itotori-pass-ledger — thread the prior pass's feedback for this unit so
     // the primary draft iterates on the prior result when present (undefined
     // on a blank first pass → byte-identical prompt).
@@ -725,6 +734,7 @@ export async function runAgenticLoopForUnit(
         // the retry is still branch/scene/speaker aware, not context-stripped.
         structuredContext: contextResult.structuredContext,
         contextArtifactRefs: contextResult.contextArtifactRefs,
+        workScopeContext: input.workScopeContext,
         // itotori-pass-ledger — keep the prior-pass feedback on every repair
         // attempt so the retry keeps addressing the flagged issue.
         priorPassFeedback: input.priorPassFeedback,
@@ -1488,6 +1498,7 @@ async function invokeTranslationStage(args: {
   structuredContext?: StructuredContextInjection | undefined;
   /** Citable artifact refs (the slice's refs + the semantic agents' refs). */
   contextArtifactRefs?: ReadonlyArray<string>;
+  workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
    * itotori-pass-ledger — prior-pass feedback for this unit, rendered into the
    * translation prompt so a repair / pass N+1 draft iterates on the prior
@@ -1555,6 +1566,7 @@ async function invokeTranslationStage(args: {
     // agents' enrichment).
     contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
     ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
+    ...(args.workScopeContext !== undefined ? { workScopeContext: args.workScopeContext } : {}),
     ...(args.priorPassFeedback !== undefined ? { priorPassFeedback: args.priorPassFeedback } : {}),
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),

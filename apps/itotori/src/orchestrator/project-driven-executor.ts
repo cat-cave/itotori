@@ -56,7 +56,11 @@ import type { PriorPassFeedback } from "../agents/translation/shapes.js";
 import { planBatches } from "../batch-planner/planner.js";
 import { resolveModelProfile } from "../batch-planner/model-profiles.js";
 import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
-import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
+import type {
+  TranslationGlossaryEntry,
+  TranslationWorkScopeContext,
+} from "../agents/translation/shapes.js";
+import type { EffectiveScope } from "../agents/work-scope/index.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import {
   runAgenticLoopForUnit,
@@ -130,23 +134,34 @@ export function unitSurfaceKindInScope(surfaceKind: string, scope: TranslationSc
 // ---------------------------------------------------------------------------
 
 /**
- * Per-unit structure-informed context. The executor threads the decoded
- * `narrativeStructure` + the unit's numeric `sceneId` into every
- * `runAgenticLoopForUnit` call (per P0#1). Both fields travel together or not
- * at all — the loop rejects a structure without a scene id.
+ * Per-unit context resolved by the caller. Structure fields (`narrativeStructure`
+ * + `sceneId`) select the deterministic scene slice; `effectiveScope` carries
+ * the resolved work scope. A resolver may return either surface or both, which
+ * lets the full-project driver compose decoded structure with operator-supplied
+ * work-scope mapping without fabricating either one.
  */
 export type DrivenUnitContext = {
-  narrativeStructure: NarrativeStructure;
-  sceneId: number;
+  /**
+   * Structure-informed context fields. When `narrativeStructure` is supplied,
+   * `sceneId` must also be supplied so the loop can select the unit's slice.
+   */
+  narrativeStructure?: NarrativeStructure;
+  sceneId?: number;
+  /**
+   * itotori-crosswork-context-injection — resolved effective scope for this
+   * unit's work: inherited shared glossary/characters plus any per-work
+   * overrides. The executor adapts it into the loop's glossary, character
+   * roster, and translation prompt continuity block.
+   */
+  effectiveScope?: EffectiveScope;
 };
 
 /**
- * Resolve the per-unit structure-informed context. The caller owns the
- * mapping from a bridge unit (+ the planner's scene grouping) to the decoded
- * scene, because only the caller holds the (copyrighted, out-of-repo) decoded
- * `narrativeStructure`. Returning `undefined` runs the loop WITHOUT a
- * deterministic structure block (the four semantic agents still fire live) —
- * used by the synthetic path that has no decode.
+ * Resolve the per-unit structure/work-scope context. The caller owns the
+ * mapping from a bridge unit (+ the planner's scene grouping) to decoded
+ * structure and work scope, because only the caller holds the real project
+ * config/manifests. Returning `undefined` runs the loop without deterministic
+ * structure or work-scope context (the semantic agents still fire live).
  */
 export type DrivenUnitContextResolver = (args: {
   unit: LocalizationUnitV02;
@@ -252,6 +267,79 @@ export type DrivenPatchReport = {
  */
 export function hashDraftedAgainstBridge(rawBridge: unknown): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(rawBridge)).digest("hex")}`;
+}
+
+function workScopeMemberId(workId: string, kind: "glossary" | "character", key: string): string {
+  const digest = createHash("sha256").update(`${workId}\n${kind}\n${key}`).digest("hex");
+  return `work-scope:${workId}:${kind}:${digest.slice(0, 16)}`;
+}
+
+function translationGlossaryFromEffectiveScope(
+  effectiveScope: EffectiveScope,
+): TranslationGlossaryEntry[] {
+  return effectiveScope.glossary.map((entry) => ({
+    termId: workScopeMemberId(effectiveScope.workId, "glossary", entry.sourceForm),
+    preferredSourceForm: entry.sourceForm,
+    preferredTargetForm: entry.targetForm,
+    ...(entry.policyAction !== undefined ? { policyAction: entry.policyAction } : {}),
+  }));
+}
+
+function translationWorkScopeContextFromEffectiveScope(
+  effectiveScope: EffectiveScope,
+): TranslationWorkScopeContext {
+  return {
+    workId: effectiveScope.workId,
+    glossary: effectiveScope.glossary.map((entry) => ({
+      termId: workScopeMemberId(effectiveScope.workId, "glossary", entry.sourceForm),
+      sourceForm: entry.sourceForm,
+      targetForm: entry.targetForm,
+      ...(entry.policyAction !== undefined ? { policyAction: entry.policyAction } : {}),
+      provenance: entry.provenance,
+    })),
+    characters: effectiveScope.characters.map((character) => ({
+      characterId: character.characterId,
+      displayName: character.displayName,
+      ...(character.voiceNote !== undefined ? { voiceNote: character.voiceNote } : {}),
+      provenance: character.provenance,
+    })),
+  };
+}
+
+function mergeGlossaryEntries(
+  base: ReadonlyArray<TranslationGlossaryEntry>,
+  workScope: ReadonlyArray<TranslationGlossaryEntry>,
+): TranslationGlossaryEntry[] {
+  const merged: TranslationGlossaryEntry[] = [];
+  const bySource = new Map(workScope.map((entry) => [entry.preferredSourceForm, entry] as const));
+  const emitted = new Set<string>();
+  for (const entry of base) {
+    const override = bySource.get(entry.preferredSourceForm);
+    merged.push(override ?? entry);
+    emitted.add(entry.preferredSourceForm);
+  }
+  for (const entry of workScope) {
+    if (!emitted.has(entry.preferredSourceForm)) {
+      merged.push(entry);
+      emitted.add(entry.preferredSourceForm);
+    }
+  }
+  return merged;
+}
+
+function knownCharactersFromEffectiveScope(
+  effectiveScope: EffectiveScope,
+  sourceLocale: string,
+): NonNullable<AgenticLoopUnitInput["knownCharacters"]> {
+  return effectiveScope.characters.map((character) => ({
+    characterId: character.characterId,
+    displayName: character.displayName,
+    bioLocale: sourceLocale,
+    bioText:
+      character.voiceNote ??
+      `${character.displayName} is present in the resolved work scope (${character.provenance}).`,
+    hiddenFromReader: false,
+  }));
 }
 
 export type DrivenDraftSink = {
@@ -733,18 +821,31 @@ async function runSingleDrivenUnit(args: {
         ? input.priorPass.feedbackByUnit.get(unit.bridgeUnitId)
         : undefined;
 
+    const scopeGlossary =
+      context?.effectiveScope !== undefined
+        ? translationGlossaryFromEffectiveScope(context.effectiveScope)
+        : [];
+    const workScopeContext =
+      context?.effectiveScope !== undefined
+        ? translationWorkScopeContextFromEffectiveScope(context.effectiveScope)
+        : undefined;
+
     const unitInput: AgenticLoopUnitInput = {
       unit,
       sceneUnits: [],
       // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
       // glossary + style-guide (caller-resolved) into every unit's loop.
-      glossary: input.glossary ?? [],
+      glossary: mergeGlossaryEntries(input.glossary ?? [], scopeGlossary),
       protectedSpans: [],
-      knownCharacters: [],
+      knownCharacters:
+        context?.effectiveScope !== undefined
+          ? knownCharactersFromEffectiveScope(context.effectiveScope, policy.sourceLocale)
+          : [],
       ...(input.styleGuide !== undefined ? { styleGuide: input.styleGuide } : {}),
-      ...(context !== undefined
+      ...(context?.narrativeStructure !== undefined && context.sceneId !== undefined
         ? { narrativeStructure: context.narrativeStructure, sceneId: context.sceneId }
         : {}),
+      ...(workScopeContext !== undefined ? { workScopeContext } : {}),
       actor: input.actor,
       ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
       // ITOTORI-150 — hand the terminology-candidate repository to every unit's

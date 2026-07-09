@@ -18,6 +18,7 @@ import type {
   TranslationInvocationInput,
   TranslationProtectedSpanInput,
   TranslationStyleGuideRule,
+  TranslationWorkScopeContext,
 } from "./shapes.js";
 
 export type RenderedTranslationPrompt = {
@@ -109,6 +110,15 @@ export function buildTranslationPrompt(
     );
   }
 
+  // itotori-crosswork-context-injection — inject the resolved effective work
+  // scope when the full-project driver supplies it. This is strictly additive:
+  // no `workScopeContext` means no emitted block and therefore no prompt drift
+  // for single-work / legacy paths.
+  if (input.workScopeContext !== undefined) {
+    lines.push("");
+    lines.push(...renderWorkScopeContext(input.workScopeContext));
+  }
+
   // itotori-pass-ledger — inject the prior localization pass's feedback for
   // this unit so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
   // units instead of re-running from scratch. STRICTLY ADDITIVE: when
@@ -195,6 +205,51 @@ function canonicalizeSpans(
   spans: ReadonlyArray<TranslationProtectedSpanInput>,
 ): ReadonlyArray<TranslationProtectedSpanInput> {
   return [...spans].sort((a, b) => a.refId.localeCompare(b.refId));
+}
+
+function renderWorkScopeContext(context: TranslationWorkScopeContext): string[] {
+  const out: string[] = [];
+  out.push(
+    "Work-scoped continuity context (shared context inherited across works, " +
+      "with per-work overrides already applied):",
+  );
+  out.push(`- Work id: ${context.workId}`);
+  if (context.glossary.length === 0) {
+    out.push("- Effective glossary: (empty)");
+  } else {
+    out.push("- Effective glossary provenance:");
+    for (const entry of [...context.glossary].sort((a, b) => {
+      const sourceDelta = a.sourceForm.localeCompare(b.sourceForm);
+      if (sourceDelta !== 0) {
+        return sourceDelta;
+      }
+      return a.termId.localeCompare(b.termId);
+    })) {
+      const policy = entry.policyAction ? ` [${entry.policyAction}]` : "";
+      out.push(
+        `  - ${entry.sourceForm} -> ${entry.targetForm}${policy} ` +
+          `(termId=${entry.termId}, ${entry.provenance})`,
+      );
+    }
+  }
+  if (context.characters.length === 0) {
+    out.push("- Character/style continuity: (empty)");
+  } else {
+    out.push("- Character/style continuity:");
+    for (const character of [...context.characters].sort((a, b) =>
+      a.characterId.localeCompare(b.characterId),
+    )) {
+      const voice = character.voiceNote ? `; voice/style=${character.voiceNote}` : "";
+      out.push(
+        `  - ${character.displayName} (characterId=${character.characterId}, ` +
+          `${character.provenance}${voice})`,
+      );
+    }
+    out.push(
+      "  Treat character voice/style notes as continuity rules for this draft unless a per-work override says otherwise.",
+    );
+  }
+  return out;
 }
 
 /**

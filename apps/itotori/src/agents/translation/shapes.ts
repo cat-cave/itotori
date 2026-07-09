@@ -71,6 +71,32 @@ export type TranslationStyleGuideRule = {
   guidance: string;
 };
 
+export type TranslationScopeContextProvenance = "inherited" | "override";
+
+/**
+ * Per-work continuity context resolved by the multi-work scope graph. This is
+ * deliberately game-agnostic: callers hand the translation agent the effective
+ * work scope (shared context inherited, per-work overrides already applied),
+ * and the prompt renders it as drafting context without knowing how the work
+ * was carved out of an archive.
+ */
+export type TranslationWorkScopeContext = {
+  workId: string;
+  glossary: ReadonlyArray<{
+    termId: string;
+    sourceForm: string;
+    targetForm: string;
+    policyAction?: "localize" | "romanize" | "do_not_translate" | undefined;
+    provenance: TranslationScopeContextProvenance;
+  }>;
+  characters: ReadonlyArray<{
+    characterId: string;
+    displayName: string;
+    voiceNote?: string | undefined;
+    provenance: TranslationScopeContextProvenance;
+  }>;
+};
+
 /**
  * itotori-pass-ledger — prior-pass feedback threaded into the translation
  * prompt so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
@@ -167,6 +193,14 @@ export type TranslationInvocationInput = {
    * agent may cite them.
    */
   structuredContext?: StructuredContextInjection | undefined;
+  /**
+   * itotori-crosswork-context-injection — the effective multi-work scope for
+   * this unit: shared glossary/characters/style continuity inherited from the
+   * parent work collection with any per-work overrides already resolved. When
+   * present the prompt renders a dedicated continuity block; when absent the
+   * prompt remains byte-identical to the pre-feature path.
+   */
+  workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
    * itotori-pass-ledger — prior-pass feedback for this unit, threaded from the
    * localization pass ledger so a pass N+1 draft consumes pass N's accepted

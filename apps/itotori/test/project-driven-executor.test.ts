@@ -73,6 +73,11 @@ import {
   type DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
+  buildScopeGraph,
+  resolveEffectiveScope,
+  type WorkCarve,
+} from "../src/agents/work-scope/index.js";
+import {
   DrivenDbPersistenceAdapter,
   FsDrivenPatchExportSink,
 } from "../src/orchestrator/project-driven-executor-sinks.js";
@@ -359,6 +364,32 @@ function drivenProviderFactory(): AgenticLoopProviderFactory {
     });
 }
 
+function promptCapturingProviderFactory(
+  promptsByUnit: Map<string, string>,
+): AgenticLoopProviderFactory {
+  return ({ stage, agentLabel }) =>
+    new FakeModelProvider({
+      providerName: `driven-capture-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest): string => {
+        if (request.taskKind === "experiment" && agentLabel !== "speaker-label") {
+          return fakeSemanticContextContent(agentLabel);
+        }
+        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+          return speakerLabelContent(bridgeUnitIdOf(request));
+        }
+        if (request.taskKind === "draft_translation") {
+          const unitId = bridgeUnitIdOf(request);
+          promptsByUnit.set(unitId, request.messages.map((m) => m.content).join("\n"));
+          return translationContent(unitId);
+        }
+        if (request.taskKind === "llm_qa") {
+          return cleanQaContent();
+        }
+        return "";
+      },
+    });
+}
+
 function baseInput(queue?: InMemoryReviewerQueue, sinks?: InMemorySinks) {
   const bridge = makeBridge();
   const structure = makeStructure();
@@ -513,6 +544,105 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     for (const draft of sinks.drafts) {
       expect(draft.sceneId).toBeUndefined();
     }
+  });
+
+  it("injects inherited cross-work glossary and character/style context with per-work overrides into drafting prompts", async () => {
+    const promptsByUnit = new Map<string, string>();
+    const sinks = new InMemorySinks();
+    const structure = makeStructure();
+    const carve: WorkCarve = {
+      archiveRef: "fixture-archive",
+      works: [
+        {
+          workId: "fixture-archive#work:base",
+          optionIndex: 0,
+          optionLabel: "base",
+          branchEntryScene: 100,
+          branchMessageCount: 1,
+          branchSpeakers: ["Iris"],
+        },
+        {
+          workId: "fixture-archive#work:after",
+          optionIndex: 1,
+          optionLabel: "after",
+          branchEntryScene: 200,
+          branchMessageCount: 1,
+          branchSpeakers: ["Iris", "Noa"],
+        },
+      ],
+      derivation: {
+        signal: "operator-entry-scene-override",
+        gameSelectScene: null,
+        gameSelectSelectedBy: "none",
+        selectionControl: "none",
+        namingSignal: "provided",
+        notes: "synthetic two-work fixture",
+      },
+    };
+    const graph = buildScopeGraph({
+      shared: {
+        scopeId: "scope:fixture-shared",
+        kind: "shared",
+        label: "Fixture shared scope",
+        // Treat this as a term established by the first work and promoted to
+        // the shared scope; the second work must receive it in its draft prompt.
+        glossary: [{ sourceForm: "光紋", targetForm: "Lumen Crest", policyAction: "localize" }],
+        characters: [
+          {
+            characterId: "iris",
+            displayName: "Iris",
+            voiceNote: "dry wit with clipped, confident phrasing",
+          },
+        ],
+      },
+      carve,
+      perWork: {
+        "fixture-archive#work:after": {
+          glossaryOverrides: [
+            { sourceForm: "約束", targetForm: "After Promise", policyAction: "localize" },
+          ],
+          characterOverrides: [
+            {
+              characterId: "noa",
+              displayName: "Noa",
+              voiceNote: "after-story-only gentle register",
+            },
+          ],
+        },
+      },
+    });
+    const baseScope = resolveEffectiveScope(graph, "fixture-archive#work:base");
+    const afterScope = resolveEffectiveScope(graph, "fixture-archive#work:after");
+
+    const result = await runProjectDrivenExecutor({
+      ...baseInput(undefined, sinks),
+      providerFactory: promptCapturingProviderFactory(promptsByUnit),
+      maxUnits: 3,
+      resolveUnitContext: ({ unit }): DrivenUnitContext => ({
+        narrativeStructure: structure,
+        sceneId: SCENE_ID,
+        effectiveScope: unit.bridgeUnitId === UNIT_C ? afterScope : baseScope,
+      }),
+    });
+
+    expect(result.failures).toHaveLength(0);
+    const afterPrompt = promptsByUnit.get(UNIT_C);
+    expect(afterPrompt).toBeDefined();
+    expect(afterPrompt).toContain("Work-scoped continuity context");
+    // Inherited from the shared scope into the second work's draft context.
+    expect(afterPrompt).toContain("光紋 -> Lumen Crest");
+    expect(afterPrompt).toContain("Iris");
+    expect(afterPrompt).toContain("dry wit with clipped, confident phrasing");
+    expect(afterPrompt).toContain("inherited");
+    // Added/overridden by the second work and present only after resolution.
+    expect(afterPrompt).toContain("約束 -> After Promise");
+    expect(afterPrompt).toContain("Noa");
+    expect(afterPrompt).toContain("after-story-only gentle register");
+    expect(afterPrompt).toContain("override");
+    // The effective glossary also reaches the existing glossary block consumed
+    // by translation + terminology QA, not just the audit continuity block.
+    expect(afterPrompt).toContain("Glossary (apply preferred target forms):");
+    expect(afterPrompt).toContain("光紋 -> Lumen Crest");
   });
 });
 
