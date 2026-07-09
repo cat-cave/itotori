@@ -15,13 +15,11 @@
 // with this override) is computed by `resolveEffectiveSelection` in the
 // switcher module so the reconciliation rule is one named, testable function.
 //
-// Game-agnostic: no title or work is named — only the opaque ids the typed
-// read-models carry (`projectId` / `localeBranchId`). The work→edition tier of
-// the hi-fi hierarchy is NOT surfaced here because the real
-// `ProjectDashboardStatus` exposes no catalog work/edition lineage (the
-// catalog is reachable only at the DB layer; there is no listing route — see
-// the switcher module header). When a catalog-listing API lands the switcher's
-// tiered adapter composes it without changing this selection seam.
+// Game-agnostic: no title is baked in — only the opaque ids the typed
+// read-models carry (`projectId` / `localeBranchId`) are selected here. The
+// switcher renders Work / Edition as read-only labels derived from project
+// metadata, so this selection seam stays project + branch scoped until a real
+// catalog-selection API exists.
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 

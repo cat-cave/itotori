@@ -1,10 +1,11 @@
-// shell-project-branch-switcher (HI-FI STUDIO EPIC · Shell) — the project +
-// locale-branch switcher.
+// shell-project-branch-switcher (HI-FI STUDIO EPIC · Shell) — the work +
+// edition + project + locale-branch switcher.
 //
-// A disclosure in the shell toolbar that lists every project the typed client
-// can see and, for the effective project, its locale branches; picking one
-// switches the shell chrome's context (status bar) through the client-side
-// `ShellSelectionProvider`. This mirrors the hi-fi studio store
+// A disclosure in the shell toolbar that lists the effective work + edition,
+// every project the typed client can see, and the effective project's locale
+// branches; picking a project/branch switches the shell chrome's context
+// (status bar) through the client-side `ShellSelectionProvider`. This mirrors
+// the hi-fi studio store
 // (`docs/design/hifi/studio/store.jsx`), which models the switcher as CLIENT
 // state (`setProjectId` / `setBranch`) overlaid on the workspace's active
 // project — there is no server-side select-project/branch mutation today.
@@ -17,15 +18,13 @@
 // `resolveEffectiveSelection`. No ad-hoc fetch; no new route.
 //
 // SCOPE — game-agnostic and honestly tiered. The hi-fi hierarchy is
-// org → work → edition → project → locale branch. The catalog work/edition
-// tier is NOT in this switcher because the real `ProjectDashboardStatus`
-// exposes no catalog work/edition lineage (catalogReleases is reachable only
-// at the DB layer; there is no catalog-listing route). Per the format-stability
-// + reality contract, this switcher does NOT invent a catalog API or fake
-// work/edition data: it ships the reachable project → locale-branch tiers,
-// and the `buildSwitcherProjects` / `selectBranchesForProject` seams compose a
-// work/edition grouping unchanged when a catalog-listing route lands. A
-// specific title is CONFIG, never baked in (no game is named).
+// org → work → edition → project → locale branch. `ProjectDashboardStatus`
+// currently has no required catalog work/edition fields, so this switcher
+// surfaces Work and Edition as read-only labels derived from the selected
+// project's metadata. If a response carries optional catalog-like fields
+// (`workTitle`, `workId`, `editionName`, `releaseTitle`, etc.) the adapter uses
+// them; otherwise it falls back to existing project metadata. No invented route
+// or backend mutation is needed.
 //
 // [[feedback_behavior_first_code_agnostic_testing]] — the pure builders +
 // reconciliation rule are exported so the listing / switch behavior is
@@ -51,6 +50,17 @@ export type SwitcherProject = {
   projectId: string;
   projectKey: string;
   name: string;
+};
+
+/** One read-only work / edition label derived from project metadata. */
+export type SwitcherLineageItem = {
+  lineageId: string;
+  label: string;
+};
+
+export type SwitcherLineage = {
+  work: readonly SwitcherLineageItem[];
+  edition: readonly SwitcherLineageItem[];
 };
 
 /** One locale branch the switcher lists for the effective project. */
@@ -82,6 +92,43 @@ export function buildSwitcherProjects(
     });
   }
   return out;
+}
+
+/**
+ * Read-only Work / Edition labels for the effective project. Optional
+ * catalog-like properties are accepted because the wire schema permits
+ * additional fields; the fallback uses the stable project metadata available
+ * today.
+ */
+export function deriveSwitcherLineageForProject(
+  projects: ReadonlyArray<ProjectDashboardStatus>,
+  projectId: string | null,
+): SwitcherLineage {
+  if (projectId === null) {
+    return { work: [], edition: [] };
+  }
+  const project = projects.find((candidate) => candidate.projectId === projectId);
+  if (project === undefined) {
+    return { work: [], edition: [] };
+  }
+  const workId =
+    projectStringField(project, ["workId", "catalogWorkId", "catalogRecordId"]) ??
+    nestedProjectStringField(project, ["importStatus", "futureReferences", "catalogWorkId"]) ??
+    `project:${project.projectId}`;
+  const workLabel =
+    projectStringField(project, ["workTitle", "workName", "work", "title"]) ?? project.name;
+  const editionId =
+    projectStringField(project, ["editionId", "releaseId", "catalogReleaseId"]) ??
+    project.sourceBundleRevisionId ??
+    project.projectKey;
+  const editionLabel =
+    projectStringField(project, ["editionName", "editionTitle", "edition", "releaseTitle"]) ??
+    project.sourceBundleRevisionId ??
+    project.projectKey;
+  return {
+    work: [{ lineageId: workId, label: workLabel }],
+    edition: [{ lineageId: editionId, label: editionLabel }],
+  };
 }
 
 /**
@@ -147,6 +194,38 @@ export function serverSelectionFromStatus(
   return { projectId: status.projectId, localeBranchId: status.selectedLocaleBranchId };
 }
 
+function projectStringField(
+  project: ProjectDashboardStatus,
+  fieldNames: readonly string[],
+): string | null {
+  const record = project as unknown as Record<string, unknown>;
+  for (const fieldName of fieldNames) {
+    const value = nonEmptyString(record[fieldName]);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function nestedProjectStringField(
+  project: ProjectDashboardStatus,
+  fieldPath: readonly string[],
+): string | null {
+  let value: unknown = project;
+  for (const fieldName of fieldPath) {
+    if (typeof value !== "object" || value === null) {
+      return null;
+    }
+    value = (value as Record<string, unknown>)[fieldName];
+  }
+  return nonEmptyString(value);
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -187,6 +266,10 @@ export function ProjectBranchSwitcher({
   const effective = resolveEffectiveSelection(serverSelection, override);
 
   const switcherProjects = useMemo(() => buildSwitcherProjects(projects), [projects]);
+  const lineage = useMemo(
+    () => deriveSwitcherLineageForProject(projects, effective.projectId),
+    [projects, effective.projectId],
+  );
   const branches = useMemo(
     () => selectBranchesForProject(projects, effective.projectId),
     [projects, effective.projectId],
@@ -251,6 +334,32 @@ export function ProjectBranchSwitcher({
           aria-label="Switch project and locale branch"
           data-switcher-panel="true"
         >
+          <SwitcherSection
+            label="Work"
+            dataSection="work"
+            isEmpty={lineage.work.length === 0}
+            loading={readPhase === "loading"}
+            error={readPhase === "error"}
+          >
+            {lineage.work.map((work) => (
+              <SwitcherReadOnlyOption key={work.lineageId} dataId={work.lineageId}>
+                {work.label}
+              </SwitcherReadOnlyOption>
+            ))}
+          </SwitcherSection>
+          <SwitcherSection
+            label="Edition"
+            dataSection="edition"
+            isEmpty={lineage.edition.length === 0}
+            loading={readPhase === "loading"}
+            error={readPhase === "error"}
+          >
+            {lineage.edition.map((edition) => (
+              <SwitcherReadOnlyOption key={edition.lineageId} dataId={edition.lineageId}>
+                {edition.label}
+              </SwitcherReadOnlyOption>
+            ))}
+          </SwitcherSection>
           <SwitcherSection
             label="Project"
             dataSection="project"
@@ -367,5 +476,25 @@ function SwitcherOption({
     >
       {children}
     </button>
+  );
+}
+
+function SwitcherReadOnlyOption({
+  dataId,
+  children,
+}: {
+  dataId: string;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <div
+      role="menuitem"
+      aria-disabled="true"
+      className="itotori-switcher__option"
+      data-switcher-option-id={dataId}
+      data-switcher-option-readonly="true"
+    >
+      {children}
+    </div>
   );
 }

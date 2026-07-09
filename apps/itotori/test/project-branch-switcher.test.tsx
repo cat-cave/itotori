@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 // shell-project-branch-switcher (HI-FI STUDIO EPIC · Shell) — behavior-first
-// test for the project + locale-branch switcher.
+// test for the work + edition + project + locale-branch switcher.
 //
 // Asserts the OBSERVABLE behavior a viewer sees, per the acceptance:
-//   1. the switcher lists the projects the typed client sees and, for the
-//      effective project, its locale branches (game-agnostic — only ids +
-//      names / locales, no title baked in);
+//   1. the switcher lists the effective work/edition labels, the projects the
+//      typed client sees and, for the effective project, its locale branches
+//      (game-agnostic — only read-model ids + names / locales);
 //   2. picking a branch switches the shell context — the status-bar Branch
 //      cell reflects the picked branch (the client-state overlay model the
 //      hi-fi store uses);
@@ -33,6 +33,7 @@ import {
   ProjectBranchSwitcher,
   buildSwitcherBranches,
   buildSwitcherProjects,
+  deriveSwitcherLineageForProject,
   resolveEffectiveSelection,
   selectBranchesForProject,
   serverSelectionFromStatus,
@@ -117,11 +118,36 @@ describe("project-branch-switcher — pure builders", () => {
     const projects = buildSwitcherProjects([activeProject, otherProject, activeProject]);
     expect(projects.map((p) => p.projectId)).toEqual(["project-1", "project-2"]);
     expect(projects.map((p) => p.name)).toEqual(["project-1", "project-2"]);
-    // Only the opaque ids + name — no title / work baked in.
+    // Project rows stay project-scoped; Work / Edition are derived separately.
     expect(projects[0]).toEqual({
       projectId: "project-1",
       projectKey: "project-1",
       name: "project-1",
+    });
+  });
+
+  it("deriveSwitcherLineageForProject lists work and edition from optional catalog metadata", () => {
+    const catalogProject = {
+      ...activeProject,
+      workId: "work-1",
+      workTitle: "Catalog Work",
+      editionId: "edition-1",
+      editionName: "First Edition",
+    } as ProjectDashboardStatus;
+    expect(deriveSwitcherLineageForProject([catalogProject], "project-1")).toEqual({
+      work: [{ lineageId: "work-1", label: "Catalog Work" }],
+      edition: [{ lineageId: "edition-1", label: "First Edition" }],
+    });
+  });
+
+  it("deriveSwitcherLineageForProject falls back to current project metadata when catalog fields are absent", () => {
+    expect(deriveSwitcherLineageForProject([activeProject], "project-1")).toEqual({
+      work: [{ lineageId: "project:project-1", label: "project-1" }],
+      edition: [{ lineageId: "revision-1", label: "revision-1" }],
+    });
+    expect(deriveSwitcherLineageForProject([activeProject], null)).toEqual({
+      work: [],
+      edition: [],
     });
   });
 
@@ -233,9 +259,18 @@ describe("project-branch-switcher — disclosure behavior", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("lists every project + the effective project's branches when opened, marking the current selection", async () => {
+  it("lists work + edition + every project + the effective project's branches when opened, marking the current selection", async () => {
     mountSwitcher();
     const panel = openPanel();
+    // Work / Edition: read-only labels derived from the effective project's
+    // existing metadata because the current read-model has no catalog lineage.
+    const workGroup = await within(panel).findByRole("group", { name: "Work" });
+    expect(within(workGroup).getByRole("menuitem")).toHaveTextContent("project-1");
+    expect(within(workGroup).getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
+    const editionGroup = await within(panel).findByRole("group", { name: "Edition" });
+    expect(within(editionGroup).getByRole("menuitem")).toHaveTextContent("revision-1");
+    expect(editionGroup).toHaveAttribute("aria-label", "Edition");
+
     // Projects: both, project-1 marked active (server selection).
     const projectGroup = await within(panel).findByRole("group", { name: "Project" });
     const projectOptions = within(projectGroup).getAllByRole("menuitemradio");
@@ -293,6 +328,18 @@ describe("project-branch-switcher — disclosure behavior", () => {
     expect(onSelect).toHaveBeenCalledWith({ projectId: "project-2", localeBranchId: null });
   });
 
+  it("updates the read-only work and edition labels after picking another project", async () => {
+    mountSwitcher(serverSelectionFromStatus(activeProject));
+    const panel = openPanel();
+    const projectGroup = await within(panel).findByRole("group", { name: "Project" });
+    fireEvent.click(within(projectGroup).getByText("project-2"));
+    const reopened = screen.getByRole("menu", { name: "Switch project and locale branch" });
+    const workGroup = within(reopened).getByRole("group", { name: "Work" });
+    expect(within(workGroup).getByRole("menuitem")).toHaveTextContent("project-2");
+    const editionGroup = within(reopened).getByRole("group", { name: "Edition" });
+    expect(within(editionGroup).getByRole("menuitem")).toHaveTextContent("revision-1");
+  });
+
   it("degrades the panel to loading while the projects read is in flight", () => {
     server.use(http.get("*/api/projects", () => new Promise(() => {})));
     mountSwitcher();
@@ -308,7 +355,8 @@ describe("project-branch-switcher — disclosure behavior", () => {
     );
     mountSwitcher();
     const panel = openPanel();
-    expect(await within(panel).findByText("Unavailable")).toBeInTheDocument();
+    expect(await within(panel).findAllByText("Unavailable")).toHaveLength(3);
+    expect(within(panel).getByText("None")).toBeInTheDocument();
   });
 });
 
