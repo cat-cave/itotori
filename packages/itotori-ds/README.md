@@ -25,7 +25,7 @@ src/
   gallery/              lightweight component gallery (vite demo surface)
   stories/              Storybook CSF stories — design-review catalog + play tests
 .storybook/             Storybook harness config (fe-ds-storybook-harness)
-test/                   behaviour-first component tests (Vitest + jsdom + Testing Library)
+test/                   behaviour tests + committed Storybook visual baselines
 ```
 
 ## Patterns downstream UI nodes copy
@@ -52,12 +52,20 @@ test/                   behaviour-first component tests (Vitest + jsdom + Testin
 
 - `pnpm --filter @itotori/ds build` — tsc emits the library (JS + `.d.ts`).
 - `pnpm --filter @itotori/ds test` — Vitest component tests (jsdom), including
-  Storybook play-function runners via `composeStories`.
+  Storybook play-function runners via `composeStories`, then Storybook visual
+  regression against committed baselines.
+- `pnpm --filter @itotori/ds test:dom` — Vitest/jsdom only for tight component
+  loops.
 - `pnpm --filter @itotori/ds typecheck` — `tsc --noEmit` over library + gallery +
   Storybook stories + tests.
 - `pnpm --filter @itotori/ds storybook` — design-review catalog (Storybook UI).
 - `pnpm --filter @itotori/ds storybook:build` — static Storybook build (CI-friendly
   compile gate; output `storybook-static/`, gitignored).
+- `pnpm --filter @itotori/ds visual:test` — build Storybook with `--test`, render
+  every real story in Chromium, and compare screenshots with
+  `test/visual-baselines/`.
+- `pnpm --filter @itotori/ds visual:update` — regenerate committed baselines after
+  an intentional DS visual change.
 - `pnpm --filter @itotori/ds gallery:dev` — serve the lightweight gallery.
 - `pnpm --filter @itotori/ds gallery:build` — build the gallery for the browser.
 
@@ -72,8 +80,23 @@ interaction tests for interactive surfaces. Play bodies run:
 2. deterministically in CI via Vitest + `composeStories` (jsdom) — see
    `test/stories.test.tsx`.
 
-Visual-regression baselines are a follow-on node (`fe-ds-visual-regression`);
-this harness only stands up the catalog + play surface.
+## Visual regression
+
+Visual regression is the dev-only screenshot diff surface for
+`fe-ds-visual-regression`. It renders Storybook's generated `iframe.html` for
+every entry in the real `index.json`, so coverage follows the same CSF catalog
+used for design review.
+
+The runner is deterministic by contract:
+
+- fixed viewport: 1280x800, device scale factor 1, dark scheme;
+- `prefers-reduced-motion: reduce`, disabled animations/transitions, hidden caret;
+- local static Storybook only; external network requests are aborted;
+- explicit Chromium binary via `PLAYWRIGHT_CHROMIUM_BIN` or `UTSUSHI_BROWSER_BIN`.
+
+The explicit browser path is required so baselines do not silently shift between
+host browsers. In the dev shell this is exported by the native-deps setup; outside
+it, set one of those env vars before running `visual:test` or `visual:update`.
 
 ## Fonts
 

@@ -1,0 +1,282 @@
+{
+  "version": 1,
+  "generatedBy": "packages/itotori-ds/scripts/visual-regression.mjs --update",
+  "storybook": "10.4.1",
+  "browserContract": "PLAYWRIGHT_CHROMIUM_BIN or UTSUSHI_BROWSER_BIN",
+  "browserExecutable": "chromium",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "deviceScaleFactor": 1,
+  "colorScheme": "dark",
+  "reducedMotion": "reduce",
+  "maxDiffPixels": 0,
+  "storyCount": 33,
+  "stories": [
+    {
+      "id": "core-badge--default",
+      "title": "core/Badge",
+      "name": "Default",
+      "importPath": "./src/stories/Badge.stories.tsx",
+      "baseline": "core-badge--default.png",
+      "sha256": "sha256:c6fb2275f37cc0d78b4b532d33da59f9c36636aa7c079b5235b0fa5f6e94d373"
+    },
+    {
+      "id": "core-badge--status-vocabulary",
+      "title": "core/Badge",
+      "name": "Status Vocabulary",
+      "importPath": "./src/stories/Badge.stories.tsx",
+      "baseline": "core-badge--status-vocabulary.png",
+      "sha256": "sha256:a09c8c37ce0e9381d67b7c752b37d39b7650f252d2372f87f6c09884b52fcafb"
+    },
+    {
+      "id": "core-badge--tone-override",
+      "title": "core/Badge",
+      "name": "Tone Override",
+      "importPath": "./src/stories/Badge.stories.tsx",
+      "baseline": "core-badge--tone-override.png",
+      "sha256": "sha256:7ec027135036121f22950808e791c8b910294a91e541f2c0b831710a148cdb6c"
+    },
+    {
+      "id": "data-comparisonpane--default",
+      "title": "data/ComparisonPane",
+      "name": "Default",
+      "importPath": "./src/stories/ComparisonPane.stories.tsx",
+      "baseline": "data-comparisonpane--default.png",
+      "sha256": "sha256:cccf34619e4682c8eff5f14a56ebdb5fa71bf9b543f0dc47b0a0a989d0f2ffc1"
+    },
+    {
+      "id": "data-contestantswatch--all-roles",
+      "title": "data/ContestantSwatch",
+      "name": "All Roles",
+      "importPath": "./src/stories/ContestantSwatch.stories.tsx",
+      "baseline": "data-contestantswatch--all-roles.png",
+      "sha256": "sha256:0e521faa0e7e964d5a6ca7a7210ad4bf85950236bd53e680b5eb46cf4b08dac8"
+    },
+    {
+      "id": "data-contestantswatch--default",
+      "title": "data/ContestantSwatch",
+      "name": "Default",
+      "importPath": "./src/stories/ContestantSwatch.stories.tsx",
+      "baseline": "data-contestantswatch--default.png",
+      "sha256": "sha256:b981891cb0ffc5ba96542fb48570ddf930dfb5dee068d730a19c7d188351bbe3"
+    },
+    {
+      "id": "data-datatable--activatable-rows",
+      "title": "data/DataTable",
+      "name": "Activatable Rows",
+      "importPath": "./src/stories/DataTable.stories.tsx",
+      "baseline": "data-datatable--activatable-rows.png",
+      "sha256": "sha256:4f28a926674b13644905e42f7c2bd55c73b61f0d3c5a9f09f952f6dcc0ff5292"
+    },
+    {
+      "id": "data-datatable--default",
+      "title": "data/DataTable",
+      "name": "Default",
+      "importPath": "./src/stories/DataTable.stories.tsx",
+      "baseline": "data-datatable--default.png",
+      "sha256": "sha256:78fa4d86e7470ae5c0c0e0b9e3f7a25ebf154ceae27454b5b913126fe2c1a6e3"
+    },
+    {
+      "id": "data-datatable--empty",
+      "title": "data/DataTable",
+      "name": "Empty",
+      "importPath": "./src/stories/DataTable.stories.tsx",
+      "baseline": "data-datatable--empty.png",
+      "sha256": "sha256:4bddadda25931acfd53da32590b3d732bb2ea7f4be59454f6a529c4fb4081bce"
+    },
+    {
+      "id": "data-localizationprogress--default",
+      "title": "data/LocalizationProgress",
+      "name": "Default",
+      "importPath": "./src/stories/LocalizationProgress.stories.tsx",
+      "baseline": "data-localizationprogress--default.png",
+      "sha256": "sha256:a5d3eb929888bc02146016b7f3c08273498d5db7302467bff9a4a99df719eb9e"
+    },
+    {
+      "id": "data-progressbar--default",
+      "title": "data/ProgressBar",
+      "name": "Default",
+      "importPath": "./src/stories/ProgressBar.stories.tsx",
+      "baseline": "data-progressbar--default.png",
+      "sha256": "sha256:416a89f7695143981100430f2bca3e0b1f9a31b254defd3b6c3e9b6412e49f29"
+    },
+    {
+      "id": "data-progressbar--running",
+      "title": "data/ProgressBar",
+      "name": "Running",
+      "importPath": "./src/stories/ProgressBar.stories.tsx",
+      "baseline": "data-progressbar--running.png",
+      "sha256": "sha256:e5aaa9de75ef8f35c59108c35ff441d8bee126f74a2d0586e8a4fcdbd3caf5a8"
+    },
+    {
+      "id": "data-redactionframe--not-sensitive",
+      "title": "data/RedactionFrame",
+      "name": "Not Sensitive",
+      "importPath": "./src/stories/RedactionFrame.stories.tsx",
+      "baseline": "data-redactionframe--not-sensitive.png",
+      "sha256": "sha256:dfc1204ffee4d9466996c975406ccc5de78fd193c1c42c41fdbad397ce6553a6"
+    },
+    {
+      "id": "data-redactionframe--redacted",
+      "title": "data/RedactionFrame",
+      "name": "Redacted",
+      "importPath": "./src/stories/RedactionFrame.stories.tsx",
+      "baseline": "data-redactionframe--redacted.png",
+      "sha256": "sha256:07fd13a4af4ccdada3c26b3e8dca6fee5ad39107f11455f067e2c17a6086389b"
+    },
+    {
+      "id": "data-redactionframe--revealed",
+      "title": "data/RedactionFrame",
+      "name": "Revealed",
+      "importPath": "./src/stories/RedactionFrame.stories.tsx",
+      "baseline": "data-redactionframe--revealed.png",
+      "sha256": "sha256:dfc1204ffee4d9466996c975406ccc5de78fd193c1c42c41fdbad397ce6553a6"
+    },
+    {
+      "id": "data-redactionframe--share-forced",
+      "title": "data/RedactionFrame",
+      "name": "Share Forced",
+      "importPath": "./src/stories/RedactionFrame.stories.tsx",
+      "baseline": "data-redactionframe--share-forced.png",
+      "sha256": "sha256:e9b956651a2ab3a7730c7c7d511423140ce18bc4699b56e29836fac785fb8270"
+    },
+    {
+      "id": "data-statreadout--default",
+      "title": "data/StatReadout",
+      "name": "Default",
+      "importPath": "./src/stories/StatReadout.stories.tsx",
+      "baseline": "data-statreadout--default.png",
+      "sha256": "sha256:da8b76687988cf726d6bf9b66656dd21ef5812c1861fb888d1c56f8d7a371dcb"
+    },
+    {
+      "id": "data-statreadout--zdr-posture",
+      "title": "data/StatReadout",
+      "name": "Zdr Posture",
+      "importPath": "./src/stories/StatReadout.stories.tsx",
+      "baseline": "data-statreadout--zdr-posture.png",
+      "sha256": "sha256:85810c44b27fad4e79ef2a7550393623dacd3eafc41df10b98cc7c7a82a424a2"
+    },
+    {
+      "id": "feedback-toast--single",
+      "title": "feedback/Toast",
+      "name": "Single",
+      "importPath": "./src/stories/Toast.stories.tsx",
+      "baseline": "feedback-toast--single.png",
+      "sha256": "sha256:9218598a02295344621c1b3a305d04b7aab717aec2734b53679b9e95cb07d38c"
+    },
+    {
+      "id": "feedback-toast--viewport-queue",
+      "title": "feedback/Toast",
+      "name": "Viewport Queue",
+      "importPath": "./src/stories/Toast.stories.tsx",
+      "baseline": "feedback-toast--viewport-queue.png",
+      "sha256": "sha256:c7afd99c52522d92739a03a7e94af6349e63e122c7cd4f62b8df10ecd616b281"
+    },
+    {
+      "id": "game-annotationcomposer--default",
+      "title": "game/AnnotationComposer",
+      "name": "Default",
+      "importPath": "./src/stories/AnnotationComposer.stories.tsx",
+      "baseline": "game-annotationcomposer--default.png",
+      "sha256": "sha256:79da643d980e24e19f4a0ab4936ca49bc56a054c1a085499f67545971d18caed"
+    },
+    {
+      "id": "game-annotationcomposer--disabled",
+      "title": "game/AnnotationComposer",
+      "name": "Disabled",
+      "importPath": "./src/stories/AnnotationComposer.stories.tsx",
+      "baseline": "game-annotationcomposer--disabled.png",
+      "sha256": "sha256:e1af429781c0c5f193c0d2091c18d4b10a07c10f0e8fa5884eeec6fde16868b1"
+    },
+    {
+      "id": "layout-panel--default",
+      "title": "layout/Panel",
+      "name": "Default",
+      "importPath": "./src/stories/Panel.stories.tsx",
+      "baseline": "layout-panel--default.png",
+      "sha256": "sha256:f514bc735677dd8593263b534f266e57b701750115bf80828cb04b50b6194d3c"
+    },
+    {
+      "id": "layout-panel--mint-hoverable",
+      "title": "layout/Panel",
+      "name": "Mint Hoverable",
+      "importPath": "./src/stories/Panel.stories.tsx",
+      "baseline": "layout-panel--mint-hoverable.png",
+      "sha256": "sha256:0821c8d28b0d9d74a75f1928b3cf0ea29253f8aab48bc6a82af68a9d63abec43"
+    },
+    {
+      "id": "layout-panel--with-lamps",
+      "title": "layout/Panel",
+      "name": "With Lamps",
+      "importPath": "./src/stories/Panel.stories.tsx",
+      "baseline": "layout-panel--with-lamps.png",
+      "sha256": "sha256:be3aeccc433523f5450eac8efdf6750bef79876e3b75263f73e58ba22ef6c7a0"
+    },
+    {
+      "id": "localization-bitext--default",
+      "title": "localization/BiText",
+      "name": "Default",
+      "importPath": "./src/stories/BiText.stories.tsx",
+      "baseline": "localization-bitext--default.png",
+      "sha256": "sha256:0fb5eed83f88c310e0eb57b68d820dd19f5fd186e41b3a778f8ceb5552260fe2"
+    },
+    {
+      "id": "navigation-commandpalette--closed",
+      "title": "navigation/CommandPalette",
+      "name": "Closed",
+      "importPath": "./src/stories/CommandPalette.stories.tsx",
+      "baseline": "navigation-commandpalette--closed.png",
+      "sha256": "sha256:06b22ffc984dd048a23f1c8e030908316a3011a9db7932ea84d027dbdea2c9a8"
+    },
+    {
+      "id": "navigation-commandpalette--keyboard-select",
+      "title": "navigation/CommandPalette",
+      "name": "Keyboard Select",
+      "importPath": "./src/stories/CommandPalette.stories.tsx",
+      "baseline": "navigation-commandpalette--keyboard-select.png",
+      "sha256": "sha256:905639b005f4381c64a041ef4fba775fd7a9f2fb209d1266c3a987cff1a49bd5"
+    },
+    {
+      "id": "navigation-commandpalette--open",
+      "title": "navigation/CommandPalette",
+      "name": "Open",
+      "importPath": "./src/stories/CommandPalette.stories.tsx",
+      "baseline": "navigation-commandpalette--open.png",
+      "sha256": "sha256:5055a046546a10154d6b2c7832fd21e69ecdc779c691fea0db18bb068fad3624"
+    },
+    {
+      "id": "navigation-navpills--default",
+      "title": "navigation/NavPills",
+      "name": "Default",
+      "importPath": "./src/stories/NavPills.stories.tsx",
+      "baseline": "navigation-navpills--default.png",
+      "sha256": "sha256:490600b5d306c1eeb1fda0b3a8a14815e03888ccdac67d645990ccbe95bd5c21"
+    },
+    {
+      "id": "navigation-pagination--at-end",
+      "title": "navigation/Pagination",
+      "name": "At End",
+      "importPath": "./src/stories/Pagination.stories.tsx",
+      "baseline": "navigation-pagination--at-end.png",
+      "sha256": "sha256:310a0489969fb4d8d1ce9dd6d8ba2bd2f2405077004972b9c519820f473cd7dc"
+    },
+    {
+      "id": "navigation-pagination--at-start",
+      "title": "navigation/Pagination",
+      "name": "At Start",
+      "importPath": "./src/stories/Pagination.stories.tsx",
+      "baseline": "navigation-pagination--at-start.png",
+      "sha256": "sha256:9c587641ce3466b6fd1d6de5321629c6847e8763f1a2aa946ded2fbb0fd13a37"
+    },
+    {
+      "id": "navigation-pagination--default",
+      "title": "navigation/Pagination",
+      "name": "Default",
+      "importPath": "./src/stories/Pagination.stories.tsx",
+      "baseline": "navigation-pagination--default.png",
+      "sha256": "sha256:026d45ee7fb74864381bbbc04c3c1e07143ec4b7903572979a4e9cf62a5964c3"
+    }
+  ]
+}

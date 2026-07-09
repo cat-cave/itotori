@@ -20,14 +20,18 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test": "vitest run",
+    "test": "vitest run && pnpm run visual:test",
+    "test:dom": "vitest run",
     "build": "tsc -p tsconfig.json",
     "gallery:build": "vite build",
     "gallery:dev": "vite",
     "storybook": "storybook dev -p 6006 --no-open --disable-telemetry",
-    "storybook:build": "storybook build --output-dir storybook-static --disable-telemetry"
+    "storybook:build": "storybook build --output-dir storybook-static --disable-telemetry",
+    "visual:test": "node scripts/visual-regression.mjs",
+    "visual:update": "node scripts/visual-regression.mjs --update"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@storybook/react": "10.4.1",
     "@storybook/react-vite": "10.4.1",
     "@testing-library/dom": "^10.4.1",
@@ -37,6 +41,8 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "pixelmatch": "7.2.0",
+    "pngjs": "7.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "storybook": "10.4.1",

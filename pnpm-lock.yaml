@@ -122,6 +122,9 @@ importers:
 
   packages/itotori-ds:
     devDependencies:
+      '@playwright/test':
+        specifier: 1.60.0
+        version: 1.60.0
       '@storybook/react':
         specifier: 10.4.1
         version: 10.4.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.4.1(@testing-library/dom@10.4.1)(@types/react@19.2.17)(react@19.2.7)(vite-plus@0.1.24(@types/node@24.13.2)(esbuild@0.28.1)(jsdom@29.1.1)(typescript@6.0.3)(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.1))))(typescript@6.0.3)
@@ -149,6 +152,12 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.0
         version: 6.0.3(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.1))
+      pixelmatch:
+        specifier: 7.2.0
+        version: 7.2.0
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       react:
         specifier: ^19.2.7
         version: 19.2.7

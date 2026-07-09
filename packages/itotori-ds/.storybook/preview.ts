@@ -11,6 +11,8 @@ import "./storybook.css";
  * - Token CSS only; no network font fetch required (system fallbacks).
  * - Page background matches `--ito-color-page` so stories read on-night.
  * - Layout padding is fixed; no animation-forcing chrome.
+ * - prefers-reduced-motion is honored by tokens/effects.css and the visual
+ *   runner forces reduced motion in the browser context.
  */
 const preview: Preview = {
   parameters: {
@@ -27,6 +29,12 @@ const preview: Preview = {
         color: /(background|color)$/i,
         date: /Date$/i,
       },
+    },
+    chromatic: {
+      disableSnapshot: false,
+      pauseAnimationAtEnd: true,
+      prefersReducedMotion: "reduce",
+      viewports: [1280],
     },
     // Interaction tests run via play functions; the panel surfaces them in
     // the Storybook UI. Automated CI runs the same play bodies through
