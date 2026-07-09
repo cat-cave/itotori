@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriAuthMemberManagementRepository } from "../src/repositories/auth-member-management-repository.js";
+import { ItotoriAuthBillingSeatRepository } from "../src/repositories/auth-billing-seat-repository.js";
 import { ItotoriAuthSessionService } from "../src/repositories/auth-session-service.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
@@ -1187,6 +1188,12 @@ const repositoryPermissionGateMatrix = [
     "authMembersManage",
     "auth-member-management-repository.test.ts remove member coverage",
     (repo) => repo.removeMember(deniedActor, undefined as never),
+  ),
+  authBillingSeatGate(
+    "loadSeatUsage",
+    "authMembersManage",
+    "auth-billing-seat-repository.test.ts load seat usage coverage",
+    (repo) => repo.loadSeatUsage(deniedActor, "account-denied"),
   ),
   authSessionServiceGate(
     "listPrincipalSessions",
@@ -3109,6 +3116,23 @@ function authMemberManagementGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuthMemberManagementRepository(db)),
+  });
+}
+
+
+function authBillingSeatGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAuthBillingSeatRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAuthBillingSeatRepository",
+    sourceFile: "auth-billing-seat-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAuthBillingSeatRepository(db)),
   });
 }
 
