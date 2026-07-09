@@ -6,7 +6,7 @@
 // value to the catalog-correct `deepseek/deepseek-v4-flash`. Two flavors:
 //
 //   1) Flat-text replacement in JSON files that surface the slug as a
-//      property value (e.g. `presets/localize-sweetie-hd.pair-policy.json`
+//      property value (e.g. retired `presets/localize-sweetie-hd.pair-policy.json`
 //      and `apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json`).
 //      These files store the slug as a literal `modelId` value, not as a
 //      hashed bundle key, so no rekeying is required — only a rewrite of

@@ -743,7 +743,7 @@ This doc anchors the corrective-node landing surface. Per-node hooks:
 | §2.4 — ZDR proof posture        | ITOTORI-230                           | `ProviderRunRecord.routingPosture` mirrors `{order, allow_fallbacks, data_collection, zdr, require_parameters}`.                          |
 | §7.2 — metadata header gate     | ITOTORI-233                           | Endpoint-pricing fallback path kept-and-fixed (header IS the gate, header IS sent today).                                                 |
 | §3.2 — alpha routing posture    | ITOTORI-227                           | `buildOpenRouterProviderRouting` defaults `provider.zdr=true` for non-public input.                                                       |
-| §9.3 — slug + providerId        | ITOTORI-226                           | `dev-pair.ts`, `presets/localize-sweetie-hd.pair-policy.json` move to `deepseek/deepseek-v4-flash` + `fireworks`.                         |
+| §9.3 — slug + providerId        | ITOTORI-226                           | `dev-pair.ts`, retired `presets/localize-sweetie-hd.pair-policy.json` move to `deepseek/deepseek-v4-flash` + `fireworks`.                 |
 | §9.4 — fallback model           | ITOTORI-234                           | Pair-policy schema v0.2 allows `fallbackModels: ["deepseek/deepseek-v4-pro"]`.                                                            |
 | §8.2 — typed errors             | ITOTORI-225, ITOTORI-227, ITOTORI-235 | Each error envelope maps to a typed itotori error; no silent retries.                                                                     |
 

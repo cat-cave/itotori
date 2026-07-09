@@ -110,8 +110,8 @@ export function scanStaleResidue({
     const extension = extname(file);
     if (checkedTextExtensions.has(extension)) {
       const text = readFile(file);
-      scanTextForStalePremises(violations, file, text, "doc");
       if (isActiveMarkdownFile(file)) {
+        scanTextForStalePremises(violations, file, text, "doc");
         scanMarkdownLinks(violations, root, file, text, pathExists);
       }
     } else if (checkedSourceExtensions.has(extension)) {
@@ -202,7 +202,7 @@ function extractComments(text, extension) {
 
 function scanTextForStalePremises(violations, file, text, surface) {
   for (const rule of stalePremiseRules) {
-    if (rule.pattern.test(text) && !(rule.allowWhen?.test(text) ?? false)) {
+    if (hasUnallowedStalePremise(rule, text)) {
       violations.push({
         file,
         surface,
@@ -227,6 +227,49 @@ function scanTextForStalePremises(violations, file, text, surface) {
       });
     }
   }
+}
+
+function hasUnallowedStalePremise(rule, text) {
+  for (const match of text.matchAll(asGlobalPattern(rule.pattern))) {
+    if (rule.allowWhen === undefined || !rule.allowWhen.test(localLineContext(text, match))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function asGlobalPattern(pattern) {
+  return new RegExp(
+    pattern.source,
+    pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
+  );
+}
+
+function localLineContext(text, match, radius = 2) {
+  let start = match.index;
+  for (let line = 0; line <= radius; line += 1) {
+    const previous = text.lastIndexOf("\n", start - 1);
+    if (previous === -1) {
+      start = 0;
+      break;
+    }
+    start = previous;
+  }
+  if (start !== 0) {
+    start += 1;
+  }
+
+  let end = match.index + match[0].length;
+  for (let line = 0; line <= radius; line += 1) {
+    const next = text.indexOf("\n", end);
+    if (next === -1) {
+      end = text.length;
+      break;
+    }
+    end = next;
+  }
+
+  return text.slice(start, end);
 }
 
 function scanMarkdownLinks(violations, root, file, text, pathExists) {
@@ -336,7 +379,7 @@ function scanQdTextValue(violations, nodeId, field, value) {
     return;
   }
   for (const rule of stalePremiseRules) {
-    if (rule.pattern.test(value) && !(rule.allowWhen?.test(value) ?? false)) {
+    if (hasUnallowedStalePremise(rule, value)) {
       violations.push({
         file: "roadmap/spec-dag.json",
         surface: "qd-text",

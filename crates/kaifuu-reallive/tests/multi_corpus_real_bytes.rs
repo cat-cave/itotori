@@ -548,7 +548,7 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 /// decryptor (`reallive-xor2-sukara-decryptor`) landed:
 ///
 /// - **9996** — the New-Game routine (`farcall` (0,1,18) target from the title
-///   menu's `goto_case($store)`). The carve trace recorded it FAILING with
+///   menu's `goto_case($store)`). The historical carve trace recorded it FAILING with
 ///   `MalformedExpression @~offset 271`; the completed expression grammar now
 ///   decodes it to zero unknowns.
 /// - **8507** — a boot / system scene in the `8500..=8516` block.

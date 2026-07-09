@@ -68,6 +68,30 @@ test("fails active qd text that points at retired paths without a marker", () =>
   assertViolation(result, "retired-localize-sweetie-hd-preset");
 });
 
+test("scopes stale premise allow markers to local match context", () => {
+  const bare = scanFixture({
+    "docs/README.md": "Load presets/localize-sweetie-hd.pair-policy.json for new runs.\n",
+  });
+  assertViolation(bare, "retired-localize-sweetie-hd-preset");
+
+  const marked = scanFixture({
+    "docs/README.md":
+      "Historical note: retired presets/localize-sweetie-hd.pair-policy.json was replaced.\n",
+  });
+  assert.deepEqual(marked.violations, []);
+
+  const markerElsewhere = scanFixture({
+    "docs/README.md": [
+      "Historical aside: the migration was completed.",
+      "",
+      "",
+      "",
+      "Load presets/localize-sweetie-hd.pair-policy.json for new runs.",
+    ].join("\n"),
+  });
+  assertViolation(markerElsewhere, "retired-localize-sweetie-hd-preset");
+});
+
 test("allows active qd repair text that marks retired paths as stale", () => {
   const result = scanFixture({
     "roadmap/spec-dag.json": JSON.stringify({
