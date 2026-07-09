@@ -24,60 +24,83 @@ These docs describe the monorepo as a three-project suite:
 
 ## User-facing docs (start here)
 
-A user who wants to localize a game starts at the repo
-[README](../README.md), whose quickstart goes **install → `itotori init` →
-`itotori localize-game` → review → patched output** without cloning the
-repository or using the Nix/pnpm developer flow. Then read:
+New users start with [alpha-readiness.md](alpha-readiness.md) (the checked alpha
+readiness README) and [install.md](install.md) (fresh-clone setup + the
+public-fixture demo), then [security-and-limitations.md](security-and-limitations.md)
+for the security posture, legal boundaries, and honest limitations. The alpha
+readiness checklist command
+([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs),
+`just alpha-readiness-checklist`) re-derives those readiness claims from the
+generated capability + benchmark artifacts so the docs cannot drift.
 
-- [install.md](install.md) — the full install path (the user package install +
-  native runtime dependencies; the developer fresh-clone path is in the later
-  sections).
-- [security-and-limitations.md](security-and-limitations.md) — the security
-  posture, the ZDR requirement, the legal / copyright boundaries, and the
-  honest limitations. **You do not need to read anything in `docs/dev/` to
-  localize a game.**
-- [native-deps-provisioning.md](native-deps-provisioning.md) — provisioning the
-  native runtime tooling the CLI drives (kaifuu/utsushi Rust bins, Postgres,
-  Chromium) on a machine without the dev shell.
-- [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md) — which engines /
-  variants are supported for extraction and patching.
-- [frontend.md](frontend.md) — the Studio dashboard (the browsable review
-  surface for drafts, QA findings, and runtime evidence).
-
-The readiness milestones (what "alpha" and "beta" mean for a user) live in
-[project-readiness.md](project-readiness.md) and
-[alpha-readiness.md](alpha-readiness.md); the public-fixture end-to-end proof
-is documented in [alpha-proof.md](alpha-proof.md). The stability tiers and
-backward-compatibility policy for the public formats a localization depends on
-(bridge schema, `.kaifuu` delta, API contract, DB schema) are documented in
-[format-stability-and-compatibility-policy.md](format-stability-and-compatibility-policy.md)
-and [versioning-and-release-policy.md](versioning-and-release-policy.md).
-
-## Reference docs (engines, quality, contracts)
-
-- [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md),
-  [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md),
-  [kaifuu-engine-playbook.md](kaifuu-engine-playbook.md),
-  [kaifuu-patch-safety.md](kaifuu-patch-safety.md) — supported engines/variants,
-  fixture sourcing, adding a new adapter, and patch atomicity/safety.
-- [itotori-product-workflow.md](itotori-product-workflow.md) — the product
-  workflow, human decision queue, style-guide conversation, and feedback
-  escalation policy.
-- [quality-claims.md](quality-claims.md) +
-  [localization-quality-taxonomy.json](localization-quality-taxonomy.json) —
-  localization quality claims, the benchmark taxonomy, and the seeded-defect
-  protocol.
-- [permissions.md](permissions.md) — permission gates and the bootstrap actor
-  model.
-- [fixtures-and-corpora.md](fixtures-and-corpora.md#title-reference-allowlist-for-active-docs)
-  — the title-reference allowlist for active docs + the corpus/corpus-descriptor
-  rules active docs must follow.
-- ADRs ([adrs/](adrs/)) — provider routing/recording (0002), quality taxonomy
-  (0003), search/indexing (0004). The vault source adapter contract is in
-  [itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
-- Research recommendations are historical evidence unless mapped to live DAG
-  nodes; see [research/README.md](research/README.md) +
-  [research/research-to-dag-crosswalk.md](research/research-to-dag-crosswalk.md).
+Then read [alpha-proof.md](alpha-proof.md) and
+[project-readiness.md](project-readiness.md). The Studio SPA — the React
+app shell at [`apps/itotori/src/ui/`](../apps/itotori/src/ui/), the Dusk
+Observatory design system at
+[`packages/itotori-ds/`](../packages/itotori-ds/), and the typed API
+client (`fnd-api-client`) at
+[`apps/itotori/src/api-client.ts`](../apps/itotori/src/api-client.ts) — is
+documented in [frontend.md](frontend.md). The design ↔ repo alignment for the
+hi-fi Studio epic lives in
+[`docs/design/hifi/README.md`](design/hifi/README.md).
+The product SEMVER, the publishable surface, and the relation between the
+product version and the format-level `schemaVersion` markers are documented in
+[versioning-and-release-policy.md](versioning-and-release-policy.md). The
+per-format stability tiers, the backward-compatibility / version-negotiation
+policy, and the cross-version compatibility pin are documented in
+[format-stability-and-compatibility-policy.md](format-stability-and-compatibility-policy.md).
+Itotori permission gates and the alpha/local bootstrap actor model are documented in
+[permissions.md](permissions.md).
+Localization quality claims, benchmark taxonomy, seeded-defect protocol, and
+human adjudication requirements are documented in
+[quality-claims.md](quality-claims.md),
+[localization-quality-taxonomy.json](localization-quality-taxonomy.json), and
+[ADR 0003](adrs/0003-localization-quality-taxonomy.md).
+Binary game data ingest from `/archive/vault/` (managed by the vault-curation
+sibling project) is contracted in
+[itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
+Active docs must use generic project runners, generic real-corpus descriptors,
+and generic engine/runtime artifact surfaces. The title-reference allowlist and
+grep review command live in
+[fixtures-and-corpora.md](fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
+Kaifuu engine fixture sourcing, reference citation, and unsupported variant
+policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
+Kaifuu archive, encryption, key, helper, and unknown-variant detector rows are
+documented in [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md).
+Kaifuu encrypted-engine research and alpha key-discovery implications are
+summarized in
+[kaifuu-encrypted-engine-research.md](kaifuu-encrypted-engine-research.md).
+The repeatable workflow for adding new Kaifuu engine adapters lives in
+[kaifuu-engine-playbook.md](kaifuu-engine-playbook.md).
+Kaifuu encoding, normalization, atomic output, traversal, rollback, and
+partial-write safety rules live in
+[kaifuu-patch-safety.md](kaifuu-patch-safety.md).
+`SHARED-025` has landed the alpha proof manifest contract. `ALPHA-006` is the
+explicit first real-engine alpha proof target, sourced from `/archive/vault/`
+via the vault-source adapter. `ALPHA-007` is the public generic alpha-proof
+workflow command, and `ALPHA-009` retires the hello-world fixture gate in favor
+of that alpha proof.
+Affected detection and CI cache rules live in the dev doc
+[`docs/dev/ci-cache-and-affected.md`](dev/ci-cache-and-affected.md).
+The implementation roadmap lives in
+[`docs/dev/spec-dag.md`](dev/spec-dag.md) and `roadmap/spec-dag.json`.
+Agent-led implementation should also follow the dev doc
+[`docs/dev/orchestration-operating-model.md`](dev/orchestration-operating-model.md)
+and the [agent worktree lifecycle](dev/worktree-lifecycle.md).
+Provider credentials, routing, logging, and recording policy is defined in
+[ADR 0002](adrs/0002-provider-routing-and-recording.md).
+Search and indexing infrastructure, including exact indexes, pgvector handling,
+semantic retrieval tools, and fallback behavior, is defined in
+[ADR 0004](adrs/0004-search-and-indexing-infrastructure.md).
+Itotori's product workflow, human decision queue, style-guide conversation, and
+feedback escalation policy are defined in
+[itotori-product-workflow.md](itotori-product-workflow.md).
+The synthetic large-project generator and scale harness are documented in
+[itotori-scale-harness.md](itotori-scale-harness.md).
+Research recommendations are historical evidence unless mapped to live DAG
+nodes. The current research-to-DAG mapping lives in
+[research/research-to-dag-crosswalk.md](research/research-to-dag-crosswalk.md);
+the research index is [research/README.md](research/README.md).
 
 ## Developer / contributor docs
 

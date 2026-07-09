@@ -3,8 +3,8 @@
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point (substrate
-> extensions M.1–M.3, a non-synthetic engine port crate, a real-bytes
-> alpha-corpus smoke, the recorded-LLM bundle, dashboard reachability, repo hygiene) —
+> extensions M.1–M.3, a non-synthetic engine port crate, a real-bytes Sweetie
+> HD smoke, the recorded-LLM bundle, dashboard reachability, repo hygiene) —
 > **not** the full claimed-support chain (detect, extract, decrypt, decompile,
 > patch, verify, delta-apply). The "claimed-support" definition below is
 > Kaifuu's long-term commitment for every engine variant the suite eventually
