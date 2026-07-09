@@ -430,6 +430,30 @@ struct SelRuntimeInner {
     /// shape does not match the declared contract. Drained via
     /// [`SelRuntime::take_warnings`].
     warnings: Vec<SelRuntimeWarning>,
+    prompts: Vec<ChoicePrompt>,
+}
+
+/// Exact object-button setup record carried by an object-button prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChoicePromptButton {
+    pub ordinal: i32,
+    pub group: i32,
+}
+
+/// Presentation source observed by the selector, without any layout inference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChoicePromptPresentation {
+    TextWindow,
+    ObjectButtons(Vec<ChoicePromptButton>),
+}
+
+/// One runtime prompt tied to the exact yielded selection longop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChoicePrompt {
+    pub longop_id: super::LongOpId,
+    pub presentation: ChoicePromptPresentation,
+    pub cancelable: bool,
+    pub option_line_ids: Vec<String>,
 }
 
 /// Typed warning the [`SelRuntime`] records on a sink failure or a
@@ -535,6 +559,15 @@ impl SelRuntime {
         std::mem::take(&mut guard.warnings)
     }
 
+    /// Drain prompts emitted by this selector runtime in dispatch order.
+    pub fn take_prompts(&self) -> Vec<ChoicePrompt> {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::mem::take(&mut guard.prompts)
+    }
+
     fn record_warning(&self, warning: SelRuntimeWarning) {
         let mut guard = self
             .inner
@@ -581,7 +614,12 @@ impl SelRuntime {
     /// render-modality marker and the SELBTN styling tags when the
     /// Gameexe exposes them). Sink-side errors are recorded as fail-soft
     /// warnings.
-    fn emit_choice(&self, variant: SelectVariant, choice_index: usize, text: String) {
+    fn emit_choice(
+        &self,
+        variant: SelectVariant,
+        choice_index: usize,
+        text: String,
+    ) -> Option<String> {
         let line_id = self.next_line_id();
         // Compose the choice surface from parts: the base `choice:<idx>`
         // (what `branch_following_lines` filters on) plus the optional Gameexe
@@ -599,7 +637,7 @@ impl SelRuntime {
             text_surface.push_str(&suffix);
         }
         let line = TextLine {
-            line_id,
+            line_id: line_id.clone(),
             evidence_tier: EvidenceTier::E1,
             text,
             speaker: None,
@@ -608,12 +646,24 @@ impl SelRuntime {
             bridge_ref: None,
             source_asset: None,
         };
-        if let Err(err) = self.sink.emit_line(line) {
-            self.record_warning(SelRuntimeWarning::SinkRejected {
-                variant,
-                reason: err.to_string(),
-            });
+        match self.sink.emit_line(line) {
+            Ok(()) => Some(line_id),
+            Err(err) => {
+                self.record_warning(SelRuntimeWarning::SinkRejected {
+                    variant,
+                    reason: err.to_string(),
+                });
+                None
+            }
         }
+    }
+
+    fn record_prompt(&self, prompt: ChoicePrompt) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.prompts.push(prompt);
     }
 }
 
@@ -635,8 +685,11 @@ fn dispatch_select(
     runtime: &SelRuntime,
     _vm: &mut Vm,
     args: &[ExprValue],
+    presentation: ChoicePromptPresentation,
+    cancelable: bool,
 ) -> DispatchOutcome {
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
+    let mut rendered: Vec<(usize, String)> = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
         let bytes = match arg {
             ExprValue::Bytes(bytes) => bytes.clone(),
@@ -667,7 +720,7 @@ fn dispatch_select(
             });
             String::from_utf8_lossy(&bytes).into_owned()
         };
-        runtime.emit_choice(variant, choice_index, text);
+        rendered.push((choice_index, text));
         choices.push(bytes);
     }
     if args.is_empty() {
@@ -688,6 +741,16 @@ fn dispatch_select(
         return DispatchOutcome::Advance;
     }
     let id = runtime.id_sequence().allocate();
+    let option_line_ids = rendered
+        .into_iter()
+        .filter_map(|(index, text)| runtime.emit_choice(variant, index, text))
+        .collect();
+    runtime.record_prompt(ChoicePrompt {
+        longop_id: id,
+        presentation,
+        cancelable,
+        option_line_ids,
+    });
     let select = SelectLongOp::new(id, choices);
     let LongOp { id, private_state } = select.into_longop();
     DispatchOutcome::Yield {
@@ -712,7 +775,14 @@ impl SelectOp {
 
 impl RLOperation for SelectOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::Select, &self.runtime, vm, args)
+        dispatch_select(
+            SelectVariant::Select,
+            &self.runtime,
+            vm,
+            args,
+            ChoicePromptPresentation::TextWindow,
+            false,
+        )
     }
 }
 
@@ -732,7 +802,14 @@ impl SelectSOp {
 
 impl RLOperation for SelectSOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::SelectS, &self.runtime, vm, args)
+        dispatch_select(
+            SelectVariant::SelectS,
+            &self.runtime,
+            vm,
+            args,
+            ChoicePromptPresentation::TextWindow,
+            false,
+        )
     }
 }
 
@@ -750,7 +827,14 @@ impl SelectWOp {
 
 impl RLOperation for SelectWOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::SelectW, &self.runtime, vm, args)
+        dispatch_select(
+            SelectVariant::SelectW,
+            &self.runtime,
+            vm,
+            args,
+            ChoicePromptPresentation::TextWindow,
+            false,
+        )
     }
 }
 
@@ -798,13 +882,35 @@ fn dispatch_select_objbtn(
 ) -> DispatchOutcome {
     let buttons = vm.objbtn_take();
     if buttons.is_empty() {
-        return dispatch_select(variant, runtime, vm, args);
+        return dispatch_select(
+            variant,
+            runtime,
+            vm,
+            args,
+            ChoicePromptPresentation::TextWindow,
+            false,
+        );
     }
     let synth: Vec<ExprValue> = buttons
         .iter()
         .map(|button| ExprValue::Bytes(objbtn_option_label(button.number)))
         .collect();
-    dispatch_select(variant, runtime, vm, &synth)
+    dispatch_select(
+        variant,
+        runtime,
+        vm,
+        &synth,
+        ChoicePromptPresentation::ObjectButtons(
+            buttons
+                .into_iter()
+                .map(|button| ChoicePromptButton {
+                    ordinal: button.number,
+                    group: button.group,
+                })
+                .collect(),
+        ),
+        variant == SelectVariant::SelectObjbtnCancel,
+    )
 }
 
 /// `select_objbtn` — object-button (graphical) choice. Unlike the other
@@ -847,7 +953,14 @@ impl SelectS3Op {
 
 impl RLOperation for SelectS3Op {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::SelectS3, &self.runtime, vm, args)
+        dispatch_select(
+            SelectVariant::SelectS3,
+            &self.runtime,
+            vm,
+            args,
+            ChoicePromptPresentation::TextWindow,
+            false,
+        )
     }
 }
 
@@ -1290,6 +1403,73 @@ mod tests {
         assert_eq!(SelectModality::TextList.render_marker(), None);
         assert_eq!(SelectModality::SpatialPair.render_marker(), Some("spatial"));
         assert_eq!(SelectModality::ImageGrid.render_marker(), Some("imagegrid"));
+    }
+
+    #[test]
+    fn text_prompt_links_allocated_longop_to_ordered_emitted_lines() {
+        let sink = Arc::new(CollectingSink::new());
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+        let outcome = SelectWOp::new(Arc::clone(&runtime)).dispatch(
+            &mut Vm::new(1, 0),
+            &[
+                ExprValue::Bytes(b"one".to_vec()),
+                ExprValue::Bytes(b"two".to_vec()),
+            ],
+        );
+        let DispatchOutcome::Yield { longop_id, .. } = outcome else {
+            panic!("text select must yield");
+        };
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0].longop_id, longop_id);
+        assert_eq!(
+            prompts[0].presentation,
+            ChoicePromptPresentation::TextWindow
+        );
+        assert!(!prompts[0].cancelable);
+        let ids: Vec<String> = sink
+            .lines
+            .lock()
+            .expect("lock")
+            .iter()
+            .map(|line| line.line_id.clone())
+            .collect();
+        assert_eq!(prompts[0].option_line_ids, ids);
+    }
+
+    #[test]
+    fn object_prompt_carries_exact_buttons_and_cancel_without_count_inference() {
+        let sink = Arc::new(CollectingSink::new());
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+        let mut vm = Vm::new(1, 0);
+        vm.objbtn_register(7, 42);
+        vm.objbtn_register(3, 42);
+        let outcome = SelectObjbtnCancelOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[]);
+        let DispatchOutcome::Yield { longop_id, .. } = outcome else {
+            panic!("object select must yield");
+        };
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0].longop_id, longop_id);
+        assert!(prompts[0].cancelable);
+        assert_eq!(
+            prompts[0].presentation,
+            ChoicePromptPresentation::ObjectButtons(vec![
+                ChoicePromptButton {
+                    ordinal: 7,
+                    group: 42
+                },
+                ChoicePromptButton {
+                    ordinal: 3,
+                    group: 42
+                },
+            ])
+        );
+        assert_eq!(prompts[0].option_line_ids.len(), 2);
     }
 
     #[test]

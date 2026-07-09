@@ -101,8 +101,8 @@ use std::path::PathBuf;
 use kaifuu_reallive::{Xor2DecScene, recover_and_decrypt_archive};
 use utsushi_reallive::vm::SceneStore;
 use utsushi_reallive::{
-    BytecodeElement, ChoiceWindow, Framebuffer, HeadlessChoicePolicy, ImageGridChoiceWindow,
-    RealSceneIndex, ReplayEngine, ReplayOpts, SelectModality, SelectVariant,
+    BytecodeElement, ChoicePromptPresentation, ChoiceWindow, Framebuffer, HeadlessChoicePolicy,
+    ImageGridChoiceWindow, RealSceneIndex, ReplayEngine, ReplayOpts, SelectModality, SelectVariant,
     SelectionControlSignal, SpatialChoiceWindow, WipeColour, build_scene_store_from_decompressed,
     decompress_all_scenes, encode_png_rgba_deterministic, extract_select_choice_texts,
     select_modality, selection_control_signal,
@@ -692,5 +692,135 @@ fn kanon_real_bytes_choice_machinery_live() {
         selects.len(),
         probed,
         total_choices_made,
+    );
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
+fn sweetie_real_bytes_prompt_trace_preserves_selected_prompt_links() {
+    let Some(seen_path) = corpus_seen() else {
+        real_corpus::require_real_bytes(
+            "sweetie_real_bytes_prompt_trace_preserves_selected_prompt_links",
+        );
+        return;
+    };
+    let seen_bytes = fs::read(seen_path).expect("read Seen.txt");
+    let (store, shift_jis) = staged_store_and_engine(&seen_bytes);
+    let text_scenes: BTreeSet<u16> = scan_real_selects(&store)
+        .into_iter()
+        .map(|s| s.scene_id)
+        .collect();
+    let object_scenes: BTreeSet<u16> = store
+        .scene_ids()
+        .into_iter()
+        .filter(|scene_id| {
+            store.fetch(*scene_id).is_some_and(|scene| {
+                scene.elements.iter().any(|element| {
+                    matches!(
+                        element,
+                        BytecodeElement::Command {
+                            module_type: 0,
+                            module_id: 2,
+                            opcode: 4 | 14,
+                            ..
+                        }
+                    )
+                })
+            })
+        })
+        .collect();
+    let engine = ReplayEngine::from_store(store, shift_jis);
+    let mut text_prompts = 0usize;
+    let mut object_prompts = 0usize;
+    let mut cancelable_prompts = 0usize;
+    let mut divergent = false;
+    for scene in text_scenes.iter().chain(object_scenes.iter()).copied() {
+        let observation = engine.observe_for_port(scene, &opts());
+        for prompt in &observation.choice_prompts {
+            assert!(
+                prompt
+                    .option_line_ids
+                    .windows(2)
+                    .all(|ids| ids[0] != ids[1]),
+                "scene {scene}: prompt option ids must be ordered and unique"
+            );
+            for (index, line_id) in prompt.option_line_ids.iter().enumerate() {
+                let line = observation
+                    .play_order_lines
+                    .iter()
+                    .find(|line| &line.line_id == line_id)
+                    .unwrap_or_else(|| {
+                        panic!("scene {scene}: prompt id must link to selected-pass line")
+                    });
+                assert!(
+                    line.text_surface
+                        .as_deref()
+                        .is_some_and(|surface| surface.split(';').next()
+                            == Some(format!("choice:{index}").as_str())),
+                    "scene {scene}: prompt option id must retain its exact choice ordinal"
+                );
+            }
+            match &prompt.presentation {
+                ChoicePromptPresentation::TextWindow => {
+                    assert!(!prompt.cancelable, "text-window prompts are not cancelable");
+                    text_prompts += 1;
+                }
+                ChoicePromptPresentation::ObjectButtons(buttons) => {
+                    assert_eq!(
+                        buttons.len(),
+                        prompt.option_line_ids.len(),
+                        "object records link 1:1 to emitted lines"
+                    );
+                    assert!(
+                        !buttons.is_empty(),
+                        "object prompt retains direct ordinal/group records"
+                    );
+                    object_prompts += 1;
+                    cancelable_prompts += usize::from(prompt.cancelable);
+                }
+            }
+        }
+        if text_scenes.contains(&scene) {
+            let zero =
+                engine.observe_for_port_with_policy(scene, &opts(), HeadlessChoicePolicy::Fixed(0));
+            let one =
+                engine.observe_for_port_with_policy(scene, &opts(), HeadlessChoicePolicy::Fixed(1));
+            let linked = |observation: &utsushi_reallive::PortObservation| {
+                observation.choice_prompts.iter().all(|prompt| {
+                    prompt.option_line_ids.iter().all(|id| {
+                        observation
+                            .play_order_lines
+                            .iter()
+                            .any(|line| &line.line_id == id)
+                    })
+                })
+            };
+            if !zero.choice_prompts.is_empty()
+                && linked(&zero)
+                && linked(&one)
+                && zero.play_order_lines != one.play_order_lines
+            {
+                divergent = true;
+            }
+        }
+    }
+    assert!(
+        text_prompts > 0,
+        "real replay must emit TextWindow prompt traces"
+    );
+    assert!(
+        object_prompts > 0,
+        "real replay must emit ObjectButtons prompt traces"
+    );
+    assert!(
+        cancelable_prompts > 0,
+        "real replay must retain cancelable object prompts"
+    );
+    assert!(
+        divergent,
+        "a real Fixed(0)/Fixed(1) prompt branch must diverge with linked selected-pass lines"
+    );
+    eprintln!(
+        "prompt-trace aggregates: text={text_prompts} object={object_prompts} cancelable={cancelable_prompts} divergent={divergent}"
     );
 }

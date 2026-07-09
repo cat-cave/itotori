@@ -64,7 +64,7 @@ use crate::rlop::module_msg::{
 };
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::rlop::module_render::register_render_rlops;
-use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
+use crate::rlop::module_sel::{ChoicePrompt, SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
 use crate::rlop::{
@@ -1016,6 +1016,7 @@ struct RegistryHandles {
     registry: RlopRegistry,
     audio: Arc<AudioRuntime>,
     graphics: Arc<GraphicsRuntime>,
+    selection: Arc<SelRuntime>,
 }
 
 /// Mount all nine opcode families + the catalog gap-fill, returning the
@@ -1062,7 +1063,7 @@ fn mount_registry_handles(
     // Selection (choices). Backed by the same text sink so choice lines
     // surface through the substrate text surface.
     let sel_runtime = Arc::new(SelRuntime::with_sink(Arc::clone(&sink)));
-    register_sel_rlops(&mut registry, sel_runtime);
+    register_sel_rlops(&mut registry, Arc::clone(&sel_runtime));
 
     // System (fixed-seed clock/RNG → deterministic replay).
     let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
@@ -1086,6 +1087,7 @@ fn mount_registry_handles(
         registry,
         audio: audio_runtime,
         graphics: graphics_runtime,
+        selection: sel_runtime,
     }
 }
 
@@ -1702,9 +1704,21 @@ impl ReplayEngine {
     /// from the linear catalogue only when the branch path composited/played
     /// nothing before yielding.
     pub fn observe_for_port(&self, scene_id: SceneId, opts: &ReplayOpts) -> PortObservation {
+        self.observe_for_port_with_policy(scene_id, opts, HeadlessChoicePolicy::AlwaysFirst)
+    }
+
+    /// Like [`Self::observe_for_port`], with the explicit policy used by the
+    /// branch-following pass. The selected prompt records and text lines are
+    /// always taken from that same pass (or from the same linear fallback).
+    pub fn observe_for_port_with_policy(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+    ) -> PortObservation {
         // Pass 1: branch-following = real play order. Capture its text.
         let branch_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
-        let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
+        let mut branch_scheduler = HeadlessInputScheduler::new(policy);
         let branch_pass = self.observe_pass(
             scene_id,
             opts,
@@ -1713,6 +1727,7 @@ impl ReplayEngine {
             &mut branch_scheduler,
         );
         let first_cross_scene = branch_pass.first_cross_scene;
+        let branch_prompts = branch_pass.choice_prompts;
         let branch = branch_pass.scene;
         let branch_lines = branch_sink.take_lines();
 
@@ -1721,22 +1736,22 @@ impl ReplayEngine {
         // used for graphics/audio backfill regardless.
         let linear_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut linear_scheduler = AlwaysReadyScheduler;
-        let linear = self
-            .observe_pass(
-                scene_id,
-                opts,
-                ControlFlowMount::LinearWalk,
-                Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
-                &mut linear_scheduler,
-            )
-            .scene;
+        let linear_pass = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::LinearWalk,
+            Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
+            &mut linear_scheduler,
+        );
+        let linear_prompts = linear_pass.choice_prompts;
+        let linear = linear_pass.scene;
 
         // Choose the play order: branch when it reached dialogue, else the
         // single-pass byte-order catalogue. NEVER both (no doubling).
-        let play_order_lines = if branch_lines.is_empty() {
-            linear_sink.take_lines()
+        let (play_order_lines, choice_prompts) = if branch_lines.is_empty() {
+            (linear_sink.take_lines(), linear_prompts)
         } else {
-            branch_lines
+            (branch_lines, branch_prompts)
         };
 
         let mut audio_events = branch.audio_events;
@@ -1748,6 +1763,7 @@ impl ReplayEngine {
         };
         PortObservation {
             play_order_lines,
+            choice_prompts,
             first_cross_scene,
             scene: SceneObservation {
                 audio_events,
@@ -1891,6 +1907,7 @@ impl ReplayEngine {
                 reached_natural_terminus,
             },
             first_cross_scene,
+            choice_prompts: handles.selection.take_prompts(),
         }
     }
 
@@ -2450,6 +2467,9 @@ pub struct PortObservation {
     /// window renders one-per-frame and what the substrate text sink
     /// surfaces — NOT the doubled two-pass catalogue.
     pub play_order_lines: Vec<TextLine>,
+    /// Choice prompts from the same selected pass that supplied
+    /// [`Self::play_order_lines`].
+    pub choice_prompts: Vec<ChoicePrompt>,
     /// The first cross-scene dispatch target the branch-following pass
     /// followed (a real `jump` / `farcall` / entrypoint resolution into a
     /// scene present in the store), or `None` when play stayed within this
@@ -2486,6 +2506,7 @@ pub struct BranchFollowingObservation {
 struct PassObservation {
     scene: SceneObservation,
     first_cross_scene: Option<SceneId>,
+    choice_prompts: Vec<ChoicePrompt>,
 }
 
 /// A bounded, continuous MULTI-SCENE play-order stream produced by
