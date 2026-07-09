@@ -36,12 +36,19 @@ export const INIT_FLAG_ALL = "--all";
 
 const REMOVED_SECRET_FLAGS = ["--api-key", "--database-url"] as const;
 
+export type DatabaseProvisionResult = {
+  readonly ok: boolean;
+  readonly message: string;
+};
+
 export type InitCommandDeps = {
   readonly env: Record<string, string | undefined>;
   readonly existsPath: (path: string) => boolean;
   readonly writeText: (path: string, contents: string, mode?: number) => void;
   readonly prompt: (question: string) => Promise<string>;
   readonly log: (message: string) => void;
+  readonly defaultDatabaseUrl?: () => string | undefined;
+  readonly provisionDatabase?: (databaseUrl: string) => Promise<DatabaseProvisionResult>;
 };
 
 export type InitFlags = {
@@ -134,8 +141,13 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   }
   deps.log("");
   deps.log("  2. Run database migrations:");
-  deps.log("       itotori db-migrate");
-  deps.log("");
+  if (databaseUrl !== undefined) {
+    deps.log("       itotori db-migrate");
+    deps.log("");
+  } else {
+    deps.log("       Provision Postgres or set DATABASE_URL, then re-run `itotori init`.");
+    deps.log("");
+  }
   deps.log("  3. Localize a game:");
   deps.log("       itotori localize-game --help");
   deps.log("");
@@ -193,6 +205,22 @@ async function resolveDatabaseUrl(
   if (fromEnv !== undefined && fromEnv.length > 0) {
     return fromEnv;
   }
+  const defaultDatabaseUrl = deps.defaultDatabaseUrl?.();
+  if (defaultDatabaseUrl !== undefined && defaultDatabaseUrl.length > 0) {
+    deps.log("  No DATABASE_URL was set; configuring a local packaged Postgres footprint.");
+    if (deps.provisionDatabase !== undefined) {
+      const result = await deps.provisionDatabase(defaultDatabaseUrl);
+      if (result.ok) {
+        deps.log(`  [ok] ${result.message}`);
+        return defaultDatabaseUrl;
+      }
+      throw new Error(
+        `itotori init failed to provision the required database footprint: ${result.message}`,
+      );
+    }
+    deps.log("  [ok] Derived local DATABASE_URL (value hidden).");
+    return defaultDatabaseUrl;
+  }
   if (flags.nonInteractive) {
     return undefined;
   }
@@ -223,13 +251,13 @@ export function buildConfigFileContents(input: {
     "",
   ];
   if (input.apiKey !== undefined) {
-    lines.push(`OPENROUTER_API_KEY=${shellQuote(input.apiKey)}`);
+    lines.push(`export OPENROUTER_API_KEY=${shellQuote(input.apiKey)}`);
   }
   if (input.zdrConfirmed) {
-    lines.push("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+    lines.push("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
   }
   if (input.databaseUrl !== undefined) {
-    lines.push(`DATABASE_URL=${shellQuote(input.databaseUrl)}`);
+    lines.push(`export DATABASE_URL=${shellQuote(input.databaseUrl)}`);
   }
   lines.push("");
   return lines.join("\n");
@@ -238,7 +266,7 @@ export function buildConfigFileContents(input: {
 function optionalFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   const value = args[index + 1];
-  return index >= 0 && value ? value : undefined;
+  return index >= 0 && value && !value.startsWith("-") ? value : undefined;
 }
 
 function rejectRemovedSecretFlag(args: readonly string[], name: string): void {

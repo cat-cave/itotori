@@ -8,9 +8,10 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildConfigFileContents,
   parseInitFlags,
@@ -72,9 +73,9 @@ describe("itotori init", () => {
       expect(written?.mode).toBe(0o600);
 
       const contents = written?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
-      expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain(`DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
+      expect(contents).toContain(`export OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
+      expect(contents).toContain("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+      expect(contents).toContain(`export DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
 
       expect(logs.join("\n")).toContain("Config file written");
       expect(logs.join("\n")).toContain(configPath);
@@ -89,6 +90,7 @@ describe("itotori init", () => {
         logs,
         prompts: new Map(),
         files: new Map(),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY },
       });
 
       await runInitCommand(
@@ -153,6 +155,67 @@ describe("itotori init", () => {
       expect(logs.join("\n")).toContain("No DATABASE_URL");
     });
 
+    it("derives and provisions a local packaged Postgres URL when DATABASE_URL is absent", async () => {
+      const configPath = join(tmp, "config.env");
+      const logs: string[] = [];
+      const provisioned: string[] = [];
+      const derivedDatabaseUrl = "postgres://itotori:itotori@127.0.0.1:56001/itotori";
+      const deps = makeDeps({
+        configPath,
+        logs,
+        prompts: new Map(),
+        files: new Map(),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+        defaultDatabaseUrl: () => derivedDatabaseUrl,
+        provisionDatabase: async (url) => {
+          provisioned.push(url);
+          return { ok: true, message: "Started local Postgres container test-db." };
+        },
+      });
+
+      await runInitCommand(["init", "--non-interactive", "--config", configPath], deps);
+
+      expect(provisioned).toEqual([derivedDatabaseUrl]);
+      expect(deps.writeTextCalls[0]?.contents).toContain(
+        `export DATABASE_URL=${shellQuote(derivedDatabaseUrl)}`,
+      );
+      expect(logs.join("\n")).toContain("Started local Postgres container test-db");
+      expect(logs.join("\n")).toContain("itotori db-migrate");
+      expect(logs.join("\n")).not.toContain(derivedDatabaseUrl);
+    });
+
+    it("fails closed when packaged Postgres is not ready", async () => {
+      const configPath = join(tmp, "config.env");
+      const logs: string[] = [];
+      const derivedDatabaseUrl = "postgres://itotori:itotori@127.0.0.1:56001/itotori";
+      const deps = makeDeps({
+        configPath,
+        logs,
+        prompts: new Map(),
+        files: new Map(),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+        defaultDatabaseUrl: () => derivedDatabaseUrl,
+        provisionDatabase: async () => {
+          return {
+            ok: false,
+            message:
+              "Started local Postgres container test-db, but Postgres did not become ready for migrations.",
+          };
+        },
+      });
+
+      await expect(
+        runInitCommand(["init", "--non-interactive", "--config", configPath], deps),
+      ).rejects.toThrow(
+        /failed to provision the required database footprint: Started local Postgres container test-db, but Postgres did not become ready for migrations/u,
+      );
+
+      expect(deps.writeTextCalls).toHaveLength(0);
+      expect(logs.join("\n")).toContain("configuring a local packaged Postgres footprint");
+      expect(logs.join("\n")).not.toContain("itotori db-migrate");
+      expect(logs.join("\n")).not.toContain(derivedDatabaseUrl);
+    });
+
     it("reads API key from env", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
@@ -167,8 +230,8 @@ describe("itotori init", () => {
       await runInitCommand(["init", "--non-interactive", "--config", configPath], deps);
 
       const contents = deps.writeTextCalls[0]?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
-      expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+      expect(contents).toContain(`export OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
+      expect(contents).toContain("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
     });
 
     it("overwrites an existing config file in non-interactive mode", async () => {
@@ -211,9 +274,9 @@ describe("itotori init", () => {
       await runInitCommand(["init", "--config", configPath], deps);
 
       const contents = deps.writeTextCalls[0]?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
-      expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain(`DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
+      expect(contents).toContain(`export OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
+      expect(contents).toContain("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+      expect(contents).toContain(`export DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
       expect(logs.join("\n")).not.toContain(DUMMY_DATABASE_URL);
     });
 
@@ -288,9 +351,9 @@ describe("itotori init", () => {
         zdrConfirmed: true,
         databaseUrl: "postgres://user:pa$$@localhost/db",
       });
-      expect(contents).toContain("OPENROUTER_API_KEY='sk-test'");
-      expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain("DATABASE_URL='postgres://user:pa$$@localhost/db'");
+      expect(contents).toContain("export OPENROUTER_API_KEY='sk-test'");
+      expect(contents).toContain("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+      expect(contents).toContain("export DATABASE_URL='postgres://user:pa$$@localhost/db'");
     });
 
     it("omits vars that are not set", () => {
@@ -340,6 +403,14 @@ describe("itotori init", () => {
       expect(flags.configPath).toContain("config.env");
     });
 
+    it("does not consume a dash-prefixed next flag as the optional config value", () => {
+      const flags = parseInitFlags(["init", "--config", "--zdr-asserted"]);
+      expect(flags.configPath).toContain(".config");
+      expect(flags.configPath).toContain("itotori");
+      expect(flags.configPath).toContain("config.env");
+      expect(flags.zdrAsserted).toBe(true);
+    });
+
     it("defaults to interactive mode without ZDR", () => {
       const flags = parseInitFlags(["init"]);
       expect(flags.nonInteractive).toBe(false);
@@ -352,7 +423,7 @@ describe("itotori init", () => {
       const configPath = join(tmp, "subdir", "config.env");
       await runInitCommand(
         ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
-        realDeps({ OPENROUTER_API_KEY: DUMMY_KEY }),
+        realDeps({ env: { OPENROUTER_API_KEY: DUMMY_KEY } }),
       );
 
       const stat = statSync(configPath);
@@ -360,7 +431,43 @@ describe("itotori init", () => {
       expect(mode).toBe(0o600);
 
       const contents = readFileSync(configPath, "utf8");
-      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
+      expect(contents).toContain(`export OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
+    });
+
+    it("writes shell-safe config that can be sourced by db-migrate next steps", async () => {
+      const configPath = join(tmp, "path with spaces", "config's file.env");
+      const databaseUrl = "postgres://user:p$ss@127.0.0.1:56011/itotori";
+      const logs: string[] = [];
+
+      await runInitCommand(
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
+        realDeps({
+          env: {
+            OPENROUTER_API_KEY: DUMMY_KEY,
+            DATABASE_URL: databaseUrl,
+          },
+          logs,
+        }),
+      );
+
+      const contents = readFileSync(configPath, "utf8");
+      expect(contents).toContain(`export DATABASE_URL=${shellQuote(databaseUrl)}`);
+      expect(logs.join("\n")).toContain(`export ITOTORI_LOCAL_ENV_FILE=${shellQuote(configPath)}`);
+      expect(logs.join("\n")).not.toContain(databaseUrl);
+
+      const sourced = execFileSync("sh", ["-c", `. "${configPath}"; printf '%s' "$DATABASE_URL"`], {
+        encoding: "utf8",
+      });
+      expect(sourced).toBe(databaseUrl);
+    });
+  });
+
+  describe("packaged Postgres secret hygiene", () => {
+    it("uses a runtime env-file path instead of putting POSTGRES_PASSWORD in child-process argv", () => {
+      const source = readFileSync(new URL("../src/cli-handlers.ts", import.meta.url), "utf8");
+      expect(source).toContain('"--env-file"');
+      expect(source).toContain('"POSTGRES_PASSWORD"');
+      expect(source).not.toContain("`POSTGRES_PASSWORD=${");
     });
   });
 });
@@ -376,6 +483,8 @@ function makeDeps(options: {
   files: Map<string, string>;
   env?: Record<string, string | undefined>;
   existingPaths?: Set<string>;
+  defaultDatabaseUrl?: () => string | undefined;
+  provisionDatabase?: (databaseUrl: string) => Promise<{ ok: boolean; message: string }>;
 }): MockDeps {
   const writeTextCalls: MockDeps["writeTextCalls"] = [];
   const env = options.env ?? {};
@@ -397,11 +506,18 @@ function makeDeps(options: {
     log: (message) => {
       options.logs.push(message);
     },
+    defaultDatabaseUrl: options.defaultDatabaseUrl,
+    provisionDatabase: options.provisionDatabase,
     writeTextCalls,
   };
 }
 
-function realDeps(env: Record<string, string | undefined> = process.env): InitCommandDeps {
+function realDeps(options: {
+  env?: Record<string, string | undefined>;
+  logs?: string[];
+} = {}): InitCommandDeps {
+  const env = options.env ?? process.env;
+  const logs = options.logs;
   return {
     env,
     existsPath: (path) => existsSync(path),
@@ -414,7 +530,11 @@ function realDeps(env: Record<string, string | undefined> = process.env): InitCo
     },
     prompt: async () => "",
     log: (message) => {
-      process.stdout.write(`${message}\n`);
+      if (logs !== undefined) {
+        logs.push(message);
+      } else {
+        process.stdout.write(`${message}\n`);
+      }
     },
   };
 }

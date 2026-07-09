@@ -127,6 +127,35 @@ describe("itotori installable package — built bin", () => {
     assert.match(r.stderr + r.stdout, /DATABASE_URL/u);
   });
 
+  test("itotori init fails closed when packaged Postgres cannot be provisioned", () => {
+    const emptyPathDir = mkdtempSync(path.join(tmpdir(), "itotori-empty-path-"));
+    const configDir = mkdtempSync(path.join(tmpdir(), "itotori-init-config-"));
+    const configPath = path.join(configDir, "config.env");
+    try {
+      const env = {
+        ...process.env,
+        OPENROUTER_API_KEY: "sk-or-dummy-installable-init-test-1111111111",
+        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        PATH: emptyPathDir,
+      };
+      delete env.DATABASE_URL;
+      delete env.ITOTORI_POSTGRES_BIN_DIR;
+      const r = runCli(
+        distCli,
+        ["init", "--non-interactive", "--config", configPath],
+        tmpdir(),
+        env,
+      );
+      assert.notEqual(r.status, 0, "init must exit non-zero without a DB footprint");
+      assert.match(r.stderr + r.stdout, /failed to provision the required database footprint/u);
+      assert.match(r.stderr + r.stdout, /Docker\/Podman is unavailable/u);
+      assert.equal(existsSync(configPath), false, "init must not write config after DB failure");
+    } finally {
+      rmSync(emptyPathDir, { recursive: true, force: true });
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
   test("the 68 migration SQL files ship alongside the bundle and resolve from it", () => {
     const migrationsDir = path.join(pkgDir, "migrations");
     const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"));
@@ -215,6 +244,39 @@ describe("itotori installable package — npm pack + install (from the install, 
     });
     assert.notEqual(r.status, 0, "localize without --config must exit non-zero from the install");
     assert.match(r.stderr + r.stdout, /missing required flag --config/u);
+  });
+
+  test("itotori init fails closed FROM THE INSTALL when no DB footprint is available", () => {
+    const emptyPathDir = mkdtempSync(path.join(tmpdir(), "itotori-empty-path-"));
+    const configDir = mkdtempSync(path.join(tmpdir(), "itotori-init-config-"));
+    const configPath = path.join(configDir, "config.env");
+    try {
+      const env = {
+        ...process.env,
+        OPENROUTER_API_KEY: "sk-or-dummy-installable-init-test-1111111111",
+        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        PATH: emptyPathDir,
+      };
+      delete env.DATABASE_URL;
+      delete env.ITOTORI_POSTGRES_BIN_DIR;
+      const r = spawnSync(
+        process.execPath,
+        [binPath, "init", "--non-interactive", "--config", configPath],
+        {
+          encoding: "utf8",
+          cwd: tmpdir(),
+          timeout: 60_000,
+          env,
+        },
+      );
+      assert.notEqual(r.status, 0, "installed init must exit non-zero without a DB footprint");
+      assert.match(r.stderr + r.stdout, /failed to provision the required database footprint/u);
+      assert.match(r.stderr + r.stdout, /Docker\/Podman is unavailable/u);
+      assert.equal(existsSync(configPath), false, "installed init must not write config");
+    } finally {
+      rmSync(emptyPathDir, { recursive: true, force: true });
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 
   test("the installed package ships its migrations at the resolving path", () => {
