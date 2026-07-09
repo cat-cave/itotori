@@ -3119,7 +3119,6 @@ function authMemberManagementGate(
   });
 }
 
-
 function authBillingSeatGate(
   mutation: string,
   permissionKey: PermissionKey,
