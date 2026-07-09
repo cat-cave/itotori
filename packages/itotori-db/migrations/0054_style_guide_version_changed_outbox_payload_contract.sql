@@ -63,7 +63,6 @@
 --
 -- @permission-gate draft.write writes (createVersion / approveVersion append
 --   the constrained StyleGuideVersionChanged outbox rows)
--- @permission-gate draft.read reads
 
 alter table itotori_event_outbox
   drop constraint if exists itotori_event_outbox_style_guide_version_changed_payload_check;
