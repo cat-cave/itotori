@@ -28,7 +28,7 @@ use std::fs;
 use std::sync::Arc;
 
 use kaifuu_reallive::{Xor2DecScene, recover_and_decrypt_archive};
-use utsushi_core::substrate::{AssetPackage, PortRequest, Runner, TextSurfaceSink};
+use utsushi_core::substrate::{AssetPackage, PortRequest, Runner, TextLine, TextSurfaceSink};
 use utsushi_core::{RuntimeArtifactRoot, RuntimeOperation};
 use utsushi_reallive::{
     RealSceneIndex, ReplayEngine, ReplayOpts, UtsushiReallivePort,
@@ -45,6 +45,8 @@ const PROBE_STEP_BUDGET: u32 = 20_000;
 /// frame-count assertion is deterministic: the port renders the first
 /// `PLAYTHROUGH_BOUND` play-order messages, each to its own frame.
 const PLAYTHROUGH_BOUND: usize = 4;
+
+const CHOICE_PLAYTHROUGH_BOUND: usize = 16;
 
 /// Build a [`ReplayEngine`] from a Seen.txt envelope, staging the dev-only
 /// `kaifuu-reallive` `use_xor_2` segment-cipher recovery between the AVG32
@@ -107,6 +109,61 @@ fn pick_all_three_scene(engine: &ReplayEngine, entry_scene: u16, label: &str) ->
     );
 }
 
+fn choice_surface_ordinal(line: &TextLine) -> Option<usize> {
+    let surface = line.text_surface.as_deref()?;
+    let (base, _) = surface.split_once(';').unwrap_or((surface, ""));
+    base.strip_prefix("choice:")?.parse::<usize>().ok()
+}
+
+fn exact_choice_run(lines: &[TextLine], cursor: usize) -> Option<usize> {
+    if choice_surface_ordinal(lines.get(cursor)?) != Some(0) {
+        return None;
+    }
+    let mut end = cursor + 1;
+    let mut expected = 1usize;
+    while lines.get(end).and_then(choice_surface_ordinal) == Some(expected) {
+        end += 1;
+        expected += 1;
+    }
+    if lines
+        .get(end)
+        .and_then(choice_surface_ordinal)
+        .is_some_and(|ordinal| ordinal != 0)
+    {
+        return None;
+    }
+    Some(end)
+}
+
+fn pick_reachable_text_choice_scene(engine: &ReplayEngine, label: &str) -> u16 {
+    let opts = ReplayOpts {
+        step_budget: PROBE_STEP_BUDGET,
+        stop_at_first_pause: false,
+    };
+    let per_segment_bound = (CHOICE_PLAYTHROUGH_BOUND / 4).max(1);
+    for scene in engine.scene_ids() {
+        let playthrough = engine.observe_playthrough(scene, &opts, 4);
+        for segment in &playthrough.segments {
+            let lines = &segment.observation.play_order_lines;
+            let mut cursor = 0usize;
+            let mut frame_count = 0usize;
+            while cursor < lines.len() && frame_count < per_segment_bound {
+                if let Some(end) = exact_choice_run(lines, cursor) {
+                    if end - cursor >= 2 {
+                        return scene;
+                    }
+                }
+                cursor += 1;
+                frame_count += 1;
+            }
+        }
+    }
+    panic!(
+        "[{label}] no reachable exact text choice:0..N group fell within the bounded render \
+         prefix; surface to the orchestrator (do not relax the grouping contract)"
+    );
+}
+
 /// Drive the real port over a scene that exercises all three sinks and
 /// assert every sink flowed for the SAME run, plus the driven Snapshot +
 /// DeterministicReplay capabilities.
@@ -149,6 +206,7 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         window_config,
         screen_size,
     )
+    .with_selection_window_config(gameexe.sel_window())
     .with_playthrough_max(PLAYTHROUGH_BOUND);
 
     let artifact_dir = managed_temp_dir(&format!("{label}-artifact"));
@@ -218,21 +276,16 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         "[{label}] the playthrough must announce between 1 and {PLAYTHROUGH_BOUND} frames \
          (bounded through-line); got {frame_total}"
     );
-    // One recorded frame→message AND frame→scene entry per announced frame.
     assert_eq!(
-        port.playthrough_frame_messages().len(),
+        port.playthrough_frame_sources().len(),
         frame_total,
-        "[{label}] one recorded frame->message entry per announced frame"
+        "[{label}] one recorded frame sidecar per announced frame"
     );
     assert_eq!(
         frame_scene_ids.len(),
         frame_total,
         "[{label}] one recorded frame->scene entry per announced frame"
     );
-    // Each rendered playthrough message is a REAL decoded play-order message
-    // drawn from the multi-scene stream (no fabricated/placeholder message);
-    // and the rendered messages appear in the full play-order stream in the
-    // same relative order (a regression that repeats message #0 breaks this).
     let full_stream = port.frame_text_lines();
     let mut cursor = 0usize;
     for message in port.playthrough_frame_messages() {
@@ -330,4 +383,123 @@ fn port_drives_all_three_sinks_title2_real_bytes() {
         return;
     };
     run_title(&corpus, real_corpus::REAL_GAME_ROOT_2_ENV, "title2");
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (title 1)"]
+fn port_renders_reachable_text_choice_window_title1_real_bytes() {
+    let Some(corpus) = real_corpus::corpus_1() else {
+        real_corpus::require_real_bytes(
+            "utsushi-reallive port_renders_reachable_text_choice_window_title1_real_bytes",
+        );
+        return;
+    };
+    let label = "title1-choice-window";
+    let seen_bytes = fs::read(&corpus.seen_txt).expect("read seen.txt");
+    let gameexe = corpus
+        .gameexe()
+        .unwrap_or_else(|| panic!("[{label}] Gameexe.ini must parse"));
+    let scene = pick_reachable_text_choice_scene(&staged_engine(&seen_bytes), label);
+    let g00_dir =
+        real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_ENV).unwrap_or_else(|| {
+            panic!("[{label}] no g00 asset directory reachable from real corpus root")
+        });
+    let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
+    let mut port = UtsushiReallivePort::new(
+        staged_engine(&seen_bytes),
+        assets,
+        scene,
+        gameexe.message_window(0),
+        gameexe.screen_size_px(),
+    )
+    .with_selection_window_config(gameexe.sel_window())
+    .with_playthrough_max(CHOICE_PLAYTHROUGH_BOUND);
+
+    let artifact_root = RuntimeArtifactRoot::new(managed_temp_dir("title1-choice-window-artifact"));
+    artifact_root.prepare().expect("prepare artifact root");
+    let input_dir = managed_temp_dir("title1-choice-window-input");
+    let request = PortRequest::new(
+        &input_dir,
+        "reallive-port-choice-window",
+        RuntimeOperation::Trace,
+    )
+    .with_artifact_root(&artifact_root);
+    let outcome = Runner::new()
+        .run_trace(&mut port, &request)
+        .unwrap_or_else(|error| panic!("[{label}] real-byte port run failed: {error}"));
+
+    let sources = port.playthrough_frame_sources();
+    let choice = sources
+        .iter()
+        .find(|lines| {
+            lines.len() >= 2
+                && lines
+                    .iter()
+                    .enumerate()
+                    .all(|(i, line)| choice_surface_ordinal(line) == Some(i))
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "[{label}] discovered scene {scene} must announce a ChoiceWindow frame within \
+                 the configured bounded prefix"
+            )
+        });
+    assert!(
+        choice.len() >= 2,
+        "[{label}] choice window must retain every option, not collapse to one line"
+    );
+    for (index, line) in choice.iter().enumerate() {
+        assert_eq!(
+            choice_surface_ordinal(line),
+            Some(index),
+            "[{label}] sidecar must preserve exact ordinal choice surface order"
+        );
+    }
+
+    let frame_total: usize = outcome
+        .observations
+        .iter()
+        .map(|tick| tick.frames.len())
+        .sum();
+    assert_eq!(
+        sources.len(),
+        frame_total,
+        "[{label}] one audit sidecar per redacted emitted frame"
+    );
+    let sink_lines: Vec<&TextLine> = outcome
+        .observations
+        .iter()
+        .flat_map(|tick| tick.text.iter())
+        .collect();
+    for source in choice {
+        assert!(
+            sink_lines.iter().any(|observed| {
+                observed.line_id == source.line_id
+                    && observed.text == source.text
+                    && observed.text_surface == source.text_surface
+            }),
+            "[{label}] grouping must retain each option unchanged in the text sink"
+        );
+    }
+    let flattened_sidecar_ids: Vec<&str> = sources
+        .iter()
+        .flat_map(|lines| lines.iter().map(|line| line.line_id.as_str()))
+        .collect();
+    let sink_ids: Vec<&str> = sink_lines
+        .iter()
+        .map(|line| line.line_id.as_str())
+        .collect();
+    let mut sink_cursor = 0usize;
+    for source_id in flattened_sidecar_ids {
+        let Some(offset) = sink_ids[sink_cursor..]
+            .iter()
+            .position(|observed_id| *observed_id == source_id)
+        else {
+            panic!(
+                "[{label}] frame sidecars must retain source line order without dropping a \
+                 branch line"
+            );
+        };
+        sink_cursor += offset + 1;
+    }
 }

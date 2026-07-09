@@ -55,7 +55,9 @@ use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_ur
 
 use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventPayload};
 use crate::gameexe::MessageWindowConfig;
-use crate::render_pipeline::{RecordingFrameArtifactSink, RenderPass, SceneEmit, TextLayer};
+use crate::render_pipeline::{
+    ChoiceWindow, RecordingFrameArtifactSink, RenderPass, SceneEmit, TextLayer,
+};
 use crate::replay::{ReplayEngine, ReplayOpts, SceneObservation};
 use crate::rlop::HeadlessChoicePolicy;
 use crate::vm::SceneId;
@@ -105,6 +107,47 @@ const DEFAULT_PLAYTHROUGH_MAX: usize = 8;
 /// walking the whole game while still crossing ≥1 scene boundary so the
 /// rendered through-line spans scene A → scene B.
 const PLAYTHROUGH_MAX_SCENES: usize = 4;
+
+enum FrameRenderUnit<'a> {
+    Message(&'a TextLine),
+    Choice(&'a [TextLine]),
+}
+
+fn choice_surface_ordinal(line: &TextLine) -> Option<usize> {
+    let surface = line.text_surface.as_deref()?;
+    let (base, _suffix) = surface.split_once(';').unwrap_or((surface, ""));
+    base.strip_prefix("choice:")?.parse::<usize>().ok()
+}
+
+fn group_choice_frames(lines: &[TextLine]) -> Vec<FrameRenderUnit<'_>> {
+    let mut units = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < lines.len() {
+        if choice_surface_ordinal(&lines[cursor]) != Some(0) {
+            units.push(FrameRenderUnit::Message(&lines[cursor]));
+            cursor += 1;
+            continue;
+        }
+
+        let mut end = cursor + 1;
+        let mut expected = 1usize;
+        while end < lines.len() && choice_surface_ordinal(&lines[end]) == Some(expected) {
+            end += 1;
+            expected += 1;
+        }
+
+        let malformed_followup = end < lines.len()
+            && choice_surface_ordinal(&lines[end]).is_some_and(|ordinal| ordinal != 0);
+        if malformed_followup {
+            units.push(FrameRenderUnit::Message(&lines[cursor]));
+            cursor += 1;
+        } else {
+            units.push(FrameRenderUnit::Choice(&lines[cursor..end]));
+            cursor = end;
+        }
+    }
+    units
+}
 
 // -------------------------------------------------------------------------
 // Production sink collectors
@@ -231,6 +274,7 @@ pub struct UtsushiReallivePort {
     /// coordinates live in (`Gameexe.screen_size_px`). The renderer scales
     /// these to [`PORT_FRAME_WIDTH`]×[`PORT_FRAME_HEIGHT`].
     screen_size: (u32, u32),
+    selection_window_config: MessageWindowConfig,
 
     text_sink: Arc<PortTextSink>,
     frame_sink: Arc<PortFrameSink>,
@@ -248,11 +292,9 @@ pub struct UtsushiReallivePort {
     frame_text_lines: Vec<String>,
     /// The play-order message body rendered into each emitted playthrough
     /// frame, in frame order: `playthrough_frame_messages[i]` is the message
-    /// composited into frame `i`. Equals `frame_text_lines[..N]` where `N`
-    /// is the rendered count (the play-order length capped at the bound).
-    /// This is the audit-grade frame→message mapping: a regression that
-    /// rendered only message #0, or repeated one message, would break the
-    /// 1:1 correspondence recorded here.
+    /// composited into a rendered frame. Choice-window option text is
+    /// flattened in source order, so the parallel frame sidecar is the
+    /// authoritative frame-to-lines mapping.
     playthrough_frame_messages: Vec<String>,
     /// The scene id each emitted playthrough frame belongs to, in frame order
     /// (`playthrough_frame_scene_ids[i]` is the scene of frame `i`). Distinct
@@ -260,6 +302,7 @@ pub struct UtsushiReallivePort {
     /// boundary (a regression that stopped at the entry scene yields a single
     /// distinct id). Parallel to [`Self::playthrough_frame_messages`].
     playthrough_frame_scene_ids: Vec<SceneId>,
+    playthrough_frame_sources: Vec<Vec<TextLine>>,
     /// Optional per-port override for the playthrough-sequence bound. `None`
     /// falls back to [`PLAYTHROUGH_MAX_ENV`] then [`DEFAULT_PLAYTHROUGH_MAX`].
     playthrough_max: Option<usize>,
@@ -284,6 +327,10 @@ impl std::fmt::Debug for UtsushiReallivePort {
             .field("buffered_frames", &self.buffered_frames.len())
             .field("buffered_audio", &self.buffered_audio.len())
             .field("frame_text_lines", &self.frame_text_lines.len())
+            .field(
+                "playthrough_frame_sources",
+                &self.playthrough_frame_sources.len(),
+            )
             .field("snapshot_ticks_verified", &self.snapshot_ticks_verified)
             .field(
                 "deterministic_replay_verified",
@@ -365,6 +412,7 @@ impl UtsushiReallivePort {
             engine,
             assets,
             entry_scene,
+            selection_window_config: window_config.clone(),
             window_config,
             screen_size,
             text_sink,
@@ -377,6 +425,7 @@ impl UtsushiReallivePort {
             frame_text_lines: Vec::new(),
             playthrough_frame_messages: Vec::new(),
             playthrough_frame_scene_ids: Vec::new(),
+            playthrough_frame_sources: Vec::new(),
             playthrough_max: None,
             emitted: false,
             launched: false,
@@ -395,6 +444,11 @@ impl UtsushiReallivePort {
     /// so tests can pin a deterministic bound without touching process env.
     pub fn with_playthrough_max(mut self, max: usize) -> Self {
         self.playthrough_max = Some(max);
+        self
+    }
+
+    pub fn with_selection_window_config(mut self, config: MessageWindowConfig) -> Self {
+        self.selection_window_config = config;
         self
     }
 
@@ -430,6 +484,10 @@ impl UtsushiReallivePort {
         &self.playthrough_frame_scene_ids
     }
 
+    pub fn playthrough_frame_sources(&self) -> &[Vec<TextLine>] {
+        &self.playthrough_frame_sources
+    }
+
     /// Tick boundaries at which the port verified snapshot/restore
     /// identity during `launch` (the `Snapshot` capability evidence).
     pub fn snapshot_ticks_verified(&self) -> u32 {
@@ -458,44 +516,16 @@ impl UtsushiReallivePort {
         &self.frame_text_lines
     }
 
-    /// Render the terminal graphics stack into BOTH a full-fidelity
-    /// PRIVATE frame and the publish-redacted public E2 frame through the
-    /// real g00 rasteriser, compositing ONE real engine-decoded `message`
-    /// (with its speaker) into the Gameexe-configured message box over the
-    /// composite.
-    ///
-    /// ONE message per frame — the current message, NOT the whole scene
-    /// concatenated. The box position/colour/alpha/font-size/insets come
-    /// from `self.window_config` (`#WINDOW.000`), scaled from the game's
-    /// `self.screen_size` to the port frame. A speaker + `NAME_MOD=1`
-    /// yields a separate name box; narration renders none.
-    ///
-    /// - The PRIVATE frame (real decoded g00 + dialogue) is written,
-    ///   uncommitted and hashable, under `<root>/private-full/`.
-    /// - The PUBLIC frame composites a copyright-safe edge-outline of the
-    ///   g00 (scene structure/layout, no source pixels) with the SAME
-    ///   message box on top, and is announced through the substrate frame
-    ///   sink at E2. Redaction is ON by default.
-    ///
-    /// The decoded dialogue text IS the localization proof; the public
-    /// frame republishes no copyrighted-source pixels.
-    fn render_frame(
+    fn render_text_layer(
         &self,
         observation: &SceneObservation,
-        message: &TextLine,
+        text: &TextLayer,
         root: &RuntimeArtifactRoot,
         run_id: &str,
     ) -> Result<FrameArtifact, String> {
         let mut pass = RenderPass::with_dimensions(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT)
             .map_err(|error| format!("render pass build failed: {error}"))?
             .with_assets(Arc::clone(&self.assets));
-        let text = TextLayer::message_window(
-            &message.text,
-            message.speaker.as_deref(),
-            &self.window_config,
-            self.screen_size,
-            (PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT),
-        );
         // Full-fidelity private frames live beside the managed public root
         // but are never announced/committed.
         let private_dir = root.path().join("private-full");
@@ -503,7 +533,7 @@ impl UtsushiReallivePort {
         let shots = pass
             .emit_scene_screenshots(
                 &observation.graphics_stack,
-                &text,
+                text,
                 SceneEmit {
                     root,
                     run_id,
@@ -516,6 +546,42 @@ impl UtsushiReallivePort {
             )
             .map_err(|error| format!("frame emit failed: {error}"))?;
         Ok(shots.public)
+    }
+
+    fn render_message_frame(
+        &self,
+        observation: &SceneObservation,
+        message: &TextLine,
+        root: &RuntimeArtifactRoot,
+        run_id: &str,
+    ) -> Result<FrameArtifact, String> {
+        let text = TextLayer::message_window(
+            &message.text,
+            message.speaker.as_deref(),
+            &self.window_config,
+            self.screen_size,
+            (PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT),
+        );
+        self.render_text_layer(observation, &text, root, run_id)
+    }
+
+    fn render_choice_frame(
+        &self,
+        observation: &SceneObservation,
+        options: &[TextLine],
+        root: &RuntimeArtifactRoot,
+        run_id: &str,
+    ) -> Result<FrameArtifact, String> {
+        let labels: Vec<String> = options.iter().map(|line| line.text.clone()).collect();
+        let choice = ChoiceWindow::from_config(
+            &labels,
+            0,
+            &self.selection_window_config,
+            self.screen_size,
+            (PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT),
+        );
+        let text = choice.to_text_layer();
+        self.render_text_layer(observation, &text, root, run_id)
     }
 
     fn lifecycle_error(stage: LifecycleStage, message: String) -> EnginePortError {
@@ -609,24 +675,43 @@ impl EnginePort for UtsushiReallivePort {
         let mut frames: Vec<FrameArtifact> = Vec::new();
         let mut rendered_messages: Vec<String> = Vec::new();
         let mut rendered_scene_ids: Vec<SceneId> = Vec::new();
+        let mut rendered_sources: Vec<Vec<TextLine>> = Vec::new();
         if let Some(root) = request.artifact_root {
             'segments: for segment in &playthrough.segments {
-                for message in segment
-                    .observation
-                    .play_order_lines
-                    .iter()
+                for unit in group_choice_frames(&segment.observation.play_order_lines)
+                    .into_iter()
                     .take(per_scene_cap)
                 {
-                    if rendered_messages.len() >= playthrough_max {
+                    if rendered_sources.len() >= playthrough_max {
                         break 'segments;
                     }
                     request.cancellation.check(LifecycleStage::Launch)?;
-                    let frame = self
-                        .render_frame(&segment.observation.scene, message, root, request.run_id)
+                    let (frame, source_lines) = match unit {
+                        FrameRenderUnit::Message(line) => (
+                            self.render_message_frame(
+                                &segment.observation.scene,
+                                line,
+                                root,
+                                request.run_id,
+                            ),
+                            vec![line.clone()],
+                        ),
+                        FrameRenderUnit::Choice(lines) => (
+                            self.render_choice_frame(
+                                &segment.observation.scene,
+                                lines,
+                                root,
+                                request.run_id,
+                            ),
+                            lines.to_vec(),
+                        ),
+                    };
+                    let frame = frame
                         .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
                     frames.push(frame);
-                    rendered_messages.push(message.text.clone());
+                    rendered_messages.extend(source_lines.iter().map(|line| line.text.clone()));
                     rendered_scene_ids.push(segment.scene_id);
+                    rendered_sources.push(source_lines);
                 }
             }
         }
@@ -691,6 +776,7 @@ impl EnginePort for UtsushiReallivePort {
         self.frame_text_lines = overlay_lines;
         self.playthrough_frame_messages = rendered_messages;
         self.playthrough_frame_scene_ids = rendered_scene_ids;
+        self.playthrough_frame_sources = rendered_sources;
         self.buffered_text = text_lines;
         self.buffered_frames = frames;
         self.buffered_audio = audio;
@@ -773,5 +859,89 @@ impl EnginePort for UtsushiReallivePort {
             self.shut_down = true;
             Ok(PortShutdownOutcome::clean())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(id: &str, text: &str, surface: Option<&str>) -> TextLine {
+        TextLine {
+            line_id: id.to_string(),
+            evidence_tier: EvidenceTier::E1,
+            text: text.to_string(),
+            speaker: None,
+            color: None,
+            text_surface: surface.map(str::to_string),
+            bridge_ref: None,
+            source_asset: None,
+        }
+    }
+
+    fn grouped_line_ids(units: &[FrameRenderUnit<'_>]) -> Vec<Vec<String>> {
+        units
+            .iter()
+            .map(|unit| match unit {
+                FrameRenderUnit::Message(line) => vec![line.line_id.clone()],
+                FrameRenderUnit::Choice(lines) => {
+                    lines.iter().map(|line| line.line_id.clone()).collect()
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn leaves_noncontiguous_or_malformed_choice_labels_as_messages() {
+        let lines = vec![
+            line("a", "first", Some("choice:0")),
+            line("b", "third", Some("choice:2")),
+            line("c", "second", Some("choice:1")),
+        ];
+
+        let units = group_choice_frames(&lines);
+        assert_eq!(
+            grouped_line_ids(&units),
+            vec![
+                vec!["a".to_string()],
+                vec!["b".to_string()],
+                vec!["c".to_string()]
+            ],
+            "a gap must not manufacture a partial choice window"
+        );
+        assert!(
+            units
+                .iter()
+                .all(|unit| matches!(unit, FrameRenderUnit::Message(_)))
+        );
+    }
+
+    #[test]
+    fn grouping_retains_choice_and_following_branch_lines_in_play_order() {
+        let lines = vec![
+            line("choice-0", "left", Some("choice:0;selbtn=FONT")),
+            line("choice-1", "right", Some("choice:1;selbtn=COLOR")),
+            line("branch-0", "left branch", Some("adv")),
+        ];
+
+        let units = group_choice_frames(&lines);
+        assert_eq!(
+            grouped_line_ids(&units),
+            vec![
+                vec!["choice-0".to_string(), "choice-1".to_string()],
+                vec!["branch-0".to_string()],
+            ],
+            "grouping must not drop or reorder the branch line after a select"
+        );
+        let FrameRenderUnit::Choice(options) = &units[0] else {
+            panic!("contiguous choice run must group");
+        };
+        assert_eq!(
+            options
+                .iter()
+                .map(|line| line.text_surface.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("choice:0;selbtn=FONT"), Some("choice:1;selbtn=COLOR")]
+        );
     }
 }
