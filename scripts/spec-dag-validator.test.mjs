@@ -707,6 +707,66 @@ test("accepts qd export shape as the canonical roadmap file shape", () => {
   });
 });
 
+test("rejects done qd export acceptance and verification paths that are absent from disk", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      status: "done",
+      acceptance: "- node scripts/missing-roadmap-validator.test.mjs passes",
+      verification: [{ type: "command", value: "node scripts/missing-roadmap-validator.test.mjs" }],
+    }),
+  ).errors;
+
+  assertError(
+    errors,
+    "ITOTORI-300 acceptance references missing repo path scripts/missing-roadmap-validator.test.mjs",
+  );
+  assertError(
+    errors,
+    "ITOTORI-300 verification[0].value references missing repo path scripts/missing-roadmap-validator.test.mjs",
+  );
+});
+
+test("rejects complete native acceptance and verification paths that are absent from disk", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      status: "complete",
+      acceptanceCriteria: [
+        "The completed node cites presets/missing-roadmap-validator.pair-policy.json.",
+      ],
+      verification: [
+        { type: "command", value: "node scripts/missing-roadmap-validator.test.mjs" },
+      ],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 acceptanceCriteria[0] references missing repo path presets/missing-roadmap-validator.pair-policy.json",
+  );
+  assertError(
+    errors,
+    "VALID-001 verification[0].value references missing repo path scripts/missing-roadmap-validator.test.mjs",
+  );
+});
+
+test("does not reject historical or intentionally absent completed-node path references", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      status: "done",
+      acceptance:
+        "- The retired presets/missing-roadmap-validator.pair-policy.json path is historical.",
+      verification: [
+        {
+          type: "command",
+          value: "! test -f scripts/missing-roadmap-validator.test.mjs",
+        },
+      ],
+    }),
+  ).errors;
+
+  assert.deepEqual(errors, []);
+});
+
 test("rejects qd export placeholder spec, acceptance, and audit-focus text", () => {
   const dag = qdExportFixture({
     spec: "test spec",

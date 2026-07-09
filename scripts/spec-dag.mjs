@@ -100,6 +100,16 @@ const qdLocalLogPathPattern =
   /(?:^|[\s=])(?:\.qd\/logs\/|\/[^\s]*\/\.qd\/logs\/|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/])/u;
 const qdEvidenceLogPathPattern = /(?:^|\n)Evidence:\s*log_path=([^\s]+)/iu;
 const windowsAbsolutePathPattern = /^[A-Za-z]:[\\/]/u;
+const acceptanceVerificationPathRoots =
+  "(?:\\.github|apps|bin|crates|docs|fixtures|packages|presets|roadmap|scripts|suite|tests|tools)";
+const acceptanceVerificationPathPattern = new RegExp(
+  "(?:^|[\\s([`'\"])(\\.?\\/?" +
+    acceptanceVerificationPathRoots +
+    "\\/[A-Za-z0-9._@%+~/-]+)",
+  "gu",
+);
+const historicalMissingPathContextPattern =
+  /\b(?:absent|deleted|does not exist|do not exist|missing\s+(?:artifact|file|path|reference|script|target|test)s?|no longer|no such file|removed|renamed|replaced|retired|stale|successor|superseded|historical|returns 0|returns no hits)\b/iu;
 const justfilePath = resolve(root, "justfile");
 const viteConfigPath = resolve(root, "vite.config.ts");
 
@@ -631,6 +641,7 @@ function validateQdNode(node, index, errors) {
   validateQdVerification(node, errors);
   validateQdStringArray(node, "audit_focus", errors);
   validateQdActiveAuditFixNode(node, displayId, errors);
+  validateQdAcceptanceVerificationPaths(node, displayId, errors);
   for (const [field, value] of [
     ["title", node.title],
     ["spec", node.spec],
@@ -1362,6 +1373,7 @@ function validateNode(node, index, errors) {
   validateVerification(node, errors);
   validateStringArray(node, "auditFocus", errors, { min: 1 });
   validateNoTimeEstimateText(node, errors);
+  validateNativeAcceptanceVerificationPaths(node, errors);
   validateNodeSemantics(node, errors);
 }
 
@@ -1402,6 +1414,109 @@ function validateNodeSemantics(node, errors) {
   validateImplementableNodeKind(node, errors);
   validateIntegrationNodeSurfaces(node, errors);
   validateAlphaPriorityCommandVerification(node, errors);
+}
+
+function validateQdAcceptanceVerificationPaths(node, displayId, errors) {
+  if (node.status !== "done") {
+    return;
+  }
+  validateAcceptanceVerificationPathReferences(
+    displayId,
+    [
+      ["acceptance", node.acceptance],
+      ...(Array.isArray(node.verification)
+        ? node.verification.map((entry, index) => [
+            `verification[${index}].value`,
+            isRecord(entry) ? entry.value : undefined,
+          ])
+        : []),
+    ],
+    errors,
+  );
+}
+
+function validateNativeAcceptanceVerificationPaths(node, errors) {
+  if (node.status !== "complete") {
+    return;
+  }
+  validateAcceptanceVerificationPathReferences(
+    node.id,
+    [
+      ...(Array.isArray(node.acceptanceCriteria)
+        ? node.acceptanceCriteria.map((value, index) => [`acceptanceCriteria[${index}]`, value])
+        : []),
+      ...(Array.isArray(node.verification)
+        ? node.verification.map((entry, index) => [
+            `verification[${index}].value`,
+            isRecord(entry) ? entry.value : undefined,
+          ])
+        : []),
+    ],
+    errors,
+  );
+}
+
+function validateAcceptanceVerificationPathReferences(nodeId, fields, errors) {
+  for (const [field, value] of fields) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    for (const reference of missingAcceptanceVerificationPathReferences(value)) {
+      errors.push(
+        `${nodeId} ${field} references missing repo path ${reference.path}: ${reference.context}`,
+      );
+    }
+  }
+}
+
+function missingAcceptanceVerificationPathReferences(value) {
+  const references = [];
+  for (const match of value.matchAll(acceptanceVerificationPathPattern)) {
+    const repoPath = cleanAcceptanceVerificationPath(match[1]);
+    if (!isCheckableAcceptanceVerificationPath(repoPath)) {
+      continue;
+    }
+    const context = localLineContext(value, match.index ?? 0);
+    if (isIntentionalMissingPathContext(context)) {
+      continue;
+    }
+    if (!existsSync(resolve(root, repoPath))) {
+      references.push({ path: repoPath, context });
+    }
+  }
+  return references;
+}
+
+function cleanAcceptanceVerificationPath(value) {
+  return value
+    .replace(/^\.\//u, "")
+    .replace(/[),.;:'"]+$/u, "")
+    .replace(/#.*$/u, "")
+    .replace(/:\d+(?::\d+)?$/u, "");
+}
+
+function isCheckableAcceptanceVerificationPath(repoPath) {
+  return (
+    repoPath.length > 0 &&
+    !repoPath.endsWith("/") &&
+    /\.[A-Za-z0-9]+$/u.test(repoPath) &&
+    !/[{}<>*$]/u.test(repoPath) &&
+    !repoPath.includes("...")
+  );
+}
+
+function isIntentionalMissingPathContext(context) {
+  return (
+    historicalMissingPathContextPattern.test(context) ||
+    /^\s*(?:!|not\s+|test\s+!\s|test\s+-e\s+\S+\s+\|\|)/iu.test(context)
+  );
+}
+
+function localLineContext(text, index) {
+  const start = text.lastIndexOf("\n", index - 1) + 1;
+  const nextNewline = text.indexOf("\n", index);
+  const end = nextNewline === -1 ? text.length : nextNewline;
+  return text.slice(start, end).trim();
 }
 
 function validateRunnableVerification(node, errors) {
