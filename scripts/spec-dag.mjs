@@ -103,9 +103,7 @@ const windowsAbsolutePathPattern = /^[A-Za-z]:[\\/]/u;
 const acceptanceVerificationPathRoots =
   "(?:\\.github|apps|bin|crates|docs|fixtures|packages|presets|roadmap|scripts|suite|tests|tools)";
 const acceptanceVerificationPathPattern = new RegExp(
-  "(?:^|[\\s([`'\"])(\\.?\\/?" +
-    acceptanceVerificationPathRoots +
-    "\\/[A-Za-z0-9._@%+~/-]+)",
+  "(?:^|[\\s([`'\"])(\\.?\\/?" + acceptanceVerificationPathRoots + "\\/[A-Za-z0-9._@%+~/-]+)",
   "gu",
 );
 const historicalMissingPathContextPattern =

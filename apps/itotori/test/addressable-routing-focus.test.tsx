@@ -194,14 +194,16 @@ describe("addressable deep-links resolve + focus", () => {
 
   it("renders a stale-link state when a runtime evidence deep-link is not found", async () => {
     server.use(
-      http.get("*/api/runtime/v0.2/status", () =>
-        new Response(
-          JSON.stringify({
-            code: "not_found",
-            error: "runtime run runtime-run-stale was not found",
-          }),
-          { status: 404, headers: { "content-type": "application/json" } },
-        ),
+      http.get(
+        "*/api/runtime/v0.2/status",
+        () =>
+          new Response(
+            JSON.stringify({
+              code: "not_found",
+              error: "runtime run runtime-run-stale was not found",
+            }),
+            { status: 404, headers: { "content-type": "application/json" } },
+          ),
       ),
     );
     const href = hrefForAddressable({ kind: "run", id: "runtime-run-stale" });

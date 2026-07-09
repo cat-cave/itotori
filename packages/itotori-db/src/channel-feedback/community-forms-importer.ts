@@ -88,7 +88,10 @@ function parseLineReference(value: unknown): ManualFeedbackLineReference | undef
     return undefined;
   }
   if (!isRecord(value)) {
-    throw new ChannelImportError(COMMUNITY_FORMS_CHANNEL, "response.lineReference must be an object");
+    throw new ChannelImportError(
+      COMMUNITY_FORMS_CHANNEL,
+      "response.lineReference must be an object",
+    );
   }
   const lineReference: ManualFeedbackLineReference = {};
   for (const key of [
@@ -179,7 +182,10 @@ function parseResponse(value: unknown): CommunityFormResponseRecord {
   if (tags.length > 0) record.tags = tags;
   if (isRecord(respondent)) {
     const respondentRecord: NonNullable<CommunityFormResponseRecord["respondent"]> = {};
-    const respondentId = optionalString(respondent.respondentId, "response.respondent.respondentId");
+    const respondentId = optionalString(
+      respondent.respondentId,
+      "response.respondent.respondentId",
+    );
     if (respondentId !== undefined) respondentRecord.respondentId = respondentId;
     const displayName = optionalString(respondent.displayName, "response.respondent.displayName");
     if (displayName !== undefined) respondentRecord.displayName = displayName;

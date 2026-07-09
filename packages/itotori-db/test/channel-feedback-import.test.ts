@@ -165,9 +165,7 @@ describe("CommunityFormsImporter (pure mapping)", () => {
     });
     expect(first.input.dedupeKey).toBe(FORM_RESPONSE_1_EXTERNAL_ID);
     expect(first.input.feedbackSource?.sourceChannel).toBe("community_forms");
-    expect(first.input.feedbackSource?.sourceKind).toBe(
-      feedbackSourceKindValues.communityChannel,
-    );
+    expect(first.input.feedbackSource?.sourceKind).toBe(feedbackSourceKindValues.communityChannel);
     expect(first.input.feedbackSource?.metadata).toMatchObject({
       channel: "community_forms",
       formId: "public-feedback-form",

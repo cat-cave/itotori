@@ -733,9 +733,7 @@ test("rejects complete native acceptance and verification paths that are absent 
       acceptanceCriteria: [
         "The completed node cites presets/missing-roadmap-validator.pair-policy.json.",
       ],
-      verification: [
-        { type: "command", value: "node scripts/missing-roadmap-validator.test.mjs" },
-      ],
+      verification: [{ type: "command", value: "node scripts/missing-roadmap-validator.test.mjs" }],
     }),
   );
 

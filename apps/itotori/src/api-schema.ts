@@ -1551,9 +1551,7 @@ function assertBootstrapSelectionMatchesBridge(
     return;
   }
 
-  throw new Error(
-    "Selected catalog candidate does not match the uploaded bridge source identity",
-  );
+  throw new Error("Selected catalog candidate does not match the uploaded bridge source identity");
 }
 
 function bridgeSourceIdentityValues(bridge: BridgeBundleV02): Set<string> {
