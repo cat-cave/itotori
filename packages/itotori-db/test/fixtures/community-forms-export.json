@@ -1,0 +1,34 @@
+{
+  "formId": "public-feedback-form",
+  "formTitle": "Public localization feedback",
+  "responses": [
+    {
+      "responseId": "resp-001",
+      "submittedAt": "2026-07-07T10:15:00.000Z",
+      "respondent": {
+        "respondentId": "anon-7",
+        "displayName": "Playtester 7"
+      },
+      "feedbackType": "glossary_canon_issue",
+      "title": "Hero name is inconsistent",
+      "note": "The glossary says Aoi, but this scene uses Blue.",
+      "lineReference": {
+        "bridgeUnitId": "bridge-unit-test",
+        "sourceUnitKey": "hello.scene.001.line.001"
+      },
+      "tags": ["glossary", "hero-name"]
+    },
+    {
+      "responseId": "resp-002",
+      "submittedAt": "2026-07-07T11:20:00.000Z",
+      "respondent": {
+        "respondentId": "anon-8",
+        "displayName": "Playtester 8"
+      },
+      "feedbackType": "style_preference",
+      "title": "Tone feedback",
+      "note": "Please follow up at fan@example.com or 415-555-0198 if needed.",
+      "tags": ["tone"]
+    }
+  ]
+}

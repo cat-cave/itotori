@@ -26,7 +26,9 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   capabilityLevelValues,
+  CommunityFormsImporter,
   createCatalogResolverFixtureArtifact,
+  GitHubIssuesImporter,
   StyleGuideFixtureFlowRerunError,
 } from "@itotori/db";
 import type {
@@ -36,8 +38,11 @@ import type {
   CatalogExactExternalIdLinkRequest,
   CatalogFuzzyCandidateRequest,
   CatalogResolverFixtureInput,
+  ChannelFeedbackImporter,
+  ChannelImportOptions,
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
+  ManualFeedbackImportResult,
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -329,6 +334,9 @@ export async function runItotoriCliCommand(
       break;
     case "import-feedback":
       await runImportFeedback(args, dependencies);
+      break;
+    case "import-channel-feedback":
+      await runImportChannelFeedback(args, dependencies);
       break;
     case "import-feedback-batch":
       await runImportFeedbackBatch(args, dependencies);
@@ -1468,6 +1476,83 @@ async function runImportFeedback(
     services.manualFeedback.importManualFeedback(feedback),
   );
   dependencies.io.writeJson(outputPath, result);
+}
+
+type ChannelFeedbackImportCliSummary = {
+  schemaVersion: "itotori.channel-feedback-import.v1";
+  channel: string;
+  sourceExportPath: string;
+  importedCount: number;
+  duplicateCount: number;
+  items: {
+    externalRef: {
+      channel: string;
+      externalId: string;
+      url?: string;
+    };
+    result: ManualFeedbackImportResult;
+    redactions: {
+      kind: string;
+      count: number;
+      placeholder: string;
+    }[];
+  }[];
+};
+
+async function runImportChannelFeedback(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const channel = requiredFlag(args, "--channel");
+  const sourceExportPath = requiredFlag(args, "--export");
+  const outputPath = requiredFlag(args, "--output");
+  const localeBranchId = optionalFlag(args, "--locale-branch-id");
+  const sourceBundleId = optionalFlag(args, "--source-bundle-id");
+  const privacyClassification = optionalFlag(args, "--privacy-classification");
+  const options: ChannelImportOptions = {
+    projectId: requiredFlag(args, "--project-id"),
+    targetLocale: requiredFlag(args, "--target-locale"),
+    ...(localeBranchId === undefined ? {} : { localeBranchId }),
+    ...(sourceBundleId === undefined ? {} : { sourceBundleId }),
+    ...(privacyClassification === undefined ? {} : { privacyClassification }),
+  };
+  const importer = channelFeedbackImporterFor(channel);
+  const sourceExport = dependencies.io.readJson(sourceExportPath);
+  const mappedItems = importer.mapExport(sourceExport, options);
+
+  const items: ChannelFeedbackImportCliSummary["items"] = [];
+  await dependencies.withServices(async (services) => {
+    for (const item of mappedItems) {
+      const result = await services.manualFeedback.importManualFeedback(item.input);
+      items.push({
+        externalRef: item.externalRef,
+        result,
+        redactions: item.redactions,
+      });
+    }
+  });
+
+  dependencies.io.writeJson(outputPath, {
+    schemaVersion: "itotori.channel-feedback-import.v1",
+    channel: importer.channel,
+    sourceExportPath,
+    importedCount: items.length,
+    duplicateCount: items.filter((item) => item.result.duplicate).length,
+    items,
+  } satisfies ChannelFeedbackImportCliSummary);
+}
+
+function channelFeedbackImporterFor(channel: string): ChannelFeedbackImporter {
+  switch (channel) {
+    case "github_issues":
+      return new GitHubIssuesImporter();
+    case "community_forms":
+      return new CommunityFormsImporter();
+    default:
+      throw new Error(
+        `unknown channel feedback importer '${channel}' (expected github_issues or community_forms)`,
+      );
+  }
 }
 
 async function runImportFeedbackBatch(

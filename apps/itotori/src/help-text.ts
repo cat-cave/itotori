@@ -44,6 +44,7 @@ export function buildHelpText(allCommands = false): string {
     lines.push("  ingest-patch-result     Ingest a patch result.");
     lines.push("  ingest-conformance      Ingest a conformance report.");
     lines.push("  import-feedback         Import manual feedback.");
+    lines.push("  import-channel-feedback Import a community-channel export.");
     lines.push("  import-feedback-batch   Import a batch of feedback.");
     lines.push("  catalog-link-exact      Link external IDs to catalog works.");
     lines.push("  catalog-fuzzy-candidates  Generate fuzzy catalog candidates.");

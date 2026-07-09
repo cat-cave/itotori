@@ -407,6 +407,115 @@ describe("Itotori CLI handlers", () => {
     expect(writes.get("feedback-result.json")).toEqual(manualFeedbackResultFixture);
   });
 
+  it("imports a community-channel forms export through the feedback service", async () => {
+    const services = servicesFixture();
+    const sourceExport = {
+      formId: "public-feedback-form",
+      formTitle: "Public feedback",
+      responses: [
+        {
+          responseId: "resp-001",
+          respondent: { respondentId: "anon-1", displayName: "Player 1" },
+          feedbackType: "style_preference",
+          title: "Tone feedback",
+          note: "This line is too formal.",
+        },
+        {
+          responseId: "resp-002",
+          respondent: { respondentId: "anon-2", displayName: "Player 2" },
+          feedbackType: "objective_defect",
+          note: "Reach me at player@example.com or 415-555-0198.",
+        },
+      ],
+    };
+    const reads = new Map<string, unknown>([["forms-export.json", sourceExport]]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(
+      [
+        "import-channel-feedback",
+        "--channel",
+        "community_forms",
+        "--export",
+        "forms-export.json",
+        "--project-id",
+        "project-1",
+        "--target-locale",
+        "en-US",
+        "--locale-branch-id",
+        "locale-1",
+        "--source-bundle-id",
+        "source-bundle-1",
+        "--output",
+        "channel-feedback-result.json",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+
+    expect(services.manualFeedback.importManualFeedback).toHaveBeenCalledTimes(2);
+    const firstInput = vi.mocked(services.manualFeedback.importManualFeedback).mock.calls[0]![0];
+    expect(firstInput).toMatchObject({
+      projectId: "project-1",
+      targetLocale: "en-US",
+      localeBranchId: "locale-1",
+      sourceBundleId: "source-bundle-1",
+      dedupeKey: "public-feedback-form:resp-001",
+      feedbackSource: {
+        sourceChannel: "community_forms",
+        metadata: {
+          channel: "community_forms",
+          formId: "public-feedback-form",
+        },
+      },
+      metadata: {
+        channel: "community_forms",
+        externalId: "public-feedback-form:resp-001",
+      },
+    });
+    const secondInput = vi.mocked(services.manualFeedback.importManualFeedback).mock.calls[1]![0];
+    expect(JSON.stringify(secondInput)).not.toContain("player@example.com");
+    expect(JSON.stringify(secondInput)).not.toContain("415-555-0198");
+    expect(secondInput).toMatchObject({
+      redactionState: "redacted",
+      reporterNote: expect.stringContaining("[redacted-email]"),
+      metadata: {
+        redactedPii: ["email", "phone"],
+      },
+    });
+    expect(writes.get("channel-feedback-result.json")).toMatchObject({
+      schemaVersion: "itotori.channel-feedback-import.v1",
+      channel: "community_forms",
+      sourceExportPath: "forms-export.json",
+      importedCount: 2,
+      duplicateCount: 0,
+      items: [
+        {
+          externalRef: {
+            channel: "community_forms",
+            externalId: "public-feedback-form:resp-001",
+          },
+          result: manualFeedbackResultFixture,
+          redactions: [],
+        },
+        {
+          externalRef: {
+            channel: "community_forms",
+            externalId: "public-feedback-form:resp-002",
+          },
+          result: manualFeedbackResultFixture,
+          redactions: [
+            { kind: "email", count: 1, placeholder: "[redacted-email]" },
+            { kind: "phone", count: 1, placeholder: "[redacted-phone]" },
+          ],
+        },
+      ],
+    });
+  });
+
   it("writes exact catalog external-id link results from fixture requests", async () => {
     const services = servicesFixture();
     const reads = new Map<string, unknown>([

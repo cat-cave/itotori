@@ -14,8 +14,10 @@ import {
   ItotoriFeedbackRepository,
 } from "../src/repositories/feedback-repository.js";
 import {
+  CommunityFormsImporter,
   GitHubIssuesImporter,
   redactChannelPii,
+  type CommunityFormsExport,
   type GitHubIssuesExport,
 } from "../src/channel-feedback/index.js";
 import { feedbackReportEvidence, feedbackReports, feedbackSources } from "../src/schema.js";
@@ -66,6 +68,13 @@ function githubIssuesExport(): GitHubIssuesExport {
   ) as GitHubIssuesExport;
 }
 
+function communityFormsExport(): CommunityFormsExport {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return JSON.parse(
+    readFileSync(join(here, "fixtures", "community-forms-export.json"), "utf8"),
+  ) as CommunityFormsExport;
+}
+
 const importOptions = {
   projectId: "project-test",
   targetLocale: "en-US",
@@ -75,6 +84,8 @@ const importOptions = {
 
 const ISSUE_41_EXTERNAL_ID = "example-org/example-localization#41";
 const ISSUE_42_EXTERNAL_ID = "example-org/example-localization#42";
+const FORM_RESPONSE_1_EXTERNAL_ID = "public-feedback-form:resp-001";
+const FORM_RESPONSE_2_EXTERNAL_ID = "public-feedback-form:resp-002";
 
 describe("GitHubIssuesImporter (pure mapping)", () => {
   it("keeps source + channel metadata and derives a dedupe key from the external id", () => {
@@ -137,6 +148,70 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
     const importer = new GitHubIssuesImporter();
     expect(() => importer.mapExport({ repository: "x" }, importOptions)).toThrow(
       /export\.issues must be an array/,
+    );
+  });
+});
+
+describe("CommunityFormsImporter (pure mapping)", () => {
+  it("keeps form source metadata and derives a dedupe key from the response id", () => {
+    const importer = new CommunityFormsImporter();
+    const items = importer.mapExport(communityFormsExport(), importOptions);
+
+    expect(items).toHaveLength(2);
+    const first = items[0]!;
+    expect(first.externalRef).toEqual({
+      channel: "community_forms",
+      externalId: FORM_RESPONSE_1_EXTERNAL_ID,
+    });
+    expect(first.input.dedupeKey).toBe(FORM_RESPONSE_1_EXTERNAL_ID);
+    expect(first.input.feedbackSource?.sourceChannel).toBe("community_forms");
+    expect(first.input.feedbackSource?.sourceKind).toBe(
+      feedbackSourceKindValues.communityChannel,
+    );
+    expect(first.input.feedbackSource?.metadata).toMatchObject({
+      channel: "community_forms",
+      formId: "public-feedback-form",
+      formTitle: "Public localization feedback",
+    });
+    expect(first.input.metadata).toMatchObject({
+      channel: "community_forms",
+      externalId: FORM_RESPONSE_1_EXTERNAL_ID,
+      responseId: "resp-001",
+      tags: ["glossary", "hero-name"],
+    });
+    expect(first.input.lineReference).toEqual({
+      bridgeUnitId: "bridge-unit-test",
+      sourceUnitKey: "hello.scene.001.line.001",
+    });
+  });
+
+  it("redacts PII from form response text and keeps respondent metadata non-contact", () => {
+    const importer = new CommunityFormsImporter();
+    const items = importer.mapExport(communityFormsExport(), importOptions);
+
+    const withPii = items.find(
+      (item) => item.externalRef.externalId === FORM_RESPONSE_2_EXTERNAL_ID,
+    )!;
+    expect(withPii.input.reporterNote).not.toContain("fan@example.com");
+    expect(withPii.input.reporterNote).not.toContain("415-555-0198");
+    expect(withPii.input.reporterNote).toContain("[redacted-email]");
+    expect(withPii.input.reporterNote).toContain("[redacted-phone]");
+    expect(withPii.input.redactionState).toBe("redacted");
+    expect(withPii.input.reporter).toEqual({
+      role: "community",
+      reporterId: "anon-8",
+      displayName: "Playtester 8",
+    });
+    expect(JSON.stringify(withPii.input.reporter)).not.toContain("fan@example.com");
+    expect(withPii.input.metadata).toMatchObject({
+      redactedPii: ["email", "phone"],
+    });
+  });
+
+  it("rejects a malformed form export", () => {
+    const importer = new CommunityFormsImporter();
+    expect(() => importer.mapExport({ formId: "public-feedback-form" }, importOptions)).toThrow(
+      /export\.responses must be an array/,
     );
   });
 });
@@ -331,6 +406,70 @@ describe("GitHub channel feedback import (real Postgres)", () => {
         .limit(1);
       expect(evidence[0]?.reporterNote ?? "").not.toContain("reporter@example.com");
       expect(JSON.stringify(evidence[0]?.reporter ?? {})).not.toContain("reporter@example.com");
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+describe("Community forms channel feedback import (real Postgres)", () => {
+  it("persists form responses with channel metadata, dedup, and redacted content", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const importer = new CommunityFormsImporter();
+      const items = importer.mapExport(communityFormsExport(), importOptions);
+      const firstImport = [];
+      for (const item of items) {
+        firstImport.push(await feedbackRepo.importManualFeedback(localActor, item.input));
+      }
+      expect(firstImport.every((result) => !result.duplicate)).toBe(true);
+
+      const reimport = await feedbackRepo.importManualFeedback(localActor, {
+        ...items[1]!.input,
+        feedbackEvidenceId: "community-form-resp-002-evidence-2",
+      });
+      expect(reimport.duplicate).toBe(true);
+      expect(reimport.reportCount).toBe(2);
+
+      const sources = await context.db
+        .select()
+        .from(feedbackSources)
+        .where(eq(feedbackSources.projectId, "project-test"));
+      expect(sources).toHaveLength(1);
+      expect(sources[0]).toMatchObject({
+        sourceKind: feedbackSourceKindValues.communityChannel,
+        sourceChannel: "community_forms",
+      });
+      expect(sources[0]?.metadata).toMatchObject({
+        channel: "community_forms",
+        formId: "public-feedback-form",
+      });
+
+      const reports = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.projectId, "project-test"));
+      expect(reports).toHaveLength(2);
+      const redacted = reports.find(
+        (report) =>
+          (report.metadata as Record<string, unknown>).externalId === FORM_RESPONSE_2_EXTERNAL_ID,
+      );
+      expect(redacted?.reporterNote ?? "").not.toContain("fan@example.com");
+      expect(redacted?.reporterNote ?? "").not.toContain("415-555-0198");
+      expect(redacted?.reporterNote).toContain("[redacted-email]");
+      expect(redacted?.reporterNote).toContain("[redacted-phone]");
+      expect(redacted?.redactionState).toBe("redacted");
+      expect(redacted?.reportCount).toBe(2);
+      expect(redacted?.metadata).toMatchObject({
+        channel: "community_forms",
+        externalId: FORM_RESPONSE_2_EXTERNAL_ID,
+        redactedPii: ["email", "phone"],
+      });
     } finally {
       await context.close();
     }

@@ -26,3 +26,10 @@ export {
   type GitHubIssueRecord,
   type GitHubIssuesExport,
 } from "./github-issues-importer.js";
+export {
+  COMMUNITY_FORMS_CHANNEL,
+  CommunityFormsImporter,
+  type CommunityFormFeedbackKind,
+  type CommunityFormResponseRecord,
+  type CommunityFormsExport,
+} from "./community-forms-importer.js";

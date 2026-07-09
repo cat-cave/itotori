@@ -280,6 +280,8 @@ export type {
 export {
   CHANNEL_PII_KINDS,
   ChannelImportError,
+  COMMUNITY_FORMS_CHANNEL,
+  CommunityFormsImporter,
   GITHUB_ISSUES_CHANNEL,
   GitHubIssuesImporter,
   redactChannelPii,
@@ -292,6 +294,9 @@ export type {
   ChannelPiiKind,
   ChannelRedaction,
   ChannelRedactionResult,
+  CommunityFormFeedbackKind,
+  CommunityFormResponseRecord,
+  CommunityFormsExport,
   GitHubIssueLabel,
   GitHubIssueRecord,
   GitHubIssuesExport,
