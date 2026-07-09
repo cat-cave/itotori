@@ -34,6 +34,7 @@ import type {
   ReviewerQueueAction,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
+  WikiEntriesReadModel,
 } from "@itotori/db";
 import {
   assetLocalizationDecisionAssetKindList,
@@ -53,6 +54,7 @@ import {
   reviewerQueueActionList,
   reviewerQueueItemKindList,
   reviewerQueueItemStateList,
+  wikiEntryKindValues,
 } from "@itotori/db";
 import type { FeedbackType } from "@itotori/db";
 import {
@@ -144,6 +146,7 @@ export type ItotoriApiRouteId =
   | "reviewer.batchExecute"
   | "reviewer.itemAction"
   | "terminology.search"
+  | "wiki.entries"
   | "workspace.projects"
   | "workspace.scenes"
   | "workspace.assets"
@@ -224,6 +227,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ReviewerQueuePermissionView: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
+  WikiEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
   CatalogCompletenessBenchmarkPools: ["targetLanguage", "pools", "publicReport"],
   CatalogConflictReviewReadModel: ["rows"],
@@ -506,6 +510,8 @@ export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
+export type ApiWikiEntriesResponse = WikiEntriesReadModel;
+
 export type ApiWorkspaceProjectBrowseResponse = WorkspaceProjectBrowseReadModel;
 
 export type ApiWorkspaceSceneBrowseResponse = WorkspaceSceneBrowseReadModel;
@@ -745,6 +751,7 @@ export type ItotoriApiResponseBody =
   | ApiReviewerBatchExecuteResponse
   | ApiReviewerSingleActionResponse
   | ApiTerminologySearchResponse
+  | ApiWikiEntriesResponse
   | ApiWorkspaceProjectBrowseResponse
   | ApiWorkspaceSceneBrowseResponse
   | ApiWorkspaceAssetBrowseResponse
@@ -1139,6 +1146,9 @@ export function assertItotoriApiResponse(
     case "terminology.search":
       assertTerminologySearchReadModel(value);
       return;
+    case "wiki.entries":
+      assertWikiEntriesReadModel(value);
+      return;
     case "workspace.projects":
       assertWorkspaceProjectBrowseReadModel(value);
       return;
@@ -1320,6 +1330,63 @@ function assertAssetDecisionKind(
   label: string,
 ): asserts value is AssetLocalizationDecisionAssetKind {
   assertEnum(value, assetLocalizationDecisionAssetKindList, label);
+}
+
+export function assertWikiEntriesReadModel(
+  value: unknown,
+  label = "WikiEntriesReadModel",
+): asserts value is WikiEntriesReadModel {
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.WikiEntriesReadModel);
+  assertLiteral(model.schemaVersion, "wiki.entries.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  const filter = asStrictRecord(model.filter, `${label}.filter`, [
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "kind",
+  ]);
+  assertString(filter.projectId, `${label}.filter.projectId`);
+  assertString(filter.localeBranchId, `${label}.filter.localeBranchId`);
+  assertNullableString(filter.sourceRevisionId, `${label}.filter.sourceRevisionId`);
+  if (filter.kind !== null) {
+    assertEnum(filter.kind, Object.values(wikiEntryKindValues), `${label}.filter.kind`);
+  }
+  const pagination = asStrictRecord(model.pagination, `${label}.pagination`, [
+    "total",
+    "limit",
+    "offset",
+    "hasMore",
+    "nextOffset",
+  ]);
+  assertNonNegativeInteger(pagination.total, `${label}.pagination.total`);
+  assertNonNegativeInteger(pagination.limit, `${label}.pagination.limit`);
+  assertNonNegativeInteger(pagination.offset, `${label}.pagination.offset`);
+  assertBoolean(pagination.hasMore, `${label}.pagination.hasMore`);
+  if (pagination.nextOffset !== null) {
+    assertNonNegativeInteger(pagination.nextOffset, `${label}.pagination.nextOffset`);
+  }
+  const entries = asArray(model.entries, `${label}.entries`);
+  for (const [index, entryValue] of entries.entries()) {
+    const entryLabel = `${label}.entries[${index}]`;
+    const entry = asRecord(entryValue, entryLabel);
+    assertString(entry.entryId, `${entryLabel}.entryId`);
+    assertEnum(entry.kind, Object.values(wikiEntryKindValues), `${entryLabel}.kind`);
+    assertString(entry.title, `${entryLabel}.title`);
+    const related = asArray(entry.related, `${entryLabel}.related`);
+    for (const [relatedIndex, relatedValue] of related.entries()) {
+      const relatedLabel = `${entryLabel}.related[${relatedIndex}]`;
+      const relatedRef = asStrictRecord(relatedValue, relatedLabel, [
+        "refKind",
+        "refId",
+        "label",
+        "relation",
+      ]);
+      assertString(relatedRef.refKind, `${relatedLabel}.refKind`);
+      assertString(relatedRef.refId, `${relatedLabel}.refId`);
+      assertString(relatedRef.label, `${relatedLabel}.label`);
+      assertString(relatedRef.relation, `${relatedLabel}.relation`);
+    }
+  }
 }
 
 export function assertReviewerQueueDashboardReadModel(

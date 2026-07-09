@@ -55,6 +55,7 @@ import {
   runtimeEvidenceIngestResponseFixture,
   runtimeStatusFixture,
   terminologySearchFixture,
+  wikiEntriesFixture,
 } from "./api-fixtures.js";
 
 const OPENAPI_PATH = fileURLToPath(new URL("../openapi.json", import.meta.url));
@@ -107,6 +108,7 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "catalog.benchmarkSeeds": catalogBenchmarkSeedsFixture,
   "catalog.opportunities": catalogOpportunitiesFixture,
   "terminology.search": terminologySearchFixture,
+  "wiki.entries": wikiEntriesFixture,
   "imports.bridge": bridgeImportResponseFixture,
   "branches.draft": draftBranchResponseFixture,
   "findings.record": recordFindingResponseFixture,
@@ -340,7 +342,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(43);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(44);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

@@ -21,6 +21,7 @@ import {
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
+  ItotoriWikiReadmodelRepository,
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
@@ -48,6 +49,8 @@ import {
   type QueueHealthReadModel,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
+  type WikiEntriesFilter,
+  type WikiEntriesReadModel,
   type RefreshExactSearchDocumentsInput,
   type RefreshExactSearchDocumentsResult,
   type SearchExactInput,
@@ -142,6 +145,9 @@ export type ItotoriApplicationServices = {
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
+  };
+  wikiRepository: {
+    loadEntries(input: WikiEntriesFilter): Promise<WikiEntriesReadModel>;
   };
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
@@ -392,6 +398,7 @@ export async function withDatabaseItotoriServices<T>(
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
+    const wikiReadmodelRepository = new ItotoriWikiReadmodelRepository(context.db);
     const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
     const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
     const translationMemoryService = new ItotoriTranslationMemoryService(
@@ -523,6 +530,9 @@ export async function withDatabaseItotoriServices<T>(
       },
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
+      },
+      wikiRepository: {
+        loadEntries: (input) => wikiReadmodelRepository.loadEntries(localUserActor, input),
       },
       reviewerQueue: reviewerQueueApiService,
       workspace: workspaceApiService,

@@ -12,6 +12,7 @@ import type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
+  WikiEntriesReadModel,
 } from "@itotori/db";
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
@@ -391,6 +392,112 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
           updatedAt: new Date("2026-06-18T00:00:00.000Z"),
         },
       },
+    },
+  ],
+};
+
+export const wikiEntriesFixture: WikiEntriesReadModel = {
+  schemaVersion: "wiki.entries.v0.1",
+  generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+  filter: {
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    sourceRevisionId: null,
+    kind: null,
+  },
+  pagination: {
+    total: 2,
+    limit: 20,
+    offset: 0,
+    hasMore: false,
+    nextOffset: null,
+  },
+  entries: [
+    {
+      entryId: "character:Hero",
+      kind: "character",
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      sourceRevisionId: "source-revision-1",
+      title: "Hero",
+      characterId: "Hero",
+      bio: {
+        characterBioId: "bio-hero",
+        locale: "en-US",
+        text: "The protagonist.",
+        status: "Fresh",
+        stale: false,
+        generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+      },
+      appearances: [
+        {
+          bridgeUnitId: "bridge-unit-1",
+          sourceUnitKey: "hello.scene.001.line.001",
+          occurrenceId: "occurrence-1",
+          citedSourceHash: "source-hash-1",
+          citeOrdinal: 1,
+        },
+      ],
+      related: [
+        {
+          refKind: "term",
+          refId: "term-hero",
+          label: "Hero",
+          relation: "terminology_alias",
+        },
+      ],
+      relationships: [],
+      revisions: [
+        {
+          characterBioId: "bio-hero",
+          sourceRevisionId: "source-revision-1",
+          status: "Fresh",
+          generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+        },
+      ],
+    },
+    {
+      entryId: "term:term-hero",
+      kind: "term",
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      title: "Hero",
+      termId: "term-hero",
+      sourceTerm: "Hero",
+      preferredTranslation: "Hero",
+      sourceLocale: "ja-JP",
+      targetLocale: "en-US",
+      termKind: "character_name",
+      partOfSpeech: null,
+      status: "active",
+      notes: null,
+      aliases: [
+        {
+          aliasId: "alias-hero",
+          aliasText: "勇者",
+          aliasKind: "source_alias",
+          locale: "ja-JP",
+        },
+      ],
+      references: [
+        {
+          sourceRefId: "source-ref-hero",
+          sourceRevisionId: "source-revision-1",
+          bridgeUnitId: "bridge-unit-1",
+          sourceUnitKey: "hello.scene.001.line.001",
+          referenceKind: "source_unit",
+          citation: "hello.scene.001.line.001",
+          context: "Speaker name",
+        },
+      ],
+      related: [
+        {
+          refKind: "character",
+          refId: "Hero",
+          label: "Hero",
+          relation: "terminology_alias",
+        },
+      ],
     },
   ],
 };

@@ -65,6 +65,7 @@ import {
   projectFixture,
   runtimeStatusFixture,
   terminologySearchFixture,
+  wikiEntriesFixture,
 } from "./api-fixtures.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
@@ -431,6 +432,9 @@ const fixtureServices = {
   },
   terminologyRepository: {
     searchTerms: vi.fn(async () => terminologySearchFixture),
+  },
+  wikiRepository: {
+    loadEntries: vi.fn(async () => wikiEntriesFixture),
   },
   reviewerQueue: {
     loadDashboard: vi.fn(unused),

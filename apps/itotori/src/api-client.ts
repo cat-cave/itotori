@@ -80,6 +80,7 @@ import {
   type ApiRemoveMemberRequest,
   type ApiRemoveMemberResponse,
   type ApiTerminologySearchResponse,
+  type ApiWikiEntriesResponse,
   type ApiWorkspaceAssetBrowseResponse,
   type ApiWorkspaceComparisonResponse,
   type ApiWorkspaceCorrectionPreviewResponse,
@@ -153,6 +154,10 @@ interface ItotoriApiRouteTypeMap {
   "terminology.search": {
     response: ApiTerminologySearchResponse;
     collectionKey: "results";
+  };
+  "wiki.entries": {
+    response: ApiWikiEntriesResponse;
+    collectionKey: "entries";
   };
   "workspace.projects": {
     response: ApiWorkspaceProjectBrowseResponse;
@@ -391,6 +396,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "reviewer.queue": "rows",
   "reviewer.batchPreview": "items",
   "terminology.search": "results",
+  "wiki.entries": "entries",
   "workspace.projects": "projects",
   "workspace.scenes": "scenes",
   "workspace.assets": "assets",

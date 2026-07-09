@@ -38,6 +38,7 @@ import { ItotoriTerminologyRepository } from "../src/repositories/terminology-re
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
 import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
+import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
@@ -658,6 +659,16 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "character-relationship-repository.test.ts mark relationship stale coverage",
     (repo) => repo.markRelationshipStale(deniedActor, undefined as never),
+  ),
+  wikiReadmodelGate(
+    "loadEntries",
+    "catalogRead",
+    "wiki-readmodel-repository.test.ts entries read-model coverage",
+    (repo) =>
+      repo.loadEntries(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+      }),
   ),
   routeChoiceMapGate(
     "saveRouteMap",
@@ -1783,6 +1794,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiReadmodelRepository.loadEntries",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-readmodel-repository.test.ts entries read-model coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriRouteChoiceMapRepository.saveRouteMap",
           "requiredPermission": "draft.write",
           "successFixture": "route-choice-map-repository.test.ts save route map coverage",
@@ -2705,6 +2722,22 @@ function characterRelationshipGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriCharacterRelationshipRepository(db)),
+  });
+}
+
+function wikiReadmodelGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriWikiReadmodelRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriWikiReadmodelRepository",
+    sourceFile: "wiki-readmodel-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriWikiReadmodelRepository(db)),
   });
 }
 

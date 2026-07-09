@@ -1486,6 +1486,34 @@
       ],
       "type": "object"
     },
+    "WikiEntriesReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "type": "array"
+        },
+        "filter": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "pagination": {
+          "type": "object"
+        },
+        "schemaVersion": {
+          "const": "wiki.entries.v0.1"
+        }
+      },
+      "required": [
+        "entries",
+        "filter",
+        "generatedAt",
+        "pagination",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "WorkspaceAssetBrowseReadModel": {
       "additionalProperties": false,
       "properties": {

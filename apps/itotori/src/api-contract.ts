@@ -243,6 +243,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { query: str, normalizedQuery: str, localeBranchId: str, results: arr },
       additionalProperties: true,
     }),
+  WikiEntriesReadModel: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.WikiEntriesReadModel,
+      properties: { generatedAt: str, filter: obj, pagination: obj, entries: arr },
+      additionalProperties: false,
+      schemaVersion: "wiki.entries.v0.1",
+    }),
 
   // Workspace --------------------------------------------------------------
   WorkspaceProjectBrowseReadModel: (ref) =>
@@ -974,6 +981,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "Terminology search read model.",
     pathParams: [],
     responseSchema: "TerminologySearchReadModel",
+  },
+  "wiki.entries": {
+    method: "GET",
+    pathTemplate: "/api/wiki/entries",
+    operationId: "wikiEntries",
+    summary: "Wiki character and terminology entries with cross-references.",
+    pathParams: [],
+    responseSchema: "WikiEntriesReadModel",
   },
   "queue.health": {
     method: "GET",

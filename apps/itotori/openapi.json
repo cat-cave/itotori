@@ -1485,6 +1485,34 @@
         ],
         "type": "object"
       },
+      "WikiEntriesReadModel": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "type": "array"
+          },
+          "filter": {
+            "type": "object"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "pagination": {
+            "type": "object"
+          },
+          "schemaVersion": {
+            "const": "wiki.entries.v0.1"
+          }
+        },
+        "required": [
+          "entries",
+          "filter",
+          "generatedAt",
+          "pagination",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "WorkspaceAssetBrowseReadModel": {
         "additionalProperties": false,
         "properties": {
@@ -4560,6 +4588,75 @@
         },
         "summary": "Terminology search read model.",
         "x-itotoriRouteId": "terminology.search"
+      }
+    },
+    "/api/wiki/entries": {
+      "get": {
+        "operationId": "wikiEntries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiEntriesReadModel"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Wiki character and terminology entries with cross-references.",
+        "x-itotoriRouteId": "wiki.entries"
       }
     },
     "/api/workspace/assets": {
