@@ -250,6 +250,237 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     expect(carve.derivation.notes).toContain("New-Game routine");
   });
 
+  it("follows raw goto_on title-boot fanout to resolve two work roots without choice text", () => {
+    // Sweetie-shaped upstream title/boot context: scene 2 is the button-object
+    // title menu, its New-Game branch reaches a routine (9996), and that
+    // routine's decoded raw goto_on fanout reaches two distinct narrative
+    // roots. There are deliberately NO `choices` / `branchEntryScene` edges:
+    // this models title-boot control-flow fanout, not choice text.
+    const titleBootContext: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2, 3, 10, 9996, 100, 101, 500],
+      scenes: [
+        {
+          sceneId: 2,
+          selectionControl: "button-object",
+          nextScene: 3,
+          dispatchFanoutScenes: [10, 9996],
+          messages: [],
+          choices: [],
+        },
+        { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+        { sceneId: 10, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+        {
+          sceneId: 9996,
+          selectionControl: "none",
+          nextScene: null,
+          dispatchFanoutScenes: [100, 500],
+          messages: [],
+          choices: [],
+        },
+        {
+          sceneId: 100,
+          selectionControl: "none",
+          nextScene: 101,
+          messages: [
+            { order: 0, speaker: "Rin", text: "Base-game opening.", textSurface: null },
+            { order: 1, speaker: "Mei", text: "You're early.", textSurface: null },
+          ],
+          choices: [],
+        },
+        {
+          sceneId: 101,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Rin", text: "Let's go.", textSurface: null }],
+          choices: [],
+        },
+        {
+          sceneId: 500,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [
+            { order: 0, speaker: "Rin", text: "Fandisk opening.", textSurface: null },
+            { order: 1, speaker: "Sae", text: "A fandisk-only face.", textSurface: null },
+          ],
+          choices: [],
+        },
+      ],
+    };
+
+    const carve = carveArchiveIntoWorks(titleBootContext, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("upstream-title-boot-context");
+    expect(carve.derivation.gameSelectScene).toBe(2);
+    expect(carve.derivation.selectionControl).toBe("button-object");
+    expect(carve.works).toHaveLength(2);
+    expect(carve.works.map((w) => w.branchEntryScene)).toEqual([100, 500]);
+    expect(carve.works.map((w) => w.workId)).toEqual([
+      "sweetie-hd#work:upstream:100",
+      "sweetie-hd#work:upstream:500",
+    ]);
+    expect(carve.works[0]!.branchSpeakers).toEqual(["Rin", "Mei"]);
+    expect(carve.works[1]!.branchSpeakers).toEqual(["Rin", "Sae"]);
+    expect(carve.derivation.notes).toContain("Scene 9996");
+    expect(carve.derivation.notes).toContain("100, 500");
+  });
+
+  it("does not promote a low-id silent story-route dispatcher into multiple work roots", () => {
+    // A single-work archive can enter a normal story root that has no messages
+    // of its own, then immediately dispatch to multiple route branches. Those
+    // downstream route branches are inside ONE work; the title/boot resolver
+    // must stop at the first stable narrative entry instead of BFS-ing deeper
+    // and fabricating multiple works.
+    const singleWorkWithSilentRouteFanout: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2, 3, 100, 101, 201],
+      scenes: [
+        {
+          sceneId: 2,
+          selectionControl: "button-object",
+          nextScene: 3,
+          dispatchFanoutScenes: [100],
+          messages: [],
+          choices: [],
+        },
+        { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+        {
+          sceneId: 100,
+          selectionControl: "none",
+          nextScene: null,
+          dispatchFanoutScenes: [101, 201],
+          messages: [],
+          choices: [],
+        },
+        {
+          sceneId: 101,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Rin", text: "Route A opening.", textSurface: null }],
+          choices: [],
+        },
+        {
+          sceneId: 201,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Mei", text: "Route B opening.", textSurface: null }],
+          choices: [],
+        },
+      ],
+    };
+
+    const carve = carveArchiveIntoWorks(singleWorkWithSilentRouteFanout, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("game-select-unresolved-options");
+    expect(carve.works).toHaveLength(1);
+    expect(carve.works[0]!.branchEntryScene).toBe(2);
+    expect(carve.works[0]!.branchMessageCount).toBe(2);
+    expect(carve.works.map((w) => w.branchEntryScene)).not.toEqual([101, 201]);
+  });
+
+  it("does not promote a high-id silent story-route dispatcher into multiple work roots", () => {
+    // Regression for MULTI-002-F001: scene id alone is not sufficient evidence
+    // that a pure raw fanout belongs to title/boot. A single-work story can use
+    // a high-id dispatcher before route branches; even when the title menu has
+    // enough raw fanout to look like upstream boot context, that story-route
+    // dispatcher must not become a fake multi-work boundary.
+    const singleWorkWithHighIdRouteFanout: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2, 3, 10, 9000, 101, 201],
+      scenes: [
+        {
+          sceneId: 2,
+          selectionControl: "button-object",
+          nextScene: 3,
+          dispatchFanoutScenes: [10, 9000],
+          messages: [],
+          choices: [],
+        },
+        { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+        { sceneId: 10, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+        {
+          sceneId: 9000,
+          selectionControl: "none",
+          nextScene: null,
+          dispatchFanoutScenes: [101, 201],
+          messages: [],
+          choices: [],
+        },
+        {
+          sceneId: 101,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Rin", text: "Route A opening.", textSurface: null }],
+          choices: [],
+        },
+        {
+          sceneId: 201,
+          selectionControl: "none",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Mei", text: "Route B opening.", textSurface: null }],
+          choices: [],
+        },
+      ],
+    };
+
+    const carve = carveArchiveIntoWorks(singleWorkWithHighIdRouteFanout, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("game-select-unresolved-options");
+    expect(carve.works).toHaveLength(1);
+    expect(carve.works[0]!.branchEntryScene).toBe(2);
+    expect(carve.works[0]!.branchMessageCount).toBe(2);
+    expect(carve.works.map((w) => w.branchEntryScene)).not.toEqual([101, 201]);
+  });
+
+  it("reports real-title-menu button labels with null roots as unresolved, not five works", () => {
+    // Sweetie HD scene 2, as observed by the audit's real-byte export: a
+    // button-object title menu with five visible button labels, but no
+    // per-label branchEntryScene roots and no downstream scenes in the slice.
+    const realTitleMenuShape: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2],
+      scenes: [
+        {
+          sceneId: 2,
+          selectionControl: "button-object",
+          nextScene: null,
+          dispatchFanoutScenes: [3, 10, 9996],
+          messages: [
+            { order: 0, speaker: null, text: "title label 0", textSurface: "choice:0" },
+            { order: 1, speaker: null, text: "title label 1", textSurface: "choice:1" },
+            { order: 2, speaker: null, text: "title label 2", textSurface: "choice:2" },
+            { order: 3, speaker: null, text: "title label 3", textSurface: "choice:3" },
+            { order: 4, speaker: null, text: "title label 4", textSurface: "choice:4" },
+            { order: 5, speaker: null, text: "title status", textSurface: null },
+            { order: 6, speaker: null, text: "title status", textSurface: null },
+            { order: 7, speaker: null, text: "title status", textSurface: null },
+          ],
+          choices: [0, 1, 2, 3, 4].map((optionIndex) => ({
+            optionIndex,
+            label: `title label ${optionIndex}`,
+            branchEntryScene: null,
+            branchMessages: [],
+          })),
+        },
+      ],
+    };
+
+    const carve = carveArchiveIntoWorks(realTitleMenuShape, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("game-select-unresolved-options");
+    expect(carve.derivation.selectionControl).toBe("button-object");
+    expect(carve.works).toHaveLength(1);
+    expect(carve.works[0]!.branchEntryScene).toBe(2);
+    expect(carve.derivation.notes).toContain("5 option label(s)");
+    expect(carve.works.map((w) => w.branchEntryScene)).not.toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
   it("rejects a carve whose options collide on the same work root (not disjoint)", () => {
     const colliding: NarrativeStructure = {
       ...GAME_SELECT_DECODE,
@@ -788,9 +1019,12 @@ describe("REAL Sweetie HD — hardened game-select signal on the actual decode",
     // (3) Feed the REAL decoded signals through the carve.
     //   (a) The button-object game-select (scene 2) IS identified — it is the
     //       title MENU whose goto_case($store) branches dispatch to menu/config
-    //       scenes + a store-relative New-Game routine (which does not decode),
-    //       not to two per-work story roots, so the works are unresolved (the
-    //       honest real boundary), NOT a synthetic 2-work fabrication.
+    //       scenes + a store-relative New-Game routine. This scan slice does
+    //       not carry two proven per-work story roots, so the works are
+    //       unresolved (the honest real boundary), NOT a synthetic 2-work
+    //       fabrication. The full structure export path stages xor2 bytes; if
+    //       it still lacks two roots, this carve must stay unresolved/operator
+    //       rooted rather than faking them.
     const gameSelectStructure: NarrativeStructure = {
       schemaVersion: "utsushi.narrative-structure.v1",
       entryScene: 2,

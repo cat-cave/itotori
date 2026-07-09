@@ -73,6 +73,15 @@ function parseScene(value: unknown, index: number): NarrativeScene {
   if (!Array.isArray(record.choices)) {
     throw new NarrativeStructureParseError(`scenes[${index}].choices must be an array`);
   }
+  if (
+    record.dispatchFanoutScenes !== undefined &&
+    (!Array.isArray(record.dispatchFanoutScenes) ||
+      !record.dispatchFanoutScenes.every((s) => typeof s === "number"))
+  ) {
+    throw new NarrativeStructureParseError(
+      `scenes[${index}].dispatchFanoutScenes must be a number[]`,
+    );
+  }
   // `selectionControl` is optional for backward compatibility with
   // pre-enrichment exporter JSON (absent → "none"); the enriched
   // `structure_export.rs` always emits it.
@@ -134,6 +143,7 @@ function parseScene(value: unknown, index: number): NarrativeScene {
     selectionControl:
       (record.selectionControl as "button-object" | "text-window" | "none" | undefined) ?? "none",
     nextScene: (record.nextScene as number | null) ?? null,
+    dispatchFanoutScenes: (record.dispatchFanoutScenes as number[] | undefined) ?? [],
     messages,
     choices,
   };
@@ -225,6 +235,15 @@ export function buildRouteBranchMap(structure: NarrativeStructure): RouteBranchM
         to: String(scene.nextScene),
         kind: "dispatch",
       });
+    }
+    for (const target of scene.dispatchFanoutScenes ?? []) {
+      if (target !== scene.nextScene) {
+        edges.push({
+          fromScene: scene.sceneId,
+          to: String(target),
+          kind: "dispatch",
+        });
+      }
     }
     for (const choice of scene.choices) {
       edges.push({

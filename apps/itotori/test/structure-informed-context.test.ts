@@ -38,6 +38,7 @@ const SYNTHETIC_STRUCTURE: NarrativeStructure = {
     {
       sceneId: 6010,
       nextScene: 6011,
+      dispatchFanoutScenes: [7000],
       messages: [
         { order: 0, speaker: "Aoi", text: "Morning already?", textSurface: null },
         { order: 1, speaker: null, text: "The room was still dim.", textSurface: null },
@@ -88,6 +89,8 @@ describe("parseNarrativeStructure (consumes the decode JSON, validates shape)", 
     expect(parsed.scenes).toHaveLength(2);
     // The scene-graph edge is READ, not inferred.
     expect(parsed.scenes[0]?.nextScene).toBe(6011);
+    // Raw dispatch fanout is READ separately from choice text.
+    expect(parsed.scenes[0]?.dispatchFanoutScenes).toEqual([7000]);
     // The speaker decode is READ from the messages.
     expect(parsed.scenes[0]?.messages[0]?.speaker).toBe("Aoi");
     // The choice/branch subsystem is READ.
@@ -134,7 +137,10 @@ describe("buildRouteBranchMap (from the dispatch + choice graph)", () => {
     expect(map.entryScene).toBe(6010);
     expect(map.dispatchOrder).toEqual([6010, 6011]);
     const dispatch = map.edges.filter((e) => e.kind === "dispatch");
-    expect(dispatch).toEqual([{ fromScene: 6010, to: "6011", kind: "dispatch" }]);
+    expect(dispatch).toEqual([
+      { fromScene: 6010, to: "6011", kind: "dispatch" },
+      { fromScene: 6010, to: "7000", kind: "dispatch" },
+    ]);
     const choices = map.edges.filter((e) => e.kind === "choice");
     expect(choices).toHaveLength(2);
     expect(choices[0]).toMatchObject({

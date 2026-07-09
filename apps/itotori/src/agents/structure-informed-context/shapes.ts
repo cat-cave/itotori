@@ -77,6 +77,13 @@ export type NarrativeScene = {
    * play stayed within the scene. This IS the scene-dispatch graph edge.
    */
   nextScene: number | null;
+  /**
+   * Additional cross-scene fanout exposed by raw title/boot dispatch tables
+   * (`goto_on` / `goto_case`) whose arms resolve to scene-level `jump` /
+   * `farcall` targets. This is distinct from `choices`: a button-object title
+   * menu may dispatch through raw control flow without any choice text lines.
+   */
+  dispatchFanoutScenes?: number[];
   /** The scene's play-order message stream (single pass, no doubling). */
   messages: NarrativeMessage[];
   /** The scene's choice prompt(s) + per-option branch streams. */

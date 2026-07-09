@@ -21,6 +21,7 @@
 // decoded `NarrativeStructure` (scene-presence + dispatch reachability).
 
 import type { NarrativeStructure } from "../structure-informed-context/index.js";
+import type { WorkCarve } from "./shapes.js";
 
 /** Schema version of the operator work-manifest (`itotori.work-manifest.v1`). */
 export const WORK_MANIFEST_SCHEMA_VERSION = "itotori.work-manifest.v1" as const;
@@ -245,9 +246,10 @@ type DispatchGraph = {
 
 /**
  * Build the scene-dispatch graph from the decoded structure + a BFS depth map
- * from the archive entry scene. Edges are the union of `scene.nextScene` and
- * every `choice.branchEntryScene` (the same signals the carve reads). Self-
- * loops are dropped; the entry scene has depth 0.
+ * from the archive entry scene. Edges are the union of `scene.nextScene`, raw
+ * `dispatchFanoutScenes`, and every `choice.branchEntryScene` (the same
+ * signals the carve reads). Self-loops are dropped; the entry scene has depth
+ * 0.
  */
 function buildDispatchGraph(structure: NarrativeStructure): DispatchGraph {
   const edges = new Map<number, Set<number>>();
@@ -257,6 +259,11 @@ function buildDispatchGraph(structure: NarrativeStructure): DispatchGraph {
     const out = edges.get(scene.sceneId) ?? new Set<number>();
     if (scene.nextScene !== null && scene.nextScene !== scene.sceneId) {
       out.add(scene.nextScene);
+    }
+    for (const target of scene.dispatchFanoutScenes ?? []) {
+      if (target !== scene.sceneId) {
+        out.add(target);
+      }
     }
     for (const choice of scene.choices) {
       if (choice.branchEntryScene !== null && choice.branchEntryScene !== scene.sceneId) {
@@ -438,25 +445,7 @@ export function resolveWorkManifestToCarve(
    * `derivation.signal` is `operator-manifest` (the operator escape hatch the
    * carve defers to when the decoded game-select is unresolved).
    */
-  carve: {
-    archiveRef: string;
-    works: Array<{
-      workId: string;
-      optionIndex: number;
-      optionLabel: string;
-      branchEntryScene: number;
-      branchMessageCount: number;
-      branchSpeakers: string[];
-    }>;
-    derivation: {
-      signal: "operator-manifest";
-      gameSelectScene: number | null;
-      gameSelectSelectedBy: "none";
-      selectionControl: "none";
-      namingSignal: "provided" | "unknown";
-      notes: string;
-    };
-  };
+  carve: WorkCarve;
 } {
   const resolved = resolveWorkManifest(manifest, structure, options);
   const sceneById = new Map(structure.scenes.map((s) => [s.sceneId, s] as const));

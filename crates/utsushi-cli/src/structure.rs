@@ -38,7 +38,10 @@ use std::path::{Path, PathBuf};
 use kaifuu_reallive::{RealLiveOpcode, parse_scene};
 use serde_json::{Map, Value, json};
 use utsushi_core::{TextLine, write_json};
-use utsushi_reallive::{Gameexe, HeadlessChoicePolicy, ReplayOpts, SceneId, decompress_all_scenes};
+use utsushi_reallive::{
+    BytecodeElement, Gameexe, HeadlessChoicePolicy, ReplayOpts, SceneId, decode_bytecode_stream,
+    decompress_all_scenes,
+};
 
 use crate::staged_replay::staged_engine;
 
@@ -129,6 +132,10 @@ pub fn build_narrative_structure(
         .iter()
         .map(|scene| (scene.scene_id, selection_control_signal(&scene.bytecode)))
         .collect();
+    let bytecode_by_scene: HashMap<SceneId, &[u8]> = decompressed
+        .iter()
+        .map(|scene| (scene.scene_id, scene.bytecode.as_slice()))
+        .collect();
 
     // The replay engine with `use_xor_2` staging (Sweetie HD compiler 110002)
     // + the Gameexe `#NAMAE`/`#COLOR_TABLE` speaker resolver.
@@ -203,6 +210,15 @@ pub fn build_narrative_structure(
                 None => Value::Null,
             },
         );
+        scene.insert(
+            "dispatchFanoutScenes".into(),
+            json!(
+                bytecode_by_scene
+                    .get(&scene_id)
+                    .map(|bytecode| dispatch_fanout_scenes(bytecode))
+                    .unwrap_or_default()
+            ),
+        );
         scene.insert("messages".into(), Value::Array(messages));
         scene.insert("choices".into(), Value::Array(choices));
         scenes.push(Value::Object(scene));
@@ -214,6 +230,127 @@ pub fn build_narrative_structure(
         "sceneDispatchOrder": playthrough.scene_ids(),
         "scenes": scenes,
     }))
+}
+
+/// Resolve raw `goto_on` / `goto_case` table arms to the first explicit
+/// cross-scene `jump` / `farcall` target they reach. The raw table pointers are
+/// intra-scene byte offsets, so the structure JSON emits only scene ids after a
+/// bounded local walk resolves a real scene-level transfer.
+fn dispatch_fanout_scenes(bytecode: &[u8]) -> Vec<SceneId> {
+    let Ok(elements) = decode_bytecode_stream(bytecode) else {
+        return Vec::new();
+    };
+    let by_offset: HashMap<usize, &BytecodeElement> = elements
+        .iter()
+        .map(|element| (element.byte_offset(), element))
+        .collect();
+    let mut scenes = BTreeSet::new();
+    for element in &elements {
+        let BytecodeElement::Command {
+            module_type,
+            module_id,
+            opcode,
+            goto_targets,
+            ..
+        } = element
+        else {
+            continue;
+        };
+        if !is_raw_dispatch_table(*module_type, *module_id, *opcode) {
+            continue;
+        }
+        for target in goto_targets {
+            if let Some(scene) = resolve_arm_cross_scene(*target as usize, &by_offset) {
+                scenes.insert(scene);
+            }
+        }
+    }
+    scenes.into_iter().collect()
+}
+
+fn is_raw_dispatch_table(module_type: u8, module_id: u8, opcode: u16) -> bool {
+    module_type == 0 && module_id == 1 && matches!(opcode, 3 | 4)
+}
+
+fn element_next_offset(element: &BytecodeElement) -> usize {
+    element.byte_offset().saturating_add(element.byte_len())
+}
+
+fn resolve_arm_cross_scene(
+    start_offset: usize,
+    by_offset: &HashMap<usize, &BytecodeElement>,
+) -> Option<SceneId> {
+    let mut queue = vec![start_offset];
+    let mut seen = BTreeSet::new();
+    let mut steps = 0usize;
+    while let Some(offset) = queue.pop() {
+        if steps >= 64 || !seen.insert(offset) {
+            continue;
+        }
+        steps += 1;
+        let Some(element) = by_offset.get(&offset).copied() else {
+            continue;
+        };
+        if let BytecodeElement::Command {
+            module_type,
+            module_id,
+            opcode,
+            raw_bytes,
+            goto_targets,
+            ..
+        } = element
+        {
+            if let Some(scene) = cross_scene_target(*module_type, *module_id, *opcode, raw_bytes) {
+                return Some(scene);
+            }
+            for target in goto_targets {
+                queue.push(*target as usize);
+            }
+        }
+        queue.push(element_next_offset(element));
+    }
+    None
+}
+
+fn cross_scene_target(
+    module_type: u8,
+    module_id: u8,
+    opcode: u16,
+    raw_bytes: &[u8],
+) -> Option<SceneId> {
+    if module_type != 0 || module_id != 1 {
+        return None;
+    }
+    let ints = int_literals(raw_bytes);
+    let scene = match opcode {
+        // `jump(scene[, entrypoint])`, `farcall(scene[, entrypoint])`, and
+        // `farcall_with(scene, entrypoint, args...)`.
+        11 | 12 | 18 => ints.first().copied(),
+        // Older farcall-family command shape:
+        // `farcall(return_scene, return_pc, target_scene, target_pc)`.
+        0x20 => ints.get(2).copied(),
+        _ => None,
+    }?;
+    u16::try_from(scene).ok().filter(|scene| *scene != 0)
+}
+
+fn int_literals(raw_bytes: &[u8]) -> Vec<i32> {
+    let mut values = Vec::new();
+    let mut i = 0usize;
+    while i + 6 <= raw_bytes.len() {
+        if raw_bytes[i] == 0x24 && raw_bytes[i + 1] == 0xff {
+            values.push(i32::from_le_bytes([
+                raw_bytes[i + 2],
+                raw_bytes[i + 3],
+                raw_bytes[i + 4],
+                raw_bytes[i + 5],
+            ]));
+            i += 6;
+        } else {
+            i += 1;
+        }
+    }
+    values
 }
 
 fn selection_control_signal(bytecode: &[u8]) -> &'static str {
@@ -307,4 +444,58 @@ fn flag_optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .position(|arg| arg == name)
         .and_then(|idx| args.get(idx + 1))
         .map(String::as_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MODULE_JMP_TYPE: u8 = 0;
+    const MODULE_JMP_ID: u8 = 1;
+    const OPCODE_GOTO_ON: u16 = 3;
+    const OPCODE_JUMP: u16 = 11;
+    const STORE_REGISTER: [u8; 2] = [0x24, 0xC8];
+
+    fn command_header(module_type: u8, module_id: u8, opcode: u16, arg_count: u16) -> Vec<u8> {
+        vec![
+            0x23,
+            module_type,
+            module_id,
+            opcode as u8,
+            (opcode >> 8) as u8,
+            arg_count as u8,
+            (arg_count >> 8) as u8,
+            0,
+        ]
+    }
+
+    fn jump_to_scene(scene: i32) -> Vec<u8> {
+        let mut bytes = command_header(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_JUMP, 1);
+        bytes.push(b'(');
+        bytes.extend_from_slice(&[0x24, 0xff]);
+        bytes.extend_from_slice(&scene.to_le_bytes());
+        bytes.push(b')');
+        bytes
+    }
+
+    #[test]
+    fn dispatch_fanout_scenes_resolves_raw_dispatch_arms_to_cross_scene_jumps() {
+        let first_jump = jump_to_scene(7000);
+        let second_jump = jump_to_scene(500);
+        let first_jump_offset = 8 + 4 + 1 + 8 + 1;
+        let second_jump_offset = first_jump_offset + first_jump.len();
+
+        let mut bytes = command_header(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_GOTO_ON, 2);
+        bytes.push(b'(');
+        bytes.extend_from_slice(&STORE_REGISTER);
+        bytes.push(b')');
+        bytes.push(b'{');
+        bytes.extend_from_slice(&(first_jump_offset as u32).to_le_bytes());
+        bytes.extend_from_slice(&(second_jump_offset as u32).to_le_bytes());
+        bytes.push(b'}');
+        bytes.extend_from_slice(&first_jump);
+        bytes.extend_from_slice(&second_jump);
+
+        assert_eq!(dispatch_fanout_scenes(&bytes), vec![500, 7000]);
+    }
 }

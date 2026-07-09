@@ -40,6 +40,13 @@ export type WorkCarveDerivation = {
    * branches dispatch to menu/config scenes + a store-relative New-Game routine,
    * not to enumerable per-work story roots); rooting the works needs
    * upstream/operator context the decode does not provide.
+   * `upstream-title-boot-context` — the game-select itself did not enumerate
+   * per-work options, but the decoded upstream title/boot dispatch graph did:
+   * following its goto_on / dispatch fanout reached distinct narrative root
+   * scenes, so the carve rooted works from those real decoded roots.
+   * `operator-manifest` — a typed work-manifest supplied entry-point metadata
+   * and the resolver validated it against the decoded archive before bridging
+   * it into the carve model.
    * `operator-entry-scene-override` — the operator supplied the base (and/or
    * fandisk) entry scene(s) directly via `CarveOptions.entryScenes`, so the
    * carve rooted the works DETERMINISTICALLY from those entry scenes without
@@ -53,6 +60,8 @@ export type WorkCarveDerivation = {
   signal:
     | "game-select-option-branches"
     | "game-select-unresolved-options"
+    | "upstream-title-boot-context"
+    | "operator-manifest"
     | "operator-entry-scene-override"
     | "single-work-no-game-select";
   /** The scene whose select carves the archive (the game-select), or null. */

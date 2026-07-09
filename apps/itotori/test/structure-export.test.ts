@@ -509,6 +509,12 @@ describe("runUtsushiStructureExport (env-gated real-Sweetie byte proof)", () => 
       const dispatchOrder = structure.sceneDispatchOrder;
       expect(Array.isArray(dispatchOrder)).toBe(true);
       expect((dispatchOrder as unknown[]).length).toBeGreaterThan(0);
+      const scenes = structure.scenes;
+      expect(Array.isArray(scenes)).toBe(true);
+      const allScenesCarryFanout = (scenes as Array<Record<string, unknown>>).every((scene) =>
+        Array.isArray(scene.dispatchFanoutScenes),
+      );
+      expect(allScenesCarryFanout).toBe(true);
       const entryScene = structure.entryScene;
       expect(typeof entryScene).toBe("number");
       // The dispatch order leads with the entry scene — the REAL dispatch
