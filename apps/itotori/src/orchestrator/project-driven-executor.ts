@@ -63,6 +63,7 @@ import type {
 import type { EffectiveScope } from "../agents/work-scope/index.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import {
+  AgenticLoopInvariantError,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
@@ -133,20 +134,29 @@ export function unitSurfaceKindInScope(surfaceKind: string, scope: TranslationSc
 // Per-unit real-context resolution
 // ---------------------------------------------------------------------------
 
+type DrivenUnitStructureContext =
+  | {
+      narrativeStructure: NarrativeStructure;
+      sceneId: number;
+    }
+  | {
+      narrativeStructure?: never;
+      sceneId?: never;
+    };
+
 /**
- * Per-unit context resolved by the caller. Structure fields (`narrativeStructure`
- * + `sceneId`) select the deterministic scene slice; `effectiveScope` carries
- * the resolved work scope. A resolver may return either surface or both, which
- * lets the full-project driver compose decoded structure with operator-supplied
+ * Per-unit context resolved by the caller. Structure context is all-or-nothing:
+ * `narrativeStructure` + `sceneId` select the deterministic scene slice, while
+ * omitting both permits scope-only context. `effectiveScope` carries the
+ * resolved work scope. A resolver may return either surface or both, which lets
+ * the full-project driver compose decoded structure with operator-supplied
  * work-scope mapping without fabricating either one.
  */
-export type DrivenUnitContext = {
+export type DrivenUnitContext = DrivenUnitStructureContext & {
   /**
-   * Structure-informed context fields. When `narrativeStructure` is supplied,
-   * `sceneId` must also be supplied so the loop can select the unit's slice.
+   * Structure-informed context fields. Supply both fields or neither; a
+   * scope-only context uses `effectiveScope` without structure fields.
    */
-  narrativeStructure?: NarrativeStructure;
-  sceneId?: number;
   /**
    * itotori-crosswork-context-injection — resolved effective scope for this
    * unit's work: inherited shared glossary/characters plus any per-work
@@ -803,6 +813,7 @@ async function runSingleDrivenUnit(args: {
   // the failing slice). The resolver is a pure function that never throws.
   const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
   try {
+    assertValidDrivenUnitContext(context);
     // Buffer the loop's reviewer-queue writes so they persist in CANONICAL unit
     // order after the concurrent phase — completion interleaving must not
     // reorder them. `loadItemsByBranch` still delegates to the real repository
@@ -931,6 +942,22 @@ async function runSingleDrivenUnit(args: {
       },
     };
   }
+}
+
+function assertValidDrivenUnitContext(context: DrivenUnitContext | undefined): void {
+  if (context === undefined) {
+    return;
+  }
+  const hasNarrativeStructure = context.narrativeStructure !== undefined;
+  const hasSceneId = context.sceneId !== undefined;
+  if (hasNarrativeStructure === hasSceneId) {
+    return;
+  }
+  throw new AgenticLoopInvariantError(
+    hasNarrativeStructure
+      ? "narrativeStructure supplied without sceneId: cannot select the unit's scene slice"
+      : "sceneId supplied without narrativeStructure: cannot select the unit's scene slice",
+  );
 }
 
 /**

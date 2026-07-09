@@ -546,10 +546,33 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     }
   });
 
+  it("isolates malformed structure context instead of silently dropping it", async () => {
+    const sinks = new InMemorySinks();
+    const result = await runProjectDrivenExecutor({
+      ...baseInput(undefined, sinks),
+      maxUnits: 1,
+      resolveUnitContext: (): DrivenUnitContext =>
+        ({ narrativeStructure: makeStructure() }) as unknown as DrivenUnitContext,
+    });
+
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]!.bridgeUnitId).toBe(UNIT_A);
+    expect(result.failures[0]!.errorClass).toBe("AgenticLoopInvariantError");
+    expect(result.failures[0]!.errorMessage).toContain(
+      "narrativeStructure supplied without sceneId",
+    );
+    expect(result.failures[0]!.diagnostic?.step).toBe("executor.drive-unit");
+    expect(result.unitsRun).toBe(0);
+    expect(result.draftsPersisted).toBe(0);
+    expect(result.providerRunsPersisted).toBe(0);
+    expect(sinks.drafts).toHaveLength(0);
+    expect(sinks.providerRuns).toHaveLength(0);
+    expect(result.patchExportCount).toBe(1);
+  });
+
   it("injects inherited cross-work glossary and character/style context with per-work overrides into drafting prompts", async () => {
     const promptsByUnit = new Map<string, string>();
     const sinks = new InMemorySinks();
-    const structure = makeStructure();
     const carve: WorkCarve = {
       archiveRef: "fixture-archive",
       works: [
@@ -619,8 +642,6 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
       providerFactory: promptCapturingProviderFactory(promptsByUnit),
       maxUnits: 3,
       resolveUnitContext: ({ unit }): DrivenUnitContext => ({
-        narrativeStructure: structure,
-        sceneId: SCENE_ID,
         effectiveScope: unit.bridgeUnitId === UNIT_C ? afterScope : baseScope,
       }),
     });
