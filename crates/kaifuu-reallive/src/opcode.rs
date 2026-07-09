@@ -1692,6 +1692,7 @@ fn is_catalogued_command_opcode(module_id: u8, opcode_u16: u16) -> bool {
             1 | 2
                 | 3
                 | 5
+                | 10
                 | 14
                 | 17
                 | 18
