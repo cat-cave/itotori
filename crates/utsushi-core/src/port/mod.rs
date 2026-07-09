@@ -134,12 +134,7 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
             RuntimeOperation::Capture => self.runner.run_capture(&mut *port, &port_request),
             RuntimeOperation::SmokeValidation => self.runner.run_smoke(&mut *port, &port_request),
             RuntimeOperation::BranchDiscovery | RuntimeOperation::ReplayReview => {
-                return Err(format!(
-                    "engine port adapter {} does not support {}",
-                    self.descriptor.name,
-                    operation.as_str()
-                )
-                .into());
+                return Err(EnginePortError::AdapterOperationUnsupported { operation }.into());
             }
         }?;
 
@@ -154,6 +149,10 @@ impl<P: EnginePort + 'static> RuntimeAdapter for EnginePortAdapter<P> {
 
     fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         self.run_lifecycle(request, RuntimeOperation::Trace)
+    }
+
+    fn discover_branches(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        self.run_lifecycle(request, RuntimeOperation::BranchDiscovery)
     }
 
     fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {

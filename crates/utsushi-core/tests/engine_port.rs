@@ -1293,6 +1293,31 @@ fn engine_port_adapter_trace_runs_lifecycle_and_returns_sink_shaped_observations
 }
 
 #[test]
+fn engine_port_adapter_branch_discovery_rejects_with_typed_redacted_diagnostic() {
+    let (_input_dir, input_root) = build_input_root();
+    let adapter = EnginePortAdapter::new(ReferencePort::new()).expect("adapter builds");
+    let request = RuntimeRequest::new(&input_root);
+
+    let error = adapter
+        .discover_branches(&request)
+        .expect_err("engine-port adapters do not implement branch discovery");
+    match error.downcast_ref::<EnginePortError>() {
+        Some(EnginePortError::AdapterOperationUnsupported {
+            operation: RuntimeOperation::BranchDiscovery,
+        }) => {}
+        Some(other) => panic!("expected branch-discovery adapter diagnostic, got {other:?}"),
+        None => panic!("expected EnginePortError, got {error}"),
+    }
+
+    let rendered = format!("{error}");
+    assert!(rendered.contains("branch_discovery"));
+    assert!(
+        !utsushi_core::looks_like_local_path(&rendered),
+        "rendered diagnostic must not look like a local path: {rendered}"
+    );
+}
+
+#[test]
 fn engine_port_adapter_capture_hydrates_managed_artifact_root_from_raw_path() {
     // Regression guard for genaudit1-03: the bridge must hydrate the
     // managed artifact root from the `RuntimeRequest`'s raw `&Path` so a

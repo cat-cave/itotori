@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::{EvidenceTier, FidelityTier};
+use crate::{EvidenceTier, FidelityTier, RuntimeOperation};
 
 use super::manifest::{EnvFieldShape, LifecycleStage, PortCapability};
 
@@ -67,6 +67,13 @@ pub enum EnginePortError {
         reason: CapabilityReason,
     },
 
+    /// The `EnginePortAdapter` cannot drive this runtime operation through
+    /// the lifecycle-shaped `EnginePort` ABI. This is intentionally distinct
+    /// from a manifest capability declaration so callers at the
+    /// `RuntimeAdapter` boundary can match the rejected operation without
+    /// parsing a display string.
+    AdapterOperationUnsupported { operation: RuntimeOperation },
+
     /// Required lifecycle method returned an opaque underlying error.
     Lifecycle {
         stage: LifecycleStage,
@@ -128,6 +135,11 @@ impl fmt::Display for EnginePortError {
                 formatter,
                 "capability {capability_name} unsupported: {reason}",
                 capability_name = capability.as_str(),
+            ),
+            Self::AdapterOperationUnsupported { operation } => write!(
+                formatter,
+                "engine port adapter does not support {}",
+                operation.as_str(),
             ),
             Self::Lifecycle { stage, message, .. } => write!(
                 formatter,
