@@ -18,6 +18,7 @@
 // states are asserted, over msw.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { ReactNode } from "react";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -32,6 +33,7 @@ import {
 import type { ReviewerDetailContext } from "../src/reviewer/index.js";
 import { workspaceComparisonFixture } from "../src/workspace/index.js";
 import { ReviewerDetailScreen } from "../src/ui/screens/ReviewerDetailScreen.js";
+import { ToastProvider } from "../src/ui/toast-host.js";
 import { apiJson } from "./msw-handlers.js";
 
 const REVIEW_ITEM_ID = "reviewer-queue-itotori-082";
@@ -101,10 +103,14 @@ function handleDetail(context: ReviewerDetailContext = historyContext()): void {
   handleComparison();
 }
 
+function renderWithToasts(ui: ReactNode): void {
+  render(<ToastProvider>{ui}</ToastProvider>);
+}
+
 describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
   it("renders the draft-history progression (draft text → approved patch) with attempt + status", async () => {
     handleDetail();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
 
     expect(await screen.findByRole("heading", { name: "Draft history" })).toBeInTheDocument();
     const draftPanel = document.querySelector('[data-panel-id="draft-history"]');
@@ -126,7 +132,7 @@ describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
 
   it("renders the policy-rules identity + branch policy provenance", async () => {
     handleDetail();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
 
     expect(await screen.findByRole("heading", { name: "Style-guide policy" })).toBeInTheDocument();
     const policyPanel = document.querySelector('[data-panel-id="policy-rules"]');
@@ -143,7 +149,7 @@ describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
 
   it("renders the glossary terms + provenance, paginated via the ds Pagination primitive", async () => {
     handleDetail();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
 
     expect(await screen.findByRole("heading", { name: "Glossary" })).toBeInTheDocument();
     const glossaryPanel = document.querySelector('[data-panel-id="glossary"]');
@@ -164,7 +170,7 @@ describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
 
   it("surfaces the loading surface before the read-model settles", () => {
     handleDetail();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
     expect(screen.getByText(/Loading reviewer detail/i)).toBeInTheDocument();
   });
 
@@ -177,7 +183,7 @@ describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
         branchReference: null,
       }),
     );
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
 
     expect(await screen.findByRole("heading", { name: "Draft history" })).toBeInTheDocument();
     // Each enriched panel emits a visible missing-context line, never a blank.
@@ -201,7 +207,7 @@ describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
   it("renders an error state (not a blank panel) when the detail fetch 404s", async () => {
     server.use(http.get(DETAIL_PATH, () => new HttpResponse(null, { status: 404 })));
     handleComparison();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
     const main = await screen.findByRole("main");
     expect(main).toHaveAttribute("data-state", "error");
   });

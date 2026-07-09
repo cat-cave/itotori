@@ -25,6 +25,7 @@
 // (no ad-hoc fetch, no api-contract edits).
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -39,6 +40,7 @@ import {
 import type { ReviewerDetailContext } from "../src/reviewer/index.js";
 import { workspaceComparisonFixture } from "../src/workspace/index.js";
 import { ReviewerDetailScreen } from "../src/ui/screens/ReviewerDetailScreen.js";
+import { ToastProvider } from "../src/ui/toast-host.js";
 import { apiJson } from "./msw-handlers.js";
 import {
   reviewerQueueActionValues,
@@ -175,6 +177,12 @@ function handleDetail(context: ReviewerDetailContext = decideContext()): void {
   handleComparison();
 }
 
+function renderWithToasts(ui: ReactNode): void {
+  // shell-toasts — DecideActionStrip enqueues handoff toasts; the host must
+  // wrap any mount that reaches a successful decide.
+  render(<ToastProvider>{ui}</ToastProvider>);
+}
+
 describe("ReviewerDetailScreen — decide action (canDecide)", () => {
   async function decideStrip(): Promise<HTMLElement> {
     // The detail query settles asynchronously; the strip mounts after
@@ -191,7 +199,7 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
 
   it("renders the Approve + Queue correction buttons for a canDecide reviewer", async () => {
     handleDetail();
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
     expect(
       await screen.findByRole("heading", { name: /QA blocker for the decide-action spec/i }),
     ).toBeInTheDocument();
@@ -220,7 +228,7 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
       }),
     );
 
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
     const strip = await decideStrip();
     const approve = await within(strip).findByRole("button", { name: "Approve" });
     fireEvent.click(approve);
@@ -258,7 +266,7 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
       }),
     );
 
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
     const strip = await decideStrip();
     const queue = await within(strip).findByRole("button", { name: "Queue correction" });
     fireEvent.click(queue);
@@ -311,7 +319,7 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
       ),
     );
 
-    render(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} canDecide />);
     const strip = await decideStrip();
     const approve = await within(strip).findByRole("button", { name: "Approve" });
     fireEvent.click(approve);

@@ -45,6 +45,7 @@ import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { apiClient } from "../client.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { CorrectionScopePanel } from "./CorrectionScopePanel.js";
 import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
 // rev-runtime-evidence-ui — the runtime-evidence panel reads the runtime
@@ -281,18 +282,28 @@ function DecideActionStrip({
   context: ReviewerDetailContext;
   canDecide: boolean;
 }): ReactNode {
+  // Hidden without canDecide (and without an item) — do not mount the
+  // toast-aware body so tests that only assert the gated strip stay free
+  // of a ToastProvider.
+  if (!canDecide || context.item === null) {
+    return null;
+  }
+  return <DecideActionBody context={context} item={context.item} />;
+}
+
+function DecideActionBody({
+  context,
+  item,
+}: {
+  context: ReviewerDetailContext;
+  item: NonNullable<ReviewerDetailContext["item"]>;
+}): ReactNode {
+  const { notifyHandoff } = useWorkflowHandoffToasts();
   const [pending, setPending] = useState<null | "approve" | "queue_correction">(null);
   const [error, setError] = useState<{
     action: "approve" | "queue_correction";
     message: string;
   } | null>(null);
-  if (!canDecide) {
-    return null;
-  }
-  if (context.item === null) {
-    return null;
-  }
-  const item = context.item;
   const reviewerUserId = context.permission.actorUserId;
   async function fire(action: "approve" | "queue_correction"): Promise<void> {
     if (pending !== null) {
@@ -332,6 +343,14 @@ function DecideActionStrip({
       body: { reviewItemId: context.reviewItemId, ...body },
     });
     if (result.state === "ready" && result.data.applied) {
+      // shell-toasts — a successful decide is a workflow handoff: surface it
+      // as a legible toast (approved / correction-queued), matching the
+      // hi-fi studio store wording. Failures stay in-strip (alert).
+      if (action === "approve") {
+        notifyHandoff({ kind: "approved" });
+      } else {
+        notifyHandoff({ kind: "correction-queued" });
+      }
       setPending(null);
       return;
     }

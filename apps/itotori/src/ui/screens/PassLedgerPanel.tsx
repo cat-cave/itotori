@@ -23,6 +23,7 @@ import type { ProjectOverviewReadModel } from "../../project-overview-read-model
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
+import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 
 // ---------------------------------------------------------------------------
 // Pure derivation — per-row view-model + the headline count.
@@ -140,13 +141,25 @@ export function LaunchPassAction({
   projectId: string;
   localeBranchId: string | null;
 }): ReactNode {
-  const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<LaunchPassOutcome | null>(null);
   // Hidden without the steer capability, or when no locale branch is selectable
-  // (nothing to scope the pass to).
+  // (nothing to scope the pass to). Toast host is only required once the
+  // active body mounts.
   if (!canSteer || localeBranchId === null) {
     return null;
   }
+  return <LaunchPassActionBody projectId={projectId} localeBranchId={localeBranchId} />;
+}
+
+function LaunchPassActionBody({
+  projectId,
+  localeBranchId,
+}: {
+  projectId: string;
+  localeBranchId: string;
+}): ReactNode {
+  const { notifyHandoff } = useWorkflowHandoffToasts();
+  const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState<LaunchPassOutcome | null>(null);
   async function launch(): Promise<void> {
     if (pending) {
       return;
@@ -155,14 +168,18 @@ export function LaunchPassAction({
     setPending(true);
     const result = await apiClient.request("projects.launchPass", {
       pathParams: { projectId },
-      body: { localeBranchId: localeBranchId as string },
+      body: { localeBranchId },
     });
     if (result.state === "ready") {
-      setOutcome(
-        result.data.outcome === "started"
-          ? { kind: "started", passNumber: result.data.passNumber ?? 0 }
-          : { kind: "refused", message: result.data.refusalMessage ?? "refused" },
-      );
+      if (result.data.outcome === "started") {
+        const passNumber = result.data.passNumber ?? 0;
+        setOutcome({ kind: "started", passNumber });
+        // shell-toasts — a started pass is a workflow handoff; surface it as
+        // a legible toast in addition to the in-strip status.
+        notifyHandoff({ kind: "pass-launched", passNumber });
+      } else {
+        setOutcome({ kind: "refused", message: result.data.refusalMessage ?? "refused" });
+      }
     } else if (result.state === "error") {
       const code = result.error.code ?? "unavailable";
       const detail = result.error.message ?? `status ${result.error.status}`;

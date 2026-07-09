@@ -29,6 +29,7 @@ import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 import { RedactionGovernor } from "./redaction-governor.js";
 import { ShellFrame, defaultNavigate } from "./shell-frame.js";
+import { ToastProvider } from "./toast-host.js";
 
 export type AppLocation = { pathname: string; search: string };
 
@@ -58,9 +59,11 @@ export function App({
 }): ReactNode {
   return (
     <RedactionGovernor revealSensitive={revealSensitive}>
-      <ShellFrame location={location} navigate={navigate ?? defaultNavigate}>
-        <RoutedScreen location={location} />
-      </ShellFrame>
+      <ToastProvider>
+        <ShellFrame location={location} navigate={navigate ?? defaultNavigate}>
+          <RoutedScreen location={location} />
+        </ShellFrame>
+      </ToastProvider>
     </RedactionGovernor>
   );
 }

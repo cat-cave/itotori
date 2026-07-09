@@ -23,6 +23,8 @@ export function Toast({ toast, onDismiss, className }: ToastProps): ReactNode {
       className={cx("itotori-toast", `itotori-toast--${tone}`, "itotori-riser", className)}
       role="status"
       aria-live="polite"
+      data-toast-id={toast.id}
+      data-toast-tone={tone}
     >
       <span className="itotori-toast__dot" aria-hidden="true" />
       <span className="itotori-toast__message">{toast.message}</span>

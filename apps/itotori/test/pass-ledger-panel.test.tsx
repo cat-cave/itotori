@@ -13,12 +13,14 @@
 // asserted, over msw.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { ReactNode } from "react";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
 import { PassLedgerPanel } from "../src/ui/screens/PassLedgerPanel.js";
+import { ToastProvider } from "../src/ui/toast-host.js";
 import { apiJson } from "./msw-handlers.js";
 import { dashboardStatusFixture, projectOverviewFixture } from "./api-fixtures.js";
 
@@ -115,9 +117,13 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
+function renderWithToasts(ui: ReactNode): void {
+  render(<ToastProvider>{ui}</ToastProvider>);
+}
+
 describe("Overview pass ledger panel", () => {
   it("renders per-pass score / feedback / note rows from the composed read model", async () => {
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
 
     // Panel settles to the sourced row count headline.
     expect(
@@ -201,7 +207,7 @@ describe("Overview pass ledger panel", () => {
   });
 
   it("shows the loading surface before the read model settles", () => {
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
     expect(screen.getByText("Loading pass ledger…")).toBeInTheDocument();
   });
 
@@ -228,7 +234,7 @@ describe("Overview pass ledger panel", () => {
         ),
       ),
     );
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
     expect(
       await screen.findByText("No localization passes have been recorded for this project yet."),
     ).toBeInTheDocument();
@@ -243,7 +249,7 @@ describe("Overview pass ledger panel", () => {
         ),
       ),
     );
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
     expect(await screen.findByText("not permitted to read pass ledger")).toBeInTheDocument();
   });
 });

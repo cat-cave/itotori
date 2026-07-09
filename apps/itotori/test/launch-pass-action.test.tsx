@@ -18,12 +18,14 @@
 // asserted, over msw, through the typed client (no ad-hoc fetch).
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { ApiLaunchPassResponse } from "../src/api-schema.js";
 import { LaunchPassAction, PassLedgerPanel } from "../src/ui/screens/PassLedgerPanel.js";
+import { ToastProvider } from "../src/ui/toast-host.js";
 import { apiJson } from "./msw-handlers.js";
 import { projectOverviewFixture } from "./api-fixtures.js";
 
@@ -56,6 +58,10 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
+function renderWithToasts(ui: ReactNode): void {
+  render(<ToastProvider>{ui}</ToastProvider>);
+}
+
 describe("ovw-launch-pass-action — LaunchPassAction", () => {
   it("hides the action entirely for a non-canSteer user (no button, no POST)", () => {
     render(<LaunchPassAction canSteer={false} projectId="project-1" localeBranchId="locale-1" />);
@@ -78,7 +84,7 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
       }),
     );
 
-    render(<LaunchPassAction canSteer projectId="project-1" localeBranchId="locale-1" />);
+    renderWithToasts(<LaunchPassAction canSteer projectId="project-1" localeBranchId="locale-1" />);
     const button = screen.getByRole("button", { name: "Launch next pass" });
     fireEvent.click(button);
 
@@ -90,14 +96,21 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
     // client, not an ad-hoc fetch.
     expect(observed.url).toContain("/api/projects/project-1/launch-pass");
     expect(observed.body).toEqual({ localeBranchId: "locale-1" });
-    // The started outcome is surfaced in-strip.
-    expect(await screen.findByText(/Pass 7 started/i)).toBeInTheDocument();
+    // The started outcome is surfaced in-strip (and as a shell toast). Use
+    // the launch-pass marker so the toast's "Pass 7 started." copy does not
+    // collide with a free-text getByText.
+    await waitFor(() => {
+      expect(document.querySelector('[data-launch-pass="started"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-launch-pass="started"]')).toHaveTextContent(
+      /Pass 7 started/i,
+    );
   });
 
   it("surfaces a driver refusal as a visible alert (never a silent success)", async () => {
     server.use(http.post(LAUNCH_PATH, () => apiJson("projects.launchPass", refusedResponse)));
 
-    render(<LaunchPassAction canSteer projectId="project-1" localeBranchId="locale-1" />);
+    renderWithToasts(<LaunchPassAction canSteer projectId="project-1" localeBranchId="locale-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Launch next pass" }));
 
     const alert = await screen.findByRole("alert");
@@ -111,7 +124,7 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
         apiJson("projects.overview", { ...projectOverviewFixture, canSteer: true }),
       ),
     );
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
     expect(await screen.findByRole("button", { name: "Launch next pass" })).toBeInTheDocument();
   });
 
@@ -121,7 +134,7 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
         apiJson("projects.overview", { ...projectOverviewFixture, canSteer: false }),
       ),
     );
-    render(<PassLedgerPanel />);
+    renderWithToasts(<PassLedgerPanel />);
     // Wait for the panel to settle (the overview read resolves to `ready`)
     // before asserting the action is absent, so this is not a false negative
     // on a not-yet-mounted panel.
