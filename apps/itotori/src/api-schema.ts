@@ -184,6 +184,10 @@ export type ItotoriApiRouteId =
   | "auth.members.invite"
   | "auth.members.accept"
   | "auth.members.remove"
+  // fnd-caps-context — the actor's Studio capability permission VIEW
+  // (canFlag / canDecide / canSteer / canReveal), resolved from exact
+  // permission grants via the auth-002 effective-permission resolver.
+  | "auth.capabilities"
   // ovw-launch-pass-action — the Overview "launch next pass" mutation: folds
   // queued corrections and DRIVES the next localization pass via the
   // project-driven-executor / localize-fullproject driver. `canSteer`-gated
@@ -369,6 +373,20 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiMembersListResponse: ["schemaVersion", "accountId", "members"],
   ApiRemoveMemberRequest: ["reason", "requestId"],
   ApiRemoveMemberResponse: ["schemaVersion", "removedMember"],
+  // fnd-caps-context — Studio capability permission view wire envelope.
+  ApiAuthCapabilitiesResponse: [
+    "schemaVersion",
+    "actorUserId",
+    "canReadQueue",
+    "canManageQueue",
+    "canFlag",
+    "canDecide",
+    "canSteer",
+    "canReveal",
+    "denials",
+    "denialReasons",
+  ],
+  ApiStudioCapabilityDenials: ["flag", "decide", "steer", "reveal", "queueRead", "queueManage"],
   WorkspaceProjectBrowseReadModel: [
     "schemaVersion",
     "generatedAt",
@@ -720,6 +738,32 @@ export type ApiMembersListResponse = {
   members: ApiMemberRecord[];
 };
 
+/**
+ * fnd-caps-context — the actor's Studio capability permission VIEW on the
+ * wire. Sourced server-side from exact permission grants (capabilities, NOT
+ * roles) via `resolveStudioCapabilityPermissionView`. The SPA CapsProvider
+ * consumes this shape to gate flag / decide / steer / reveal actions.
+ */
+export type ApiAuthCapabilitiesResponse = {
+  schemaVersion: "itotori.auth.capabilities.v0";
+  actorUserId: string;
+  canReadQueue: boolean;
+  canManageQueue: boolean;
+  canFlag: boolean;
+  canDecide: boolean;
+  canSteer: boolean;
+  canReveal: boolean;
+  denials: {
+    flag: string | null;
+    decide: string | null;
+    steer: string | null;
+    reveal: string | null;
+    queueRead: string | null;
+    queueManage: string | null;
+  };
+  denialReasons: string[];
+};
+
 export type ApiRemoveMemberRequest = {
   reason: string | null;
   requestId: string | null;
@@ -882,6 +926,7 @@ export type ItotoriApiResponseBody =
   | ApiMemberResponse
   | ApiMembersListResponse
   | ApiRemoveMemberResponse
+  | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
   | ApiPlaySceneCoverageResponse
   | ApiPlaySetSceneCoverageResponse
@@ -1340,6 +1385,9 @@ export function assertItotoriApiResponse(
       return;
     case "auth.members.remove":
       assertRemoveMemberResponse(value);
+      return;
+    case "auth.capabilities":
+      assertAuthCapabilitiesResponse(value);
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
@@ -5153,6 +5201,46 @@ function assertMembersListResponse(value: unknown): asserts value is ApiMembersL
   const members = asArray(response.members, "ApiMembersListResponse.members");
   for (const [index, member] of members.entries()) {
     assertMemberRecord(member, `ApiMembersListResponse.members[${index}]`);
+  }
+}
+
+function assertAuthCapabilitiesResponse(
+  value: unknown,
+): asserts value is ApiAuthCapabilitiesResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiAuthCapabilitiesResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.capabilities.v0",
+    "ApiAuthCapabilitiesResponse.schemaVersion",
+  );
+  assertString(response.actorUserId, "ApiAuthCapabilitiesResponse.actorUserId");
+  assertBoolean(response.canReadQueue, "ApiAuthCapabilitiesResponse.canReadQueue");
+  assertBoolean(response.canManageQueue, "ApiAuthCapabilitiesResponse.canManageQueue");
+  assertBoolean(response.canFlag, "ApiAuthCapabilitiesResponse.canFlag");
+  assertBoolean(response.canDecide, "ApiAuthCapabilitiesResponse.canDecide");
+  assertBoolean(response.canSteer, "ApiAuthCapabilitiesResponse.canSteer");
+  assertBoolean(response.canReveal, "ApiAuthCapabilitiesResponse.canReveal");
+  const denials = asStrictRecord(
+    response.denials,
+    "ApiAuthCapabilitiesResponse.denials",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
+  );
+  assertNullableString(denials.flag, "ApiAuthCapabilitiesResponse.denials.flag");
+  assertNullableString(denials.decide, "ApiAuthCapabilitiesResponse.denials.decide");
+  assertNullableString(denials.steer, "ApiAuthCapabilitiesResponse.denials.steer");
+  assertNullableString(denials.reveal, "ApiAuthCapabilitiesResponse.denials.reveal");
+  assertNullableString(denials.queueRead, "ApiAuthCapabilitiesResponse.denials.queueRead");
+  assertNullableString(denials.queueManage, "ApiAuthCapabilitiesResponse.denials.queueManage");
+  const denialReasons = asArray(
+    response.denialReasons,
+    "ApiAuthCapabilitiesResponse.denialReasons",
+  );
+  for (const [index, reason] of denialReasons.entries()) {
+    assertString(reason, `ApiAuthCapabilitiesResponse.denialReasons[${index}]`);
   }
 }
 

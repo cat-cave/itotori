@@ -42,6 +42,7 @@ import {
   StatReadout,
 } from "@itotori/ds";
 import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
+import { CapGatedButton, useCapsOptional } from "../caps-context.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { apiClient } from "../client.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -58,14 +59,11 @@ import { RuntimeEvidencePanel } from "./RuntimeEvidencePanel.js";
 //
 // `canDecide` is the hi-fi Studio capability gate for "this user can decide
 // a reviewer queue item" (approve-as-is / queue a correction for the next
-// pass). The downstream `fnd-caps-context` node will lift this onto a real
-// React context; until it lands, callers (incl. tests + future wiring in
-// the SPA shell) pass `canDecide` as an explicit prop. When the prop is
-// undefined we fall back to the existing `context.permission.canManageQueue`
-// so the existing /reviewer-queue/:id route keeps behaving like the action
-// strip already expects when the `queue.manage` permission is held. Wiring
-// this prop from a real context is noted as the follow-on to
-// fnd-caps-context.
+// pass). fnd-caps-context lifts this onto the CapsProvider (sourced from the
+// queue.manage permission grant). Callers may still pass an explicit
+// `canDecide` prop (tests); when omitted we prefer the caps context, then
+// fall back to `context.permission.canManageQueue` so the legacy detail
+// route keeps working when the permission view already carries manage.
 export function ReviewerDetailScreen({
   reviewItemId,
   canDecide,
@@ -73,6 +71,7 @@ export function ReviewerDetailScreen({
   reviewItemId: string;
   canDecide?: boolean;
 }): ReactNode {
+  const caps = useCapsOptional();
   const detail = useApiQuery(
     "reviewer.detail",
     { pathParams: { reviewItemId } },
@@ -107,7 +106,23 @@ export function ReviewerDetailScreen({
   if (!context.permission.canReadQueue) {
     return <DeniedView context={context} />;
   }
-  return <ReadyView context={context} canDecide={canDecide ?? null} />;
+  // Resolution order: explicit prop → caps context → manage permission on
+  // the detail view (the pre-caps fallback).
+  const resolvedCanDecide = canDecide ?? caps?.canDecide ?? context.permission.canManageQueue;
+  const decideDenial =
+    caps?.denials.decide ??
+    (resolvedCanDecide
+      ? null
+      : (context.permission.denialReasons.find((r) => r.includes("queue.manage")) ??
+        "queue.manage permission required to decide"));
+  return (
+    <ReadyView
+      context={context}
+      canDecide={resolvedCanDecide}
+      decideDenial={decideDenial}
+      canReveal={caps?.canReveal ?? false}
+    />
+  );
 }
 
 function DeniedView({ context }: { context: ReviewerDetailContext }): ReactNode {
@@ -136,16 +151,15 @@ function DeniedView({ context }: { context: ReviewerDetailContext }): ReactNode 
 function ReadyView({
   context,
   canDecide,
+  decideDenial,
+  canReveal,
 }: {
   context: ReviewerDetailContext;
-  canDecide: boolean | null;
+  canDecide: boolean;
+  decideDenial: string | null;
+  canReveal: boolean;
 }): ReactNode {
   const item = context.item;
-  // `null` → fall back to the existing manage permission so the legacy
-  // route still shows the action strip whenever `queue.manage` is held.
-  // `true` / `false` → an explicit capability decision from the caller
-  // (today: the test or a future caps-context wiring).
-  const resolvedCanDecide = canDecide ?? context.permission.canManageQueue;
   return (
     <main
       className="itotori-shell reviewer-detail"
@@ -153,13 +167,13 @@ function ReadyView({
       data-state="ready"
       data-review-item-id={context.reviewItemId}
       data-can-manage={context.permission.canManageQueue ? "true" : "false"}
-      data-can-decide={resolvedCanDecide ? "true" : "false"}
+      data-can-decide={canDecide ? "true" : "false"}
     >
       <ShellHeader
         eyebrow="Reviewer detail"
         title={item === null ? context.reviewItemId : item.summary}
       >
-        <ActionStrip context={context} canDecide={resolvedCanDecide} />
+        <ActionStrip context={context} canDecide={canDecide} decideDenial={decideDenial} />
       </ShellHeader>
       <DiagnosticBanner context={context} />
       <section className="itotori-section-grid" aria-label="Reviewer detail panels">
@@ -182,7 +196,7 @@ function ReadyView({
         <GlossaryPanel context={context} />
         <BranchReferencePanel context={context} />
         <QaFindingsPanel context={context} />
-        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
+        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} canRevealSensitive={canReveal} />
         <RationalePanel context={context} />
         <TransitionsPanel context={context} />
       </section>
@@ -225,20 +239,23 @@ function actionButtonsForKind(
 function ActionStrip({
   context,
   canDecide,
+  decideDenial,
 }: {
   context: ReviewerDetailContext;
   canDecide: boolean;
+  decideDenial: string | null;
 }): ReactNode {
   if (context.item === null) {
     return null;
   }
-  // The legacy per-kind buttons stay disabled unless `queue.manage` is held;
-  // the new functional decide-action buttons (in `DecideActionStrip`) are
-  // gated strictly on the passed-down `canDecide` capability (approve +
-  // queue-correction fire the typed single-action API). Both surfaces share
-  // the `canDecide` prop so an actor without the capability sees nothing
-  // actionable in the strip at all.
+  // The legacy per-kind buttons stay disabled + explained without
+  // queue.manage; the functional decide-action buttons (DecideActionStrip)
+  // are gated on the canDecide capability. Both surfaces share the
+  // capability so a denied actor sees disabled controls with reasons.
   const allowedManage = context.permission.canManageQueue;
+  const manageDenial =
+    context.permission.denialReasons.find((r) => r.includes("queue.manage")) ??
+    "queue.manage permission required to take action";
   return (
     <div className="itotori-action-strip" aria-label="Reviewer actions">
       {actionButtonsForKind(context.item.itemKind).map(({ action, label }) => (
@@ -248,12 +265,13 @@ function ActionStrip({
           data-action={action}
           disabled={!allowedManage}
           aria-disabled={!allowedManage}
-          title={allowedManage ? undefined : "queue.manage permission required to take action"}
+          title={allowedManage ? undefined : manageDenial}
+          aria-description={allowedManage ? undefined : manageDenial}
         >
           {label}
         </button>
       ))}
-      <DecideActionStrip context={context} canDecide={canDecide} />
+      <DecideActionStrip context={context} canDecide={canDecide} decideDenial={decideDenial} />
     </div>
   );
 }
@@ -273,20 +291,39 @@ function ActionStrip({
 //
 // Both fire THROUGH `apiClient.request("reviewer.itemAction", ...)` — the
 // typed single-item seam that already exists in the API contract, NOT an
-// ad-hoc fetch and NOT a new api-contract route. Without `canDecide` the
-// strip renders empty (hidden, not disabled, per the brief).
+// ad-hoc fetch and NOT a new api-contract route.
+//
+// fnd-caps-context — a denied decide action is DISABLED + EXPLAINED (not a
+// silent no-op). When canDecide is true the functional body mounts; when
+// false the strip still renders the buttons disabled with the denial reason
+// so the actor sees *why* decide is unavailable.
 function DecideActionStrip({
   context,
   canDecide,
+  decideDenial,
 }: {
   context: ReviewerDetailContext;
   canDecide: boolean;
+  decideDenial: string | null;
 }): ReactNode {
-  // Hidden without canDecide (and without an item) — do not mount the
-  // toast-aware body so tests that only assert the gated strip stay free
-  // of a ToastProvider.
-  if (!canDecide || context.item === null) {
+  if (context.item === null) {
     return null;
+  }
+  if (!canDecide) {
+    const reason = decideDenial ?? "queue.manage permission required to decide";
+    return (
+      <span className="itotori-decide-strip" data-decide-strip="denied" aria-label="Decide actions">
+        <CapGatedButton capability="decide" allowed={false} data-action="approve">
+          Approve
+        </CapGatedButton>
+        <CapGatedButton capability="decide" allowed={false} data-action="queue_correction">
+          Queue correction
+        </CapGatedButton>
+        <span role="note" data-cap-denial="decide">
+          {reason}
+        </span>
+      </span>
+    );
   }
   return <DecideActionBody context={context} item={context.item} />;
 }

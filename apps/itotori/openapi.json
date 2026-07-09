@@ -70,6 +70,57 @@
         ],
         "type": "object"
       },
+      "ApiAuthCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {
+            "type": "string"
+          },
+          "canDecide": {
+            "type": "boolean"
+          },
+          "canFlag": {
+            "type": "boolean"
+          },
+          "canManageQueue": {
+            "type": "boolean"
+          },
+          "canReadQueue": {
+            "type": "boolean"
+          },
+          "canReveal": {
+            "type": "boolean"
+          },
+          "canSteer": {
+            "type": "boolean"
+          },
+          "denialReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "denials": {
+            "$ref": "#/components/schemas/ApiStudioCapabilityDenials"
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.capabilities.v0"
+          }
+        },
+        "required": [
+          "actorUserId",
+          "canDecide",
+          "canFlag",
+          "canManageQueue",
+          "canReadQueue",
+          "canReveal",
+          "canSteer",
+          "denialReasons",
+          "denials",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "ApiBenchmarkReportsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -896,6 +947,80 @@
           "patchResultId",
           "runtimeReportId",
           "status"
+        ],
+        "type": "object"
+      },
+      "ApiStudioCapabilityDenials": {
+        "additionalProperties": false,
+        "properties": {
+          "decide": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flag": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queueManage": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queueRead": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reveal": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steer": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "decide",
+          "flag",
+          "queueManage",
+          "queueRead",
+          "reveal",
+          "steer"
         ],
         "type": "object"
       },
@@ -1982,6 +2107,75 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/capabilities": {
+      "get": {
+        "operationId": "authCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiAuthCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Resolve the caller's Studio capability permission view (flag/decide/steer/reveal).",
+        "x-itotoriRouteId": "auth.capabilities"
+      }
+    },
     "/api/auth/members": {
       "get": {
         "operationId": "authMembersList",

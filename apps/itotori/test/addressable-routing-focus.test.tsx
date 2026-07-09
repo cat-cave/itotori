@@ -17,7 +17,7 @@ import type {
 import { workspaceComparisonFixture, workspaceSceneBrowseFixture } from "../src/workspace/index.js";
 import { App } from "../src/ui/App.js";
 import { hrefForAddressable } from "../src/ui/addressable-routing.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authCapabilitiesMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const PROJECT_ID = "project-addr";
@@ -82,6 +82,7 @@ function comparisonFixture(): WorkspaceComparisonReadModel {
 }
 
 const server = setupServer(
+  authCapabilitiesMswHandler,
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
   http.get("*/api/workspace/scenes", () => apiJson("workspace.scenes", sceneBrowseFixture())),

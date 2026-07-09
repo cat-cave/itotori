@@ -194,6 +194,36 @@ export const itotoriApiMswHandlers = [
   ...itotoriProjectMutationMswHandlers,
 ];
 
+/**
+ * fnd-caps-context — fully-granted local-user Studio capability view. Used by
+ * SPA shell tests so the CapsProvider's GET `/api/auth/capabilities` settles
+ * without a real auth backend.
+ */
+export const authCapabilitiesGrantedFixture = {
+  schemaVersion: "itotori.auth.capabilities.v0" as const,
+  actorUserId: "local-user",
+  canReadQueue: true,
+  canManageQueue: true,
+  canFlag: true,
+  canDecide: true,
+  canSteer: true,
+  canReveal: true,
+  denials: {
+    flag: null,
+    decide: null,
+    steer: null,
+    reveal: null,
+    queueRead: null,
+    queueManage: null,
+  },
+  denialReasons: [] as string[],
+};
+
+/** MSW handler for GET `/api/auth/capabilities` (host-agnostic). */
+export const authCapabilitiesMswHandler = http.get("*/api/auth/capabilities", () =>
+  apiJson("auth.capabilities", authCapabilitiesGrantedFixture),
+);
+
 export function apiJson(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): HttpResponse {
   assertItotoriApiResponse(routeId, body);
   return HttpResponse.json(body);

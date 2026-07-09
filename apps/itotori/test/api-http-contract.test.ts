@@ -67,6 +67,8 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "catalog.benchmarkSeeds" },
   { routeId: "catalog.opportunities" },
   { routeId: "auth.members.list", init: { query: { accountId: "account-local" } } },
+  // fnd-caps-context — Studio capability permission view (flag/decide/steer/reveal).
+  { routeId: "auth.capabilities" },
   {
     routeId: "terminology.search",
     init: { query: { q: "Hero", localeBranchId: "locale-1" } },

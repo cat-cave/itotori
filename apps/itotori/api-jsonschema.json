@@ -71,6 +71,57 @@
       ],
       "type": "object"
     },
+    "ApiAuthCapabilitiesResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {
+          "type": "string"
+        },
+        "canDecide": {
+          "type": "boolean"
+        },
+        "canFlag": {
+          "type": "boolean"
+        },
+        "canManageQueue": {
+          "type": "boolean"
+        },
+        "canReadQueue": {
+          "type": "boolean"
+        },
+        "canReveal": {
+          "type": "boolean"
+        },
+        "canSteer": {
+          "type": "boolean"
+        },
+        "denialReasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "denials": {
+          "$ref": "#/definitions/ApiStudioCapabilityDenials"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.capabilities.v0"
+        }
+      },
+      "required": [
+        "actorUserId",
+        "canDecide",
+        "canFlag",
+        "canManageQueue",
+        "canReadQueue",
+        "canReveal",
+        "canSteer",
+        "denialReasons",
+        "denials",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ApiBenchmarkReportsResponse": {
       "additionalProperties": false,
       "properties": {
@@ -897,6 +948,80 @@
         "patchResultId",
         "runtimeReportId",
         "status"
+      ],
+      "type": "object"
+    },
+    "ApiStudioCapabilityDenials": {
+      "additionalProperties": false,
+      "properties": {
+        "decide": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "flag": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queueManage": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queueRead": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reveal": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "steer": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "decide",
+        "flag",
+        "queueManage",
+        "queueRead",
+        "reveal",
+        "steer"
       ],
       "type": "object"
     },
