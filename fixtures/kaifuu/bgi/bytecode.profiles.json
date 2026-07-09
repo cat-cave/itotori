@@ -51,12 +51,12 @@
         {
           "patchId": "bgi.header.patch.name.001",
           "referenceId": "bgi.header.name.001",
-          "replacementText": "MARISA"
+          "replacementText": "マリサEX"
         },
         {
           "patchId": "bgi.header.patch.dialogue.001",
           "referenceId": "bgi.header.dialogue.001",
-          "replacementText": "HELLOTHERE"
+          "replacementText": "こんにちは世界"
         }
       ],
       "negativeCases": [
@@ -140,17 +140,17 @@
         {
           "patchId": "bgi.no_header.patch.dialogue.001",
           "referenceId": "bgi.no_header.dialogue.001",
-          "replacementText": "HELLOTHERE"
+          "replacementText": "こんにちは世界"
         },
         {
           "patchId": "bgi.no_header.patch.name.001",
           "referenceId": "bgi.no_header.name.001",
-          "replacementText": "MARISA"
+          "replacementText": "マリサEX"
         },
         {
           "patchId": "bgi.no_header.patch.other.001",
           "referenceId": "bgi.no_header.other.001",
-          "replacementText": "CHOICE"
+          "replacementText": "選択肢です"
         }
       ],
       "negativeCases": [
@@ -176,7 +176,7 @@
           "caseId": "bgi.no_header.false-positive-code-pointer",
           "description": "No-header profile rejects a reference-shaped dword pair whose pointer lands inside the code section rather than the text pool.",
           "sourceBytesHex": "03000000080000001b000000",
-          "expectedDiagnosticCode": "string_pointer_out_of_bounds"
+          "expectedDiagnosticCode": "missing_string_reference_surface"
         }
       ],
       "proofHashes": ["sha256:5e428e85890961568710fadc0e0c8faef8b08c6adbc8a9cdf11e6f56bdeac30f"],

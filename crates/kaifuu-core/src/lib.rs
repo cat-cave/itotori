@@ -245,8 +245,9 @@ pub use bgi_bytecode_fixture::{
     BgiBytecodeNegativeCase, BgiBytecodeNegativeCaseReport, BgiBytecodeParseError,
     BgiBytecodeParserSurface, BgiBytecodePatchCase, BgiBytecodePatchError, BgiBytecodePatchReport,
     BgiBytecodeProfile, BgiBytecodeReport, BgiBytecodeStringReference, BgiBytecodeSurface,
-    BgiBytecodeTextSurface, BgiBytecodeVariant, parse_bgi_bytecode_entry, patch_bgi_bytecode_entry,
-    read_bgi_bytecode_fixture, run_bgi_bytecode_fixture,
+    BgiBytecodeTextSurface, BgiBytecodeVariant, detect_bgi_bytecode_variant,
+    parse_bgi_bytecode_bytes, parse_bgi_bytecode_entry, patch_bgi_bytecode_bytes,
+    patch_bgi_bytecode_entry, read_bgi_bytecode_fixture, run_bgi_bytecode_fixture,
 };
 pub use bgi_detector_fixture::{
     BGI_DETECTOR_FIXTURE_SCHEMA_VERSION, BGI_DETECTOR_REPORT_SCHEMA_VERSION,

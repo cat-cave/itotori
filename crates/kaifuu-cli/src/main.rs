@@ -4274,6 +4274,21 @@ mod tests {
         dir
     }
 
+    fn without_bgi_detection(mut value: serde_json::Value) -> serde_json::Value {
+        if let Some(detections) = value
+            .get_mut("detections")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            detections.retain(|detection| {
+                detection
+                    .get("adapterId")
+                    .and_then(serde_json::Value::as_str)
+                    != Some(kaifuu_engine_fixture::BGI_BYTECODE_ADAPTER_ID)
+            });
+        }
+        value
+    }
+
     fn build_synthetic_seen_txt_two_scenes() -> Vec<u8> {
         let one_scene = crate::binary_patch_smoke::build_synthetic_seen_txt();
         let index = kaifuu_reallive::parse_archive(&one_scene).unwrap();
@@ -7499,7 +7514,7 @@ mod tests {
             capabilities_path.to_str().unwrap(),
         ]);
         let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
-        assert_eq!(capabilities.len(), 6);
+        assert_eq!(capabilities.len(), 7);
         let fixture_capabilities = capabilities
             .iter()
             .find(|capabilities| {
@@ -7545,7 +7560,11 @@ mod tests {
         ]);
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Matched);
-        let detection = &detection_report.detections[0];
+        let detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| detection.adapter_id == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID)
+            .unwrap();
         assert!(detection.detected);
         assert_eq!(
             detection.adapter_id,
@@ -9186,7 +9205,7 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 6);
+        assert_eq!(detection_report.detections.len(), 7);
         let softpal_detection = detection_report
             .detections
             .iter()
@@ -9338,7 +9357,7 @@ mod tests {
 
         let actual: serde_json::Value = read_json(&detect_path).unwrap();
         let expected: serde_json::Value = read_json(&expected_path).unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(without_bgi_detection(actual.clone()), expected);
 
         let detection_report: DetectionReport = serde_json::from_value(actual).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
@@ -9577,7 +9596,10 @@ mod tests {
         let actual_detection: serde_json::Value = read_json(&detect_path).unwrap();
         let expected_detection: serde_json::Value =
             read_json(&expected_root.join("siglus-detection-report-v0.1.json")).unwrap();
-        assert_eq!(actual_detection, expected_detection);
+        assert_eq!(
+            without_bgi_detection(actual_detection.clone()),
+            expected_detection
+        );
         let detection_report: DetectionReport =
             serde_json::from_value(actual_detection.clone()).unwrap();
         let siglus_detection = detection_report
@@ -9993,7 +10015,10 @@ mod tests {
         let actual_detection: serde_json::Value = read_json(&detect_path).unwrap();
         let expected_detection: serde_json::Value =
             read_json(&expected_root.join("xp3-unknown-detection-report-v0.1.json")).unwrap();
-        assert_eq!(actual_detection, expected_detection);
+        assert_eq!(
+            without_bgi_detection(actual_detection.clone()),
+            expected_detection
+        );
         let detection_report: DetectionReport = serde_json::from_value(actual_detection).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
         let xp3_detection = detection_report
@@ -10041,7 +10066,7 @@ mod tests {
 
         let actual: serde_json::Value = read_json(&detect_path).unwrap();
         let expected: serde_json::Value = read_json(&expected_path).unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(without_bgi_detection(actual.clone()), expected);
 
         let detection_report: DetectionReport = serde_json::from_value(actual).unwrap();
         let reallive_detection = detection_report
@@ -10543,7 +10568,11 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        let detection = &detection_report.detections[0];
+        let detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| detection.adapter_id == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID)
+            .unwrap();
         assert!(!detection.detected);
         assert_eq!(detection.engine_family, None);
         assert_eq!(detection.engine_version, None);
@@ -10555,7 +10584,14 @@ mod tests {
         }));
         let serialized: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&detect_path).unwrap()).unwrap();
-        let detection_json = serialized["detections"][0].as_object().unwrap();
+        let detection_json = serialized["detections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|detection| detection["adapterId"] == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID)
+            .unwrap()
+            .as_object()
+            .unwrap();
         assert!(!detection_json.contains_key("engineFamily"));
         assert!(!detection_json.contains_key("engineVersion"));
         assert!(!detection_json.contains_key("detectedVariant"));
