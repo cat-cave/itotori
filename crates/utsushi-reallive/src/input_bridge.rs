@@ -40,7 +40,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use utsushi_core::clock::{ClockOrigin, LogicalClockTick};
-use utsushi_core::input::{InputError, InputEvent};
+use utsushi_core::input::{InputError, InputEvent, RawInputCode};
 use utsushi_core::replay::{ReplayLog, ReplayLogBuilder, ReplayMetadata};
 
 use crate::rlop::{
@@ -53,6 +53,8 @@ use crate::rlop::{
 pub const BRIDGE_ADAPTER_NAME: &str = "utsushi-reallive";
 /// Adapter version recorded in a captured [`ReplayLog`]'s metadata.
 pub const BRIDGE_ADAPTER_VERSION: &str = "0.1.0-alpha";
+pub const REALLIVE_RAW_INPUT_ENGINE: &str = "reallive";
+pub const REALLIVE_RAW_SECONDARY_RELEASE: &str = "mouse.secondary.release";
 
 /// The engine-general shape of the input-gated yield the runtime is suspended
 /// on. Classified from a queued [`LongOp`]'s private-state magic byte.
@@ -444,6 +446,28 @@ impl BridgeScheduler {
             }
         }
     }
+
+    fn cancel_object_select(&mut self, head: &mut LongOp, pending: PendingYield) -> bool {
+        let PendingYield::ObjectSelect { .. } = pending else {
+            return false;
+        };
+        let Ok(mut select) = ObjectSelectLongOp::try_from_longop(head) else {
+            return false;
+        };
+        if !select.is_cancelable() {
+            return false;
+        }
+        select.cancel();
+        let LongOp { id, private_state } = select.into_longop();
+        head.id = id;
+        head.private_state = private_state;
+        self.choices_made = self.choices_made.saturating_add(1);
+        true
+    }
+}
+
+fn is_reallive_secondary_release(code: &RawInputCode) -> bool {
+    code.engine == REALLIVE_RAW_INPUT_ENGINE && code.code == REALLIVE_RAW_SECONDARY_RELEASE
 }
 
 impl LongOpScheduler for BridgeScheduler {
@@ -473,6 +497,11 @@ impl LongOpScheduler for BridgeScheduler {
                 InputEvent::Text {} | InputEvent::Advance {} => {
                     self.commit(head, pending, None);
                     return LongOpReadiness::Ready;
+                }
+                InputEvent::Raw { code } if is_reallive_secondary_release(&code) => {
+                    if self.cancel_object_select(head, pending) {
+                        return LongOpReadiness::Ready;
+                    }
                 }
                 // Non-gate toggles / state requests: recorded, no commit.
                 InputEvent::Skip { .. }
@@ -507,6 +536,12 @@ mod tests {
         SelectLongOp::try_from_longop(head)
             .ok()
             .and_then(|s| s.chosen())
+    }
+
+    fn object_head(cancelable: bool) -> LongOp {
+        let mut select = ObjectSelectLongOp::try_new(LongOpId(3), vec![7, 2]).expect("bounded");
+        select.set_cancelable(cancelable);
+        select.into_longop()
     }
 
     #[test]
@@ -608,5 +643,86 @@ mod tests {
         // Replaying past the log's end suspends (no more input).
         let mut s2 = select_head(3);
         assert_eq!(replay.poll(&mut s2), LongOpReadiness::Pending);
+    }
+
+    #[test]
+    fn raw_secondary_release_cancels_only_cancelable_object_selects() {
+        let queue = UserInputQueue::new();
+        let mut scheduler = BridgeScheduler::user(queue.clone());
+        let mut cancelable = object_head(true);
+        queue.push(InputEvent::raw(
+            REALLIVE_RAW_INPUT_ENGINE,
+            REALLIVE_RAW_SECONDARY_RELEASE,
+        ));
+        assert_eq!(scheduler.poll(&mut cancelable), LongOpReadiness::Ready);
+        assert_eq!(
+            ObjectSelectLongOp::try_from_longop(&cancelable)
+                .expect("object")
+                .outcome(),
+            crate::rlop::ObjectSelectOutcome::Cancelled
+        );
+
+        let queue = UserInputQueue::new();
+        let mut scheduler = BridgeScheduler::user(queue.clone());
+        for mut head in [object_head(false), select_head(2)] {
+            queue.push(InputEvent::raw(
+                REALLIVE_RAW_INPUT_ENGINE,
+                REALLIVE_RAW_SECONDARY_RELEASE,
+            ));
+            assert_eq!(scheduler.poll(&mut head), LongOpReadiness::Pending);
+        }
+    }
+
+    #[test]
+    fn raw_cancel_replay_is_deterministic_and_other_gestures_do_not_cancel() {
+        let queue = UserInputQueue::new();
+        let mut capture = BridgeScheduler::user(queue.clone());
+        let mut source = object_head(true);
+        queue.push(InputEvent::raw(
+            REALLIVE_RAW_INPUT_ENGINE,
+            REALLIVE_RAW_SECONDARY_RELEASE,
+        ));
+        assert_eq!(capture.poll(&mut source), LongOpReadiness::Ready);
+        let log = capture.build_log("raw-cancel").expect("log");
+        let mut replay = BridgeScheduler::replay(&log);
+        let mut replayed = object_head(true);
+        assert_eq!(replay.poll(&mut replayed), LongOpReadiness::Ready);
+        assert_eq!(replayed.private_state, source.private_state);
+
+        let queue = UserInputQueue::new();
+        let mut scheduler = BridgeScheduler::user(queue.clone());
+        let mut pointer = object_head(true);
+        queue.push(InputEvent::Pointer {
+            x: 0.5,
+            y: 0.5,
+            button: PointerButton::Secondary,
+        });
+        queue.push(InputEvent::raw(
+            REALLIVE_RAW_INPUT_ENGINE,
+            "key.escape.release",
+        ));
+        queue.push(InputEvent::raw(
+            "other-engine",
+            REALLIVE_RAW_SECONDARY_RELEASE,
+        ));
+        assert_eq!(scheduler.poll(&mut pointer), LongOpReadiness::Pending);
+        let mut advance = object_head(true);
+        queue.push(InputEvent::advance());
+        assert_eq!(scheduler.poll(&mut advance), LongOpReadiness::Ready);
+        assert_eq!(
+            ObjectSelectLongOp::try_from_longop(&advance)
+                .expect("object")
+                .outcome(),
+            crate::rlop::ObjectSelectOutcome::DisplayIndex(0)
+        );
+        let mut text = object_head(true);
+        queue.push(InputEvent::text());
+        assert_eq!(scheduler.poll(&mut text), LongOpReadiness::Ready);
+        assert_eq!(
+            ObjectSelectLongOp::try_from_longop(&text)
+                .expect("object")
+                .outcome(),
+            crate::rlop::ObjectSelectOutcome::DisplayIndex(0)
+        );
     }
 }

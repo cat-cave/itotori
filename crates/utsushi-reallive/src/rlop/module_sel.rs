@@ -198,10 +198,11 @@ pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// as `select_objbtn` (`4`) but calls `set_cancelable()` so the user may escape
 /// the prompt. Observed 3× on real Sweetie HD bytes — ALL at `module_type=0`
 /// (0× at types 1/2; 0× in Kanon), so registering `(0,2,14)` fully covers every
-/// real occurrence. [`SelectObjbtnCancelOp`] remains on the legacy generic
-/// [`dispatch_select`] / [`SelectLongOp`] path pending separate cancel and
-/// input work. Previously this opcode was a catalog `Advance` no-op
-/// (`module_catalog` `(2,14)`); it is now a real Sel op.
+/// real occurrence. [`SelectObjbtnCancelOp`] creates a cancelable A3 carrier
+/// over the same foreground bindings as opcode `4`; only the exact Raw
+/// secondary-release input token cancels it. Other cancel/input affordances
+/// remain outside this opcode path. Previously this opcode was a catalog
+/// `Advance` no-op (`module_catalog` `(2,14)`); it is now a real Sel op.
 pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
 
 /// Stable enum naming the select-family variants. Used by the typed
@@ -480,6 +481,9 @@ pub enum SelRuntimeWarning {
         observed: usize,
     },
     ObjectButtonCarrierTooLarge {
+        observed: usize,
+    },
+    ObjectButtonCancelArgsInvalid {
         observed: usize,
     },
 }
@@ -795,27 +799,32 @@ fn dispatch_select_objbtn(
         });
         return DispatchOutcome::Advance;
     };
+    dispatch_object_select(runtime, *group, false)
+}
+
+fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) -> DispatchOutcome {
     let Some(graphics) = runtime.graphics() else {
-        runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group: *group });
+        runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group });
         return DispatchOutcome::Advance;
     };
     let return_values: Vec<i32> = graphics
-        .foreground_button_candidates(*group)
+        .foreground_button_candidates(group)
         .into_iter()
         .map(|candidate| candidate.options.button_number)
         .collect();
     if return_values.is_empty() {
-        runtime.record_warning(SelRuntimeWarning::ObjectButtonCandidatesEmpty { group: *group });
+        runtime.record_warning(SelRuntimeWarning::ObjectButtonCandidatesEmpty { group });
         return DispatchOutcome::Advance;
     }
-    let select = match ObjectSelectLongOp::try_new(runtime.id_sequence().allocate(), return_values)
-    {
-        Ok(select) => select,
-        Err(ObjectSelectLongOpBuildError::TooManyReturnValues { observed }) => {
-            runtime.record_warning(SelRuntimeWarning::ObjectButtonCarrierTooLarge { observed });
-            return DispatchOutcome::Advance;
-        }
-    };
+    let mut select =
+        match ObjectSelectLongOp::try_new(runtime.id_sequence().allocate(), return_values) {
+            Ok(select) => select,
+            Err(ObjectSelectLongOpBuildError::TooManyReturnValues { observed }) => {
+                runtime.record_warning(SelRuntimeWarning::ObjectButtonCarrierTooLarge { observed });
+                return DispatchOutcome::Advance;
+            }
+        };
+    select.set_cancelable(cancelable);
     let LongOp { id, private_state } = select.into_longop();
     DispatchOutcome::Yield {
         longop_id: id,
@@ -878,7 +887,18 @@ impl SelectObjbtnCancelOp {
 
 impl RLOperation for SelectObjbtnCancelOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::SelectObjbtnCancel, &self.runtime, vm, args)
+        let group = match args {
+            [ExprValue::Int(group)] | [ExprValue::Int(group), ExprValue::Int(_)] => *group,
+            _ => {
+                self.runtime
+                    .record_warning(SelRuntimeWarning::ObjectButtonCancelArgsInvalid {
+                        observed: args.len(),
+                    });
+                return DispatchOutcome::Advance;
+            }
+        };
+        let _ = vm;
+        dispatch_object_select(&self.runtime, group, true)
     }
 }
 
@@ -1256,6 +1276,59 @@ mod tests {
         assert!(sink.lines.lock().expect("lock").is_empty());
         assert!(matches!(
             SelectObjbtnOp::new(Arc::clone(&runtime))
+                .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
+            DispatchOutcome::Advance
+        ));
+        assert_eq!(
+            runtime.take_warnings(),
+            vec![SelRuntimeWarning::ObjectButtonCandidatesEmpty { group: 8 }]
+        );
+    }
+
+    #[test]
+    fn select_objbtn_cancel_overloads_ignore_select_se_and_set_cancelable() {
+        use crate::graphics_objects::{ButtonOptions, GraphicsLayer, GraphicsObject};
+
+        let sink = Arc::new(CollectingSink::new());
+        let graphics = Arc::new(GraphicsRuntime::new());
+        graphics.with_stack_mut(|stack| {
+            for (slot, number) in [(11, 2), (3, 7)] {
+                let mut object = GraphicsObject::image("test");
+                object.button_options = Some(ButtonOptions {
+                    action: 0,
+                    se: 0,
+                    group: 5,
+                    button_number: number,
+                });
+                stack
+                    .set_layer(GraphicsLayer::ForegroundObject, slot, object)
+                    .expect("slot");
+            }
+        });
+        let runtime = Arc::new(SelRuntime::with_graphics(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
+            graphics,
+        ));
+        for args in [
+            &[ExprValue::Int(5)][..],
+            &[ExprValue::Int(5), ExprValue::Int(99)][..],
+        ] {
+            let DispatchOutcome::Yield {
+                longop_id,
+                private_state,
+            } = SelectObjbtnCancelOp::new(Arc::clone(&runtime)).dispatch(&mut Vm::new(1, 0), args)
+            else {
+                panic!("cancel object group must yield");
+            };
+            let carrier =
+                ObjectSelectLongOp::try_from_longop(&LongOp::new(longop_id, private_state))
+                    .expect("object carrier");
+            assert_eq!(carrier.return_values(), &[7, 2]);
+            assert!(carrier.is_cancelable());
+        }
+        assert!(sink.lines.lock().expect("lock").is_empty());
+        assert!(matches!(
+            SelectObjbtnCancelOp::new(Arc::clone(&runtime))
                 .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
             DispatchOutcome::Advance
         ));

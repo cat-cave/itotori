@@ -892,10 +892,7 @@ impl Vm {
                                 })
                         }
                         crate::rlop::ObjectSelectOutcome::Cancelled => {
-                            self.warnings
-                                .push(VmWarning::ObjectChoiceResumeUnsupportedOutcome {
-                                    longop_id: popped.id,
-                                })
+                            self.banks.set_store((-1_i32) as u32)
                         }
                     },
                     Err(err) => self.warnings.push(VmWarning::ObjectChoiceResumeMalformed {
@@ -2276,11 +2273,13 @@ mod tests {
         );
         let v1_state = v1.private_state.clone();
         vm.enqueue_longop(v1);
-        vm.enqueue_longop(
-            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2])
-                .expect("bounded")
-                .into_longop(),
-        );
+        let mut v2 =
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2]).expect("bounded");
+        v2.set_cancelable(true);
+        v2.cancel();
+        let v2 = v2.into_longop();
+        let v2_state = v2.private_state.clone();
+        vm.enqueue_longop(v2);
         let tree = vm.inspect_state().expect("inspect");
         assert!(tree.len() >= 6); // manifest + scene + pc + halted + stack + longop + var-banks manifest + store
         let manifest_path = StatePath::parse(MANIFEST_PATH).expect("path");
@@ -2295,34 +2294,28 @@ mod tests {
             .expect("v1 carrier");
         assert_eq!(v1.flags(), 0);
         assert_eq!(v1.outcome(), crate::rlop::ObjectSelectOutcome::Pending);
-        let mut object =
-            crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[1])
-                .expect("object carrier");
+        assert_eq!(restored.longop_queue()[1].private_state, v2_state);
+        let object = crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[1])
+            .expect("object carrier");
         assert_eq!(object.return_values(), &[7, 2]);
-        assert_eq!(object.outcome(), crate::rlop::ObjectSelectOutcome::Pending);
-        restored.apply_choice_resume(&object.clone().into_longop());
-        assert_eq!(restored.banks().store(), 0);
-        object.select(1);
+        assert!(object.is_cancelable());
+        assert_eq!(
+            object.outcome(),
+            crate::rlop::ObjectSelectOutcome::Cancelled
+        );
         restored.apply_choice_resume(&object.into_longop());
-        assert_eq!(restored.banks().store(), 2);
+        assert_eq!(restored.banks().store(), (-1_i32) as u32);
         restored.banks_mut().set_store(99);
         let mut invalid =
             crate::rlop::ObjectSelectLongOp::try_new(LongOpId(8), vec![7, 2]).expect("bounded");
         invalid.select(9);
         restored.apply_choice_resume(&invalid.into_longop());
-        let mut cancelled =
-            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(9), vec![7, 2]).expect("bounded");
-        cancelled.set_cancelable(true);
-        cancelled.cancel();
-        restored.apply_choice_resume(&cancelled.into_longop());
         restored.apply_choice_resume(&LongOp::new(LongOpId(9), vec![0xA3, 1]));
         assert_eq!(restored.banks().store(), 99);
         assert!(matches!(
             restored.warnings(),
             [
-                VmWarning::ObjectChoiceResumeWithoutChoice { .. },
                 VmWarning::ObjectChoiceResumeOutOfRange { .. },
-                VmWarning::ObjectChoiceResumeUnsupportedOutcome { .. },
                 VmWarning::ObjectChoiceResumeMalformed { .. }
             ]
         ));
