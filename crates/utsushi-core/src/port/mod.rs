@@ -133,11 +133,11 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
             RuntimeOperation::Trace => self.runner.run_trace(&mut *port, &port_request),
             RuntimeOperation::Capture => self.runner.run_capture(&mut *port, &port_request),
             RuntimeOperation::SmokeValidation => self.runner.run_smoke(&mut *port, &port_request),
-            RuntimeOperation::BranchDiscovery => {
+            RuntimeOperation::BranchDiscovery | RuntimeOperation::ReplayReview => {
                 return Err(format!(
                     "engine port adapter {} does not support {}",
                     self.descriptor.name,
-                    RuntimeOperation::BranchDiscovery.as_str()
+                    operation.as_str()
                 )
                 .into());
             }
@@ -568,6 +568,9 @@ fn features_used_for_report(
     }
     if matches!(operation, RuntimeOperation::BranchDiscovery) {
         features.push(RuntimePlaybackFeature::BranchDiscovery);
+    }
+    if matches!(operation, RuntimeOperation::ReplayReview) {
+        features.push(RuntimePlaybackFeature::Recording);
     }
     if has_observation_hooks {
         features.push(RuntimePlaybackFeature::InstrumentationHooks);

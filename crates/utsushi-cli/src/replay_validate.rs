@@ -1,9 +1,8 @@
-//! UTSUSHI-227 — `utsushi-cli replay-validate --engine reallive` command.
+//! UTSUSHI-227 — `utsushi-cli replay-validate --engine <engine>` command.
 //!
-//! Drives [`utsushi_reallive::replay_scene`] against a (patched) Seen.txt
-//! path and EMITS the engine's OBSERVED output: the captured
-//! [`utsushi_reallive::ReplayEvent::TextLine`] bodies (stdout) plus the
-//! deterministic [`utsushi_reallive::ReplayLog`] JSON (`--print-replay-log`).
+//! Routes replay through the CLI runtime adapter registry and EMITS the
+//! engine's OBSERVED output: captured TextLine bodies (stdout) plus the
+//! deterministic replay-log JSON (`--print-replay-log`).
 //!
 //! This command performs NO substring assertion of its own. The runtime
 //! evidence is validated by the caller (the localize-project driver),
@@ -15,17 +14,16 @@
 
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts};
+use serde_json::json;
+use utsushi_core::{
+    RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
+};
 
-use crate::staged_replay::replay_scene_staged;
-
-/// Stable string naming the engine the replay-validate command targets.
-/// Mirrors the `replay` subcommand's constraint — only `reallive` is
-/// supported today; a typed error fires for any other value (no silent
-/// fallback).
-const SUPPORTED_ENGINE: &str = "reallive";
+use crate::replay_registry::{
+    emit_textlines_from_result, replay_log_json, replay_validate_parameters, text_line_count,
+};
 
 /// Stable diagnostic-code prefix printed on the success exit path (the
 /// scene replayed and its observed TextLine evidence was emitted).
@@ -78,19 +76,15 @@ VALIDATION CONTRACT:
 /// decode) or the ReplayLog cannot be serialised/written. A scene that
 /// emits zero TextLine events is NOT an error here — the caller's
 /// observed-output validation surfaces that as a failed match.
-pub fn run_replay_validate_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+pub fn run_replay_validate_command(
+    args: &[String],
+    registry: &RuntimeAdapterRegistry<'_>,
+) -> Result<(), Box<dyn Error>> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print!("{HELP}");
         return Ok(());
     }
     let engine = required_flag(args, "--engine")?;
-    if engine != SUPPORTED_ENGINE {
-        return Err(format!(
-            "utsushi.cli.replay_validate.unsupported_engine: engine={engine}; only \
-             {SUPPORTED_ENGINE} is supported",
-        )
-        .into());
-    }
     let seen_path = PathBuf::from(required_flag(args, "--seen")?);
     let scene_id: u16 = required_flag(args, "--scene")?.parse().map_err(|err| {
         format!("utsushi.cli.replay_validate.scene_parse: --scene must be a u16: {err}")
@@ -98,54 +92,84 @@ pub fn run_replay_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let print_replay_log = PathBuf::from(required_flag(args, "--print-replay-log")?);
     let print_textlines = args.iter().any(|arg| arg == "--print-textlines");
 
-    drive(&seen_path, scene_id, &print_replay_log, print_textlines)
-}
-
-fn drive(
-    seen_path: &Path,
-    scene_id: u16,
-    replay_log_path: &Path,
-    print_textlines: bool,
-) -> Result<(), Box<dyn Error>> {
-    let opts = ReplayOpts::default();
-    // Stage the dev-only `use_xor_2` recovery for xor2 titles (Sweetie HD,
-    // compiler 110002) so the observed TextLine bodies decode REAL text
-    // instead of the still-ciphered segment's mojibake. Non-xor2 titles fall
-    // through to the pure-`utsushi-reallive` decode path unchanged.
-    let log = replay_scene_staged(seen_path, scene_id, &opts)
-        .map_err(|err| format!("utsushi.cli.replay_validate.driver: {err}"))?;
+    let result = run_registry_replay_validate(
+        registry,
+        engine,
+        &seen_path,
+        replay_validate_parameters(scene_id),
+    )?;
 
     if print_textlines {
-        emit_textlines(&log);
+        emit_textlines_from_result(&result, "utsushi.cli.replay_validate")?;
     }
 
-    let json = log
-        .to_deterministic_json()
-        .map_err(|err| format!("utsushi.cli.replay_validate.serialise: {err}"))?;
-    fs::write(replay_log_path, json)
+    let replay_json = replay_log_json(&result, "utsushi.cli.replay_validate")?;
+    fs::write(&print_replay_log, replay_json)
         .map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
 
+    let text_line_count = text_line_count(&result, "utsushi.cli.replay_validate")?;
     println!(
         "{REPLAY_OK_CODE}: scene={scene_id} textline_count={}",
-        log.text_line_count(),
+        text_line_count,
     );
     Ok(())
 }
 
-fn emit_textlines(log: &ReplayLog) {
-    let mut count: usize = 0;
-    for event in &log.events {
-        if let ReplayEvent::TextLine {
-            byte_offset_in_scene,
-            body_utf8,
-            ..
-        } = event
-        {
-            println!("textline[{count}] pc=0x{byte_offset_in_scene:04x} body={body_utf8:?}");
-            count += 1;
-        }
+fn run_registry_replay_validate(
+    registry: &RuntimeAdapterRegistry<'_>,
+    engine: &str,
+    seen_path: &std::path::Path,
+    parameters: serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let descriptor = registry.adapter(engine).map(|adapter| adapter.descriptor());
+    let Some(descriptor) = descriptor else {
+        return Err(registry_diagnostic(
+            "utsushi.cli.replay_validate.registry_adapter_not_found",
+            engine,
+            "no runtime adapter is registered for the requested replay engine",
+            registry,
+        )
+        .into());
+    };
+    if !descriptor.supports(RuntimeCapability::ReplayReview) {
+        return Err(registry_diagnostic(
+            "utsushi.cli.replay_validate.registry_capability_unsupported",
+            engine,
+            "registered runtime adapter does not support replay_review",
+            registry,
+        )
+        .into());
     }
-    println!("textline_total={count}");
+    let request = RuntimeRequest::new(seen_path).with_parameters(parameters);
+    registry.run(engine, RuntimeOperation::ReplayReview, &request)
+}
+
+fn registry_diagnostic(
+    code: &str,
+    engine: &str,
+    message: &str,
+    registry: &RuntimeAdapterRegistry<'_>,
+) -> String {
+    json!({
+        "diagnostic": {
+            "code": code,
+            "engine": engine,
+            "requiredCapability": RuntimeCapability::ReplayReview.as_str(),
+            "message": message,
+            "registeredAdapters": registry.descriptors().into_iter().map(|descriptor| {
+                let capabilities = descriptor
+                    .capabilities
+                    .into_iter()
+                    .map(|capability| capability.as_str())
+                    .collect::<Vec<_>>();
+                json!({
+                    "name": descriptor.name,
+                    "capabilities": capabilities,
+                })
+            }).collect::<Vec<_>>(),
+        }
+    })
+    .to_string()
 }
 
 fn required_flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn Error>> {
@@ -163,6 +187,14 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::replay_registry::RealLiveReplayAdapter;
+
+    fn replay_registry() -> RuntimeAdapterRegistry<'static> {
+        static ADAPTER: RealLiveReplayAdapter = RealLiveReplayAdapter::new();
+        let mut registry = RuntimeAdapterRegistry::new();
+        registry.register(&ADAPTER).expect("register adapter");
+        registry
+    }
 
     #[test]
     fn rejects_unsupported_engine() {
@@ -176,8 +208,10 @@ mod tests {
             "--print-replay-log".into(),
             "/tmp/replay-log.json".into(),
         ];
-        let err = run_replay_validate_command(&args).expect_err("siglus is not supported");
-        assert!(err.to_string().contains("unsupported_engine"));
+        let registry = replay_registry();
+        let err =
+            run_replay_validate_command(&args, &registry).expect_err("siglus is not supported");
+        assert!(err.to_string().contains("registry_adapter_not_found"));
     }
 
     #[test]
@@ -190,7 +224,8 @@ mod tests {
             "--print-replay-log".into(),
             "/tmp/replay-log.json".into(),
         ];
-        let err = run_replay_validate_command(&args).expect_err("missing --seen");
+        let registry = replay_registry();
+        let err = run_replay_validate_command(&args, &registry).expect_err("missing --seen");
         assert!(err.to_string().contains("--seen"));
     }
 
@@ -206,7 +241,9 @@ mod tests {
             "--print-replay-log".into(),
             "/tmp/replay-log.json".into(),
         ];
-        let err = run_replay_validate_command(&args).expect_err("scene parse must fail");
+        let registry = replay_registry();
+        let err =
+            run_replay_validate_command(&args, &registry).expect_err("scene parse must fail");
         assert!(err.to_string().contains("scene_parse"));
     }
 
@@ -220,7 +257,9 @@ mod tests {
             "--scene".into(),
             "1".into(),
         ];
-        let err = run_replay_validate_command(&args).expect_err("missing --print-replay-log");
+        let registry = replay_registry();
+        let err = run_replay_validate_command(&args, &registry)
+            .expect_err("missing --print-replay-log");
         assert!(err.to_string().contains("--print-replay-log"));
     }
 
@@ -235,7 +274,9 @@ mod tests {
     #[test]
     fn help_request_does_not_require_replay_flags() {
         let args: Vec<String> = vec!["--help".into()];
-        run_replay_validate_command(&args).expect("--help should not require --engine or --seen");
+        let registry = replay_registry();
+        run_replay_validate_command(&args, &registry)
+            .expect("--help should not require --engine or --seen");
     }
 
     #[test]
@@ -258,12 +299,14 @@ mod tests {
                 .to_string(),
         ];
 
-        let err = run_replay_validate_command(&args)
+        let registry = replay_registry();
+        let err = run_replay_validate_command(&args, &registry)
             .expect_err("missing Seen.txt should fail in the replay driver");
         assert!(
             err.to_string()
                 .contains("utsushi.cli.replay_validate.driver"),
-            "canonical invocation should parse and reach the replay driver, got: {err}"
+            "canonical invocation should parse and reach the registry-dispatched replay driver, \
+             got: {err}"
         );
     }
 }

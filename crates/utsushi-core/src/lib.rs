@@ -195,6 +195,9 @@ const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
 pub struct RuntimeRequest<'a> {
     pub input_root: &'a Path,
     pub artifact_root: Option<&'a Path>,
+    /// Optional operation-specific parameters for registry-routed extension
+    /// operations. Core trace/capture/smoke paths ignore this field.
+    pub parameters: Option<Value>,
     /// Optional, additive handoff for downstream nodes that consume the
     /// runtime VFS (UTSUSHI-021/022/023/024/103). Slice A of UTSUSHI-020
     /// only adds the field so callers can begin to populate it.
@@ -230,6 +233,7 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .debug_struct("RuntimeRequest")
             .field("input_root", &self.input_root)
             .field("artifact_root", &self.artifact_root)
+            .field("parameters", &self.parameters)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
             .field("replay", &self.replay.as_ref().map(|_| "Arc<ReplayLog>"))
             .field(
@@ -253,6 +257,7 @@ impl<'a> RuntimeRequest<'a> {
         Self {
             input_root,
             artifact_root: None,
+            parameters: None,
             vfs: None,
             replay: None,
             cancellation: None,
@@ -262,6 +267,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_artifact_root(mut self, artifact_root: &'a Path) -> Self {
         self.artifact_root = Some(artifact_root);
+        self
+    }
+
+    pub fn with_parameters(mut self, parameters: Value) -> Self {
+        self.parameters = Some(parameters);
         self
     }
 
@@ -820,6 +830,7 @@ pub enum RuntimeOperation {
     BranchDiscovery,
     Capture,
     SmokeValidation,
+    ReplayReview,
 }
 
 impl RuntimeOperation {
@@ -829,6 +840,7 @@ impl RuntimeOperation {
             Self::BranchDiscovery => "branch_discovery",
             Self::Capture => "capture",
             Self::SmokeValidation => "smoke_validation",
+            Self::ReplayReview => "replay_review",
         }
     }
 
@@ -838,6 +850,7 @@ impl RuntimeOperation {
             Self::BranchDiscovery => RuntimeCapability::BranchDiscovery,
             Self::Capture => RuntimeCapability::FrameCapture,
             Self::SmokeValidation => RuntimeCapability::SmokeValidation,
+            Self::ReplayReview => RuntimeCapability::ReplayReview,
         }
     }
 }
@@ -1717,7 +1730,13 @@ pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<(
             require_one_of_field(
                 session,
                 "requestedOperation",
-                &["trace", "branch_discovery", "capture", "smoke_validation"],
+                &[
+                    "trace",
+                    "branch_discovery",
+                    "capture",
+                    "smoke_validation",
+                    "replay_review",
+                ],
                 "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
             )
         })?;
@@ -2274,7 +2293,13 @@ fn validate_controlled_playback_session_value(
     require_one_of_field(
         session,
         "requestedOperation",
-        &["trace", "branch_discovery", "capture", "smoke_validation"],
+        &[
+            "trace",
+            "branch_discovery",
+            "capture",
+            "smoke_validation",
+            "replay_review",
+        ],
         "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
     )?;
     if require_one_of_field(
@@ -2394,6 +2419,15 @@ fn validate_controlled_playback_surface(
             )?;
         }
         "smoke_validation" => {}
+        "replay_review" => {
+            reject_operation_evidence(requested_operation, has_branch_events, "branch event")?;
+            reject_operation_evidence(requested_operation, has_captures, "capture")?;
+            reject_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+            )?;
+        }
         _ => unreachable!("requestedOperation validated before evidence surface check"),
     }
     Ok(())
@@ -3771,6 +3805,10 @@ pub trait RuntimeAdapter {
         Err(unsupported_operation(&self.descriptor(), RuntimeOperation::SmokeValidation).into())
     }
 
+    fn replay_review(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(unsupported_operation(&self.descriptor(), RuntimeOperation::ReplayReview).into())
+    }
+
     fn run(
         &self,
         operation: RuntimeOperation,
@@ -3781,6 +3819,7 @@ pub trait RuntimeAdapter {
             RuntimeOperation::BranchDiscovery => self.discover_branches(request),
             RuntimeOperation::Capture => self.capture(request),
             RuntimeOperation::SmokeValidation => self.smoke_validate(request),
+            RuntimeOperation::ReplayReview => self.replay_review(request),
         }
     }
 }

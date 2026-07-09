@@ -4,6 +4,7 @@ mod mvmz_runtime_proof;
 mod patch_render;
 mod render_validate;
 mod replay;
+mod replay_registry;
 mod replay_validate;
 mod rpgmaker_mv_capture;
 mod staged_replay;
@@ -26,6 +27,8 @@ static BROWSER_LAUNCH_ADAPTER: utsushi_fixture::BrowserLaunchAdapter =
     utsushi_fixture::BrowserLaunchAdapter::new();
 static NWJS_LAUNCH_ADAPTER: utsushi_fixture::NwjsLaunchAdapter =
     utsushi_fixture::NwjsLaunchAdapter::new();
+static REALLIVE_REPLAY_ADAPTER: replay_registry::RealLiveReplayAdapter =
+    replay_registry::RealLiveReplayAdapter::new();
 
 fn main() {
     if let Err(error) = run() {
@@ -51,6 +54,9 @@ fn runtime_registry() -> RuntimeAdapterRegistry<'static> {
     registry
         .register(&NWJS_LAUNCH_ADAPTER)
         .expect("NW.js capability diagnostic descriptor is valid");
+    registry
+        .register(&REALLIVE_REPLAY_ADAPTER)
+        .expect("RealLive replay adapter descriptor is valid");
     registry
 }
 
@@ -79,7 +85,7 @@ fn run_cli_with_registry(
             // flags). Skip the leading `replay` argv slot when
             // dispatching.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
-            replay::run_replay_command(&tail)?;
+            replay::run_replay_command(&tail, registry)?;
         }
         Some("replay-validate") => {
             // UTSUSHI-227 — sibling of `replay` that drives the same
@@ -87,7 +93,7 @@ fn run_cli_with_registry(
             // least one captured TextLine body. Skips the leading
             // `replay-validate` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
-            replay_validate::run_replay_validate_command(&tail)?;
+            replay_validate::run_replay_validate_command(&tail, registry)?;
         }
         Some("render-validate") => {
             // ALPHA-006b — rasterized localized screenshot through the

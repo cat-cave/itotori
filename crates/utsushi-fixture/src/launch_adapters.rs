@@ -1767,6 +1767,7 @@ fn browser_features_used(operation: RuntimeOperation) -> Vec<RuntimePlaybackFeat
             ]
         }
         RuntimeOperation::BranchDiscovery => vec![RuntimePlaybackFeature::BranchDiscovery],
+        RuntimeOperation::ReplayReview => vec![RuntimePlaybackFeature::Recording],
     }
 }
 
