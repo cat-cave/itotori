@@ -167,24 +167,32 @@ async function requirePermissionForAccount(
   permission: Permission,
   accountId: string,
 ): Promise<void> {
-  await requirePermission(db, actor, permission);
+  // Billing seat usage is always gated on auth.members.manage for the target account.
+  // @repository-permission-gate ItotoriAuthBillingSeatRepository.loadSeatUsage authMembersManage
+  await requirePermission(db, actor, permissionValues.authMembersManage);
 
   const identity = await new ItotoriPrincipalRepository(db).loadActorIdentity(actor);
   const targetAccount = identity.accounts.find((account) => account.accountId === accountId);
   if (targetAccount === undefined || !(await isAccountActive(db, accountId))) {
-    throw new AuthorizationError(actor, permission);
+    throw new AuthorizationError(actor, permissionValues.authMembersManage);
   }
 
   if (
     identity.principalId !== null &&
-    (await hasDirectPermission(db, identity.principalId, permission))
+    (await hasDirectPermission(db, identity.principalId, permissionValues.authMembersManage))
   ) {
     return;
   }
-  if (await permissionSetsIncludePermission(db, targetAccount.permissionSetIds, permission)) {
+  if (
+    await permissionSetsIncludePermission(
+      db,
+      targetAccount.permissionSetIds,
+      permissionValues.authMembersManage,
+    )
+  ) {
     return;
   }
-  throw new AuthorizationError(actor, permission);
+  throw new AuthorizationError(actor, permissionValues.authMembersManage);
 }
 
 async function hasDirectPermission(
