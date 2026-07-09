@@ -41,6 +41,9 @@ pub const PAUSE_PRIVATE_STATE_MAGIC: u8 = 0xA1;
 /// Magic byte that prefixes every `SelectLongOp` private-state payload.
 pub const SELECT_PRIVATE_STATE_MAGIC: u8 = 0xA2;
 
+pub const OBJECT_SELECT_PRIVATE_STATE_MAGIC: u8 = 0xA3;
+pub const OBJECT_SELECT_PRIVATE_STATE_VERSION: u8 = 1;
+
 /// Default number of `Pending` polls a [`PauseLongOp`] observes before
 /// the synthetic test scheduler reports it as `Ready`. Pinned so the
 /// synthetic tests have a stable cadence — the runtime scheduler will
@@ -334,6 +337,134 @@ pub enum SelectLongOpDecodeError {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectSelectLongOp {
+    id: LongOpId,
+    return_values: Vec<i32>,
+    selected: Option<u16>,
+}
+
+impl ObjectSelectLongOp {
+    pub const SELECTED_SENTINEL_PENDING: u16 = 0xFFFF;
+
+    #[cfg(test)]
+    pub(crate) fn try_new(
+        id: LongOpId,
+        return_values: Vec<i32>,
+    ) -> Result<Self, ObjectSelectLongOpBuildError> {
+        if return_values.len() > u16::MAX as usize {
+            return Err(ObjectSelectLongOpBuildError::TooManyReturnValues {
+                observed: return_values.len(),
+            });
+        }
+        Ok(Self {
+            id,
+            return_values,
+            selected: None,
+        })
+    }
+
+    pub fn return_values(&self) -> &[i32] {
+        &self.return_values
+    }
+
+    pub fn choice_count(&self) -> usize {
+        self.return_values.len()
+    }
+
+    pub fn selected(&self) -> Option<u16> {
+        self.selected
+    }
+
+    pub fn select(&mut self, index: u16) {
+        self.selected = Some(index);
+    }
+
+    pub fn into_longop(self) -> LongOp {
+        let count = self.return_values.len();
+        let mut state = Vec::with_capacity(6 + count * 4);
+        state.push(OBJECT_SELECT_PRIVATE_STATE_MAGIC);
+        state.push(OBJECT_SELECT_PRIVATE_STATE_VERSION);
+        state.extend_from_slice(
+            &self
+                .selected
+                .unwrap_or(Self::SELECTED_SENTINEL_PENDING)
+                .to_le_bytes(),
+        );
+        state.extend_from_slice(&(count as u16).to_le_bytes());
+        for value in self.return_values {
+            state.extend_from_slice(&value.to_le_bytes());
+        }
+        LongOp::new(self.id, state)
+    }
+
+    pub fn try_from_longop(op: &LongOp) -> Result<Self, ObjectSelectLongOpDecodeError> {
+        let state = &op.private_state;
+        if state.len() < 6 {
+            return Err(ObjectSelectLongOpDecodeError::UnexpectedPayloadLength {
+                observed: state.len(),
+                minimum: 6,
+            });
+        }
+        if state[0] != OBJECT_SELECT_PRIVATE_STATE_MAGIC {
+            return Err(ObjectSelectLongOpDecodeError::MagicMismatch {
+                observed: state[0],
+                expected: OBJECT_SELECT_PRIVATE_STATE_MAGIC,
+            });
+        }
+        if state[1] != OBJECT_SELECT_PRIVATE_STATE_VERSION {
+            return Err(ObjectSelectLongOpDecodeError::VersionMismatch {
+                observed: state[1],
+                expected: OBJECT_SELECT_PRIVATE_STATE_VERSION,
+            });
+        }
+        let selected_raw = u16::from_le_bytes([state[2], state[3]]);
+        let count = u16::from_le_bytes([state[4], state[5]]) as usize;
+        let expected = 6 + count * 4;
+        if state.len() != expected {
+            return Err(ObjectSelectLongOpDecodeError::ValuesLengthMismatch {
+                observed: state.len(),
+                expected,
+            });
+        }
+        let return_values = state[6..]
+            .chunks_exact(4)
+            .map(|bytes| i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+            .collect();
+        Ok(Self {
+            id: op.id,
+            return_values,
+            selected: (selected_raw != Self::SELECTED_SENTINEL_PENDING).then_some(selected_raw),
+        })
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ObjectSelectLongOpBuildError {
+    TooManyReturnValues { observed: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ObjectSelectLongOpDecodeError {
+    #[error(
+        "utsushi.reallive.rlop.object_select.payload_length: observed={observed} minimum={minimum}"
+    )]
+    UnexpectedPayloadLength { observed: usize, minimum: usize },
+    #[error(
+        "utsushi.reallive.rlop.object_select.magic_mismatch: observed=0x{observed:02x} expected=0x{expected:02x}"
+    )]
+    MagicMismatch { observed: u8, expected: u8 },
+    #[error(
+        "utsushi.reallive.rlop.object_select.version_mismatch: observed={observed} expected={expected}"
+    )]
+    VersionMismatch { observed: u8, expected: u8 },
+    #[error(
+        "utsushi.reallive.rlop.object_select.values_length: observed={observed} expected={expected}"
+    )]
+    ValuesLengthMismatch { observed: usize, expected: usize },
+}
+
 /// Scheduler that resumes a [`SelectLongOp`] after observing the queue
 /// head as pending for `polls_remaining` polls. The shape mirrors
 /// [`crate::rlop::AfterNPollsScheduler`] so a test can swap one for
@@ -611,6 +742,24 @@ mod tests {
         // chosen index 1 == 0x0001 LE
         assert_eq!(longop.private_state[1], 0x01);
         assert_eq!(longop.private_state[2], 0x00);
+    }
+
+    #[test]
+    fn object_select_wire_is_bounded_and_round_trips() {
+        assert!(matches!(
+            ObjectSelectLongOp::try_new(LongOpId(5), vec![0; u16::MAX as usize + 1]),
+            Err(ObjectSelectLongOpBuildError::TooManyReturnValues { .. })
+        ));
+        let mut select = ObjectSelectLongOp::try_new(LongOpId(6), vec![7, -2]).expect("bounded");
+        select.select(1);
+        let longop = select.into_longop();
+        assert_eq!(
+            longop.private_state[..2],
+            [OBJECT_SELECT_PRIVATE_STATE_MAGIC, 1]
+        );
+        let decoded = ObjectSelectLongOp::try_from_longop(&longop).expect("decode");
+        assert_eq!(decoded.return_values(), &[7, -2]);
+        assert_eq!(decoded.selected(), Some(1));
     }
 
     #[test]

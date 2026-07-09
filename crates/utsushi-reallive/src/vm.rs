@@ -479,6 +479,18 @@ pub enum VmWarning {
         /// Long-op id that was missing a recorded choice.
         longop_id: LongOpId,
     },
+    ObjectChoiceResumeMalformed {
+        longop_id: LongOpId,
+        reason: String,
+    },
+    ObjectChoiceResumeWithoutChoice {
+        longop_id: LongOpId,
+    },
+    ObjectChoiceResumeOutOfRange {
+        longop_id: LongOpId,
+        selected: u16,
+        choice_count: usize,
+    },
 }
 
 /// Typed error variants surfaced by [`Vm::step`]. Every failure mode is
@@ -831,39 +843,54 @@ impl Vm {
         self.apply_outcome(outcome, post_pc)
     }
 
-    /// Apply the typed resume side-effect for a popped longop.
-    ///
-    /// If `popped` carries a select-shaped private state (magic byte =
-    /// [`crate::rlop::SELECT_PRIVATE_STATE_MAGIC`]) and the chosen
-    /// index has been recorded, write the chosen index to the store
-    /// register through [`crate::var_banks::VarBanks::set_store`].
-    /// Non-select longops are ignored. Malformed payloads surface a
-    /// fail-soft [`VmWarning::ChoiceResumeMalformed`].
+    /// Apply typed selection resume: legacy A2 stores its chosen index, while
+    /// durable A3 maps its selected display index to its persisted i32 return
+    /// value. Pending, malformed, and out-of-range A3 carriers warn without
+    /// writing the store register.
     ///
     /// Exposed so per-module integration tests and the substrate
     /// runner can drive the same code path as [`Vm::step`] without
     /// staging a synthetic scene store.
     pub fn apply_choice_resume(&mut self, popped: &crate::rlop::LongOp) {
-        if popped.private_state.first() != Some(&crate::rlop::SELECT_PRIVATE_STATE_MAGIC) {
-            return;
-        }
-        match crate::rlop::SelectLongOp::try_from_longop(popped) {
-            Ok(select) => match select.chosen() {
-                Some(index) => {
-                    self.banks.set_store(index as u32);
-                }
-                None => {
-                    self.warnings.push(VmWarning::ChoiceResumeWithoutChoice {
+        match popped.private_state.first().copied() {
+            Some(crate::rlop::SELECT_PRIVATE_STATE_MAGIC) => {
+                match crate::rlop::SelectLongOp::try_from_longop(popped) {
+                    Ok(select) => match select.chosen() {
+                        Some(index) => self.banks.set_store(index as u32),
+                        None => self.warnings.push(VmWarning::ChoiceResumeWithoutChoice {
+                            longop_id: popped.id,
+                        }),
+                    },
+                    Err(err) => self.warnings.push(VmWarning::ChoiceResumeMalformed {
                         longop_id: popped.id,
-                    });
+                        reason: err.to_string(),
+                    }),
                 }
-            },
-            Err(err) => {
-                self.warnings.push(VmWarning::ChoiceResumeMalformed {
-                    longop_id: popped.id,
-                    reason: err.to_string(),
-                });
             }
+            Some(crate::rlop::OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                match crate::rlop::ObjectSelectLongOp::try_from_longop(popped) {
+                    Ok(select) => match select.selected() {
+                        Some(index) => match select.return_values().get(index as usize) {
+                            Some(value) => self.banks.set_store(*value as u32),
+                            None => self.warnings.push(VmWarning::ObjectChoiceResumeOutOfRange {
+                                longop_id: popped.id,
+                                selected: index,
+                                choice_count: select.choice_count(),
+                            }),
+                        },
+                        None => self
+                            .warnings
+                            .push(VmWarning::ObjectChoiceResumeWithoutChoice {
+                                longop_id: popped.id,
+                            }),
+                    },
+                    Err(err) => self.warnings.push(VmWarning::ObjectChoiceResumeMalformed {
+                        longop_id: popped.id,
+                        reason: err.to_string(),
+                    }),
+                }
+            }
+            _ => {}
         }
     }
 
@@ -2228,7 +2255,12 @@ mod tests {
 
     #[test]
     fn empty_vm_snapshots_with_substrate_inspectable() {
-        let vm = Vm::new(0, 0);
+        let mut vm = Vm::new(0, 0);
+        vm.enqueue_longop(
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2])
+                .expect("bounded")
+                .into_longop(),
+        );
         let tree = vm.inspect_state().expect("inspect");
         assert!(tree.len() >= 6); // manifest + scene + pc + halted + stack + longop + var-banks manifest + store
         let manifest_path = StatePath::parse(MANIFEST_PATH).expect("path");
@@ -2236,6 +2268,34 @@ mod tests {
             StateValue::String { value } => assert_eq!(value, VM_MANIFEST),
             other => panic!("manifest must be a string, got {other:?}"),
         }
+        let mut restored = Vm::new(0, 0);
+        restored.restore_state(&tree).expect("restore");
+        let mut object = crate::rlop::ObjectSelectLongOp::try_from_longop(
+            restored.longop_queue().front().expect("object head"),
+        )
+        .expect("object carrier");
+        assert_eq!(object.return_values(), &[7, 2]);
+        assert_eq!(object.selected(), None);
+        restored.apply_choice_resume(&object.clone().into_longop());
+        assert_eq!(restored.banks().store(), 0);
+        object.select(1);
+        restored.apply_choice_resume(&object.into_longop());
+        assert_eq!(restored.banks().store(), 2);
+        restored.banks_mut().set_store(99);
+        let mut invalid =
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(8), vec![7, 2]).expect("bounded");
+        invalid.select(9);
+        restored.apply_choice_resume(&invalid.into_longop());
+        restored.apply_choice_resume(&LongOp::new(LongOpId(9), vec![0xA3, 1]));
+        assert_eq!(restored.banks().store(), 99);
+        assert!(matches!(
+            restored.warnings(),
+            [
+                VmWarning::ObjectChoiceResumeWithoutChoice { .. },
+                VmWarning::ObjectChoiceResumeOutOfRange { .. },
+                VmWarning::ObjectChoiceResumeMalformed { .. }
+            ]
+        ));
     }
 
     #[test]
