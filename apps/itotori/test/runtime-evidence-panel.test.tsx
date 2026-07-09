@@ -568,5 +568,66 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
       expect(document.querySelectorAll(".itotori-runtime-evidence__line-jump")).toHaveLength(0);
       expect(document.querySelectorAll(".itotori-runtime-evidence__finding-jump")).toHaveLength(0);
     });
+
+    it("renders sourceUnitKey-only runtime rows as plain text instead of unit jumps", async () => {
+      server.use(
+        http.get(STATUS_PATH, () =>
+          apiJson(
+            "runtime.status",
+            statusFixture({
+              traceEvents: [
+                {
+                  runtimeEventId: "runtime-1:trace-display-only",
+                  eventKind: "text_seen",
+                  bridgeUnitId: null,
+                  sourceUnitKey: "display.only.source.key",
+                  draftId: null,
+                  runtimeTargetId: "display.only.source.key",
+                  evidenceTier: "E1",
+                  frame: 24,
+                  textPreview: null,
+                  artifactIds: [],
+                },
+              ],
+              findings: [
+                {
+                  findingId: "runtime-1:finding-display-only",
+                  findingKind: "text_mismatch",
+                  severity: "error",
+                  message: "The source label is display-only.",
+                  evidenceTier: "E1",
+                  bridgeUnitId: null,
+                  sourceUnitKey: "display.only.source.key",
+                  artifactId: null,
+                },
+              ],
+              artifacts: [
+                {
+                  artifactId: "runtime-1:trace-display-only-artifact",
+                  artifactKind: "trace_log",
+                  uri: "artifacts/utsushi/runtime/runtime-1/traces/display-only.json",
+                  hash: "sha256:display-only",
+                  mediaType: "application/json",
+                  byteSize: 64,
+                  bridgeUnitId: null,
+                  sourceUnitKey: "display.only.source.key",
+                  diagnostic: null,
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
+      const panelEl = panel.closest(".itotori-panel") as HTMLElement;
+
+      expect(within(panelEl).getAllByText("display.only.source.key")).toHaveLength(3);
+      expect(panelEl.querySelectorAll(".itotori-runtime-evidence__line-jump")).toHaveLength(0);
+      expect(panelEl.querySelectorAll('[href="/play/units/display.only.source.key"]')).toHaveLength(
+        0,
+      );
+      expect(panelEl.querySelectorAll('[data-jump-resolved="false"]')).toHaveLength(3);
+    });
   });
 });

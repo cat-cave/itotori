@@ -341,7 +341,7 @@ function RuntimeEvidenceTraceTable({
             render: (event) => (
               <AddressableJump
                 kind="unit"
-                id={event.bridgeUnitId ?? event.sourceUnitKey}
+                id={event.bridgeUnitId}
                 fallback={event.sourceUnitKey === null ? "—" : <code>{event.sourceUnitKey}</code>}
                 className="itotori-runtime-evidence__line-jump"
               >
@@ -435,7 +435,7 @@ function RuntimeEvidenceFindingsTable({
             render: (finding) => (
               <AddressableJump
                 kind="unit"
-                id={finding.bridgeUnitId ?? finding.sourceUnitKey}
+                id={finding.bridgeUnitId}
                 fallback={
                   finding.sourceUnitKey === null ? "—" : <code>{finding.sourceUnitKey}</code>
                 }
@@ -561,7 +561,7 @@ function RuntimeEvidenceSensitiveArtifacts({
                 <dd>
                   <AddressableJump
                     kind="unit"
-                    id={artifact.bridgeUnitId ?? artifact.sourceUnitKey}
+                    id={artifact.bridgeUnitId}
                     fallback={<code>{artifact.sourceUnitKey ?? "—"}</code>}
                     className="itotori-runtime-evidence__line-jump"
                   >
@@ -634,7 +634,7 @@ function RuntimeEvidenceNonSensitiveArtifacts({
             render: (artifact) => (
               <AddressableJump
                 kind="unit"
-                id={artifact.bridgeUnitId ?? artifact.sourceUnitKey}
+                id={artifact.bridgeUnitId}
                 fallback={
                   artifact.sourceUnitKey === null ? "—" : <code>{artifact.sourceUnitKey}</code>
                 }
