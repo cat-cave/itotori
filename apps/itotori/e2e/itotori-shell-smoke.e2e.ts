@@ -1,4 +1,10 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
+import {
+  reviewerQueueActionValues,
+  reviewerQueueItemStateValues,
+  type ReviewerQueueAction,
+} from "@itotori/db";
+import type { ReviewerSingleActionResult } from "../src/reviewer/api-service.js";
 import type { ReviewerQueueDashboardReadModel } from "../src/reviewer/index.js";
 import { readyContextFixture, reviewQueueDashboardFixtures } from "../src/reviewer/index.js";
 import {
@@ -22,6 +28,7 @@ import {
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
+  authIdentityFixture,
   jobsRunTableFixture,
   projectOverviewFixture,
   runtimeStatusFixture,
@@ -30,6 +37,11 @@ import {
 const reviewerDetailContext = readyContextFixture();
 const workspaceProjects = workspaceProjectBrowseFixture();
 const workspaceBranch = workspaceProjects.projects[0]!.localeBranches[0]!;
+const reviewerDetailItem = reviewerDetailContext.item;
+
+if (reviewerDetailItem === null) {
+  throw new Error("Playwright reviewer detail fixture must include an item");
+}
 
 test.beforeEach(async ({ page }) => {
   await installFixtureApi(page);
@@ -98,6 +110,66 @@ test("reviewer and workspace deep links cold-load through the server fallback", 
   await expect(page.getByRole("heading", { name: "Comparison", exact: true })).toBeVisible();
 });
 
+test("Studio shell + Review core loop queues through detail and decide", async ({ page }) => {
+  await page.goto("/reviewer-queue");
+
+  await expect(page.locator('[data-switcher="identity-org"]')).toHaveAttribute(
+    "data-switcher-phase",
+    "ready",
+  );
+  await expect(page.getByRole("button", { name: "Local workspace" })).toBeVisible();
+
+  const nav = page.getByRole("navigation", { name: "Surfaces" });
+  await expect(nav.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
+
+  const statusBar = page.getByRole("status", { name: "Shell status bar" });
+  await expect(statusBar).toHaveAttribute("data-shell-status", "ready");
+  await expect(statusBar.locator('[data-shell-stat="project"]')).toContainText("project-1");
+  await expect(statusBar.locator('[data-shell-stat="branch"]')).toContainText("fr-FR");
+  await expect(statusBar.locator('[data-shell-stat="source-to-branch"]')).toContainText(
+    "ja-JP → fr-FR",
+  );
+  await expect(statusBar.locator('[data-shell-stat="zdr"]')).toContainText("zdr=true");
+  await expect(statusBar.locator('[data-shell-stat="zdr"]')).toContainText("data_collection=none");
+  await expect(statusBar.locator('[data-shell-stat="cost"]')).toContainText("$0.002180");
+
+  await expect(
+    page.locator('main[data-screen="reviewer-queue"][data-state="ready"]'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Reviewer queue items by category and severity" }),
+  ).toBeVisible();
+
+  const detailLink = page
+    .locator('main[data-screen="reviewer-queue"] a[href^="/reviewer-queue/"]')
+    .first();
+  await expect(detailLink).toBeVisible();
+  await detailLink.click();
+  await expect(
+    page.locator('main[data-screen="reviewer-detail"][data-state="ready"]'),
+  ).toBeVisible();
+  await expect(page.locator('main[data-screen="reviewer-detail"]')).toHaveAttribute(
+    "data-can-decide",
+    "true",
+  );
+  await expect(page.locator('[data-strip="decide-action"]')).toBeVisible();
+
+  await page.locator('button[data-action="decide-approve"]').click();
+  await expect(page.locator('[data-strip="decide-action"]')).toHaveAttribute("data-busy", "false");
+  await expect(page.getByText("Approved as-is — unit marked proven.")).toBeVisible();
+  expect(e2eObservedReviewerActions).toEqual([
+    {
+      reviewItemId: reviewerDetailContext.reviewItemId,
+      body: {
+        reviewItemId: reviewerDetailContext.reviewItemId,
+        action: "approve",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: reviewerDetailItem.sourceRevisionId,
+      },
+    },
+  ]);
+});
+
 async function installFixtureApi(page: Page): Promise<void> {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
@@ -117,6 +189,10 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
   const path = url.pathname;
   if (path === "/api/auth/capabilities") {
     await fulfillJson(route, "auth.capabilities", authCapabilitiesGrantedFixture);
+    return;
+  }
+  if (path === "/api/auth/identity") {
+    await fulfillJson(route, "auth.identity", authIdentityFixture);
     return;
   }
   if (path === "/api/projects") {
@@ -171,6 +247,22 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
     await fulfillJson(route, "reviewer.detail", reviewerDetailContext);
     return;
   }
+  const reviewerActionMatch = /^\/api\/reviewer\/queue\/([^/]+)\/action$/u.exec(path);
+  if (reviewerActionMatch !== null) {
+    const reviewItemId = decodeURIComponent(reviewerActionMatch[1]!);
+    const body = (await route.request().postDataJSON()) as unknown;
+    e2eObservedReviewerActions.push({ reviewItemId, body });
+    await fulfillJson(
+      route,
+      "reviewer.itemAction",
+      appliedSingleActionResult({
+        reviewItemId,
+        action: reviewerQueueActionValues.approve,
+        nextState: reviewerQueueItemStateValues.accepted,
+      }),
+    );
+    return;
+  }
   if (path === "/api/workspace/projects") {
     await fulfillJson(route, "workspace.projects", workspaceProjects);
     return;
@@ -215,6 +307,16 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
     `Unhandled Itotori fixture API request: ${route.request().method()} ${url.pathname}${url.search}`,
   );
 }
+
+const e2eObservedReviewerActions: Array<{ reviewItemId: string; body: unknown }> = [];
+
+test.beforeEach(() => {
+  e2eObservedReviewerActions.length = 0;
+});
+
+test.afterEach(() => {
+  e2eObservedReviewerActions.length = 0;
+});
 
 async function fulfillJson(
   route: Route,
@@ -330,6 +432,64 @@ function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
           expectedSourceRevisionId: row.sourceRevisionId,
         })),
     },
+  };
+}
+
+function appliedSingleActionResult(input: {
+  reviewItemId: string;
+  action: ReviewerQueueAction;
+  nextState:
+    | typeof reviewerQueueItemStateValues.accepted
+    | typeof reviewerQueueItemStateValues.repairRequested;
+}): ReviewerSingleActionResult {
+  return {
+    request: {
+      reviewItemId: input.reviewItemId,
+      action: input.action,
+      actorUserId: "local-user",
+      expectedSourceRevisionId: reviewerDetailItem.sourceRevisionId,
+    },
+    preview: {
+      reviewItemId: input.reviewItemId,
+      expectedSourceRevisionId: reviewerDetailItem.sourceRevisionId,
+      status: "allowed",
+      action: input.action,
+      requiredPermission: "queue.manage",
+      item: reviewerDetailItem,
+      priorState: reviewerQueueItemStateValues.pending,
+      nextState: input.nextState,
+      consequences: [],
+      diagnostics: [],
+      message: null,
+    },
+    outcome: {
+      kind: "applied",
+      reviewItemId: input.reviewItemId,
+      result: {
+        item: {
+          ...reviewerDetailItem,
+          state: input.nextState,
+          resolvedAt: new Date("2026-07-09T00:00:01.000Z"),
+        },
+        transition: {
+          transitionId: `transition-${input.reviewItemId}-${input.action}`,
+          reviewItemId: input.reviewItemId,
+          localeBranchId: reviewerDetailItem.localeBranchId,
+          sourceRevisionId: reviewerDetailItem.sourceRevisionId,
+          itemKind: reviewerDetailItem.itemKind,
+          action: input.action,
+          priorState: reviewerQueueItemStateValues.pending,
+          nextState: input.nextState,
+          actorUserId: "local-user",
+          affectedArtifactIds: [],
+          diagnostics: [],
+          metadata: {},
+          createdAt: new Date("2026-07-09T00:00:01.000Z"),
+        },
+      },
+    },
+    applied: true,
+    refused: false,
   };
 }
 
