@@ -19,16 +19,24 @@
 // the rendered scene summaries + source ↔ draft BiText + states are asserted.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import type { RuntimeDashboardStatus } from "@itotori/db";
 import type {
   WorkspaceComparisonReadModel,
   WorkspaceSceneBrowseReadModel,
 } from "../src/workspace/index.js";
 import { workspaceComparisonFixture, workspaceSceneBrowseFixture } from "../src/workspace/index.js";
 import { App } from "../src/ui/App.js";
+import {
+  artifactStoreUrl,
+  filmstripFramesForUnit,
+  localizedTextboxText,
+} from "../src/ui/screens/PlayScenePickerScreen.js";
 import { apiJson, authCapabilitiesMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
@@ -38,6 +46,7 @@ const PLAY_ROUTE = {
   pathname: "/play",
   search: `?projectId=${PROJECT_ID}&localeBranchId=${LOCALE_BRANCH_ID}`,
 };
+const PLAY_SCENE_PICKER_CSS = join(process.cwd(), "src/ui/screens/PlayScenePickerScreen.css");
 
 // Two scenes with distinct translated summaries so the NavPills rendering +
 // the scene-switch behavior are observable. Each scene cites one unit; the
@@ -116,14 +125,90 @@ function comparisonFixture(
   });
 }
 
+function runtimeStatusFixture(
+  overrides: Partial<RuntimeDashboardStatus> = {},
+): RuntimeDashboardStatus {
+  return {
+    finalStatus: "runtime_passed",
+    runtimeRunId: "runtime-play-1",
+    runtimeReportId: "runtime-play-1",
+    runtimeStatus: "passed",
+    fidelityTier: "layout_probe",
+    evidenceTier: "E2",
+    textEventCount: 1,
+    frameCaptureCount: 1,
+    screenshotArtifactCount: 1,
+    recordingArtifactCount: 0,
+    validationFindingCount: 0,
+    traceEvents: [
+      {
+        runtimeEventId: "runtime-play-1:trace-1",
+        eventKind: "text_seen",
+        bridgeUnitId: "bridge-unit-play-one",
+        sourceUnitKey: "scene.play.one.line.001",
+        draftId: "locale-branch-play:bridge-unit-play-one",
+        runtimeTargetId: "scene.play.one.line.001",
+        evidenceTier: "E2",
+        frame: 8,
+        textPreview: "Good morning.",
+        artifactIds: ["runtime-play-1:screenshot-1"],
+      },
+    ],
+    findings: [],
+    artifacts: [
+      {
+        artifactId: "runtime-play-1:screenshot-1",
+        artifactKind: "screenshot",
+        uri: "artifacts/utsushi/runtime/runtime-play-1/screenshots/screenshot-1.png",
+        hash: "sha256:play-screenshot",
+        mediaType: "image/png",
+        byteSize: 2048,
+        bridgeUnitId: "bridge-unit-play-one",
+        sourceUnitKey: "scene.play.one.line.001",
+        diagnostic: null,
+      },
+      {
+        artifactId: "runtime-play-1:frame-capture-1",
+        artifactKind: "frame_capture",
+        uri: "artifacts/utsushi/runtime/runtime-play-1/frames/frame-1.png",
+        hash: "sha256:play-frame",
+        mediaType: "image/png",
+        byteSize: 1024,
+        bridgeUnitId: "bridge-unit-play-two",
+        sourceUnitKey: "scene.play.two.line.001",
+        diagnostic: null,
+      },
+      {
+        artifactId: "runtime-play-1:trace-log-1",
+        artifactKind: "trace_log",
+        uri: "artifacts/utsushi/runtime/runtime-play-1/traces/trace-1.json",
+        hash: "sha256:play-trace",
+        mediaType: "application/json",
+        byteSize: 512,
+        bridgeUnitId: "bridge-unit-play-one",
+        sourceUnitKey: "scene.play.one.line.001",
+        diagnostic: null,
+      },
+    ],
+    approximations: [],
+    unsupportedCapabilities: [],
+    limitations: [],
+    ...overrides,
+  };
+}
+
 const server = setupServer(
   authCapabilitiesMswHandler,
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
+  http.get("*/api/projects", () =>
+    apiJson("projects.list", { projects: [dashboardStatusFixture] }),
+  ),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
   http.get("*/api/workspace/scenes", () => apiJson("workspace.scenes", sceneBrowseFixture())),
   http.get("*/api/workspace/comparison", () =>
     apiJson("workspace.comparison", comparisonFixture()),
   ),
+  http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture())),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -160,7 +245,7 @@ describe("SPA shell — Play scene picker", () => {
     // The BiText renders the SOURCE cell text verbatim.
     expect(screen.getByText("おはよう。")).toBeInTheDocument();
     // The BiText renders the DRAFT cell text verbatim.
-    expect(screen.getByText("Good morning.")).toBeInTheDocument();
+    expect(screen.getAllByText("Good morning.").length).toBeGreaterThanOrEqual(1);
 
     // Locale-branch identity tokens render as MONO CODE (sourceLocale +
     // targetLocale), so the branching is owned by an identity.
@@ -178,6 +263,99 @@ describe("SPA shell — Play scene picker", () => {
     expect(pair).not.toBeNull();
   });
 
+  it("renders the alpha captured-frame filmstrip with a localized textbox overlay", async () => {
+    render(<App location={PLAY_ROUTE} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Captured-frame filmstrip" }),
+    ).toBeInTheDocument();
+    const filmstrip = document.querySelector('[data-pane-id="play-filmstrip-alpha"]');
+    expect(filmstrip).not.toBeNull();
+    expect(filmstrip).toHaveAttribute("data-pane-state", "ready");
+    expect(filmstrip).toHaveAttribute("data-filmstrip-unit-id", "bridge-unit-play-one");
+
+    const frame = filmstrip?.querySelector(
+      '[data-filmstrip-artifact-id="runtime-play-1:screenshot-1"]',
+    );
+    expect(frame).not.toBeNull();
+    expect(frame).toHaveAttribute("data-filmstrip-artifact-kind", "screenshot");
+    expect(frame).toHaveAttribute(
+      "data-filmstrip-artifact-uri",
+      "artifacts/utsushi/runtime/runtime-play-1/screenshots/screenshot-1.png",
+    );
+
+    const image = frame?.querySelector("img");
+    expect(image).toHaveAttribute(
+      "src",
+      "/artifact-store/artifacts%2Futsushi%2Fruntime%2Fruntime-play-1%2Fscreenshots%2Fscreenshot-1.png",
+    );
+    expect(within(filmstrip as HTMLElement).getByText("Heroine")).toBeInTheDocument();
+    expect(within(filmstrip as HTMLElement).getByText("Good morning.")).toBeInTheDocument();
+
+    // The frame is governed by the shell redaction context. The test actor
+    // holds canReveal, but the private reveal toggle defaults off.
+    expect(
+      filmstrip?.querySelector('.itotori-redaction-frame[data-redacted="true"]'),
+    ).not.toBeNull();
+  });
+
+  it("ships CSS for horizontal filmstrip frames with textbox composited over the frame", () => {
+    const css = readFileSync(PLAY_SCENE_PICKER_CSS, "utf8");
+
+    expect(css).toMatch(/\.play-filmstrip__frames\s*\{[\s\S]*display:\s*flex/u);
+    expect(css).toMatch(/\.play-filmstrip__frames\s*\{[\s\S]*overflow-x:\s*auto/u);
+    expect(css).toMatch(/\.play-filmstrip__frame\s*\{[\s\S]*position:\s*relative/u);
+    expect(css).toMatch(/\.play-filmstrip__textbox\s*\{[\s\S]*position:\s*absolute/u);
+    expect(css).toMatch(/\.play-filmstrip__textbox\s*\{[\s\S]*bottom:/u);
+  });
+
+  it("keeps the filmstrip redacted when runtime artifact URIs are redacted by the API", async () => {
+    server.use(
+      http.get("*/api/runtime/v0.2/status", () =>
+        apiJson(
+          "runtime.status",
+          runtimeStatusFixture({
+            artifacts: runtimeStatusFixture().artifacts.map((artifact) => ({
+              ...artifact,
+              uri: null,
+              hash: null,
+            })),
+          }),
+        ),
+      ),
+    );
+    render(<App location={PLAY_ROUTE} />);
+
+    const filmstripHeading = await screen.findByRole("heading", {
+      name: "Captured-frame filmstrip",
+    });
+    const filmstrip = filmstripHeading.closest(".itotori-panel") as HTMLElement;
+    const frame = filmstrip.querySelector(
+      '[data-filmstrip-artifact-id="runtime-play-1:screenshot-1"]',
+    );
+    expect(frame).not.toBeNull();
+    expect(frame).not.toHaveAttribute("data-filmstrip-artifact-uri");
+    expect(frame?.querySelector("img")).toBeNull();
+    expect(within(filmstrip).getByText("screenshot")).toBeInTheDocument();
+    expect(
+      filmstrip.querySelector('.itotori-redaction-frame[data-redacted="true"]'),
+    ).not.toBeNull();
+  });
+
+  it("derives filmstrip frames and artifact-store URLs from the runtime read-model", () => {
+    const scenes = sceneBrowseFixture();
+    const unit = scenes.scenes[0]!.units[0]!;
+    const status = runtimeStatusFixture();
+
+    expect(localizedTextboxText(comparisonFixture())).toBe("Good morning.");
+    expect(artifactStoreUrl("artifacts/utsushi/runtime/run/screenshots/frame.png")).toBe(
+      "/artifact-store/artifacts%2Futsushi%2Fruntime%2Frun%2Fscreenshots%2Fframe.png",
+    );
+    expect(filmstripFramesForUnit(status, unit).map((frame) => frame.artifact.artifactId)).toEqual([
+      "runtime-play-1:screenshot-1",
+    ]);
+  });
+
   it("switches the BiText when a different scene is selected", async () => {
     render(<App location={PLAY_ROUTE} />);
 
@@ -193,7 +371,7 @@ describe("SPA shell — Play scene picker", () => {
     // The BiText pane re-queries for scene two's unit (the auto-selected
     // first cited unit of the newly selected scene). The pair container is
     // re-stamped with scene two's bridge id once the comparison settles.
-    await screen.findByText("Good morning.");
+    expect((await screen.findAllByText("Good morning.")).length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('[data-comparison-for="bridge-unit-play-two"]')).not.toBeNull();
     expect(document.querySelector('[data-comparison-for="bridge-unit-play-one"]')).toBeNull();
   });

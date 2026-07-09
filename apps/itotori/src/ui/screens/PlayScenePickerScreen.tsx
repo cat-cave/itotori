@@ -24,6 +24,7 @@
 // error states are asserted.
 
 import { useState, type ReactNode } from "react";
+import type { RuntimeDashboardStatus } from "@itotori/db";
 import { Badge, BiText, DataTable, NavPills, Panel, type NavPillItem } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type {
@@ -36,7 +37,9 @@ import type {
   WorkspaceSceneUnit,
 } from "../../workspace/index.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { RedactedFrame } from "../redaction-governor.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import "./PlayScenePickerScreen.css";
 
 // ---------------------------------------------------------------------------
 // Route identity — `/play` (bare) plus addressable deep-links
@@ -369,6 +372,11 @@ function PlayComparisonPane({ unit }: { unit: WorkspaceSceneUnit }): ReactNode {
     { query: { reviewItemId: unit.bridgeUnitId } },
     `play-scene-picker:comparison:${unit.bridgeUnitId}`,
   );
+  const runtime = useApiQuery(
+    "runtime.status",
+    {},
+    `play-filmstrip-alpha:runtime:${unit.bridgeUnitId}`,
+  );
   return (
     <Panel
       title="Source ↔ draft"
@@ -376,16 +384,18 @@ function PlayComparisonPane({ unit }: { unit: WorkspaceSceneUnit }): ReactNode {
       className="play-scene-picker__bitext"
       data-pane-state={comparison.state}
     >
-      <ComparisonBody comparison={comparison} unit={unit} />
+      <ComparisonBody comparison={comparison} runtime={runtime} unit={unit} />
     </Panel>
   );
 }
 
 function ComparisonBody({
   comparison,
+  runtime,
   unit,
 }: {
   comparison: ApiCallState<ApiWorkspaceComparisonResponse>;
+  runtime: ApiCallState<RuntimeDashboardStatus>;
   unit: WorkspaceSceneUnit;
 }): ReactNode {
   if (comparison.state === "loading") {
@@ -412,7 +422,12 @@ function ComparisonBody({
       </p>
     );
   }
-  return <BiTextFromComparison model={model} unit={unit} />;
+  return (
+    <>
+      <BiTextFromComparison model={model} unit={unit} />
+      <PlayCapturedFrameFilmstrip runtime={runtime} model={model} unit={unit} />
+    </>
+  );
 }
 
 function BiTextFromComparison({
@@ -448,6 +463,185 @@ function BiTextFromComparison({
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// play-filmstrip-alpha — interim captured-frame render.
+// ---------------------------------------------------------------------------
+
+export type PlayFilmstripArtifact = RuntimeDashboardStatus["artifacts"][number];
+export type PlayFilmstripTraceEvent = RuntimeDashboardStatus["traceEvents"][number];
+
+export type PlayFilmstripFrame = {
+  artifact: PlayFilmstripArtifact;
+  traceEvent: PlayFilmstripTraceEvent | null;
+};
+
+const PLAY_FILMSTRIP_ARTIFACT_KINDS = ["screenshot", "frame_capture"] as const;
+
+/**
+ * Resolve the localized textbox copy the alpha filmstrip composites over the
+ * captured frame. Prefer final text when present, then draft text; source text
+ * is not a localized textbox.
+ */
+export function localizedTextboxText(model: WorkspaceComparisonReadModel): string | null {
+  const finalText = model.cells.find((cell) => cell.side === "final")?.text.trim();
+  if (finalText !== undefined && finalText.length > 0) {
+    return finalText;
+  }
+  const draftText = model.cells.find((cell) => cell.side === "draft")?.text.trim();
+  return draftText !== undefined && draftText.length > 0 ? draftText : null;
+}
+
+/**
+ * Runtime-status is the exposed read-model for persisted runtimeEvidenceItems.
+ * The alpha filmstrip uses only captured-frame evidence (screenshots and frame
+ * captures) for the selected unit, preserving runtime order by frame number
+ * when trace rows carry it.
+ */
+export function filmstripFramesForUnit(
+  status: RuntimeDashboardStatus,
+  unit: WorkspaceSceneUnit,
+): PlayFilmstripFrame[] {
+  const traceByArtifact = new Map<string, PlayFilmstripTraceEvent>();
+  for (const event of status.traceEvents) {
+    for (const artifactId of event.artifactIds) {
+      if (!traceByArtifact.has(artifactId)) {
+        traceByArtifact.set(artifactId, event);
+      }
+    }
+  }
+
+  return status.artifacts
+    .filter((artifact) => isPlayFilmstripArtifact(artifact))
+    .filter((artifact) => artifactMatchesUnit(artifact, unit))
+    .map((artifact) => ({ artifact, traceEvent: traceByArtifact.get(artifact.artifactId) ?? null }))
+    .sort((left, right) => {
+      const leftFrame = left.traceEvent?.frame ?? Number.MAX_SAFE_INTEGER;
+      const rightFrame = right.traceEvent?.frame ?? Number.MAX_SAFE_INTEGER;
+      if (leftFrame !== rightFrame) {
+        return leftFrame - rightFrame;
+      }
+      return left.artifact.artifactId.localeCompare(right.artifact.artifactId);
+    });
+}
+
+function isPlayFilmstripArtifact(artifact: PlayFilmstripArtifact): boolean {
+  return (PLAY_FILMSTRIP_ARTIFACT_KINDS as readonly string[]).includes(artifact.artifactKind);
+}
+
+function artifactMatchesUnit(artifact: PlayFilmstripArtifact, unit: WorkspaceSceneUnit): boolean {
+  return (
+    artifact.bridgeUnitId === unit.bridgeUnitId || artifact.sourceUnitKey === unit.sourceUnitKey
+  );
+}
+
+function PlayCapturedFrameFilmstrip({
+  runtime,
+  model,
+  unit,
+}: {
+  runtime: ApiCallState<RuntimeDashboardStatus>;
+  model: WorkspaceComparisonReadModel;
+  unit: WorkspaceSceneUnit;
+}): ReactNode {
+  const textbox = localizedTextboxText(model);
+  return (
+    <Panel
+      title="Captured-frame filmstrip"
+      eyebrow="Alpha render"
+      className="play-filmstrip"
+      data-pane-id="play-filmstrip-alpha"
+      data-pane-state={runtime.state}
+      data-filmstrip-unit-id={unit.bridgeUnitId}
+    >
+      {runtime.state === "loading" && <LoadingState label="Loading captured frames..." />}
+      {runtime.state === "error" && (
+        <ErrorState title="Captured-frame filmstrip" error={runtime.error} />
+      )}
+      {runtime.state === "empty" && (
+        <EmptyState
+          title="No captured frames"
+          message="The runtime dashboard returned no captured-frame evidence for this unit."
+        />
+      )}
+      {runtime.state === "ready" && textbox === null && (
+        <EmptyState
+          title="No localized textbox"
+          message="No draft or final text was returned for this unit."
+        />
+      )}
+      {runtime.state === "ready" && textbox !== null && (
+        <PlayCapturedFrameFilmstripReady status={runtime.data} unit={unit} textbox={textbox} />
+      )}
+    </Panel>
+  );
+}
+
+function PlayCapturedFrameFilmstripReady({
+  status,
+  unit,
+  textbox,
+}: {
+  status: RuntimeDashboardStatus;
+  unit: WorkspaceSceneUnit;
+  textbox: string;
+}): ReactNode {
+  const frames = filmstripFramesForUnit(status, unit);
+  if (frames.length === 0) {
+    return (
+      <EmptyState
+        title="No captured frames"
+        message="No screenshot or frame-capture evidence matched the selected unit."
+      />
+    );
+  }
+  return (
+    <ol className="play-filmstrip__frames" aria-label="Captured-frame filmstrip">
+      {frames.map((frame, index) => (
+        <li
+          key={frame.artifact.artifactId}
+          className="play-filmstrip__frame-item"
+          data-filmstrip-frame-index={index}
+          data-filmstrip-artifact-id={frame.artifact.artifactId}
+          data-filmstrip-artifact-kind={frame.artifact.artifactKind}
+          data-filmstrip-artifact-uri={frame.artifact.uri ?? undefined}
+        >
+          <RedactedFrame sensitive label="captured frame · redacted">
+            <figure className="play-filmstrip__frame">
+              {frame.artifact.uri === null ? (
+                <div className="play-filmstrip__missing-frame" aria-hidden="true">
+                  {frame.artifact.artifactKind}
+                </div>
+              ) : (
+                <img
+                  className="play-filmstrip__image"
+                  src={artifactStoreUrl(frame.artifact.uri)}
+                  alt=""
+                />
+              )}
+              <figcaption className="play-filmstrip__textbox">
+                {unit.speaker !== null && (
+                  <span className="play-filmstrip__speaker">{unit.speaker}</span>
+                )}
+                <span className="play-filmstrip__line">{textbox}</span>
+              </figcaption>
+            </figure>
+          </RedactedFrame>
+          <p className="play-filmstrip__meta">
+            <code>{frame.artifact.artifactId}</code>
+            {frame.traceEvent?.frame === null || frame.traceEvent?.frame === undefined
+              ? null
+              : ` · frame ${frame.traceEvent.frame}`}
+          </p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function artifactStoreUrl(uri: string): string {
+  return `/artifact-store/${encodeURIComponent(uri)}`;
 }
 
 // ---------------------------------------------------------------------------

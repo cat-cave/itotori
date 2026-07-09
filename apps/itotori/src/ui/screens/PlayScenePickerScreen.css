@@ -1,0 +1,102 @@
+.play-filmstrip {
+  min-width: 0;
+}
+
+.play-filmstrip__frames {
+  display: flex;
+  gap: var(--ito-space-14);
+  margin: 0;
+  padding: 0 0 var(--ito-space-8);
+  overflow-x: auto;
+  overflow-y: hidden;
+  list-style: none;
+  scroll-snap-type: x proximity;
+}
+
+.play-filmstrip__frame-item {
+  flex: 0 0 min(38rem, 86vw);
+  min-width: 18rem;
+  scroll-snap-align: start;
+}
+
+.play-filmstrip__frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ito-color-code-well);
+}
+
+.play-filmstrip__image,
+.play-filmstrip__missing-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.play-filmstrip__image {
+  object-fit: cover;
+}
+
+.play-filmstrip__missing-frame {
+  display: grid;
+  place-items: center;
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+  background: var(--ito-color-code-well);
+}
+
+.play-filmstrip__textbox {
+  position: absolute;
+  right: var(--ito-space-14);
+  bottom: var(--ito-space-14);
+  left: var(--ito-space-14);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+  margin: 0;
+  padding: var(--ito-space-10) var(--ito-space-12);
+  color: var(--ito-color-text);
+  background: var(--ito-command-scrim);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  box-shadow: var(--ito-shadow-panel);
+}
+
+.play-filmstrip__speaker {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-sakura);
+}
+
+.play-filmstrip__line {
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+}
+
+.play-filmstrip__meta {
+  margin: var(--ito-space-8) 0 0;
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+}
+
+@media (max-width: 42rem) {
+  .play-filmstrip__frame-item {
+    flex-basis: 82vw;
+    min-width: 15rem;
+  }
+
+  .play-filmstrip__textbox {
+    right: var(--ito-space-8);
+    bottom: var(--ito-space-8);
+    left: var(--ito-space-8);
+    padding: var(--ito-space-8) var(--ito-space-10);
+  }
+}
