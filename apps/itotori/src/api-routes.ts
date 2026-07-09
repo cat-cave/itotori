@@ -349,6 +349,23 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiRuntimeEvidenceRequest",
     responseSchema: "ApiRuntimeEvidenceResponse",
   },
+  "settings.modelRouting.get": {
+    method: "GET",
+    pathTemplate: "/api/settings/model-routing",
+    operationId: "settingsModelRoutingGet",
+    summary: "Load project model routing settings and available provider/model/prompt choices.",
+    pathParams: [],
+    responseSchema: "ApiModelRoutingSettingsResponse",
+  },
+  "settings.modelRouting.save": {
+    method: "POST",
+    pathTemplate: "/api/settings/model-routing",
+    operationId: "settingsModelRoutingSave",
+    summary: "Save one project model-routing task route.",
+    pathParams: [],
+    requestSchema: "ApiSaveModelRoutingSettingsRequest",
+    responseSchema: "ApiModelRoutingSettingsResponse",
+  },
   "auth.ssoSettings.configure": {
     method: "POST",
     pathTemplate: "/api/settings/security/sso",

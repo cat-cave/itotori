@@ -2362,6 +2362,37 @@ export const promptPresets = pgTable(
   ],
 );
 
+export const modelRoutingSettings = pgTable(
+  "itotori_model_routing_settings",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    taskKind: text("task_kind").notNull(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.providerId, { onDelete: "restrict" }),
+    modelRegistryId: text("model_registry_id")
+      .notNull()
+      .references(() => modelRegistry.modelRegistryId, { onDelete: "restrict" }),
+    modelId: text("model_id").notNull(),
+    fallbackModelIds: jsonb("fallback_model_ids").$type<string[]>().notNull().default([]),
+    promptPresetId: text("prompt_preset_id").notNull(),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.taskKind] }),
+    index("itotori_model_routing_settings_project_idx").on(table.projectId),
+    foreignKey({
+      columns: [table.promptPresetId, table.promptTemplateVersion],
+      foreignColumns: [promptPresets.promptPresetId, promptPresets.promptTemplateVersion],
+      name: "itotori_model_routing_settings_prompt_preset_fk",
+    }),
+  ],
+);
+
 export const providerRuns = pgTable(
   "itotori_provider_runs",
   {

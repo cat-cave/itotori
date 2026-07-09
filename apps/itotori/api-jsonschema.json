@@ -735,6 +735,185 @@
       ],
       "type": "object"
     },
+    "ApiModelRoutingModel": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "type": "object"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "modelRegistryId": {
+          "type": "string"
+        },
+        "pricing": {
+          "type": "object"
+        },
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "capabilities",
+        "modelId",
+        "modelRegistryId",
+        "pricing",
+        "providerId"
+      ],
+      "type": "object"
+    },
+    "ApiModelRoutingPromptPreset": {
+      "additionalProperties": false,
+      "properties": {
+        "configSnapshot": {
+          "type": "object"
+        },
+        "presetSchemaVersion": {
+          "type": "string"
+        },
+        "promptHash": {
+          "type": "string"
+        },
+        "promptPresetId": {
+          "type": "string"
+        },
+        "promptTemplateVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "configSnapshot",
+        "presetSchemaVersion",
+        "promptHash",
+        "promptPresetId",
+        "promptTemplateVersion"
+      ],
+      "type": "object"
+    },
+    "ApiModelRoutingProvider": {
+      "additionalProperties": false,
+      "properties": {
+        "endpointFamily": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "providerFamily": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "providerName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpointFamily",
+        "metadata",
+        "providerFamily",
+        "providerId",
+        "providerName"
+      ],
+      "type": "object"
+    },
+    "ApiModelRoutingRoute": {
+      "additionalProperties": false,
+      "properties": {
+        "fallbackModelIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "modelRegistryId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "promptPresetId": {
+          "type": "string"
+        },
+        "promptTemplateVersion": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "taskKind": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fallbackModelIds",
+        "modelId",
+        "modelRegistryId",
+        "projectId",
+        "promptPresetId",
+        "promptTemplateVersion",
+        "providerId",
+        "taskKind",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "ApiModelRoutingSettingsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "generatedAt": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/definitions/ApiModelRoutingModel"
+          },
+          "type": "array"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "promptPresets": {
+          "items": {
+            "$ref": "#/definitions/ApiModelRoutingPromptPreset"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/definitions/ApiModelRoutingProvider"
+          },
+          "type": "array"
+        },
+        "routes": {
+          "items": {
+            "$ref": "#/definitions/ApiModelRoutingRoute"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "const": "itotori.settings.model-routing.v0"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "models",
+        "projectId",
+        "promptPresets",
+        "providers",
+        "routes",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ApiPermissionSetRecord": {
       "additionalProperties": false,
       "properties": {
@@ -1583,6 +1762,45 @@
         "patchResultId",
         "runtimeReportId",
         "status"
+      ],
+      "type": "object"
+    },
+    "ApiSaveModelRoutingSettingsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "fallbackModelIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "promptPresetId": {
+          "type": "string"
+        },
+        "promptTemplateVersion": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "taskKind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fallbackModelIds",
+        "modelId",
+        "projectId",
+        "promptPresetId",
+        "promptTemplateVersion",
+        "providerId",
+        "taskKind"
       ],
       "type": "object"
     },

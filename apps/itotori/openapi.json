@@ -734,6 +734,185 @@
         ],
         "type": "object"
       },
+      "ApiModelRoutingModel": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "type": "object"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "modelRegistryId": {
+            "type": "string"
+          },
+          "pricing": {
+            "type": "object"
+          },
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "capabilities",
+          "modelId",
+          "modelRegistryId",
+          "pricing",
+          "providerId"
+        ],
+        "type": "object"
+      },
+      "ApiModelRoutingPromptPreset": {
+        "additionalProperties": false,
+        "properties": {
+          "configSnapshot": {
+            "type": "object"
+          },
+          "presetSchemaVersion": {
+            "type": "string"
+          },
+          "promptHash": {
+            "type": "string"
+          },
+          "promptPresetId": {
+            "type": "string"
+          },
+          "promptTemplateVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configSnapshot",
+          "presetSchemaVersion",
+          "promptHash",
+          "promptPresetId",
+          "promptTemplateVersion"
+        ],
+        "type": "object"
+      },
+      "ApiModelRoutingProvider": {
+        "additionalProperties": false,
+        "properties": {
+          "endpointFamily": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "providerFamily": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "providerName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpointFamily",
+          "metadata",
+          "providerFamily",
+          "providerId",
+          "providerName"
+        ],
+        "type": "object"
+      },
+      "ApiModelRoutingRoute": {
+        "additionalProperties": false,
+        "properties": {
+          "fallbackModelIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "modelRegistryId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "promptPresetId": {
+            "type": "string"
+          },
+          "promptTemplateVersion": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "taskKind": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fallbackModelIds",
+          "modelId",
+          "modelRegistryId",
+          "projectId",
+          "promptPresetId",
+          "promptTemplateVersion",
+          "providerId",
+          "taskKind",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ApiModelRoutingSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ApiModelRoutingModel"
+            },
+            "type": "array"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "promptPresets": {
+            "items": {
+              "$ref": "#/components/schemas/ApiModelRoutingPromptPreset"
+            },
+            "type": "array"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ApiModelRoutingProvider"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/ApiModelRoutingRoute"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "itotori.settings.model-routing.v0"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "models",
+          "projectId",
+          "promptPresets",
+          "providers",
+          "routes",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
       "ApiPermissionSetRecord": {
         "additionalProperties": false,
         "properties": {
@@ -1582,6 +1761,45 @@
           "patchResultId",
           "runtimeReportId",
           "status"
+        ],
+        "type": "object"
+      },
+      "ApiSaveModelRoutingSettingsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fallbackModelIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "promptPresetId": {
+            "type": "string"
+          },
+          "promptTemplateVersion": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "taskKind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fallbackModelIds",
+          "modelId",
+          "projectId",
+          "promptPresetId",
+          "promptTemplateVersion",
+          "providerId",
+          "taskKind"
         ],
         "type": "object"
       },
@@ -6418,6 +6636,152 @@
         },
         "summary": "Runtime dashboard status.",
         "x-itotoriRouteId": "runtime.status"
+      }
+    },
+    "/api/settings/model-routing": {
+      "get": {
+        "operationId": "settingsModelRoutingGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiModelRoutingSettingsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load project model routing settings and available provider/model/prompt choices.",
+        "x-itotoriRouteId": "settings.modelRouting.get"
+      },
+      "post": {
+        "operationId": "settingsModelRoutingSave",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiSaveModelRoutingSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiModelRoutingSettingsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Save one project model-routing task route.",
+        "x-itotoriRouteId": "settings.modelRouting.save"
       }
     },
     "/api/settings/security/sso": {

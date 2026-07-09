@@ -556,6 +556,86 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.queue_health.v0.1",
     }),
+  ApiModelRoutingProvider: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
+      properties: {
+        providerId: str,
+        providerFamily: str,
+        endpointFamily: str,
+        providerName: str,
+        metadata: obj,
+      },
+      additionalProperties: false,
+    }),
+  ApiModelRoutingModel: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingModel,
+      properties: {
+        modelRegistryId: str,
+        providerId: str,
+        modelId: str,
+        capabilities: obj,
+        pricing: obj,
+      },
+      additionalProperties: false,
+    }),
+  ApiModelRoutingPromptPreset: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
+      properties: {
+        promptPresetId: str,
+        promptTemplateVersion: str,
+        presetSchemaVersion: str,
+        promptHash: str,
+        configSnapshot: obj,
+      },
+      additionalProperties: false,
+    }),
+  ApiModelRoutingRoute: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingRoute,
+      properties: {
+        projectId: str,
+        taskKind: str,
+        providerId: str,
+        modelId: str,
+        modelRegistryId: str,
+        fallbackModelIds: { type: "array", items: str },
+        promptPresetId: str,
+        promptTemplateVersion: str,
+        updatedAt: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiModelRoutingSettingsResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
+      properties: {
+        projectId: str,
+        generatedAt: str,
+        providers: { type: "array", items: ref("ApiModelRoutingProvider") },
+        models: { type: "array", items: ref("ApiModelRoutingModel") },
+        promptPresets: { type: "array", items: ref("ApiModelRoutingPromptPreset") },
+        routes: { type: "array", items: ref("ApiModelRoutingRoute") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.settings.model-routing.v0",
+    }),
+  ApiSaveModelRoutingSettingsRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
+      properties: {
+        projectId: str,
+        taskKind: str,
+        providerId: str,
+        modelId: str,
+        fallbackModelIds: { type: "array", items: str },
+        promptPresetId: str,
+        promptTemplateVersion: str,
+      },
+      additionalProperties: false,
+    }),
   ApiConfigureAuthSsoSettingsRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,

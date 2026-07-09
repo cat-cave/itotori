@@ -348,6 +348,10 @@ export const migrations = [
     id: "0072_auth_account_billing_seats",
     file: "0072_auth_account_billing_seats.sql",
   },
+  {
+    id: "0073_model_routing_settings",
+    file: "0073_model_routing_settings.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

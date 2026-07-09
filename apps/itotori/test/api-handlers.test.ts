@@ -60,6 +60,7 @@ import {
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiAcceptMemberInvitationRequest,
   type ApiInviteMemberRequest,
+  type ApiSaveModelRoutingSettingsRequest,
   type ApiRemoveMemberRequest,
   type ApiRevokeAuthSessionRequest,
 } from "../src/api-schema.js";
@@ -99,6 +100,7 @@ import {
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
+  modelRoutingSettingsFixture,
   nonJapaneseTargetProjectFixture,
   projectOverviewFixture,
   projectFixture,
@@ -150,6 +152,7 @@ type ApiMutationPermissionCase = {
 type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
   | { surface: "authSsoSettings"; method: "configureSettings" }
+  | { surface: "modelRouting"; method: "loadSettings" | "saveRoute" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | {
@@ -185,6 +188,7 @@ const readOnlyPostApiRoutes = new Set([
   // service (gated on queue.manage), not via a projectWorkflow call.
   "POST /api/workspace/corrections",
   "POST /api/settings/security/sso",
+  "POST /api/settings/model-routing",
   "POST /api/auth/members/invitations",
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
@@ -214,6 +218,16 @@ const authSsoSettingsRequestFixture = {
     absoluteTimeoutMinutes: 480,
   },
 } satisfies ApiConfigureAuthSsoSettingsRequest;
+
+const saveModelRoutingRequestFixture = {
+  projectId: "project-1",
+  taskKind: "draft_translation",
+  providerId: "openrouter",
+  modelId: "anthropic/claude-3-5-sonnet",
+  fallbackModelIds: ["anthropic/claude-3-haiku"],
+  promptPresetId: "itotori-draft-default-v1",
+  promptTemplateVersion: "1.0.0",
+} satisfies ApiSaveModelRoutingSettingsRequest;
 
 const inviteMemberRequestFixture = {
   accountId: "account-local",
@@ -296,6 +310,20 @@ const apiMutationPermissionMatrix = [
     "ssoSettingsConfigure",
     post("/api/settings/security/sso", authSsoSettingsRequestFixture),
     { surface: "authSsoSettings", method: "configureSettings" },
+  ),
+  apiGateForService(
+    "modelRoutingRead",
+    {
+      method: "GET",
+      pathname: "/api/settings/model-routing",
+      search: "?projectId=project-1",
+    },
+    { surface: "modelRouting", method: "loadSettings" },
+  ),
+  apiGateForService(
+    "modelRoutingSave",
+    post("/api/settings/model-routing", saveModelRoutingRequestFixture),
+    { surface: "modelRouting", method: "saveRoute" },
   ),
   apiGateForService(
     "membersList",
@@ -2923,6 +2951,74 @@ describe("Itotori API handlers", () => {
     );
   });
 
+  it("loads and saves model routing settings through the typed settings route", async () => {
+    const services = serviceFixture();
+
+    const loaded = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/settings/model-routing",
+        search: "?projectId=project-1",
+      },
+      services,
+    );
+    const saved = await handleItotoriApiRequest(
+      post("/api/settings/model-routing", saveModelRoutingRequestFixture),
+      services,
+    );
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.body).toMatchObject({
+      schemaVersion: "itotori.settings.model-routing.v0",
+      projectId: "project-1",
+    });
+    expect(loaded.body.providers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ providerId: "openrouter" })]),
+    );
+    expect(loaded.body.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelId: "anthropic/claude-3-5-sonnet",
+          providerId: "openrouter",
+        }),
+      ]),
+    );
+    expect(loaded.body.promptPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ promptPresetId: "itotori-draft-default-v1" }),
+      ]),
+    );
+    expect(loaded.body.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskKind: "draft_translation",
+          modelId: "anthropic/claude-3-5-sonnet",
+        }),
+      ]),
+    );
+    expect(saved.statusCode).toBe(200);
+    expect(saved.body).toMatchObject({
+      schemaVersion: "itotori.settings.model-routing.v0",
+      routes: [
+        {
+          taskKind: "draft_translation",
+          providerId: "openrouter",
+          modelId: "anthropic/claude-3-5-sonnet",
+          fallbackModelIds: ["anthropic/claude-3-haiku"],
+          promptPresetId: "itotori-draft-default-v1",
+        },
+      ],
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.catalogRead,
+    );
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.modelRouting.loadSettings).toHaveBeenCalledWith("project-1");
+    expect(services.modelRouting.saveRoute).toHaveBeenCalledWith(saveModelRoutingRequestFixture);
+  });
+
   it("routes member invite, billing seat usage, accept, list, and remove through typed auth handlers", async () => {
     const services = serviceFixture();
 
@@ -3622,6 +3718,20 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "model routing read",
+          "requiredPermission": "catalog.read",
+          "route": "GET /api/settings/model-routing",
+          "successFixture": "api-handlers.test.ts model routing read success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "model routing save",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/settings/model-routing",
+          "successFixture": "api-handlers.test.ts model routing save success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "members list",
           "requiredPermission": "auth.members.manage",
           "route": "GET /api/auth/members",
@@ -4121,6 +4231,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   }
   if (service.surface === "authBilling") {
     return services.authBilling[service.method];
+  }
+  if (service.surface === "modelRouting") {
+    return services.modelRouting[service.method];
   }
   if (service.surface === "authPermissions") {
     return services.authPermissions[service.method];
@@ -4696,6 +4809,35 @@ function serviceFixture(): ItotoriApiServices {
       configureSettings: vi.fn(async (input) => ({
         ...input,
         updatedAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    modelRouting: {
+      loadSettings: vi.fn(async (projectId: string) => ({
+        ...modelRoutingSettingsFixture,
+        projectId,
+        generatedAt: new Date(modelRoutingSettingsFixture.generatedAt),
+        routes: modelRoutingSettingsFixture.routes.map((route) => ({
+          ...route,
+          updatedAt: new Date(route.updatedAt),
+        })),
+      })),
+      saveRoute: vi.fn(async (input: ApiSaveModelRoutingSettingsRequest) => ({
+        ...modelRoutingSettingsFixture,
+        projectId: input.projectId,
+        generatedAt: new Date(modelRoutingSettingsFixture.generatedAt),
+        routes: [
+          {
+            projectId: input.projectId,
+            taskKind: input.taskKind,
+            providerId: input.providerId,
+            modelId: input.modelId,
+            modelRegistryId: `${input.providerId}:${input.modelId}`,
+            fallbackModelIds: [...input.fallbackModelIds],
+            promptPresetId: input.promptPresetId,
+            promptTemplateVersion: input.promptTemplateVersion,
+            updatedAt: new Date("2026-07-08T00:00:00.000Z"),
+          },
+        ],
       })),
     },
     authMembers: {

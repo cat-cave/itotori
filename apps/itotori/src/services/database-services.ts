@@ -17,6 +17,7 @@ import {
   ItotoriCatalogRepository,
   ItotoriLocalizationPassLedgerRepository,
   ItotoriModelLedgerRepository,
+  ItotoriModelRoutingSettingsRepository,
   ItotoriPrincipalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
@@ -53,6 +54,8 @@ import {
   type LoadQueueHealthOptions,
   type LoadJobsRunTableOptions,
   type JobsRunTableReadModel,
+  type ModelRoutingSettingsRecord,
+  type SaveModelRoutingSettingsInput,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type AuthAccountSeatUsageRecord,
@@ -248,6 +251,10 @@ export type ItotoriApplicationServices = {
   };
   authSsoSettings: {
     configureSettings(input: ConfigureAuthSsoSettingsInput): Promise<AuthSsoSettingsRecord>;
+  };
+  modelRouting: {
+    loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
+    saveRoute(input: SaveModelRoutingSettingsInput): Promise<ModelRoutingSettingsRecord>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<MemberRecord[]>;
@@ -462,6 +469,7 @@ export async function withDatabaseItotoriServices<T>(
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
+    const modelRoutingSettingsRepository = new ItotoriModelRoutingSettingsRepository(context.db);
     const passLedgerRepository = new ItotoriLocalizationPassLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
@@ -740,6 +748,11 @@ export async function withDatabaseItotoriServices<T>(
       authSsoSettings: {
         configureSettings: (input) =>
           authSsoSettingsRepository.configureSettings(localUserActor, input),
+      },
+      modelRouting: {
+        loadSettings: (projectId) =>
+          modelRoutingSettingsRepository.loadSettings(localUserActor, projectId),
+        saveRoute: (input) => modelRoutingSettingsRepository.saveRoute(localUserActor, input),
       },
       authMembers: {
         listMembers: (accountId) =>

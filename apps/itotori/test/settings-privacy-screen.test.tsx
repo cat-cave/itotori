@@ -32,7 +32,7 @@ describe("Settings privacy posture", () => {
     render(<App location={{ pathname: "/settings/privacy", search: "" }} />);
 
     expect(await screen.findByRole("heading", { name: "Privacy posture" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute("aria-selected", "true");
 
     const panel = screen.getByRole("region", { name: /privacy \/ zdr/i });
     expect(panel).toHaveAttribute("data-panel-id", "privacy-zdr");

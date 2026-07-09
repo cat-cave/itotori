@@ -1,0 +1,94 @@
+.model-routing-settings__body {
+  display: grid;
+  gap: var(--ito-space-18);
+}
+
+.model-routing-settings__grid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.85fr) minmax(22rem, 1.15fr);
+  gap: var(--ito-space-18);
+  align-items: start;
+}
+
+.model-routing-settings__form {
+  display: grid;
+  gap: var(--ito-space-14);
+}
+
+.model-routing-settings__field {
+  display: grid;
+  gap: var(--ito-space-6);
+}
+
+.model-routing-settings__field span {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text-muted);
+  text-transform: uppercase;
+}
+
+.model-routing-settings__field input,
+.model-routing-settings__field select {
+  min-height: 2.5rem;
+  min-width: 0;
+  padding: 0 var(--ito-space-10);
+  color: var(--ito-color-text);
+  background: var(--ito-color-code-well);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+}
+
+.model-routing-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-10);
+}
+
+.model-routing-settings__actions button {
+  min-height: 2.25rem;
+  padding: 0 var(--ito-space-12);
+  color: var(--ito-color-ink);
+  background: var(--ito-color-amber);
+  border: 1px solid var(--ito-color-amber);
+  border-radius: var(--ito-radius-tight);
+}
+
+.model-routing-settings__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.model-routing-settings__actions span {
+  color: var(--ito-color-text-muted);
+}
+
+.model-routing-settings__actions span[role="alert"] {
+  color: var(--ito-color-sakura);
+}
+
+.model-routing-settings__route {
+  display: grid;
+  gap: var(--ito-space-4);
+  min-width: 13rem;
+}
+
+.model-routing-settings__route strong {
+  color: var(--ito-color-text);
+}
+
+.model-routing-settings__route code {
+  color: var(--ito-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.model-routing-settings__mono {
+  color: var(--ito-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 56rem) {
+  .model-routing-settings__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

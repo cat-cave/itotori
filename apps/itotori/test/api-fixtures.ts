@@ -30,6 +30,7 @@ import type {
   ApiRecordFindingResponse,
   ApiRuntimeEvidenceRequest,
   ApiRuntimeEvidenceResponse,
+  ApiModelRoutingSettingsResponse,
   ItotoriApiRouteId,
 } from "../src/api-schema.js";
 import type {
@@ -241,6 +242,59 @@ export const jobsRunTableFixture: JobsRunTableReadModel = {
       tokens: { in: 22, out: 14, total: 36 },
       fallback: { used: false, plan: ["openai/gpt-4.1-mini"], chain: [] },
       createdAt: "2026-07-07T00:00:00.000Z",
+    },
+  ],
+};
+
+export const modelRoutingSettingsFixture: ApiModelRoutingSettingsResponse = {
+  schemaVersion: "itotori.settings.model-routing.v0",
+  projectId: "project-1",
+  generatedAt: "2026-07-08T00:00:00.000Z",
+  providers: [
+    {
+      providerId: "openrouter",
+      providerFamily: "openrouter",
+      endpointFamily: "chat-completions",
+      providerName: "OpenRouter",
+      metadata: { accountZdr: true },
+    },
+  ],
+  models: [
+    {
+      modelRegistryId: "openrouter:anthropic/claude-3-5-sonnet",
+      providerId: "openrouter",
+      modelId: "anthropic/claude-3-5-sonnet",
+      capabilities: { structuredOutput: true },
+      pricing: { source: "fixture" },
+    },
+    {
+      modelRegistryId: "openrouter:anthropic/claude-3-haiku",
+      providerId: "openrouter",
+      modelId: "anthropic/claude-3-haiku",
+      capabilities: { structuredOutput: true },
+      pricing: { source: "fixture" },
+    },
+  ],
+  promptPresets: [
+    {
+      promptPresetId: "itotori-draft-default-v1",
+      promptTemplateVersion: "1.0.0",
+      presetSchemaVersion: "itotori.prompt-preset.v0",
+      promptHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      configSnapshot: { template: "draft" },
+    },
+  ],
+  routes: [
+    {
+      projectId: "project-1",
+      taskKind: "draft_translation",
+      providerId: "openrouter",
+      modelId: "anthropic/claude-3-5-sonnet",
+      modelRegistryId: "openrouter:anthropic/claude-3-5-sonnet",
+      fallbackModelIds: ["anthropic/claude-3-haiku"],
+      promptPresetId: "itotori-draft-default-v1",
+      promptTemplateVersion: "1.0.0",
+      updatedAt: "2026-07-08T00:00:00.000Z",
     },
   ],
 };

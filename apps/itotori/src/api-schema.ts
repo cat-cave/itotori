@@ -188,6 +188,8 @@ export type ItotoriApiRouteId =
   | "decisions.record"
   | "benchmarks.record"
   | "runtimeEvidence.ingest"
+  | "settings.modelRouting.get"
+  | "settings.modelRouting.save"
   | "auth.ssoSettings.configure"
   | "auth.billing.seatUsage"
   | "auth.members.list"
@@ -351,6 +353,50 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   // itotori-bmk-cockpit-history — paged run-history rows envelope.
   BmkCockpitRunHistoryPage: ["filter", "pagination", "rows"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
+  ApiModelRoutingProvider: [
+    "providerId",
+    "providerFamily",
+    "endpointFamily",
+    "providerName",
+    "metadata",
+  ],
+  ApiModelRoutingModel: ["modelRegistryId", "providerId", "modelId", "capabilities", "pricing"],
+  ApiModelRoutingPromptPreset: [
+    "promptPresetId",
+    "promptTemplateVersion",
+    "presetSchemaVersion",
+    "promptHash",
+    "configSnapshot",
+  ],
+  ApiModelRoutingRoute: [
+    "projectId",
+    "taskKind",
+    "providerId",
+    "modelId",
+    "modelRegistryId",
+    "fallbackModelIds",
+    "promptPresetId",
+    "promptTemplateVersion",
+    "updatedAt",
+  ],
+  ApiModelRoutingSettingsResponse: [
+    "schemaVersion",
+    "projectId",
+    "generatedAt",
+    "providers",
+    "models",
+    "promptPresets",
+    "routes",
+  ],
+  ApiSaveModelRoutingSettingsRequest: [
+    "projectId",
+    "taskKind",
+    "providerId",
+    "modelId",
+    "fallbackModelIds",
+    "promptPresetId",
+    "promptTemplateVersion",
+  ],
   ApiConfigureAuthSsoSettingsRequest: ["accountId", "provider", "security", "sessionPolicy"],
   ApiConfigureAuthSsoSettingsResponse: [
     "schemaVersion",
@@ -796,6 +842,62 @@ export type ApiConfigureAuthSsoSettingsRequest = {
   sessionPolicy: ApiAuthSessionPolicy;
 };
 
+export type ApiModelRoutingProvider = {
+  providerId: string;
+  providerFamily: string;
+  endpointFamily: string;
+  providerName: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ApiModelRoutingModel = {
+  modelRegistryId: string;
+  providerId: string;
+  modelId: string;
+  capabilities: Record<string, unknown>;
+  pricing: Record<string, unknown>;
+};
+
+export type ApiModelRoutingPromptPreset = {
+  promptPresetId: string;
+  promptTemplateVersion: string;
+  presetSchemaVersion: string;
+  promptHash: string;
+  configSnapshot: Record<string, unknown>;
+};
+
+export type ApiModelRoutingRoute = {
+  projectId: string;
+  taskKind: string;
+  providerId: string;
+  modelId: string;
+  modelRegistryId: string;
+  fallbackModelIds: string[];
+  promptPresetId: string;
+  promptTemplateVersion: string;
+  updatedAt: string;
+};
+
+export type ApiModelRoutingSettingsResponse = {
+  schemaVersion: "itotori.settings.model-routing.v0";
+  projectId: string;
+  generatedAt: string;
+  providers: ApiModelRoutingProvider[];
+  models: ApiModelRoutingModel[];
+  promptPresets: ApiModelRoutingPromptPreset[];
+  routes: ApiModelRoutingRoute[];
+};
+
+export type ApiSaveModelRoutingSettingsRequest = {
+  projectId: string;
+  taskKind: string;
+  providerId: string;
+  modelId: string;
+  fallbackModelIds: readonly string[];
+  promptPresetId: string;
+  promptTemplateVersion: string;
+};
+
 export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsRequest & {
   schemaVersion: "itotori.auth.sso-settings.v0";
   updatedAt: string;
@@ -1203,6 +1305,7 @@ export type ItotoriApiResponseBody =
   | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
+  | ApiModelRoutingSettingsResponse
   | ApiConfigureAuthSsoSettingsResponse
   | ApiMemberInvitationResponse
   | ApiMemberResponse
@@ -1334,6 +1437,44 @@ export function parseConfigureAuthSsoSettingsRequest(
         request.sessionPolicy,
         "ApiConfigureAuthSsoSettingsRequest.sessionPolicy",
       ),
+    };
+  });
+}
+
+export function parseSaveModelRoutingSettingsRequest(
+  body: unknown,
+): ApiSaveModelRoutingSettingsRequest {
+  return parseRequest("ApiSaveModelRoutingSettingsRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiSaveModelRoutingSettingsRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveModelRoutingSettingsRequest,
+    );
+    assertString(request.projectId, "ApiSaveModelRoutingSettingsRequest.projectId");
+    assertString(request.taskKind, "ApiSaveModelRoutingSettingsRequest.taskKind");
+    assertString(request.providerId, "ApiSaveModelRoutingSettingsRequest.providerId");
+    assertString(request.modelId, "ApiSaveModelRoutingSettingsRequest.modelId");
+    assertStringArray(
+      request.fallbackModelIds,
+      "ApiSaveModelRoutingSettingsRequest.fallbackModelIds",
+    );
+    const fallbackModelIds = asArray(
+      request.fallbackModelIds,
+      "ApiSaveModelRoutingSettingsRequest.fallbackModelIds",
+    ) as string[];
+    assertString(request.promptPresetId, "ApiSaveModelRoutingSettingsRequest.promptPresetId");
+    assertString(
+      request.promptTemplateVersion,
+      "ApiSaveModelRoutingSettingsRequest.promptTemplateVersion",
+    );
+    return {
+      projectId: request.projectId,
+      taskKind: request.taskKind,
+      providerId: request.providerId,
+      modelId: request.modelId,
+      fallbackModelIds: [...fallbackModelIds],
+      promptPresetId: request.promptPresetId,
+      promptTemplateVersion: request.promptTemplateVersion,
     };
   });
 }
@@ -1688,6 +1829,10 @@ export function assertItotoriApiResponse(
       return;
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
+      return;
+    case "settings.modelRouting.get":
+    case "settings.modelRouting.save":
+      assertModelRoutingSettingsResponse(value);
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
@@ -5723,6 +5868,110 @@ function assertConfigureAuthSsoSettingsResponse(
     "ApiConfigureAuthSsoSettingsResponse.sessionPolicy",
   );
   assertDateLike(response.updatedAt, "ApiConfigureAuthSsoSettingsResponse.updatedAt");
+}
+
+function assertModelRoutingSettingsResponse(
+  value: unknown,
+): asserts value is ApiModelRoutingSettingsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiModelRoutingSettingsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingSettingsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.settings.model-routing.v0",
+    "ApiModelRoutingSettingsResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiModelRoutingSettingsResponse.projectId");
+  assertDateLike(response.generatedAt, "ApiModelRoutingSettingsResponse.generatedAt");
+  for (const [index, provider] of asArray(
+    response.providers,
+    "ApiModelRoutingSettingsResponse.providers",
+  ).entries()) {
+    assertModelRoutingProvider(provider, `ApiModelRoutingSettingsResponse.providers[${index}]`);
+  }
+  for (const [index, model] of asArray(
+    response.models,
+    "ApiModelRoutingSettingsResponse.models",
+  ).entries()) {
+    assertModelRoutingModel(model, `ApiModelRoutingSettingsResponse.models[${index}]`);
+  }
+  for (const [index, preset] of asArray(
+    response.promptPresets,
+    "ApiModelRoutingSettingsResponse.promptPresets",
+  ).entries()) {
+    assertModelRoutingPromptPreset(
+      preset,
+      `ApiModelRoutingSettingsResponse.promptPresets[${index}]`,
+    );
+  }
+  for (const [index, route] of asArray(
+    response.routes,
+    "ApiModelRoutingSettingsResponse.routes",
+  ).entries()) {
+    assertModelRoutingRoute(route, `ApiModelRoutingSettingsResponse.routes[${index}]`);
+  }
+}
+
+function assertModelRoutingProvider(
+  value: unknown,
+  label: string,
+): asserts value is ApiModelRoutingProvider {
+  const provider = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingProvider,
+  );
+  assertString(provider.providerId, `${label}.providerId`);
+  assertString(provider.providerFamily, `${label}.providerFamily`);
+  assertString(provider.endpointFamily, `${label}.endpointFamily`);
+  assertString(provider.providerName, `${label}.providerName`);
+  asRecord(provider.metadata, `${label}.metadata`);
+}
+
+function assertModelRoutingModel(
+  value: unknown,
+  label: string,
+): asserts value is ApiModelRoutingModel {
+  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingModel);
+  assertString(model.modelRegistryId, `${label}.modelRegistryId`);
+  assertString(model.providerId, `${label}.providerId`);
+  assertString(model.modelId, `${label}.modelId`);
+  asRecord(model.capabilities, `${label}.capabilities`);
+  asRecord(model.pricing, `${label}.pricing`);
+}
+
+function assertModelRoutingPromptPreset(
+  value: unknown,
+  label: string,
+): asserts value is ApiModelRoutingPromptPreset {
+  const preset = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingPromptPreset,
+  );
+  assertString(preset.promptPresetId, `${label}.promptPresetId`);
+  assertString(preset.promptTemplateVersion, `${label}.promptTemplateVersion`);
+  assertString(preset.presetSchemaVersion, `${label}.presetSchemaVersion`);
+  assertString(preset.promptHash, `${label}.promptHash`);
+  asRecord(preset.configSnapshot, `${label}.configSnapshot`);
+}
+
+function assertModelRoutingRoute(
+  value: unknown,
+  label: string,
+): asserts value is ApiModelRoutingRoute {
+  const route = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiModelRoutingRoute);
+  assertString(route.projectId, `${label}.projectId`);
+  assertString(route.taskKind, `${label}.taskKind`);
+  assertString(route.providerId, `${label}.providerId`);
+  assertString(route.modelId, `${label}.modelId`);
+  assertString(route.modelRegistryId, `${label}.modelRegistryId`);
+  assertStringArray(route.fallbackModelIds, `${label}.fallbackModelIds`);
+  assertString(route.promptPresetId, `${label}.promptPresetId`);
+  assertString(route.promptTemplateVersion, `${label}.promptTemplateVersion`);
+  assertDateLike(route.updatedAt, `${label}.updatedAt`);
 }
 
 function assertMemberInvitationResponse(

@@ -7,6 +7,7 @@
 // renders the ported parity views:
 //   - the Workbench dashboard's Projects / Status / Model-cost /
 //     Reviewer-queue / Pending-decisions panels,
+//   - the settings privacy + model-routing screens,
 //   - the reviewer-detail screen,
 //   - the localization workspace project-browse screen.
 //
@@ -35,6 +36,7 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   draftBranchResponseFixture,
+  modelRoutingSettingsFixture,
   projectOverviewFixture,
   runtimeStatusFixture,
 } from "./api-fixtures.js";
@@ -78,6 +80,9 @@ const server = setupServer(
   ),
   http.get("*/api/workspace/projects", () =>
     apiJson("workspace.projects", workspaceProjectBrowseFixture()),
+  ),
+  http.get("*/api/settings/model-routing", () =>
+    apiJson("settings.modelRouting.get", modelRoutingSettingsFixture),
   ),
   http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture)),
 );
@@ -378,6 +383,79 @@ describe("SPA shell — reviewer detail", () => {
     const main = screen.getByRole("main");
     expect(main).toHaveAttribute("data-screen", "reviewer-detail");
     expect(main).toHaveAttribute("data-state", "ready");
+  });
+});
+
+describe("SPA shell — settings", () => {
+  it("routes privacy to SettingsScreen and model routing to ModelRoutingSettingsScreen", async () => {
+    render(<App location={{ pathname: "/settings/privacy", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Privacy posture" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("region", { name: /privacy \/ zdr/i });
+    expect(panel).toHaveAttribute("data-panel-id", "privacy-zdr");
+    expect(await within(panel).findByText("zdr=true")).toBeInTheDocument();
+    expect(within(panel).getByText(/data_collection=none/)).toBeInTheDocument();
+
+    cleanup();
+
+    render(<App location={{ pathname: "/settings/model-routing", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Model routing" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Model routing" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const main = screen.getByRole("main");
+    expect(main).toHaveAttribute("data-screen", "settings-model-routing");
+    expect(main).toHaveAttribute("data-state", "ready");
+    expect(await screen.findByRole("heading", { name: "Task route" })).toBeInTheDocument();
+    const pairsTable = screen.getByRole("table", { name: "Available model provider pairs" });
+    expect(within(pairsTable).getByText("anthropic/claude-3-5-sonnet")).toBeInTheDocument();
+    const routesTable = screen.getByRole("table", { name: "Saved model routing routes" });
+    expect(within(routesTable).getByText("draft_translation")).toBeInTheDocument();
+  });
+
+  it("saves a model-routing task route through the typed settings API", async () => {
+    const posts: unknown[] = [];
+    server.use(
+      http.post("*/api/settings/model-routing", async ({ request }) => {
+        const body = await request.json();
+        posts.push(body);
+        return apiJson("settings.modelRouting.save", {
+          ...modelRoutingSettingsFixture,
+          routes: [
+            {
+              ...modelRoutingSettingsFixture.routes[0]!,
+              fallbackModelIds: (body as { fallbackModelIds: string[] }).fallbackModelIds,
+            },
+          ],
+        });
+      }),
+    );
+
+    render(<App location={{ pathname: "/settings/model-routing", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Model routing" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Task route" })).toBeInTheDocument();
+    expect((await screen.findAllByText("OpenRouter")).length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Fallback models"), {
+      target: { value: "anthropic/claude-3-haiku" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save route" }));
+
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({
+      projectId: "project-1",
+      taskKind: "draft_translation",
+      providerId: "openrouter",
+      modelId: "anthropic/claude-3-5-sonnet",
+      fallbackModelIds: ["anthropic/claude-3-haiku"],
+      promptPresetId: "itotori-draft-default-v1",
+      promptTemplateVersion: "1.0.0",
+    });
+    expect(await screen.findByText("Saved draft_translation")).toBeInTheDocument();
   });
 });
 

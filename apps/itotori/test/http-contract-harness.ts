@@ -61,6 +61,7 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   jobsRunTableFixture,
+  modelRoutingSettingsFixture,
   projectOverviewFixture,
   projectFixture,
   runtimeStatusFixture,
@@ -495,6 +496,18 @@ const fixtureServices = {
   benchmarkCockpit: {
     loadCockpit: vi.fn(async () => bmkCockpitFixture),
     loadHistory: vi.fn(async () => bmkCockpitHistoryFixture),
+  },
+  modelRouting: {
+    loadSettings: vi.fn(async (projectId: string) => ({
+      ...modelRoutingSettingsFixture,
+      projectId,
+      generatedAt: new Date(modelRoutingSettingsFixture.generatedAt),
+      routes: modelRoutingSettingsFixture.routes.map((route) => ({
+        ...route,
+        updatedAt: new Date(route.updatedAt),
+      })),
+    })),
+    saveRoute: vi.fn(unused),
   },
   playRouteMap: {
     loadRouteMap: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({

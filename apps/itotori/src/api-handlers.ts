@@ -34,6 +34,7 @@ import {
   feedbackContextStatusValues,
   type JobsRunTableReadModel,
   type LoadJobsRunTableOptions,
+  type ModelRoutingSettingsRecord,
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
@@ -47,6 +48,7 @@ import {
   type MemberRecord,
   type PermissionSetRecord,
   type RuntimeDashboardStatus,
+  type SaveModelRoutingSettingsInput,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
   type WikiEntriesFilter,
@@ -72,6 +74,7 @@ import {
   parseReviewerBatchPreviewRequest,
   parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
+  parseSaveModelRoutingSettingsRequest,
   parseConfigureAuthSsoSettingsRequest,
   parseAcceptMemberInvitationRequest,
   parseInviteMemberRequest,
@@ -118,6 +121,8 @@ import {
   type ApiAuthSessionsListResponse,
   type ApiRevokeAuthSessionRequest,
   type ApiRevokeAuthSessionResponse,
+  type ApiModelRoutingSettingsResponse,
+  type ApiSaveModelRoutingSettingsRequest,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -189,6 +194,8 @@ export const apiMutationPermissionGates = {
   // that protects the draft workflow + the pass ledger.
   launchPass: apiMutationGate("launch pass", "draftWrite"),
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
+  modelRoutingRead: apiMutationGate("model routing read", "catalogRead"),
+  modelRoutingSave: apiMutationGate("model routing save", "draftWrite"),
   membersList: apiMutationGate("members list", "authMembersManage"),
   billingSeatUsage: apiMutationGate("billing seat usage", "authMembersManage"),
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
@@ -305,6 +312,9 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  modelRouting: {
+    loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
+  };
   authBilling: {
     loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
   };
@@ -358,6 +368,10 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       sessionPolicy: ApiConfigureAuthSsoSettingsRequest["sessionPolicy"];
       updatedAt: Date;
     }>;
+  };
+  modelRouting: {
+    loadSettings(projectId: string): Promise<ModelRoutingSettingsRecord>;
+    saveRoute(input: SaveModelRoutingSettingsInput): Promise<ModelRoutingSettingsRecord>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
@@ -464,6 +478,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
     },
+    modelRouting: {
+      loadSettings: (projectId) => services.modelRouting.loadSettings(projectId),
+    },
     authBilling: {
       loadSeatUsage: (accountId) => services.authBilling.loadSeatUsage(accountId),
     },
@@ -558,6 +575,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   }
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
+  }
+  if (request.pathname === "/api/settings/model-routing") {
+    return methodNotAllowed(["GET", "POST"]);
   }
   if (
     request.pathname === "/api/auth/members/invitations" ||
@@ -761,8 +781,20 @@ async function routeItotoriApiRequest(
     return ok("auth.ssoSettings.configure", authSsoSettingsResponseBody(result));
   }
 
+  if (request.method === "POST" && request.pathname === "/api/settings/model-routing") {
+    const body = parseSaveModelRoutingSettingsRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.modelRoutingSave);
+    return ok(
+      "settings.modelRouting.save",
+      modelRoutingSettingsResponseBody(await services.modelRouting.saveRoute(body)),
+    );
+  }
+
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
+  }
+  if (request.pathname === "/api/settings/model-routing") {
+    return methodNotAllowed(["GET", "POST"]);
   }
 
   if (request.method === "POST" && request.pathname === "/api/auth/members/invitations") {
@@ -1127,6 +1159,30 @@ function authBillingSeatUsageResponseBody(
   };
 }
 
+function modelRoutingSettingsResponseBody(
+  input: ModelRoutingSettingsRecord,
+): ApiModelRoutingSettingsResponse {
+  return {
+    schemaVersion: "itotori.settings.model-routing.v0",
+    projectId: input.projectId,
+    generatedAt: input.generatedAt.toISOString(),
+    providers: input.providers.map((provider) => ({ ...provider })),
+    models: input.models.map((model) => ({ ...model })),
+    promptPresets: input.promptPresets.map((preset) => ({ ...preset })),
+    routes: input.routes.map((route) => ({
+      projectId: route.projectId,
+      taskKind: route.taskKind,
+      providerId: route.providerId,
+      modelId: route.modelId,
+      modelRegistryId: route.modelRegistryId,
+      fallbackModelIds: [...route.fallbackModelIds],
+      promptPresetId: route.promptPresetId,
+      promptTemplateVersion: route.promptTemplateVersion,
+      updatedAt: route.updatedAt.toISOString(),
+    })),
+  };
+}
+
 function removeMemberResponseBody(input: ApiMemberRecord): ApiRemoveMemberResponse {
   return { schemaVersion: "itotori.auth.member-removed.v0", removedMember: input };
 }
@@ -1274,6 +1330,15 @@ async function routeReadOnlyItotoriApiRequest(
     const canRead = await resolveProjectReadPermission(services);
     const page = await services.jobs.loadRunTable(parseJobsRunTableQuery(request.search));
     return ok("jobs.runTable", canRead ? page : redactJobsRunTable(page));
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/settings/model-routing") {
+    const projectId = parseModelRoutingSettingsQuery(request.search);
+    await requireApiPermission(services, apiMutationPermissionGates.modelRoutingRead);
+    return ok(
+      "settings.modelRouting.get",
+      modelRoutingSettingsResponseBody(await services.modelRouting.loadSettings(projectId)),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/auth/members") {
@@ -1960,6 +2025,16 @@ function parseAuthMembersListQuery(search = ""): string {
     throw new ApiValidationError("accountId is required");
   }
   return accountId;
+}
+
+function parseModelRoutingSettingsQuery(search = ""): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["projectId"], "model routing settings");
+  const projectId = params.get("projectId");
+  if (projectId === null || projectId.length === 0) {
+    throw new ApiValidationError("projectId is required");
+  }
+  return projectId;
 }
 
 function parseAuthBillingSeatUsageQuery(search = ""): string {
@@ -2902,6 +2977,14 @@ function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonRespo
 function ok(routeId: "decisions.record", body: DecisionRecordResult): ApiJsonResponse;
 function ok(routeId: "benchmarks.record", body: BenchmarkRecordResult): ApiJsonResponse;
 function ok(routeId: "runtimeEvidence.ingest", body: RuntimeIngestResult): ApiJsonResponse;
+function ok(
+  routeId: "settings.modelRouting.get",
+  body: ApiModelRoutingSettingsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "settings.modelRouting.save",
+  body: ApiModelRoutingSettingsResponse,
+): ApiJsonResponse;
 function ok(
   routeId: "auth.ssoSettings.configure",
   body: ApiConfigureAuthSsoSettingsResponse,

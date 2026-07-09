@@ -235,6 +235,19 @@ export type {
   TranslationMemoryReuseCostSummary,
 } from "./repositories/model-ledger-repository.js";
 export {
+  ItotoriModelRoutingSettingsRepository,
+  ItotoriModelRoutingSettingsRepositoryError,
+} from "./repositories/model-routing-settings-repository.js";
+export type {
+  ItotoriModelRoutingSettingsRepositoryPort,
+  ModelRoutingModelRecord,
+  ModelRoutingPromptPresetRecord,
+  ModelRoutingProviderRecord,
+  ModelRoutingRouteRecord,
+  ModelRoutingSettingsRecord,
+  SaveModelRoutingSettingsInput,
+} from "./repositories/model-routing-settings-repository.js";
+export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,
   feedbackReportStatusValues,

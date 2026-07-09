@@ -130,6 +130,26 @@ describe("Shell frame — nav", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Review" }));
     expect(navigate).toHaveBeenCalledWith("/reviewer-queue");
   });
+
+  it("exposes both settings destinations from the shell nav", () => {
+    const navigate = vi.fn();
+    mountFrame({ pathname: "/settings/privacy", search: "" }, navigate);
+    expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Model routing" }));
+    expect(navigate).toHaveBeenCalledWith("/settings/model-routing");
+    cleanup();
+
+    mountFrame({ pathname: "/settings/model-routing", search: "" }, navigate);
+    expect(screen.getByRole("tab", { name: "Model routing" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Privacy" }));
+    expect(navigate).toHaveBeenCalledWith("/settings/privacy");
+  });
 });
 
 describe("Shell frame — status bar (read-models via the client)", () => {
@@ -284,6 +304,9 @@ describe("Shell frame — pure helpers", () => {
     expect(activeShellNavId("/catalog")).toBe("catalog");
     expect(activeShellNavId("/workspace")).toBe("workspace");
     expect(activeShellNavId("/workspace/scenes")).toBe("workspace");
+    expect(activeShellNavId("/settings")).toBe("settings-privacy");
+    expect(activeShellNavId("/settings/privacy")).toBe("settings-privacy");
+    expect(activeShellNavId("/settings/model-routing")).toBe("settings-model-routing");
     // A legacy / unknown route matches no pill.
     expect(activeShellNavId("/asset-decisions")).toBe("");
   });

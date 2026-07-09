@@ -78,6 +78,8 @@ import type {
   ApiReviewerSingleActionResponse,
   ApiRuntimeEvidenceRequest,
   ApiRuntimeEvidenceResponse,
+  ApiModelRoutingSettingsResponse,
+  ApiSaveModelRoutingSettingsRequest,
   ApiAcceptMemberInvitationRequest,
   ApiConfigureAuthSsoSettingsRequest,
   ApiConfigureAuthSsoSettingsResponse,
@@ -275,6 +277,13 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRuntimeEvidenceResponse;
     pathParams: { projectId: string };
     request: ApiRuntimeEvidenceRequest;
+  };
+  "settings.modelRouting.get": {
+    response: ApiModelRoutingSettingsResponse;
+  };
+  "settings.modelRouting.save": {
+    response: ApiModelRoutingSettingsResponse;
+    request: ApiSaveModelRoutingSettingsRequest;
   };
   "auth.ssoSettings.configure": {
     response: ApiConfigureAuthSsoSettingsResponse;
