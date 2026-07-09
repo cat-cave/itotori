@@ -7,6 +7,11 @@
 // bridged to their existing renderers via `LegacyRoute` — a tracked,
 // temporary mount, not a dual path for a replaced view.
 //
+// fnd-addressable-routing — entity deep-links (unit/scene/route/character/
+// term/run/finding) resolve BEFORE surface roots so a stable URL focuses
+// its entity (play selects the unit/scene; wiki/runtime land on the focus
+// shell until their full screens ship).
+//
 // This is the app-shell pattern the ~50 downstream screen nodes inherit:
 // parse the route → render a screen that reads its data through
 // `useApiQuery` and paints with `@itotori/ds`.
@@ -14,14 +19,17 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
+import { parseAddressableLocation } from "./addressable-routing.js";
 import {
   BenchmarkCockpitScreen,
   isBenchmarkCockpitRoute,
 } from "./screens/BenchmarkCockpitScreen.js";
+import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import {
   PlayScenePickerScreen,
   parsePlayScenePickerRoute,
+  playRouteFromAddressable,
 } from "./screens/PlayScenePickerScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
@@ -75,6 +83,30 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const legacy = matchLegacyRoute(location.pathname, location.search);
   if (legacy !== null) {
     return <LegacyRoute render={legacy} />;
+  }
+
+  // fnd-addressable-routing — entity deep-links resolve next so a stable
+  // unit/scene/route/character/term/run/finding URL focuses its entity
+  // before surface-root parsers (bare `/play`, `/wiki`) claim the path.
+  const addressable = parseAddressableLocation(location.pathname, location.search);
+  if (addressable !== null) {
+    if (
+      addressable.surface === "play" &&
+      (addressable.kind === "unit" || addressable.kind === "scene" || addressable.kind === "route")
+    ) {
+      return (
+        <PlayScenePickerScreen
+          route={playRouteFromAddressable({
+            kind: addressable.kind,
+            id: addressable.id,
+            projectId: addressable.projectId,
+            localeBranchId: addressable.localeBranchId,
+            unitId: addressable.unitId,
+          })}
+        />
+      );
+    }
+    return <AddressableFocusScreen location={addressable} />;
   }
 
   // The bare `/reviewer-queue` (the categorized+severity+paginated queue) is

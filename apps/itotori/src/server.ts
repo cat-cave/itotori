@@ -298,7 +298,22 @@ function isItotoriDashboardRoute(pathname: string): boolean {
     // `workspaceRoutePathRegex` so every workspace deep link (source/draft/
     // final comparison, scene/asset browse, search, corrections) resolves to
     // the dashboard index and re-routes inside the SPA.
-    /^\/workspace(?:\/(?:projects|scenes|assets|comparison|search|corrections))?$/u.test(pathname)
+    /^\/workspace(?:\/(?:projects|scenes|assets|comparison|search|corrections))?$/u.test(
+      pathname,
+    ) ||
+    // fnd-addressable-routing + surface roots the SPA owns (play / wiki /
+    // benchmark / runs / findings). Keep `/runtime/*` on the runtime-web
+    // dashboard (isRuntimeDashboardRoute) — Studio run deep-links use `/runs/`.
+    pathname === "/play" ||
+    pathname.startsWith("/play/") ||
+    pathname === "/wiki" ||
+    pathname.startsWith("/wiki/") ||
+    pathname === "/benchmark" ||
+    pathname.startsWith("/benchmark/") ||
+    pathname === "/findings" ||
+    pathname.startsWith("/findings/") ||
+    pathname === "/runs" ||
+    pathname.startsWith("/runs/")
   );
 }
 

@@ -200,6 +200,27 @@ describe("Itotori server API contracts", () => {
           await expect(workspaceResponse.text()).resolves.toBe("itotori dashboard");
         }
 
+        // fnd-addressable-routing — entity deep-links + surface roots the
+        // Studio SPA owns. Each must serve the itotori index so a cold load
+        // re-routes client-side (not a 404). `/runtime/*` stays on the
+        // runtime-web dashboard; Studio runs use `/runs/`.
+        for (const pathname of [
+          "/play",
+          "/play/units/bridge-unit-1",
+          "/play/scenes/scene-1",
+          "/play/routes/route-1",
+          "/wiki/characters/char-1",
+          "/wiki/terms/term-1",
+          "/runs/runtime-run-1",
+          "/findings/finding-1",
+          "/benchmark",
+        ]) {
+          const addressableResponse = await fetch(`${origin}${pathname}`);
+          expect(addressableResponse.status).toBe(200);
+          expect(addressableResponse.headers.get("content-type")).toBe("text/html");
+          await expect(addressableResponse.text()).resolves.toBe("itotori dashboard");
+        }
+
         for (const pathname of [
           "/reviewer-queue/batch/",
           "/reviewer-queue/reviewer-queue-1/extra",

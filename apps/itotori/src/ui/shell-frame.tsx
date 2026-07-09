@@ -65,6 +65,9 @@ export function activeShellNavId(pathname: string): string {
   if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
     return "workspace";
   }
+  // fnd-addressable-routing — wiki / run / finding deep-links have no nav
+  // pill yet (wiki-entry-ui + runtime surface nodes own those); leave the
+  // chrome unselected rather than mis-highlight workbench.
   return "";
 }
 

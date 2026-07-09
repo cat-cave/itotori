@@ -51,6 +51,15 @@ finer-grained conventions.
     route, not a dual path for a replaced view).
   - `format.ts` — presentation formatters ported verbatim from the deleted
     string renderers so the SPA keeps byte-for-byte number/label parity.
+  - **Addressable-id routing — `fnd-addressable-routing`**
+    (`apps/itotori/src/ui/addressable-routing.ts`). Stable URLs for every
+    entity the loop spine / cmdk / cross-surface jumps touch
+    (`unit` / `scene` / `route` / `character` / `term` / `run` / `finding`):
+    `hrefForAddressable` builds, `parseAddressableLocation` resolves, and
+    `App` focuses the entity (`data-addressable-focus`). Play deep-links
+    select the unit/scene; wiki/runtime land on `AddressableFocusScreen`
+    until their full screens ship. Compact refs (`unit:<id>`,
+    `bridge-unit:<id>`) feed cmdk.
 
 ## How a screen is shaped
 

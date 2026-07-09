@@ -39,10 +39,13 @@ import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 
 // ---------------------------------------------------------------------------
-// Route identity — `/play` (bare). An optional `?projectId=&localeBranchId=`
-// query scopes the picker explicitly; omitted, the screen falls back to the
-// project's selected locale branch (the same source the reviewer-queue screen
-// and the dashboard reviewer panel use).
+// Route identity — `/play` (bare) plus addressable deep-links
+// (`/play/units|scenes|routes/:id` via `routeFromAddressable`). Optional
+// `?projectId=&localeBranchId=` scopes the picker; omitted, the screen falls
+// back to the project's selected locale branch (same source the reviewer-
+// queue screen and the dashboard reviewer panel use). Focus fields come from
+// fnd-addressable-routing deep-links so a unit/scene/route URL selects +
+// stamps `data-addressable-focus`.
 // ---------------------------------------------------------------------------
 
 export const playScenePickerRoutePathRegex = /^\/play\/?$/u;
@@ -50,6 +53,12 @@ export const playScenePickerRoutePathRegex = /^\/play\/?$/u;
 export type PlayScenePickerRouteParams = {
   projectId: string | null;
   localeBranchId: string | null;
+  /** Addressable scene focus (`/play/scenes/:id`). */
+  focusSceneId: string | null;
+  /** Addressable unit focus (`/play/units/:id` or scene `?unit=`). */
+  focusUnitId: string | null;
+  /** Addressable narrative-route focus (`/play/routes/:id`). */
+  focusRouteId: string | null;
 };
 
 export function parsePlayScenePickerRoute(
@@ -62,7 +71,35 @@ export function parsePlayScenePickerRoute(
   const params = new URLSearchParams(search);
   const projectId = nonEmpty(params.get("projectId"));
   const localeBranchId = nonEmpty(params.get("localeBranchId"));
-  return { projectId, localeBranchId };
+  return {
+    projectId,
+    localeBranchId,
+    focusSceneId: null,
+    focusUnitId: null,
+    focusRouteId: null,
+  };
+}
+
+/**
+ * Map an addressable play deep-link (unit / scene / route) onto the Play
+ * scene picker's route params. Used by `App` when `parseAddressableLocation`
+ * resolves a play-surface target.
+ */
+export function playRouteFromAddressable(location: {
+  kind: "unit" | "scene" | "route";
+  id: string;
+  projectId: string | null;
+  localeBranchId: string | null;
+  unitId: string | null;
+}): PlayScenePickerRouteParams {
+  return {
+    projectId: location.projectId,
+    localeBranchId: location.localeBranchId,
+    focusSceneId: location.kind === "scene" ? location.id : null,
+    focusUnitId:
+      location.kind === "unit" ? location.id : location.kind === "scene" ? location.unitId : null,
+    focusRouteId: location.kind === "route" ? location.id : null,
+  };
 }
 
 function nonEmpty(value: string | null): string | null {
@@ -79,17 +116,35 @@ function nonEmpty(value: string | null): string | null {
 export function PlayScenePickerScreen({ route }: { route: PlayScenePickerRouteParams }): ReactNode {
   if (route.projectId !== null && route.localeBranchId !== null) {
     return (
-      <PlayScenePickerForBranch projectId={route.projectId} localeBranchId={route.localeBranchId} />
+      <PlayScenePickerForBranch
+        projectId={route.projectId}
+        localeBranchId={route.localeBranchId}
+        focus={playFocusFromRoute(route)}
+      />
     );
   }
-  return <PlayScenePickerFromStatus />;
+  return <PlayScenePickerFromStatus focus={playFocusFromRoute(route)} />;
+}
+
+type PlayFocus = {
+  sceneId: string | null;
+  unitId: string | null;
+  routeId: string | null;
+};
+
+function playFocusFromRoute(route: PlayScenePickerRouteParams): PlayFocus {
+  return {
+    sceneId: route.focusSceneId,
+    unitId: route.focusUnitId,
+    routeId: route.focusRouteId,
+  };
 }
 
 /**
  * No explicit `?projectId=&localeBranchId=` — scope the picker to the
  * project's selected locale branch, read through the typed client.
  */
-function PlayScenePickerFromStatus(): ReactNode {
+function PlayScenePickerFromStatus({ focus }: { focus: PlayFocus }): ReactNode {
   const status = useApiQuery("projects.status", {}, "play-scene-picker:status");
   if (status.state === "loading") {
     return (
@@ -132,27 +187,35 @@ function PlayScenePickerFromStatus(): ReactNode {
       </main>
     );
   }
-  return <PlayScenePickerForBranch projectId={projectId} localeBranchId={localeBranchId} />;
+  return (
+    <PlayScenePickerForBranch projectId={projectId} localeBranchId={localeBranchId} focus={focus} />
+  );
 }
 
 function PlayScenePickerForBranch({
   projectId,
   localeBranchId,
+  focus,
 }: {
   projectId: string;
   localeBranchId: string;
+  focus: PlayFocus;
 }): ReactNode {
   const scenes = useApiQuery(
     "workspace.scenes",
     { query: { projectId, localeBranchId } },
     `play-scene-picker:scenes:${projectId}:${localeBranchId}`,
   );
+  const focusToken = playFocusToken(focus);
   return (
     <main
       className="itotori-shell play-scene-picker"
       data-screen="play-scene-picker"
       data-state={scenes.state}
       data-locale-branch-id={localeBranchId}
+      data-addressable-focus={focusToken ?? undefined}
+      data-addressable-focused={focusToken !== null ? "true" : undefined}
+      data-focus-route-id={focus.routeId ?? undefined}
     >
       <ShellHeader eyebrow="Play" title="Scene picker" />
       {scenes.state === "loading" && <LoadingState label="Loading scenes…" />}
@@ -163,9 +226,23 @@ function PlayScenePickerForBranch({
         />
       )}
       {scenes.state === "error" && <ErrorState title="Scene picker" error={scenes.error} />}
-      {scenes.state === "ready" && <PlayScenePickerReady model={scenes.data} />}
+      {scenes.state === "ready" && <PlayScenePickerReady model={scenes.data} focus={focus} />}
     </main>
   );
+}
+
+/** Prefer unit focus, then scene, then route — the deepest pin wins. */
+function playFocusToken(focus: PlayFocus): string | null {
+  if (focus.unitId !== null) {
+    return `unit:${focus.unitId}`;
+  }
+  if (focus.sceneId !== null) {
+    return `scene:${focus.sceneId}`;
+  }
+  if (focus.routeId !== null) {
+    return `route:${focus.routeId}`;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,16 +250,22 @@ function PlayScenePickerForBranch({
 // the unit list + the source ↔ draft BiText pane for the selected unit.
 // ---------------------------------------------------------------------------
 
-function PlayScenePickerReady({ model }: { model: ApiWorkspaceSceneBrowseResponse }): ReactNode {
-  const firstScene = model.scenes[0] ?? null;
-  const [selectedSceneId, setSelectedSceneId] = useState<string>(firstScene?.sceneId ?? "");
+function PlayScenePickerReady({
+  model,
+  focus,
+}: {
+  model: ApiWorkspaceSceneBrowseResponse;
+  focus: PlayFocus;
+}): ReactNode {
+  const initial = initialPlaySelection(model, focus);
+  const [selectedSceneId, setSelectedSceneId] = useState<string>(initial.sceneId);
   const selectedScene =
-    model.scenes.find((scene) => scene.sceneId === selectedSceneId) ?? firstScene;
+    model.scenes.find((scene) => scene.sceneId === selectedSceneId) ?? model.scenes[0] ?? null;
 
-  const firstUnit = preferredUnit(selectedScene);
-  const [selectedUnitKey, setSelectedUnitKey] = useState<string>(unitSelectionKey(firstUnit));
+  const [selectedUnitKey, setSelectedUnitKey] = useState<string>(initial.unitKey);
   const selectedUnit =
-    selectedScene?.units.find((unit) => unitSelectionKey(unit) === selectedUnitKey) ?? firstUnit;
+    selectedScene?.units.find((unit) => unitSelectionKey(unit) === selectedUnitKey) ??
+    preferredUnit(selectedScene);
 
   const sceneItems: NavPillItem[] = model.scenes.map((scene) => ({
     id: scene.sceneId,
@@ -196,11 +279,16 @@ function PlayScenePickerReady({ model }: { model: ApiWorkspaceSceneBrowseRespons
     setSelectedUnitKey(unitSelectionKey(preferredUnit(scene)));
   };
 
+  const focusToken = playFocusToken(focus);
+
   return (
     <section
       className="play-scene-picker__body"
       aria-label="Play scene picker"
       data-selected-scene-id={selectedScene?.sceneId ?? ""}
+      data-selected-unit-id={selectedUnit?.bridgeUnitId ?? ""}
+      data-addressable-focus={focusToken ?? undefined}
+      data-addressable-focused={focusToken !== null ? "true" : undefined}
     >
       <NavPills
         items={sceneItems}
@@ -365,6 +453,44 @@ function BiTextFromComparison({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve the initial scene + unit selection from an addressable focus.
+ * - unit focus: select the scene that owns the bridge unit (or first scene)
+ * - scene focus: select that scene (+ nested unit when present)
+ * - route focus / none: first scene + preferred unit (route is stamped on
+ *   the shell via `data-focus-route-id`; scene browse has no route axis yet)
+ */
+function initialPlaySelection(
+  model: ApiWorkspaceSceneBrowseResponse,
+  focus: PlayFocus,
+): { sceneId: string; unitKey: string } {
+  if (focus.unitId !== null) {
+    for (const scene of model.scenes) {
+      const unit = scene.units.find((entry) => entry.bridgeUnitId === focus.unitId);
+      if (unit !== undefined) {
+        return { sceneId: scene.sceneId, unitKey: unitSelectionKey(unit) };
+      }
+    }
+  }
+  if (focus.sceneId !== null) {
+    const scene = model.scenes.find((entry) => entry.sceneId === focus.sceneId) ?? null;
+    if (scene !== null) {
+      if (focus.unitId !== null) {
+        const unit = scene.units.find((entry) => entry.bridgeUnitId === focus.unitId);
+        if (unit !== undefined) {
+          return { sceneId: scene.sceneId, unitKey: unitSelectionKey(unit) };
+        }
+      }
+      return { sceneId: scene.sceneId, unitKey: unitSelectionKey(preferredUnit(scene)) };
+    }
+  }
+  const firstScene = model.scenes[0] ?? null;
+  return {
+    sceneId: firstScene?.sceneId ?? "",
+    unitKey: unitSelectionKey(preferredUnit(firstScene)),
+  };
+}
 
 /**
  * The first CITED unit (the summary's chosen witnesses), falling back to the
