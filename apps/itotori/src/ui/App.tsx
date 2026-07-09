@@ -48,6 +48,7 @@ import {
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { MembersScreen, parseMembersRoute } from "./screens/MembersScreen.js";
+import { SettingsScreen, parseSettingsRoute } from "./screens/SettingsScreen.js";
 import {
   WikiEntryScreen,
   parseWikiRoute,
@@ -248,6 +249,11 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const membersRoute = parseMembersRoute(location.pathname, location.search);
   if (membersRoute !== null) {
     return <MembersScreen route={membersRoute} />;
+  }
+
+  const settingsRoute = parseSettingsRoute(location.pathname);
+  if (settingsRoute !== null) {
+    return <SettingsScreen />;
   }
 
   // `/wiki` — the Wiki entry surface (character + term profiles with CrossRef

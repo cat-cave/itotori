@@ -63,6 +63,7 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "catalog", label: "Catalog", href: "/catalog" },
   { id: "workspace", label: "Workspace", href: "/workspace" },
   { id: "members", label: "Members", href: "/members" },
+  { id: "settings", label: "Settings", href: "/settings/privacy" },
 ];
 
 /** The nav pill id active for a pathname, or "" when no pill matches. */
@@ -95,6 +96,9 @@ export function activeShellNavId(pathname: string): string {
   }
   if (pathname === "/members" || pathname.startsWith("/members/")) {
     return "members";
+  }
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return "settings";
   }
   // fnd-addressable-routing — run / finding deep-links have no nav pill yet
   // (the runtime surface node owns those); leave the chrome unselected rather
