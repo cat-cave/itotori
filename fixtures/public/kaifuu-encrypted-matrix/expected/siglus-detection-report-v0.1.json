@@ -4,6 +4,105 @@
   "status": "matched",
   "detections": [
     {
+      "adapterId": "kaifuu.bgi",
+      "detected": false,
+      "evidence": [
+        {
+          "path": ".",
+          "kind": "bgi_bytecode_string_references",
+          "status": "missing",
+          "detail": "no loose BGI/Ethornell header or no-header bytecode file parsed"
+        }
+      ],
+      "requirements": [
+        {
+          "category": "file",
+          "key": "bgi-loose-scenario-bytecode",
+          "status": "missing",
+          "description": "At least one loose BGI/Ethornell scenario bytecode file must parse as header or no-header bytecode",
+          "placeholder": "scenario/001 or scenario/001.bgi",
+          "secret": false
+        }
+      ],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_listing",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "codec_access",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "container_access",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "crypto_access",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages are handled by kaifuu-delta, not this engine adapter"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "BSE/DSC/CompressedBG and encrypted or compressed containers are outside the loose-bytecode adapter boundary"
+        },
+        {
+          "capability": "extraction",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "key_profile",
+          "status": "unsupported",
+          "limitation": "loose BGI bytecode fixtures use null-key access; no key profile is consumed"
+        },
+        {
+          "capability": "patch_back",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "patching",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "verification",
+          "status": "supported",
+          "limitation": null
+        }
+      ]
+    },
+    {
       "adapterId": "kaifuu.fixture",
       "detected": false,
       "evidence": [
