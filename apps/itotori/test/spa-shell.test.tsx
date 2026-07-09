@@ -32,6 +32,7 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   projectOverviewFixture,
+  runtimeStatusFixture,
 } from "./api-fixtures.js";
 import {
   apiJson,
@@ -68,6 +69,7 @@ const server = setupServer(
   http.get("*/api/workspace/projects", () =>
     apiJson("workspace.projects", workspaceProjectBrowseFixture()),
   ),
+  http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture)),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

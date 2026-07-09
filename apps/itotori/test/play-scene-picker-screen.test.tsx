@@ -50,7 +50,8 @@ const PLAY_SCENE_PICKER_CSS = join(process.cwd(), "src/ui/screens/PlayScenePicke
 
 // Two scenes with distinct translated summaries so the NavPills rendering +
 // the scene-switch behavior are observable. Each scene cites one unit; the
-// unit's `bridgeUnitId` is the key the screen passes to `workspace.comparison`.
+// scene browse exposes both bridgeUnitId and the owning reviewItemId, and
+// Play must pass reviewItemId to `workspace.comparison`.
 function sceneBrowseFixture(): WorkspaceSceneBrowseReadModel {
   const base = workspaceSceneBrowseFixture({
     projectId: PROJECT_ID,
@@ -68,6 +69,7 @@ function sceneBrowseFixture(): WorkspaceSceneBrowseReadModel {
       {
         ...seedScene.units[0]!,
         bridgeUnitId: "bridge-unit-play-one",
+        reviewItemId: "review-item-play-one",
         sourceUnitKey: "scene.play.one.line.001",
         speaker: "Heroine",
         sourceText: "おはよう。",
@@ -85,6 +87,7 @@ function sceneBrowseFixture(): WorkspaceSceneBrowseReadModel {
       {
         ...seedScene.units[0]!,
         bridgeUnitId: "bridge-unit-play-two",
+        reviewItemId: "review-item-play-two",
         sourceUnitKey: "scene.play.two.line.001",
         speaker: "Rival",
         sourceText: "ここで会うとはね。",
@@ -206,9 +209,39 @@ const server = setupServer(
   ),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
   http.get("*/api/workspace/scenes", () => apiJson("workspace.scenes", sceneBrowseFixture())),
-  http.get("*/api/workspace/comparison", () =>
-    apiJson("workspace.comparison", comparisonFixture()),
-  ),
+  http.get("*/api/workspace/comparison", ({ request }) => {
+    const reviewItemId = new URL(request.url).searchParams.get("reviewItemId");
+    if (reviewItemId === "bridge-unit-play-one" || reviewItemId === "bridge-unit-play-two") {
+      return HttpResponse.json(
+        {
+          code: "wrong_comparison_key",
+          error: `workspace.comparison is reviewItemId-keyed, not bridgeUnitId-keyed: ${reviewItemId}`,
+        },
+        { status: 400 },
+      );
+    }
+    if (reviewItemId !== "review-item-play-one" && reviewItemId !== "review-item-play-two") {
+      return HttpResponse.json(
+        {
+          code: "unknown_review_item",
+          error: `unknown workspace comparison reviewItemId: ${reviewItemId ?? "(missing)"}`,
+        },
+        { status: 404 },
+      );
+    }
+    return apiJson(
+      "workspace.comparison",
+      comparisonFixture({
+        reviewItemId,
+        bridgeUnitId:
+          reviewItemId === "review-item-play-two" ? "bridge-unit-play-two" : "bridge-unit-play-one",
+        sourceUnitKey:
+          reviewItemId === "review-item-play-two"
+            ? "scene.play.two.line.001"
+            : "scene.play.one.line.001",
+      }),
+    );
+  }),
   http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture())),
 );
 
@@ -244,13 +277,16 @@ describe("SPA shell — Play scene picker", () => {
     await screen.findByText("Good morning.");
 
     // The BiText renders the SOURCE cell text verbatim.
-    expect(screen.getByText("おはよう。")).toBeInTheDocument();
+    expect(screen.getAllByText("おはよう。").length).toBeGreaterThanOrEqual(1);
     // The BiText renders the DRAFT cell text verbatim.
     expect(screen.getAllByText("Good morning.").length).toBeGreaterThanOrEqual(1);
 
     // Locale-branch identity tokens render as MONO CODE (sourceLocale +
     // targetLocale), so the branching is owned by an identity.
-    const bitext = screen.getByText("おはよう。").closest(".itotori-bitext");
+    const bitext = screen
+      .getAllByText("おはよう。")
+      .find((node) => node.closest(".itotori-bitext") !== null)
+      ?.closest(".itotori-bitext");
     expect(bitext).not.toBeNull();
     const tokens = bitext?.querySelectorAll(".itotori-bitext__locale") ?? [];
     const tokenText = Array.from(tokens).map((node) => node.textContent ?? "");
@@ -264,16 +300,20 @@ describe("SPA shell — Play scene picker", () => {
     expect(pair).not.toBeNull();
   });
 
-  it("renders the alpha captured-frame filmstrip with a localized textbox overlay", async () => {
+  it("renders the embedded ScenePlayer with a localized textbox over a Utsushi frame", async () => {
     render(<App location={PLAY_ROUTE} />);
 
     expect(
-      await screen.findByRole("heading", { name: "Captured-frame filmstrip" }),
+      await screen.findByRole("heading", { name: "Embedded ScenePlayer" }),
     ).toBeInTheDocument();
-    const filmstrip = document.querySelector('[data-pane-id="play-filmstrip-alpha"]');
+    const filmstrip = document.querySelector('[data-pane-id="play-sceneplayer-embed"]');
     expect(filmstrip).not.toBeNull();
     expect(filmstrip).toHaveAttribute("data-pane-state", "ready");
     expect(filmstrip).toHaveAttribute("data-filmstrip-unit-id", "bridge-unit-play-one");
+    expect(filmstrip).toHaveAttribute("data-sceneplayer-mode", "play");
+    expect(
+      filmstrip?.querySelector('[data-component="scene-player"][data-mode="play"]'),
+    ).not.toBeNull();
 
     const frame = filmstrip?.querySelector(
       '[data-filmstrip-artifact-id="runtime-play-1:screenshot-1"]',
@@ -291,13 +331,67 @@ describe("SPA shell — Play scene picker", () => {
       "/artifact-store/artifacts%2Futsushi%2Fruntime%2Fruntime-play-1%2Fscreenshots%2Fscreenshot-1.png",
     );
     expect(within(filmstrip as HTMLElement).getByText("Heroine")).toBeInTheDocument();
-    expect(within(filmstrip as HTMLElement).getByText("Good morning.")).toBeInTheDocument();
+    expect(
+      within(filmstrip as HTMLElement).getAllByText("Good morning.").length,
+    ).toBeGreaterThanOrEqual(1);
 
     // The frame is governed by the shell redaction context. The test actor
     // holds canReveal, but the private reveal toggle defaults off.
     expect(
       filmstrip?.querySelector('.itotori-redaction-frame[data-redacted="true"]'),
     ).not.toBeNull();
+  });
+
+  it("keeps the comparison pane stable when switching from an unlinked unit to a linked unit", async () => {
+    const base = sceneBrowseFixture();
+    const seedUnit = base.scenes[0]!.units[0]!;
+    server.use(
+      http.get("*/api/workspace/scenes", () =>
+        apiJson("workspace.scenes", {
+          ...base,
+          scenes: [
+            {
+              ...base.scenes[0]!,
+              citedUnitCount: 2,
+              units: [
+                {
+                  ...seedUnit,
+                  bridgeUnitId: "bridge-unit-play-unlinked",
+                  reviewItemId: null,
+                  sourceUnitKey: "scene.play.one.line.000",
+                  sourceText: "未リンク。",
+                  cited: true,
+                },
+                {
+                  ...seedUnit,
+                  bridgeUnitId: "bridge-unit-play-one",
+                  reviewItemId: "review-item-play-one",
+                  sourceUnitKey: "scene.play.one.line.001",
+                  sourceText: "おはよう。",
+                  cited: true,
+                },
+              ],
+            },
+            ...base.scenes.slice(1),
+          ],
+        }),
+      ),
+    );
+    render(<App location={PLAY_ROUTE} />);
+
+    expect(
+      await screen.findByText(
+        "This scene unit is not linked to a reviewer queue item, so no comparison context is available.",
+      ),
+    ).toBeInTheDocument();
+
+    const table = await screen.findByRole("table");
+    const linkedRow = within(table).getByText("scene.play.one.line.001").closest("tr");
+    expect(linkedRow).not.toBeNull();
+    fireEvent.click(linkedRow as HTMLElement);
+
+    expect((await screen.findAllByText("Good morning.")).length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector('[data-comparison-for="bridge-unit-play-one"]')).not.toBeNull();
   });
 
   it("ships CSS for horizontal filmstrip frames with textbox composited over the frame", () => {
@@ -327,9 +421,7 @@ describe("SPA shell — Play scene picker", () => {
     );
     render(<App location={PLAY_ROUTE} />);
 
-    const filmstripHeading = await screen.findByRole("heading", {
-      name: "Captured-frame filmstrip",
-    });
+    const filmstripHeading = await screen.findByRole("heading", { name: "Embedded ScenePlayer" });
     const filmstrip = filmstripHeading.closest(".itotori-panel") as HTMLElement;
     const frame = filmstrip.querySelector(
       '[data-filmstrip-artifact-id="runtime-play-1:screenshot-1"]',

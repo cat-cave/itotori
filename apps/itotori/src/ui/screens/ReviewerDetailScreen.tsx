@@ -32,6 +32,7 @@
 
 import { type ReactNode, useState } from "react";
 import type { ReviewerQueueAction, ReviewerQueueItemKind } from "@itotori/db";
+import type { RuntimeDashboardStatus } from "@itotori/db";
 import {
   Badge,
   BiText,
@@ -39,17 +40,25 @@ import {
   DataTable,
   Pagination,
   Panel,
+  ScenePlayer,
   StatReadout,
 } from "@itotori/ds";
+import type { ApiCallState } from "../../api-client.js";
 import type { ReviewerDetailContext } from "../../reviewer/detail-fixtures.js";
 import { CapGatedButton, useCapsOptional } from "../caps-context.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { apiClient } from "../client.js";
 import { AddressableJump } from "../addressable-jump.js";
+import { RedactedFrame, RedactionGovernorBoundary } from "../redaction-governor.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { CorrectionScopePanel } from "./CorrectionScopePanel.js";
 import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.js";
+import {
+  artifactStoreUrl,
+  filmstripFramesForUnit,
+  scenePlayerStatus,
+} from "./PlayScenePickerScreen.js";
 // rev-runtime-evidence-ui — the runtime-evidence panel reads the runtime
 // dashboard (`runtime.status` + frame-capture) through the typed client, so
 // its loading / empty / error surfaces settle independently of the parent.
@@ -191,6 +200,7 @@ function ReadyView({
         <SourcePanel context={context} />
         <DraftPanel context={context} />
         <ComparisonPanel context={context} />
+        <ReviewerScenePlayerPanel context={context} />
         <DraftHistoryPanel context={context} />
         <RevisionHistoryComparisonPane reviewItemId={context.reviewItemId} />
         {/* rev-correction-loop-ui — the correction's scope + which pass (N+1)
@@ -211,11 +221,113 @@ function ReadyView({
         <StructureContextFeedPanel context={context} />
         <BranchReferencePanel context={context} />
         <QaFindingsPanel context={context} />
-        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
+        <RedactionGovernorBoundary>
+          <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
+        </RedactionGovernorBoundary>
         <RationalePanel context={context} />
         <TransitionsPanel context={context} />
       </section>
     </main>
+  );
+}
+
+function ReviewerScenePlayerPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  const runtime = useApiQuery("runtime.status", {}, `review-sceneplayer:${context.reviewItemId}`);
+  const source = context.source;
+  const draft = context.draft;
+  return (
+    <Panel
+      title="Embedded ScenePlayer"
+      eyebrow="Review render"
+      className="itotori-panel--review-sceneplayer"
+      data-pane-id="review-sceneplayer-embed"
+      data-pane-state={runtime.state}
+      data-review-item-id={context.reviewItemId}
+      data-sceneplayer-mode="review"
+    >
+      {source === null || draft === null ? (
+        <MissingContext label="No source / draft context for ScenePlayer" />
+      ) : (
+        <ReviewerScenePlayerBody runtime={runtime} context={context} />
+      )}
+    </Panel>
+  );
+}
+
+export function ReviewerScenePlayerBody({
+  runtime,
+  context,
+}: {
+  runtime: ApiCallState<RuntimeDashboardStatus>;
+  context: ReviewerDetailContext;
+}): ReactNode {
+  const source = context.source;
+  const draft = context.draft;
+  if (source === null || draft === null) {
+    return <MissingContext label="No source / draft context for ScenePlayer" />;
+  }
+  if (runtime.state === "loading") {
+    return <LoadingState label="Loading Utsushi scene render..." />;
+  }
+  if (runtime.state === "error") {
+    return <ErrorState title="Embedded ScenePlayer" error={runtime.error} />;
+  }
+  if (runtime.state === "empty") {
+    return (
+      <p className="itotori-missing-context">
+        No runtime frame evidence was returned for this reviewer item.
+      </p>
+    );
+  }
+  const unit = {
+    bridgeUnitId: source.bridgeUnitId,
+    reviewItemId: context.reviewItemId,
+    sourceUnitKey: source.sourceUnitKey,
+    speaker: null,
+    occurrenceId: source.sourceUnitKey,
+    sourceText: source.sourceText,
+    cited: true,
+  };
+  const frame = filmstripFramesForUnit(runtime.data, unit)[0] ?? null;
+  const translation = draft.approvedPatchText ?? draft.draftText;
+  const frameNode =
+    frame === null ? (
+      <div className="play-filmstrip__missing-frame" aria-hidden="true">
+        no frame captured
+      </div>
+    ) : frame.artifact.uri === null ? (
+      <div className="play-filmstrip__missing-frame" aria-hidden="true">
+        {frame.artifact.artifactKind}
+      </div>
+    ) : (
+      <img className="play-filmstrip__image" src={artifactStoreUrl(frame.artifact.uri)} alt="" />
+    );
+  return (
+    <div
+      className="review-sceneplayer-embed"
+      data-filmstrip-artifact-id={frame?.artifact.artifactId ?? undefined}
+      data-filmstrip-artifact-kind={frame?.artifact.artifactKind ?? undefined}
+      data-filmstrip-artifact-uri={frame?.artifact.uri ?? undefined}
+      data-sceneplayer-runtime-run-id={runtime.data.runtimeRunId ?? undefined}
+    >
+      <ScenePlayer
+        unitId={source.bridgeUnitId}
+        mode="review"
+        sourceText={source.sourceText}
+        translationText={translation}
+        sourceLocale={source.sourceLocale}
+        targetLocale={draft.targetLocale}
+        speaker={source.sourceUnitKey}
+        status={scenePlayerStatus(runtime.data)}
+        frame={
+          <RedactionGovernorBoundary>
+            <RedactedFrame sensitive label="Utsushi review frame · redacted">
+              {frameNode}
+            </RedactedFrame>
+          </RedactionGovernorBoundary>
+        }
+      />
+    </div>
   );
 }
 

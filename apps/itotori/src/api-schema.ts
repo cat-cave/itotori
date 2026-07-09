@@ -2428,6 +2428,7 @@ export function assertWorkspaceSceneBrowseReadModel(
       const unitLabel = `${sceneLabel}.units[${unitIndex}]`;
       const unit = asStrictRecord(unitValue, unitLabel, [
         "bridgeUnitId",
+        "reviewItemId",
         "sourceUnitKey",
         "speaker",
         "occurrenceId",
@@ -2435,6 +2436,7 @@ export function assertWorkspaceSceneBrowseReadModel(
         "cited",
       ]);
       assertString(unit.bridgeUnitId, `${unitLabel}.bridgeUnitId`);
+      assertNullableString(unit.reviewItemId, `${unitLabel}.reviewItemId`);
       assertString(unit.sourceUnitKey, `${unitLabel}.sourceUnitKey`);
       assertNullableString(unit.speaker, `${unitLabel}.speaker`);
       assertString(unit.occurrenceId, `${unitLabel}.occurrenceId`);

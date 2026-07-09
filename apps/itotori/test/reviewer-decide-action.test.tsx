@@ -41,6 +41,7 @@ import type { ReviewerDetailContext } from "../src/reviewer/index.js";
 import { workspaceComparisonFixture } from "../src/workspace/index.js";
 import { ReviewerDetailScreen } from "../src/ui/screens/ReviewerDetailScreen.js";
 import { ToastProvider } from "../src/ui/toast-host.js";
+import { runtimeStatusFixture } from "./api-fixtures.js";
 import { apiJson } from "./msw-handlers.js";
 import {
   reviewerQueueActionValues,
@@ -57,6 +58,7 @@ const REVIEW_ITEM_ID = "reviewer-queue-itotori-revdecide";
 const DETAIL_PATH = "*/api/reviewer/queue/:reviewItemId/detail";
 const ACTION_PATH = "*/api/reviewer/queue/:reviewItemId/action";
 const COMPARISON_PATH = "*/api/workspace/comparison";
+const STATUS_PATH = "*/api/runtime/v0.2/status";
 
 const fixtureSourceRevisionId = "source-revision-itotori-revdecide";
 
@@ -169,6 +171,7 @@ function handleComparison(): void {
     http.get(COMPARISON_PATH, () =>
       apiJson("workspace.comparison", workspaceComparisonFixture({ reviewItemId: REVIEW_ITEM_ID })),
     ),
+    http.get(STATUS_PATH, () => apiJson("runtime.status", runtimeStatusFixture)),
   );
 }
 
@@ -318,6 +321,7 @@ describe("ReviewerDetailScreen — decide action (canDecide)", () => {
           workspaceComparisonFixture({ reviewItemId: REVIEW_ITEM_ID }),
         ),
       ),
+      http.get(STATUS_PATH, () => apiJson("runtime.status", runtimeStatusFixture)),
       http.post(ACTION_PATH, () =>
         HttpResponse.json(
           {

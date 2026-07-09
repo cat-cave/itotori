@@ -115,6 +115,7 @@ export function workspaceSceneBrowseFixture(
         units: [
           {
             bridgeUnitId: "bridge-unit-itotori-040-1",
+            reviewItemId: "reviewer-queue-itotori-040",
             sourceUnitKey: "scene.001.line.001",
             speaker: "Heroine",
             occurrenceId: "occurrence-1",

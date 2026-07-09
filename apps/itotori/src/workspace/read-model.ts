@@ -154,6 +154,13 @@ export type WorkspaceProjectBrowseReadModel = {
  */
 export type WorkspaceSceneUnit = {
   bridgeUnitId: string;
+  /**
+   * Reviewer queue item that owns comparison context for this unit, when one
+   * exists. Scene browse is bridge-unit keyed; workspace comparison is
+   * review-item keyed, so Play uses this resolved link rather than treating
+   * bridgeUnitId as an opaque reviewItemId.
+   */
+  reviewItemId: string | null;
   sourceUnitKey: string;
   speaker: string | null;
   occurrenceId: string;

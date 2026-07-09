@@ -31,17 +31,28 @@ import {
   readyContextFixture,
 } from "../src/reviewer/index.js";
 import type { ReviewerDetailContext } from "../src/reviewer/index.js";
+import type { WorkspaceCorrectionPreviewReadModel } from "../src/workspace/index.js";
 import { workspaceComparisonFixture } from "../src/workspace/index.js";
-import { ReviewerDetailScreen } from "../src/ui/screens/ReviewerDetailScreen.js";
+import {
+  ReviewerDetailScreen,
+  ReviewerScenePlayerBody,
+} from "../src/ui/screens/ReviewerDetailScreen.js";
+import { RedactionGovernor } from "../src/ui/redaction-governor.js";
 import { ToastProvider } from "../src/ui/toast-host.js";
+import { projectOverviewFixture, runtimeStatusFixture } from "./api-fixtures.js";
 import { apiJson } from "./msw-handlers.js";
 
 const REVIEW_ITEM_ID = "reviewer-queue-itotori-082";
 const DETAIL_PATH = "*/api/reviewer/queue/:reviewItemId/detail";
 const COMPARISON_PATH = "*/api/workspace/comparison";
+const STATUS_PATH = "*/api/runtime/v0.2/status";
+const CORRECTIONS_PATH = "*/api/workspace/corrections";
+const OVERVIEW_PATH = "*/api/projects/overview";
 
 const DRAFT_TEXT = "I'll be waiting on the roof after school.";
 const PATCH_TEXT = "I'll be on the roof after school — wait for me.";
+const REVIEW_BRIDGE_UNIT_ID = "bridge-unit-itotori-082";
+const REVIEW_SOURCE_UNIT_KEY = "scene.001.line.001";
 
 // A detail context carrying an APPROVED PATCH (so the draft→patch delta
 // renders) and a NINE-entry glossary (so the ds Pagination surfaces at the
@@ -78,6 +89,61 @@ function historyContext(overrides: Partial<ReviewerDetailContext> = {}): Reviewe
   });
 }
 
+const reviewRuntimeStatusFixture = {
+  ...runtimeStatusFixture,
+  traceEvents: runtimeStatusFixture.traceEvents.map((event) => ({
+    ...event,
+    bridgeUnitId: REVIEW_BRIDGE_UNIT_ID,
+    sourceUnitKey: REVIEW_SOURCE_UNIT_KEY,
+  })),
+  artifacts: runtimeStatusFixture.artifacts.map((artifact) => ({
+    ...artifact,
+    bridgeUnitId: artifact.bridgeUnitId === null ? null : REVIEW_BRIDGE_UNIT_ID,
+    sourceUnitKey: artifact.sourceUnitKey === null ? null : REVIEW_SOURCE_UNIT_KEY,
+  })),
+};
+
+function correctionPreviewFixture(
+  overrides: Partial<WorkspaceCorrectionPreviewReadModel> = {},
+): WorkspaceCorrectionPreviewReadModel {
+  return {
+    schemaVersion: "workspace.correction_preview.v0.1",
+    generatedAt: "2026-07-09T00:00:00.000Z",
+    permission: {
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    },
+    projectId: "project-itotori-082",
+    localeBranchId: "locale-branch-itotori-082",
+    sourceBundleId: null,
+    targetLocale: "en-US",
+    units: [
+      {
+        reviewItemId: REVIEW_ITEM_ID,
+        localeBranchId: "locale-branch-itotori-082",
+        sourceRevisionId: "source-revision-itotori-082",
+        bridgeUnitId: REVIEW_BRIDGE_UNIT_ID,
+        sourceUnitKey: REVIEW_SOURCE_UNIT_KEY,
+        sourceLocale: "ja-JP",
+        sourceText: "こんにちは、世界。",
+        targetLocale: "en-US",
+        draftText: DRAFT_TEXT,
+        finalText: PATCH_TEXT,
+        styleGuidePolicyVersionId: "style-guide-version-itotori-082",
+        styleGuidePolicyStatus: "approved",
+        glossary: [],
+        runtimeEvidenceLinks: [],
+        screenshotArtifactHashes: [],
+        diagnostics: [],
+      },
+    ],
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -95,6 +161,11 @@ function handleComparison(): void {
     http.get(COMPARISON_PATH, () =>
       apiJson("workspace.comparison", workspaceComparisonFixture({ reviewItemId: REVIEW_ITEM_ID })),
     ),
+    http.get(STATUS_PATH, () => apiJson("runtime.status", reviewRuntimeStatusFixture)),
+    http.get(CORRECTIONS_PATH, () =>
+      apiJson("workspace.correctionPreview", correctionPreviewFixture()),
+    ),
+    http.get(OVERVIEW_PATH, () => apiJson("projects.overview", projectOverviewFixture)),
   );
 }
 
@@ -104,10 +175,55 @@ function handleDetail(context: ReviewerDetailContext = historyContext()): void {
 }
 
 function renderWithToasts(ui: ReactNode): void {
-  render(<ToastProvider>{ui}</ToastProvider>);
+  render(
+    <RedactionGovernor revealSensitive>
+      <ToastProvider>{ui}</ToastProvider>
+    </RedactionGovernor>,
+  );
 }
 
 describe("ReviewerDetailScreen — draft history + policy + glossary", () => {
+  it("renders the embedded ScenePlayer frame with a local redaction governor when mounted directly", () => {
+    render(
+      <ReviewerScenePlayerBody
+        runtime={{ state: "ready", data: reviewRuntimeStatusFixture }}
+        context={historyContext()}
+      />,
+    );
+
+    const embed = document.querySelector(".review-sceneplayer-embed");
+    expect(embed).not.toBeNull();
+    expect(embed).toHaveAttribute(
+      "data-filmstrip-artifact-uri",
+      "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+    );
+    expect(embed?.querySelector('.itotori-redaction-frame[data-redacted="true"]')).not.toBeNull();
+  });
+
+  it("renders the embedded ScenePlayer in review mode from runtime status", async () => {
+    handleDetail();
+    renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Embedded ScenePlayer" }),
+    ).toBeInTheDocument();
+    const panel = document.querySelector('[data-pane-id="review-sceneplayer-embed"]');
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveAttribute("data-pane-state", "ready");
+    expect(panel).toHaveAttribute("data-sceneplayer-mode", "review");
+    expect(
+      panel?.querySelector('[data-component="scene-player"][data-mode="review"]'),
+    ).not.toBeNull();
+    const embed = panel?.querySelector(".review-sceneplayer-embed");
+    expect(embed).not.toBeNull();
+    expect(embed).toHaveAttribute(
+      "data-filmstrip-artifact-uri",
+      "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+    );
+    expect(within(panel as HTMLElement).getByText("こんにちは、世界。")).toBeInTheDocument();
+    expect(within(panel as HTMLElement).getAllByText(PATCH_TEXT).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders the draft-history progression (draft text → approved patch) with attempt + status", async () => {
     handleDetail();
     renderWithToasts(<ReviewerDetailScreen reviewItemId={REVIEW_ITEM_ID} />);

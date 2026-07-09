@@ -83,6 +83,11 @@ export interface LocalizationWorkspaceReadPort {
     localeBranchId: string;
     permission: WorkspacePermissionView;
   }): Promise<ReviewerQueueDashboardReadModel>;
+  loadReviewItemIdsByBridgeUnit(input: {
+    localeBranchId: string;
+    bridgeUnitIds: string[];
+    permission: WorkspacePermissionView;
+  }): Promise<Map<string, string>>;
   loadComparisonContext(input: {
     reviewItemId: string;
     permission: WorkspacePermissionView;
@@ -264,6 +269,14 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       allBridgeUnitIds.length === 0
         ? new Map<string, BridgeUnitTextRecord>()
         : await this.deps.readPort.loadBridgeUnitsForSummary(allBridgeUnitIds);
+    const reviewItemIdByBridgeUnit =
+      allBridgeUnitIds.length === 0
+        ? new Map<string, string>()
+        : await this.deps.readPort.loadReviewItemIdsByBridgeUnit({
+            localeBranchId: input.localeBranchId,
+            bridgeUnitIds: allBridgeUnitIds,
+            permission: input.permission,
+          });
     const scenes: WorkspaceSceneContext[] = scopedSummaries.map((summary) => {
       const stale = summary.status === sceneSummaryStatusValues.stale;
       const units: WorkspaceSceneUnit[] = [];
@@ -283,6 +296,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         }
         units.push({
           bridgeUnitId: citation.bridgeUnitId,
+          reviewItemId: reviewItemIdByBridgeUnit.get(citation.bridgeUnitId) ?? null,
           sourceUnitKey: unit.sourceUnitKey,
           speaker: unit.speaker,
           occurrenceId: unit.occurrenceId,

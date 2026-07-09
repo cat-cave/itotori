@@ -13,8 +13,22 @@ import type { ApiRequestOptionsFor, ApiRouteResponse } from "../api-client.js";
 import type { ItotoriApiRouteId } from "../api-schema.js";
 import { apiClient } from "./client.js";
 
+type ApiResourceHandle<T> = Pick<ApiResource<T>, "read" | "subscribe">;
+
+class StaticApiResource<T> implements ApiResourceHandle<T> {
+  constructor(private readonly state: ApiCallState<T>) {}
+
+  read(): ApiCallState<T> {
+    return this.state;
+  }
+
+  subscribe(): () => void {
+    return () => {};
+  }
+}
+
 /** Subscribe a component to an `ApiResource`'s settle transition. */
-export function useApiResource<T>(resource: ApiResource<T>): ApiCallState<T> {
+export function useApiResource<T>(resource: ApiResourceHandle<T>): ApiCallState<T> {
   return useSyncExternalStore(
     (onChange) => resource.subscribe(onChange),
     () => resource.read(),
@@ -37,5 +51,22 @@ export function useApiQuery<R extends ItotoriApiRouteId>(
   // inline options literal does not thrash the query on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resource = useMemo(() => apiClient.query(routeId, options), [routeId, depsKey]);
+  return useApiResource(resource);
+}
+
+export function useApiQueryWhen<R extends ItotoriApiRouteId>(
+  routeId: R,
+  options: ApiRequestOptionsFor<R>,
+  depsKey: string,
+  enabled: boolean,
+  disabledState: ApiCallState<ApiRouteResponse<R>> = { state: "empty" },
+): ApiCallState<ApiRouteResponse<R>> {
+  // Keep hook call order stable while avoiding invalid network requests for
+  // panes whose backing identity is absent.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const resource = useMemo<ApiResourceHandle<ApiRouteResponse<R>>>(
+    () => (enabled ? apiClient.query(routeId, options) : new StaticApiResource(disabledState)),
+    [routeId, depsKey, enabled],
+  );
   return useApiResource(resource);
 }

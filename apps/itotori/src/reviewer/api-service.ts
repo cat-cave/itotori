@@ -149,6 +149,10 @@ export type ReviewerQueueApiServicePort = {
     reviewItemId: string;
     permission: ReviewerQueuePermissionView;
   }): Promise<ReviewerDetailContext>;
+  loadReviewItemIdsByBridgeUnit(input: {
+    localeBranchId: string;
+    bridgeUnitIds: string[];
+  }): Promise<Map<string, string>>;
   previewBatch(input: {
     request: ReviewerBatchActionRequest;
     permission: ReviewerQueuePermissionView;
@@ -223,6 +227,34 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
         evidenceLoader: this.evidenceLoader,
       },
     );
+  }
+
+  async loadReviewItemIdsByBridgeUnit(input: {
+    localeBranchId: string;
+    bridgeUnitIds: string[];
+  }): Promise<Map<string, string>> {
+    const wanted = new Set(input.bridgeUnitIds);
+    const result = new Map<string, string>();
+    if (wanted.size === 0) {
+      return result;
+    }
+    const items = await this.deps.repository.loadItemsByBranch(input.localeBranchId);
+    const sorted = items.slice().sort((left, right) => {
+      const stateRank =
+        reviewerItemSelectionRank(left.state) - reviewerItemSelectionRank(right.state);
+      if (stateRank !== 0) {
+        return stateRank;
+      }
+      return right.updatedAt.getTime() - left.updatedAt.getTime();
+    });
+    for (const item of sorted) {
+      const bridgeUnitId = bridgeUnitIdFromReviewItemMetadata(item.metadata);
+      if (bridgeUnitId === null || !wanted.has(bridgeUnitId) || result.has(bridgeUnitId)) {
+        continue;
+      }
+      result.set(bridgeUnitId, item.reviewItemId);
+    }
+    return result;
   }
 
   async previewBatch(input: {
@@ -326,6 +358,37 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
       resolvedAt: item.resolvedAt,
     };
   }
+}
+
+function reviewerItemSelectionRank(state: ReviewerQueueItemState): number {
+  if (state === reviewerQueueItemStateValues.pending) {
+    return 0;
+  }
+  if (state === reviewerQueueItemStateValues.repairRequested) {
+    return 1;
+  }
+  if (state === reviewerQueueItemStateValues.deferred) {
+    return 2;
+  }
+  if (state === reviewerQueueItemStateValues.escalated) {
+    return 3;
+  }
+  return 4;
+}
+
+function bridgeUnitIdFromReviewItemMetadata(
+  metadata: ReviewerQueueItemRecord["metadata"],
+): string | null {
+  const contextRefs = (metadata as { contextRefs?: unknown }).contextRefs;
+  if (contextRefs === null || typeof contextRefs !== "object") {
+    return null;
+  }
+  const source = (contextRefs as { source?: unknown }).source;
+  if (source === null || typeof source !== "object") {
+    return null;
+  }
+  const bridgeUnitId = (source as { bridgeUnitId?: unknown }).bridgeUnitId;
+  return typeof bridgeUnitId === "string" && bridgeUnitId.length > 0 ? bridgeUnitId : null;
 }
 
 function defaultEvidenceLoader(

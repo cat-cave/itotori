@@ -2,6 +2,25 @@
   min-width: 0;
 }
 
+.play-sceneplayer-embed,
+.review-sceneplayer-embed {
+  min-width: 0;
+}
+
+.play-sceneplayer-embed .itotori-redaction-frame,
+.review-sceneplayer-embed .itotori-redaction-frame {
+  width: 100%;
+  height: 100%;
+}
+
+.play-sceneplayer-embed .itotori-redaction-frame img,
+.review-sceneplayer-embed .itotori-redaction-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .play-filmstrip__frames {
   display: flex;
   gap: var(--ito-space-14);

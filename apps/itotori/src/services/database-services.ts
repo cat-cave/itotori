@@ -534,6 +534,8 @@ export async function withDatabaseItotoriServices<T>(
         loadRunTable: (input) =>
           draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, input),
         loadReviewerDashboard: (input) => reviewerQueueApiService.loadDashboard(input),
+        loadReviewItemIdsByBridgeUnit: (input) =>
+          reviewerQueueApiService.loadReviewItemIdsByBridgeUnit(input),
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
     });

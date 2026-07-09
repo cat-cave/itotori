@@ -102,6 +102,14 @@ export function useRedactionGovernor(): RedactionGovernorValue {
   return value;
 }
 
+export function RedactionGovernorBoundary({ children }: { children: ReactNode }): ReactNode {
+  const value = useContext(RedactionGovernorContext);
+  if (value !== null) {
+    return children;
+  }
+  return <RedactionGovernor>{children}</RedactionGovernor>;
+}
+
 // ---------------------------------------------------------------------------
 // RedactionToggle — the cap-gated shell control that flips the private reveal.
 // DISABLED (not hidden) without the revealSensitive capability so an

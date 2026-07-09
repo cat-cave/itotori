@@ -383,6 +383,8 @@ function makeService(overrides: StubOverrides = {}): LocalizationWorkspaceApiSer
       ...reviewerDashboard(),
       permission: view,
     }),
+    loadReviewItemIdsByBridgeUnit: async () =>
+      new Map([["bridge-unit-1", "reviewer-queue-bridge-unit-1"]]),
     loadComparisonContext: async () => readyContextFixture(),
     ...overrides,
   };
@@ -469,6 +471,29 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
     expect(scene.stale).toBe(false);
     expect(scene.units[0]!.sourceUnitKey).toBe("scene.001.line.001");
     expect(scene.units[0]!.speaker).toBe("Heroine");
+  });
+
+  it("exposes the reviewer item id that owns comparison context for each cited bridge unit", async () => {
+    let requestedBridgeUnitIds: string[] = [];
+    const service = makeService({
+      loadReviewItemIdsByBridgeUnit: async ({ localeBranchId, bridgeUnitIds }) => {
+        expect(localeBranchId).toBe(BRANCH_ID);
+        requestedBridgeUnitIds = bridgeUnitIds;
+        return new Map([["bridge-unit-1", "reviewer-queue-bridge-unit-1"]]);
+      },
+    });
+
+    const model = await service.loadSceneBrowse({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      permission: permission(),
+    });
+
+    expect(requestedBridgeUnitIds).toEqual(["bridge-unit-1"]);
+    expect(model.scenes[0]!.units[0]).toMatchObject({
+      bridgeUnitId: "bridge-unit-1",
+      reviewItemId: "reviewer-queue-bridge-unit-1",
+    });
   });
 
   it("drops summaries from other locale branches and records a conflation guard diagnostic", async () => {
