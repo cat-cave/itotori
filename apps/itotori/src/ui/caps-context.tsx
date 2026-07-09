@@ -26,17 +26,47 @@ import {
   type ButtonHTMLAttributes,
   type ReactNode,
 } from "react";
-import type {
-  StudioCapability,
-  StudioCapabilityDenials,
-  StudioCapabilityPermissionView,
-} from "../auth.js";
-import { studioCapabilityPermissions } from "../auth.js";
 import { useApiQuery } from "./use-api-resource.js";
 
 // ---------------------------------------------------------------------------
 // Value surface
 // ---------------------------------------------------------------------------
+
+/** The four hi-fi Studio capabilities gated by exact permission grants. */
+export type StudioCapability = "flag" | "decide" | "steer" | "reveal";
+
+/**
+ * Browser-local copy of the exact permission strings shown in disabled action
+ * affordances. Server-side resolution still lives in `auth.ts`; keeping these
+ * literals here avoids pulling the Node-only auth/db module into the SPA bundle.
+ */
+export const studioCapabilityPermissions = {
+  flag: "feedback.import",
+  decide: "queue.manage",
+  steer: "draft.write",
+  reveal: "catalog.read",
+} as const satisfies Readonly<Record<StudioCapability, string>>;
+
+export type StudioCapabilityDenials = {
+  flag: string | null;
+  decide: string | null;
+  steer: string | null;
+  reveal: string | null;
+  queueRead: string | null;
+  queueManage: string | null;
+};
+
+export type StudioCapabilityPermissionView = {
+  actorUserId: string;
+  canReadQueue: boolean;
+  canManageQueue: boolean;
+  canFlag: boolean;
+  canDecide: boolean;
+  canSteer: boolean;
+  canReveal: boolean;
+  denials: StudioCapabilityDenials;
+  denialReasons: string[];
+};
 
 export type CapsContextValue = {
   /** Actor the view was resolved for. */

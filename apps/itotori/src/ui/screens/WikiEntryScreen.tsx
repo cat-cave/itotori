@@ -40,11 +40,15 @@ import type {
   WikiCharacterEntry,
   WikiTermEntry,
 } from "@itotori/db";
-import { wikiEntryKindValues } from "@itotori/db";
 import type { ApiWikiEntriesResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { hrefForAddressable } from "../addressable-routing.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+
+const wikiEntryKindValues = {
+  character: "character",
+  term: "term",
+} as const satisfies Record<string, WikiEntryKind>;
 
 // ---------------------------------------------------------------------------
 // Route identity — `/wiki` (bare) plus addressable deep-links

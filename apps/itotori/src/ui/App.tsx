@@ -17,11 +17,13 @@
 // `useApiQuery` and paints with `@itotori/ds`.
 
 import { useEffect, useRef, type ReactNode } from "react";
-import type { StudioCapabilityPermissionView } from "../auth.js";
-import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
 import { parseAddressableLocation } from "./addressable-routing.js";
-import { CapsProvider, useCapsOptional } from "./caps-context.js";
+import {
+  CapsProvider,
+  useCapsOptional,
+  type StudioCapabilityPermissionView,
+} from "./caps-context.js";
 import {
   BenchmarkCockpitScreen,
   isBenchmarkCockpitRoute,
@@ -50,6 +52,16 @@ import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 import { RedactionGovernor } from "./redaction-governor.js";
 import { ShellFrame, defaultNavigate } from "./shell-frame.js";
 import { ToastProvider } from "./toast-host.js";
+
+const reviewerDetailRoutePathRegex = /^\/reviewer-queue\/([^/]+)$/u;
+
+function parseReviewerDetailRoute(pathname: string): { reviewItemId: string } | null {
+  const match = reviewerDetailRoutePathRegex.exec(pathname);
+  const reviewItemId = match?.[1];
+  return reviewItemId === undefined || reviewItemId.length === 0
+    ? null
+    : { reviewItemId: decodeURIComponent(reviewItemId) };
+}
 
 export type AppLocation = { pathname: string; search: string };
 

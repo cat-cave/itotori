@@ -26,12 +26,7 @@
 //     client-paginated with the ds `Pagination` primitive.
 
 import { type ReactNode, useState } from "react";
-import {
-  reviewerQueueActionValues,
-  reviewerQueueItemKindValues,
-  type ReviewerQueueAction,
-  type ReviewerQueueItemKind,
-} from "@itotori/db";
+import type { ReviewerQueueAction, ReviewerQueueItemKind } from "@itotori/db";
 import {
   Badge,
   BiText,
@@ -54,6 +49,25 @@ import { RevisionHistoryComparisonPane } from "./RevisionHistoryComparisonPane.j
 // dashboard (`runtime.status` + frame-capture) through the typed client, so
 // its loading / empty / error surfaces settle independently of the parent.
 import { RuntimeEvidencePanel } from "./RuntimeEvidencePanel.js";
+
+const reviewerQueueActionValues = {
+  approve: "approve",
+  reject: "reject",
+  defer: "defer",
+  escalate: "escalate",
+  requestRepair: "request_repair",
+  updateGlossary: "update_glossary",
+  updateStyle: "update_style",
+  importRuntimeFeedback: "import_runtime_feedback",
+} as const satisfies Record<string, ReviewerQueueAction>;
+
+const reviewerQueueItemKindValues = {
+  qa: "qa",
+  style: "style",
+  glossary: "glossary",
+  feedback: "feedback",
+  runtimeEvidence: "runtime_evidence",
+} as const satisfies Record<string, ReviewerQueueItemKind>;
 
 // ITOTORI-082 → HI-FI STUDIO EPIC · Review
 // (`spec/rev-decide`) — the decide action.

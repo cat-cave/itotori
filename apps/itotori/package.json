@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "emit:openapi": "UPDATE_OPENAPI_CONTRACT=1 vitest run test/openapi-contract.test.ts",
@@ -20,6 +21,7 @@
     "vite": "^8.0.16"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

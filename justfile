@@ -320,6 +320,7 @@ browser-e2e:
       exit 1
     fi
     echo "browser-e2e: using nix-Chromium = $bin"
+    pnpm --filter @itotori/app e2e
     pnpm --filter @itotori/runtime-web-review e2e
 
 # fe-contract-ci-lanes: the PERIODIC/STRICT lane entry point. Runs BOTH heavy,

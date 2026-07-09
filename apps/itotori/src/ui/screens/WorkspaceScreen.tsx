@@ -259,7 +259,13 @@ function ProjectBrowseView({ model }: { model: WorkspaceProjectBrowseReadModel }
                 header: "Browse",
                 render: (b) => (
                   <span>
-                    <a href={b.sceneBrowsePath}>scenes</a> · <a href={b.assetBrowsePath}>assets</a>
+                    <a href={workspaceSurfaceHref("scenes", b.projectId, b.localeBranchId)}>
+                      scenes
+                    </a>{" "}
+                    ·{" "}
+                    <a href={workspaceSurfaceHref("assets", b.projectId, b.localeBranchId)}>
+                      assets
+                    </a>
                   </span>
                 ),
               },
@@ -271,6 +277,15 @@ function ProjectBrowseView({ model }: { model: WorkspaceProjectBrowseReadModel }
       ))}
     </>
   );
+}
+
+function workspaceSurfaceHref(
+  view: "scenes" | "assets",
+  projectId: string,
+  localeBranchId: string,
+): string {
+  const params = new URLSearchParams({ projectId, localeBranchId });
+  return `/workspace/${view}?${params.toString()}`;
 }
 
 function SceneBrowseView({ model }: { model: WorkspaceSceneBrowseReadModel }): ReactNode {

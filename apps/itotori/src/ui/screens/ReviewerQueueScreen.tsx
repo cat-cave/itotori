@@ -17,7 +17,7 @@
 // StatReadout), tokens-never-literals, severity → Badge tone via `statusTone`.
 
 import { useState, type ReactNode } from "react";
-import { reviewerQueueItemKindValues, type ReviewerQueueItemKind } from "@itotori/db";
+import type { ReviewerQueueItemKind } from "@itotori/db";
 import {
   Badge,
   DataTable,
@@ -31,6 +31,14 @@ import type { ReviewerQueueDashboardRow } from "../../reviewer/index.js";
 import type { ApiReviewerQueueDashboardResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+
+const reviewerQueueItemKindValues = {
+  qa: "qa",
+  style: "style",
+  glossary: "glossary",
+  feedback: "feedback",
+  runtimeEvidence: "runtime_evidence",
+} as const satisfies Record<string, ReviewerQueueItemKind>;
 
 // ---------------------------------------------------------------------------
 // Route identity — `/reviewer-queue` (bare). `/reviewer-queue/batch` and

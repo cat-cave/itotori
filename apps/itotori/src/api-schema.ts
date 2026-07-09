@@ -56,7 +56,7 @@ import {
   reviewerQueueItemKindList,
   reviewerQueueItemStateList,
   wikiEntryKindValues,
-} from "@itotori/db";
+} from "./api-enum-values.js";
 import type { FeedbackType } from "@itotori/db";
 import {
   assertBenchmarkReportV02,

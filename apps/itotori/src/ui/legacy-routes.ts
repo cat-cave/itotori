@@ -8,22 +8,37 @@
 // container — an honest, temporary bridge (each is a tracked follow-on
 // screen), NOT a dual path for a replaced view.
 
-import { parseAssetDecisionsRoute, renderAssetDecisionsRoute } from "../asset-decisions/route.js";
-import {
-  parseReviewerBatchRoute,
-  renderReviewerBatchRoute,
-  type ReviewerBatchActionRequest,
-  type ReviewerBatchActionServicePort,
-  type ReviewerBatchExecuteResult,
-  type ReviewerBatchPermissionView,
-  type ReviewerBatchPreview,
-  type ReviewerBatchPreviewServicePort,
+import { assertBrowserItotoriApiResponse } from "../api-client-guards.js";
+import type {
+  AssetDecisionsRouteParams,
+} from "../asset-decisions/route.js";
+import type {
+  ReviewerBatchActionRequest,
+  ReviewerBatchActionServicePort,
+  ReviewerBatchExecuteResult,
+  ReviewerBatchPermissionView,
+  ReviewerBatchPreview,
+  ReviewerBatchPreviewServicePort,
 } from "../reviewer/index.js";
-import { renderStyleGuideBuilderRoute } from "../style-guide-builder.js";
-import { assertItotoriApiResponse } from "../api-schema.js";
-import { reviewerQueueActionList, reviewerQueueActionValues } from "@itotori/db";
 
 export type LegacyRouteRenderer = (root: HTMLElement) => void | Promise<void>;
+
+const assetDecisionsRoutePathRegex =
+  /^\/projects\/([^/]+)\/locale-branches\/([^/]+)\/asset-decisions(\/batch)?$/u;
+const reviewerBatchRoutePathRegex = /^\/reviewer-queue\/batch$/u;
+
+const reviewerQueueActionValues = {
+  approve: "approve",
+  reject: "reject",
+  defer: "defer",
+  escalate: "escalate",
+  requestRepair: "request_repair",
+  updateGlossary: "update_glossary",
+  updateStyle: "update_style",
+  importRuntimeFeedback: "import_runtime_feedback",
+} as const;
+
+const reviewerQueueActionList = Object.values(reviewerQueueActionValues);
 
 /**
  * Return the async HTML-string renderer for a route this node does not port,
@@ -32,13 +47,17 @@ export type LegacyRouteRenderer = (root: HTMLElement) => void | Promise<void>;
 export function matchLegacyRoute(pathname: string, search: string): LegacyRouteRenderer | null {
   const assetDecisions = parseAssetDecisionsRoute(pathname);
   if (assetDecisions !== null) {
-    return (root) => renderAssetDecisionsRoute(root, assetDecisions);
+    return async (root) => {
+      const { renderAssetDecisionsRoute } = await import("../asset-decisions/route.js");
+      await renderAssetDecisionsRoute(root, assetDecisions);
+    };
   }
   const reviewerBatch = parseReviewerBatchRoute(pathname);
   if (reviewerBatch !== null) {
     const request = reviewerBatchRequestFromSearch(search);
-    return (root) =>
-      renderReviewerBatchRoute(root, request, {
+    return async (root) => {
+      const { renderReviewerBatchRoute } = await import("../reviewer/batch-route.js");
+      await renderReviewerBatchRoute(root, request, {
         permission: optimisticBatchPermission(request.actorUserId),
         previewService: makeApiBatchPreviewService(),
         confirm: {
@@ -47,11 +66,33 @@ export function matchLegacyRoute(pathname: string, search: string): LegacyRouteR
           actor: { userId: request.actorUserId },
         },
       });
+    };
   }
   if (pathname === "/style-guide-builder") {
-    return (root) => renderStyleGuideBuilderRoute(root);
+    return async (root) => {
+      const { renderStyleGuideBuilderRoute } = await import("../style-guide-builder.js");
+      await renderStyleGuideBuilderRoute(root);
+    };
   }
   return null;
+}
+
+function parseAssetDecisionsRoute(pathname: string): AssetDecisionsRouteParams | null {
+  const match = assetDecisionsRoutePathRegex.exec(pathname);
+  const projectId = match?.[1];
+  const localeBranchId = match?.[2];
+  if (projectId === undefined || localeBranchId === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeURIComponent(projectId),
+    localeBranchId: decodeURIComponent(localeBranchId),
+    view: match?.[3] === "/batch" ? "batch" : "policy",
+  };
+}
+
+function parseReviewerBatchRoute(pathname: string): true | null {
+  return reviewerBatchRoutePathRegex.exec(pathname) === null ? null : true;
 }
 
 function reviewerBatchRequestFromSearch(search: string): ReviewerBatchActionRequest {
@@ -105,7 +146,7 @@ function makeApiBatchPreviewService(): ReviewerBatchPreviewServicePort {
         throw new Error(`failed to load reviewer batch preview: ${response.status}`);
       }
       const body = await response.json();
-      assertItotoriApiResponse("reviewer.batchPreview", body);
+      assertBrowserItotoriApiResponse("reviewer.batchPreview", body);
       return body as ReviewerBatchPreview;
     },
   };
@@ -123,7 +164,7 @@ function makeApiBatchActionService(): ReviewerBatchActionServicePort {
         throw new Error(`failed to confirm reviewer batch: ${response.status}`);
       }
       const body = await response.json();
-      assertItotoriApiResponse("reviewer.batchExecute", body);
+      assertBrowserItotoriApiResponse("reviewer.batchExecute", body);
       return body as ReviewerBatchExecuteResult;
     },
   };
