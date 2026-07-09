@@ -472,13 +472,7 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     expect(carve.works).toHaveLength(1);
     expect(carve.works[0]!.branchEntryScene).toBe(2);
     expect(carve.derivation.notes).toContain("5 option label(s)");
-    expect(carve.works.map((w) => w.branchEntryScene)).not.toEqual([
-      null,
-      null,
-      null,
-      null,
-      null,
-    ]);
+    expect(carve.works.map((w) => w.branchEntryScene)).not.toEqual([null, null, null, null, null]);
   });
 
   it("rejects a carve whose options collide on the same work root (not disjoint)", () => {

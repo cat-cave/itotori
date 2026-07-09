@@ -293,7 +293,9 @@ function carveFromOperatorEntryScenes(
   };
 }
 
-function sceneById(structure: NarrativeStructure): Map<number, NarrativeStructure["scenes"][number]> {
+function sceneById(
+  structure: NarrativeStructure,
+): Map<number, NarrativeStructure["scenes"][number]> {
   return new Map(structure.scenes.map((s) => [s.sceneId, s] as const));
 }
 
