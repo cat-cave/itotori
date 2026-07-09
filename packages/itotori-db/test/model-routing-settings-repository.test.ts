@@ -153,7 +153,7 @@ function runInput(
     cost: {
       costKind: "billed",
       currency: "USD",
-      amountMicrosUsd: 1200,
+      amountMicrosUsd: 0,
       pricingSnapshotId: "fixture-pricing-2026-06-17",
     },
     routingPosture: {
