@@ -11,9 +11,11 @@ import type { ReactNode } from "react";
 import type {
   CatalogBenchmarkDemandBucket,
   CatalogBenchmarkLocalOwnership,
+  CatalogBenchmarkSeedReadinessLevel,
   CatalogCompletenessPool,
   CatalogOpportunityRankingReadModel,
   CatalogOpportunityRow,
+  CatalogOpportunityRuntimeEvidenceReadiness,
 } from "@itotori/db";
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import { useApiQuery } from "../use-api-resource.js";
@@ -53,6 +55,32 @@ const COMPLETENESS_STATUS: Readonly<Record<CatalogCompletenessPool, string>> = {
   fan_partial: "warning",
   unknown: "stale",
   conflict: "failed",
+};
+
+const READINESS_LEVEL_LABELS: Readonly<Record<CatalogBenchmarkSeedReadinessLevel, string>> = {
+  supported: "Supported",
+  partial: "Partial",
+  unsupported: "Unsupported",
+  unknown: "Unknown",
+};
+
+const READINESS_LEVEL_TONES: Readonly<Record<CatalogBenchmarkSeedReadinessLevel, string>> = {
+  supported: "accepted",
+  partial: "warning",
+  unsupported: "failed",
+  unknown: "stale",
+};
+
+const RUNTIME_EVIDENCE_LABELS: Readonly<
+  Record<CatalogOpportunityRuntimeEvidenceReadiness["status"], string>
+> = {
+  public_and_aggregate: "Public + aggregate",
+  public_fixture: "Public fixture",
+  private_local_aggregate: "Private aggregate",
+  partial_public_and_aggregate: "Partial public + aggregate",
+  partial_public_fixture: "Partial public fixture",
+  partial_private_local_aggregate: "Partial private aggregate",
+  unknown: "Unknown",
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -106,6 +134,7 @@ export function CatalogCandidateBrowserReady({
       data-row-count={rows.length}
     >
       <CatalogCandidateAggregate opportunities={opportunities} rows={rows} />
+      <CatalogReadinessMatrix rows={rows} />
       <Panel
         title="Catalog candidates"
         eyebrow={opportunities.targetLanguage}
@@ -186,6 +215,85 @@ export function CatalogCandidateBrowserReady({
   );
 }
 
+function CatalogReadinessMatrix({ rows }: { rows: readonly CatalogOpportunityRow[] }): ReactNode {
+  return (
+    <Panel
+      title="Readiness matrix"
+      eyebrow="Capability evidence"
+      lamps={<Badge status="captured">{rows.length} candidates</Badge>}
+      className="catalog-candidate-browser__panel"
+    >
+      <DataTable
+        caption="Per-candidate readiness matrix"
+        columns={[
+          {
+            key: "candidate",
+            header: "Candidate",
+            render: (row) => (
+              <span>
+                {row.canonicalTitle}
+                <br />
+                <code>{formatEngineName(row)}</code>
+              </span>
+            ),
+          },
+          {
+            key: "adapter",
+            header: "Adapter evidence",
+            render: (row) => (
+              <span>
+                <Badge status={row.adapterId === null ? "stale" : "captured"}>
+                  {row.adapterId ?? "No adapter"}
+                </Badge>
+                <br />
+                {formatAdapterEvidence(row)}
+              </span>
+            ),
+          },
+          {
+            key: "identify",
+            header: "Identify",
+            render: (row) => <ReadinessBadge level={row.readiness.identify} />,
+          },
+          {
+            key: "inventory",
+            header: "Inventory",
+            render: (row) => <ReadinessBadge level={row.readiness.inventory} />,
+          },
+          {
+            key: "extract",
+            header: "Extract",
+            render: (row) => <ReadinessBadge level={row.readiness.extract} />,
+          },
+          {
+            key: "patch",
+            header: "Patch",
+            render: (row) => <ReadinessBadge level={row.readiness.patch} />,
+          },
+          {
+            key: "runtime",
+            header: "Runtime",
+            render: (row) => (
+              <span>
+                <ReadinessBadge level={row.readiness.runtime} />
+                <br />
+                {formatRuntimeEvidence(row.runtimeEvidenceReadiness)}
+              </span>
+            ),
+          },
+        ]}
+        rows={rows}
+        getRowKey={(row) => row.workId}
+        emptyLabel="No candidate readiness evidence is available."
+      />
+    </Panel>
+  );
+}
+
+function ReadinessBadge({ level }: { level: CatalogBenchmarkSeedReadinessLevel }): ReactNode {
+  return <Badge status={READINESS_LEVEL_TONES[level]}>{READINESS_LEVEL_LABELS[level]}</Badge>;
+}
+
 function CatalogCandidateAggregate({
   opportunities,
   rows,
@@ -227,6 +335,27 @@ function formatDemandFacts(row: CatalogOpportunityRow): string {
 function formatLocalEvidence(row: CatalogOpportunityRow): string {
   const unit = row.localEvidenceCount === 1 ? "signal" : "signals";
   return `${row.localEvidenceCount} local ${unit}`;
+}
+
+function formatEngineName(row: CatalogOpportunityRow): string {
+  return row.engineName ?? "Unknown engine";
+}
+
+function formatAdapterEvidence(row: CatalogOpportunityRow): string {
+  return row.adapterId === null
+    ? "No engineCapabilityReports adapter match"
+    : `engineCapabilityReports/${row.adapterId}`;
+}
+
+function formatRuntimeEvidence(readiness: CatalogOpportunityRuntimeEvidenceReadiness): string {
+  const publicUnit =
+    readiness.publicFixtureEvidenceCount === 1 ? "public fixture" : "public fixtures";
+  const privateUnit =
+    readiness.privateLocalAggregateEvidenceCount === 1 ? "private aggregate" : "private aggregates";
+  const runtimeLabel = RUNTIME_EVIDENCE_LABELS[readiness.status];
+  const publicEvidence = `${readiness.publicFixtureEvidenceCount} ${publicUnit}`;
+  const privateEvidence = `${readiness.privateLocalAggregateEvidenceCount} ${privateUnit}`;
+  return `${runtimeLabel} - ${publicEvidence}; ${privateEvidence}`;
 }
 
 function formatGeneratedAt(value: Date | string): string {

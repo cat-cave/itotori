@@ -52,12 +52,42 @@ describe("Catalog candidate browser", () => {
     expect(browser).toHaveAttribute("data-row-count", "1");
 
     expect(await screen.findByRole("heading", { name: "Catalog candidates" })).toBeInTheDocument();
-    expect(screen.getByText("Opportunity API Fixture")).toBeInTheDocument();
-    expect(screen.getByText("work-opportunity")).toBeInTheDocument();
+
+    const readinessMatrix = screen.getByRole("table", {
+      name: "Per-candidate readiness matrix",
+    });
+    expect(
+      within(readinessMatrix).getByRole("columnheader", { name: "Identify" }),
+    ).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByRole("columnheader", { name: "Inventory" }),
+    ).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByRole("columnheader", { name: "Extract" }),
+    ).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByRole("columnheader", { name: "Patch" }),
+    ).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByRole("columnheader", { name: "Runtime" }),
+    ).toBeInTheDocument();
+    expect(within(readinessMatrix).getByText("kaifuu.rpg-maker-mv-mz")).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByText("engineCapabilityReports/kaifuu.rpg-maker-mv-mz"),
+    ).toBeInTheDocument();
+    expect(within(readinessMatrix).getAllByText("Supported")).toHaveLength(4);
+    expect(within(readinessMatrix).getByText("Partial")).toBeInTheDocument();
+    expect(
+      within(readinessMatrix).getByText(
+        "Public + aggregate - 1 public fixture; 2 private aggregates",
+      ),
+    ).toBeInTheDocument();
 
     const table = screen.getByRole("table", {
       name: "Catalog candidates with demand, ownership, and completeness",
     });
+    expect(within(table).getByText("Opportunity API Fixture")).toBeInTheDocument();
+    expect(within(table).getByText("work-opportunity")).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "Demand" })).toBeInTheDocument();
     expect(within(table).getByText("Very high")).toBeInTheDocument();
     expect(within(table).getByText(/61,240 DL/u)).toBeInTheDocument();
