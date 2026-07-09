@@ -372,10 +372,10 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     // framing the audit finding is about.
     //
     // Labels reflect the SEMANTIC command catalogue
-    // (`reallive-semantic-command-cataloguing`): every in-space command maps
-    // to a named operation family keyed on its `module_id`, never a generic
-    // `"command"` blob. The element at offset 30 is module (type=1, id=5,
-    // opcode=120) — a `module_sys`-class control op per
+    // (`reallive-semantic-command-cataloguing`): every enumerated real command
+    // maps to a named operation family keyed on its `module_id`, never a
+    // generic `"command"` blob. The element at offset 30 is module (type=1,
+    // id=5, opcode=120) — a `module_sys`-class control op per
     // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2, so it
     // is `"system_control"`; offset 201 is a `module_msg` window directive
     // (`"message_control"`); the 8/16/22-byte `module_sys` ops previously

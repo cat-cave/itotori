@@ -102,8 +102,9 @@
 //! [`opcode::parse_expression`] evaluator, consume any goto-family
 //! trailing jump-target pointers, and classify into one of the
 //! documented RLOperation families per the catalogue in [`opcode`].
-//! Commands at an undocumented module surface as
-//! [`RealLiveOpcode::Unknown`].
+//! Commands at an uncatalogued in-space `(module_id, opcode)` tuple surface
+//! as generic [`RealLiveOpcode::Command`]; out-of-space `module_type` values
+//! surface as [`RealLiveOpcode::Unknown`].
 //!
 //! A well-formed scene stream produces **zero** `Unknown` spans: every
 //! byte is partitioned into a typed element (the catch-all being a

@@ -106,9 +106,9 @@ struct CoverageReport {
     /// `Unknown` desync tripwire. The semantic-zero bar is `0`.
     total_unknown: usize,
     /// Of `total_unknown`, the count that are the un-catalogued generic
-    /// `Command` (an in-space tuple no semantic family covers). This is the
-    /// metric the `reallive-semantic-command-cataloguing` node drives to zero:
-    /// every command must map to a named operation family, never a blob.
+    /// `Command` (an in-space tuple whose module/opcode pair is not
+    /// catalogued). This is the metric the semantic catalogue drives to zero:
+    /// every real command must map to a named operation family, never a blob.
     total_generic_command: usize,
     /// Of `total_unknown`, the count that are the `module_type > 2` `Unknown`
     /// desync tripwire.
@@ -372,13 +372,15 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 
     // ---- reallive-semantic-command-cataloguing: full-archive SEMANTIC zero -
     //
-    // The command catalogue (`opcode.rs`) maps every in-space
+    // The command catalogue (`opcode.rs`) maps every enumerated real
     // `(module_type, module_id, opcode)` to a **semantically-typed operation
     // family** keyed on its `module_id` (the engine's real semantic key —
     // `module_type` is a compiler-version artifact): control-flow, selection,
     // message-window, system, variable/flag, audio, voice,
-    // graphics-background, display-object, screen-control and memory. There is
-    // NO generic `Command{module,id,opcode,args}` blob on the real bytes:
+    // graphics-background, display-object, screen-control and memory. An
+    // uncatalogued opcode in a known module becomes generic `Command` and
+    // fails this gate, so there is NO `Command{module,id,opcode,args}` blob on
+    // the real bytes:
     // `is_recognized()` is true ONLY for a semantically-typed variant, so the
     // SEMANTIC bar is "zero generic `Command` AND zero `Unknown`". This
     // supersedes the prior `reallive-command-module-catalogue`, which funnelled
@@ -408,11 +410,11 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 
         // SEMANTIC zero, split out explicitly so a regression names which
         // failure mode it is. (1) Zero un-catalogued generic `Command`: every
-        // command maps to a named operation family.
+        // real command maps to a named operation family.
         assert_eq!(
             report.total_generic_command, 0,
             "[{}] {} command(s) decode to the generic `Command` blob on the full archive \
-             — every in-space tuple must map to a SEMANTIC family (see signatures above)",
+             — every real tuple must map to a SEMANTIC family (see signatures above)",
             report.label, report.total_generic_command
         );
         // (2) Zero `module_type > 2` desync `Unknown`.
@@ -732,7 +734,7 @@ fn kanon_second_corpus_decompiles_zero_unknown() {
     assert_eq!(
         report.total_generic_command, 0,
         "[{}] {} command(s) decode to the generic `Command` blob on Kanon \
-         — a generalization gap: every in-space tuple must map to a SEMANTIC \
+         — a generalization gap: every real tuple must map to a SEMANTIC \
          family (catalogue it in opcode.rs; do NOT relax the bar). Signatures \
          printed above.",
         report.label, report.total_generic_command

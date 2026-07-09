@@ -74,7 +74,7 @@ fn expression_element_preserves_body_bytes_until_next_recognized_opener() {
 
 #[test]
 fn command_text_display_classified_from_msg_module() {
-    // module_type=1 (Kepago), module_id=3 (MSG), opcode=5 ∈ 1..=200
+    // module_type=1 (Kepago), module_id=3 (MSG), opcode=5 is catalogued.
     let bytes = &[0x23, 1, 3, 5, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
     assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
@@ -148,7 +148,7 @@ fn command_return_classified_from_jmp_module_ret_opcode() {
 
 #[test]
 fn command_jump_classified_from_jmp_module_jump_opcode() {
-    let bytes = &[0x23, 1, 1, 30, 0, 0, 0, 0];
+    let bytes = &[0x23, 1, 1, 18, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
     assert!(matches!(opcodes[0], RealLiveOpcode::Jump));
 }
@@ -176,7 +176,7 @@ fn command_set_variable_classified_from_mem_module() {
 
 #[test]
 fn command_background_classified_from_grp_module() {
-    let bytes = &[0x23, 1, 33, 0, 0, 0, 0, 0];
+    let bytes = &[0x23, 1, 33, 73, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
     assert!(matches!(opcodes[0], RealLiveOpcode::Background { .. }));
 }
@@ -330,6 +330,31 @@ fn in_space_uncatalogued_module_is_generic_command_and_not_recognised() {
     assert!(
         !opcodes[0].is_recognized(),
         "an un-catalogued in-space tuple must FAIL recognition"
+    );
+}
+
+#[test]
+fn known_module_unknown_opcode_is_generic_command_and_not_recognised() {
+    // Opcodes are u16 in the RealLive command header; 0xffff is an
+    // out-of-catalogue synthetic opcode in known system module id 5.
+    let bytes = &[0x23, 1, 5, 0xFF, 0xFF, 0, 0, 0];
+    let opcodes = parse_scene(bytes).expect("decode");
+    assert!(
+        matches!(
+            opcodes[0],
+            RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: 5,
+                opcode: 0xffff,
+                ..
+            }
+        ),
+        "expected generic Command for unknown opcode in known module, got {:?}",
+        opcodes[0]
+    );
+    assert!(
+        !opcodes[0].is_recognized(),
+        "an unknown opcode inside a known module must FAIL recognition"
     );
 }
 

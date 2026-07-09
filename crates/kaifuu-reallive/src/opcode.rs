@@ -202,7 +202,7 @@ pub enum RealLiveOpcode {
     /// `module_id` / `opcode` select the operation.
     ScreenControl { module_id: u8, opcode: u16 },
     /// Display-object (sprite-plane) operation — foreground / background /
-    /// child object modules (ids 71 / 72 / 73 / 81 / 82 / 84 / 85 / 90, in
+    /// child object modules (ids 71 / 72 / 73 / 81 / 82 / 84 / 85 / 90 / 91, in
     /// both the single `module_type = 1` and range `module_type = 2` forms):
     /// object load (`objOfFile`), position / scale / rotation / alpha / order
     /// setters and getters, allocation, animation. `module_id` selects the
@@ -1492,9 +1492,9 @@ fn decode_command(
         .unwrap_or_else(|| {
             // `classify_command` only declines a command whose
             // `module_type` is outside RealLive's documented `{0, 1, 2}`
-            // space — i.e. a desync tripwire. Every in-space command
-            // (including the documented long tail) decodes to a typed
-            // variant, so this arm never fires on a well-framed scene.
+            // space — i.e. a desync tripwire. In-space commands whose
+            // `(module_id, opcode)` tuple is not catalogued decode to the
+            // generic `Command` variant inside `classify_command` instead.
             RealLiveOpcode::Unknown {
                 opcode: opener::COMMAND,
                 raw_bytes: bytes[pos..pos + consumed].to_vec(),
@@ -1509,17 +1509,16 @@ fn decode_command(
 /// is already resolved by [`decode_command`]; this is purely the
 /// *labelling* pass. It returns `None` **only** when `module_type` is
 /// outside RealLive's documented `{0, 1, 2}` space — a desync tripwire the
-/// caller records as [`RealLiveOpcode::Unknown`]. Every in-space command
-/// resolves to a **semantically-typed** operation family keyed on its
-/// `module_id` (the engine's real semantic key — `module_type` is a
-/// compiler-version artifact, so e.g. `Wait` is observed at both `0:4:100`
-/// and `1:4:100`): control-flow, selection, message-window, system, audio,
-/// voice, graphics-background, display-object, screen-control, variable and
-/// memory families each map to a named variant Utsushi can dispatch on. The
-/// generic [`RealLiveOpcode::Command`] is reached only by an in-space
-/// `module_id` the catalogue has not yet reached — it is NOT recognised and
-/// FAILS the semantic-zero gate; on the proven Sweetie HD / Kanon corpora
-/// every tuple lands in a named family.
+/// caller records as [`RealLiveOpcode::Unknown`]. In-space commands first
+/// pass through an enumerated `(module_id, opcode)` allow-list: only
+/// catalogued opcodes resolve to a **semantically-typed** operation family
+/// keyed on `module_id` (the engine's real semantic key — `module_type` is
+/// a compiler-version artifact, so e.g. `Wait` is observed at both
+/// `0:4:100` and `1:4:100`). The generic [`RealLiveOpcode::Command`] is
+/// reached by either an uncatalogued in-space `module_id` or an
+/// uncatalogued opcode inside a known module — it is NOT recognised and
+/// FAILS the semantic-zero gate. On the proven Sweetie HD / Kanon corpora
+/// every real tuple is enumerated and lands in a named family.
 ///
 /// `module_id` keys are restated from the rlvm `src/modules/module_*.cc`
 /// registrations (`RLModule(name, type, id)`) and `libreallive/bytecode.cc`
@@ -1559,6 +1558,10 @@ fn classify_command(
         GotoKind::None => {}
     }
 
+    if !is_catalogued_command_opcode(module_id, opcode_u16) {
+        return Some(generic());
+    }
+
     let mapped = match module_id {
         // module_jmp (rlvm `module_jmp.cc`, id 1) — the non-pointer opcodes
         // (the pointer-carrying ones are handled by goto framing above).
@@ -1577,8 +1580,9 @@ fn classify_command(
         // every other opcode is selection-button setup / state.
         module_id::SEL => RealLiveOpcode::SelectionControl { opcode: opcode_u16 },
         // module_msg (rlvm `module_msg.cc`, id 3) — opcode 3 is the character
-        // / speaker text op; the common text-display range is `1..=200`; the
-        // remaining opcodes are non-dialogue window directives.
+        // / speaker text op; catalogued opcodes in the text-display range
+        // decode to `TextDisplay`; the remaining catalogued opcodes are
+        // non-dialogue window directives.
         module_id::MSG => match opcode_u16 {
             3 => RealLiveOpcode::CharacterTextDisplay,
             x if (1..=200).contains(&x) => RealLiveOpcode::TextDisplay {
@@ -1627,7 +1631,7 @@ fn classify_command(
         },
         // Display-object (sprite-plane) modules — foreground / background /
         // child object planes and their range (`module_type = 2`) forms.
-        71 | 72 | 73 | 81 | 82 | 84 | 85 | 90 => RealLiveOpcode::GraphicsObject {
+        71 | 72 | 73 | 81 | 82 | 84 | 85 | 90 | 91 => RealLiveOpcode::GraphicsObject {
             module_id,
             opcode: opcode_u16,
         },
@@ -1637,6 +1641,413 @@ fn classify_command(
         _ => generic(),
     };
     Some(mapped)
+}
+
+/// True when `(module_id, opcode)` is in the decompiler's semantic
+/// operation catalogue. This is deliberately narrower than the old
+/// module-family bucket: an unknown opcode inside a known module must
+/// become generic `Command` and fail `is_recognized()`.
+///
+/// Sources:
+/// - the generated synthetic coverage manifest's `reallive.opcode_tuple`
+///   group, extracted from `utsushi-reallive::module_catalog::REAL_CATALOG`;
+/// - the existing first-class per-family opcode tables in
+///   `utsushi-reallive::rlop` for operations that no longer live in the
+///   gap-fill catalog (`module_jmp`, select-block framing, msg/sys/str/audio
+///   basics, and render opcodes).
+/// - `docs/research/reallive-semantic-worklist/summary.json` for legacy
+///   real-byte tuples that predate the generated manifest's current
+///   extraction boundary, notably Kanon's `(module_id=60, opcode=1)`.
+fn is_catalogued_command_opcode(module_id: u8, opcode_u16: u16) -> bool {
+    match module_id {
+        1 => matches!(
+            opcode_u16,
+            0 | 1
+                | 2
+                | 3
+                | 4
+                | 5
+                | 6
+                | 7
+                | 8
+                | 9
+                | 10
+                | 11
+                | 12
+                | 13
+                | 16
+                | 17
+                | 18
+                | 19
+                | 20
+                | 21
+                | 22
+        ),
+        2 => matches!(
+            opcode_u16,
+            0 | 1 | 2 | 3 | 4 | 14 | 16 | 20 | 22 | 23 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 122
+        ),
+        3 => matches!(
+            opcode_u16,
+            1 | 2
+                | 3
+                | 5
+                | 14
+                | 17
+                | 18
+                | 19
+                | 22
+                | 30
+                | 31
+                | 40
+                | 41
+                | 100
+                | 102
+                | 103
+                | 104
+                | 105
+                | 151
+                | 152
+                | 161
+                | 201
+                | 205
+                | 210
+                | 300
+                | 301
+                | 310
+                | 311
+                | 400
+                | 401
+        ),
+        4 => matches!(
+            opcode_u16,
+            0 | 1
+                | 2
+                | 3
+                | 4
+                | 5
+                | 6
+                | 7
+                | 8
+                | 17
+                | 100
+                | 101
+                | 110
+                | 111
+                | 112
+                | 114
+                | 120
+                | 121
+                | 122
+                | 130
+                | 131
+                | 133
+                | 138
+                | 140
+                | 203
+                | 204
+                | 205
+                | 210
+                | 211
+                | 212
+                | 213
+                | 300
+                | 301
+                | 302
+                | 304
+                | 305
+                | 306
+                | 324
+                | 332
+                | 334
+                | 350
+                | 351
+                | 352
+                | 353
+                | 354
+                | 370
+                | 371
+                | 372
+                | 373
+                | 410
+                | 451
+                | 452
+                | 456
+                | 457
+                | 462
+                | 463
+                | 464
+                | 465
+                | 466
+                | 467
+                | 468
+                | 469
+                | 500
+                | 510
+                | 511
+                | 600
+                | 610
+                | 620
+                | 630
+                | 780
+                | 800
+                | 1000
+                | 1002
+                | 1007
+                | 1008
+                | 1100
+                | 1101
+                | 1102
+                | 1200
+                | 1201
+                | 1203
+                | 1205
+                | 1211
+                | 1212
+                | 1213
+                | 1214
+                | 1215
+                | 1216
+                | 1219
+                | 1221
+                | 1222
+                | 1231
+                | 1300
+                | 1301
+                | 1409
+                | 1413
+                | 1421
+                | 1424
+                | 1459
+                | 1502
+                | 1504
+                | 1520
+                | 1700
+                | 1701
+                | 1703
+                | 1710
+                | 1711
+                | 2001
+                | 2003
+                | 2010
+                | 2011
+                | 2051
+                | 2053
+                | 2061
+                | 2223
+                | 2224
+                | 2225
+                | 2230
+                | 2231
+                | 2232
+                | 2233
+                | 2240
+                | 2241
+                | 2242
+                | 2243
+                | 2250
+                | 2260
+                | 2261
+                | 2262
+                | 2263
+                | 2264
+                | 2275
+                | 2323
+                | 2324
+                | 2325
+                | 2330
+                | 2331
+                | 2332
+                | 2333
+                | 2340
+                | 2341
+                | 2342
+                | 2343
+                | 2350
+                | 2360
+                | 2361
+                | 2362
+                | 2363
+                | 2364
+                | 2375
+                | 2600
+                | 2601
+                | 2610
+                | 2611
+                | 2612
+                | 2613
+                | 2614
+                | 2630
+                | 2631
+                | 2632
+                | 2633
+                | 2634
+                | 2635
+                | 2636
+                | 2637
+                | 3001
+                | 3106
+                | 3108
+                | 3126
+                | 3128
+                | 3501
+                | 3502
+                | 3503
+        ),
+        5 => matches!(opcode_u16, 0 | 120),
+        10 => matches!(
+            opcode_u16,
+            0 | 1 | 2 | 3 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 41 | 100
+        ),
+        11 => matches!(opcode_u16, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7),
+        20 => matches!(opcode_u16, 0 | 1 | 2 | 3 | 4 | 5 | 105 | 106),
+        21 => matches!(opcode_u16, 0 | 1 | 5 | 105),
+        22 => matches!(opcode_u16, 0 | 1 | 2),
+        23 => matches!(opcode_u16, 0 | 1 | 3 | 4 | 5 | 6 | 8 | 15 | 101),
+        30 => matches!(opcode_u16, 0 | 2 | 20 | 22 | 31),
+        31 => matches!(opcode_u16, 0),
+        33 => matches!(
+            opcode_u16,
+            15 | 16
+                | 31
+                | 32
+                | 50
+                | 51
+                | 70
+                | 71
+                | 72
+                | 73
+                | 74
+                | 75
+                | 76
+                | 77
+                | 100
+                | 101
+                | 201
+                | 300
+                | 301
+                | 302
+                | 303
+                | 403
+                | 406
+                | 1053
+                | 1055
+                | 1056
+                | 1057
+                | 1100
+                | 1101
+                | 1201
+        ),
+        40 => matches!(opcode_u16, 10),
+        60 => matches!(opcode_u16, 0 | 1 | 2 | 10 | 11 | 100),
+        61 => matches!(opcode_u16, 0 | 6 | 10 | 11 | 100 | 111),
+        62 => matches!(opcode_u16, 0 | 10 | 11 | 100 | 111),
+        71 => matches!(
+            opcode_u16,
+            1000 | 1001 | 1003 | 1005 | 1101 | 1200 | 1300 | 1400 | 1500
+        ),
+        72 => matches!(
+            opcode_u16,
+            1000 | 1001 | 1003 | 1005 | 1100 | 1101 | 1200 | 1300 | 1400 | 1500
+        ),
+        73 => matches!(opcode_u16, 1006 | 3003),
+        81 => matches!(
+            opcode_u16,
+            1000 | 1001
+                | 1002
+                | 1003
+                | 1004
+                | 1006
+                | 1007
+                | 1009
+                | 1010
+                | 1011
+                | 1012
+                | 1016
+                | 1024
+                | 1025
+                | 1026
+                | 1031
+                | 1034
+                | 1037
+                | 1038
+                | 1039
+                | 1046
+                | 1047
+                | 1048
+                | 1060
+                | 1064
+                | 1066
+                | 1067
+                | 2004
+                | 3004
+                | 4004
+        ),
+        82 => matches!(
+            opcode_u16,
+            1000 | 1001
+                | 1002
+                | 1003
+                | 1004
+                | 1006
+                | 1009
+                | 1010
+                | 1011
+                | 1012
+                | 1016
+                | 1026
+                | 1031
+                | 1034
+                | 1039
+                | 1046
+                | 1047
+                | 1048
+                | 1064
+        ),
+        84 => matches!(opcode_u16, 1000 | 1004 | 1007 | 1100),
+        85 => matches!(opcode_u16, 1000),
+        90 => matches!(
+            opcode_u16,
+            1000 | 1001
+                | 1002
+                | 1003
+                | 1004
+                | 1006
+                | 1009
+                | 1010
+                | 1011
+                | 1012
+                | 1016
+                | 1026
+                | 1039
+                | 1046
+                | 1047
+                | 1048
+                | 1066
+                | 2004
+        ),
+        91 => matches!(
+            opcode_u16,
+            1000 | 1001
+                | 1002
+                | 1003
+                | 1004
+                | 1006
+                | 1009
+                | 1010
+                | 1011
+                | 1012
+                | 1016
+                | 1026
+                | 1039
+                | 1046
+                | 1047
+                | 1048
+                | 1064
+                | 2004
+        ),
+        _ => false,
+    }
 }
 
 /// Reduce an [`Expr`] to a constant `i32` when it is (or wraps) an
@@ -1918,13 +2329,13 @@ mod tests {
     fn command_with_recognized_module_classifies_to_named_variant() {
         // Construct a module_msg TextDisplay-shaped command: header
         // (0x23, 1, 3=MSG, 5=opcode_u16_le_lo, 0=opcode_u16_le_hi, 0=argc,
-        // 0=overload, 0=reserved) with no argument list. Opcode 5 falls
-        // in the recognized message range (1..=200).
+        // 0=overload, 0=reserved) with no argument list. Opcode 5 is in the
+        // catalogued message allow-list.
         let bytes = &[opener::COMMAND, 1, module_id::MSG, 5, 0, 0, 0, 0];
         let opcodes = parse_real_bytecode(bytes).expect("must decode");
         assert_eq!(opcodes.len(), 1);
-        // MSG opcode 3 is CharacterTextDisplay; other recognised
-        // (1..=200) classify as TextDisplay.
+        // MSG opcode 3 is CharacterTextDisplay; this catalogued text opcode
+        // classifies as TextDisplay.
         assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
     }
 
@@ -1970,6 +2381,30 @@ mod tests {
         assert!(
             !opcodes[0].is_recognized(),
             "an un-catalogued in-space tuple must FAIL recognition"
+        );
+    }
+
+    #[test]
+    fn unknown_opcode_inside_known_module_is_generic_command_and_fails_recognition() {
+        // RealLive command opcodes are u16; 0xffff is the synthetic stand-in
+        // for the spec's out-of-catalogue module-5 example. The important
+        // property is that a plausible module id no longer buckets every
+        // opcode to SystemControl.
+        let bytes = &[opener::COMMAND, 1, module_id::SYS2, 0xFF, 0xFF, 0, 0, 0];
+        let opcodes = parse_real_bytecode(bytes).expect("must decode");
+        assert_eq!(opcodes.len(), 1);
+        assert!(matches!(
+            opcodes[0],
+            RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: module_id::SYS2,
+                opcode: 0xFFFF,
+                ..
+            }
+        ));
+        assert!(
+            !opcodes[0].is_recognized(),
+            "an unknown opcode inside a known module must FAIL recognition"
         );
     }
 
@@ -2426,13 +2861,13 @@ mod tests {
     }
 
     #[test]
-    fn msg_opcode_outside_text_range_decodes_to_message_control() {
-        // module_msg opcodes outside the 1..=200 text-display range are
-        // non-dialogue text-window directives — they classify to the
-        // semantic `MessageControl` family, never the generic blob.
+    fn catalogued_msg_control_opcode_decodes_to_message_control() {
+        // A catalogued module_msg opcode outside the text-display range is a
+        // non-dialogue text-window directive — it classifies to the semantic
+        // `MessageControl` family, never the generic blob.
         assert_eq!(
-            classify_command(0, module_id::MSG, 250, 0, &[]),
-            Some(RealLiveOpcode::MessageControl { opcode: 250 })
+            classify_command(0, module_id::MSG, 201, 0, &[]),
+            Some(RealLiveOpcode::MessageControl { opcode: 201 })
         );
     }
 
