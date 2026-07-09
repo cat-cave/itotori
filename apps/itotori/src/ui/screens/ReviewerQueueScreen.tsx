@@ -30,6 +30,7 @@ import {
 import type { ReviewerQueueDashboardRow } from "../../reviewer/index.js";
 import type { ApiReviewerQueueDashboardResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { useSelectedLocaleBranch } from "../use-selected-locale-branch.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 
 const reviewerQueueItemKindValues = {
@@ -123,20 +124,11 @@ const PAGE_SIZE = 8;
 // ---------------------------------------------------------------------------
 
 export function ReviewerQueueScreen({ route }: { route: ReviewerQueueRouteParams }): ReactNode {
-  if (route.localeBranchId !== null) {
-    return <ReviewerQueueForBranch localeBranchId={route.localeBranchId} />;
-  }
-  return <ReviewerQueueFromStatus />;
-}
-
-/**
- * No explicit `?localeBranchId=` — scope the queue to the project's selected
- * locale branch (the same source the dashboard reviewer-queue panel uses),
- * read through the typed client.
- */
-function ReviewerQueueFromStatus(): ReactNode {
-  const status = useApiQuery("projects.status", {}, "status");
-  if (status.state === "loading") {
+  const selected = useSelectedLocaleBranch({
+    explicitLocaleBranchId: route.localeBranchId,
+    depsKey: "reviewer-queue:selected-branch",
+  });
+  if (selected.state === "loading") {
     return (
       <main
         className="itotori-shell reviewer-queue"
@@ -148,7 +140,7 @@ function ReviewerQueueFromStatus(): ReactNode {
       </main>
     );
   }
-  if (status.state === "error") {
+  if (selected.state === "error") {
     return (
       <main
         className="itotori-shell reviewer-queue"
@@ -156,12 +148,11 @@ function ReviewerQueueFromStatus(): ReactNode {
         data-state="error"
       >
         <ShellHeader eyebrow="Human review" title="Reviewer queue" />
-        <ErrorState title="Reviewer queue" error={status.error} />
+        <ErrorState title="Reviewer queue" error={selected.error} />
       </main>
     );
   }
-  const localeBranchId = status.state === "ready" ? status.data.selectedLocaleBranchId : null;
-  if (localeBranchId === null) {
+  if (selected.state === "empty") {
     return (
       <main
         className="itotori-shell reviewer-queue"
@@ -176,7 +167,7 @@ function ReviewerQueueFromStatus(): ReactNode {
       </main>
     );
   }
-  return <ReviewerQueueForBranch localeBranchId={localeBranchId} />;
+  return <ReviewerQueueForBranch localeBranchId={selected.data.localeBranchId} />;
 }
 
 function ReviewerQueueForBranch({ localeBranchId }: { localeBranchId: string }): ReactNode {

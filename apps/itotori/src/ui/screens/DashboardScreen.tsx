@@ -28,6 +28,7 @@ import type {
   ApiReviewerQueueDashboardResponse,
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { useSelectedLocaleBranch } from "../use-selected-locale-branch.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
@@ -426,23 +427,25 @@ function ReviewerQueuePanel({
 }: {
   status: ApiCallState<ProjectDashboardStatus>;
 }): ReactNode {
-  if (status.state === "loading") {
+  const selected = useSelectedLocaleBranch({
+    status,
+    depsKey: "dashboard:reviewer-queue:selected-branch",
+  });
+  if (selected.state === "loading") {
     return (
       <Panel title="Reviewer queue" eyebrow="Human review">
         <LoadingState label="Loading project context…" />
       </Panel>
     );
   }
-  if (status.state === "error") {
+  if (selected.state === "error") {
     return (
       <Panel title="Reviewer queue" eyebrow="Human review">
-        <ErrorState title="Reviewer queue" error={status.error} />
+        <ErrorState title="Reviewer queue" error={selected.error} />
       </Panel>
     );
   }
-  const selectedLocaleBranchId =
-    status.state === "ready" ? status.data.selectedLocaleBranchId : null;
-  if (selectedLocaleBranchId === null) {
+  if (selected.state === "empty") {
     return (
       <Panel title="Reviewer queue" eyebrow="Human review">
         <EmptyState
@@ -452,7 +455,7 @@ function ReviewerQueuePanel({
       </Panel>
     );
   }
-  return <ReviewerQueueBody localeBranchId={selectedLocaleBranchId} />;
+  return <ReviewerQueueBody localeBranchId={selected.data.localeBranchId} />;
 }
 
 function ReviewerQueueBody({ localeBranchId }: { localeBranchId: string }): ReactNode {
