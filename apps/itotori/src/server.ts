@@ -9,6 +9,7 @@ import {
 } from "./api-handlers.js";
 import {
   toReadOnlyServiceFactory,
+  ItotoriInvalidAuthSessionError,
   withDatabaseItotoriServices,
   type ItotoriServiceFactory,
   type ItotoriReadOnlyServiceFactory,
@@ -83,12 +84,23 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
-        const statusCode = error instanceof SyntaxError ? 400 : 500;
+        const statusCode =
+          error instanceof SyntaxError
+            ? 400
+            : error instanceof ItotoriInvalidAuthSessionError
+              ? 403
+              : 500;
+        const code =
+          error instanceof SyntaxError
+            ? "bad_request"
+            : error instanceof ItotoriInvalidAuthSessionError
+              ? "forbidden"
+              : "internal_error";
         response.writeHead(statusCode, { "content-type": "application/json" });
         response.end(
           JSON.stringify({
             error: error instanceof Error ? error.message : String(error),
-            code: error instanceof SyntaxError ? "bad_request" : "internal_error",
+            code,
           }),
         );
       }

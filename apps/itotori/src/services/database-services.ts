@@ -311,6 +311,14 @@ export type DatabaseServiceOptions = {
   sessionId?: string;
 };
 
+export class ItotoriInvalidAuthSessionError extends Error {
+  override readonly name = "ItotoriInvalidAuthSessionError";
+
+  constructor() {
+    super("invalid or expired auth session");
+  }
+}
+
 export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
   await migrate(databaseUrl);
 }
@@ -751,7 +759,10 @@ async function resolveDatabaseServiceActor(
     const resolved = await new ItotoriAuthSessionService(db).resolveActorFromSessionId(
       options.sessionId,
     );
-    return resolved?.actor ?? { userId: "unauthenticated-session" };
+    if (resolved === null) {
+      throw new ItotoriInvalidAuthSessionError();
+    }
+    return resolved.actor;
   }
   return defaultLocalUserActor;
 }

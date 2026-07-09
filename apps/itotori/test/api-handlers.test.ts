@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import * as ts from "typescript";
 import {
@@ -8,6 +9,7 @@ import {
   assetLocalizationDecisionAssetKindValues,
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
+  localOperatorPrincipalId,
   localUserId,
   permissionValues,
   requirePermission,
@@ -27,6 +29,7 @@ import { describe, expect, it, vi } from "vitest";
 import { findUncoveredProjectWorkflowMutations } from "./api-mutation-coverage-guard.js";
 import { assertForbiddenApiMutation } from "../../../packages/itotori-db/test/authorization-test-helpers.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
+import { authSessions } from "../../../packages/itotori-db/src/schema.js";
 import {
   apiMutationPermissionGates,
   handleItotoriApiRequest,
@@ -36,7 +39,11 @@ import {
   type ItotoriApiRequest,
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
-import { withDatabaseReadOnlyApiServices } from "../src/services/database-services.js";
+import {
+  ItotoriInvalidAuthSessionError,
+  withDatabaseItotoriServices,
+  withDatabaseReadOnlyApiServices,
+} from "../src/services/database-services.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
 import type { ProjectOverviewReadModelOptions } from "../src/project-overview-read-model.js";
 import {
@@ -5057,6 +5064,39 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
           }
         },
       );
+    },
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "invalid or expired auth session cookies deny before a grantable actor is constructed",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await bootstrapDefaultAccountPrincipal(context.db);
+        const expiredSessionId = `expired-auth-008-${randomUUID()}`;
+        await context.db.insert(authSessions).values({
+          sessionId: expiredSessionId,
+          principalId: localOperatorPrincipalId,
+          expiresAt: new Date(Date.now() - 60_000),
+        });
+
+        for (const sessionId of [expiredSessionId, `forged-auth-008-${randomUUID()}`]) {
+          const callback = vi.fn(async () => undefined);
+          await expect(
+            withDatabaseItotoriServices(
+              {
+                databaseUrl: context.databaseUrl,
+                bootstrapLocalUser: true,
+                sessionId,
+              },
+              callback,
+            ),
+          ).rejects.toBeInstanceOf(ItotoriInvalidAuthSessionError);
+          expect(callback).not.toHaveBeenCalled();
+        }
+      } finally {
+        await context.close();
+      }
     },
   );
 });

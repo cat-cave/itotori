@@ -4,8 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Permission } from "@itotori/db";
-import type { ItotoriApplicationServices } from "../src/services/database-services.js";
-import { toReadOnlyServiceFactory } from "../src/services/database-services.js";
+import {
+  ItotoriInvalidAuthSessionError,
+  toReadOnlyServiceFactory,
+  type ItotoriApplicationServices,
+} from "../src/services/database-services.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   benchmarkReportFixture,
@@ -414,6 +417,32 @@ describe("itotori-043-followup transport-level read-only routing", () => {
       expect(response.status).toBe(200);
       await response.json();
       expect(seenSessionIds).toEqual(["opaque-session-123"]);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("returns forbidden when a presented auth session is invalid", async () => {
+    const rejectingFactory = vi.fn(async <T>(): Promise<T> => {
+      throw new ItotoriInvalidAuthSessionError();
+    });
+    const server = createItotoriServer({
+      serviceFactory: rejectingFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/projects/status`, {
+        headers: { cookie: `${itotoriSessionCookieName}=forged-session` },
+      });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "forbidden",
+        error: "invalid or expired auth session",
+      });
+      expect(getDashboardStatus).not.toHaveBeenCalled();
     } finally {
       await closeServer(server);
     }

@@ -3,7 +3,7 @@ import pg from "pg";
 import { createDatabaseContext, type DatabaseContext } from "../src/connection.js";
 import { migrate } from "../src/migrations.js";
 
-export async function isolatedMigratedContext(): Promise<DatabaseContext> {
+export async function isolatedMigratedContext(): Promise<DatabaseContext & { databaseUrl: string }> {
   const databaseUrl = requiredDatabaseUrl();
   const schemaName = isolatedSchemaName();
   const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -16,6 +16,7 @@ export async function isolatedMigratedContext(): Promise<DatabaseContext> {
     context = createDatabaseContext(isolatedUrl);
     return {
       ...context,
+      databaseUrl: isolatedUrl,
       close: async () => {
         try {
           await context?.close();
