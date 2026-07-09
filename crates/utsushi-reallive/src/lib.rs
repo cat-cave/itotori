@@ -219,8 +219,8 @@ pub use syscall::{
 
 pub use graphics_objects::{
     GRAPHICS_OBJECT_SLOT_COUNT, GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone,
-    GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane, GraphicsPosition,
-    GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
+    GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
+    GraphicsPosition, GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
 };
 pub use render_pipeline::{
     ChoiceWindow, Framebuffer, ImageGridCell, ImageGridChoiceWindow, ObjectWarning, PNG_BIT_DEPTH,
@@ -340,7 +340,7 @@ pub use rlop::module_render::{
     GRP_MODULE_ID, GrpOp, GrpRenderOp, OBJ_BG_CREATION_ID, OBJ_BG_MGMT_ID, OBJ_BG_RANGE_ID,
     OBJ_BG_SETTER_ID, OBJ_FG_CREATION_ID, OBJ_FG_MGMT_ID, OBJ_FG_RANGE_ID, OBJ_FG_SETTER_ID,
     OBJ_MGMT_ID, ObjCreateOp, ObjMgmtOp, ObjMgmtRenderOp, ObjSetOp, ObjSetProp, RENDER_GAPS,
-    SCREEN_DC_SLOT, register_render_rlops,
+    RLVM_PIXEL_DIFF_TOLERANCE, SCREEN_DC_SLOT, register_render_rlops,
 };
 
 pub use rlop::module_audio::{

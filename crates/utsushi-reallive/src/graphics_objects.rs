@@ -1,14 +1,15 @@
 //! UTSUSHI-214 — graphics object stack (headless render pipeline).
 //!
 //! Implements the rlvm `GraphicsSystem` equivalent: a stack of
-//! **256 graphics objects per plane × 2 planes** (`Foreground` + `Background`)
-//! addressed by `(plane, slot)`. Each object carries
+//! **256 graphics objects per render layer × 3 layers** (`DCs` +
+//! `BackgroundObject` + `ForegroundObject`) addressed by `(layer, slot)`.
+//! Each object carries
 //! `(position, scale, alpha, colour_tone, image_ref, layer_order, kind)`
 //! state.
 //!
 //! The stack is **purely state**: the headless render-pipeline at
-//! [`crate::render_pipeline`] walks the stack, sorted by
-//! `(plane, layer_order)`, and rasterises a per-frame
+//! [`crate::render_pipeline`] walks the stack, sorted by `(render layer,
+//! layer_order)`, and rasterises a per-frame
 //! [`crate::render_pipeline::Framebuffer`] into a deterministic PNG
 //! blob.
 //!
@@ -40,9 +41,9 @@ use serde::{Deserialize, Serialize};
 /// `graphics_object_stack_256_objects` pins this constant.
 pub const GRAPHICS_OBJECT_SLOT_COUNT: usize = 256;
 
-/// Total addressable slot count across both planes (`fg + bg`).
-/// Convenience constant: `GRAPHICS_OBJECT_SLOT_COUNT * 2 = 512`.
-pub const GRAPHICS_OBJECT_TOTAL_SLOTS: usize = GRAPHICS_OBJECT_SLOT_COUNT * 2;
+/// Total addressable slot count across the RealLive render layers
+/// (`DCs + bg objects + fg objects`).
+pub const GRAPHICS_OBJECT_TOTAL_SLOTS: usize = GRAPHICS_OBJECT_SLOT_COUNT * 3;
 
 /// The two graphics planes a RealLive scene addresses. Foreground objects
 /// always paint **on top** of background objects regardless of
@@ -63,6 +64,52 @@ impl GraphicsPlane {
         match self {
             Self::Background => 0,
             Self::Foreground => 1,
+        }
+    }
+}
+
+/// RealLive render layers in compositor order.
+///
+/// `GraphicsPlane` is retained as the public two-plane compatibility
+/// surface: `Background` maps to [`Self::DisplayCommand`] and
+/// `Foreground` maps to [`Self::ForegroundObject`]. RealLive object
+/// opcode handling uses this type directly so bg-object slot `N` and
+/// fg-object slot `N` can coexist instead of overwriting each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GraphicsLayer {
+    /// RealLive graphic DC namespace (`module_grp`).
+    DisplayCommand,
+    /// RealLive background object namespace.
+    BackgroundObject,
+    /// RealLive foreground object namespace.
+    ForegroundObject,
+}
+
+impl GraphicsLayer {
+    /// Stable compositor order: DCs, then bg objects, then fg objects.
+    pub fn paint_order(self) -> u8 {
+        match self {
+            Self::DisplayCommand => 0,
+            Self::BackgroundObject => 1,
+            Self::ForegroundObject => 2,
+        }
+    }
+
+    /// Compatibility mapping from the older two-plane API.
+    pub fn from_plane(plane: GraphicsPlane) -> Self {
+        match plane {
+            GraphicsPlane::Background => Self::DisplayCommand,
+            GraphicsPlane::Foreground => Self::ForegroundObject,
+        }
+    }
+
+    /// Compatibility projection for diagnostics that still report
+    /// `GraphicsPlane`.
+    pub fn diagnostic_plane(self) -> GraphicsPlane {
+        match self {
+            Self::DisplayCommand => GraphicsPlane::Background,
+            Self::BackgroundObject | Self::ForegroundObject => GraphicsPlane::Foreground,
         }
     }
 }
@@ -330,30 +377,35 @@ pub enum GraphicsStackError {
 /// of allocation pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphicsObjectStack {
-    background: Vec<Option<GraphicsObject>>,
-    foreground: Vec<Option<GraphicsObject>>,
+    display_commands: Vec<Option<GraphicsObject>>,
+    background_objects: Vec<Option<GraphicsObject>>,
+    foreground_objects: Vec<Option<GraphicsObject>>,
 }
 
 impl GraphicsObjectStack {
-    /// Construct an empty stack: both planes have 256 `None` slots.
+    /// Construct an empty stack: all three render layers have 256
+    /// `None` slots.
     pub fn new() -> Self {
         Self {
-            background: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
-            foreground: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
+            display_commands: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
+            background_objects: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
+            foreground_objects: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
         }
     }
 
-    fn plane_slice(&self, plane: GraphicsPlane) -> &[Option<GraphicsObject>] {
-        match plane {
-            GraphicsPlane::Background => &self.background,
-            GraphicsPlane::Foreground => &self.foreground,
+    fn layer_slice(&self, layer: GraphicsLayer) -> &[Option<GraphicsObject>] {
+        match layer {
+            GraphicsLayer::DisplayCommand => &self.display_commands,
+            GraphicsLayer::BackgroundObject => &self.background_objects,
+            GraphicsLayer::ForegroundObject => &self.foreground_objects,
         }
     }
 
-    fn plane_slice_mut(&mut self, plane: GraphicsPlane) -> &mut [Option<GraphicsObject>] {
-        match plane {
-            GraphicsPlane::Background => &mut self.background,
-            GraphicsPlane::Foreground => &mut self.foreground,
+    fn layer_slice_mut(&mut self, layer: GraphicsLayer) -> &mut [Option<GraphicsObject>] {
+        match layer {
+            GraphicsLayer::DisplayCommand => &mut self.display_commands,
+            GraphicsLayer::BackgroundObject => &mut self.background_objects,
+            GraphicsLayer::ForegroundObject => &mut self.foreground_objects,
         }
     }
 
@@ -366,10 +418,26 @@ impl GraphicsObjectStack {
         slot: usize,
         object: GraphicsObject,
     ) -> Result<(), GraphicsStackError> {
+        self.set_layer(GraphicsLayer::from_plane(plane), slot, object)
+            .map_err(|_| GraphicsStackError::SlotOutOfRange { plane, slot })
+    }
+
+    /// Store `object` at `(layer, slot)`. Overwrites whatever was
+    /// there. Returns [`GraphicsStackError::SlotOutOfRange`] if `slot
+    /// >= 256`.
+    pub fn set_layer(
+        &mut self,
+        layer: GraphicsLayer,
+        slot: usize,
+        object: GraphicsObject,
+    ) -> Result<(), GraphicsStackError> {
         if slot >= GRAPHICS_OBJECT_SLOT_COUNT {
-            return Err(GraphicsStackError::SlotOutOfRange { plane, slot });
+            return Err(GraphicsStackError::SlotOutOfRange {
+                plane: layer.diagnostic_plane(),
+                slot,
+            });
         }
-        self.plane_slice_mut(plane)[slot] = Some(object);
+        self.layer_slice_mut(layer)[slot] = Some(object);
         Ok(())
     }
 
@@ -377,61 +445,111 @@ impl GraphicsObjectStack {
     /// `None`. Returns [`GraphicsStackError::SlotOutOfRange`] if `slot
     /// >= 256`.
     pub fn clear(&mut self, plane: GraphicsPlane, slot: usize) -> Result<(), GraphicsStackError> {
+        self.clear_layer(GraphicsLayer::from_plane(plane), slot)
+            .map_err(|_| GraphicsStackError::SlotOutOfRange { plane, slot })
+    }
+
+    /// Free `(layer, slot)` (sets it to `None`). No-op if already
+    /// `None`. Returns [`GraphicsStackError::SlotOutOfRange`] if `slot
+    /// >= 256`.
+    pub fn clear_layer(
+        &mut self,
+        layer: GraphicsLayer,
+        slot: usize,
+    ) -> Result<(), GraphicsStackError> {
         if slot >= GRAPHICS_OBJECT_SLOT_COUNT {
-            return Err(GraphicsStackError::SlotOutOfRange { plane, slot });
+            return Err(GraphicsStackError::SlotOutOfRange {
+                plane: layer.diagnostic_plane(),
+                slot,
+            });
         }
-        self.plane_slice_mut(plane)[slot] = None;
+        self.layer_slice_mut(layer)[slot] = None;
         Ok(())
     }
 
     /// Borrow the object at `(plane, slot)`, or `None` if the slot is
     /// free or out of range.
     pub fn get(&self, plane: GraphicsPlane, slot: usize) -> Option<&GraphicsObject> {
+        self.get_layer(GraphicsLayer::from_plane(plane), slot)
+    }
+
+    /// Borrow the object at `(layer, slot)`, or `None` if the slot is
+    /// free or out of range.
+    pub fn get_layer(&self, layer: GraphicsLayer, slot: usize) -> Option<&GraphicsObject> {
         if slot >= GRAPHICS_OBJECT_SLOT_COUNT {
             return None;
         }
-        self.plane_slice(plane)[slot].as_ref()
+        self.layer_slice(layer)[slot].as_ref()
     }
 
     /// Mutably borrow the object at `(plane, slot)`, or `None` if the
     /// slot is free or out of range.
     pub fn get_mut(&mut self, plane: GraphicsPlane, slot: usize) -> Option<&mut GraphicsObject> {
+        self.get_layer_mut(GraphicsLayer::from_plane(plane), slot)
+    }
+
+    /// Mutably borrow the object at `(layer, slot)`, or `None` if the
+    /// slot is free or out of range.
+    pub fn get_layer_mut(
+        &mut self,
+        layer: GraphicsLayer,
+        slot: usize,
+    ) -> Option<&mut GraphicsObject> {
         if slot >= GRAPHICS_OBJECT_SLOT_COUNT {
             return None;
         }
-        self.plane_slice_mut(plane)[slot].as_mut()
+        self.layer_slice_mut(layer)[slot].as_mut()
     }
 
     /// Number of allocated slots on `plane`.
     pub fn plane_len(&self, plane: GraphicsPlane) -> usize {
-        self.plane_slice(plane)
+        self.layer_len(GraphicsLayer::from_plane(plane))
+    }
+
+    /// Number of allocated slots on `layer`.
+    pub fn layer_len(&self, layer: GraphicsLayer) -> usize {
+        self.layer_slice(layer)
             .iter()
             .filter(|s| s.is_some())
             .count()
     }
 
-    /// Total allocated slot count across both planes.
+    /// Total allocated slot count across all render layers.
     pub fn len(&self) -> usize {
-        self.plane_len(GraphicsPlane::Background) + self.plane_len(GraphicsPlane::Foreground)
+        self.layer_len(GraphicsLayer::DisplayCommand)
+            + self.layer_len(GraphicsLayer::BackgroundObject)
+            + self.layer_len(GraphicsLayer::ForegroundObject)
     }
 
-    /// True iff no slots are allocated on either plane.
+    /// True iff no slots are allocated on any render layer.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Iterate `(plane, slot, &GraphicsObject)` over **allocated**
-    /// slots only, in a deterministic order:
-    /// `(plane: paint_order ascending, slot: ascending)`. The
-    /// per-plane layer-order sort is applied **on top of** this
-    /// iteration order by the render pass, not at the stack level.
+    /// slots only, projected through the legacy two-plane API. The
+    /// render pass uses [`Self::iter_allocated_layers`] instead so bg
+    /// objects and fg objects with the same slot stay distinct.
     pub fn iter_allocated(&self) -> impl Iterator<Item = (GraphicsPlane, usize, &GraphicsObject)> {
-        let planes = [GraphicsPlane::Background, GraphicsPlane::Foreground];
-        planes.into_iter().flat_map(move |plane| {
-            self.plane_slice(plane)
+        self.iter_allocated_layers()
+            .map(|(layer, slot, object)| (layer.diagnostic_plane(), slot, object))
+    }
+
+    /// Iterate `(layer, slot, &GraphicsObject)` over allocated slots in
+    /// deterministic compositor-layer order.
+    pub fn iter_allocated_layers(
+        &self,
+    ) -> impl Iterator<Item = (GraphicsLayer, usize, &GraphicsObject)> {
+        let layers = [
+            GraphicsLayer::DisplayCommand,
+            GraphicsLayer::BackgroundObject,
+            GraphicsLayer::ForegroundObject,
+        ];
+        layers.into_iter().flat_map(move |layer| {
+            self.layer_slice(layer)
                 .iter()
                 .enumerate()
-                .filter_map(move |(slot, entry)| entry.as_ref().map(|object| (plane, slot, object)))
+                .filter_map(move |(slot, entry)| entry.as_ref().map(|object| (layer, slot, object)))
         })
     }
 }
@@ -521,6 +639,47 @@ mod tests {
     }
 
     #[test]
+    fn bg_and_fg_object_layers_can_share_slot_number() {
+        let mut stack = GraphicsObjectStack::new();
+        stack
+            .set_layer(
+                GraphicsLayer::BackgroundObject,
+                7,
+                GraphicsObject::image("bg-object"),
+            )
+            .expect("set bg object");
+        stack
+            .set_layer(
+                GraphicsLayer::ForegroundObject,
+                7,
+                GraphicsObject::image("fg-object"),
+            )
+            .expect("set fg object");
+
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack.layer_len(GraphicsLayer::BackgroundObject), 1);
+        assert_eq!(stack.layer_len(GraphicsLayer::ForegroundObject), 1);
+        assert_eq!(
+            stack
+                .get_layer(GraphicsLayer::BackgroundObject, 7)
+                .and_then(|object| match &object.kind {
+                    GraphicsObjectKind::Image { image_ref } => Some(image_ref.asset_key.as_str()),
+                    GraphicsObjectKind::Wipe { .. } => None,
+                }),
+            Some("bg-object")
+        );
+        assert_eq!(
+            stack
+                .get_layer(GraphicsLayer::ForegroundObject, 7)
+                .and_then(|object| match &object.kind {
+                    GraphicsObjectKind::Image { image_ref } => Some(image_ref.asset_key.as_str()),
+                    GraphicsObjectKind::Wipe { .. } => None,
+                }),
+            Some("fg-object")
+        );
+    }
+
+    #[test]
     fn clear_frees_a_slot() {
         let mut stack = GraphicsObjectStack::new();
         stack
@@ -535,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_total_constant_matches_plane_pair() {
-        assert_eq!(GRAPHICS_OBJECT_TOTAL_SLOTS, GRAPHICS_OBJECT_SLOT_COUNT * 2);
+    fn slot_total_constant_matches_three_render_layers() {
+        assert_eq!(GRAPHICS_OBJECT_TOTAL_SLOTS, GRAPHICS_OBJECT_SLOT_COUNT * 3);
     }
 }

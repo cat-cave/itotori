@@ -35,7 +35,7 @@ use thiserror::Error;
 
 use super::{DispatchOutcome, ExprValue, RLOperation};
 use crate::g00::{G00DecodeError, G00Warning, decode_g00};
-use crate::graphics_objects::{GraphicsObject, GraphicsObjectStack, GraphicsPlane};
+use crate::graphics_objects::{GraphicsLayer, GraphicsObject, GraphicsObjectStack};
 use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
 use utsushi_core::substrate::{AssetPackage, VfsError};
@@ -251,11 +251,23 @@ impl GraphicsStateSnapshot {
     }
 
     pub fn foreground_slot(&self, slot: usize) -> Option<&GraphicsObject> {
-        self.stack.get(GraphicsPlane::Foreground, slot)
+        self.stack.get_layer(GraphicsLayer::ForegroundObject, slot)
     }
 
     pub fn background_slot(&self, slot: usize) -> Option<&GraphicsObject> {
-        self.stack.get(GraphicsPlane::Background, slot)
+        self.stack.get_layer(GraphicsLayer::DisplayCommand, slot)
+    }
+
+    pub fn display_command_slot(&self, slot: usize) -> Option<&GraphicsObject> {
+        self.stack.get_layer(GraphicsLayer::DisplayCommand, slot)
+    }
+
+    pub fn background_object_slot(&self, slot: usize) -> Option<&GraphicsObject> {
+        self.stack.get_layer(GraphicsLayer::BackgroundObject, slot)
+    }
+
+    pub fn foreground_object_slot(&self, slot: usize) -> Option<&GraphicsObject> {
+        self.stack.get_layer(GraphicsLayer::ForegroundObject, slot)
     }
 
     pub fn dc_allocation(&self, slot: usize) -> Option<DcAllocation> {

@@ -51,33 +51,30 @@
 //! every op here is registered under all three observed lattice types
 //! `{0, 1, 2}` so it fires regardless of the compiler-version artifact.
 //!
-//! # Two-plane model + documented tolerance
+//! # Three-layer render model
 //!
 //! rlvm exposes three composited layers — the graphic DCs, the background
-//! object namespace, and the foreground object namespace — while this
-//! crate's [`crate::GraphicsObjectStack`] has two planes. The mapping is:
+//! object namespace, and the foreground object namespace. This crate's
+//! [`crate::GraphicsObjectStack`] models those as distinct
+//! [`crate::GraphicsLayer`] values:
 //!
-//! - **DC graphics** (`module_grp`) → the `Background` plane, slot = `dc`.
+//! - **DC graphics** (`module_grp`) → `DisplayCommand`, slot = `dc`.
 //!   `DC0` (slot 0) is the on-screen background; `openBg`/`open`/`display`
 //!   target it. `grpBuffer` loads to an off-screen `dc` slot marked
 //!   `visible = false`; `grpDisplay(dc)` copies that buffer onto `DC0`.
-//! - **objects** (both fg and bg namespaces) → the `Foreground` plane,
-//!   slot = `buf`. bg-namespace objects paint below fg-namespace objects
-//!   via a lower [`GraphicsObject::layer_order`] base.
+//! - **background objects** (`ObjBg`) → `BackgroundObject`, slot = `buf`.
+//! - **foreground objects** (`ObjFg`) → `ForegroundObject`, slot = `buf`.
 //!
-//! The two documented tolerances (tracked in [`RENDER_GAPS`]) are: (1) an
-//! fg-object and a bg-object with the SAME `buf` share one Foreground
-//! slot (two rlvm namespaces collapsed onto one plane); (2) the off-screen
-//! DC pipeline is modelled with `visible` + a display-copy rather than a
-//! separate 16-entry DC store.
+//! Same-number bg and fg object slots now coexist and composite in rlvm
+//! order: DCs, then bg objects, then fg objects.
 
 use std::sync::Arc;
 
 use super::module_obj::{FadeLongOp, GraphicsRuntime, GraphicsRuntimeWarning};
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::graphics_objects::{
-    GraphicsAlpha, GraphicsColourTone, GraphicsObject, GraphicsObjectKind, GraphicsPlane,
-    GraphicsScale, WipeColour,
+    GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject, GraphicsObjectKind,
+    GraphicsPlane, GraphicsScale, WipeColour,
 };
 use crate::vm::Vm;
 
@@ -157,12 +154,24 @@ pub const RENDER_GAPS: &[(&str, &str)] = &[
          headless model re-rasterises the whole stack on demand, so an explicit \
          refresh has no state to mutate. Left to the catalog Advance.",
     ),
-    (
-        "two-plane object namespace",
-        "fg-object and bg-object buffers sharing a `buf` number collapse onto one \
-         Foreground slot; DC off-screen buffers are modelled with `visible`+display-copy.",
-    ),
 ];
+
+/// Pixel-diff posture for rlvm PNG comparison.
+///
+/// This node validates the 3-layer object model through render-state and
+/// replay-oracle evidence. It does NOT claim a numeric pixel-diff
+/// tolerance against rlvm PNGs yet: any non-zero full-fidelity PNG diff
+/// against an rlvm reference frame remains a render fidelity gap until a
+/// dedicated pixel oracle lands.
+pub const RLVM_PIXEL_DIFF_TOLERANCE: &str =
+    "not claimed; non-zero full-fidelity rlvm PNG diffs remain a render gap";
+
+fn object_layer(plane: GraphicsPlane) -> GraphicsLayer {
+    match plane {
+        GraphicsPlane::Background => GraphicsLayer::BackgroundObject,
+        GraphicsPlane::Foreground => GraphicsLayer::ForegroundObject,
+    }
+}
 
 // ---- argument helpers ------------------------------------------------
 
@@ -286,7 +295,7 @@ impl GrpRenderOp {
         self.runtime.with_stack_mut(|stack| {
             let mut object = GraphicsObject::image(name.clone());
             object.visible = visible;
-            let _ = stack.set(GraphicsPlane::Background, slot, object);
+            let _ = stack.set_layer(GraphicsLayer::DisplayCommand, slot, object);
         });
         // For the on-screen background (DC0), resolve+decode the g00 through
         // the substrate VFS (when bound) so the audit surface pins the real
@@ -323,15 +332,16 @@ impl RLOperation for GrpRenderOp {
                     self.runtime.with_stack_mut(|stack| {
                         let mut o = GraphicsObject::wipe(WipeColour::TRANSPARENT);
                         o.visible = slot == SCREEN_DC_SLOT;
-                        let _ = stack.set(GraphicsPlane::Background, slot, o);
+                        let _ = stack.set_layer(GraphicsLayer::DisplayCommand, slot, o);
                     });
                 }
                 DispatchOutcome::Advance
             }
             GrpOp::FreeDc => {
                 if let Some(slot) = arg_int(args, 0).and_then(slot_ok) {
-                    self.runtime
-                        .with_stack_mut(|stack| stack.clear(GraphicsPlane::Background, slot).ok());
+                    self.runtime.with_stack_mut(|stack| {
+                        stack.clear_layer(GraphicsLayer::DisplayCommand, slot).ok()
+                    });
                 }
                 DispatchOutcome::Advance
             }
@@ -347,7 +357,7 @@ impl RLOperation for GrpRenderOp {
                 self.runtime.with_stack_mut(|stack| {
                     let mut o = GraphicsObject::wipe(colour);
                     o.visible = dc == SCREEN_DC_SLOT;
-                    let _ = stack.set(GraphicsPlane::Background, dc, o);
+                    let _ = stack.set_layer(GraphicsLayer::DisplayCommand, dc, o);
                 });
                 DispatchOutcome::Advance
             }
@@ -376,10 +386,11 @@ impl RLOperation for GrpRenderOp {
                     return DispatchOutcome::Advance;
                 };
                 let copied = self.runtime.with_stack_mut(|stack| {
-                    if let Some(src) = stack.get(GraphicsPlane::Background, dc).cloned() {
+                    if let Some(src) = stack.get_layer(GraphicsLayer::DisplayCommand, dc).cloned() {
                         let mut shown = src;
                         shown.visible = true;
-                        let _ = stack.set(GraphicsPlane::Background, SCREEN_DC_SLOT, shown);
+                        let _ =
+                            stack.set_layer(GraphicsLayer::DisplayCommand, SCREEN_DC_SLOT, shown);
                         true
                     } else {
                         false
@@ -399,8 +410,8 @@ impl RLOperation for GrpRenderOp {
                     return DispatchOutcome::Advance;
                 };
                 let copied = self.runtime.with_stack_mut(|stack| {
-                    if let Some(o) = stack.get(GraphicsPlane::Background, src).cloned() {
-                        let _ = stack.set(GraphicsPlane::Background, dst, o);
+                    if let Some(o) = stack.get_layer(GraphicsLayer::DisplayCommand, src).cloned() {
+                        let _ = stack.set_layer(GraphicsLayer::DisplayCommand, dst, o);
                         true
                     } else {
                         false
@@ -441,7 +452,7 @@ impl RLOperation for GrpRenderOp {
                     _ => unreachable!(),
                 };
                 let observed = self.runtime.with_stack_mut(|stack| {
-                    if let Some(o) = stack.get_mut(GraphicsPlane::Background, dc) {
+                    if let Some(o) = stack.get_layer_mut(GraphicsLayer::DisplayCommand, dc) {
                         match tone {
                             Some(t) => o.colour_tone = t,
                             None => {
@@ -481,7 +492,7 @@ impl RLOperation for GrpRenderOp {
                     .runtime
                     .with_stack(|stack| {
                         stack
-                            .get(GraphicsPlane::Background, SCREEN_DC_SLOT)
+                            .get_layer(GraphicsLayer::DisplayCommand, SCREEN_DC_SLOT)
                             .map(|o| o.alpha.0)
                     })
                     .unwrap_or(GraphicsAlpha::OPAQUE.0);
@@ -540,8 +551,7 @@ impl RLOperation for ObjCreateOp {
         let name = arg_bytes(args, 1)
             .and_then(decode_shift_jis)
             .filter(|n| !n.is_empty() && n != "???");
-        // The always-Foreground-plane object mapping (both namespaces).
-        let plane = GraphicsPlane::Foreground;
+        let layer = object_layer(self.plane);
         let layer_base = self.layer_base();
         self.runtime.with_stack_mut(|stack| {
             // For every creation op (objOfFile and the placeholder-modelled
@@ -562,7 +572,7 @@ impl RLOperation for ObjCreateOp {
             {
                 image_ref.region_index = Some(pattern.max(0) as u32);
             }
-            let _ = stack.set(plane, buf, object);
+            let _ = stack.set_layer(layer, buf, object);
         });
         DispatchOutcome::Advance
     }
@@ -639,6 +649,7 @@ impl ObjSetProp {
 pub struct ObjSetOp {
     runtime: Arc<GraphicsRuntime>,
     prop: ObjSetProp,
+    layer: GraphicsLayer,
     layer_base: i32,
 }
 
@@ -651,6 +662,7 @@ impl ObjSetOp {
         Self {
             runtime,
             prop,
+            layer: object_layer(plane),
             layer_base,
         }
     }
@@ -662,9 +674,10 @@ impl RLOperation for ObjSetOp {
             return DispatchOutcome::Advance;
         };
         let prop = self.prop;
+        let layer = self.layer;
         let layer_base = self.layer_base;
         let observed = self.runtime.with_stack_mut(|stack| {
-            let Some(o) = stack.get_mut(GraphicsPlane::Foreground, buf) else {
+            let Some(o) = stack.get_layer_mut(layer, buf) else {
                 return false;
             };
             match prop {
@@ -771,12 +784,29 @@ pub enum ObjMgmtOp {
 #[derive(Debug)]
 pub struct ObjMgmtRenderOp {
     runtime: Arc<GraphicsRuntime>,
+    layer: Option<GraphicsLayer>,
     op: ObjMgmtOp,
 }
 
 impl ObjMgmtRenderOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, op: ObjMgmtOp) -> Self {
-        Self { runtime, op }
+        Self {
+            runtime,
+            layer: None,
+            op,
+        }
+    }
+
+    pub fn for_plane(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane, op: ObjMgmtOp) -> Self {
+        Self {
+            runtime,
+            layer: Some(object_layer(plane)),
+            op,
+        }
+    }
+
+    fn target_layer(&self) -> GraphicsLayer {
+        self.layer.unwrap_or(GraphicsLayer::ForegroundObject)
     }
 }
 
@@ -785,34 +815,34 @@ impl RLOperation for ObjMgmtRenderOp {
         match self.op {
             ObjMgmtOp::Free | ObjMgmtOp::Init | ObjMgmtOp::FreeInit => {
                 if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
+                    let layer = self.target_layer();
                     self.runtime
-                        .with_stack_mut(|stack| stack.clear(GraphicsPlane::Foreground, buf).ok());
+                        .with_stack_mut(|stack| stack.clear_layer(layer, buf).ok());
                 }
             }
             ObjMgmtOp::FreeAll => {
+                let layer = self.target_layer();
                 self.runtime.with_stack_mut(|stack| {
                     for slot in 0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT {
-                        let _ = stack.clear(GraphicsPlane::Foreground, slot);
+                        let _ = stack.clear_layer(layer, slot);
                     }
                 });
             }
             ObjMgmtOp::CopyFgToBg => {
-                // Both namespaces live on the Foreground plane in this model,
-                // so a fg→bg copy re-bases the layer order below the fg
-                // band. We snapshot the fg objects and re-stamp them.
+                // Copy foreground objects into the background-object
+                // namespace. Same-number slots coexist across layers.
                 self.runtime.with_stack_mut(|stack| {
                     let snapshot: Vec<(usize, GraphicsObject)> = (0
                         ..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
                         .filter_map(|slot| {
                             stack
-                                .get(GraphicsPlane::Foreground, slot)
-                                .filter(|o| o.layer_order >= OBJ_FG_LAYER_BASE)
+                                .get_layer(GraphicsLayer::ForegroundObject, slot)
                                 .map(|o| (slot, o.clone()))
                         })
                         .collect();
                     for (slot, mut o) in snapshot {
                         o.layer_order = OBJ_BG_LAYER_BASE + slot as i32;
-                        let _ = stack.set(GraphicsPlane::Foreground, slot, o);
+                        let _ = stack.set_layer(GraphicsLayer::BackgroundObject, slot, o);
                     }
                 });
             }
@@ -933,9 +963,16 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
     }
 
     // ---- object management (60 / 61 fg / 62 bg) ------------------------
-    for mid in [OBJ_MGMT_ID, OBJ_FG_MGMT_ID, OBJ_BG_MGMT_ID] {
+    for (mid, plane) in [
+        (OBJ_MGMT_ID, None),
+        (OBJ_FG_MGMT_ID, Some(GraphicsPlane::Foreground)),
+        (OBJ_BG_MGMT_ID, Some(GraphicsPlane::Background)),
+    ] {
         let mgmt = |o: ObjMgmtOp| -> Arc<dyn RLOperation> {
-            Arc::new(ObjMgmtRenderOp::new(Arc::clone(&runtime), o))
+            match plane {
+                Some(plane) => Arc::new(ObjMgmtRenderOp::for_plane(Arc::clone(&runtime), plane, o)),
+                None => Arc::new(ObjMgmtRenderOp::new(Arc::clone(&runtime), o)),
+            }
         };
         reg(registry, mid, 0, mgmt(ObjMgmtOp::Free));
         reg(registry, mid, 10, mgmt(ObjMgmtOp::Init));
@@ -1110,6 +1147,35 @@ mod tests {
         assert_eq!(o.layer_order, OBJ_FG_LAYER_BASE + 5);
     }
 
+    #[test]
+    fn bg_and_fg_object_creation_same_buf_do_not_overwrite() {
+        let runtime = rt();
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
+            .dispatch(&mut vm(), &[int(5), s(b"BG_OBJ")]);
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(5), s(b"FG_OBJ")]);
+
+        let snap = runtime.state_snapshot();
+        let bg = snap
+            .stack
+            .get_layer(GraphicsLayer::BackgroundObject, 5)
+            .expect("bg object remains");
+        let fg = snap
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 5)
+            .expect("fg object remains");
+        match &bg.kind {
+            Kind::Image { image_ref } => assert_eq!(image_ref.asset_key, "BG_OBJ"),
+            Kind::Wipe { .. } => panic!("expected bg image"),
+        }
+        match &fg.kind {
+            Kind::Image { image_ref } => assert_eq!(image_ref.asset_key, "FG_OBJ"),
+            Kind::Wipe { .. } => panic!("expected fg image"),
+        }
+        assert_eq!(bg.layer_order, OBJ_BG_LAYER_BASE + 5);
+        assert_eq!(fg.layer_order, OBJ_FG_LAYER_BASE + 5);
+    }
+
     // rlvm object setters: Move / Alpha / Show / Layer / PattNo (buf FIRST).
     #[test]
     fn obj_setters_mutate_created_object() {
@@ -1134,6 +1200,34 @@ mod tests {
         if let Kind::Image { image_ref } = &o.kind {
             assert_eq!(image_ref.region_index, Some(2));
         }
+    }
+
+    #[test]
+    fn bg_object_setter_mutates_bg_namespace_only() {
+        let runtime = rt();
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
+            .dispatch(&mut vm(), &[int(2), s(b"BG")]);
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(2), s(b"FG")]);
+
+        ObjSetOp::new(
+            Arc::clone(&runtime),
+            GraphicsPlane::Background,
+            ObjSetProp::Move,
+        )
+        .dispatch(&mut vm(), &[int(2), int(10), int(20)]);
+
+        let snap = runtime.state_snapshot();
+        let bg = snap
+            .stack
+            .get_layer(GraphicsLayer::BackgroundObject, 2)
+            .expect("bg object");
+        let fg = snap
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 2)
+            .expect("fg object");
+        assert_eq!((bg.position.x, bg.position.y), (10, 20));
+        assert_eq!((fg.position.x, fg.position.y), (0, 0));
     }
 
     // rlvm objFree(buf) clears the buffer; objFreeAll clears the plane.
@@ -1203,5 +1297,6 @@ mod tests {
         for (family, why) in RENDER_GAPS {
             assert!(!family.is_empty() && !why.is_empty());
         }
+        assert!(!RLVM_PIXEL_DIFF_TOLERANCE.is_empty());
     }
 }

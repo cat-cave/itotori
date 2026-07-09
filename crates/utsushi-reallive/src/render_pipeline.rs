@@ -79,8 +79,8 @@ use sha2::{Digest, Sha256};
 use crate::g00::{G00Warning, decode_g00};
 use crate::gameexe::MessageWindowConfig;
 use crate::graphics_objects::{
-    GraphicsColourTone, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
-    WipeColour,
+    GraphicsColourTone, GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack,
+    GraphicsPlane, WipeColour,
 };
 use crate::syscall::ScreenSize;
 use utsushi_core::substrate::{
@@ -1841,9 +1841,8 @@ impl RenderPass {
     }
 
     /// Rasterise `stack` into a fresh framebuffer under `policy` (no text
-    /// layer). The render order is `(plane: Background first, then
-    /// Foreground)`, then within each plane `(layer_order ascending, slot
-    /// ascending)`.
+    /// layer). The render order is `(layer: DCs, bg objects, fg objects)`,
+    /// then within each layer `(layer_order ascending, slot ascending)`.
     pub fn rasterise_with_policy(
         &self,
         stack: &GraphicsObjectStack,
@@ -1866,16 +1865,23 @@ impl RenderPass {
     ) -> (Framebuffer, RenderReport) {
         let mut framebuffer = Framebuffer::new(self.width, self.height);
         let mut report = RenderReport::default();
-        let mut entries: Vec<(GraphicsPlane, i32, usize, &GraphicsObject)> = stack
-            .iter_allocated()
-            .map(|(plane, slot, object)| (plane, object.layer_order, slot, object))
+        let mut entries: Vec<(GraphicsLayer, i32, usize, &GraphicsObject)> = stack
+            .iter_allocated_layers()
+            .map(|(layer, slot, object)| (layer, object.layer_order, slot, object))
             .collect();
-        entries.sort_by_key(|(plane, layer, slot, _)| (plane.paint_order(), *layer, *slot));
-        for (plane, _, slot, object) in entries {
+        entries.sort_by_key(|(layer, z, slot, _)| (layer.paint_order(), *z, *slot));
+        for (layer, _, slot, object) in entries {
             if !object.visible {
                 continue;
             }
-            self.paint_object(&mut framebuffer, object, plane, slot, policy, &mut report);
+            self.paint_object(
+                &mut framebuffer,
+                object,
+                layer.diagnostic_plane(),
+                slot,
+                policy,
+                &mut report,
+            );
         }
         (framebuffer, report)
     }
@@ -3314,6 +3320,24 @@ mod tests {
         fg.layer_order = 0;
         stack.set(GraphicsPlane::Background, 0, bg).expect("set bg");
         stack.set(GraphicsPlane::Foreground, 0, fg).expect("set fg");
+        let fb = pass.rasterise(&stack);
+        assert_eq!(fb.pixels(), &[0x00, 0x00, 0x00, 0xFF]);
+    }
+
+    #[test]
+    fn foreground_object_layer_paints_after_background_object_layer() {
+        let pass = RenderPass::with_dimensions(1, 1).expect("non-zero screen");
+        let mut stack = GraphicsObjectStack::new();
+        let mut bg_object = GraphicsObject::wipe(WipeColour::WHITE);
+        bg_object.layer_order = 999;
+        let mut fg_object = GraphicsObject::wipe(WipeColour::BLACK);
+        fg_object.layer_order = -999;
+        stack
+            .set_layer(GraphicsLayer::BackgroundObject, 0, bg_object)
+            .expect("set bg object");
+        stack
+            .set_layer(GraphicsLayer::ForegroundObject, 0, fg_object)
+            .expect("set fg object");
         let fb = pass.rasterise(&stack);
         assert_eq!(fb.pixels(), &[0x00, 0x00, 0x00, 0xFF]);
     }
