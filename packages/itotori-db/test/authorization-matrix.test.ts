@@ -2500,9 +2500,9 @@ describe("auth-management operation matrix (auth-007)", () => {
   // the per-operation tests below fail if a listed auth-management op is
   // un-gated or un-registered.
   it("registers every ItotoriPrincipalRepository public method as an auth-management operation", () => {
-    expect(
-      [...authManagementOperations, ...principalRepositorySelfReadOperations].sort(),
-    ).toEqual(principalRepositoryPublicMethods());
+    expect([...authManagementOperations, ...principalRepositorySelfReadOperations].sort()).toEqual(
+      principalRepositoryPublicMethods(),
+    );
     const matrixMutations = authManagementMatrixEntries.map((entry) => entry.mutation).sort();
     expect(matrixMutations).toEqual([...authManagementOperations].sort());
   });

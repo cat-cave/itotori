@@ -5342,16 +5342,13 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
             sessionId: adminSessionId,
           },
           async (services) => {
-            await expect(services.authSessions.listPrincipalSessions(targetPrincipalId)).resolves
-              .toHaveLength(1);
-            await services.authSessions.revokePrincipalSession(
-              targetPrincipalId,
-              targetSessionId,
-              {
-                reason: "lost device",
-                requestId,
-              },
-            );
+            await expect(
+              services.authSessions.listPrincipalSessions(targetPrincipalId),
+            ).resolves.toHaveLength(1);
+            await services.authSessions.revokePrincipalSession(targetPrincipalId, targetSessionId, {
+              reason: "lost device",
+              requestId,
+            });
           },
         );
 

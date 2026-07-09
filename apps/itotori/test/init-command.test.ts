@@ -62,13 +62,7 @@ describe("itotori init", () => {
       });
 
       await runInitCommand(
-        [
-          "init",
-          "--zdr-asserted",
-          "--non-interactive",
-          "--config",
-          configPath,
-        ],
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
         deps,
       );
 
@@ -98,13 +92,7 @@ describe("itotori init", () => {
       });
 
       await runInitCommand(
-        [
-          "init",
-          "--zdr-asserted",
-          "--non-interactive",
-          "--config",
-          configPath,
-        ],
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
         deps,
       );
 
@@ -158,13 +146,7 @@ describe("itotori init", () => {
       });
 
       await runInitCommand(
-        [
-          "init",
-          "--zdr-asserted",
-          "--non-interactive",
-          "--config",
-          configPath,
-        ],
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
         deps,
       );
 
@@ -202,13 +184,7 @@ describe("itotori init", () => {
       });
 
       await runInitCommand(
-        [
-          "init",
-          "--zdr-asserted",
-          "--non-interactive",
-          "--config",
-          configPath,
-        ],
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
         deps,
       );
 
@@ -375,13 +351,7 @@ describe("itotori init", () => {
     it("writes the config file with mode 0600 on real filesystem", async () => {
       const configPath = join(tmp, "subdir", "config.env");
       await runInitCommand(
-        [
-          "init",
-          "--zdr-asserted",
-          "--non-interactive",
-          "--config",
-          configPath,
-        ],
+        ["init", "--zdr-asserted", "--non-interactive", "--config", configPath],
         realDeps({ OPENROUTER_API_KEY: DUMMY_KEY }),
       );
 
