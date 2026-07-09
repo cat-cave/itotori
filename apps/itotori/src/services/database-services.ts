@@ -3,6 +3,7 @@ import {
   ItotoriAssetLocalizationDecisionRepository,
   ItotoriAuthMemberManagementRepository,
   ItotoriAuthSsoSettingsRepository,
+  ItotoriBenchmarkRunRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriEventQueueRepository,
   ItotoriFeedbackRepository,
@@ -109,6 +110,12 @@ import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
+import {
+  composeBmkCockpitReadModel,
+  loadBmkCockpitRunHistory,
+  type BmkCockpitReadModel,
+  type BmkCockpitRunHistoryPage,
+} from "../bmk-cockpit-read-model.js";
 import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
 import type { TelemetryQuery } from "../telemetry/queries.js";
 import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-handlers.js";
@@ -198,6 +205,19 @@ export type ItotoriApplicationServices = {
   };
   jobs: {
     loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
+  };
+  benchmarkCockpit: {
+    loadCockpit(input: {
+      projectId: string;
+      runId?: string;
+      localeBranchId?: string | null;
+    }): Promise<BmkCockpitReadModel>;
+    loadHistory(input: {
+      projectId: string;
+      localeBranchId?: string | null;
+      limit?: number;
+      offset?: number;
+    }): Promise<BmkCockpitRunHistoryPage>;
   };
   authSsoSettings: {
     configureSettings(input: ConfigureAuthSsoSettingsInput): Promise<AuthSsoSettingsRecord>;
@@ -383,6 +403,7 @@ export async function withDatabaseItotoriServices<T>(
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
     const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
+    const benchmarkRunRepository = new ItotoriBenchmarkRunRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
     );
@@ -604,6 +625,20 @@ export async function withDatabaseItotoriServices<T>(
       jobs: {
         loadRunTable: (options) =>
           draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, options),
+      },
+      benchmarkCockpit: {
+        loadCockpit: (input) =>
+          composeBmkCockpitReadModel({
+            actor: localUserActor,
+            repository: benchmarkRunRepository,
+            ...input,
+          }),
+        loadHistory: (input) =>
+          loadBmkCockpitRunHistory({
+            actor: localUserActor,
+            repository: benchmarkRunRepository,
+            ...input,
+          }),
       },
       authSsoSettings: {
         configureSettings: (input) =>

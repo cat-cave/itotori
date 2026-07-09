@@ -122,6 +122,7 @@ import type {
 } from "./workspace/api-service.js";
 import type { WorkspaceCorrectionServicePort } from "./workspace/correction-service.js";
 import { workspaceSearchModeValues } from "./workspace/read-model.js";
+import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import type {
   ApiWorkspaceAssetBrowseResponse,
   ApiWorkspaceComparisonResponse,
@@ -237,6 +238,19 @@ export type ItotoriReadOnlyApiServices = {
   jobs: {
     loadRunTable(options?: LoadJobsRunTableOptions): Promise<JobsRunTableReadModel>;
   };
+  benchmarkCockpit: {
+    loadCockpit(input: {
+      projectId: string;
+      runId?: string;
+      localeBranchId?: string | null;
+    }): Promise<BmkCockpitReadModel>;
+    loadHistory(input: {
+      projectId: string;
+      localeBranchId?: string | null;
+      limit?: number;
+      offset?: number;
+    }): Promise<BmkCockpitRunHistoryPage>;
+  };
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
@@ -346,6 +360,10 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     jobs: {
       loadRunTable: (options) => services.jobs.loadRunTable(options),
+    },
+    benchmarkCockpit: {
+      loadCockpit: (input) => services.benchmarkCockpit.loadCockpit(input),
+      loadHistory: (input) => services.benchmarkCockpit.loadHistory(input),
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
@@ -902,6 +920,26 @@ async function routeReadOnlyItotoriApiRequest(
     });
   }
 
+  const bmkCockpitRoute = parseBmkCockpitRoute(request.pathname);
+  if (request.method === "GET" && bmkCockpitRoute !== null) {
+    if (bmkCockpitRoute.resource === "cockpit") {
+      return ok(
+        "projects.bmkCockpit",
+        await services.benchmarkCockpit.loadCockpit({
+          projectId: bmkCockpitRoute.projectId,
+          ...parseBmkCockpitQuery(request.search),
+        }),
+      );
+    }
+    return ok(
+      "projects.bmkCockpitHistory",
+      await services.benchmarkCockpit.loadHistory({
+        projectId: bmkCockpitRoute.projectId,
+        ...parseBmkCockpitHistoryQuery(request.search),
+      }),
+    );
+  }
+
   if (request.method === "GET" && request.pathname === "/api/jobs/run-table") {
     const canRead = await resolveProjectReadPermission(services);
     const page = await services.jobs.loadRunTable(parseJobsRunTableQuery(request.search));
@@ -1145,6 +1183,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/projects/cost" ||
     request.pathname === "/api/projects/cost/drilldown" ||
     request.pathname === "/api/projects/benchmarks" ||
+    bmkCockpitRoute !== null ||
     request.pathname === "/api/jobs/run-table" ||
     request.pathname === "/api/auth/members" ||
     request.pathname === "/api/hello/status" ||
@@ -1389,6 +1428,56 @@ function parseJobsRunTableQuery(search = ""): LoadJobsRunTableOptions {
     options.offset = offset;
   }
   return options;
+}
+
+function parseBmkCockpitQuery(search = ""): {
+  runId?: string;
+  localeBranchId?: string | null;
+} {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["runId", "localeBranchId"], "benchmark cockpit");
+  const input: { runId?: string; localeBranchId?: string | null } = {};
+  const runId = params.get("runId");
+  if (runId !== null) {
+    input.runId = nonEmptyParam(runId, "runId");
+  }
+  const localeBranchId = params.get("localeBranchId");
+  if (localeBranchId !== null) {
+    input.localeBranchId =
+      localeBranchId === "null" ? null : nonEmptyParam(localeBranchId, "localeBranchId");
+  }
+  return input;
+}
+
+function parseBmkCockpitHistoryQuery(search = ""): {
+  localeBranchId?: string | null;
+  limit?: number;
+  offset?: number;
+} {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["localeBranchId", "limit", "offset"],
+    "benchmark cockpit history",
+  );
+  const input: { localeBranchId?: string | null; limit?: number; offset?: number } = {};
+  const localeBranchId = params.get("localeBranchId");
+  if (localeBranchId !== null) {
+    input.localeBranchId =
+      localeBranchId === "null" ? null : nonEmptyParam(localeBranchId, "localeBranchId");
+  }
+  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
+  if (limit !== undefined) {
+    if (limit < 1) {
+      throw new ApiValidationError("limit must be a positive integer");
+    }
+    input.limit = limit;
+  }
+  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
+  if (offset !== undefined) {
+    input.offset = offset;
+  }
+  return input;
 }
 
 function parseAuthMembersListQuery(search = ""): string {
@@ -2150,6 +2239,8 @@ function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): Ap
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
 function ok(routeId: "projects.costDrilldown", body: CostDrilldownPage): ApiJsonResponse;
 function ok(routeId: "projects.benchmarks", body: ApiBenchmarkReportsResponse): ApiJsonResponse;
+function ok(routeId: "projects.bmkCockpit", body: BmkCockpitReadModel): ApiJsonResponse;
+function ok(routeId: "projects.bmkCockpitHistory", body: BmkCockpitRunHistoryPage): ApiJsonResponse;
 function ok(routeId: "jobs.runTable", body: ApiJobsRunTableResponse): ApiJsonResponse;
 function ok(routeId: "queue.health", body: ApiQueueHealthResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
@@ -2241,6 +2332,24 @@ function parseProjectRoute(pathname: string): {
     return null;
   }
   return { projectId: decodeURIComponent(projectId), resource };
+}
+
+function parseBmkCockpitRoute(pathname: string): {
+  projectId: string;
+  resource: "cockpit" | "history";
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/bmk-cockpit(?:\/(history))?$/.exec(pathname);
+  if (!match) {
+    return null;
+  }
+  const projectId = match[1];
+  if (projectId === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeURIComponent(projectId),
+    resource: match[2] === "history" ? "history" : "cockpit",
+  };
 }
 
 function assertPathProject(pathProjectId: string, bodyProjectId: string): void {

@@ -50,4 +50,17 @@
   /* Focus + selection */
   --ito-color-focus-ring: #ffb648;
   --ito-color-selection: rgba(255, 182, 72, 0.28);
+
+  /* Benchmark contestant palette — a stable 5-swatch COMPARATIVE categorical
+   * set for the benchmark cockpit (MISSING-TOKENS §3). Chosen for categorical
+   * distinctness under the common colour-vision deficiencies, varying BOTH hue
+   * and lightness; deliberately NOT the semantic status hues (amber / mint /
+   * coral) so a contestant swatch is never confused with a pass / fail tone.
+   * Provisional values, pending a sync to the live design project's tokens/*.css
+   * (the same retarget path the port used for the other specced gaps). */
+  --ito-contestant-official: #c08bff; /* the reference localization — violet */
+  --ito-contestant-self: #ffe066; /* the system under test — yellow */
+  --ito-contestant-self-nocontext: #7fb3d5; /* self w/o context — soft blue */
+  --ito-contestant-fan: #e07ab8; /* fan-edited MTL — orchid */
+  --ito-contestant-mtl: #9aa5b8; /* raw MTL baseline — cool grey */
 }

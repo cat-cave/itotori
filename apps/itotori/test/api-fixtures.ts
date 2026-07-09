@@ -39,6 +39,10 @@ import type {
 } from "@itotori/localization-bridge-schema";
 import type { ProjectState, RuntimeIngestResult } from "../src/services/project-workflow.js";
 import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
+import type {
+  BmkCockpitReadModel,
+  BmkCockpitRunHistoryPage,
+} from "../src/bmk-cockpit-read-model.js";
 
 export const costReportFixture: ProjectCostReport = {
   projectId: "project-1",
@@ -1095,6 +1099,125 @@ export const benchmarkReportSummaryFixture: BenchmarkReportSummary = {
 };
 
 export const benchmarkReportsFixture: BenchmarkReportSummary[] = [benchmarkReportSummaryFixture];
+
+export const bmkCockpitFixture: BmkCockpitReadModel = {
+  schemaVersion: "itotori.bmk-cockpit.v0.1",
+  generatedAt: "2026-07-08T00:00:00.000Z",
+  projectId: dashboardStatusFixture.projectId,
+  localeBranchId: dashboardStatusFixture.selectedLocaleBranchId,
+  runId: "bmk-run-contract-1",
+  targetLocale: "ja-JP",
+  kind: "real_run",
+  status: "succeeded",
+  unitsScored: 24,
+  recordedAt: "2026-07-08T00:00:00.000Z",
+  contestants: [
+    {
+      role: "official",
+      contestantKind: "official_localization",
+      aggregateScore: 0.91,
+      rank: 0,
+      judgeMean: 3.6,
+      metricMean: 0.86,
+      coverage: null,
+    },
+    {
+      role: "self",
+      contestantKind: "itotori_context_on",
+      aggregateScore: 0.83,
+      rank: 1,
+      judgeMean: 3.2,
+      metricMean: 0.79,
+      coverage: null,
+    },
+    {
+      role: "self_nocontext",
+      contestantKind: "itotori_context_off",
+      aggregateScore: 0.74,
+      rank: 2,
+      judgeMean: 2.9,
+      metricMean: 0.7,
+      coverage: null,
+    },
+    {
+      role: "fan",
+      contestantKind: "fan_edited_mtl",
+      aggregateScore: 0.68,
+      rank: 3,
+      judgeMean: 2.6,
+      metricMean: 0.62,
+      coverage: null,
+    },
+    {
+      role: "mtl",
+      contestantKind: "raw_mtl_baseline",
+      aggregateScore: 0.42,
+      rank: 4,
+      judgeMean: 1.7,
+      metricMean: 0.38,
+      coverage: null,
+    },
+  ],
+  rankedRoles: ["official", "self", "self_nocontext", "fan", "mtl"],
+  humanAnchor: {
+    raters: ["human-anchor-1"],
+    judgeIds: ["judge-panel-1"],
+    byDimensionCount: 3,
+    divergentDimensionCount: 1,
+    overall: {
+      itemsCompared: 24,
+      normalizedAgreement: 0.82,
+      signedMeanDiff: -0.12,
+      pearson: 0.78,
+    },
+  },
+  confidence: {
+    pearson: 0.78,
+    normalizedAgreement: 0.82,
+    value: 0.78,
+    basis: "pearson",
+  },
+  actionableBacklog: {
+    systemUnderTestId: "itotori_context_on",
+    fanMtlSystemId: "fan_edited_mtl",
+    professionalSystemId: "official_localization",
+    items: [],
+    countsByRank: { top_priority: 0, improvement_backlog: 0, regression_protection: 0 },
+    perDimensionRegression: [],
+    perSignalScores: [],
+    dag: { nodes: [], findings: [] },
+    adjudicatedFindings: [],
+  },
+  actionableBacklogSize: 0,
+};
+
+export const bmkCockpitHistoryFixture: BmkCockpitRunHistoryPage = {
+  filter: {
+    projectId: bmkCockpitFixture.projectId,
+    localeBranchId: bmkCockpitFixture.localeBranchId,
+  },
+  pagination: {
+    limit: 25,
+    offset: 0,
+    hasMore: false,
+    nextOffset: null,
+  },
+  rows: [
+    {
+      runId: bmkCockpitFixture.runId,
+      projectId: bmkCockpitFixture.projectId,
+      localeBranchId: bmkCockpitFixture.localeBranchId,
+      targetLocale: bmkCockpitFixture.targetLocale,
+      kind: bmkCockpitFixture.kind,
+      status: bmkCockpitFixture.status,
+      unitsScored: bmkCockpitFixture.unitsScored,
+      recordedAt: bmkCockpitFixture.recordedAt,
+      bestRole: "official",
+      actionableBacklogSize: bmkCockpitFixture.actionableBacklogSize,
+      confidence: bmkCockpitFixture.confidence.value,
+    },
+  ],
+};
 
 export const projectOverviewFixture: ProjectOverviewReadModel = {
   schemaVersion: "projects.overview.v0.1",

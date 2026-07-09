@@ -10,10 +10,9 @@
 // read model, sourced THROUGH the typed client (no ad-hoc fetch); loading /
 // empty / error surface instead of a blank or fabricated panel.
 //
-// The cockpit route + its response asserter are wired on `main` (gated); on
-// this branch the runtime asserter is a no-op for `projects.bmkCockpit`, so the
-// cockpit handler returns the fixture via `HttpResponse.json` directly (the
-// exact behavior `apiJson` would produce once the asserter case lands).
+// The cockpit route + its response asserter are wired through the typed client;
+// these fixtures stay complete so client-side response validation runs before
+// the headline tile consumes the read model.
 // [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only
 // the rendered contestants + their sourced standings + the verdict are
 // asserted, over msw.
@@ -103,6 +102,24 @@ type CockpitFixtureOverrides = Partial<{
   unitsScored: number;
 }>;
 
+function emptyBacklogFixture(): BmkCockpitReadModel["actionableBacklog"] {
+  return {
+    systemUnderTestId: "itotori_context_on",
+    fanMtlSystemId: "fan_edited_mtl",
+    professionalSystemId: "official_localization",
+    items: [],
+    countsByRank: {
+      top_priority: 0,
+      improvement_backlog: 0,
+      regression_protection: 0,
+    },
+    perDimensionRegression: [],
+    perSignalScores: [],
+    dag: { nodes: [], findings: [] },
+    adjudicatedFindings: [],
+  };
+}
+
 function bmkCockpitFixture(overrides?: CockpitFixtureOverrides): BmkCockpitReadModel {
   return {
     schemaVersion: "itotori.bmk-cockpit.v0.1",
@@ -121,7 +138,7 @@ function bmkCockpitFixture(overrides?: CockpitFixtureOverrides): BmkCockpitReadM
     confidence: RICH_CONFIDENCE,
     // The tile only reads `actionableBacklogSize`; the backlog body is an
     // honest empty (no ranked failure modes for this run).
-    actionableBacklog: { items: [] } as BmkCockpitReadModel["actionableBacklog"],
+    actionableBacklog: emptyBacklogFixture(),
     actionableBacklogSize: 0,
     ...overrides,
   };

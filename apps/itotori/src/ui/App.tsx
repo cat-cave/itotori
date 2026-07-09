@@ -14,6 +14,10 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { parseReviewerDetailRoute } from "../reviewer/index.js";
 import { parseWorkspaceRoute } from "../workspace/route.js";
+import {
+  BenchmarkCockpitScreen,
+  isBenchmarkCockpitRoute,
+} from "./screens/BenchmarkCockpitScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import {
   PlayScenePickerScreen,
@@ -94,6 +98,12 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const workspaceRoute = parseWorkspaceRoute(location.pathname, location.search);
   if (workspaceRoute !== null) {
     return <WorkspaceScreen route={workspaceRoute} />;
+  }
+
+  // `/benchmark` — the benchmark cockpit (contestants + confidence + the
+  // actionable backlog diagnostic). Rendered inside the shell frame.
+  if (isBenchmarkCockpitRoute(location.pathname)) {
+    return <BenchmarkCockpitScreen />;
   }
 
   return <DashboardScreen />;

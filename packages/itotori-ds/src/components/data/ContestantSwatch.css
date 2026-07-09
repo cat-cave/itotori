@@ -1,0 +1,58 @@
+/*
+ * ContestantSwatch — a categorical colour chip keyed off the contestant role.
+ * Consumes the `--ito-contestant-*` token group (MISSING-TOKENS §3) so the
+ * benchmark cockpit paints a STABLE comparative palette (official / self /
+ * self_nocontext / fan / mtl) that never collapses onto the semantic status
+ * hues (amber / mint / coral). The role is carried by `data-contestant`, never a
+ * literal colour — a downstream design-project token sync retargets every
+ * swatch by editing the token, not this rule.
+ */
+
+.itotori-contestant-swatch {
+  display: inline-block;
+  inline-size: 0.7em;
+  block-size: 0.7em;
+  margin-inline-end: 0.4em;
+  border-radius: 999px;
+  vertical-align: baseline;
+  background: var(--ito-color-divider);
+}
+
+.itotori-contestant-swatch[data-contestant="official"] {
+  background: var(--ito-contestant-official);
+}
+.itotori-contestant-swatch[data-contestant="self"] {
+  background: var(--ito-contestant-self);
+}
+.itotori-contestant-swatch[data-contestant="self_nocontext"] {
+  background: var(--ito-contestant-self-nocontext);
+}
+.itotori-contestant-swatch[data-contestant="fan"] {
+  background: var(--ito-contestant-fan);
+}
+.itotori-contestant-swatch[data-contestant="mtl"] {
+  background: var(--ito-contestant-mtl);
+}
+
+/* The comparative contestant list — palette swatch + label + sourced standing
+ * + rank. Self is flagged so the system-under-test row reads at a glance. */
+.itotori-contestant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.itotori-contestant-list__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--ito-color-divider);
+}
+
+.itotori-contestant-list__row[data-self="true"] {
+  font-weight: 600;
+}

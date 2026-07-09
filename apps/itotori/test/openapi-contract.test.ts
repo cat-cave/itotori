@@ -34,6 +34,8 @@ import {
 import type { ItotoriApiRouteId } from "../src/api-schema.js";
 import {
   apiMutationBadRequestResponseFixture,
+  bmkCockpitFixture,
+  bmkCockpitHistoryFixture,
   benchmarkReportsFixture,
   bridgeImportResponseFixture,
   catalogBenchmarkSeedsFixture,
@@ -96,6 +98,8 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "projects.cost": costReportFixture,
   "projects.costDrilldown": costDrilldownFixture,
   "projects.benchmarks": { reports: benchmarkReportsFixture },
+  "projects.bmkCockpit": bmkCockpitFixture,
+  "projects.bmkCockpitHistory": bmkCockpitHistoryFixture,
   "jobs.runTable": jobsRunTableFixture,
   "runtime.status": runtimeStatusFixture,
   "catalog.conflicts": catalogConflictReviewFixture,

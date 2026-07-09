@@ -49,6 +49,8 @@ import type {
   ItotoriServiceFactory,
 } from "../src/services/database-services.js";
 import {
+  bmkCockpitFixture,
+  bmkCockpitHistoryFixture,
   benchmarkReportsFixture,
   catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
@@ -454,6 +456,10 @@ const fixtureServices = {
   },
   jobs: {
     loadRunTable: vi.fn(async () => jobsRunTableFixture),
+  },
+  benchmarkCockpit: {
+    loadCockpit: vi.fn(async () => bmkCockpitFixture),
+    loadHistory: vi.fn(async () => bmkCockpitHistoryFixture),
   },
   authMembers: {
     listMembers: vi.fn(async (accountId: string) => [

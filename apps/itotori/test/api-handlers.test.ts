@@ -68,6 +68,8 @@ import {
   workspaceSearchFixture,
 } from "../src/workspace/index.js";
 import {
+  bmkCockpitFixture,
+  bmkCockpitHistoryFixture,
   benchmarkReportFixture,
   benchmarkReportsFixture,
   bridgeFixture,
@@ -428,6 +430,41 @@ describe("Itotori API handlers", () => {
       permissionValues.draftWrite,
     );
     expect(services.authorization.requirePermission).toHaveBeenCalledTimes(7);
+  });
+
+  it("routes benchmark cockpit reads to the cockpit read service", async () => {
+    const services = serviceFixture();
+
+    const cockpit = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/bmk-cockpit",
+        search: "?runId=bmk-run-contract-1&localeBranchId=locale-1",
+      },
+      services,
+    );
+    const history = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/bmk-cockpit/history",
+        search: "?localeBranchId=locale-1&limit=2&offset=4",
+      },
+      services,
+    );
+
+    expect(cockpit).toEqual({ statusCode: 200, body: bmkCockpitFixture });
+    expect(history).toEqual({ statusCode: 200, body: bmkCockpitHistoryFixture });
+    expect(services.benchmarkCockpit.loadCockpit).toHaveBeenCalledWith({
+      projectId: "project-1",
+      runId: "bmk-run-contract-1",
+      localeBranchId: "locale-1",
+    });
+    expect(services.benchmarkCockpit.loadHistory).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      limit: 2,
+      offset: 4,
+    });
   });
 
   it("returns full project/cost detail to a caller holding catalog.read", async () => {
@@ -4232,6 +4269,10 @@ function serviceFixture(): ItotoriApiServices {
             ],
       })),
     },
+    benchmarkCockpit: {
+      loadCockpit: vi.fn(async () => bmkCockpitFixture),
+      loadHistory: vi.fn(async () => bmkCockpitHistoryFixture),
+    },
     authSsoSettings: {
       configureSettings: vi.fn(async (input) => ({
         ...input,
@@ -4737,6 +4778,9 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
 
     await readOnly.catalogRepository.catalogConflictReview();
     expect(full.catalogRepository.catalogConflictReview).toHaveBeenCalledTimes(1);
+
+    await readOnly.benchmarkCockpit.loadCockpit({ projectId: "project-1" });
+    expect(full.benchmarkCockpit.loadCockpit).toHaveBeenCalledTimes(1);
   });
 
   it("serves a representative read handler with only the reduced dependency surface", async () => {

@@ -10,6 +10,7 @@
 @import "./data/ComparisonPane.css";
 @import "./data/LocalizationProgress.css";
 @import "./data/StatReadout.css";
+@import "./data/ContestantSwatch.css";
 @import "./data/RedactionFrame.css";
 @import "./localization/BiText.css";
 @import "./navigation/NavPills.css";

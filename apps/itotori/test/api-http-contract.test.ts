@@ -58,6 +58,8 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "projects.cost" },
   { routeId: "projects.costDrilldown" },
   { routeId: "projects.benchmarks" },
+  { routeId: "projects.bmkCockpit", init: { params: { projectId: "project-1" } } },
+  { routeId: "projects.bmkCockpitHistory", init: { params: { projectId: "project-1" } } },
   { routeId: "jobs.runTable", init: { query: { projectId: "project-1" } } },
   { routeId: "runtime.status" },
   { routeId: "catalog.conflicts" },

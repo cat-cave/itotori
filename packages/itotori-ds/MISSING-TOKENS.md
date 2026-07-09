@@ -41,6 +41,13 @@ step confirms it isn't already covered under `interface`/`data-viz` before addin
 
 ## 3. Benchmark contestant tiers (`--ito-contestant-*`)
 
+- **Status.** **Provisionally landed** by the `bmk-cockpit-ui` node — the tokens
+  (`--ito-contestant-{official,self,self-nocontext,fan,mtl}`) live in
+  `tokens/colors.css` and the `ContestantSwatch.css` utility consumes them. The
+  values are a colour-blind-safe categorical set chosen to vary BOTH hue and
+  lightness, deliberately NOT the semantic status hues (amber / mint / coral);
+  they are provisional pending a sync to the live design project's `tokens/*.css`
+  (the same retarget path the port used for the other gaps).
 - **Need.** raw-MTL / fan / official / Itotori-with-context / Itotori-without-
   context want a **stable 4–5 swatch contestant palette** (comparative,
   colour-blind-safe), beyond the 3-tone status badges.
