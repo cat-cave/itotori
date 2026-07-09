@@ -366,6 +366,14 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "ApiMembersListResponse",
   },
+  "auth.identity": {
+    method: "GET",
+    pathTemplate: "/api/auth/identity",
+    operationId: "authIdentity",
+    summary: "Resolve the signed-in actor and their account memberships.",
+    pathParams: [],
+    responseSchema: "ApiAuthIdentityResponse",
+  },
   // fnd-caps-context — the actor's Studio capability permission VIEW
   // (canFlag / canDecide / canSteer / canReveal) resolved from exact
   // permission grants (capabilities, NOT roles).

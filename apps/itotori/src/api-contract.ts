@@ -707,6 +707,33 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.auth.member-removed.v0",
     }),
+  ApiAuthIdentityAccount: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityAccount,
+      properties: {
+        membershipId: str,
+        accountId: str,
+        accountSlug: str,
+        accountName: str,
+        permissionSetIds: { type: "array", items: str },
+        createdAt: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiAuthIdentityResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
+      properties: {
+        actorUserId: str,
+        userId: str,
+        principalId: { oneOf: [str, { type: "null" }] },
+        email: { oneOf: [str, { type: "null" }] },
+        displayName: str,
+        accounts: { type: "array", items: ref("ApiAuthIdentityAccount") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.identity.v0",
+    }),
   // fnd-caps-context — Studio capability permission view wire schemas.
   ApiStudioCapabilityDenials: () =>
     object({

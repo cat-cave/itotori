@@ -11,7 +11,20 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
+import {
+  bootstrapDefaultAccountPrincipal,
+  defaultLocalAccountId,
+  defaultLocalAccountName,
+  defaultLocalAccountSlug,
+  localOperatorAllPermissionsSetId,
+  localOperatorDisplayName,
+  localOperatorMembershipId,
+  localOperatorPrincipalId,
+  localOperatorUserId,
+  localUserId,
+  permissionValues,
+  type AuthorizationActor,
+} from "../src/authorization.js";
 import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
 import {
   authAccountMemberships,
@@ -26,6 +39,36 @@ const localActor: AuthorizationActor = { userId: localUserId };
 const deniedActor: AuthorizationActor = { userId: "user-without-required-permission" };
 
 describe("ItotoriPrincipalRepository", () => {
+  it("loads the signed-in actor identity and reconciles legacy local-user to local-operator", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await bootstrapDefaultAccountPrincipal(context.db);
+      const repo = new ItotoriPrincipalRepository(context.db);
+
+      const identity = await repo.loadActorIdentity(localActor);
+
+      expect(identity).toEqual({
+        actorUserId: localUserId,
+        userId: localOperatorUserId,
+        principalId: localOperatorPrincipalId,
+        email: null,
+        displayName: localOperatorDisplayName,
+        accounts: [
+          {
+            membershipId: localOperatorMembershipId,
+            accountId: defaultLocalAccountId,
+            accountSlug: defaultLocalAccountSlug,
+            accountName: defaultLocalAccountName,
+            permissionSetIds: [localOperatorAllPermissionsSetId()],
+            createdAt: expect.any(Date),
+          },
+        ],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("round-trips a principal with a permission-set grant and a direct grant", async () => {
     const context = await isolatedMigratedContext();
     try {

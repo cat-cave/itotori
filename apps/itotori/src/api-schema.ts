@@ -31,6 +31,8 @@ import type {
   ProjectTelemetryTimeseries,
   QueueHealthReadModel,
   AuthSessionAdminRecord,
+  ActorIdentityAccountRecord,
+  ActorIdentityRecord,
   MemberInvitationRecord,
   MemberRecord,
   ReviewerQueueAction,
@@ -192,6 +194,7 @@ export type ItotoriApiRouteId =
   | "auth.members.remove"
   | "auth.sessions.list"
   | "auth.sessions.revoke"
+  | "auth.identity"
   // fnd-caps-context — the actor's Studio capability permission VIEW
   // (canFlag / canDecide / canSteer / canReveal), resolved from exact
   // permission grants via the auth-002 effective-permission resolver.
@@ -401,6 +404,23 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiAuthSessionsListResponse: ["schemaVersion", "principalId", "sessions"],
   ApiRevokeAuthSessionRequest: ["reason", "requestId"],
   ApiRevokeAuthSessionResponse: ["schemaVersion", "revokedSession"],
+  ApiAuthIdentityAccount: [
+    "membershipId",
+    "accountId",
+    "accountSlug",
+    "accountName",
+    "permissionSetIds",
+    "createdAt",
+  ],
+  ApiAuthIdentityResponse: [
+    "schemaVersion",
+    "actorUserId",
+    "userId",
+    "principalId",
+    "email",
+    "displayName",
+    "accounts",
+  ],
   // fnd-caps-context — Studio capability permission view wire envelope.
   ApiAuthCapabilitiesResponse: [
     "schemaVersion",
@@ -820,6 +840,15 @@ export type ApiRevokeAuthSessionResponse = {
   revokedSession: ApiAuthSessionRecord;
 };
 
+export type ApiAuthIdentityAccount = Omit<ActorIdentityAccountRecord, "createdAt"> & {
+  createdAt: string;
+};
+
+export type ApiAuthIdentityResponse = Omit<ActorIdentityRecord, "accounts"> & {
+  schemaVersion: "itotori.auth.identity.v0";
+  accounts: ApiAuthIdentityAccount[];
+};
+
 /**
  * fnd-caps-context — the actor's Studio capability permission VIEW on the
  * wire. Sourced server-side from exact permission grants (capabilities, NOT
@@ -1104,6 +1133,7 @@ export type ItotoriApiResponseBody =
   | ApiRemoveMemberResponse
   | ApiAuthSessionsListResponse
   | ApiRevokeAuthSessionResponse
+  | ApiAuthIdentityResponse
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
   | ApiPlayRouteMapResponse
@@ -1584,6 +1614,9 @@ export function assertItotoriApiResponse(
       return;
     case "auth.sessions.revoke":
       assertRevokeAuthSessionResponse(value);
+      return;
+    case "auth.identity":
+      assertAuthIdentityResponse(value);
       return;
     case "auth.capabilities":
       assertAuthCapabilitiesResponse(value);
@@ -5585,6 +5618,28 @@ function assertRevokeAuthSessionResponse(
   assertAuthSessionRecord(response.revokedSession, "ApiRevokeAuthSessionResponse.revokedSession");
 }
 
+function assertAuthIdentityResponse(value: unknown): asserts value is ApiAuthIdentityResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiAuthIdentityResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.identity.v0",
+    "ApiAuthIdentityResponse.schemaVersion",
+  );
+  assertString(response.actorUserId, "ApiAuthIdentityResponse.actorUserId");
+  assertString(response.userId, "ApiAuthIdentityResponse.userId");
+  assertNullableString(response.principalId, "ApiAuthIdentityResponse.principalId");
+  assertNullableString(response.email, "ApiAuthIdentityResponse.email");
+  assertString(response.displayName, "ApiAuthIdentityResponse.displayName");
+  const accounts = asArray(response.accounts, "ApiAuthIdentityResponse.accounts");
+  for (const [index, account] of accounts.entries()) {
+    assertAuthIdentityAccount(account, `ApiAuthIdentityResponse.accounts[${index}]`);
+  }
+}
+
 function assertAuthCapabilitiesResponse(
   value: unknown,
 ): asserts value is ApiAuthCapabilitiesResponse {
@@ -5637,6 +5692,19 @@ function assertRemoveMemberResponse(value: unknown): asserts value is ApiRemoveM
     "ApiRemoveMemberResponse.schemaVersion",
   );
   assertMemberRecord(response.removedMember, "ApiRemoveMemberResponse.removedMember");
+}
+
+function assertAuthIdentityAccount(
+  value: unknown,
+  label: string,
+): asserts value is ApiAuthIdentityAccount {
+  const account = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiAuthIdentityAccount);
+  assertString(account.membershipId, `${label}.membershipId`);
+  assertString(account.accountId, `${label}.accountId`);
+  assertString(account.accountSlug, `${label}.accountSlug`);
+  assertString(account.accountName, `${label}.accountName`);
+  assertStringArray(account.permissionSetIds, `${label}.permissionSetIds`);
+  assertDateLike(account.createdAt, `${label}.createdAt`);
 }
 
 function assertMemberRecord(value: unknown, label: string): asserts value is ApiMemberRecord {

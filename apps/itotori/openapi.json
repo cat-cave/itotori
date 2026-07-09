@@ -121,6 +121,94 @@
         ],
         "type": "object"
       },
+      "ApiAuthIdentityAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "accountSlug": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "membershipId": {
+            "type": "string"
+          },
+          "permissionSetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "accountSlug",
+          "createdAt",
+          "membershipId",
+          "permissionSetIds"
+        ],
+        "type": "object"
+      },
+      "ApiAuthIdentityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/ApiAuthIdentityAccount"
+            },
+            "type": "array"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "principalId": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "const": "itotori.auth.identity.v0"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accounts",
+          "actorUserId",
+          "displayName",
+          "email",
+          "principalId",
+          "schemaVersion",
+          "userId"
+        ],
+        "type": "object"
+      },
       "ApiAuthSessionRecord": {
         "additionalProperties": false,
         "properties": {
@@ -2580,6 +2668,75 @@
         },
         "summary": "Resolve the caller's Studio capability permission view (flag/decide/steer/reveal).",
         "x-itotoriRouteId": "auth.capabilities"
+      }
+    },
+    "/api/auth/identity": {
+      "get": {
+        "operationId": "authIdentity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiAuthIdentityResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Resolve the signed-in actor and their account memberships.",
+        "x-itotoriRouteId": "auth.identity"
       }
     },
     "/api/auth/members": {

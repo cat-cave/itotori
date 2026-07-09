@@ -16,6 +16,7 @@ import {
   ItotoriCatalogRepository,
   ItotoriLocalizationPassLedgerRepository,
   ItotoriModelLedgerRepository,
+  ItotoriPrincipalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
   ItotoriRouteChoiceMapRepository,
@@ -66,6 +67,7 @@ import {
   type CandidateAssetRecord,
   type ConfigureAuthSsoSettingsInput,
   type AuthSsoSettingsRecord,
+  type ActorIdentityRecord,
   type MemberInvitationRecord,
   type MemberRecord,
 } from "@itotori/db";
@@ -257,6 +259,9 @@ export type ItotoriApplicationServices = {
       sessionId: string,
       input: ApiRevokeAuthSessionRequest,
     ): Promise<AuthSessionAdminRecord>;
+  };
+  authIdentity: {
+    loadIdentity(): Promise<ActorIdentityRecord>;
   };
   playRouteMap: RouteMapReadModelPort;
   sceneCoverage: SceneCoverageServicePort;
@@ -455,6 +460,7 @@ export async function withDatabaseItotoriServices<T>(
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
     const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
     const authSessionService = new ItotoriAuthSessionService(context.db);
+    const principalRepository = new ItotoriPrincipalRepository(context.db);
     const benchmarkRunRepository = new ItotoriBenchmarkRunRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
@@ -752,6 +758,9 @@ export async function withDatabaseItotoriServices<T>(
             ...(requestId === null ? {} : { requestId }),
           });
         },
+      },
+      authIdentity: {
+        loadIdentity: () => principalRepository.loadActorIdentity(localUserActor),
       },
       playRouteMap: new RouteMapReadModelService({
         routeMaps: {

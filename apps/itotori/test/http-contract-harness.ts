@@ -568,6 +568,25 @@ const fixtureServices = {
       createdAt: new Date("2026-07-08T00:00:00.000Z"),
     })),
   },
+  authIdentity: {
+    loadIdentity: vi.fn(async () => ({
+      actorUserId: "local-user",
+      userId: "local-operator",
+      principalId: "principal-local-operator",
+      email: null,
+      displayName: "Local operator",
+      accounts: [
+        {
+          membershipId: "membership-local-operator",
+          accountId: "account-local",
+          accountSlug: "local",
+          accountName: "Local workspace",
+          permissionSetIds: ["permission-set-account-local-operator-all"],
+          createdAt: new Date("2026-07-08T00:00:00.000Z"),
+        },
+      ],
+    })),
+  },
 } as const;
 
 type FixtureServices = import("../src/services/database-services.js").ItotoriApplicationServices;

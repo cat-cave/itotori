@@ -6,11 +6,12 @@
 // the SPA is served from (the server in `src/server.ts`).
 
 import { ItotoriApiClient } from "../api-client.js";
+import { withSelectedAccountScope } from "./shell-account-scope.js";
 
 // The fetch is bound LAZILY (call `globalThis.fetch` at request time rather
 // than capturing a reference at construction) so the long-lived app singleton
 // always uses the current global — correct for a swapped fetch (SSR / tests
 // where an interceptor replaces `globalThis.fetch` after this module loads).
 export const apiClient = new ItotoriApiClient({
-  fetch: (input, init) => globalThis.fetch(input, init),
+  fetch: (input, init) => globalThis.fetch(input, withSelectedAccountScope(init)),
 });

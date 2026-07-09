@@ -34,6 +34,7 @@ import {
 import type { ItotoriApiRouteId } from "../src/api-schema.js";
 import {
   apiMutationBadRequestResponseFixture,
+  authIdentityFixture,
   bmkCockpitFixture,
   bmkCockpitHistoryFixture,
   benchmarkReportsFixture,
@@ -143,6 +144,7 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "decisions.record": recordDecisionResponseFixture,
   "benchmarks.record": recordBenchmarkResponseFixture,
   "runtimeEvidence.ingest": runtimeEvidenceIngestResponseFixture,
+  "auth.identity": authIdentityFixture,
   // fnd-caps-context — fully-granted local-user capability view.
   "auth.capabilities": {
     schemaVersion: "itotori.auth.capabilities.v0",
@@ -381,8 +383,8 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 51 routes (no route left un-teethed)", () => {
-    // 51 routes: each has a response body; the mutation + reviewer/workspace
+  it("covers a body for every one of the 52 routes (no route left un-teethed)", () => {
+    // 52 routes: each has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
     // bmk-cockpit contributes two GET read models; play-mark-validated adds
@@ -391,7 +393,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(51);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(52);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

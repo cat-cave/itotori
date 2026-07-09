@@ -18,7 +18,7 @@
 // [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only
 // the rendered nav + status bar states are asserted.
 
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import type { ProjectCostReport, ProjectDashboardStatus } from "@itotori/db";
 import { Badge, NavPills, type NavPillItem } from "@itotori/ds";
 import type { ApiCallState } from "../api-client.js";
@@ -36,6 +36,8 @@ import {
   ShellSelectionProvider,
   useShellSelection,
 } from "./shell-selection.js";
+import { IdentityOrgSwitcher } from "./identity-org-switcher.js";
+import { loadSelectedAccountId, saveSelectedAccountId } from "./shell-account-scope.js";
 import type { AppLocation } from "./App.js";
 
 // ---------------------------------------------------------------------------
@@ -410,10 +412,20 @@ function ShellFrameInner({
   navigate: (path: string) => void;
   children: ReactNode;
 }): ReactNode {
-  const status = useApiQuery("projects.status", {}, "shell-frame:status");
-  const cost = useApiQuery("projects.cost", {}, "shell-frame:cost");
-  const list = useApiQuery("projects.list", {}, "shell-frame:projects");
+  const [selectedAccountId, setSelectedAccountId] = useState(() => loadSelectedAccountId());
+  const accountScopeKey = selectedAccountId ?? "default";
+  const status = useApiQuery("projects.status", {}, `shell-frame:status:${accountScopeKey}`);
+  const cost = useApiQuery("projects.cost", {}, `shell-frame:cost:${accountScopeKey}`);
+  const list = useApiQuery("projects.list", {}, `shell-frame:projects:${accountScopeKey}`);
   const shellSel = useShellSelection();
+  const selectIdentityOrg = useCallback(
+    (selection: { accountId: string | null }) => {
+      saveSelectedAccountId(selection.accountId);
+      setSelectedAccountId(selection.accountId);
+      navigate("/");
+    },
+    [navigate],
+  );
 
   const serverSelection = serverSelectionFromStatus(status.state === "ready" ? status.data : null);
   const effectiveSelection = resolveEffectiveSelection(
@@ -452,6 +464,7 @@ function ShellFrameInner({
       <header className="itotori-shell-frame__chrome">
         <ShellNav location={location} navigate={navigate} />
         <div className="itotori-shell-toolbar" data-shell-toolbar="true">
+          <IdentityOrgSwitcher onSelect={selectIdentityOrg} />
           <ProjectBranchSwitcher serverSelection={serverSelection} />
           <ShellCommandPalette navigate={navigate} />
           <RedactionToggle />

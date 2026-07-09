@@ -16,6 +16,7 @@ import {
 import {
   apiMutationBadRequestResponseFixture,
   apiMutationForbiddenResponseFixture,
+  authIdentityFixture,
   benchmarkReportsFixture,
   bridgeImportRequestFixture,
   bridgeImportResponseFixture,
@@ -154,6 +155,9 @@ export const itotoriProjectMutationPermissionDeniedMswHandlers = [
 ];
 
 export const itotoriApiMswHandlers = [
+  http.get("http://itotori.test/api/auth/identity", () =>
+    apiJson("auth.identity", authIdentityFixture),
+  ),
   http.get("http://itotori.test/api/projects/status", () =>
     apiJson("projects.status", dashboardStatusFixture),
   ),
@@ -222,6 +226,11 @@ export const authCapabilitiesGrantedFixture = {
 /** MSW handler for GET `/api/auth/capabilities` (host-agnostic). */
 export const authCapabilitiesMswHandler = http.get("*/api/auth/capabilities", () =>
   apiJson("auth.capabilities", authCapabilitiesGrantedFixture),
+);
+
+/** MSW handler for GET `/api/auth/identity` (host-agnostic). */
+export const authIdentityMswHandler = http.get("*/api/auth/identity", () =>
+  apiJson("auth.identity", authIdentityFixture),
 );
 
 export function apiJson(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): HttpResponse {

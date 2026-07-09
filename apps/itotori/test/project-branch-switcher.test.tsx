@@ -38,7 +38,7 @@ import {
   selectBranchesForProject,
   serverSelectionFromStatus,
 } from "../src/ui/project-branch-switcher.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authIdentityMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -101,6 +101,7 @@ const otherProject: ProjectDashboardStatus = {
 const projectsListBody = { projects: [activeProject, otherProject] };
 
 const server = setupServer(
+  authIdentityMswHandler,
   http.get("*/api/projects", () => apiJson("projects.list", projectsListBody)),
   http.get("*/api/projects/status", () => apiJson("projects.status", activeProject)),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),

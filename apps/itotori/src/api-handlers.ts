@@ -41,6 +41,7 @@ import {
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type LoadQueueHealthOptions,
+  type ActorIdentityRecord,
   type MemberInvitationRecord,
   type MemberRecord,
   type RuntimeDashboardStatus,
@@ -79,6 +80,7 @@ import {
   parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiAuthCapabilitiesResponse,
+  type ApiAuthIdentityResponse,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiLaunchPassResponse,
@@ -291,6 +293,9 @@ export type ItotoriReadOnlyApiServices = {
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
   };
+  authIdentity: {
+    loadIdentity(): Promise<ActorIdentityRecord>;
+  };
   /**
    * play-routemap-ui — Play RouteMap route/choice tree read-model composed
    * from routeMaps / routeChoices (coverage from map status).
@@ -424,6 +429,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     authMembers: {
       listMembers: (accountId) => services.authMembers.listMembers(accountId),
+    },
+    authIdentity: {
+      loadIdentity: () => services.authIdentity.loadIdentity(),
     },
     playRouteMap: {
       loadRouteMap: (input) => services.playRouteMap.loadRouteMap(input),
@@ -1136,6 +1144,13 @@ async function routeReadOnlyItotoriApiRequest(
     });
   }
 
+  if (request.method === "GET" && request.pathname === "/api/auth/identity") {
+    return ok(
+      "auth.identity",
+      authIdentityResponseBody(await services.authIdentity.loadIdentity()),
+    );
+  }
+
   // fnd-caps-context — the actor's Studio capability permission VIEW
   // (canFlag / canDecide / canSteer / canReveal). Resolved from exact
   // permission grants through the auth-002 effective-permission resolver;
@@ -1413,6 +1428,7 @@ async function routeReadOnlyItotoriApiRequest(
     bmkCockpitRoute !== null ||
     request.pathname === "/api/jobs/run-table" ||
     request.pathname === "/api/auth/members" ||
+    request.pathname === "/api/auth/identity" ||
     request.pathname === "/api/auth/capabilities" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
@@ -1494,6 +1510,25 @@ function authCapabilitiesResponseBody(
     canReveal: view.canReveal,
     denials: view.denials,
     denialReasons: view.denialReasons,
+  };
+}
+
+function authIdentityResponseBody(identity: ActorIdentityRecord): ApiAuthIdentityResponse {
+  return {
+    schemaVersion: "itotori.auth.identity.v0",
+    actorUserId: identity.actorUserId,
+    userId: identity.userId,
+    principalId: identity.principalId,
+    email: identity.email,
+    displayName: identity.displayName,
+    accounts: identity.accounts.map((account) => ({
+      membershipId: account.membershipId,
+      accountId: account.accountId,
+      accountSlug: account.accountSlug,
+      accountName: account.accountName,
+      permissionSetIds: account.permissionSetIds,
+      createdAt: account.createdAt.toISOString(),
+    })),
   };
 }
 
@@ -2651,6 +2686,7 @@ function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonRes
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.sessions.list", body: ApiAuthSessionsListResponse): ApiJsonResponse;
 function ok(routeId: "auth.sessions.revoke", body: ApiRevokeAuthSessionResponse): ApiJsonResponse;
+function ok(routeId: "auth.identity", body: ApiAuthIdentityResponse): ApiJsonResponse;
 function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;

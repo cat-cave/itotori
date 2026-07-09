@@ -20,6 +20,9 @@ import { and, eq } from "drizzle-orm";
 import {
   type AuthorizationActor,
   isReservedAuthUserId,
+  localOperatorUserId,
+  localUserDisplayName,
+  localUserId,
   type Permission,
   permissionValues,
   requirePermission,
@@ -78,6 +81,30 @@ export type PrincipalRecord = {
   principalId: string;
   principalKind: AuthPrincipalKind;
   displayName: string;
+};
+
+export type ActorIdentityAccountRecord = {
+  membershipId: string;
+  accountId: string;
+  accountSlug: string;
+  accountName: string;
+  permissionSetIds: string[];
+  createdAt: Date;
+};
+
+export type ActorIdentityRecord = {
+  /**
+   * Authorization actor presented to the app. In local compatibility mode this
+   * remains `local-user`, even though the multi-user account rows are carried
+   * by the separate `local-operator` principal.
+   */
+  actorUserId: string;
+  /** User id whose multi-user identity rows were resolved, if any. */
+  userId: string;
+  principalId: string | null;
+  email: string | null;
+  displayName: string;
+  accounts: ActorIdentityAccountRecord[];
 };
 
 export type CreatePermissionSetInput = {
@@ -212,6 +239,7 @@ export interface ItotoriPrincipalRepositoryPort {
     actor: AuthorizationActor,
     principalId: string,
   ): Promise<PrincipalRecord | undefined>;
+  loadActorIdentity(actor: AuthorizationActor): Promise<ActorIdentityRecord>;
   resolvePrincipalPermissions(
     actor: AuthorizationActor,
     principalId: string,
@@ -672,6 +700,86 @@ export class ItotoriPrincipalRepository implements ItotoriPrincipalRepositoryPor
       );
     }
     return { principalId, principalKind: principal.principalKind, displayName };
+  }
+
+  /**
+   * Resolve the signed-in actor's own identity + account memberships.
+   *
+   * This is intentionally a self read: no `auth.admin` / `auth.members.manage`
+   * permission is required because the query is constrained to the presented
+   * actor. The local legacy actor is reconciled to the documented
+   * `local-operator` multi-user representation so the local Studio shell has a
+   * real account/org row without registering reserved `local-user`.
+   */
+  async loadActorIdentity(actor: AuthorizationActor): Promise<ActorIdentityRecord> {
+    const identityUserId = actor.userId === localUserId ? localOperatorUserId : actor.userId;
+    const userRows = await this.db
+      .select({
+        userId: authUsers.userId,
+        principalId: authUsers.principalId,
+        email: authUsers.email,
+        displayName: authUsers.displayName,
+      })
+      .from(authUsers)
+      .where(eq(authUsers.userId, identityUserId))
+      .limit(1);
+    const user = userRows[0];
+    if (user === undefined) {
+      return {
+        actorUserId: actor.userId,
+        userId: actor.userId,
+        principalId: null,
+        email: null,
+        displayName: actor.userId === localUserId ? localUserDisplayName : actor.userId,
+        accounts: [],
+      };
+    }
+
+    const memberships = await this.db
+      .select({
+        membershipId: authAccountMemberships.membershipId,
+        accountId: authAccountMemberships.accountId,
+        accountSlug: authAccounts.slug,
+        accountName: authAccounts.name,
+        createdAt: authAccountMemberships.createdAt,
+      })
+      .from(authAccountMemberships)
+      .innerJoin(authAccounts, eq(authAccounts.accountId, authAccountMemberships.accountId))
+      .where(eq(authAccountMemberships.userId, user.userId));
+
+    const permissionSetRows = await this.db
+      .select({
+        accountId: authPermissionSets.accountId,
+        permissionSetId: authPrincipalPermissionSetGrants.permissionSetId,
+      })
+      .from(authPrincipalPermissionSetGrants)
+      .innerJoin(
+        authPermissionSets,
+        eq(authPermissionSets.permissionSetId, authPrincipalPermissionSetGrants.permissionSetId),
+      )
+      .where(eq(authPrincipalPermissionSetGrants.principalId, user.principalId));
+    const permissionSetIdsByAccount = new Map<string, string[]>();
+    for (const row of permissionSetRows) {
+      const ids = permissionSetIdsByAccount.get(row.accountId) ?? [];
+      ids.push(row.permissionSetId);
+      permissionSetIdsByAccount.set(row.accountId, ids);
+    }
+
+    return {
+      actorUserId: actor.userId,
+      userId: user.userId,
+      principalId: user.principalId,
+      email: user.email,
+      displayName: user.displayName,
+      accounts: memberships.map((membership) => ({
+        membershipId: membership.membershipId,
+        accountId: membership.accountId,
+        accountSlug: membership.accountSlug,
+        accountName: membership.accountName,
+        permissionSetIds: [...(permissionSetIdsByAccount.get(membership.accountId) ?? [])].sort(),
+        createdAt: membership.createdAt,
+      })),
+    };
   }
 
   /**

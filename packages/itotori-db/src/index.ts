@@ -977,6 +977,8 @@ export type {
 export type {
   AccountRecord,
   AddPermissionToSetInput,
+  ActorIdentityAccountRecord,
+  ActorIdentityRecord,
   CreateAccountInput,
   CreatePermissionSetInput,
   CreatePrincipalInput,

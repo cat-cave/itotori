@@ -78,8 +78,8 @@ if (pkgJson.version !== PRODUCT_VERSION) {
 const NODE_SHEBANG = "#!/usr/bin/env node";
 
 // A `require` for the bundled CJS deps (pg) to call into Node built-ins from
-// the ESM output. Prepended as a banner after esbuild preserves the entrypoint
-// shebang.
+// the ESM output. The CLI source already carries the POSIX shebang, and esbuild
+// preserves it as line 1; the banner must not add a second shebang.
 const BANNER = `import { createRequire as __itotoriCreateRequire } from "node:module";
 const require = __itotoriCreateRequire(import.meta.url);
 `;

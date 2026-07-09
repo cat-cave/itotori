@@ -37,7 +37,7 @@ import {
   filmstripFramesForUnit,
   localizedTextboxText,
 } from "../src/ui/screens/PlayScenePickerScreen.js";
-import { apiJson, authCapabilitiesMswHandler } from "./msw-handlers.js";
+import { apiJson, authCapabilitiesMswHandler, authIdentityMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const PROJECT_ID = "project-play";
@@ -199,6 +199,7 @@ function runtimeStatusFixture(
 
 const server = setupServer(
   authCapabilitiesMswHandler,
+  authIdentityMswHandler,
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
   http.get("*/api/projects", () =>
     apiJson("projects.list", { projects: [dashboardStatusFixture] }),

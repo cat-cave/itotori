@@ -122,6 +122,94 @@
       ],
       "type": "object"
     },
+    "ApiAuthIdentityAccount": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "accountName": {
+          "type": "string"
+        },
+        "accountSlug": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "membershipId": {
+          "type": "string"
+        },
+        "permissionSetIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accountId",
+        "accountName",
+        "accountSlug",
+        "createdAt",
+        "membershipId",
+        "permissionSetIds"
+      ],
+      "type": "object"
+    },
+    "ApiAuthIdentityResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accounts": {
+          "items": {
+            "$ref": "#/definitions/ApiAuthIdentityAccount"
+          },
+          "type": "array"
+        },
+        "actorUserId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "principalId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.identity.v0"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accounts",
+        "actorUserId",
+        "displayName",
+        "email",
+        "principalId",
+        "schemaVersion",
+        "userId"
+      ],
+      "type": "object"
+    },
     "ApiAuthSessionRecord": {
       "additionalProperties": false,
       "properties": {

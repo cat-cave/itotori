@@ -2981,6 +2981,36 @@ describe("Itotori API handlers", () => {
     );
   });
 
+  it("routes the signed-in identity read through the typed auth identity handler", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/auth/identity" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      schemaVersion: "itotori.auth.identity.v0",
+      actorUserId: "local-user",
+      userId: "local-operator",
+      principalId: "principal-local-operator",
+      displayName: "Local operator",
+      accounts: [
+        {
+          membershipId: "membership-local-operator",
+          accountId: "account-local",
+          accountSlug: "local",
+          accountName: "Local workspace",
+        },
+      ],
+    });
+    expect(services.authIdentity.loadIdentity).toHaveBeenCalledTimes(1);
+    expect(services.authorization.requirePermission).not.toHaveBeenCalledWith(
+      permissionValues.authMembersManage,
+    );
+  });
+
   it.skipIf(!process.env.DATABASE_URL)(
     "configures SSO settings against Postgres and denies a non-admin",
     async () => {
@@ -4581,6 +4611,25 @@ function serviceFixture(): ItotoriApiServices {
         deviceLabel: "API browser",
         userAgent: "Mozilla/5.0 api-test",
         ipAddress: "203.0.113.20",
+      })),
+    },
+    authIdentity: {
+      loadIdentity: vi.fn(async () => ({
+        actorUserId: "local-user",
+        userId: "local-operator",
+        principalId: "principal-local-operator",
+        email: null,
+        displayName: "Local operator",
+        accounts: [
+          {
+            membershipId: "membership-local-operator",
+            accountId: "account-local",
+            accountSlug: "local",
+            accountName: "Local workspace",
+            permissionSetIds: ["permission-set-account-local-operator-all"],
+            createdAt: new Date("2026-07-08T00:00:00.000Z"),
+          },
+        ],
       })),
     },
     sceneCoverage: {

@@ -36,7 +36,7 @@ import {
 } from "../src/ui/caps-context.js";
 import { App } from "../src/ui/App.js";
 import { RedactionToggle } from "../src/ui/redaction-governor.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authIdentityMswHandler } from "./msw-handlers.js";
 import {
   costDrilldownFixture,
   costReportFixture,
@@ -239,6 +239,7 @@ describe("CapsProvider + CapGatedButton", () => {
 const CAPS_PATH = "*/api/auth/capabilities";
 
 const server = setupServer(
+  authIdentityMswHandler,
   http.get(CAPS_PATH, () =>
     apiJson("auth.capabilities", {
       schemaVersion: "itotori.auth.capabilities.v0",

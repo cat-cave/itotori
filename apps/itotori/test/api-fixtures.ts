@@ -16,6 +16,7 @@ import type {
 } from "@itotori/db";
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
+  ApiAuthIdentityResponse,
   ApiDraftBranchRequest,
   ApiDraftBranchResponse,
   ApiErrorResponse,
@@ -44,6 +45,25 @@ import type {
   BmkCockpitReadModel,
   BmkCockpitRunHistoryPage,
 } from "../src/bmk-cockpit-read-model.js";
+
+export const authIdentityFixture: ApiAuthIdentityResponse = {
+  schemaVersion: "itotori.auth.identity.v0",
+  actorUserId: "local-user",
+  userId: "local-operator",
+  principalId: "principal-local-operator",
+  email: null,
+  displayName: "Local operator",
+  accounts: [
+    {
+      membershipId: "membership-local-operator",
+      accountId: "account-local",
+      accountSlug: "local",
+      accountName: "Local workspace",
+      permissionSetIds: ["permission-set-account-local-operator-all"],
+      createdAt: "2026-07-08T00:00:00.000Z",
+    },
+  ],
+};
 
 export const costReportFixture: ProjectCostReport = {
   projectId: "project-1",

@@ -34,10 +34,11 @@ import {
   readZdrPosture,
 } from "../src/ui/shell-frame.js";
 import type { AppLocation } from "../src/ui/App.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authIdentityMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const server = setupServer(
+  authIdentityMswHandler,
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
   // shell-project-branch-switcher — the switcher mounted in the toolbar +

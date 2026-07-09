@@ -34,10 +34,11 @@ import {
   type PaletteEntry,
 } from "../src/ui/command-palette.js";
 import { ShellFrame, SHELL_NAV_ITEMS } from "../src/ui/shell-frame.js";
-import { apiJson } from "./msw-handlers.js";
+import { apiJson, authIdentityMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const server = setupServer(
+  authIdentityMswHandler,
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
 );

@@ -36,6 +36,7 @@ import {
 import {
   apiJson,
   authCapabilitiesMswHandler,
+  authIdentityMswHandler,
   reviewerQueueDashboardApiFixture,
 } from "./msw-handlers.js";
 
@@ -45,6 +46,7 @@ const reviewerDetailContext = readyContextFixture();
 // which jsdom resolves against the test origin; `*/…` matches that origin.
 const server = setupServer(
   authCapabilitiesMswHandler,
+  authIdentityMswHandler,
   http.get("*/api/projects", () =>
     apiJson("projects.list", { projects: [dashboardStatusFixture] }),
   ),
