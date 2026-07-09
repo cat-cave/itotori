@@ -72,7 +72,9 @@ export const StaleScene: Story = {
       { label: "Review state", value: "needs passback" },
     ],
     crossRefs: [],
-    children: <p>Stale entries keep their original status vocabulary while surfacing stale chrome.</p>,
+    children: (
+      <p>Stale entries keep their original status vocabulary while surfacing stale chrome.</p>
+    ),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
