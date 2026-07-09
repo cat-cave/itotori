@@ -68,8 +68,7 @@
   min-block-size: 320px;
   border-radius: 0 0 var(--ito-radius) var(--ito-radius);
   background:
-    linear-gradient(180deg, var(--ito-render-scrim), transparent 46%),
-    var(--ito-color-code-well);
+    linear-gradient(180deg, var(--ito-render-scrim), transparent 46%), var(--ito-color-code-well);
 }
 
 .itotori-scene-player__frame {

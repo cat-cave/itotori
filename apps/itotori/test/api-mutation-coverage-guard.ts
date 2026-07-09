@@ -236,10 +236,7 @@ function statementListOf(node: ts.Node): readonly ts.Statement[] | undefined {
   return undefined;
 }
 
-function containsPermissionHelperCall(
-  node: ts.Node,
-  aliases: ReadonlySet<string>,
-): boolean {
+function containsPermissionHelperCall(node: ts.Node, aliases: ReadonlySet<string>): boolean {
   let found = false;
   function visit(current: ts.Node): void {
     if (found) {
