@@ -5020,11 +5020,12 @@ impl RealLiveProfileDetectorAdapter {
     }
 
     // Shared extract/patch scene-walk (adapter-unify): parse each scene's
-    // `SceneHeader`, AVG32-decompress its bytecode, and project it into a
-    // v0.2 `BridgeBundle` via `bridge::produce_bundle`. Both `extract` and
-    // `patch` drive off this ONE path, so the deterministic bridgeUnitIds a
-    // PatchExport is keyed on (from `extract`) are exactly the ids
-    // `produce_bundle` re-derives during `patch` — no id-scheme divergence.
+    // `SceneHeader`, AVG32-decompress its bytecode, decrypt any archive-wide
+    // `xor_2` segment, and project it into a v0.2 `BridgeBundle` via
+    // `bridge::produce_bundle`. Both `extract` and `patch` drive off this ONE
+    // path, so the deterministic bridgeUnitIds a PatchExport is keyed on
+    // (from `extract`) are exactly the ids `produce_bundle` re-derives during
+    // `patch` — no id-scheme divergence.
     // A scene whose header does not parse, whose compressed range runs past
     // the blob, whose bytecode fails to decompress, or that carries no
     // translatable text unit is skipped (it has no v0.2 bridge units and is
@@ -5035,23 +5036,25 @@ impl RealLiveProfileDetectorAdapter {
         gameexe_inventory: &kaifuu_reallive::GameexeInventoryReport,
     ) -> Vec<(u16, kaifuu_reallive::ProducedBundle)> {
         let mut bundles = Vec::new();
+        let mut decompressed_archive =
+            kaifuu_reallive::decompress_archive_scenes(archive_bytes, scene_index);
+        let xor2_report =
+            kaifuu_reallive::recover_and_decrypt_archive(&mut decompressed_archive.scenes);
         for entry in &scene_index.entries {
             let blob = &archive_bytes[entry.byte_offset as usize
                 ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
             let Ok(header) = kaifuu_reallive::SceneHeader::parse(blob) else {
                 continue;
             };
-            let bytecode_start = header.bytecode_offset as usize;
-            let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
-            if bytecode_end > blob.len() {
-                continue;
-            }
-            let Ok(decompressed) = kaifuu_reallive::decompress_avg32(
-                &blob[bytecode_start..bytecode_end],
-                header.bytecode_uncompressed_size as usize,
-            ) else {
+            if kaifuu_reallive::compiler_version_uses_xor2(header.compiler_version)
+                && !xor2_report.validated
+            {
                 continue;
             };
+            let Some(decompressed_index) = decompressed_archive.position_of(entry.scene_id) else {
+                continue;
+            };
+            let decompressed = &decompressed_archive.scenes[decompressed_index].bytecode;
             let opts = kaifuu_reallive::BridgeOpts {
                 game_id: REALLIVE_GAME_ID,
                 game_version: "1.0.0",
@@ -5064,7 +5067,7 @@ impl RealLiveProfileDetectorAdapter {
             let Ok(produced) = kaifuu_reallive::produce_bundle(
                 entry.scene_id,
                 blob,
-                &decompressed,
+                decompressed,
                 gameexe_inventory,
                 &opts,
             ) else {
@@ -10755,6 +10758,66 @@ mod tests {
         dir
     }
 
+    const XOR2_TEST_KEY: [u8; 16] = [
+        0x41, 0x52, 0x63, 0x74, 0x15, 0x26, 0x37, 0x48, 0x59, 0x6a, 0x7b, 0x8c, 0x9d, 0xae, 0xbf,
+        0xd0,
+    ];
+
+    fn stage_xor2_segment_for_test(bytecode: &mut [u8]) {
+        for i in 0..257usize {
+            let pos = 256 + i;
+            let Some(slot) = bytecode.get_mut(pos) else {
+                break;
+            };
+            *slot ^= XOR2_TEST_KEY[i % XOR2_TEST_KEY.len()];
+        }
+    }
+
+    fn xor2_scene_blob(plaintext: &[u8]) -> Vec<u8> {
+        let mut stored = plaintext.to_vec();
+        stage_xor2_segment_for_test(&mut stored);
+        let compressed = kaifuu_reallive::compress_avg32_literal(&stored)
+            .expect("xor2 synthetic bytecode compresses");
+        let header_len = kaifuu_reallive::SCENE_HEADER_BYTE_LEN;
+        let mut blob = vec![0u8; header_len];
+        blob[0x00..0x04].copy_from_slice(&(header_len as u32).to_le_bytes());
+        blob[0x04..0x08].copy_from_slice(&110002u32.to_le_bytes());
+        blob[0x08..0x0c].copy_from_slice(&(header_len as u32).to_le_bytes());
+        blob[0x0c..0x10].copy_from_slice(&0u32.to_le_bytes());
+        blob[0x20..0x24].copy_from_slice(&(header_len as u32).to_le_bytes());
+        blob[0x24..0x28].copy_from_slice(&(stored.len() as u32).to_le_bytes());
+        blob[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+        blob.extend_from_slice(&compressed);
+        blob
+    }
+
+    fn xor2_adapter_seen_txt() -> Vec<u8> {
+        let dir_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let mut directory = vec![0u8; dir_len];
+        let mut payload = Vec::new();
+        for scene_id in 1..=6u16 {
+            let mut plaintext = vec![0u8; 540];
+            if scene_id == 1 {
+                plaintext[256..261].copy_from_slice(b"Hello");
+            }
+            let blob = xor2_scene_blob(&plaintext);
+            let file_offset = dir_len + payload.len();
+            let slot = scene_id as usize * 8;
+            directory[slot..slot + 4].copy_from_slice(&(file_offset as u32).to_le_bytes());
+            directory[slot + 4..slot + 8].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+            payload.extend_from_slice(&blob);
+        }
+        directory.extend_from_slice(&payload);
+        directory
+    }
+
+    fn reallive_xor2_fixture_dir(name: &str) -> PathBuf {
+        let dir = temp_dir(name);
+        fs::write(dir.join(REALLIVE_SEEN_TXT_PATH), xor2_adapter_seen_txt()).unwrap();
+        fs::write(dir.join(REALLIVE_GAMEEXE_INI_PATH), synthetic_gameexe_ini()).unwrap();
+        dir
+    }
+
     #[test]
     fn reallive_adapter_extract_emits_bridge_bundle_with_scene_dialogue_units() {
         let dir = reallive_174_fixture_dir("kaifuu-174-extract-bridge-bundle");
@@ -10788,6 +10851,47 @@ mod tests {
             .expect("dialogue unit present");
         assert_eq!(dialogue.source_text, "Hello");
         assert_eq!(dialogue.source_unit_key, "reallive:scene-0001#0000");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_adapter_extract_decrypts_xor2_before_producing_scene_bundles() {
+        let dir = reallive_xor2_fixture_dir("kaifuu-174-extract-xor2");
+        let seen = fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        let index = kaifuu_reallive::parse_archive(&seen).expect("xor2 fixture archive parses");
+        let first = index
+            .entries
+            .iter()
+            .find(|entry| entry.scene_id == 1)
+            .expect("scene 1 present");
+        let blob = &seen
+            [first.byte_offset as usize..(first.byte_offset + u64::from(first.byte_len)) as usize];
+        let header = kaifuu_reallive::SceneHeader::parse(blob).expect("scene header parses");
+        let start = header.bytecode_offset as usize;
+        let end = start + header.bytecode_compressed_size as usize;
+        let stored = kaifuu_reallive::decompress_avg32(
+            &blob[start..end],
+            header.bytecode_uncompressed_size as usize,
+        )
+        .expect("stored xor2 bytecode decompresses");
+        assert!(
+            !stored.windows(5).any(|window| window == b"Hello"),
+            "fixture must store the text inside the encrypted xor2 segment"
+        );
+
+        let result = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        let dialogue = result
+            .bridge
+            .units
+            .iter()
+            .find(|unit| unit.source_unit_key == "reallive:scene-0001#0000")
+            .expect("xor2-decrypted dialogue unit present");
+        assert_eq!(
+            dialogue.source_text, "Hello",
+            "produce_scene_bundles must decrypt xor2 before bridge production"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

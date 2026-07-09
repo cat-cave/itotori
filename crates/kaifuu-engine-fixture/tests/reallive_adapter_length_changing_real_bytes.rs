@@ -28,6 +28,7 @@ use kaifuu_reallive::{
 };
 
 const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
 /// A distinctive ASCII marker spliced into the grown dialogue body so it can
 /// be located both in the patched bytecode and in a fresh re-extract.
@@ -95,8 +96,8 @@ fn scene_of(source_unit_key: &str) -> Option<u16> {
     digits.parse::<u16>().ok()
 }
 
-/// Locate the real SEEN.TXT under the corpus root (case-insensitive).
-fn find_seen_txt(root: &Path) -> Option<PathBuf> {
+/// Locate a real corpus file under the corpus root (case-insensitive).
+fn find_file(root: &Path, needle: &str) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -109,13 +110,21 @@ fn find_seen_txt(root: &Path) -> Option<PathBuf> {
             } else if path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .is_some_and(|n| n.eq_ignore_ascii_case("seen.txt"))
+                .is_some_and(|n| n.eq_ignore_ascii_case(needle))
             {
                 return Some(path);
             }
         }
     }
     None
+}
+
+fn find_seen_txt(root: &Path) -> Option<PathBuf> {
+    find_file(root, "seen.txt")
+}
+
+fn find_gameexe_ini(root: &Path) -> Option<PathBuf> {
+    find_file(root, "gameexe.ini")
 }
 
 #[test]
@@ -287,6 +296,26 @@ fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
             "scene {scene_id:04}: grown translated body marker missing from patched bytecode"
         );
 
+        // Public adapter read-back: the patched archive must be extractable
+        // again without manual xor2 staging, and the grown translated line must
+        // be observed as the unit's source text through `produce_scene_bundles`.
+        let gameexe_path = find_gameexe_ini(&root).expect("locate real Gameexe.ini");
+        fs::copy(&gameexe_path, out_dir.join("Gameexe.ini"))
+            .expect("stage Gameexe.ini for re-extract");
+        let reextract = adapter
+            .extract(ExtractRequest { game_dir: &out_dir })
+            .expect("adapter re-extracts patched Sweetie HD output");
+        let reread_unit = reextract
+            .bridge
+            .units
+            .iter()
+            .find(|unit| unit.source_unit_key == grow_key)
+            .expect("translated unit re-read through adapter");
+        assert_eq!(
+            reread_unit.source_text, sentinel,
+            "scene {scene_id:04}: adapter re-extract must read the translated xor2 text"
+        );
+
         // ---- Jump targets recalculated. A goto-rich scene is required so the
         //      recalculation is actually exercised; skip scenes with no goto
         //      pointers. Every patched target must still land on an element
@@ -349,5 +378,51 @@ fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
     assert!(
         proven,
         "no candidate scene produced a byte-correct length-changing adapter round trip"
+    );
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (Kanon/plaintext RealLive title)"]
+fn reallive_adapter_extract_still_reads_plaintext_kanon_title() {
+    let Ok(root) = std::env::var(REAL_GAME_ROOT_2_ENV) else {
+        eprintln!("SKIP: {REAL_GAME_ROOT_2_ENV} unset");
+        return;
+    };
+    let root = PathBuf::from(root);
+    let adapter = RealLiveProfileDetectorAdapter;
+
+    let extract = adapter
+        .extract(ExtractRequest { game_dir: &root })
+        .expect("adapter extracts plaintext RealLive title");
+    assert!(
+        !extract.bridge.units.is_empty(),
+        "plaintext RealLive extract must yield bridge units"
+    );
+
+    let seen_path = find_seen_txt(&root).expect("locate plaintext SEEN.TXT");
+    let seen = fs::read(&seen_path).expect("read plaintext SEEN.TXT");
+    let index = parse_archive(&seen).expect("plaintext archive parses");
+    let mut checked = 0usize;
+    for entry in &index.entries {
+        let start = entry.byte_offset as usize;
+        let end = start + entry.byte_len as usize;
+        if end > seen.len() {
+            continue;
+        }
+        let blob = &seen[start..end];
+        let Ok(header) = SceneHeader::parse(blob) else {
+            continue;
+        };
+        checked += 1;
+        assert!(
+            !compiler_version_uses_xor2(header.compiler_version),
+            "plaintext corpus scene {scene:04} unexpectedly sets xor2 compiler version {version}",
+            scene = entry.scene_id,
+            version = header.compiler_version
+        );
+    }
+    assert!(
+        checked > 0,
+        "plaintext corpus must contain parseable scenes"
     );
 }
