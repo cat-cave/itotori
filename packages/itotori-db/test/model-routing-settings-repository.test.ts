@@ -55,8 +55,14 @@ describe("ItotoriModelRoutingSettingsRepository", () => {
       );
       expect(saved.models).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ providerId: provider!.providerId, modelId: "fixture-model-v1" }),
-          expect.objectContaining({ providerId: provider!.providerId, modelId: "fixture-model-v2" }),
+          expect.objectContaining({
+            providerId: provider!.providerId,
+            modelId: "fixture-model-v1",
+          }),
+          expect.objectContaining({
+            providerId: provider!.providerId,
+            modelId: "fixture-model-v2",
+          }),
         ]),
       );
       expect(saved.promptPresets).toEqual(

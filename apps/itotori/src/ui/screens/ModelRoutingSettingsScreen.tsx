@@ -111,11 +111,11 @@ function RouteEditor({
   const [error, setError] = useState<string | null>(null);
 
   const modelsForProvider = settings.models.filter((model) => model.providerId === providerId);
-  const resolvedModelId =
-    modelsForProvider.some((model) => model.modelId === modelId)
-      ? modelId
-      : (modelsForProvider[0]?.modelId ?? "");
-  const prompt = promptPresetFromKey(settings.promptPresets, promptKey) ?? settings.promptPresets[0];
+  const resolvedModelId = modelsForProvider.some((model) => model.modelId === modelId)
+    ? modelId
+    : (modelsForProvider[0]?.modelId ?? "");
+  const prompt =
+    promptPresetFromKey(settings.promptPresets, promptKey) ?? settings.promptPresets[0];
   const canSave =
     taskKind.trim().length > 0 &&
     providerId.length > 0 &&
@@ -160,7 +160,9 @@ function RouteEditor({
     <Panel
       title="Task route"
       eyebrow="Model pair"
-      lamps={<Badge status={savedRoute === null ? "pending" : "saved"}>{savedRoute ?? "pending"}</Badge>}
+      lamps={
+        <Badge status={savedRoute === null ? "pending" : "saved"}>{savedRoute ?? "pending"}</Badge>
+      }
     >
       <form className="model-routing-settings__form" onSubmit={(event) => void submit(event)}>
         <label className="model-routing-settings__field">
@@ -179,8 +181,7 @@ function RouteEditor({
               const nextProviderId = event.currentTarget.value;
               setProviderId(nextProviderId);
               setModelId(
-                settings.models.find((model) => model.providerId === nextProviderId)?.modelId ??
-                  "",
+                settings.models.find((model) => model.providerId === nextProviderId)?.modelId ?? "",
               );
             }}
             aria-label="Provider"
@@ -262,7 +263,9 @@ function AvailablePairsPanel({
           {
             key: "model",
             header: "Model",
-            render: (model) => <code className="model-routing-settings__mono">{model.modelId}</code>,
+            render: (model) => (
+              <code className="model-routing-settings__mono">{model.modelId}</code>
+            ),
           },
           {
             key: "provider",
@@ -298,7 +301,9 @@ function SavedRoutesPanel({ routes }: { routes: readonly ApiModelRoutingRoute[] 
             render: (route) => (
               <div className="model-routing-settings__route">
                 <strong>{route.taskKind}</strong>
-                <code>{route.promptPresetId}@{route.promptTemplateVersion}</code>
+                <code>
+                  {route.promptPresetId}@{route.promptTemplateVersion}
+                </code>
               </div>
             ),
           },
@@ -336,7 +341,9 @@ function initialForm(settings: ApiModelRoutingSettingsResponse): {
   const route = settings.routes[0];
   const providerId = route?.providerId ?? settings.providers[0]?.providerId ?? "";
   const modelId =
-    route?.modelId ?? settings.models.find((model) => model.providerId === providerId)?.modelId ?? "";
+    route?.modelId ??
+    settings.models.find((model) => model.providerId === providerId)?.modelId ??
+    "";
   const promptKey =
     route === undefined
       ? promptPresetKey(settings.promptPresets[0])

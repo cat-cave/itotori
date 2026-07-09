@@ -134,10 +134,7 @@ describe("Shell frame — nav", () => {
   it("exposes both settings destinations from the shell nav", () => {
     const navigate = vi.fn();
     mountFrame({ pathname: "/settings/privacy", search: "" }, navigate);
-    expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "Privacy" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Model routing" }));
     expect(navigate).toHaveBeenCalledWith("/settings/model-routing");
     cleanup();

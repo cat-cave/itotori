@@ -1,16 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
-import {
-  type AuthorizationActor,
-  permissionValues,
-  requirePermission,
-} from "../authorization.js";
+import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
-import {
-  modelProviders,
-  modelRegistry,
-  modelRoutingSettings,
-  promptPresets,
-} from "../schema.js";
+import { modelProviders, modelRegistry, modelRoutingSettings, promptPresets } from "../schema.js";
 
 export type ModelRoutingProviderRecord = {
   providerId: string;
@@ -68,10 +59,7 @@ export type SaveModelRoutingSettingsInput = {
 };
 
 export interface ItotoriModelRoutingSettingsRepositoryPort {
-  loadSettings(
-    actor: AuthorizationActor,
-    projectId: string,
-  ): Promise<ModelRoutingSettingsRecord>;
+  loadSettings(actor: AuthorizationActor, projectId: string): Promise<ModelRoutingSettingsRecord>;
   saveRoute(
     actor: AuthorizationActor,
     input: SaveModelRoutingSettingsInput,
@@ -85,9 +73,7 @@ export class ItotoriModelRoutingSettingsRepositoryError extends Error {
   }
 }
 
-export class ItotoriModelRoutingSettingsRepository
-  implements ItotoriModelRoutingSettingsRepositoryPort
-{
+export class ItotoriModelRoutingSettingsRepository implements ItotoriModelRoutingSettingsRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
 
   async loadSettings(
@@ -139,7 +125,10 @@ export class ItotoriModelRoutingSettingsRepository
   private async loadSettingsUnchecked(projectId: string): Promise<ModelRoutingSettingsRecord> {
     const [providers, models, presets, routes] = await Promise.all([
       this.db.select().from(modelProviders).orderBy(asc(modelProviders.providerId)),
-      this.db.select().from(modelRegistry).orderBy(asc(modelRegistry.providerId), asc(modelRegistry.modelId)),
+      this.db
+        .select()
+        .from(modelRegistry)
+        .orderBy(asc(modelRegistry.providerId), asc(modelRegistry.modelId)),
       this.db
         .select()
         .from(promptPresets)
