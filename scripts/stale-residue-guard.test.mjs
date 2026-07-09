@@ -43,8 +43,7 @@ test("requires explicit snapshot markers for dated Traced notes", () => {
 
   for (const marker of ["Snapshot", "Historical", "Observed", "Point-in-time", "Resolved"]) {
     const marked = scanFixture({
-      "apps/itotori/src/agents/work-scope/carve.ts":
-        `// ${marker}: Traced 2026-07-04 with boot_dispatch_scan.\n`,
+      "apps/itotori/src/agents/work-scope/carve.ts": `// ${marker}: Traced 2026-07-04 with boot_dispatch_scan.\n`,
     });
     assert.deepEqual(marked.violations, [], `expected ${marker} marker to be allowed`);
   }
