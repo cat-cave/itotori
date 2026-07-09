@@ -43,6 +43,11 @@ import {
   type ReviewerDetailSourceUnit,
   type ReviewerDetailTransition,
 } from "./detail-fixtures.js";
+import type { ReviewerDetailStructureContextFeed } from "./structure-context-feed.js";
+import {
+  buildStructureContextFeedFromDecisionContext,
+  extractDecisionRecordStructureContext,
+} from "./structure-context-feed.js";
 // fnd-spa-shell — the reviewer-detail route identity lives HERE now that the
 // HTML-string `detail-view.ts` renderer is deleted. Parsing is pure routing
 // (consumed by the React `App` shell + the JSON API layer); the rendering is
@@ -85,6 +90,7 @@ export function emptyReviewerDetailEvidence(): Pick<
   | "qaFindings"
   | "runtimeEvidence"
   | "rationaleRefs"
+  | "structureContextFeed"
   | "transitions"
 > {
   return {
@@ -97,6 +103,7 @@ export function emptyReviewerDetailEvidence(): Pick<
     qaFindings: [],
     runtimeEvidence: [],
     rationaleRefs: [],
+    structureContextFeed: null,
     transitions: [],
   };
 }
@@ -137,6 +144,13 @@ export type ReviewerDetailEvidencePayload = {
   qaFindings: ReviewerDetailQaFinding[];
   runtimeEvidence: ReviewerDetailRuntimeEvidence[];
   rationaleRefs: ReviewerDetailRationaleRef[];
+  /**
+   * wiki-structure-context-feed — the structure-informed context that
+   * fed the draft. Null when the loader could not resolve a feed;
+   * the route loader may also fall back to extracting it from the
+   * queue item's decision-record payload when this is null.
+   */
+  structureContextFeed: ReviewerDetailStructureContextFeed | null;
   /**
    * Diagnostics the loader wants surfaced verbatim (e.g. policy
    * version flagged stale by the style-guide repository). The route
@@ -294,6 +308,29 @@ export async function loadReviewerDetailContext(
     });
   }
 
+  // wiki-structure-context-feed — prefer the loader-supplied feed; fall back
+  // to extracting from the agentic-loop decision record on the queue item
+  // payload (the live path stores contextArtifactRefs + structuredContext
+  // there). A draft without a feed is a provenance gap: the reviewer cannot
+  // see WHY the draft chose its wording.
+  let structureContextFeed =
+    evidencePayload.structureContextFeed ??
+    buildStructureContextFeedFromDecisionContext(
+      extractDecisionRecordStructureContext(item.payload),
+    );
+  if (isStaleSource) {
+    // Stale source blanks the draft; the structure feed is the draft's
+    // provenance, so blank it too.
+    structureContextFeed = null;
+  }
+  if (structureContextFeed === null && draft !== null && !isStaleSource) {
+    diagnostics.push({
+      code: reviewerDetailDiagnosticCodeValues.missingStructureContextFeed,
+      message:
+        "No structure-informed context feed is bound to this draft; the reviewer cannot see which scene summary / character arcs / route map / glossary citations fed the wording.",
+    });
+  }
+
   const transitions: ReviewerDetailTransition[] = transitionRecords.map((record) => ({
     transitionId: record.transitionId,
     action: record.action,
@@ -315,6 +352,7 @@ export async function loadReviewerDetailContext(
     qaFindings: evidencePayload.qaFindings,
     runtimeEvidence: evidencePayload.runtimeEvidence,
     rationaleRefs: evidencePayload.rationaleRefs,
+    structureContextFeed,
     transitions,
     diagnostics,
   };

@@ -54,6 +54,7 @@ const ASSET_ID = "019ed079-0000-7000-8000-000000000004";
 
 const SOURCE_TEXT = "ありがとう。";
 const DRAFT_TEXT = "Thank you.";
+const GLOSSARY_CITATION_REF = "glossary:term-yusha";
 
 // --- In-memory reviewer-queue repository ------------------------------------
 //
@@ -156,7 +157,14 @@ function makeInput(queue?: InMemoryReviewerQueue): AgenticLoopUnitInput {
   return {
     unit: makeUnit(),
     sceneUnits: [],
-    glossary: [],
+    glossary: [
+      {
+        termId: GLOSSARY_CITATION_REF,
+        preferredSourceForm: "ありがとう",
+        preferredTargetForm: "thank you",
+        policyAction: "localize",
+      },
+    ],
     protectedSpans: [],
     knownCharacters: [],
     actor: ACTOR,
@@ -211,7 +219,7 @@ function translationContent(): string {
         targetLocale: "en-US",
         draftText: DRAFT_TEXT,
         protectedSpanRefs: [],
-        citationRefs: [],
+        citationRefs: [GLOSSARY_CITATION_REF],
         agentRationale: "fixture-translation",
         confidenceFloor: "medium",
       },
@@ -340,6 +348,18 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     expect(typeof record.draft.draftText).toBe("string");
     expect(record.draft.draftText.length).toBeGreaterThan(0);
     expect(Array.isArray(record.context.contextArtifactRefs)).toBe(true);
+    expect(record.context.citationRefs).toEqual([GLOSSARY_CITATION_REF]);
+    // wiki-structure-context-feed — when a structured injection was available
+    // it is persisted on the decision record so the reviewer detail UI can
+    // show the same scene summary / character arcs that fed the draft.
+    // (This fixture path may or may not supply narrativeStructure; the field
+    // is optional and only asserted for shape when present.)
+    if (record.context.structuredContext !== undefined) {
+      expect(typeof record.context.structuredContext.sceneSummaryText).toBe("string");
+      expect(typeof record.context.structuredContext.routePositionText).toBe("string");
+      expect(typeof record.context.structuredContext.characterArcsText).toBe("string");
+      expect(Array.isArray(record.context.structuredContext.artifactRefs)).toBe(true);
+    }
     expect(record.reasoningAndFindings.qaFindings).toHaveLength(1);
     expect(record.reasoningAndFindings.qaFindings[0].severity).toBe("critical");
     expect(record.reasoningAndFindings.deferredReason).toBeDefined();
@@ -380,6 +400,18 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     expect(dashboard.rows[0]!.dashboardState).toBe("pending");
     expect(dashboard.rows[0]!.decisionId).toBe(`decision-agentic-loop-${BRIDGE_UNIT_ID}`);
     expect(dashboard.aggregate.pending).toBe(1);
+
+    const detail = await api.loadDetailContext({
+      reviewItemId: branchItems[0]!.reviewItemId,
+      permission: PERMISSION,
+    });
+    expect(detail.structureContextFeed).not.toBeNull();
+    expect(detail.structureContextFeed?.citationRefs).toEqual([GLOSSARY_CITATION_REF]);
+    expect(
+      detail.structureContextFeed?.items.some(
+        (item) => item.kind === "glossary_term" && item.artifactRef === GLOSSARY_CITATION_REF,
+      ),
+    ).toBe(true);
   });
 
   it("a threshold-exceeding QA finding on an ACCEPTED draft still creates a row", async () => {

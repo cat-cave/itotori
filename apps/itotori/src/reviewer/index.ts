@@ -84,6 +84,7 @@ export {
   runtimeTextTraceFixture,
   sourceUnitFixture,
   staleContextFixture,
+  structureContextFeedFixture,
   transitionFixture,
 } from "./detail-fixtures.js";
 export type {
@@ -101,6 +102,21 @@ export type {
   ReviewerDetailSourceUnit,
   ReviewerDetailTransition,
 } from "./detail-fixtures.js";
+// wiki-structure-context-feed — pure feed builders + types.
+export {
+  buildStructureContextFeedFromDecisionContext,
+  buildStructureContextFeedFromInjection,
+  classifyStructureContextArtifactRef,
+  extractDecisionRecordStructureContext,
+  structureContextFeedItemKindValues,
+  structuredContextForDecisionRecord,
+} from "./structure-context-feed.js";
+export type {
+  DecisionRecordStructureContext,
+  ReviewerDetailStructureContextFeed,
+  ReviewerDetailStructureContextFeedItem,
+  StructureContextFeedItemKind,
+} from "./structure-context-feed.js";
 
 // ITOTORI-082 — re-export the permission-view resolver from `auth.ts`
 // so reviewer consumers can import everything they need from

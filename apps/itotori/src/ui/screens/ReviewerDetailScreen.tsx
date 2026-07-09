@@ -24,6 +24,11 @@
 //   - GlossaryPanel: the referenced terms + the branch glossary reference
 //     provenance (`context.branchReference.glossaryRef` / `versionSequence`),
 //     client-paginated with the ds `Pagination` primitive.
+//
+// wiki-structure-context-feed — StructureContextFeedPanel: the scene
+// summary / character arcs / route map / glossary citations that FED the
+// draft wording (owned-structure advantage). Backed by
+// `context.structureContextFeed` from the decision-record context.
 
 import { type ReactNode, useState } from "react";
 import type { ReviewerQueueAction, ReviewerQueueItemKind } from "@itotori/db";
@@ -200,6 +205,10 @@ function ReadyView({
         )}
         <PolicyPanel context={context} />
         <GlossaryPanel context={context} />
+        {/* wiki-structure-context-feed — WHY the draft chose its wording:
+            the structure-informed context (scene summary / character arcs /
+            route map / glossary citations) that fed the translate stage. */}
+        <StructureContextFeedPanel context={context} />
         <BranchReferencePanel context={context} />
         <QaFindingsPanel context={context} />
         <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
@@ -798,6 +807,89 @@ function QaFindingsPanel({ context }: { context: ReviewerDetailContext }): React
           rows={context.qaFindings}
           getRowKey={(f) => f.findingId}
         />
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * wiki-structure-context-feed — the structure-informed context that fed
+ * this draft's wording. Renders the scene summary / character arcs /
+ * route position / glossary citations so the reviewer sees WHY the draft
+ * chose its wording (owned-structure advantage), not an opaque ref list.
+ */
+function StructureContextFeedPanel({ context }: { context: ReviewerDetailContext }): ReactNode {
+  const feed = context.structureContextFeed;
+  return (
+    <Panel
+      title="Structure context that fed this draft"
+      eyebrow="Why this wording"
+      data-panel-id="structure-context-feed"
+      data-fed-the-draft={feed?.fedTheDraft === true ? "true" : "false"}
+      data-scene-id={
+        feed?.sceneId !== null && feed?.sceneId !== undefined ? String(feed.sceneId) : undefined
+      }
+    >
+      {feed === null ? (
+        <MissingContext label="No structure-informed context feed bound to this draft" />
+      ) : (
+        <>
+          <p data-structure-context-why="">{feed.whyHeading}</p>
+          {feed.sceneId !== null ? (
+            <p>
+              Scene <code data-structure-context-scene-id="">{feed.sceneId}</code>
+              {feed.fedTheDraft ? (
+                <>
+                  {" "}
+                  · <Badge status="fed">fed the draft</Badge>
+                </>
+              ) : null}
+            </p>
+          ) : feed.fedTheDraft ? (
+            <p>
+              <Badge status="fed">fed the draft</Badge>
+            </p>
+          ) : null}
+          <DataTable
+            caption="Cited structure context"
+            columns={[
+              {
+                key: "kind",
+                header: "Kind",
+                render: (item) => <Badge status={item.kind}>{item.kind}</Badge>,
+              },
+              {
+                key: "title",
+                header: "Title",
+                render: (item) => item.title,
+              },
+              {
+                key: "body",
+                header: "What fed the wording",
+                render: (item) => (
+                  <div data-structure-context-item={item.artifactRef}>
+                    <pre className="itotori-structure-context-body">{item.body}</pre>
+                    <p className="itotori-empty-copy">{item.feedRole}</p>
+                    <code>{item.artifactRef}</code>
+                  </div>
+                ),
+              },
+            ]}
+            rows={feed.items}
+            getRowKey={(item) => `${item.kind}:${item.artifactRef}:${item.title}`}
+          />
+          {feed.contextArtifactRefs.length > 0 ? (
+            <p data-structure-context-refs="">
+              Cited refs:{" "}
+              {feed.contextArtifactRefs.map((ref, index) => (
+                <span key={ref}>
+                  {index > 0 ? ", " : null}
+                  <code>{ref}</code>
+                </span>
+              ))}
+            </p>
+          ) : null}
+        </>
       )}
     </Panel>
   );

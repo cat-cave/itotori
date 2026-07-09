@@ -28,6 +28,10 @@ import {
   type ReviewerBatchExecuteResult,
 } from "./batch-execute.js";
 import type { ReviewerQueueActionServicePort } from "./action-service.js";
+import {
+  buildStructureContextFeedFromDecisionContext,
+  extractDecisionRecordStructureContext,
+} from "./structure-context-feed.js";
 
 export const reviewerQueueDashboardStateValues = {
   pending: "pending",
@@ -330,18 +334,37 @@ function defaultEvidenceLoader(
   return {
     loadItem: (reviewItemId) => repository.getItem(reviewItemId),
     loadTransitions: (reviewItemId) => repository.loadTransitionsByItem(reviewItemId),
-    loadDetailEvidence: async (item) => ({
-      loadedSourceRevisionId: item.sourceRevisionId,
-      source: null,
-      draft: null,
-      policy: null,
-      glossary: [],
-      branchReference: null,
-      qaFindings: [],
-      runtimeEvidence: [],
-      rationaleRefs: [],
-      diagnostics: [],
-    }),
+    loadDetailEvidence: async (item) => {
+      // wiki-structure-context-feed — hydrate the structure-informed feed from
+      // the agentic-loop decision record when present so the default (DB-wired)
+      // path still shows WHY the draft chose its wording without a custom
+      // evidence loader. Source/draft/policy stay null here unless a richer
+      // loader is injected; the feed is derived purely from the payload.
+      const structureContextFeed = buildStructureContextFeedFromDecisionContext(
+        extractDecisionRecordStructureContext(item.payload),
+      );
+      const rationaleRefs =
+        structureContextFeed === null
+          ? []
+          : structureContextFeed.items.map((feedItem) => ({
+              refKind: "context_artifact" as const,
+              refId: feedItem.artifactRef,
+              label: feedItem.title,
+            }));
+      return {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: null,
+        draft: null,
+        policy: null,
+        glossary: [],
+        branchReference: null,
+        qaFindings: [],
+        runtimeEvidence: [],
+        rationaleRefs,
+        structureContextFeed,
+        diagnostics: [],
+      };
+    },
   };
 }
 

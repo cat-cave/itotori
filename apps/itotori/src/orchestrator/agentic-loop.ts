@@ -533,6 +533,10 @@ export async function runAgenticLoopForUnit(
   stages.push(translationStage);
 
   const primaryDraftText = pickDraftTextForUnit(translationResult, input.unit.bridgeUnitId);
+  const primaryDraftCitationRefs = pickDraftCitationRefsForUnit(
+    translationResult,
+    input.unit.bridgeUnitId,
+  );
 
   // --------------------- deterministic checks ------------------------
   const deterministicStage = startStage("deterministic_checks");
@@ -603,6 +607,8 @@ export async function runAgenticLoopForUnit(
       qaFindings: [],
       deterministicViolations: deterministicResult.violations,
       contextArtifactRefs: contextResult.contextArtifactRefs,
+      citationRefs: primaryDraftCitationRefs,
+      structuredContext: contextResult.structuredContext,
     });
     return shortCircuitBundle;
   }
@@ -665,6 +671,7 @@ export async function runAgenticLoopForUnit(
   const repairStage = startStage("repair");
   let routingOutcome: AgenticLoopRoutingOutcome = "accepted";
   let finalDraftText: string | undefined = primaryDraftText;
+  let finalDraftCitationRefs: ReadonlyArray<string> = primaryDraftCitationRefs;
   let deferredReason: string | undefined;
   let repairAttempts = 0;
 
@@ -752,6 +759,10 @@ export async function runAgenticLoopForUnit(
         ),
       );
       const repairedText = pickDraftTextForUnit(repairResult, input.unit.bridgeUnitId);
+      const repairedCitationRefs = pickDraftCitationRefsForUnit(
+        repairResult,
+        input.unit.bridgeUnitId,
+      );
       const recheck = runDeterministicChecks({
         input,
         draftText: repairedText,
@@ -792,6 +803,7 @@ export async function runAgenticLoopForUnit(
         // Re-QA CONFIRMS the flagged issue is resolved: no repairable cause
         // and no critical finding on the repaired draft. Accept.
         finalDraftText = repairedText;
+        finalDraftCitationRefs = repairedCitationRefs;
         routingOutcome = "repaired_then_accepted";
         repairAttempts = attempt;
         repairStage.outcome = `repaired_then_accepted_at_attempt_${attempt}`;
@@ -861,6 +873,10 @@ export async function runAgenticLoopForUnit(
     qaFindings,
     deterministicViolations: deterministicResult.violations,
     contextArtifactRefs: contextResult.contextArtifactRefs,
+    citationRefs: finalDraftCitationRefs,
+    // wiki-structure-context-feed — pass the structure-informed injection so
+    // the decision record carries the exact texts that fed the draft.
+    structuredContext: contextResult.structuredContext,
   });
   return finalBundle;
 }
@@ -880,6 +896,8 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
   qaFindings: ReadonlyArray<QaFinding>;
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
   contextArtifactRefs: ReadonlyArray<string>;
+  citationRefs: ReadonlyArray<string>;
+  structuredContext?: StructuredContextInjection | undefined;
 }): Promise<void> {
   const sink = args.input.reviewerQueue;
   if (sink === undefined) {
@@ -895,7 +913,9 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
     qaFindings: args.qaFindings,
     deterministicViolations: args.deterministicViolations,
     contextArtifactRefs: args.contextArtifactRefs,
+    citationRefs: args.citationRefs,
     now: args.now,
+    ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
     ...(args.input.sceneId !== undefined ? { sceneId: args.input.sceneId } : {}),
   });
 }
@@ -1680,6 +1700,19 @@ function pickDraftTextForUnit(result: TranslationInvocationResult, bridgeUnitId:
     );
   }
   return draft.draftText;
+}
+
+function pickDraftCitationRefsForUnit(
+  result: TranslationInvocationResult,
+  bridgeUnitId: string,
+): string[] {
+  const draft = result.drafts.find((d) => d.bridgeUnitId === bridgeUnitId);
+  if (draft === undefined) {
+    throw new AgenticLoopInvariantError(
+      `translation result has no draft for bridgeUnitId='${bridgeUnitId}'`,
+    );
+  }
+  return [...draft.citationRefs];
 }
 
 // ---------------------------------------------------------------------------

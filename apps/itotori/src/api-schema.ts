@@ -280,6 +280,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "qaFindings",
     "runtimeEvidence",
     "rationaleRefs",
+    "structureContextFeed",
     "transitions",
     "diagnostics",
   ],
@@ -2484,8 +2485,48 @@ function assertReviewerDetailContext(
   asArray(context.qaFindings, `${label}.qaFindings`);
   asArray(context.runtimeEvidence, `${label}.runtimeEvidence`);
   asArray(context.rationaleRefs, `${label}.rationaleRefs`);
+  // wiki-structure-context-feed — nullable structure-informed context feed.
+  if (context.structureContextFeed !== null) {
+    assertReviewerDetailStructureContextFeed(
+      context.structureContextFeed,
+      `${label}.structureContextFeed`,
+    );
+  }
   asArray(context.transitions, `${label}.transitions`);
   asArray(context.diagnostics, `${label}.diagnostics`);
+}
+
+function assertReviewerDetailStructureContextFeed(value: unknown, label: string): void {
+  const feed = asStrictRecord(value, label, [
+    "whyHeading",
+    "sceneId",
+    "items",
+    "contextArtifactRefs",
+    "citationRefs",
+    "fedTheDraft",
+  ]);
+  assertString(feed.whyHeading, `${label}.whyHeading`);
+  if (feed.sceneId !== null) {
+    assertNonNegativeInteger(feed.sceneId, `${label}.sceneId`);
+  }
+  assertBoolean(feed.fedTheDraft, `${label}.fedTheDraft`);
+  const items = asArray(feed.items, `${label}.items`);
+  for (const [index, itemValue] of items.entries()) {
+    const item = asStrictRecord(itemValue, `${label}.items[${index}]`, [
+      "kind",
+      "artifactRef",
+      "title",
+      "body",
+      "feedRole",
+    ]);
+    assertString(item.kind, `${label}.items[${index}].kind`);
+    assertString(item.artifactRef, `${label}.items[${index}].artifactRef`);
+    assertString(item.title, `${label}.items[${index}].title`);
+    assertString(item.body, `${label}.items[${index}].body`);
+    assertString(item.feedRole, `${label}.items[${index}].feedRole`);
+  }
+  asArray(feed.contextArtifactRefs, `${label}.contextArtifactRefs`);
+  asArray(feed.citationRefs, `${label}.citationRefs`);
 }
 
 // ITOTORI-139 — branch policy/glossary reference provenance on the

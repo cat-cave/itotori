@@ -33,6 +33,7 @@ import {
   runtimeEvidenceItemFixture,
   runtimeTextTraceFixture,
   sourceUnitFixture,
+  structureContextFeedFixture,
   type ReviewerDetailEvidenceLoaderPort,
   type ReviewerDetailEvidencePayload,
   type ReviewerDetailPermissionView,
@@ -63,6 +64,8 @@ function stubLoader(opts: {
       qaFindings: opts.payload?.qaFindings ?? [],
       runtimeEvidence: opts.payload?.runtimeEvidence ?? [],
       rationaleRefs: opts.payload?.rationaleRefs ?? [],
+      structureContextFeed:
+        opts.payload?.structureContextFeed !== undefined ? opts.payload.structureContextFeed : null,
       diagnostics: opts.payload?.diagnostics ?? [],
     };
     return payload;
@@ -300,6 +303,120 @@ describe("loadReviewerDetailContext — missing context emits diagnostics, not s
     );
     expect(context.diagnostics.map((d) => d.code)).toContain(
       reviewerDetailDiagnosticCodeValues.missingRationale,
+    );
+  });
+
+  // wiki-structure-context-feed — a draft without a structure feed is a
+  // provenance gap: the reviewer cannot see WHY the draft chose its wording.
+  it("emits missing_structure_context_feed when a draft has no structure feed", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        rationaleRefs: [rationaleFixture()],
+        structureContextFeed: null,
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    expect(context.structureContextFeed).toBeNull();
+    expect(context.diagnostics.map((d) => d.code)).toContain(
+      reviewerDetailDiagnosticCodeValues.missingStructureContextFeed,
+    );
+  });
+
+  it("surfaces the structure context feed that fed the draft wording", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const feed = structureContextFeedFixture({
+      sceneId: 6010,
+      fedTheDraft: true,
+    });
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        rationaleRefs: [rationaleFixture()],
+        structureContextFeed: feed,
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    expect(context.structureContextFeed).not.toBeNull();
+    expect(context.structureContextFeed?.fedTheDraft).toBe(true);
+    expect(context.structureContextFeed?.sceneId).toBe(6010);
+    expect(context.structureContextFeed?.items.some((i) => i.kind === "scene_summary")).toBe(true);
+    expect(context.diagnostics.map((d) => d.code)).not.toContain(
+      reviewerDetailDiagnosticCodeValues.missingStructureContextFeed,
+    );
+
+    // Round-trip through the strict API response assert so the schema
+    // accepts the new structureContextFeed field.
+    expect(() => assertItotoriApiResponse("reviewer.detail", context)).not.toThrow();
+  });
+
+  it("hydrates the structure context feed from the agentic-loop decision record payload", async () => {
+    const item: ReviewerQueueItemRecord = {
+      ...runtimeEvidenceItemFixture(),
+      payload: {
+        source: "agentic_loop",
+        decisionRecord: {
+          schemaVersion: "itotori.agentic-loop-decision-record.v1",
+          context: {
+            contextArtifactRefs: ["scene-summary:6010", "character-arc:Hero", "route-branch-map"],
+            sceneId: 6010,
+            structuredContext: {
+              sceneId: 6010,
+              sceneSummaryText: "Scene 6010: Hero greets Princess.",
+              routePositionText: "Scene 6010 route position: entry scene.",
+              characterArcsText: "Speaker arcs in this scene:\n- Hero: appears in scene 6010.",
+              artifactRefs: ["scene-summary:6010", "route-branch-map", "character-arc:Hero"],
+            },
+          },
+        },
+      },
+    };
+    // Loader returns no structureContextFeed — the route falls back to the
+    // decision-record payload on the item.
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        rationaleRefs: [rationaleFixture()],
+        structureContextFeed: null,
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    expect(context.structureContextFeed).not.toBeNull();
+    expect(context.structureContextFeed?.fedTheDraft).toBe(true);
+    expect(context.structureContextFeed?.items[0]?.body).toContain("Hero greets Princess");
+    expect(context.diagnostics.map((d) => d.code)).not.toContain(
+      reviewerDetailDiagnosticCodeValues.missingStructureContextFeed,
     );
   });
 

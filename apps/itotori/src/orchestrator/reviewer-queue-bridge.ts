@@ -47,6 +47,8 @@ import type {
   QaFindingSeverity,
 } from "@itotori/localization-bridge-schema";
 import type { DraftProtectedSpanViolation } from "../draft/protected-span-validator.js";
+import type { StructuredContextInjection } from "../agents/structure-informed-context/shapes.js";
+import { structuredContextForDecisionRecord } from "../reviewer/structure-context-feed.js";
 
 /**
  * True for every loop outcome that DEFERS the unit to the human queue (the
@@ -112,6 +114,15 @@ export type AgenticLoopBridgeInput = {
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
   /** Citable context artifact refs (structure slice + live semantic enrichment). */
   contextArtifactRefs: ReadonlyArray<string>;
+  /** Citation refs selected by the draft the reviewer sees. */
+  citationRefs: ReadonlyArray<string>;
+  /**
+   * wiki-structure-context-feed — the exact structure-informed injection the
+   * translate stage consumed (scene summary + route position + character arcs).
+   * Stored on the decision record so the reviewer detail UI can show WHY the
+   * draft chose its wording without re-deriving structure at read time.
+   */
+  structuredContext?: StructuredContextInjection | undefined;
   /** The scene id the unit belongs to, when a decoded structure drove the run. */
   sceneId?: number | undefined;
   /** Deterministic clock seam so a driven run + tests get stable createdAt. */
@@ -226,7 +237,17 @@ export function buildAgenticLoopReviewerQueueItemInput(
     },
     context: {
       contextArtifactRefs: [...input.contextArtifactRefs],
+      citationRefs: [...input.citationRefs],
       ...(input.sceneId !== undefined ? { sceneId: input.sceneId } : {}),
+      // wiki-structure-context-feed — persist the structure-informed injection
+      // texts the translate stage actually rendered into the prompt so the
+      // reviewer can see the same scene summary / character arcs / route map
+      // that fed the draft wording.
+      ...(input.structuredContext !== undefined
+        ? {
+            structuredContext: structuredContextForDecisionRecord(input.structuredContext),
+          }
+        : {}),
     },
     // Reasoning + findings — the evidence the reviewer weighs.
     reasoningAndFindings: {
@@ -304,6 +325,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
   const affectedArtifactIds = [
     unit.bridgeUnitId,
     ...input.contextArtifactRefs,
+    ...input.citationRefs,
     ...input.qaFindings.map((finding) => `qa-finding:${finding.findingId}`),
   ];
 

@@ -24,6 +24,8 @@ import {
   type ReviewerQueueItemState,
   type ReviewerQueueTransitionRecord,
 } from "@itotori/db";
+import type { ReviewerDetailStructureContextFeed } from "./structure-context-feed.js";
+import { structureContextFeedItemKindValues } from "./structure-context-feed.js";
 
 /**
  * Source-unit panel data. Renders the bridge unit id, the source
@@ -185,6 +187,13 @@ export const reviewerDetailDiagnosticCodeValues = {
   missingBranchReference: "reviewer_detail_missing_branch_reference",
   missingRuntimeEvidence: "reviewer_detail_missing_runtime_evidence",
   missingRationale: "reviewer_detail_missing_rationale",
+  /**
+   * wiki-structure-context-feed — a draft is present but no structure-
+   * informed context feed could be resolved (no decision-record context,
+   * no structured-context injection, no citable artifact refs). The
+   * reviewer cannot see WHY the draft chose its wording.
+   */
+  missingStructureContextFeed: "reviewer_detail_missing_structure_context_feed",
   permissionDenied: "reviewer_detail_permission_denied",
 } as const;
 
@@ -221,6 +230,14 @@ export type ReviewerDetailContext = {
   qaFindings: ReviewerDetailQaFinding[];
   runtimeEvidence: ReviewerDetailRuntimeEvidence[];
   rationaleRefs: ReviewerDetailRationaleRef[];
+  /**
+   * wiki-structure-context-feed — the structure-informed context
+   * (scene summary / character arcs / route map / glossary citations)
+   * that fed this draft's wording. Null when no feed could be resolved;
+   * the loader emits `missingStructureContextFeed` when a draft is
+   * present without a feed so the gap is never a silent empty panel.
+   */
+  structureContextFeed: ReviewerDetailStructureContextFeed | null;
   transitions: ReviewerDetailTransition[];
   diagnostics: ReviewerDetailDiagnostic[];
 };
@@ -336,6 +353,61 @@ export function branchReferenceFixture(
     glossaryRef: "sha256:branch-glossary-content-hash-itotori-082",
     supersedesReferenceId: "branch-policy-glossary-reference-itotori-082-prior",
     updateReason: "glossary_snapshot_refreshed",
+    ...overrides,
+  };
+}
+
+/**
+ * wiki-structure-context-feed — a ready structure-context feed that mirrors
+ * the translate-stage structure-informed injection (scene summary + route
+ * position + character arcs) so the reviewer detail panel can show WHY the
+ * draft chose its wording.
+ */
+export function structureContextFeedFixture(
+  overrides: Partial<ReviewerDetailStructureContextFeed> = {},
+): ReviewerDetailStructureContextFeed {
+  return {
+    whyHeading: "Structure-informed context that fed this draft's wording",
+    sceneId: 6010,
+    items: [
+      {
+        kind: structureContextFeedItemKindValues.sceneSummary,
+        artifactRef: "scene-summary:6010",
+        title: "Scene summary",
+        body: "Scene 6010: 3 messages; speakers 勇者, 王女; opens with 勇者; no choices; dispatches to scene 6020.",
+        feedRole: "Fed the draft's scene-aware wording (structure-informed injection).",
+      },
+      {
+        kind: structureContextFeedItemKindValues.routeMap,
+        artifactRef: "route-branch-map",
+        title: "Route / branch position",
+        body: "Scene 6010 route position: position 1 of 2 in the dispatch order [6010 -> 6020]; entry scene (no in-graph predecessor); dispatches to scene 6020.",
+        feedRole: "Fed the draft's branch-aware wording (structure-informed injection).",
+      },
+      {
+        kind: structureContextFeedItemKindValues.characterArc,
+        artifactRef: "character-arc:勇者",
+        title: "Character arcs",
+        body: "Speaker arcs in this scene:\n- 勇者: appears in scenes 6010, 6020 (4 lines total).\n- 王女: appears in scenes 6010 (2 lines total).",
+        feedRole: "Fed the draft's speaker voice consistency (structure-informed injection).",
+      },
+      {
+        kind: structureContextFeedItemKindValues.glossaryTerm,
+        artifactRef: "glossary-term:term-itotori-082",
+        title: "Glossary term",
+        body: "Cited glossary term term-itotori-082 constrained the preferred translation.",
+        feedRole: "Cited context artifact available to the translate stage.",
+      },
+    ],
+    contextArtifactRefs: [
+      "character-arc:勇者",
+      "character-arc:王女",
+      "glossary-term:term-itotori-082",
+      "route-branch-map",
+      "scene-summary:6010",
+    ],
+    citationRefs: ["glossary-term:term-itotori-082"],
+    fedTheDraft: true,
     ...overrides,
   };
 }
@@ -496,7 +568,13 @@ export function readyContextFixture(
         refId: fixtureSourceRevisionId,
         label: "Source revision in scope",
       }),
+      rationaleFixture({
+        refKind: "context_artifact",
+        refId: "scene-summary:6010",
+        label: "Structure-informed scene summary that fed the draft",
+      }),
     ],
+    structureContextFeed: structureContextFeedFixture(),
     transitions: [transitionFixture()],
     diagnostics: [],
     ...overrides,
@@ -531,6 +609,7 @@ export function deniedContextFixture(actorUserId = "unauthorized-user"): Reviewe
     qaFindings: [],
     runtimeEvidence: [],
     rationaleRefs: [],
+    structureContextFeed: null,
     transitions: [],
     diagnostics: [
       {
@@ -565,6 +644,7 @@ export function staleContextFixture(): ReviewerDetailContext {
     qaFindings: [qaFindingFixture()],
     runtimeEvidence: [],
     rationaleRefs: [],
+    structureContextFeed: null,
     transitions: [
       transitionFixture({
         action: reviewerQueueActionValues.requestRepair,
