@@ -10222,6 +10222,11 @@ mod tests {
             }),
             "RealLive adapter must report Patching as Limited at KAIFUU-174 (length-changing single-scene text-slot replacement)"
         );
+        // Field PR #2: typed level matrix must not under-detect real patch.
+        assert!(
+            reallive_caps.level_matrix.patch.is_partial(),
+            "RealLive level matrix must expose partial Patch for length-changing single-scene patch-back"
+        );
     }
 
     #[test]
