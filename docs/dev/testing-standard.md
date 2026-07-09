@@ -448,7 +448,7 @@ machine-local runtime details.
 Localization quality tests and benchmark fixtures use the `itotori-lqa-1`
 taxonomy from
 [ADR 0003](../adrs/0003-localization-quality-taxonomy.md) and
-[localization-quality-taxonomy.json](localization-quality-taxonomy.json).
+[localization-quality-taxonomy.json](../localization-quality-taxonomy.json).
 
 Do not use DAG or audit `P0`-`P3` values as translation quality severities.
 Tests that create localization findings must use `qualitySeverity` values

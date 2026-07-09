@@ -122,7 +122,7 @@ design ↔ repo alignment for the hi-fi Studio epic lives in
 The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
 
 The alpha proof workflow (`just alpha-proof`, run by
-[`.github/workflows/alpha-proof.yml`](../.github/workflows/alpha-proof.yml)) is
+[`.github/workflows/alpha-proof.yml`](../../.github/workflows/alpha-proof.yml)) is
 the deterministic integration guardrail on the public-fixture path. It validates
 real cross-project artifact linkage — bridge, patch, PatchResult, provider
 proof, benchmark, runtime observation, dashboard/read-model ingestion, and the

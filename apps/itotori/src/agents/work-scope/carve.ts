@@ -27,13 +27,10 @@
 //     routes to 6 INTRA-scene labels whose non-loop branches `jump`/`farcall`
 //     cross-scene to MENU/config scenes (scene 3 = config/gallery, scene 10 =
 //     the extra sub-menu) and the New-Game routine (farcall scene 9996,
-//     op (0,1,18)) — NOT to two disjoint story roots. The New-Game routine
-//     (scene 9996) — like every menu/boot/system scene in the archive — now
-//     DECODES to zero unknown opcodes in kaifuu (the earlier
-//     `MalformedExpression @~offset 271` was resolved by the completed
-//     ExpressionPiece grammar + semantic command catalogue + second-level
-//     `xor_2` decryptor; proven by the
-//     `every_menu_boot_system_scene_decodes_to_zero_unknown` real-bytes pin).
+//     op (0,1,18)) — NOT to two disjoint story roots. Current decode evidence:
+//     the New-Game routine (scene 9996) and every other menu/boot/system scene
+//     in the archive decode to zero unknown opcodes in kaifuu, proven by the
+//     `every_menu_boot_system_scene_decodes_to_zero_unknown` real-bytes pin.
 //     But the base-vs-fandisk pick is still store-relative RUNTIME menu state
 //     (which objbtn button was pressed), not a static 2-way branch, so the
 //     dispatch target the New-Game button leads into remains runtime-dependent.
@@ -41,10 +38,10 @@
 //     The carve therefore still IDENTIFIES the game-select (button-object
 //     marker) but reports `game-select-unresolved-options` — the archive is
 //     known-multi-work, but the works CANNOT be rooted from the decode: even
-//     with the New-Game routine now fully decoded, the split needs the runtime
+//     with the New-Game routine fully decoded, the split still needs the runtime
 //     title-menu state (which objbtn button was pressed).
-//     (Traced 2026-07-04 with the `boot_dispatch_scan` example over the real
-//     Seen.txt; scene-ids/opcode-ids only, no copyrighted text.)
+//     Snapshot note: traced 2026-07-04 with the `boot_dispatch_scan` example
+//     over the real Seen.txt; scene-ids/opcode-ids only, no copyrighted text.
 //   * It never gives a SEMANTIC "this is the base game / that is the fandisk".
 //     Naming rides on the option labels when present; otherwise it needs
 //     another signal (Gameexe title metadata, scene-id ranges, operator input).
@@ -358,7 +355,7 @@ export function carveArchiveIntoWorks(
         namingSignal: "unknown",
         notes:
           `A button-object game-select (scene ${gameSelectScene}) marks this archive as multi-work, but the select scene carries ` +
-          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): the select is a title MENU whose branches dispatch (goto_case on $store) to menu/config scenes and/or a store-relative New-Game routine, NOT to enumerable per-work story roots. The works cannot be rooted from the decode alone; rooting them needs upstream/operator context (a per-work entry-scene list) — which the decode does not provide (the New-Game routine does not decode and the split is runtime menu state).`,
+          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): the select is a title MENU whose branches dispatch (goto_case on $store) to menu/config scenes and/or a store-relative New-Game routine, NOT to enumerable per-work story roots. The works cannot be rooted from the decode alone; rooting them needs upstream/operator context (a per-work entry-scene list) — which the decode does not provide because the split is runtime menu state, even though the New-Game routine itself now decodes cleanly.`,
       },
     };
   }

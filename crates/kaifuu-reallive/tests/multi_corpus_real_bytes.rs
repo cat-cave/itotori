@@ -539,8 +539,9 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     }
 }
 
-/// The Sweetie HD menu / boot / system scenes that the earlier `work-scope`
-/// carve trace (`apps/itotori/src/agents/work-scope/carve.ts`, 2026-07-04)
+/// Historical snapshot: the Sweetie HD menu / boot / system scenes that the
+/// earlier `work-scope` carve trace
+/// (`apps/itotori/src/agents/work-scope/carve.ts`, 2026-07-04)
 /// recorded as UNDECODABLE before the ExpressionPiece grammar
 /// (`reallive-expr-eval-bank-refs`), the semantic command catalogue
 /// (`reallive-semantic-command-cataloguing`) and the second-level `xor_2`

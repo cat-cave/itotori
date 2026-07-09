@@ -4,8 +4,9 @@
 // disc) behind ONE game-select. The decode ALONE cannot always root the N
 // works: the real Sweetie HD first-screen game-select (scene 2) is a
 // `select_objbtn` TITLE MENU whose `goto_case($store)` branches dispatch to
-// menu/config scenes + a store-relative New-Game routine that does NOT decode
-// — so the carve reports `game-select-unresolved-options` (see `carve.ts`).
+// menu/config scenes + a store-relative New-Game routine. That routine now
+// decodes cleanly, but the base-vs-fandisk split still depends on runtime menu
+// state, so the carve reports `game-select-unresolved-options` (see `carve.ts`).
 //
 // This module is the GENERAL, GAME-AGNOSTIC operator escape hatch: a TYPED
 // WORK-MANIFEST the operator supplies to root N works within a multi-work
