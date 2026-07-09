@@ -16,7 +16,8 @@
 // SECRET HYGIENE (mirrors external-env-file.ts):
 //   - The API key is NEVER logged, printed, or echoed — only written to the
 //     config file (mode 0600).
-//   - The config file path may appear in output; the key value never does.
+//   - The config file path may appear in output; secret values never do.
+//   - Secret values are loaded only from env/file, never CLI flags or prompts.
 //   - The ZDR assertion (`OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`) is written ONLY
 //     after the user explicitly confirms their OpenRouter account is
 //     ZDR-only — it is the operator's fail-closed acknowledgement, not an
@@ -28,12 +29,12 @@ import { join } from "node:path";
 export const DEFAULT_CONFIG_DIR = join(homedir(), ".config", "itotori");
 export const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "config.env");
 
-export const INIT_FLAG_API_KEY = "--api-key";
 export const INIT_FLAG_ZDR_ASSERTED = "--zdr-asserted";
 export const INIT_FLAG_CONFIG = "--config";
-export const INIT_FLAG_DATABASE_URL = "--database-url";
 export const INIT_FLAG_NON_INTERACTIVE = "--non-interactive";
 export const INIT_FLAG_ALL = "--all";
+
+const REMOVED_SECRET_FLAGS = ["--api-key", "--database-url"] as const;
 
 export type InitCommandDeps = {
   readonly env: Record<string, string | undefined>;
@@ -44,20 +45,19 @@ export type InitCommandDeps = {
 };
 
 export type InitFlags = {
-  apiKey: string | undefined;
   zdrAsserted: boolean;
   configPath: string;
-  databaseUrl: string | undefined;
   nonInteractive: boolean;
 };
 
 export function parseInitFlags(args: string[]): InitFlags {
+  for (const flag of REMOVED_SECRET_FLAGS) {
+    rejectRemovedSecretFlag(args, flag);
+  }
   const nonInteractive = args.includes(INIT_FLAG_NON_INTERACTIVE);
   const configPath = optionalFlag(args, INIT_FLAG_CONFIG) ?? DEFAULT_CONFIG_PATH;
-  const apiKey = optionalFlag(args, INIT_FLAG_API_KEY) ?? undefined;
   const zdrAsserted = args.includes(INIT_FLAG_ZDR_ASSERTED);
-  const databaseUrl = optionalFlag(args, INIT_FLAG_DATABASE_URL) ?? undefined;
-  return { apiKey, zdrAsserted, configPath, databaseUrl, nonInteractive };
+  return { zdrAsserted, configPath, nonInteractive };
 }
 
 export async function runInitCommand(args: string[], deps: InitCommandDeps): Promise<void> {
@@ -75,7 +75,7 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   const apiKey = await resolveApiKey(flags, deps);
   if (apiKey === undefined) {
     deps.log("  [warning] No OpenRouter API key set. Live localization will not work.");
-    deps.log("           You can re-run `itotori init` later or set OPENROUTER_API_KEY manually.");
+    deps.log("           Set OPENROUTER_API_KEY or ITOTORI_LOCAL_ENV_FILE and re-run init.");
   } else {
     deps.log("  [ok] OpenRouter API key captured (value hidden).");
   }
@@ -95,7 +95,7 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   // ── Step 3: Database footprint ──────────────────────────────────────────
   const databaseUrl = await resolveDatabaseUrl(flags, deps);
   if (databaseUrl !== undefined) {
-    deps.log(`  [ok] DATABASE_URL captured.`);
+    deps.log("  [ok] DATABASE_URL captured (value hidden).");
   } else {
     deps.log("  [warning] No DATABASE_URL set. Database commands (db-migrate, localize)");
     deps.log("           will fail until Postgres is provisioned.");
@@ -127,9 +127,10 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   // ── Next steps ──────────────────────────────────────────────────────────
   deps.log("NEXT STEPS:");
   deps.log("  1. Add to your shell profile (~/.bashrc, ~/.zshrc, etc.):");
-  deps.log(`       export ITOTORI_LOCAL_ENV_FILE=${flags.configPath}`);
+  deps.log(`       export ITOTORI_LOCAL_ENV_FILE=${shellQuote(flags.configPath)}`);
   if (databaseUrl !== undefined) {
-    deps.log(`       export DATABASE_URL=${databaseUrl}`);
+    deps.log("       # DATABASE_URL was written to the config file above (value hidden).");
+    deps.log(`       . ${shellQuote(flags.configPath)}`);
   }
   deps.log("");
   deps.log("  2. Run database migrations:");
@@ -147,9 +148,6 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
 }
 
 async function resolveApiKey(flags: InitFlags, deps: InitCommandDeps): Promise<string | undefined> {
-  if (flags.apiKey !== undefined) {
-    return flags.apiKey;
-  }
   const fromEnv = deps.env.OPENROUTER_API_KEY;
   if (fromEnv !== undefined && fromEnv.length > 0) {
     return fromEnv;
@@ -157,12 +155,9 @@ async function resolveApiKey(flags: InitFlags, deps: InitCommandDeps): Promise<s
   if (flags.nonInteractive) {
     return undefined;
   }
-  const input = await deps.prompt(
-    "  Enter your OpenRouter API key (get one at https://openrouter.ai/keys,\n" +
-      "  or press Enter to skip): ",
-  );
-  const trimmed = input.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  deps.log("  OpenRouter API keys are not accepted in prompts or CLI flags.");
+  deps.log("  Set OPENROUTER_API_KEY or load it from an env file, then re-run init.");
+  return undefined;
 }
 
 async function resolveZdrConfirmation(flags: InitFlags, deps: InitCommandDeps): Promise<boolean> {
@@ -194,9 +189,6 @@ async function resolveDatabaseUrl(
   flags: InitFlags,
   deps: InitCommandDeps,
 ): Promise<string | undefined> {
-  if (flags.databaseUrl !== undefined) {
-    return flags.databaseUrl;
-  }
   const fromEnv = deps.env.DATABASE_URL;
   if (fromEnv !== undefined && fromEnv.length > 0) {
     return fromEnv;
@@ -206,14 +198,12 @@ async function resolveDatabaseUrl(
   }
   deps.log("  itotori uses Postgres to store localization state.");
   deps.log("");
+  deps.log("  DATABASE_URL is not accepted in prompts or CLI flags.");
   deps.log("  Options:");
   deps.log("    a) If you have docker: run `just db-up` to start a container");
-  deps.log("    b) Point DATABASE_URL at an existing Postgres instance");
+  deps.log("    b) Export DATABASE_URL for an existing Postgres instance and re-run init");
   deps.log("    c) Use a portable Postgres (ITOTORI_POSTGRES_BIN_DIR)");
-  deps.log("");
-  const input = await deps.prompt("  Enter your DATABASE_URL (or press Enter to skip): ");
-  const trimmed = input.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return undefined;
 }
 
 export function buildConfigFileContents(input: {
@@ -233,13 +223,13 @@ export function buildConfigFileContents(input: {
     "",
   ];
   if (input.apiKey !== undefined) {
-    lines.push(`OPENROUTER_API_KEY=${input.apiKey}`);
+    lines.push(`OPENROUTER_API_KEY=${shellQuote(input.apiKey)}`);
   }
   if (input.zdrConfirmed) {
     lines.push("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
   }
   if (input.databaseUrl !== undefined) {
-    lines.push(`DATABASE_URL=${input.databaseUrl}`);
+    lines.push(`DATABASE_URL=${shellQuote(input.databaseUrl)}`);
   }
   lines.push("");
   return lines.join("\n");
@@ -249,4 +239,19 @@ function optionalFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   const value = args[index + 1];
   return index >= 0 && value ? value : undefined;
+}
+
+function rejectRemovedSecretFlag(args: readonly string[], name: string): void {
+  if (args.includes(name)) {
+    throw new Error(
+      `itotori init no longer accepts ${name}; put the secret in the environment or an env file and pass only the file path`,
+    );
+  }
+}
+
+export function shellQuote(value: string): string {
+  if (/[\r\n]/u.test(value)) {
+    throw new Error("cannot write shell export: value contains a newline");
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

@@ -1191,13 +1191,16 @@ const repositoryPermissionGateMatrix = [
 /**
  * auth-007 — the auth-management API permission matrix.
  *
- * `authManagementOperations` is the EXHAUSTIVE list of public methods on
+ * `authManagementOperations` is the EXHAUSTIVE list of permission-gated public methods on
  * `ItotoriPrincipalRepository` (the auth-management surface: principal/account/
  * permission-set CRUD, direct + set grant/revoke, and the gated principal
- * reads). Account/principal administration is gated on `auth.admin`; permission
- * editor operations are gated on `auth.permissions.manage`. Every entry is
- * registered in `repositoryPermissionGateMatrix` with a success fixture and a
- * denial fixture.
+ * reads). `loadActorIdentity` is intentionally excluded: it is a constrained
+ * self-read for the signed-in actor, and the exhaustiveness assertion below
+ * tracks it separately so new public methods still must be classified.
+ * Account/principal administration is gated on `auth.admin`; permission editor
+ * operations are gated on `auth.permissions.manage`. Every entry is registered
+ * in `repositoryPermissionGateMatrix` with a success fixture and a denial
+ * fixture.
  * The `satisfies` clause keeps each entry honest against
  * `ItotoriPrincipalRepositoryPort`; the runtime exhaustiveness assertion in the
  * `auth-management operation matrix (auth-007)` group makes the list EXHAUSTIVE
@@ -1223,6 +1226,10 @@ const authManagementOperations = [
   "revokeDirectPermission",
   "loadPrincipal",
   "resolvePrincipalPermissions",
+] as const satisfies readonly (keyof ItotoriPrincipalRepositoryPort)[];
+
+const principalRepositorySelfReadOperations = [
+  "loadActorIdentity",
 ] as const satisfies readonly (keyof ItotoriPrincipalRepositoryPort)[];
 
 const authManagementOperationPermissionKeys = {
@@ -2487,12 +2494,15 @@ describe("auth-management operation matrix (auth-007)", () => {
   );
 
   // ANY auth-management-op-is-gated check: the explicit list must cover EVERY
-  // public method on ItotoriPrincipalRepository AND the matrix must register
-  // exactly those operations. A new auth-management method added to the class
-  // without being listed (and thus matrix-registered) fails here, and the
-  // per-operation tests below fail if a listed op is un-gated or un-registered.
+  // permission-gated public method on ItotoriPrincipalRepository, while the
+  // self-read list must cover EVERY intentional ungated public method. A new
+  // public method added to the class without being classified fails here, and
+  // the per-operation tests below fail if a listed auth-management op is
+  // un-gated or un-registered.
   it("registers every ItotoriPrincipalRepository public method as an auth-management operation", () => {
-    expect([...authManagementOperations].sort()).toEqual(principalRepositoryPublicMethods());
+    expect(
+      [...authManagementOperations, ...principalRepositorySelfReadOperations].sort(),
+    ).toEqual(principalRepositoryPublicMethods());
     const matrixMutations = authManagementMatrixEntries.map((entry) => entry.mutation).sort();
     expect(matrixMutations).toEqual([...authManagementOperations].sort());
   });

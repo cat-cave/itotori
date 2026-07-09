@@ -461,6 +461,14 @@ export async function withDatabaseItotoriServices<T>(
     const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
     const authSessionService = new ItotoriAuthSessionService(context.db);
     const principalRepository = new ItotoriPrincipalRepository(context.db);
+    let actorPrincipalIdPromise: Promise<string> | undefined;
+    const resolveActorPrincipalId = (): Promise<string> => {
+      actorPrincipalIdPromise ??= resolveDatabaseServiceActorPrincipalId(
+        principalRepository,
+        localUserActor,
+      );
+      return actorPrincipalIdPromise;
+    };
     const benchmarkRunRepository = new ItotoriBenchmarkRunRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
@@ -743,15 +751,15 @@ export async function withDatabaseItotoriServices<T>(
         },
       },
       authSessions: {
-        listPrincipalSessions: (principalId) =>
+        listPrincipalSessions: async (principalId) =>
           authSessionService.listPrincipalSessions(localUserActor, {
-            actorPrincipalId: localOperatorPrincipalId,
+            actorPrincipalId: await resolveActorPrincipalId(),
             targetPrincipalId: principalId,
           }),
-        revokePrincipalSession: (principalId, sessionId, input) => {
+        revokePrincipalSession: async (principalId, sessionId, input) => {
           const { reason, requestId } = input;
           return authSessionService.revokePrincipalSession(localUserActor, {
-            actorPrincipalId: localOperatorPrincipalId,
+            actorPrincipalId: await resolveActorPrincipalId(),
             targetPrincipalId: principalId,
             sessionId,
             ...(reason === null ? {} : { reason }),
@@ -802,4 +810,15 @@ async function resolveDatabaseServiceActor(
     return resolved.actor;
   }
   return defaultLocalUserActor;
+}
+
+async function resolveDatabaseServiceActorPrincipalId(
+  principalRepository: ItotoriPrincipalRepository,
+  actor: AuthorizationActor,
+): Promise<string> {
+  const identity = await principalRepository.loadActorIdentity(actor);
+  if (identity.principalId === null) {
+    throw new Error(`authenticated actor ${actor.userId} has no principal identity`);
+  }
+  return identity.principalId;
 }

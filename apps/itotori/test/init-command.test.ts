@@ -15,11 +15,13 @@ import {
   buildConfigFileContents,
   parseInitFlags,
   runInitCommand,
+  shellQuote,
   type InitCommandDeps,
 } from "../src/init-command.js";
 
 // DUMMY value only — never a real secret.
 const DUMMY_KEY = "sk-or-dummy-init-test-1111111111";
+const DUMMY_DATABASE_URL = "postgres://user:pa$$@localhost:5432/itotori";
 
 describe("itotori init", () => {
   let tmp: string;
@@ -45,7 +47,7 @@ describe("itotori init", () => {
   });
 
   describe("non-interactive mode", () => {
-    it("writes a config file with the API key + ZDR + DATABASE_URL", async () => {
+    it("writes a config file with the API key + ZDR + DATABASE_URL from env", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const deps = makeDeps({
@@ -53,16 +55,16 @@ describe("itotori init", () => {
         logs,
         prompts: new Map(),
         files: new Map(),
+        env: {
+          OPENROUTER_API_KEY: DUMMY_KEY,
+          DATABASE_URL: DUMMY_DATABASE_URL,
+        },
       });
 
       await runInitCommand(
         [
           "init",
-          "--api-key",
-          DUMMY_KEY,
           "--zdr-asserted",
-          "--database-url",
-          "postgres://user:pass@localhost:5432/itotori",
           "--non-interactive",
           "--config",
           configPath,
@@ -76,12 +78,13 @@ describe("itotori init", () => {
       expect(written?.mode).toBe(0o600);
 
       const contents = written?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${DUMMY_KEY}`);
+      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
       expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain("DATABASE_URL=postgres://user:pass@localhost:5432/itotori");
+      expect(contents).toContain(`DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
 
       expect(logs.join("\n")).toContain("Config file written");
       expect(logs.join("\n")).toContain(configPath);
+      expect(logs.join("\n")).not.toContain(DUMMY_DATABASE_URL);
     });
 
     it("never logs the API key value", async () => {
@@ -97,8 +100,6 @@ describe("itotori init", () => {
       await runInitCommand(
         [
           "init",
-          "--api-key",
-          DUMMY_KEY,
           "--zdr-asserted",
           "--non-interactive",
           "--config",
@@ -120,10 +121,7 @@ describe("itotori init", () => {
         files: new Map(),
       });
 
-      await runInitCommand(
-        ["init", "--api-key", DUMMY_KEY, "--non-interactive", "--config", configPath],
-        deps,
-      );
+      await runInitCommand(["init", "--non-interactive", "--config", configPath], deps);
 
       const written = deps.writeTextCalls[0]?.contents ?? "";
       expect(written).not.toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED");
@@ -156,13 +154,12 @@ describe("itotori init", () => {
         logs,
         prompts: new Map(),
         files: new Map(),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY },
       });
 
       await runInitCommand(
         [
           "init",
-          "--api-key",
-          DUMMY_KEY,
           "--zdr-asserted",
           "--non-interactive",
           "--config",
@@ -174,7 +171,7 @@ describe("itotori init", () => {
       expect(logs.join("\n")).toContain("No DATABASE_URL");
     });
 
-    it("reads API key from env when --api-key is absent", async () => {
+    it("reads API key from env", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const deps = makeDeps({
@@ -188,7 +185,7 @@ describe("itotori init", () => {
       await runInitCommand(["init", "--non-interactive", "--config", configPath], deps);
 
       const contents = deps.writeTextCalls[0]?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${DUMMY_KEY}`);
+      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
       expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
     });
 
@@ -201,13 +198,12 @@ describe("itotori init", () => {
         prompts: new Map(),
         files: new Map(),
         existingPaths: new Set([configPath]),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY },
       });
 
       await runInitCommand(
         [
           "init",
-          "--api-key",
-          DUMMY_KEY,
           "--zdr-asserted",
           "--non-interactive",
           "--config",
@@ -222,36 +218,34 @@ describe("itotori init", () => {
   });
 
   describe("interactive mode", () => {
-    it("prompts for API key, ZDR, and DATABASE_URL", async () => {
+    it("uses env for secrets and prompts for ZDR", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const prompts = new Map<string, string>([
-        ["Enter your OpenRouter API key", DUMMY_KEY],
         ["Confirm your OpenRouter account is configured ZDR-only", "yes"],
-        ["Enter your DATABASE_URL", "postgres://localhost/itotori"],
       ]);
       const deps = makeDeps({
         configPath,
         logs,
         prompts,
         files: new Map(),
+        env: { OPENROUTER_API_KEY: DUMMY_KEY, DATABASE_URL: DUMMY_DATABASE_URL },
       });
 
       await runInitCommand(["init", "--config", configPath], deps);
 
       const contents = deps.writeTextCalls[0]?.contents ?? "";
-      expect(contents).toContain(`OPENROUTER_API_KEY=${DUMMY_KEY}`);
+      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
       expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain("DATABASE_URL=postgres://localhost/itotori");
+      expect(contents).toContain(`DATABASE_URL=${shellQuote(DUMMY_DATABASE_URL)}`);
+      expect(logs.join("\n")).not.toContain(DUMMY_DATABASE_URL);
     });
 
-    it("skips API key when user presses Enter", async () => {
+    it("does not prompt for secret values when env is missing", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const prompts = new Map<string, string>([
-        ["Enter your OpenRouter API key", ""],
         ["Confirm your OpenRouter account is configured ZDR-only", "yes"],
-        ["Enter your DATABASE_URL", ""],
       ]);
       const deps = makeDeps({
         configPath,
@@ -264,16 +258,16 @@ describe("itotori init", () => {
 
       const contents = deps.writeTextCalls[0]?.contents ?? "";
       expect(contents).not.toContain("OPENROUTER_API_KEY=");
+      expect(contents).not.toContain("DATABASE_URL=");
       expect(logs.join("\n")).toContain("No OpenRouter API key");
+      expect(logs.join("\n")).toContain("DATABASE_URL is not accepted in prompts");
     });
 
     it("refuses to overwrite existing config when user says no", async () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const prompts = new Map<string, string>([
-        ["Enter your OpenRouter API key", DUMMY_KEY],
         ["Confirm your OpenRouter account is configured ZDR-only", "yes"],
-        ["Enter your DATABASE_URL", ""],
         ["Overwrite", "no"],
       ]);
       const deps = makeDeps({
@@ -294,9 +288,7 @@ describe("itotori init", () => {
       const configPath = join(tmp, "config.env");
       const logs: string[] = [];
       const prompts = new Map<string, string>([
-        ["Enter your OpenRouter API key", DUMMY_KEY],
         ["Confirm your OpenRouter account is configured ZDR-only", "no"],
-        ["Enter your DATABASE_URL", ""],
       ]);
       const deps = makeDeps({
         configPath,
@@ -318,11 +310,11 @@ describe("itotori init", () => {
       const contents = buildConfigFileContents({
         apiKey: "sk-test",
         zdrConfirmed: true,
-        databaseUrl: "postgres://localhost/db",
+        databaseUrl: "postgres://user:pa$$@localhost/db",
       });
-      expect(contents).toContain("OPENROUTER_API_KEY=sk-test");
+      expect(contents).toContain("OPENROUTER_API_KEY='sk-test'");
       expect(contents).toContain("OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
-      expect(contents).toContain("DATABASE_URL=postgres://localhost/db");
+      expect(contents).toContain("DATABASE_URL='postgres://user:pa$$@localhost/db'");
     });
 
     it("omits vars that are not set", () => {
@@ -341,20 +333,28 @@ describe("itotori init", () => {
     it("parses all flags", () => {
       const flags = parseInitFlags([
         "init",
-        "--api-key",
-        "sk-test",
         "--zdr-asserted",
         "--config",
         "/custom/path.env",
-        "--database-url",
-        "postgres://localhost/db",
         "--non-interactive",
       ]);
-      expect(flags.apiKey).toBe("sk-test");
       expect(flags.zdrAsserted).toBe(true);
       expect(flags.configPath).toBe("/custom/path.env");
-      expect(flags.databaseUrl).toBe("postgres://localhost/db");
       expect(flags.nonInteractive).toBe(true);
+    });
+
+    it("rejects removed secret-bearing flags without echoing values", () => {
+      expect(() => parseInitFlags(["init", "--api-key", DUMMY_KEY])).toThrow(
+        /no longer accepts --api-key/u,
+      );
+      expect(() => parseInitFlags(["init", "--database-url", DUMMY_DATABASE_URL])).toThrow(
+        /no longer accepts --database-url/u,
+      );
+      try {
+        parseInitFlags(["init", "--database-url", DUMMY_DATABASE_URL]);
+      } catch (error) {
+        expect(String(error)).not.toContain(DUMMY_DATABASE_URL);
+      }
     });
 
     it("defaults configPath to the standard location", () => {
@@ -377,14 +377,12 @@ describe("itotori init", () => {
       await runInitCommand(
         [
           "init",
-          "--api-key",
-          DUMMY_KEY,
           "--zdr-asserted",
           "--non-interactive",
           "--config",
           configPath,
         ],
-        realDeps(),
+        realDeps({ OPENROUTER_API_KEY: DUMMY_KEY }),
       );
 
       const stat = statSync(configPath);
@@ -392,7 +390,7 @@ describe("itotori init", () => {
       expect(mode).toBe(0o600);
 
       const contents = readFileSync(configPath, "utf8");
-      expect(contents).toContain(`OPENROUTER_API_KEY=${DUMMY_KEY}`);
+      expect(contents).toContain(`OPENROUTER_API_KEY=${shellQuote(DUMMY_KEY)}`);
     });
   });
 });
@@ -433,9 +431,9 @@ function makeDeps(options: {
   };
 }
 
-function realDeps(): InitCommandDeps {
+function realDeps(env: Record<string, string | undefined> = process.env): InitCommandDeps {
   return {
-    env: process.env,
+    env,
     existsPath: (path) => existsSync(path),
     writeText: (path, contents, mode) => {
       mkdirSync(dirname(path), { recursive: true });

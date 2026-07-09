@@ -29,7 +29,15 @@ import { describe, expect, it, vi } from "vitest";
 import { findUncoveredProjectWorkflowMutations } from "./api-mutation-coverage-guard.js";
 import { assertForbiddenApiMutation } from "../../../packages/itotori-db/test/authorization-test-helpers.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
-import { authSessions } from "../../../packages/itotori-db/src/schema.js";
+import {
+  authAccountMemberships,
+  authAccounts,
+  authAuditEvents,
+  authPrincipalPermissionGrants,
+  authPrincipals,
+  authSessions,
+  authUsers,
+} from "../../../packages/itotori-db/src/schema.js";
 import {
   apiMutationPermissionGates,
   handleItotoriApiRequest,
@@ -5258,6 +5266,111 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
           ).rejects.toBeInstanceOf(ItotoriInvalidAuthSessionError);
           expect(callback).not.toHaveBeenCalled();
         }
+      } finally {
+        await context.close();
+      }
+    },
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "DB-backed session admin revocation audit uses the authenticated session principal",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        const now = Date.now();
+        const accountId = "account-app-session-admin";
+        const adminPrincipalId = "principal-app-session-admin";
+        const targetPrincipalId = "principal-app-session-target";
+        const adminSessionId = "session-app-session-admin";
+        const targetSessionId = "session-app-session-target";
+        const requestId = "req-app-session-revoke";
+
+        await context.db.insert(authAccounts).values({
+          accountId,
+          slug: "app-session-admin",
+          name: "App session admin",
+        });
+        await context.db.insert(authPrincipals).values([
+          { principalId: adminPrincipalId, principalKind: "human_user" },
+          { principalId: targetPrincipalId, principalKind: "human_user" },
+        ]);
+        await context.db.insert(authUsers).values([
+          {
+            userId: "user-app-session-admin",
+            principalId: adminPrincipalId,
+            displayName: "Session admin",
+          },
+          {
+            userId: "user-app-session-target",
+            principalId: targetPrincipalId,
+            displayName: "Session target",
+          },
+        ]);
+        await context.db.insert(authAccountMemberships).values([
+          {
+            membershipId: "membership-app-session-admin",
+            accountId,
+            userId: "user-app-session-admin",
+          },
+          {
+            membershipId: "membership-app-session-target",
+            accountId,
+            userId: "user-app-session-target",
+          },
+        ]);
+        await context.db.insert(authPrincipalPermissionGrants).values({
+          principalId: adminPrincipalId,
+          permission: permissionValues.authSessionsManage,
+        });
+        await context.db.insert(authSessions).values([
+          {
+            sessionId: adminSessionId,
+            principalId: adminPrincipalId,
+            expiresAt: new Date(now + 60 * 60 * 1000),
+          },
+          {
+            sessionId: targetSessionId,
+            principalId: targetPrincipalId,
+            expiresAt: new Date(now + 60 * 60 * 1000),
+          },
+        ]);
+
+        await withDatabaseItotoriServices(
+          {
+            databaseUrl: context.databaseUrl,
+            bootstrapLocalUser: false,
+            sessionId: adminSessionId,
+          },
+          async (services) => {
+            await expect(services.authSessions.listPrincipalSessions(targetPrincipalId)).resolves
+              .toHaveLength(1);
+            await services.authSessions.revokePrincipalSession(
+              targetPrincipalId,
+              targetSessionId,
+              {
+                reason: "lost device",
+                requestId,
+              },
+            );
+          },
+        );
+
+        const auditRows = await context.db
+          .select({
+            actorPrincipalId: authAuditEvents.actorPrincipalId,
+            targetPrincipalId: authAuditEvents.targetPrincipalId,
+            action: authAuditEvents.action,
+            requestId: authAuditEvents.requestId,
+          })
+          .from(authAuditEvents);
+        expect(auditRows.filter((row) => row.requestId === requestId)).toEqual([
+          {
+            actorPrincipalId: adminPrincipalId,
+            targetPrincipalId,
+            action: "session_revoked",
+            requestId,
+          },
+        ]);
       } finally {
         await context.close();
       }
