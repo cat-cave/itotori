@@ -84,6 +84,7 @@ type Schema = { readonly [key: string]: JsonValue };
 type Ref = (name: string) => Schema;
 
 const str: Schema = { type: "string" };
+const nullableStr: Schema = { type: ["string", "null"] };
 const num: Schema = { type: "number" };
 const bool: Schema = { type: "boolean" };
 const arr: Schema = { type: "array" };
@@ -327,10 +328,10 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
       properties: {
         permission: ref("ReviewerQueuePermissionView"),
-        projectId: str,
+        projectId: nullableStr,
         localeBranchId: str,
-        sourceBundleId: str,
-        targetLocale: str,
+        sourceBundleId: nullableStr,
+        targetLocale: nullableStr,
         units: arr,
         diagnostics: arr,
       },

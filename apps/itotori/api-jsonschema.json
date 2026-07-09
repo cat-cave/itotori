@@ -2143,16 +2143,25 @@
           "$ref": "#/definitions/ReviewerQueuePermissionView"
         },
         "projectId": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "schemaVersion": {
           "const": "workspace.correction_preview.v0.1"
         },
         "sourceBundleId": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "targetLocale": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "units": {
           "type": "array"
