@@ -131,7 +131,9 @@ export function resolveEffectiveSelection(
 ): ProjectBranchSelection {
   const projectId = override.projectId ?? server.projectId;
   const localeBranchId =
-    override.projectId !== null ? override.localeBranchId : override.localeBranchId ?? server.localeBranchId;
+    override.projectId !== null
+      ? override.localeBranchId
+      : (override.localeBranchId ?? server.localeBranchId);
   return { projectId, localeBranchId };
 }
 

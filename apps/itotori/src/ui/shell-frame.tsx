@@ -31,7 +31,11 @@ import {
   resolveEffectiveSelection,
   serverSelectionFromStatus,
 } from "./project-branch-switcher.js";
-import { NO_SHELL_SELECTION, ShellSelectionProvider, useShellSelection } from "./shell-selection.js";
+import {
+  NO_SHELL_SELECTION,
+  ShellSelectionProvider,
+  useShellSelection,
+} from "./shell-selection.js";
 import type { AppLocation } from "./App.js";
 
 // ---------------------------------------------------------------------------
@@ -411,9 +415,7 @@ function ShellFrameInner({
   const list = useApiQuery("projects.list", {}, "shell-frame:projects");
   const shellSel = useShellSelection();
 
-  const serverSelection = serverSelectionFromStatus(
-    status.state === "ready" ? status.data : null,
-  );
+  const serverSelection = serverSelectionFromStatus(status.state === "ready" ? status.data : null);
   const effectiveSelection = resolveEffectiveSelection(
     serverSelection,
     shellSel?.override ?? NO_SHELL_SELECTION,
@@ -430,9 +432,9 @@ function ShellFrameInner({
     effectiveSelection.projectId === null
       ? null
       : (listProjects.find((project) => project.projectId === effectiveSelection.projectId) ??
-          (statusProject !== null && statusProject.projectId === effectiveSelection.projectId
-            ? statusProject
-            : null));
+        (statusProject !== null && statusProject.projectId === effectiveSelection.projectId
+          ? statusProject
+          : null));
   const effectiveBranch =
     effectiveSelection.localeBranchId === null
       ? null

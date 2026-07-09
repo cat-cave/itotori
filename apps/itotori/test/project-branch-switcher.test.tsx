@@ -133,10 +133,14 @@ describe("project-branch-switcher — pure builders", () => {
 
   it("selectBranchesForProject returns the project's branches, [] for unknown / null", () => {
     expect(
-      selectBranchesForProject([activeProject, otherProject], "project-1").map((b) => b.targetLocale),
+      selectBranchesForProject([activeProject, otherProject], "project-1").map(
+        (b) => b.targetLocale,
+      ),
     ).toEqual(["en-US", "fr-FR"]);
     expect(
-      selectBranchesForProject([activeProject, otherProject], "project-2").map((b) => b.targetLocale),
+      selectBranchesForProject([activeProject, otherProject], "project-2").map(
+        (b) => b.targetLocale,
+      ),
     ).toEqual(["de-DE"]);
     expect(selectBranchesForProject([activeProject, otherProject], "unknown")).toEqual([]);
     expect(selectBranchesForProject([activeProject, otherProject], null)).toEqual([]);
@@ -159,17 +163,24 @@ describe("project-branch-switcher — resolveEffectiveSelection reconciliation",
   const SERVER = { projectId: "project-1", localeBranchId: FR_FR_BRANCH.localeBranchId };
 
   it("falls back to the server selection when no override is set", () => {
-    expect(resolveEffectiveSelection(SERVER, { projectId: null, localeBranchId: null })).toEqual(SERVER);
+    expect(resolveEffectiveSelection(SERVER, { projectId: null, localeBranchId: null })).toEqual(
+      SERVER,
+    );
   });
 
   it("a branch override wins within the server project", () => {
     expect(
-      resolveEffectiveSelection(SERVER, { projectId: null, localeBranchId: EN_US_BRANCH.localeBranchId }),
+      resolveEffectiveSelection(SERVER, {
+        projectId: null,
+        localeBranchId: EN_US_BRANCH.localeBranchId,
+      }),
     ).toEqual({ projectId: "project-1", localeBranchId: EN_US_BRANCH.localeBranchId });
   });
 
   it("a project override wins AND invalidates the server-selected branch (it belongs to the server project)", () => {
-    expect(resolveEffectiveSelection(SERVER, { projectId: "project-2", localeBranchId: null })).toEqual({
+    expect(
+      resolveEffectiveSelection(SERVER, { projectId: "project-2", localeBranchId: null }),
+    ).toEqual({
       projectId: "project-2",
       localeBranchId: null,
     });
@@ -249,9 +260,9 @@ describe("project-branch-switcher — disclosure behavior", () => {
     fireEvent.click(within(branchGroup).getByText("en-US"));
     // The picked branch is now the active one.
     const reopened = screen.getByRole("menu", { name: "Switch project and locale branch" });
-    const branches = within(
-      within(reopened).getByRole("group", { name: "Branch" }),
-    ).getAllByRole("menuitemradio");
+    const branches = within(within(reopened).getByRole("group", { name: "Branch" })).getAllByRole(
+      "menuitemradio",
+    );
     expect(branches[0]).toHaveAttribute("aria-checked", "true");
     expect(branches[1]).toHaveAttribute("aria-checked", "false");
     expect(onSelect).toHaveBeenCalledWith({
@@ -267,9 +278,9 @@ describe("project-branch-switcher — disclosure behavior", () => {
     const projectGroup = await within(panel).findByRole("group", { name: "Project" });
     fireEvent.click(within(projectGroup).getByText("project-2"));
     const reopened = screen.getByRole("menu", { name: "Switch project and locale branch" });
-    const projects = within(
-      within(reopened).getByRole("group", { name: "Project" }),
-    ).getAllByRole("menuitemradio");
+    const projects = within(within(reopened).getByRole("group", { name: "Project" })).getAllByRole(
+      "menuitemradio",
+    );
     expect(projects[0]).toHaveAttribute("aria-checked", "false");
     expect(projects[1]).toHaveAttribute("aria-checked", "true");
     // The branch list now reflects project-2's branches (de-DE); none is
@@ -329,7 +340,9 @@ describe("project-branch-switcher — shell-frame wiring (switch drives the chro
     fireEvent.click(within(branchGroup).getByText("en-US"));
 
     // The status-bar Branch cell now shows the picked branch (en-US).
-    const branchCell = within(statusBar()).getByText("Branch").closest('[data-shell-stat="branch"]');
+    const branchCell = within(statusBar())
+      .getByText("Branch")
+      .closest('[data-shell-stat="branch"]');
     expect(branchCell).not.toBeNull();
     expect(branchCell).toHaveTextContent("en-US");
     // The source → branch cell reflects sourceLocale → picked branch too.
@@ -354,9 +367,13 @@ describe("project-branch-switcher — shell-frame wiring (switch drives the chro
     fireEvent.click(within(projectGroup).getByText("project-2"));
     // The Project cell now shows project-2; the branch cell has no selection
     // (the project switch reset the branch override → none selected).
-    const projectCell = within(statusBar()).getByText("Project").closest('[data-shell-stat="project"]');
+    const projectCell = within(statusBar())
+      .getByText("Project")
+      .closest('[data-shell-stat="project"]');
     expect(projectCell).toHaveTextContent("project-2");
-    const branchCell = within(statusBar()).getByText("Branch").closest('[data-shell-stat="branch"]');
+    const branchCell = within(statusBar())
+      .getByText("Branch")
+      .closest('[data-shell-stat="branch"]');
     expect(branchCell).toHaveTextContent("none selected");
   });
 });
