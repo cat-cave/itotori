@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use utsushi_core::{
     ApproximationTier, EvidenceTier, FidelityTier, RuntimeAdapter, RuntimeAdapterDescriptor,
     RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
-    RuntimeOperation, RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
+    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
 use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts, replay_scene, replay_until_first_pause};
 
