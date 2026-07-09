@@ -64,7 +64,7 @@ use crate::rlop::module_msg::{
 };
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::rlop::module_render::register_render_rlops;
-use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
+use crate::rlop::module_sel::{SelRuntime, SelectionPrompt, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
 use crate::rlop::{
@@ -1016,6 +1016,7 @@ struct RegistryHandles {
     registry: RlopRegistry,
     audio: Arc<AudioRuntime>,
     graphics: Arc<GraphicsRuntime>,
+    selection: Arc<SelRuntime>,
 }
 
 /// Mount all nine opcode families + the catalog gap-fill, returning the
@@ -1065,7 +1066,7 @@ fn mount_registry_handles(
         Arc::clone(&sink),
         Arc::clone(&graphics_runtime),
     ));
-    register_sel_rlops(&mut registry, sel_runtime);
+    register_sel_rlops(&mut registry, Arc::clone(&sel_runtime));
 
     // System (fixed-seed clock/RNG → deterministic replay).
     let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
@@ -1089,6 +1090,7 @@ fn mount_registry_handles(
         registry,
         audio: audio_runtime,
         graphics: graphics_runtime,
+        selection: sel_runtime,
     }
 }
 
@@ -1716,6 +1718,7 @@ impl ReplayEngine {
             &mut branch_scheduler,
         );
         let first_cross_scene = branch_pass.first_cross_scene;
+        let branch_prompts = branch_pass.selection_prompts;
         let branch = branch_pass.scene;
         let branch_lines = branch_sink.take_lines();
 
@@ -1724,23 +1727,23 @@ impl ReplayEngine {
         // used for graphics/audio backfill regardless.
         let linear_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut linear_scheduler = AlwaysReadyScheduler;
-        let linear = self
-            .observe_pass(
-                scene_id,
-                opts,
-                ControlFlowMount::LinearWalk,
-                Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
-                &mut linear_scheduler,
-            )
-            .scene;
+        let linear_pass = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::LinearWalk,
+            Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
+            &mut linear_scheduler,
+        );
+        let linear_prompts = linear_pass.selection_prompts;
+        let linear = linear_pass.scene;
+        let linear_lines = linear_sink.take_lines();
 
         // Choose the play order: branch when it reached dialogue, else the
-        // single-pass byte-order catalogue. NEVER both (no doubling).
-        let play_order_lines = if branch_lines.is_empty() {
-            linear_sink.take_lines()
-        } else {
-            branch_lines
-        };
+        // single-pass byte-order catalogue. Prompts follow that exact same
+        // choice: they identify the text lines in their own pass, never a
+        // cross-pass mixture. NEVER combine passes (no doubling).
+        let (play_order_lines, selection_prompts) =
+            select_port_pass(branch_lines, branch_prompts, linear_lines, linear_prompts);
 
         let mut audio_events = branch.audio_events;
         audio_events.extend(linear.audio_events);
@@ -1751,6 +1754,7 @@ impl ReplayEngine {
         };
         PortObservation {
             play_order_lines,
+            selection_prompts,
             first_cross_scene,
             scene: SceneObservation {
                 audio_events,
@@ -1894,6 +1898,7 @@ impl ReplayEngine {
                 reached_natural_terminus,
             },
             first_cross_scene,
+            selection_prompts: handles.selection.take_prompts(),
         }
     }
 
@@ -2453,6 +2458,8 @@ pub struct PortObservation {
     /// window renders one-per-frame and what the substrate text sink
     /// surfaces — NOT the doubled two-pass catalogue.
     pub play_order_lines: Vec<TextLine>,
+    /// Selection prompts from the same chosen pass as [`Self::play_order_lines`].
+    pub selection_prompts: Vec<SelectionPrompt>,
     /// The first cross-scene dispatch target the branch-following pass
     /// followed (a real `jump` / `farcall` / entrypoint resolution into a
     /// scene present in the store), or `None` when play stayed within this
@@ -2463,6 +2470,23 @@ pub struct PortObservation {
     /// diagnostics). Its graphics/audio may be backfilled from the linear
     /// catalogue pass; its text is not used (see `play_order_lines`).
     pub scene: SceneObservation,
+}
+
+/// Choose the single replay pass that supplies port-facing text, carrying its
+/// prompt trace alongside it. This is deliberately private transport logic,
+/// not selection policy: both passes have already executed their respective
+/// schedulers before this point.
+fn select_port_pass(
+    branch_lines: Vec<TextLine>,
+    branch_prompts: Vec<SelectionPrompt>,
+    linear_lines: Vec<TextLine>,
+    linear_prompts: Vec<SelectionPrompt>,
+) -> (Vec<TextLine>, Vec<SelectionPrompt>) {
+    if branch_lines.is_empty() {
+        (linear_lines, linear_prompts)
+    } else {
+        (branch_lines, branch_prompts)
+    }
 }
 
 /// The outcome of a single branch-following drive under a fixed choice
@@ -2489,6 +2513,7 @@ pub struct BranchFollowingObservation {
 struct PassObservation {
     scene: SceneObservation,
     first_cross_scene: Option<SceneId>,
+    selection_prompts: Vec<SelectionPrompt>,
 }
 
 /// A bounded, continuous MULTI-SCENE play-order stream produced by
@@ -2822,6 +2847,51 @@ pub fn restore_into_fresh_vm(snapshot: &Snapshot, scene_id: u16) -> Result<Vm, R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prompt(id: u64, line_id: &str) -> SelectionPrompt {
+        SelectionPrompt {
+            longop_id: crate::rlop::LongOpId(id),
+            kind: crate::rlop::SelectionPromptKind::Text,
+            cancelable: false,
+            option_line_ids: vec![line_id.to_string()],
+        }
+    }
+
+    fn line(line_id: &str) -> TextLine {
+        TextLine {
+            line_id: line_id.to_string(),
+            evidence_tier: EvidenceTier::E1,
+            text: line_id.to_string(),
+            speaker: None,
+            color: None,
+            text_surface: None,
+            bridge_ref: None,
+            source_asset: None,
+        }
+    }
+
+    #[test]
+    fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
+        let branch_prompt = prompt(1, "branch-line");
+        let linear_prompt = prompt(2, "linear-line");
+        let (lines, prompts) = select_port_pass(
+            vec![line("branch-line")],
+            vec![branch_prompt.clone()],
+            vec![line("linear-line")],
+            vec![linear_prompt.clone()],
+        );
+        assert_eq!(lines[0].line_id, "branch-line");
+        assert_eq!(prompts, vec![branch_prompt]);
+
+        let (lines, prompts) = select_port_pass(
+            vec![],
+            vec![prompt(3, "unused-branch-prompt")],
+            vec![line("linear-line")],
+            vec![linear_prompt.clone()],
+        );
+        assert_eq!(lines[0].line_id, "linear-line");
+        assert_eq!(prompts, vec![linear_prompt]);
+    }
 
     #[test]
     fn replay_opts_default_step_budget_matches_constant() {

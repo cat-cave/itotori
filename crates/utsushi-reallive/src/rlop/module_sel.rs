@@ -433,6 +433,31 @@ struct SelRuntimeInner {
     /// shape does not match the declared contract. Drained via
     /// [`SelRuntime::take_warnings`].
     warnings: Vec<SelRuntimeWarning>,
+    prompts: Vec<SelectionPrompt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectButtonPromptOption {
+    pub display_index: u16,
+    pub button_number: i32,
+    pub fg_slot: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionPromptKind {
+    Text,
+    ObjectButtons {
+        group: i32,
+        options: Vec<ObjectButtonPromptOption>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionPrompt {
+    pub longop_id: super::LongOpId,
+    pub kind: SelectionPromptKind,
+    pub cancelable: bool,
+    pub option_line_ids: Vec<String>,
 }
 
 /// Typed warning the [`SelRuntime`] records on a sink failure or a
@@ -569,6 +594,14 @@ impl SelRuntime {
         std::mem::take(&mut guard.warnings)
     }
 
+    pub fn take_prompts(&self) -> Vec<SelectionPrompt> {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::mem::take(&mut guard.prompts)
+    }
+
     fn record_warning(&self, warning: SelRuntimeWarning) {
         let mut guard = self
             .inner
@@ -615,7 +648,12 @@ impl SelRuntime {
     /// render-modality marker and the SELBTN styling tags when the
     /// Gameexe exposes them). Sink-side errors are recorded as fail-soft
     /// warnings.
-    fn emit_choice(&self, variant: SelectVariant, choice_index: usize, text: String) {
+    fn emit_choice(
+        &self,
+        variant: SelectVariant,
+        choice_index: usize,
+        text: String,
+    ) -> Option<String> {
         let line_id = self.next_line_id();
         // Compose the choice surface from parts: the base `choice:<idx>`
         // (what `branch_following_lines` filters on) plus the optional Gameexe
@@ -633,7 +671,7 @@ impl SelRuntime {
             text_surface.push_str(&suffix);
         }
         let line = TextLine {
-            line_id,
+            line_id: line_id.clone(),
             evidence_tier: EvidenceTier::E1,
             text,
             speaker: None,
@@ -642,12 +680,24 @@ impl SelRuntime {
             bridge_ref: None,
             source_asset: None,
         };
-        if let Err(err) = self.sink.emit_line(line) {
-            self.record_warning(SelRuntimeWarning::SinkRejected {
-                variant,
-                reason: err.to_string(),
-            });
+        match self.sink.emit_line(line) {
+            Ok(()) => Some(line_id),
+            Err(err) => {
+                self.record_warning(SelRuntimeWarning::SinkRejected {
+                    variant,
+                    reason: err.to_string(),
+                });
+                None
+            }
         }
+    }
+
+    fn record_prompt(&self, prompt: SelectionPrompt) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.prompts.push(prompt);
     }
 }
 
@@ -671,6 +721,7 @@ fn dispatch_select(
     args: &[ExprValue],
 ) -> DispatchOutcome {
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
+    let mut rendered: Vec<(usize, String)> = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
         let bytes = match arg {
             ExprValue::Bytes(bytes) => bytes.clone(),
@@ -701,7 +752,7 @@ fn dispatch_select(
             });
             String::from_utf8_lossy(&bytes).into_owned()
         };
-        runtime.emit_choice(variant, choice_index, text);
+        rendered.push((choice_index, text));
         choices.push(bytes);
     }
     if args.is_empty() {
@@ -722,6 +773,18 @@ fn dispatch_select(
         return DispatchOutcome::Advance;
     }
     let id = runtime.id_sequence().allocate();
+    let option_line_ids: Vec<String> = rendered
+        .into_iter()
+        .filter_map(|(index, text)| runtime.emit_choice(variant, index, text))
+        .collect();
+    if option_line_ids.len() == choices.len() {
+        runtime.record_prompt(SelectionPrompt {
+            longop_id: id,
+            kind: SelectionPromptKind::Text,
+            cancelable: false,
+            option_line_ids,
+        });
+    }
     let select = SelectLongOp::new(id, choices);
     let LongOp { id, private_state } = select.into_longop();
     DispatchOutcome::Yield {
@@ -807,15 +870,15 @@ fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) ->
         runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group });
         return DispatchOutcome::Advance;
     };
-    let return_values: Vec<i32> = graphics
-        .foreground_button_candidates(group)
-        .into_iter()
-        .map(|candidate| candidate.options.button_number)
-        .collect();
-    if return_values.is_empty() {
+    let candidates = graphics.foreground_button_candidates(group);
+    if candidates.is_empty() {
         runtime.record_warning(SelRuntimeWarning::ObjectButtonCandidatesEmpty { group });
         return DispatchOutcome::Advance;
     }
+    let return_values: Vec<i32> = candidates
+        .iter()
+        .map(|candidate| candidate.options.button_number)
+        .collect();
     let mut select =
         match ObjectSelectLongOp::try_new(runtime.id_sequence().allocate(), return_values) {
             Ok(select) => select,
@@ -826,6 +889,23 @@ fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) ->
         };
     select.set_cancelable(cancelable);
     let LongOp { id, private_state } = select.into_longop();
+    runtime.record_prompt(SelectionPrompt {
+        longop_id: id,
+        kind: SelectionPromptKind::ObjectButtons {
+            group,
+            options: candidates
+                .into_iter()
+                .enumerate()
+                .map(|(display_index, candidate)| ObjectButtonPromptOption {
+                    display_index: display_index as u16,
+                    button_number: candidate.options.button_number,
+                    fg_slot: candidate.slot,
+                })
+                .collect(),
+        },
+        cancelable,
+        option_line_ids: Vec::new(),
+    });
     DispatchOutcome::Yield {
         longop_id: id,
         private_state,
@@ -1061,19 +1141,28 @@ impl LongOpScheduler for ChoiceInputScheduler {
 mod tests {
     use std::sync::Mutex;
 
-    use utsushi_core::substrate::{SinkCapability, SinkResult};
+    use utsushi_core::substrate::{SinkCapability, SinkError, SinkKind, SinkResult};
 
     use super::*;
     use crate::var_banks::VarBanks;
 
     struct CollectingSink {
         lines: Mutex<Vec<TextLine>>,
+        reject_after: Option<usize>,
     }
 
     impl CollectingSink {
         fn new() -> Self {
             Self {
                 lines: Mutex::new(Vec::new()),
+                reject_after: None,
+            }
+        }
+
+        fn rejecting_after(emitted: usize) -> Self {
+            Self {
+                lines: Mutex::new(Vec::new()),
+                reject_after: Some(emitted),
             }
         }
     }
@@ -1087,7 +1176,15 @@ mod tests {
 
         fn emit_line(&self, line: TextLine) -> SinkResult<()> {
             line.validate()?;
-            self.lines.lock().expect("lock").push(line);
+            let mut lines = self.lines.lock().expect("lock");
+            if self.reject_after == Some(lines.len()) {
+                return Err(SinkError::UnsupportedKind {
+                    sink: SinkKind::TextSurface,
+                    adapter_id: "reject-second-choice".to_string(),
+                    reason: "test sink rejects one choice".to_string(),
+                });
+            }
+            lines.push(line);
             Ok(())
         }
     }
@@ -1274,6 +1371,29 @@ mod tests {
             .expect("object carrier");
         assert_eq!(carrier.return_values(), &[7, 2]);
         assert!(sink.lines.lock().expect("lock").is_empty());
+        assert_eq!(
+            runtime.take_prompts(),
+            vec![SelectionPrompt {
+                longop_id,
+                kind: SelectionPromptKind::ObjectButtons {
+                    group: 5,
+                    options: vec![
+                        ObjectButtonPromptOption {
+                            display_index: 0,
+                            button_number: 7,
+                            fg_slot: 3,
+                        },
+                        ObjectButtonPromptOption {
+                            display_index: 1,
+                            button_number: 2,
+                            fg_slot: 11,
+                        },
+                    ],
+                },
+                cancelable: false,
+                option_line_ids: vec![],
+            }]
+        );
         assert!(matches!(
             SelectObjbtnOp::new(Arc::clone(&runtime))
                 .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
@@ -1327,6 +1447,28 @@ mod tests {
             assert!(carrier.is_cancelable());
         }
         assert!(sink.lines.lock().expect("lock").is_empty());
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 2);
+        assert!(prompts.iter().all(|prompt| {
+            prompt.cancelable
+                && prompt.option_line_ids.is_empty()
+                && matches!(
+                    &prompt.kind,
+                    SelectionPromptKind::ObjectButtons { group: 5, options }
+                        if options == &vec![
+                            ObjectButtonPromptOption {
+                                display_index: 0,
+                                button_number: 7,
+                                fg_slot: 3,
+                            },
+                            ObjectButtonPromptOption {
+                                display_index: 1,
+                                button_number: 2,
+                                fg_slot: 11,
+                            },
+                        ]
+                )
+        }));
         assert!(matches!(
             SelectObjbtnCancelOp::new(Arc::clone(&runtime))
                 .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
@@ -1480,6 +1622,8 @@ mod tests {
         );
         let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(texts, vec!["A", "B"]);
+        let line_ids: Vec<String> = lines.iter().map(|line| line.line_id.clone()).collect();
+        drop(lines);
 
         // The yielded SelectLongOp stores exactly the two Bytes choices, so
         // index 1 (the emitted "choice:1") decodes back to "B".
@@ -1496,6 +1640,15 @@ mod tests {
         };
         let select = SelectLongOp::try_from_longop(&head).expect("decode select payload");
         assert_eq!(select.choices(), &[b"A".to_vec(), b"B".to_vec()]);
+        assert_eq!(
+            runtime.take_prompts(),
+            vec![SelectionPrompt {
+                longop_id,
+                kind: SelectionPromptKind::Text,
+                cancelable: false,
+                option_line_ids: line_ids,
+            }]
+        );
 
         // The skipped Int is reported against its raw arg position (1).
         let warnings = runtime.take_warnings();
@@ -1505,6 +1658,33 @@ mod tests {
                 variant: SelectVariant::Select,
                 choice_index: 1,
                 expected: "bytes",
+            }]
+        );
+    }
+
+    #[test]
+    fn text_prompt_is_omitted_when_any_stored_choice_line_is_rejected() {
+        let sink = Arc::new(CollectingSink::rejecting_after(1));
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+
+        assert!(matches!(
+            SelectOp::new(Arc::clone(&runtime)).dispatch(
+                &mut Vm::new(1, 0),
+                &[
+                    ExprValue::Bytes(b"first".to_vec()),
+                    ExprValue::Bytes(b"second".to_vec())
+                ],
+            ),
+            DispatchOutcome::Yield { .. }
+        ));
+        assert!(runtime.take_prompts().is_empty());
+        assert_eq!(
+            runtime.take_warnings(),
+            vec![SelRuntimeWarning::SinkRejected {
+                variant: SelectVariant::Select,
+                reason: "utsushi.sink.unsupported_kind: sink=text_surface adapter=reject-second-choice reason=test sink rejects one choice".to_string(),
             }]
         );
     }
