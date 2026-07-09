@@ -20,6 +20,7 @@ import {
   benchmarkReportsFixture,
   bridgeImportRequestFixture,
   bridgeImportResponseFixture,
+  catalogOpportunitiesFixture,
   costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -178,6 +179,9 @@ export const itotoriApiMswHandlers = [
   ),
   http.get("http://itotori.test/api/projects/benchmarks", () =>
     apiJson("projects.benchmarks", { reports: benchmarkReportsFixture }),
+  ),
+  http.get("http://itotori.test/api/catalog/opportunities", () =>
+    apiJson("catalog.opportunities", catalogOpportunitiesFixture),
   ),
   http.get("http://itotori.test/api/jobs/run-table", () =>
     apiJson("jobs.runTable", jobsRunTableFixture),

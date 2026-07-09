@@ -28,6 +28,8 @@ import { readyContextFixture } from "../src/reviewer/index.js";
 import { workspaceProjectBrowseFixture } from "../src/workspace/index.js";
 import {
   bridgeImportResponseFixture,
+  bmkCockpitFixture,
+  catalogOpportunitiesFixture,
   costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -62,6 +64,12 @@ const server = setupServer(
     apiJson("projects.costDrilldown", costDrilldownFixture),
   ),
   http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
+  http.get("*/api/projects/:projectId/bmk-cockpit", () =>
+    apiJson("projects.bmkCockpit", bmkCockpitFixture),
+  ),
+  http.get("*/api/catalog/opportunities", () =>
+    apiJson("catalog.opportunities", catalogOpportunitiesFixture),
+  ),
   http.get("*/api/reviewer/queue", () =>
     apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
   ),
@@ -82,7 +90,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("SPA shell — Workbench dashboard", () => {
-  it("consumes /api/* and renders the projects / status / cost / reviewer-queue / decisions panels", async () => {
+  it("consumes /api/* and renders the projects / status / cost / catalog-opportunities / reviewer-queue / decisions panels", async () => {
     render(<App location={{ pathname: "/", search: "" }} />);
 
     // Status strip (projects.status) — the project shell context.
@@ -102,8 +110,100 @@ describe("SPA shell — Workbench dashboard", () => {
     const billed = costReportFixture.billedMicrosUsd / 1_000_000;
     expect((await screen.findAllByText(`$${billed.toFixed(6)}`)).length).toBeGreaterThan(0);
 
+    // Catalog opportunities panel (catalog.opportunities) — compact API-backed
+    // ranking surface on the main dashboard.
+    expect(
+      await screen.findByRole("heading", { name: "Catalog opportunities" }),
+    ).toBeInTheDocument();
+    const opportunityTable = screen.getByRole("table", { name: "Catalog opportunity rows" });
+    expect(within(opportunityTable).getByText(/Opportunity API Fixture/u)).toBeInTheDocument();
+    expect(within(opportunityTable).getByText("Score 100")).toBeInTheDocument();
+    expect(
+      within(opportunityTable).getByText(/patch supported \/ runtime partial/u),
+    ).toBeInTheDocument();
+    expect(within(opportunityTable).getByText("Very high")).toBeInTheDocument();
+    expect(within(opportunityTable).getByText("Owned")).toBeInTheDocument();
+    expect(
+      within(opportunityTable).getByText(/translation completeness \+30/u),
+    ).toBeInTheDocument();
+    expect(within(opportunityTable).getByText(/demotion: none/u)).toBeInTheDocument();
+
     // Pending decisions band (projects.decisions).
     expect(await screen.findByRole("heading", { name: /pending decision/i })).toBeInTheDocument();
+  });
+
+  it("renders demoted catalog opportunities and keeps the dashboard alive on catalog schema failure", async () => {
+    const baseRow = catalogOpportunitiesFixture.rows[0];
+    server.use(
+      http.get("*/api/catalog/opportunities", () =>
+        apiJson("catalog.opportunities", {
+          ...catalogOpportunitiesFixture,
+          rows: [
+            baseRow,
+            {
+              ...baseRow,
+              rank: 2,
+              workId: "work-opportunity-demoted",
+              canonicalTitle: "Demoted Conflict Fixture",
+              completenessPool: "conflict",
+              decision: "demoted",
+              score: -10,
+              demotions: [
+                {
+                  reasonCode: "official_english_conflict",
+                  conflictOrigin: "repository_derived",
+                  conflictId: "conflict-opportunity-demoted",
+                  severity: "warning",
+                  sourceIds: [
+                    {
+                      catalogSource: "dlsite",
+                      sourceId: "RJOPPAPI002",
+                    },
+                  ],
+                },
+              ],
+              factorBreakdown: baseRow.factorBreakdown.map((factor) =>
+                factor.factor === "platform_language_conflict"
+                  ? {
+                      ...factor,
+                      rawValue: 1,
+                      weightedScore: -60,
+                      evidenceRefs: ["catalog-conflict:conflict-opportunity-demoted"],
+                      explanationCode: "platform_language_conflict:official_english_conflict",
+                    }
+                  : factor,
+              ),
+              explanationCodes: [
+                ...baseRow.explanationCodes.filter(
+                  (code) => code !== "platform_language_conflict:none",
+                ),
+                "platform_language_conflict:official_english_conflict",
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<App location={{ pathname: "/", search: "" }} />);
+    const opportunityTable = await screen.findByRole("table", { name: "Catalog opportunity rows" });
+    expect(within(opportunityTable).getByText(/Demoted Conflict Fixture/u)).toBeInTheDocument();
+    expect(within(opportunityTable).getByText("Demoted")).toBeInTheDocument();
+    expect(
+      within(opportunityTable).getByText(/demotion: official_english_conflict/u),
+    ).toBeInTheDocument();
+
+    cleanup();
+    server.resetHandlers();
+    server.use(http.get("*/api/catalog/opportunities", () => HttpResponse.json({})));
+
+    render(<App location={{ pathname: "/", search: "" }} />);
+    expect(
+      await screen.findByText(
+        "Route catalog.opportunities failed with status 200 (no typed error body).",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
   });
 
   it("surfaces a typed API error state instead of a blank panel", async () => {
