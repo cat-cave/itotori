@@ -9,8 +9,8 @@
 //
 // fnd-addressable-routing — entity deep-links (unit/scene/route/character/
 // term/run/finding) resolve BEFORE surface roots so a stable URL focuses
-// its entity (play selects the unit/scene; wiki/runtime land on the focus
-// shell until their full screens ship).
+// its entity (play selects the unit/scene; wiki renders the WikiEntry
+// profile; runtime lands on the focus shell until its full screen ships).
 //
 // This is the app-shell pattern the ~50 downstream screen nodes inherit:
 // parse the route → render a screen that reads its data through
@@ -36,6 +36,11 @@ import {
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
 import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
+import {
+  WikiEntryScreen,
+  parseWikiRoute,
+  wikiRouteFromAddressable,
+} from "./screens/WikiEntryScreen.js";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 import { RedactionGovernor } from "./redaction-governor.js";
@@ -145,6 +150,32 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
         />
       );
     }
+    // wiki-entry-ui — character / term deep-links render the real WikiEntry
+    // profile (with CrossRef jumps to scenes) instead of the focus shell.
+    if (addressable.surface === "wiki" && addressable.kind === "character") {
+      return (
+        <WikiEntryScreen
+          route={wikiRouteFromAddressable({
+            kind: "character",
+            id: addressable.id,
+            projectId: addressable.projectId,
+            localeBranchId: addressable.localeBranchId,
+          })}
+        />
+      );
+    }
+    if (addressable.surface === "wiki" && addressable.kind === "term") {
+      return (
+        <WikiEntryScreen
+          route={wikiRouteFromAddressable({
+            kind: "term",
+            id: addressable.id,
+            projectId: addressable.projectId,
+            localeBranchId: addressable.localeBranchId,
+          })}
+        />
+      );
+    }
     return <AddressableFocusScreen location={addressable} />;
   }
 
@@ -179,6 +210,13 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const workspaceRoute = parseWorkspaceRoute(location.pathname, location.search);
   if (workspaceRoute !== null) {
     return <WorkspaceScreen route={workspaceRoute} />;
+  }
+
+  // `/wiki` — the Wiki entry surface (character + term profiles with CrossRef
+  // jumps to scenes). Rendered inside the shell frame like every other screen.
+  const wikiRoute = parseWikiRoute(location.pathname, location.search);
+  if (wikiRoute !== null) {
+    return <WikiEntryScreen route={wikiRoute} />;
   }
 
   // `/benchmark` — the benchmark cockpit (contestants + confidence + the

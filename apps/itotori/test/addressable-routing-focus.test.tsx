@@ -152,29 +152,6 @@ describe("addressable deep-links resolve + focus", () => {
     );
   });
 
-  it("resolves wiki character / term deep-links to a focused addressable shell", () => {
-    for (const [kind, id, pathPrefix] of [
-      ["character", "char.heroine", "/wiki/characters/"] as const,
-      ["term", "term.san", "/wiki/terms/"] as const,
-    ]) {
-      const href = hrefForAddressable({ kind, id });
-      expect(href.startsWith(pathPrefix)).toBe(true);
-      const { pathname, search } = splitHref(href);
-      const { unmount } = render(<App location={{ pathname, search }} />);
-      const main = screen.getByRole("main");
-      expect(main).toHaveAttribute("data-screen", "addressable-focus");
-      expect(main).toHaveAttribute("data-addressable-kind", kind);
-      expect(main).toHaveAttribute("data-addressable-id", id);
-      expect(main).toHaveAttribute("data-addressable-focus", `${kind}:${id}`);
-      expect(main).toHaveAttribute("data-addressable-focused", "true");
-      expect(main).toHaveAttribute("data-addressable-surface", "wiki");
-      const focusStatus = main.querySelector('[data-addressable-focus-status="focused"]');
-      expect(focusStatus).not.toBeNull();
-      expect(focusStatus).toHaveTextContent(new RegExp(`Focused ${kind}`, "i"));
-      unmount();
-    }
-  });
-
   it("resolves run + finding deep-links to a focused runtime shell", () => {
     for (const [kind, id] of [
       ["run", "runtime-run-9"] as const,
@@ -192,6 +169,10 @@ describe("addressable deep-links resolve + focus", () => {
       unmount();
     }
   });
+
+  // wiki character / term deep-links now render the real WikiEntryScreen
+  // (wiki-entry-ui) instead of the focus shell — covered by
+  // `wiki-entry-screen.test.tsx`.
 
   it("resolves a narrative route deep-link on Play with focus stamped", async () => {
     const href = hrefForAddressable({

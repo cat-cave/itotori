@@ -45,6 +45,7 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "workbench", label: "Workbench", href: "/" },
   { id: "review", label: "Review", href: "/reviewer-queue" },
   { id: "play", label: "Play", href: "/play" },
+  { id: "wiki", label: "Wiki", href: "/wiki" },
   { id: "benchmark", label: "Benchmark", href: "/benchmark" },
   { id: "workspace", label: "Workspace", href: "/workspace" },
 ];
@@ -60,15 +61,20 @@ export function activeShellNavId(pathname: string): string {
   if (pathname === "/play" || pathname.startsWith("/play/")) {
     return "play";
   }
+  // wiki-entry-ui — the Wiki entry surface (bare /wiki + character/term
+  // deep-links) owns its nav pill.
+  if (pathname === "/wiki" || pathname.startsWith("/wiki/")) {
+    return "wiki";
+  }
   if (pathname === "/benchmark" || pathname.startsWith("/benchmark/")) {
     return "benchmark";
   }
   if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
     return "workspace";
   }
-  // fnd-addressable-routing — wiki / run / finding deep-links have no nav
-  // pill yet (wiki-entry-ui + runtime surface nodes own those); leave the
-  // chrome unselected rather than mis-highlight workbench.
+  // fnd-addressable-routing — run / finding deep-links have no nav pill yet
+  // (the runtime surface node owns those); leave the chrome unselected rather
+  // than mis-highlight workbench.
   return "";
 }
 
