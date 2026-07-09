@@ -6101,7 +6101,7 @@ fn siglus_parser_boundary_key_refs(
 // fixture declares (and rejects absolute / traversal paths up front).
 
 pub const XP3_PROFILE_PROOF_SCHEMA_VERSION: &str = "0.1.0";
-pub const XP3_PROFILE_PROOF_SUPPORT_BOUNDARY: &str = "KiriKiri XP3 profile proof scoped to plain XP3 as the claimed-support concern (detect / extract / patch_back); encrypted, compressed, helper-required, and unsupported-protected-executable cases are routing diagnostics only and never claim extract or patch_back.";
+pub const XP3_PROFILE_PROOF_SUPPORT_BOUNDARY: &str = "KiriKiri XP3 profile proof scoped to plain XP3 as the claimed-support concern (detect, extract, patch_back); encrypted, compressed, helper-required, and unsupported-protected-executable cases are routing diagnostics only and never claim extract or patch_back.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -29833,6 +29833,27 @@ mod tests {
                 .starts_with("sha256:")
         );
         assert_eq!(plain_report.semantic_remediation, None);
+        assert_eq!(
+            plain_report.support_boundary,
+            XP3_PROFILE_PROOF_SUPPORT_BOUNDARY
+        );
+        assert_ne!(
+            plain_report.redacted_for_report().support_boundary,
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
+        );
+        assert_eq!(
+            plain_report.redacted_for_report().support_boundary,
+            XP3_PROFILE_PROOF_SUPPORT_BOUNDARY
+        );
+        let plain_json = plain_report.stable_json().unwrap();
+        assert!(
+            plain_json.contains(XP3_PROFILE_PROOF_SUPPORT_BOUNDARY),
+            "supportBoundary must remain readable in proof JSON: {plain_json}"
+        );
+        assert!(
+            !plain_json.contains("\"supportBoundary\":\"[REDACTED:kaifuu.secret_redacted]\""),
+            "supportBoundary was over-redacted in proof JSON: {plain_json}"
+        );
 
         let encrypted_report = xp3_profile_proof(Xp3ProfileProofRequest {
             fixture: &make_encrypted_fixture("encrypted.xp3"),
