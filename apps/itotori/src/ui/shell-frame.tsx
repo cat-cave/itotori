@@ -25,6 +25,7 @@ import type { ApiCallState } from "../api-client.js";
 import { useApiQuery } from "./use-api-resource.js";
 import { formatMicrosUsd } from "./format.js";
 import { RedactionToggle } from "./redaction-governor.js";
+import { ShellCommandPalette } from "./command-palette.js";
 import type { AppLocation } from "./App.js";
 
 // ---------------------------------------------------------------------------
@@ -361,6 +362,7 @@ export function ShellFrame({
       <header className="itotori-shell-frame__chrome">
         <ShellNav location={location} navigate={navigate} />
         <div className="itotori-shell-toolbar" data-shell-toolbar="true">
+          <ShellCommandPalette navigate={navigate} />
           <RedactionToggle />
         </div>
       </header>
