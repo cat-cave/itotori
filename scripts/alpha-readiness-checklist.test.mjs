@@ -282,7 +282,10 @@ test("a drifted capability claim block fails the gate", () => {
       `Engine families in the generated capability matrix: **${capabilityClaimCount}**.`,
       `Engine families in the generated capability matrix: **${capabilityClaimCount - 1}**.`,
     )
-    .replace("| `synthetic_fixture` | positive_adapter |", "| `synthetic_fixture` | readiness_only |");
+    .replace(
+      "| `synthetic_fixture` | positive_adapter |",
+      "| `synthetic_fixture` | readiness_only |",
+    );
   assert.notEqual(
     normalizeBlock(driftedBlock),
     normalizeBlock(renderCapabilityBlock(matrix)),
