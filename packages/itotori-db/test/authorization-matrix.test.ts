@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriAuthMemberManagementRepository } from "../src/repositories/auth-member-management-repository.js";
+import { ItotoriAuthSessionService } from "../src/repositories/auth-session-service.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
 import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run-repository.js";
@@ -1173,6 +1174,18 @@ const repositoryPermissionGateMatrix = [
     "auth-member-management-repository.test.ts remove member coverage",
     (repo) => repo.removeMember(deniedActor, undefined as never),
   ),
+  authSessionServiceGate(
+    "listPrincipalSessions",
+    "authSessionsManage",
+    "auth-session-service.test.ts list principal sessions coverage",
+    (repo) => repo.listPrincipalSessions(deniedActor, undefined as never),
+  ),
+  authSessionServiceGate(
+    "revokePrincipalSession",
+    "authSessionsManage",
+    "auth-session-service.test.ts revoke principal session coverage",
+    (repo) => repo.revokePrincipalSession(deniedActor, undefined as never),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 /**
@@ -2328,6 +2341,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "auth.members.manage",
           "successFixture": "auth-member-management-repository.test.ts remove member coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthSessionService.listPrincipalSessions",
+          "requiredPermission": "auth.sessions.manage",
+          "successFixture": "auth-session-service.test.ts list principal sessions coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuthSessionService.revokePrincipalSession",
+          "requiredPermission": "auth.sessions.manage",
+          "successFixture": "auth-session-service.test.ts revoke principal session coverage",
+        },
       ]
     `);
   });
@@ -3032,6 +3057,22 @@ function authMemberManagementGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuthMemberManagementRepository(db)),
+  });
+}
+
+function authSessionServiceGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAuthSessionService) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAuthSessionService",
+    sourceFile: "auth-session-service.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAuthSessionService(db)),
   });
 }
 

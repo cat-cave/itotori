@@ -53,6 +53,7 @@ import {
   type ApiAcceptMemberInvitationRequest,
   type ApiInviteMemberRequest,
   type ApiRemoveMemberRequest,
+  type ApiRevokeAuthSessionRequest,
 } from "../src/api-schema.js";
 import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
@@ -146,7 +147,8 @@ type ApiMutationService =
   | {
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
-    };
+    }
+  | { surface: "authSessions"; method: "listPrincipalSessions" | "revokePrincipalSession" };
 
 type ApiMutationRoute = {
   route: string;
@@ -173,6 +175,7 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/auth/members/invitations",
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
+  "POST /api/auth/principals/principal-api-member/sessions/session-api/revoke",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
 ]);
@@ -222,6 +225,11 @@ const removeMemberRequestFixture = {
   reason: "offboarding",
   requestId: "req-api-remove",
 } satisfies ApiRemoveMemberRequest;
+
+const revokeAuthSessionRequestFixture = {
+  reason: "lost device",
+  requestId: "req-api-session-revoke",
+} satisfies ApiRevokeAuthSessionRequest;
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -298,6 +306,22 @@ const apiMutationPermissionMatrix = [
     "membersRemove",
     post("/api/auth/members/membership-api/remove", removeMemberRequestFixture),
     { surface: "authMembers", method: "removeMember" },
+  ),
+  apiGateForService(
+    "sessionsList",
+    {
+      method: "GET",
+      pathname: "/api/auth/principals/principal-api-member/sessions",
+    },
+    { surface: "authSessions", method: "listPrincipalSessions" },
+  ),
+  apiGateForService(
+    "sessionsRevoke",
+    post(
+      "/api/auth/principals/principal-api-member/sessions/session-api/revoke",
+      revokeAuthSessionRequestFixture,
+    ),
+    { surface: "authSessions", method: "revokePrincipalSession" },
   ),
   apiGateForService(
     "setSceneCoverage",
@@ -2909,6 +2933,54 @@ describe("Itotori API handlers", () => {
     );
   });
 
+  it("routes principal session inspection and revocation through typed auth session handlers", async () => {
+    const services = serviceFixture();
+
+    const list = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/auth/principals/principal-api-member/sessions",
+      },
+      services,
+    );
+    const revoke = await handleItotoriApiRequest(
+      post(
+        "/api/auth/principals/principal-api-member/sessions/session-api/revoke",
+        revokeAuthSessionRequestFixture,
+      ),
+      services,
+    );
+
+    expect(list.body).toMatchObject({
+      schemaVersion: "itotori.auth.sessions.v0",
+      principalId: "principal-api-member",
+      sessions: [
+        {
+          sessionId: "session-api",
+          principalId: "principal-api-member",
+          isActive: true,
+          deviceLabel: "API browser",
+        },
+      ],
+    });
+    expect(revoke.body).toMatchObject({
+      schemaVersion: "itotori.auth.session-revoked.v0",
+      revokedSession: {
+        sessionId: "session-api",
+        principalId: "principal-api-member",
+        isActive: false,
+      },
+    });
+    expect(services.authSessions.listPrincipalSessions).toHaveBeenCalledWith(
+      "principal-api-member",
+    );
+    expect(services.authSessions.revokePrincipalSession).toHaveBeenCalledWith(
+      "principal-api-member",
+      "session-api",
+      revokeAuthSessionRequestFixture,
+    );
+  });
+
   it.skipIf(!process.env.DATABASE_URL)(
     "configures SSO settings against Postgres and denies a non-admin",
     async () => {
@@ -3425,6 +3497,20 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "sessions list",
+          "requiredPermission": "auth.sessions.manage",
+          "route": "GET /api/auth/principals/principal-api-member/sessions",
+          "successFixture": "api-handlers.test.ts sessions list success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "sessions revoke",
+          "requiredPermission": "auth.sessions.manage",
+          "route": "POST /api/auth/principals/principal-api-member/sessions/session-api/revoke",
+          "successFixture": "api-handlers.test.ts sessions revoke success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "set scene coverage",
           "requiredPermission": "queue.manage",
           "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
@@ -3851,6 +3937,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   }
   if (service.surface === "authMembers") {
     return services.authMembers[service.method];
+  }
+  if (service.surface === "authSessions") {
+    return services.authSessions[service.method];
   }
   if (service.surface === "sceneCoverage") {
     return services.sceneCoverage[service.method];
@@ -4466,6 +4555,32 @@ function serviceFixture(): ItotoriApiServices {
         displayName: "API Member",
         permissionSetIds: ["permission-set-account-local-reviewer"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    authSessions: {
+      listPrincipalSessions: vi.fn(async (principalId: string) => [
+        {
+          sessionId: "session-api",
+          principalId,
+          createdAt: new Date("2026-07-08T00:00:00.000Z"),
+          expiresAt: new Date("2026-07-09T00:00:00.000Z"),
+          revokedAt: null,
+          isActive: true,
+          deviceLabel: "API browser",
+          userAgent: "Mozilla/5.0 api-test",
+          ipAddress: "203.0.113.20",
+        },
+      ]),
+      revokePrincipalSession: vi.fn(async (principalId: string, sessionId: string) => ({
+        sessionId,
+        principalId,
+        createdAt: new Date("2026-07-08T00:00:00.000Z"),
+        expiresAt: new Date("2026-07-09T00:00:00.000Z"),
+        revokedAt: new Date("2026-07-08T01:00:00.000Z"),
+        isActive: false,
+        deviceLabel: "API browser",
+        userAgent: "Mozilla/5.0 api-test",
+        ipAddress: "203.0.113.20",
       })),
     },
     sceneCoverage: {

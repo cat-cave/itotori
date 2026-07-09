@@ -50,6 +50,7 @@ import {
   type LoadJobsRunTableOptions,
   type JobsRunTableReadModel,
   type QueueHealthReadModel,
+  type AuthSessionAdminRecord,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
   type WikiEntriesFilter,
@@ -72,6 +73,7 @@ import type {
   ApiAcceptMemberInvitationRequest,
   ApiInviteMemberRequest,
   ApiRemoveMemberRequest,
+  ApiRevokeAuthSessionRequest,
 } from "../api-schema.js";
 import {
   EngineCapabilityReportService,
@@ -247,6 +249,14 @@ export type ItotoriApplicationServices = {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authSessions: {
+    listPrincipalSessions(principalId: string): Promise<AuthSessionAdminRecord[]>;
+    revokePrincipalSession(
+      principalId: string,
+      sessionId: string,
+      input: ApiRevokeAuthSessionRequest,
+    ): Promise<AuthSessionAdminRecord>;
   };
   playRouteMap: RouteMapReadModelPort;
   sceneCoverage: SceneCoverageServicePort;
@@ -444,6 +454,7 @@ export async function withDatabaseItotoriServices<T>(
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
     const authMemberManagementRepository = new ItotoriAuthMemberManagementRepository(context.db);
+    const authSessionService = new ItotoriAuthSessionService(context.db);
     const benchmarkRunRepository = new ItotoriBenchmarkRunRepository(context.db);
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
@@ -720,6 +731,23 @@ export async function withDatabaseItotoriServices<T>(
           return authMemberManagementRepository.removeMember(localUserActor, {
             membershipId,
             actorPrincipalId: localOperatorPrincipalId,
+            ...(reason === null ? {} : { reason }),
+            ...(requestId === null ? {} : { requestId }),
+          });
+        },
+      },
+      authSessions: {
+        listPrincipalSessions: (principalId) =>
+          authSessionService.listPrincipalSessions(localUserActor, {
+            actorPrincipalId: localOperatorPrincipalId,
+            targetPrincipalId: principalId,
+          }),
+        revokePrincipalSession: (principalId, sessionId, input) => {
+          const { reason, requestId } = input;
+          return authSessionService.revokePrincipalSession(localUserActor, {
+            actorPrincipalId: localOperatorPrincipalId,
+            targetPrincipalId: principalId,
+            sessionId,
             ...(reason === null ? {} : { reason }),
             ...(requestId === null ? {} : { requestId }),
           });

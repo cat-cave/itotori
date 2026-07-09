@@ -404,6 +404,23 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiRemoveMemberRequest",
     responseSchema: "ApiRemoveMemberResponse",
   },
+  "auth.sessions.list": {
+    method: "GET",
+    pathTemplate: "/api/auth/principals/{principalId}/sessions",
+    operationId: "authSessionsList",
+    summary: "List active auth sessions and captured device metadata for a principal.",
+    pathParams: ["principalId"],
+    responseSchema: "ApiAuthSessionsListResponse",
+  },
+  "auth.sessions.revoke": {
+    method: "POST",
+    pathTemplate: "/api/auth/principals/{principalId}/sessions/{sessionId}/revoke",
+    operationId: "authSessionsRevoke",
+    summary: "Revoke an active auth session for a principal.",
+    pathParams: ["principalId", "sessionId"],
+    requestSchema: "ApiRevokeAuthSessionRequest",
+    responseSchema: "ApiRevokeAuthSessionResponse",
+  },
   // ovw-launch-pass-action — drive the next localization pass (folds queued
   // corrections -> pass N+1) via the project-driven-executor /
   // localize-fullproject driver. The HTTP surface is a thin, `canSteer`-gated

@@ -30,6 +30,7 @@ import type {
   ProjectDashboardStatus,
   ProjectTelemetryTimeseries,
   QueueHealthReadModel,
+  AuthSessionAdminRecord,
   MemberInvitationRecord,
   MemberRecord,
   ReviewerQueueAction,
@@ -189,6 +190,8 @@ export type ItotoriApiRouteId =
   | "auth.members.invite"
   | "auth.members.accept"
   | "auth.members.remove"
+  | "auth.sessions.list"
+  | "auth.sessions.revoke"
   // fnd-caps-context — the actor's Studio capability permission VIEW
   // (canFlag / canDecide / canSteer / canReveal), resolved from exact
   // permission grants via the auth-002 effective-permission resolver.
@@ -383,6 +386,20 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiMembersListResponse: ["schemaVersion", "accountId", "members"],
   ApiRemoveMemberRequest: ["reason", "requestId"],
   ApiRemoveMemberResponse: ["schemaVersion", "removedMember"],
+  ApiAuthSessionRecord: [
+    "sessionId",
+    "principalId",
+    "createdAt",
+    "expiresAt",
+    "revokedAt",
+    "isActive",
+    "deviceLabel",
+    "userAgent",
+    "ipAddress",
+  ],
+  ApiAuthSessionsListResponse: ["schemaVersion", "principalId", "sessions"],
+  ApiRevokeAuthSessionRequest: ["reason", "requestId"],
+  ApiRevokeAuthSessionResponse: ["schemaVersion", "revokedSession"],
   // fnd-caps-context — Studio capability permission view wire envelope.
   ApiAuthCapabilitiesResponse: [
     "schemaVersion",
@@ -777,6 +794,31 @@ export type ApiMembersListResponse = {
   members: ApiMemberRecord[];
 };
 
+export type ApiAuthSessionRecord = Omit<
+  AuthSessionAdminRecord,
+  "createdAt" | "expiresAt" | "revokedAt"
+> & {
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+};
+
+export type ApiAuthSessionsListResponse = {
+  schemaVersion: "itotori.auth.sessions.v0";
+  principalId: string;
+  sessions: ApiAuthSessionRecord[];
+};
+
+export type ApiRevokeAuthSessionRequest = {
+  reason: string | null;
+  requestId: string | null;
+};
+
+export type ApiRevokeAuthSessionResponse = {
+  schemaVersion: "itotori.auth.session-revoked.v0";
+  revokedSession: ApiAuthSessionRecord;
+};
+
 /**
  * fnd-caps-context — the actor's Studio capability permission VIEW on the
  * wire. Sourced server-side from exact permission grants (capabilities, NOT
@@ -1059,6 +1101,8 @@ export type ItotoriApiResponseBody =
   | ApiMemberResponse
   | ApiMembersListResponse
   | ApiRemoveMemberResponse
+  | ApiAuthSessionsListResponse
+  | ApiRevokeAuthSessionResponse
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
   | ApiPlayRouteMapResponse
@@ -1253,6 +1297,19 @@ export function parseRemoveMemberRequest(body: unknown): ApiRemoveMemberRequest 
     );
     assertNullableString(request.reason, "ApiRemoveMemberRequest.reason");
     assertNullableString(request.requestId, "ApiRemoveMemberRequest.requestId");
+    return { reason: request.reason, requestId: request.requestId };
+  });
+}
+
+export function parseRevokeAuthSessionRequest(body: unknown): ApiRevokeAuthSessionRequest {
+  return parseRequest("ApiRevokeAuthSessionRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiRevokeAuthSessionRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
+    );
+    assertNullableString(request.reason, "ApiRevokeAuthSessionRequest.reason");
+    assertNullableString(request.requestId, "ApiRevokeAuthSessionRequest.requestId");
     return { reason: request.reason, requestId: request.requestId };
   });
 }
@@ -1520,6 +1577,12 @@ export function assertItotoriApiResponse(
       return;
     case "auth.members.remove":
       assertRemoveMemberResponse(value);
+      return;
+    case "auth.sessions.list":
+      assertAuthSessionsListResponse(value);
+      return;
+    case "auth.sessions.revoke":
+      assertRevokeAuthSessionResponse(value);
       return;
     case "auth.capabilities":
       assertAuthCapabilitiesResponse(value);
@@ -5445,6 +5508,42 @@ function assertMembersListResponse(value: unknown): asserts value is ApiMembersL
   }
 }
 
+function assertAuthSessionsListResponse(
+  value: unknown,
+): asserts value is ApiAuthSessionsListResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiAuthSessionsListResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.sessions.v0",
+    "ApiAuthSessionsListResponse.schemaVersion",
+  );
+  assertString(response.principalId, "ApiAuthSessionsListResponse.principalId");
+  const sessions = asArray(response.sessions, "ApiAuthSessionsListResponse.sessions");
+  for (const [index, session] of sessions.entries()) {
+    assertAuthSessionRecord(session, `ApiAuthSessionsListResponse.sessions[${index}]`);
+  }
+}
+
+function assertRevokeAuthSessionResponse(
+  value: unknown,
+): asserts value is ApiRevokeAuthSessionResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiRevokeAuthSessionResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.auth.session-revoked.v0",
+    "ApiRevokeAuthSessionResponse.schemaVersion",
+  );
+  assertAuthSessionRecord(response.revokedSession, "ApiRevokeAuthSessionResponse.revokedSession");
+}
+
 function assertAuthCapabilitiesResponse(
   value: unknown,
 ): asserts value is ApiAuthCapabilitiesResponse {
@@ -5509,6 +5608,22 @@ function assertMemberRecord(value: unknown, label: string): asserts value is Api
   assertString(member.displayName, `${label}.displayName`);
   assertStringArray(member.permissionSetIds, `${label}.permissionSetIds`);
   assertDateLike(member.createdAt, `${label}.createdAt`);
+}
+
+function assertAuthSessionRecord(
+  value: unknown,
+  label: string,
+): asserts value is ApiAuthSessionRecord {
+  const session = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionRecord);
+  assertString(session.sessionId, `${label}.sessionId`);
+  assertString(session.principalId, `${label}.principalId`);
+  assertDateLike(session.createdAt, `${label}.createdAt`);
+  assertDateLike(session.expiresAt, `${label}.expiresAt`);
+  assertNullableDateLike(session.revokedAt, `${label}.revokedAt`);
+  assertBoolean(session.isActive, `${label}.isActive`);
+  assertNullableString(session.deviceLabel, `${label}.deviceLabel`);
+  assertNullableString(session.userAgent, `${label}.userAgent`);
+  assertNullableString(session.ipAddress, `${label}.ipAddress`);
 }
 
 // ovw-launch-pass-action — assert the launch-pass response envelope. The

@@ -38,6 +38,7 @@ export const permissionValues = {
   authAdmin: "auth.admin",
   authSsoManage: "auth.sso.manage",
   authMembersManage: "auth.members.manage",
+  authSessionsManage: "auth.sessions.manage",
   authPermissionsManage: "auth.permissions.manage",
   systemReset: "system.reset",
 } as const;
@@ -59,6 +60,7 @@ export const allPermissions = [
   permissionValues.authAdmin,
   permissionValues.authSsoManage,
   permissionValues.authMembersManage,
+  permissionValues.authSessionsManage,
   permissionValues.authPermissionsManage,
   permissionValues.systemReset,
 ] as const satisfies readonly Permission[];

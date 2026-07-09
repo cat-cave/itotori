@@ -121,6 +121,7 @@ after the database has been migrated.
 | `auth.admin`              | Administer auth accounts, principals, and provider-claim mappings               |
 | `auth.sso.manage`         | Configure account OIDC/SAML providers, security settings, and session policy    |
 | `auth.members.manage`     | Invite, list, accept, and remove account members                                |
+| `auth.sessions.manage`    | Inspect and revoke active auth sessions for a principal                         |
 | `auth.permissions.manage` | Grant/revoke direct permissions and permission sets; edit permission sets       |
 | `system.reset`            | Reset local hello-world persisted state                                         |
 

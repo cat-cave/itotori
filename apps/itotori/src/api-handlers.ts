@@ -39,6 +39,7 @@ import {
   type ProjectDashboardStatus,
   type ProjectTelemetryTimeseries,
   type QueueHealthReadModel,
+  type AuthSessionAdminRecord,
   type LoadQueueHealthOptions,
   type MemberInvitationRecord,
   type MemberRecord,
@@ -72,6 +73,7 @@ import {
   parseAcceptMemberInvitationRequest,
   parseInviteMemberRequest,
   parseRemoveMemberRequest,
+  parseRevokeAuthSessionRequest,
   parseLaunchPassRequest,
   parsePlaySetSceneCoverageRequest,
   parsePlayFlagAnnotationRequest,
@@ -102,6 +104,10 @@ import {
   type ApiMembersListResponse,
   type ApiRemoveMemberRequest,
   type ApiRemoveMemberResponse,
+  type ApiAuthSessionRecord,
+  type ApiAuthSessionsListResponse,
+  type ApiRevokeAuthSessionRequest,
+  type ApiRevokeAuthSessionResponse,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -177,6 +183,8 @@ export const apiMutationPermissionGates = {
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
   membersAccept: apiMutationGate("members accept", "authMembersManage"),
   membersRemove: apiMutationGate("members remove", "authMembersManage"),
+  sessionsList: apiMutationGate("sessions list", "authSessionsManage"),
+  sessionsRevoke: apiMutationGate("sessions revoke", "authSessionsManage"),
   setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
   // play-flag-composer — canFlag is feedback.import (playtester flags into
   // the reviewer queue via ManualFeedbackImport).
@@ -336,6 +344,14 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       input: ApiAcceptMemberInvitationRequest,
     ): Promise<MemberRecord>;
     removeMember(membershipId: string, input: ApiRemoveMemberRequest): Promise<MemberRecord>;
+  };
+  authSessions: {
+    listPrincipalSessions(principalId: string): Promise<readonly AuthSessionAdminRecord[]>;
+    revokePrincipalSession(
+      principalId: string,
+      sessionId: string,
+      input: ApiRevokeAuthSessionRequest,
+    ): Promise<AuthSessionAdminRecord>;
   };
   sceneCoverage: SceneCoverageServicePort;
   /** play-flag-composer — ManualFeedbackImport creates the reviewer queue item. */
@@ -740,6 +756,38 @@ async function routeItotoriApiRequest(
     return methodNotAllowed(["POST"]);
   }
 
+  const authSessionsRoute = parseAuthSessionsRoute(request.pathname);
+  if (request.method === "GET" && authSessionsRoute !== null) {
+    await requireApiPermission(services, apiMutationPermissionGates.sessionsList);
+    return ok("auth.sessions.list", {
+      schemaVersion: "itotori.auth.sessions.v0",
+      principalId: authSessionsRoute.principalId,
+      sessions: (
+        await services.authSessions.listPrincipalSessions(authSessionsRoute.principalId)
+      ).map(authSessionRecordBody),
+    });
+  }
+
+  const authSessionRevokeRoute = parseAuthSessionRevokeRoute(request.pathname);
+  if (request.method === "POST" && authSessionRevokeRoute !== null) {
+    const body = parseRevokeAuthSessionRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.sessionsRevoke);
+    return ok("auth.sessions.revoke", {
+      schemaVersion: "itotori.auth.session-revoked.v0",
+      revokedSession: authSessionRecordBody(
+        await services.authSessions.revokePrincipalSession(
+          authSessionRevokeRoute.principalId,
+          authSessionRevokeRoute.sessionId,
+          body,
+        ),
+      ),
+    });
+  }
+
+  if (authSessionsRoute !== null || authSessionRevokeRoute !== null) {
+    return methodNotAllowed(authSessionRevokeRoute !== null ? ["POST"] : ["GET"]);
+  }
+
   const projectRoute = parseProjectRoute(request.pathname);
   if (!projectRoute) {
     return notFound(request.pathname);
@@ -943,6 +991,20 @@ function memberRecordBody(input: {
     displayName: input.displayName,
     permissionSetIds: [...input.permissionSetIds],
     createdAt: input.createdAt instanceof Date ? input.createdAt.toISOString() : input.createdAt,
+  };
+}
+
+function authSessionRecordBody(input: AuthSessionAdminRecord): ApiAuthSessionRecord {
+  return {
+    sessionId: input.sessionId,
+    principalId: input.principalId,
+    createdAt: input.createdAt.toISOString(),
+    expiresAt: input.expiresAt.toISOString(),
+    revokedAt: input.revokedAt?.toISOString() ?? null,
+    isActive: input.isActive,
+    deviceLabel: input.deviceLabel,
+    userAgent: input.userAgent,
+    ipAddress: input.ipAddress,
   };
 }
 
@@ -1989,6 +2051,30 @@ function parseAuthMemberRemoveRoute(pathname: string): { membershipId: string } 
   return { membershipId: decodeURIComponent(match[1]) };
 }
 
+function parseAuthSessionsRoute(pathname: string): { principalId: string } | null {
+  const match = /^\/api\/auth\/principals\/([^/]+)\/sessions$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[1].length === 0) {
+    return null;
+  }
+  return { principalId: decodeURIComponent(match[1]) };
+}
+
+function parseAuthSessionRevokeRoute(
+  pathname: string,
+): { principalId: string; sessionId: string } | null {
+  const match = /^\/api\/auth\/principals\/([^/]+)\/sessions\/([^/]+)\/revoke$/u.exec(pathname);
+  if (
+    match === null ||
+    match[1] === undefined ||
+    match[1].length === 0 ||
+    match[2] === undefined ||
+    match[2].length === 0
+  ) {
+    return null;
+  }
+  return { principalId: decodeURIComponent(match[1]), sessionId: decodeURIComponent(match[2]) };
+}
+
 /**
  * Map a single-item action refusal (the same closed status taxonomy the
  * batch preview/execute uses) to a typed HTTP error — never a 500. A
@@ -2563,6 +2649,8 @@ function ok(routeId: "auth.members.list", body: ApiMembersListResponse): ApiJson
 function ok(routeId: "auth.members.invite", body: ApiMemberInvitationResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.accept", body: ApiMemberResponse): ApiJsonResponse;
 function ok(routeId: "auth.members.remove", body: ApiRemoveMemberResponse): ApiJsonResponse;
+function ok(routeId: "auth.sessions.list", body: ApiAuthSessionsListResponse): ApiJsonResponse;
+function ok(routeId: "auth.sessions.revoke", body: ApiRevokeAuthSessionResponse): ApiJsonResponse;
 function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;

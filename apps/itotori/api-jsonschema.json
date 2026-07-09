@@ -122,6 +122,101 @@
       ],
       "type": "object"
     },
+    "ApiAuthSessionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "deviceLabel": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expiresAt": {
+          "type": "string"
+        },
+        "ipAddress": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "principalId": {
+          "type": "string"
+        },
+        "revokedAt": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "userAgent": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "createdAt",
+        "deviceLabel",
+        "expiresAt",
+        "ipAddress",
+        "isActive",
+        "principalId",
+        "revokedAt",
+        "sessionId",
+        "userAgent"
+      ],
+      "type": "object"
+    },
+    "ApiAuthSessionsListResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "principalId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.sessions.v0"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/definitions/ApiAuthSessionRecord"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "principalId",
+        "schemaVersion",
+        "sessions"
+      ],
+      "type": "object"
+    },
     "ApiBenchmarkReportsResponse": {
       "additionalProperties": false,
       "properties": {
@@ -1129,6 +1224,52 @@
         "action",
         "actorUserId",
         "expectedSourceRevisionId"
+      ],
+      "type": "object"
+    },
+    "ApiRevokeAuthSessionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reason",
+        "requestId"
+      ],
+      "type": "object"
+    },
+    "ApiRevokeAuthSessionResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "revokedSession": {
+          "$ref": "#/definitions/ApiAuthSessionRecord"
+        },
+        "schemaVersion": {
+          "const": "itotori.auth.session-revoked.v0"
+        }
+      },
+      "required": [
+        "revokedSession",
+        "schemaVersion"
       ],
       "type": "object"
     },

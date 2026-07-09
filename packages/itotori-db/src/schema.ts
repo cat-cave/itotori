@@ -4829,6 +4829,7 @@ export const authAuditEventActionValues = {
   invited: "invited",
   accepted: "accepted",
   removed: "removed",
+  sessionRevoked: "session_revoked",
 } as const;
 
 export type AuthAuditEventAction =
@@ -5141,6 +5142,9 @@ export const authSessions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    userAgent: text("user_agent"),
+    ipAddress: text("ip_address"),
+    deviceLabel: text("device_label"),
   },
   (table) => [index("itotori_auth_sessions_principal_idx").on(table.principalId)],
 );

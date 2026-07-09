@@ -658,6 +658,48 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: false,
     }),
+  ApiAuthSessionRecord: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionRecord,
+      properties: {
+        sessionId: str,
+        principalId: str,
+        createdAt: str,
+        expiresAt: str,
+        revokedAt: { oneOf: [str, { type: "null" }] },
+        isActive: bool,
+        deviceLabel: { oneOf: [str, { type: "null" }] },
+        userAgent: { oneOf: [str, { type: "null" }] },
+        ipAddress: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiAuthSessionsListResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthSessionsListResponse,
+      properties: {
+        principalId: str,
+        sessions: { type: "array", items: ref("ApiAuthSessionRecord") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.sessions.v0",
+    }),
+  ApiRevokeAuthSessionRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionRequest,
+      properties: {
+        reason: { oneOf: [str, { type: "null" }] },
+        requestId: { oneOf: [str, { type: "null" }] },
+      },
+      additionalProperties: false,
+    }),
+  ApiRevokeAuthSessionResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiRevokeAuthSessionResponse,
+      properties: { revokedSession: ref("ApiAuthSessionRecord") },
+      additionalProperties: false,
+      schemaVersion: "itotori.auth.session-revoked.v0",
+    }),
   ApiRemoveMemberResponse: (ref) =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiRemoveMemberResponse,

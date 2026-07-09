@@ -10,7 +10,12 @@ import {
 import type { DatabaseContext } from "../src/connection.js";
 import { ItotoriAuthSessionService } from "../src/repositories/auth-session-service.js";
 import { ItotoriPrincipalRepository } from "../src/repositories/principal-repository.js";
-import { authAccountMemberships, authExternalIdentities, authSessions } from "../src/schema.js";
+import {
+  authAccountMemberships,
+  authAuditEvents,
+  authExternalIdentities,
+  authSessions,
+} from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
@@ -135,6 +140,152 @@ describe("ItotoriAuthSessionService", () => {
           permissionValues.draftWrite,
         ),
         permissionValues.draftWrite,
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("lets a session admin inspect active sessions and revoke one immediately with audit", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriPrincipalRepository(context.db);
+      const sessions = new ItotoriAuthSessionService(context.db);
+      await repo.createAccount(localActor, {
+        accountId: "account-session-admin",
+        slug: "session-admin",
+        name: "Session admin",
+      });
+      await createHumanMember(repo, context.db, {
+        principalId: "principal-session-admin",
+        userId: "user-session-admin",
+        accountId: "account-session-admin",
+        membershipId: "membership-session-admin",
+      });
+      await repo.grantDirectPermission(localActor, {
+        actorPrincipalId: "principal-session-admin",
+        targetPrincipalId: "principal-session-admin",
+        permission: permissionValues.authSessionsManage,
+      });
+      await repo.grantDirectPermission(localActor, {
+        actorPrincipalId: "principal-session-admin",
+        targetPrincipalId: "principal-session-admin",
+        permission: permissionValues.draftWrite,
+      });
+      const sessionAdminActor = { userId: "user-session-admin" };
+
+      const active = await sessions.createLoginSession({
+        principalId: "principal-session-admin",
+        sessionId: "active-session-admin",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        device: {
+          deviceLabel: "Primary workstation",
+          userAgent: "Mozilla/5.0 session-admin-test",
+          ipAddress: "203.0.113.10",
+        },
+      });
+      await context.db.insert(authSessions).values({
+        sessionId: "expired-session-admin",
+        principalId: "principal-session-admin",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+      expect(
+        await sessions.listPrincipalSessions(sessionAdminActor, {
+          actorPrincipalId: "principal-session-admin",
+          targetPrincipalId: "principal-session-admin",
+        }),
+      ).toEqual([
+        expect.objectContaining({
+          sessionId: active.sessionId,
+          principalId: "principal-session-admin",
+          isActive: true,
+          deviceLabel: "Primary workstation",
+          userAgent: "Mozilla/5.0 session-admin-test",
+          ipAddress: "203.0.113.10",
+        }),
+      ]);
+
+      await expect(
+        sessions.revokePrincipalSession(sessionAdminActor, {
+          actorPrincipalId: "principal-session-admin",
+          targetPrincipalId: "principal-session-admin",
+          sessionId: "expired-session-admin",
+        }),
+      ).rejects.toMatchObject({
+        name: "ItotoriAuthSessionServiceError",
+      });
+
+      const revoked = await sessions.revokePrincipalSession(sessionAdminActor, {
+        actorPrincipalId: "principal-session-admin",
+        targetPrincipalId: "principal-session-admin",
+        sessionId: active.sessionId,
+        reason: "lost device",
+        requestId: "req-session-revoke",
+      });
+
+      expect(revoked).toMatchObject({
+        sessionId: active.sessionId,
+        principalId: "principal-session-admin",
+        isActive: false,
+      });
+      await expect(sessions.resolveActorFromSessionId(active.sessionId)).resolves.toBeNull();
+      await expectDenied(
+        requirePermission(
+          context.db,
+          { userId: "user-session-admin", sessionId: active.sessionId },
+          permissionValues.draftWrite,
+        ),
+        permissionValues.draftWrite,
+      );
+      await expect(
+        sessions.listPrincipalSessions(sessionAdminActor, {
+          actorPrincipalId: "principal-session-admin",
+          targetPrincipalId: "principal-session-admin",
+        }),
+      ).resolves.toEqual([]);
+
+      const auditRows = await context.db
+        .select()
+        .from(authAuditEvents)
+        .where(eq(authAuditEvents.requestId, "req-session-revoke"));
+      expect(auditRows).toEqual([
+        expect.objectContaining({
+          actorPrincipalId: "principal-session-admin",
+          targetPrincipalId: "principal-session-admin",
+          action: "session_revoked",
+          reason: "lost device",
+        }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("requires auth.sessions.manage for session admin tools", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const sessions = new ItotoriAuthSessionService(context.db);
+      await expectDenied(
+        sessions.listPrincipalSessions(
+          { userId: "missing-session-admin" },
+          {
+            actorPrincipalId: "principal-missing-session-admin",
+            targetPrincipalId: "principal-session-admin",
+          },
+        ),
+        permissionValues.authSessionsManage,
+      );
+      await expectDenied(
+        sessions.revokePrincipalSession(
+          { userId: "missing-session-admin" },
+          {
+            actorPrincipalId: "principal-missing-session-admin",
+            targetPrincipalId: "principal-session-admin",
+            sessionId: "session-denied",
+          },
+        ),
+        permissionValues.authSessionsManage,
       );
     } finally {
       await context.close();

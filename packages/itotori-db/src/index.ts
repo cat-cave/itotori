@@ -966,9 +966,12 @@ export {
   ItotoriAuthSessionServiceError,
 } from "./repositories/auth-session-service.js";
 export type {
+  AuthSessionAdminRecord,
   AuthSessionRecord,
   CreateLoginSessionInput,
+  ListPrincipalSessionsInput,
   LoginProviderTokenBundle,
+  RevokePrincipalSessionInput,
   ResolvedAuthSessionActor,
 } from "./repositories/auth-session-service.js";
 export type {

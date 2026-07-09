@@ -87,6 +87,9 @@ import type {
   ApiMembersListResponse,
   ApiRemoveMemberRequest,
   ApiRemoveMemberResponse,
+  ApiAuthSessionsListResponse,
+  ApiRevokeAuthSessionRequest,
+  ApiRevokeAuthSessionResponse,
   ApiAuthCapabilitiesResponse,
   ApiTerminologySearchResponse,
   ApiWikiEntriesResponse,
@@ -293,6 +296,16 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRemoveMemberResponse;
     pathParams: { membershipId: string };
     request: ApiRemoveMemberRequest;
+  };
+  "auth.sessions.list": {
+    response: ApiAuthSessionsListResponse;
+    pathParams: { principalId: string };
+    collectionKey: "sessions";
+  };
+  "auth.sessions.revoke": {
+    response: ApiRevokeAuthSessionResponse;
+    pathParams: { principalId: string; sessionId: string };
+    request: ApiRevokeAuthSessionRequest;
   };
   // ovw-launch-pass-action — drive the next localization pass via the driver.
   // Project-scoped (path param); the body carries the locale branch the pass is

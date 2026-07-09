@@ -1,8 +1,9 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { AuthorizationActor } from "../authorization.js";
+import { permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
-import { authSessions, authUsers } from "../schema.js";
+import { authAuditEventActionValues, authAuditEvents, authSessions, authUsers } from "../schema.js";
 
 export type LoginProviderTokenBundle = {
   accessToken?: string;
@@ -15,6 +16,11 @@ export type CreateLoginSessionInput = {
   expiresAt: Date;
   sessionId?: string;
   now?: Date;
+  device?: {
+    userAgent?: string;
+    ipAddress?: string;
+    deviceLabel?: string;
+  };
   /**
    * External IdP tokens are login-time material only. This service deliberately
    * does not persist them and authorization never reads them.
@@ -28,6 +34,28 @@ export type AuthSessionRecord = {
   createdAt: Date;
   expiresAt: Date;
   revokedAt: Date | null;
+};
+
+export type AuthSessionAdminRecord = AuthSessionRecord & {
+  isActive: boolean;
+  userAgent: string | null;
+  ipAddress: string | null;
+  deviceLabel: string | null;
+};
+
+export type ListPrincipalSessionsInput = {
+  actorPrincipalId: string;
+  targetPrincipalId: string;
+  now?: Date;
+};
+
+export type RevokePrincipalSessionInput = {
+  actorPrincipalId: string;
+  targetPrincipalId: string;
+  sessionId: string;
+  revokedAt?: Date;
+  reason?: string;
+  requestId?: string;
 };
 
 export type ResolvedAuthSessionActor = {
@@ -57,6 +85,9 @@ export class ItotoriAuthSessionService {
         sessionId,
         principalId: input.principalId,
         expiresAt: input.expiresAt,
+        userAgent: input.device?.userAgent,
+        ipAddress: input.device?.ipAddress,
+        deviceLabel: input.device?.deviceLabel,
       })
       .returning({
         sessionId: authSessions.sessionId,
@@ -104,6 +135,82 @@ export class ItotoriAuthSessionService {
       sessionId: row.sessionId,
       expiresAt: row.expiresAt,
     };
+  }
+
+  async listPrincipalSessions(
+    actor: AuthorizationActor,
+    input: ListPrincipalSessionsInput,
+  ): Promise<AuthSessionAdminRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.authSessionsManage);
+    const now = input.now ?? new Date();
+    const rows = await this.db
+      .select({
+        sessionId: authSessions.sessionId,
+        principalId: authSessions.principalId,
+        createdAt: authSessions.createdAt,
+        expiresAt: authSessions.expiresAt,
+        revokedAt: authSessions.revokedAt,
+        userAgent: authSessions.userAgent,
+        ipAddress: authSessions.ipAddress,
+        deviceLabel: authSessions.deviceLabel,
+      })
+      .from(authSessions)
+      .where(
+        and(
+          eq(authSessions.principalId, input.targetPrincipalId),
+          isNull(authSessions.revokedAt),
+          gt(authSessions.expiresAt, now),
+        ),
+      );
+    return rows
+      .map((row) => ({ ...row, isActive: true }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async revokePrincipalSession(
+    actor: AuthorizationActor,
+    input: RevokePrincipalSessionInput,
+  ): Promise<AuthSessionAdminRecord> {
+    await requirePermission(this.db, actor, permissionValues.authSessionsManage);
+    const revokedAt = input.revokedAt ?? new Date();
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(authSessions)
+        .set({ revokedAt })
+        .where(
+          and(
+            eq(authSessions.sessionId, input.sessionId),
+            eq(authSessions.principalId, input.targetPrincipalId),
+            isNull(authSessions.revokedAt),
+            gt(authSessions.expiresAt, revokedAt),
+          ),
+        )
+        .returning({
+          sessionId: authSessions.sessionId,
+          principalId: authSessions.principalId,
+          createdAt: authSessions.createdAt,
+          expiresAt: authSessions.expiresAt,
+          revokedAt: authSessions.revokedAt,
+          userAgent: authSessions.userAgent,
+          ipAddress: authSessions.ipAddress,
+          deviceLabel: authSessions.deviceLabel,
+        });
+      const session = rows[0];
+      if (session === undefined) {
+        throw new ItotoriAuthSessionServiceError(
+          `active session ${input.sessionId} does not belong to principal ${input.targetPrincipalId} or is already revoked`,
+        );
+      }
+      await tx.insert(authAuditEvents).values({
+        authAuditEventId: `auth-audit-${randomUUID()}`,
+        actorPrincipalId: input.actorPrincipalId,
+        targetPrincipalId: input.targetPrincipalId,
+        action: authAuditEventActionValues.sessionRevoked,
+        reason: input.reason,
+        requestId: input.requestId,
+      });
+      return { ...session, isActive: false };
+    });
   }
 
   async revokeSession(sessionId: string, revokedAt = new Date()): Promise<boolean> {
