@@ -25,6 +25,7 @@ import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js"
 import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { DecisionsBand } from "./DecisionsBand.js";
+import { LoopSpinePanel } from "./LoopSpinePanel.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
@@ -39,6 +40,12 @@ export function DashboardScreen(): ReactNode {
       <ShellHeader eyebrow="Workbench" title="Itotori dashboard">
         <StatusStrip status={status} decisions={decisions} />
       </ShellHeader>
+
+      {/* xs-loop-spine-ui — the iterative-loop spine, visible end-to-end
+          (flag → decide → correct → launch → rescore → confidence) at the
+          top of the overview so the whole handoff chain is legible at a
+          glance. Read-only legibility; the detailed panels follow. */}
+      <LoopSpinePanel />
 
       <DecisionsBand />
 

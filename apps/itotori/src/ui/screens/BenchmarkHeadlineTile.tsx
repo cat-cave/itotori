@@ -62,7 +62,7 @@ export const BENCHMARK_CONTESTANT_LABELS: Readonly<Record<BmkCockpitContestantRo
   mtl: "MTL",
 };
 
-const VERDICT_LABELS: Readonly<Record<BenchmarkVerdictStatus, string>> = {
+export const VERDICT_LABELS: Readonly<Record<BenchmarkVerdictStatus, string>> = {
   proven: "Strong caliber",
   in_review: "In review",
   drafting: "Drafting",

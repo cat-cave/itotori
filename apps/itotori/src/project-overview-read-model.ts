@@ -62,6 +62,13 @@ export type ProjectOverviewPassLedgerPage = {
   filter: ProjectOverviewPassLedgerFilter;
   pagination: ProjectOverviewPagination;
   rows: ProjectOverviewPassLedgerRow[];
+  /**
+   * Canonical latest pass for the selected locale branch, independent of the
+   * current page window. The page rows remain ascending/paginated for the ledger
+   * table; summary surfaces use this field so page 1 cannot masquerade as the
+   * latest pass when the branch has more rows than the page limit.
+   */
+  latestRow?: ProjectOverviewPassLedgerRow | null;
 };
 
 export type ProjectOverviewBenchmarkHeadline = {
@@ -225,10 +232,12 @@ export async function loadProjectOverviewPassLedgerPage(input: {
 
   const records = await input.repository.loadPassesForBranch(input.actor, localeBranchId);
   const pageRows = records.slice(offset, offset + limit).map(passLedgerRow);
+  const latestRecord = latestPassLedgerRecord(records);
   return {
     filter: { projectId: input.projectId, localeBranchId },
     pagination: pagination(records.length, limit, offset),
     rows: pageRows,
+    latestRow: latestRecord === null ? null : passLedgerRow(latestRecord),
   };
 }
 
@@ -248,6 +257,7 @@ export function redactProjectOverviewReadModel(
     passLedger: {
       ...overview.passLedger,
       rows: [],
+      latestRow: null,
     },
   };
 }
@@ -294,7 +304,20 @@ function emptyPassLedgerPage(
     filter: { projectId, localeBranchId },
     pagination: pagination(0, limit, offset),
     rows: [],
+    latestRow: null,
   };
+}
+
+function latestPassLedgerRecord(
+  records: readonly LocalizationPassLedgerRecord[],
+): LocalizationPassLedgerRecord | null {
+  let latest: LocalizationPassLedgerRecord | null = null;
+  for (const record of records) {
+    if (latest === null || record.passNumber > latest.passNumber) {
+      latest = record;
+    }
+  }
+  return latest;
 }
 
 function passLedgerRow(record: LocalizationPassLedgerRecord): ProjectOverviewPassLedgerRow {

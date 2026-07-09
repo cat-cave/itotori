@@ -4824,7 +4824,7 @@ function assertProjectOverviewPassLedgerPage(
   value: unknown,
   label: string,
 ): asserts value is ProjectOverviewPassLedgerPage {
-  const page = asStrictRecord(value, label, ["filter", "pagination", "rows"]);
+  const page = asStrictRecord(value, label, ["filter", "pagination", "rows", "latestRow"]);
   const filter = asStrictRecord(page.filter, `${label}.filter`, ["projectId", "localeBranchId"]);
   assertString(filter.projectId, `${label}.filter.projectId`);
   assertNullableString(filter.localeBranchId, `${label}.filter.localeBranchId`);
@@ -4835,6 +4835,9 @@ function assertProjectOverviewPassLedgerPage(
   }
   for (const [index, row] of rows.entries()) {
     assertProjectOverviewPassLedgerRow(row, `${label}.rows[${index}]`);
+  }
+  if ("latestRow" in page && page.latestRow !== null) {
+    assertProjectOverviewPassLedgerRow(page.latestRow, `${label}.latestRow`);
   }
 }
 
