@@ -1,11 +1,115 @@
 # Itotori
 
-Itotori is an agentic games-localization pipeline, not a translation box. It
-brings the whole workflow into one public monorepo:
-**catalog → inventory → readiness → extraction → localization → patching →
-validation**.
+Itotori localizes games. You point it at a game you have the rights to work on,
+it extracts the in-game text, drafts localized translations with a configurable
+LLM provider, runs quality checks, applies a byte-correct patch to a writable
+copy, and validates the patched game by replaying and rendering it. It is an
+**agentic games-localization pipeline**, not a translation box: the whole
+workflow — **catalog → inventory → extraction → localization → patching →
+validation** — runs in one tool.
 
-The suite has three first-class subprojects:
+You do **not** need to clone this repository, install Nix, or use `pnpm` to
+localize a game. Those are the developer paths
+([Developer setup](#developer-setup-contributing)) and are linked out below.
+
+## What you need before you start
+
+- **A Node runtime** matching the project pin (a `>=24.14` major). This is the
+  only host requirement of the installed CLI.
+- **An OpenRouter API key** with your account configured for account-wide
+  **Zero-Data-Retention (ZDR)**. Itotori fails closed (it will not run a live
+  localization) until ZDR is asserted. See
+  [docs/security-and-limitations.md](docs/security-and-limitations.md).
+- **A game you have the rights to localize**, on a supported engine. The first
+  real engine vertical is RealLive; see
+  [docs/kaifuu-detection-matrix.md](docs/kaifuu-detection-matrix.md) for the
+  supported/unsupported variant matrix.
+- **Native runtime dependencies** the CLI drives but does not bundle (the
+  kaifuu/utsushi Rust binaries, Postgres, and Chromium for render validation).
+  `itotori init` walks you through the database; the rest are provisioned via
+  the deterministic path in
+  [docs/native-deps-provisioning.md](docs/native-deps-provisioning.md).
+
+## Quickstart: install → localize → review → patched output
+
+### 1. Install itotori
+
+```sh
+npm install -g itotori            # from the registry (when published)
+itotori --version                 # itotori <version>
+```
+
+or from a clone (produces a self-contained tarball you can install anywhere,
+no monorepo `node_modules` needed):
+
+```sh
+just itotori-package-pack         # packages/itotori-cli/itotori-<version>.tgz
+npm install -g packages/itotori-cli/itotori-<version>.tgz
+```
+
+`itotori --help` lists the user command surface (`init`, `localize-game`,
+`extract`, `localize`, `patch`, `validate`, …); `itotori help --all` also lists
+the advanced/internal commands.
+
+### 2. Set up (guided)
+
+```sh
+itotori init                      # OpenRouter key + ZDR + database + config file
+itotori db-migrate                # apply the database schema (needs DATABASE_URL)
+```
+
+`itotori init` writes a config file to `~/.config/itotori/config.env` (mode
+`0600`) and tells you exactly what to add to your shell profile. Your API key is
+never printed or logged. See [docs/install.md](docs/install.md) for the full
+install path and [docs/security-and-limitations.md](docs/security-and-limitations.md)
+for the security posture.
+
+### 3. Localize a game
+
+One command runs the whole pipeline end-to-end — extract → structure →
+localize → patch → validate:
+
+```sh
+itotori localize-game \
+  --config <project-config.json> \
+  --source <read-only-game-root> \
+  --target <writable-output-root> \
+  --run-dir <run-dir> \
+  --game-id <id> --game-version <ver> \
+  --source-profile-id <profile> --source-locale ja-JP \
+  --scene <N>
+```
+
+You can also run the stages individually (`itotori extract`, `itotori localize`,
+`itotori patch`, `itotori validate`) — run `itotori --help` for the list. A live
+run requires the OpenRouter key + ZDR assertion configured in step 2; without
+them itotori fails loudly rather than downgrading.
+
+### 4. Review the results
+
+The run writes its artifacts into `--run-dir`: the extracted bridge bundle, the
+narrative structure, the drafted translations, and the QA findings. The
+validate stage produces a **replay log** and **render evidence** (screenshots)
+so you can confirm the patched game actually works. On success `localize-game`
+prints a JSON summary — `acceptedDraftCount`, `totalUsageCostUsd`,
+`patchApplied`, `replayLogPath`, `renderEvidencePath` — pointing you at the
+review surfaces. The Studio dashboard (the React app in `apps/itotori/`,
+documented in [docs/frontend.md](docs/frontend.md)) is the browsable review
+surface for drafts, QA findings, and runtime evidence.
+
+### 5. Take the patched output
+
+The patched, playable game lands in `--target` (`patchTargetRoot`). Kaifuu can
+also emit a `.kaifuu` delta package so the same patch can be re-applied or
+shipped without redistributing the game — see
+[docs/subprojects-kaifuu.md](docs/subprojects-kaifuu.md) and the format-stability
+policy in
+[docs/format-stability-and-compatibility-policy.md](docs/format-stability-and-compatibility-policy.md).
+
+## The three subprojects
+
+The suite is three first-class subprojects; you drive them through the single
+`itotori` CLI above:
 
 - **Itotori**: catalog/inventory, localization graph, agentic drafting + QA,
   feedback, benchmarks, and dashboard surfaces.
@@ -14,87 +118,51 @@ The suite has three first-class subprojects:
 - **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and
   runtime evidence.
 
-## Alpha = readiness to _start_ a real localization project
-
-The **alpha milestone is readiness to _start_ a first real localization
-project**, not a finished product and not a terminal release. It means the whole
-pipeline fires end-to-end on a single real game (RealLive) and every stage is
-swappable; output quality is explicitly not the bar at alpha. The full readiness
-statement, the generated capability claims, and the evidence node references
-live in [docs/alpha-readiness.md](docs/alpha-readiness.md). Tier definitions
-(real-game-testing-ready → alpha → beta → full release) live in
-[docs/project-readiness.md](docs/project-readiness.md).
-
-The alpha proof (the `ALPHA-007` public-fixture vertical, gated by `ALPHA-009`)
-is the deterministic guardrail that exercises the end-to-end contract across all
-three projects without copyrighted bytes; the first real-engine vertical is the
-explicit alpha proof target `ALPHA-006`, sourced read-only from the configured
-target corpus root (the corpus vault).
-
-## Quickstart (fresh clone — no secrets, no real bytes)
-
-```sh
-just install                    # install workspace deps
-just alpha-demo                 # public-fixture end-to-end demo (deterministic)
-just alpha-readiness-checklist  # verify docs against generated artifacts
-```
-
-See [docs/install.md](docs/install.md) for the full fresh-clone path and
-[docs/security-and-limitations.md](docs/security-and-limitations.md) for the
-security posture, legal boundaries, and honest limitations. `just alpha-demo`
-delegates to the alpha proof below.
-
-`just alpha-proof` is the required cross-project integration command: it runs `pnpm exec vp run alpha:public-fixture` and then re-proves cross-artifact linkage with `pnpm exec vp run alpha:public-fixture-validate`. It is public-fixture-only and deterministic — no database, no live credentials, no private corpora — and proves the contract end-to-end through schema-valid, hash-addressed artifact linkage rather than a `status=hello_world_passed` success string. See [docs/alpha-proof.md](docs/alpha-proof.md). Future real-corpus docs should teach generic project runners and corpus descriptors, not new title-specific commands, environment variables, artifact schemas, or preset names. The title-reference allowlist and review command live in [docs/fixtures-and-corpora.md](docs/fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
-
-The vertical composes and links, for the same public fixture id, source revision, and locale branch:
-
-1. Kaifuu extraction (`BridgeBundle`) and the `.kaifuu` delta package / PatchResult.
-2. Itotori bridge import, draft, and `PatchExport`.
-3. Utsushi runtime observation proof.
-4. A sanitized provider proof and a fresh ITOTORI-026 benchmark report.
-5. Dashboard / read-model ingestion and the SHARED-025 alpha proof manifest.
-
-For the full DB-backed test suite and Rust gates, run `just ci` (which starts and tears down a worktree-scoped Postgres stack).
-
-## Project Layout
+## Project layout
 
 ```txt
 apps/
-  itotori/                 # TypeScript CLI + React SPA on @itotori/ds (fnd-spa-shell)
+  itotori/                 # TypeScript CLI + React SPA (the Studio dashboard)
   runtime-web-review/      # Runtime evidence dashboard
 packages/
+  itotori-cli/             # the installable, self-contained itotori bin
   localization-bridge-schema/
   itotori-db/
   itotori-ds/              # Dusk Observatory design system (React + CSS tokens)
-  spec-dag-dashboard/      # Self-contained browsable spec-DAG dashboard
 crates/
-  kaifuu-*/
-  utsushi-*/
-docs/
-  alpha-proof.md
-  alpha-readiness.md
-  install.md
-  frontend.md              # SPA / @itotori/ds / typed API client notes
-  dev/                     # contributor / developer-oriented docs (see CONTRIBUTING.md)
+  kaifuu-*/                # extraction / patching / delta
+  utsushi-*/               # runtime validation
+docs/                      # user-facing docs (you are reading the entry point)
+  dev/                     # contributor / developer docs (see CONTRIBUTING.md)
 ```
-
-Vite+ is the high-level TypeScript/web workspace surface (the `vp` CLI; task graph in `vite.config.ts`). Cargo remains the Rust build and test authority. The root `justfile` orchestrates both. The contributor / developer docs (dev toolchain, internal architecture, qd DAG workflow, worktree lifecycle, testing standard, CI policy, audit playbook) live under [`docs/dev/`](docs/dev/README.md); start at [`CONTRIBUTING.md`](CONTRIBUTING.md) if you are going to change code.
 
 ## Status
 
-This repository is at the **alpha readiness** milestone: ready to _start_ a first
-real localization project, with the whole pipeline proven end-to-end on the
-public fixtures and on the first real-engine vertical (`ALPHA-006`). It is not a
-terminal product release; beta (≥2 games per engine, encrypted variants) and full
-release are later tiers ([docs/project-readiness.md](docs/project-readiness.md)).
+Itotori is at the **alpha readiness** milestone: ready to _start_ a first real
+localization project, with the whole pipeline proven end-to-end on the public
+fixtures and on the first real-engine vertical (`ALPHA-006`). It is not a
+terminal product release; beta (≥2 games per engine, encrypted variants, the
+packaged non-developer install surface) and full release are later tiers — see
+[docs/project-readiness.md](docs/project-readiness.md) and
+[docs/alpha-readiness.md](docs/alpha-readiness.md). The public-fixture alpha
+proof and the SHARED-025 manifest contract are documented in
+[docs/alpha-proof.md](docs/alpha-proof.md).
 
-Readiness is enforced, not asserted: `just alpha-readiness-checklist`
-([scripts/alpha-readiness-checklist.mjs](scripts/alpha-readiness-checklist.mjs))
-re-derives the readiness-doc claims from the generated capability + benchmark
-artifacts and the SHARED-025 proof manifest, so the docs cannot drift. It runs
-inside `just check` / `just ci`.
+The public formats a localization depends on (the bridge schema, the `.kaifuu`
+delta, the API contract, the DB schema) each declare a stability tier + version
+under the backward-compatibility policy in
+[docs/format-stability-and-compatibility-policy.md](docs/format-stability-and-compatibility-policy.md)
+and [docs/versioning-and-release-policy.md](docs/versioning-and-release-policy.md).
 
-The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`
-and imported into the qd orchestration ledger, which is the source of truth for
-inspecting and choosing work. Run `qd ready` (or `qd status`) to see the next
-PR-sized specs. Use `just roadmap-validate` to validate the `spec-dag.json` data.
+Readiness is enforced, not asserted: the readiness checklists re-derive their
+claims from the generated artifacts so the docs cannot drift.
+
+## Developer setup (contributing)
+
+The paths above are the **user** path. If you are going to **change itotori**
+itself — the Nix + direnv + pnpm dev toolchain, the `just`-orchestrated gates,
+the qd DAG workflow, worktree lifecycle, internal architecture, testing
+standard, CI policy — start at [CONTRIBUTING.md](CONTRIBUTING.md), which routes
+you into [`docs/dev/`](docs/dev/README.md). The developer fresh-clone path
+(`just install`, `just alpha-demo`, `just check` / `just ci`) is documented in
+[docs/install.md](docs/install.md) under the developer sections.
