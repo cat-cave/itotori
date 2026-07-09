@@ -189,7 +189,12 @@ export type ItotoriApiRouteId =
   // project-driven-executor / localize-fullproject driver. `canSteer`-gated
   // (the `draft.write` steer permission). The HTTP surface is a thin adapter;
   // the driver itself is unchanged.
-  | "projects.launchPass";
+  | "projects.launchPass"
+  // play-mark-validated — per-scene localization coverage for the Play RouteMap.
+  // GET loads nodes/edges with coverage state; POST sets a scene's state
+  // (needs_check / flagged / validated). Persistence is `itotori_scene_localization_coverage`.
+  | "play.sceneCoverage"
+  | "play.setSceneCoverage";
 
 export type ApiErrorResponse = {
   error: string;
@@ -447,6 +452,25 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   // schemaVersion const pins the wire shape; a renamed / leaked field fails a
   // contract test instead of silently drifting.
   ApiLaunchPassResponse: ["schemaVersion", "outcome", "passNumber", "startedAt", "refusalMessage"],
+  // play-mark-validated — coverage read model + set response (strict).
+  ApiPlaySceneCoverageResponse: [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "localeBranchId",
+    "nodes",
+    "edges",
+    "counts",
+  ],
+  ApiPlaySetSceneCoverageResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "sceneId",
+    "coverageState",
+    "updatedAt",
+    "updatedByUserId",
+  ],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
@@ -738,6 +762,82 @@ export type ApiLaunchPassResponse = {
   refusalMessage: string | null;
 };
 
+/** Closed coverage vocabulary (play-mark-validated). */
+export type ApiSceneCoverageState = "needs_check" | "flagged" | "validated";
+
+export const API_SCENE_COVERAGE_STATES = [
+  "needs_check",
+  "flagged",
+  "validated",
+] as const satisfies readonly ApiSceneCoverageState[];
+
+/**
+ * play-mark-validated — request body for setting a scene's coverage state.
+ * projectId + localeBranchId live on the URL path; the body carries the scene
+ * and the target state.
+ */
+export type ApiPlaySetSceneCoverageRequest = {
+  sceneId: string;
+  coverageState: ApiSceneCoverageState;
+};
+
+/**
+ * play-mark-validated — one RouteMap node with its coverage state. `sceneId` is
+ * the opaque game-agnostic key (matches scene-summary / route-map identity when
+ * shared). Unpersisted scenes default to `needs_check`.
+ */
+export type ApiPlaySceneCoverageNode = {
+  sceneId: string;
+  label: string;
+  coverageState: ApiSceneCoverageState;
+  routeKey: string | null;
+  routeMapId: string | null;
+};
+
+/** play-mark-validated — one choice edge between scenes on the RouteMap. */
+export type ApiPlaySceneCoverageEdge = {
+  fromSceneId: string;
+  toSceneId: string;
+  choiceKey: string;
+  label: string;
+};
+
+/** play-mark-validated — aggregate counts for the branch's coverage. */
+export type ApiPlaySceneCoverageCounts = {
+  needsCheck: number;
+  flagged: number;
+  validated: number;
+  total: number;
+};
+
+/**
+ * play-mark-validated — GET response: the Play RouteMap coverage read-model.
+ * Nodes carry per-scene coverage; edges come from routeChoices.
+ */
+export type ApiPlaySceneCoverageResponse = {
+  schemaVersion: "itotori.play.scene-coverage.v0";
+  generatedAt: string;
+  projectId: string;
+  localeBranchId: string;
+  nodes: ApiPlaySceneCoverageNode[];
+  edges: ApiPlaySceneCoverageEdge[];
+  counts: ApiPlaySceneCoverageCounts;
+};
+
+/**
+ * play-mark-validated — POST response: the scene's durable coverage after the
+ * upsert. The client re-fetches the full map (or patches local state) from this.
+ */
+export type ApiPlaySetSceneCoverageResponse = {
+  schemaVersion: "itotori.play.set-scene-coverage.v0";
+  projectId: string;
+  localeBranchId: string;
+  sceneId: string;
+  coverageState: ApiSceneCoverageState;
+  updatedAt: string;
+  updatedByUserId: string;
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -783,6 +883,8 @@ export type ItotoriApiResponseBody =
   | ApiMembersListResponse
   | ApiRemoveMemberResponse
   | ApiLaunchPassResponse
+  | ApiPlaySceneCoverageResponse
+  | ApiPlaySetSceneCoverageResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -1241,6 +1343,12 @@ export function assertItotoriApiResponse(
       return;
     case "projects.launchPass":
       assertLaunchPassResponse(value);
+      return;
+    case "play.sceneCoverage":
+      assertPlaySceneCoverageResponse(value);
+      return;
+    case "play.setSceneCoverage":
+      assertPlaySetSceneCoverageResponse(value);
       return;
   }
 }
@@ -5115,6 +5223,115 @@ export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
     assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
     return { localeBranchId: request.localeBranchId };
   });
+}
+
+/**
+ * play-mark-validated — parse + validate the set-coverage request body. The
+ * scene id and coverage state are required; the project / branch live on the
+ * URL path and are ownership-verified server-side before the write.
+ */
+export function parsePlaySetSceneCoverageRequest(body: unknown): ApiPlaySetSceneCoverageRequest {
+  return parseRequest("ApiPlaySetSceneCoverageRequest", () => {
+    const request = asRecord(body, "ApiPlaySetSceneCoverageRequest");
+    assertString(request.sceneId, "ApiPlaySetSceneCoverageRequest.sceneId");
+    if (request.sceneId.trim().length === 0) {
+      throw new ApiValidationError("ApiPlaySetSceneCoverageRequest.sceneId must be non-empty");
+    }
+    assertEnum(
+      request.coverageState,
+      API_SCENE_COVERAGE_STATES,
+      "ApiPlaySetSceneCoverageRequest.coverageState",
+    );
+    return {
+      sceneId: request.sceneId.trim(),
+      coverageState: request.coverageState,
+    };
+  });
+}
+
+function assertPlaySceneCoverageResponse(
+  value: unknown,
+): asserts value is ApiPlaySceneCoverageResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlaySceneCoverageResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.scene-coverage.v0",
+    "ApiPlaySceneCoverageResponse.schemaVersion",
+  );
+  assertString(response.generatedAt, "ApiPlaySceneCoverageResponse.generatedAt");
+  assertString(response.projectId, "ApiPlaySceneCoverageResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlaySceneCoverageResponse.localeBranchId");
+  if (!Array.isArray(response.nodes)) {
+    throw new Error("ApiPlaySceneCoverageResponse.nodes must be an array");
+  }
+  for (const [index, node] of response.nodes.entries()) {
+    assertPlaySceneCoverageNode(node, `ApiPlaySceneCoverageResponse.nodes[${index}]`);
+  }
+  if (!Array.isArray(response.edges)) {
+    throw new Error("ApiPlaySceneCoverageResponse.edges must be an array");
+  }
+  for (const [index, edge] of response.edges.entries()) {
+    assertPlaySceneCoverageEdge(edge, `ApiPlaySceneCoverageResponse.edges[${index}]`);
+  }
+  assertPlaySceneCoverageCounts(response.counts, "ApiPlaySceneCoverageResponse.counts");
+}
+
+function assertPlaySceneCoverageNode(value: unknown, label: string): void {
+  const node = asRecord(value, label);
+  assertString(node.sceneId, `${label}.sceneId`);
+  assertString(node.label, `${label}.label`);
+  assertEnum(node.coverageState, API_SCENE_COVERAGE_STATES, `${label}.coverageState`);
+  if (node.routeKey !== null) {
+    assertString(node.routeKey, `${label}.routeKey`);
+  }
+  if (node.routeMapId !== null) {
+    assertString(node.routeMapId, `${label}.routeMapId`);
+  }
+}
+
+function assertPlaySceneCoverageEdge(value: unknown, label: string): void {
+  const edge = asRecord(value, label);
+  assertString(edge.fromSceneId, `${label}.fromSceneId`);
+  assertString(edge.toSceneId, `${label}.toSceneId`);
+  assertString(edge.choiceKey, `${label}.choiceKey`);
+  assertString(edge.label, `${label}.label`);
+}
+
+function assertPlaySceneCoverageCounts(value: unknown, label: string): void {
+  const counts = asRecord(value, label);
+  assertNonNegativeInteger(counts.needsCheck, `${label}.needsCheck`);
+  assertNonNegativeInteger(counts.flagged, `${label}.flagged`);
+  assertNonNegativeInteger(counts.validated, `${label}.validated`);
+  assertNonNegativeInteger(counts.total, `${label}.total`);
+}
+
+function assertPlaySetSceneCoverageResponse(
+  value: unknown,
+): asserts value is ApiPlaySetSceneCoverageResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlaySetSceneCoverageResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySetSceneCoverageResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.set-scene-coverage.v0",
+    "ApiPlaySetSceneCoverageResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiPlaySetSceneCoverageResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlaySetSceneCoverageResponse.localeBranchId");
+  assertString(response.sceneId, "ApiPlaySetSceneCoverageResponse.sceneId");
+  assertEnum(
+    response.coverageState,
+    API_SCENE_COVERAGE_STATES,
+    "ApiPlaySetSceneCoverageResponse.coverageState",
+  );
+  assertString(response.updatedAt, "ApiPlaySetSceneCoverageResponse.updatedAt");
+  assertString(response.updatedByUserId, "ApiPlaySetSceneCoverageResponse.updatedByUserId");
 }
 
 function parseAuthSsoProviderConfig(value: unknown, label: string): ApiAuthSsoProviderConfig {

@@ -134,6 +134,7 @@ type ApiMutationPermissionCase = {
 type ApiMutationService =
   | { surface: "projectWorkflow"; method: MutatingProjectWorkflowService }
   | { surface: "authSsoSettings"; method: "configureSettings" }
+  | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | {
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
@@ -164,6 +165,7 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/auth/members/invitations",
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
+  "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
 ]);
 
 const authSsoSettingsRequestFixture = {
@@ -287,6 +289,14 @@ const apiMutationPermissionMatrix = [
     "membersRemove",
     post("/api/auth/members/membership-api/remove", removeMemberRequestFixture),
     { surface: "authMembers", method: "removeMember" },
+  ),
+  apiGateForService(
+    "setSceneCoverage",
+    post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
+      sceneId: "scene-opening",
+      coverageState: "validated",
+    }),
+    { surface: "sceneCoverage", method: "setSceneCoverage" },
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
@@ -3393,6 +3403,13 @@ describe("Itotori API handlers", () => {
           "route": "POST /api/auth/members/membership-api/remove",
           "successFixture": "api-handlers.test.ts members remove success fixture",
         },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "set scene coverage",
+          "requiredPermission": "queue.manage",
+          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
+          "successFixture": "api-handlers.test.ts set scene coverage success fixture",
+        },
       ]
     `);
   });
@@ -3808,10 +3825,18 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "authMembers") {
     return services.authMembers[service.method];
   }
+  if (service.surface === "sceneCoverage") {
+    return services.sceneCoverage[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
 function apiMutationRouteId(request: ItotoriApiRequest): string {
+  const sceneCoverageRoute =
+    /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/scene-coverage$/u.exec(request.pathname);
+  if (request.method === "POST" && sceneCoverageRoute !== null) {
+    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage";
+  }
   const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
   if (request.method === "POST" && projectRoute?.[1]) {
     return `POST /api/projects/:projectId/${projectRoute[1]}`;
@@ -4373,6 +4398,39 @@ function serviceFixture(): ItotoriApiServices {
         displayName: "API Member",
         permissionSetIds: ["permission-set-account-local-reviewer"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
+      })),
+    },
+    sceneCoverage: {
+      loadRouteMapCoverage: vi.fn(async ({ projectId, localeBranchId }) => ({
+        schemaVersion: "itotori.play.scene-coverage.v0" as const,
+        projectId,
+        localeBranchId,
+        generatedAt: "2026-07-08T00:00:00.000Z",
+        nodes: [
+          {
+            sceneId: "scene-opening",
+            label: "Opening",
+            coverageState: "needs_check" as const,
+            routeKey: "scene-opening",
+            routeMapId: "route-map-opening",
+          },
+        ],
+        edges: [],
+        counts: {
+          total: 1,
+          needsCheck: 1,
+          flagged: 0,
+          validated: 0,
+        },
+      })),
+      setSceneCoverage: vi.fn(async ({ projectId, localeBranchId, sceneId, coverageState }) => ({
+        schemaVersion: "itotori.play.set-scene-coverage.v0" as const,
+        projectId,
+        localeBranchId,
+        sceneId,
+        coverageState,
+        updatedAt: "2026-07-08T00:00:00.000Z",
+        updatedByUserId: "local-user",
       })),
     },
   };

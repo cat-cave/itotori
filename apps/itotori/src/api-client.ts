@@ -46,6 +46,9 @@ import {
   type ApiBmkCockpitHistoryResponse,
   type ApiLaunchPassRequest,
   type ApiLaunchPassResponse,
+  type ApiPlaySceneCoverageResponse,
+  type ApiPlaySetSceneCoverageRequest,
+  type ApiPlaySetSceneCoverageResponse,
   type ApiProjectCostDrilldownResponse,
   type ApiProjectCostResponse,
   type ApiProjectOverviewResponse,
@@ -289,6 +292,17 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { projectId: string };
     request: ApiLaunchPassRequest;
   };
+  // play-mark-validated — per-scene coverage for the Play RouteMap.
+  "play.sceneCoverage": {
+    response: ApiPlaySceneCoverageResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    collectionKey: "nodes";
+  };
+  "play.setSceneCoverage": {
+    response: ApiPlaySetSceneCoverageResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    request: ApiPlaySetSceneCoverageRequest;
+  };
 }
 
 /** The typed response body a route returns (from api-schema.ts). */
@@ -408,6 +422,8 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "projects.costDrilldown": "rows",
   "projects.benchmarks": "reports",
   "jobs.runTable": "rows",
+  // play-mark-validated — empty when no RouteMap nodes (no scenes to cover).
+  "play.sceneCoverage": "nodes",
 };
 
 function defaultIsEmpty(routeId: ItotoriApiRouteId, data: unknown): boolean {

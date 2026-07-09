@@ -808,6 +808,73 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.projects.launch-pass.v0",
     }),
+
+  // play-mark-validated — scene coverage read/write envelopes --------------
+  // Nested node/edge/counts shapes are named components so OpenAPI consumers
+  // can enforce coverageState + counts fields (not bare array/object stubs).
+  ApiPlaySceneCoverageNode: () =>
+    object({
+      required: ["sceneId", "label", "coverageState", "routeKey", "routeMapId"],
+      properties: {
+        sceneId: str,
+        label: str,
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+        routeKey: { type: ["string", "null"] },
+        routeMapId: { type: ["string", "null"] },
+      },
+      additionalProperties: false,
+    }),
+  ApiPlaySceneCoverageEdge: () =>
+    object({
+      required: ["fromSceneId", "toSceneId", "choiceKey", "label"],
+      properties: {
+        fromSceneId: str,
+        toSceneId: str,
+        choiceKey: str,
+        label: str,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlaySceneCoverageCounts: () =>
+    object({
+      required: ["needsCheck", "flagged", "validated", "total"],
+      properties: {
+        needsCheck: num,
+        flagged: num,
+        validated: num,
+        total: num,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlaySetSceneCoverageRequest: () =>
+    object({
+      required: ["sceneId", "coverageState"],
+      properties: {
+        sceneId: str,
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+      },
+      additionalProperties: true,
+    }),
+  ApiPlaySceneCoverageResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
+      properties: {
+        nodes: { type: "array", items: ref("ApiPlaySceneCoverageNode") },
+        edges: { type: "array", items: ref("ApiPlaySceneCoverageEdge") },
+        counts: ref("ApiPlaySceneCoverageCounts"),
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.scene-coverage.v0",
+    }),
+  ApiPlaySetSceneCoverageResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySetSceneCoverageResponse,
+      properties: {
+        coverageState: { enum: ["needs_check", "flagged", "validated"] },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.set-scene-coverage.v0",
+    }),
 };
 
 /** Materialize the component table with `$ref`s pointing at `prefix` + name. */
@@ -1225,6 +1292,25 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiLaunchPassRequest",
     responseSchema: "ApiLaunchPassResponse",
+  },
+  // play-mark-validated — per-scene localization coverage (needs_check /
+  // flagged / validated) driving the Play RouteMap.
+  "play.sceneCoverage": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
+    operationId: "playSceneCoverage",
+    summary: "Play RouteMap scene localization coverage read model.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiPlaySceneCoverageResponse",
+  },
+  "play.setSceneCoverage": {
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
+    operationId: "playSetSceneCoverage",
+    summary: "Set a scene's localization coverage state (validated / flagged / needs_check).",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiPlaySetSceneCoverageRequest",
+    responseSchema: "ApiPlaySetSceneCoverageResponse",
   },
 };
 

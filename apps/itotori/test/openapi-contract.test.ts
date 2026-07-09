@@ -333,16 +333,16 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 43 routes (no route left un-teethed)", () => {
-    // 43 routes: each has a response body; the mutation + reviewer/workspace
-    // POST routes (incl. ovw-launch-pass-action's `projects.launchPass`) add a
-    // request body. The bmk-cockpit read-model added `projects.bmkCockpit` +
-    // `projects.bmkCockpitHistory` (both GET, response-only). This asserts the
-    // loop above actually iterated a body per route so no route is silently skipped.
+  it("covers a body for every one of the 46 routes (no route left un-teethed)", () => {
+    // 46 routes: each has a response body; the mutation + reviewer/workspace
+    // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
+    // play-mark-validated's `play.setSceneCoverage`) add a request body.
+    // bmk-cockpit contributes two GET read models; play-mark-validated adds
+    // the scene coverage GET + POST pair.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(44);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(46);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });
