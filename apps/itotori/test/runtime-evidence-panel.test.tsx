@@ -13,7 +13,7 @@
 //     artifacts);
 //   - the FINDINGS row (kind, severity, tier, source unit, message);
 //   - the ARTIFACTS split into SENSITIVE (screenshot + recording → wrapped
-//     in the ds `RedactionFrame`, blurred by default) and NON-SENSITIVE
+//     in the shell-governed `RedactedFrame`, blurred by default) and NON-SENSITIVE
 //     (trace log / frame capture / reference comparison → plain metadata),
 //     with the redaction-toggle rule honored per
 //     [[feedback_redaction_is_a_toggle]].
@@ -22,10 +22,11 @@
 // the rendered trace / findings / artifacts + tier + redaction surfaces are
 // asserted, over msw.
 
+import type { ReactNode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { RuntimeDashboardStatus } from "@itotori/db";
 import {
@@ -34,6 +35,7 @@ import {
   isSensitiveRuntimeEvidenceArtifact,
   splitRuntimeEvidenceArtifacts,
 } from "../src/ui/screens/RuntimeEvidencePanel.js";
+import { RedactionGovernor, RedactionToggle } from "../src/ui/redaction-governor.js";
 import type { ApiCallState } from "../src/api-client.js";
 import { apiJson } from "./msw-handlers.js";
 
@@ -195,10 +197,31 @@ function handleStatus(): void {
   server.use(http.get(STATUS_PATH, () => apiJson("runtime.status", statusFixture())));
 }
 
+function renderWithRedactionGovernor(
+  ui: ReactNode,
+  options: { revealSensitive?: boolean; defaultShareRedaction?: boolean } = {},
+): void {
+  render(
+    <RedactionGovernor
+      revealSensitive={options.revealSensitive ?? false}
+      defaultShareRedaction={options.defaultShareRedaction ?? false}
+    >
+      <RedactionToggle />
+      {ui}
+    </RedactionGovernor>,
+  );
+}
+
+function renderRuntimeEvidencePanel(
+  options: { revealSensitive?: boolean; defaultShareRedaction?: boolean } = {},
+): void {
+  renderWithRedactionGovernor(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />, options);
+}
+
 describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", () => {
   it("renders the fidelity / evidence TIER + the trace, findings, and artifacts sections", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
 
     // Panel mounts + the read-model settles to ready.
     expect(await screen.findByRole("heading", { name: "Runtime evidence" })).toBeInTheDocument();
@@ -225,7 +248,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("renders the trace events table verbatim from the read-model", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
     const scoped = within(panel.closest(".itotori-panel") as HTMLElement);
     const traceSection = (panel.closest(".itotori-panel") as HTMLElement).querySelector(
@@ -250,7 +273,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("renders the findings table verbatim from the read-model", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
     const findingsSection = (panel.closest(".itotori-panel") as HTMLElement).querySelector(
       '[data-runtime-evidence-section="findings"]',
@@ -269,9 +292,9 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
     ).toBeInTheDocument();
   });
 
-  it("wraps sensitive artifacts (screenshot + recording) in the ds RedactionFrame, blurred by default", async () => {
+  it("wraps sensitive artifacts (screenshot + recording) in the governed RedactedFrame, blurred by default", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
     const panelEl = panel.closest(".itotori-panel") as HTMLElement;
     const sensitiveSection = panelEl.querySelector(
@@ -285,9 +308,9 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
     expect(scopedSensitive.getByText("redacted by default")).toBeInTheDocument();
 
     // Every sensitive artifact (screenshot + recording) is wrapped in a
-    // RedactionFrame that renders the redacted scrim when canReveal=false.
+    // governed RedactedFrame that renders the redacted scrim when canReveal=false.
     // The sensitive artifact cards stamp data-redacted="true" on their
-    // RedactionFrame because canRevealSensitive defaults to false.
+    // RedactedFrame because the private reveal toggle defaults off.
     const redactedFramesByAttr = panelEl.querySelectorAll(
       '.itotori-redaction-frame[data-redacted="true"]',
     );
@@ -301,7 +324,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("renders non-sensitive artifacts (trace_log, frame_capture, reference_comparison) as plain metadata — no redaction", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
     const panelEl = panel.closest(".itotori-panel") as HTMLElement;
     const nonSensitiveSection = panelEl.querySelector(
@@ -322,14 +345,15 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
     expect(scopedNonSensitive.queryByText("recording")).not.toBeInTheDocument();
   });
 
-  it("reveals sensitive artifacts when canRevealSensitive=true (the cap-gated toggle honored)", async () => {
+  it("reveals sensitive artifacts only when the cap-gated governor toggle is on", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} canRevealSensitive />);
+    renderRuntimeEvidencePanel({ revealSensitive: true });
     const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
+    fireEvent.click(screen.getByRole("checkbox", { name: /reveal sensitive/i }));
     const panelEl = panel.closest(".itotori-panel") as HTMLElement;
 
-    // Every sensitive frame's RedactionFrame flips to data-redacted="false"
-    // because the viewer has the cap-gated authority to reveal locally.
+    // Every sensitive frame's RedactedFrame flips to data-redacted="false"
+    // because the viewer has the cap-gated authority and opted into private reveal.
     const unredactedFrames = panelEl.querySelectorAll(
       '.itotori-redaction-frame[data-redacted="false"]',
     );
@@ -340,6 +364,21 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
       '[data-runtime-evidence-redacted="false"]',
     );
     expect(unredactedMetaCells.length).toBe(3);
+  });
+
+  it("keeps runtime evidence redacted in shared mode even with revealSensitive", async () => {
+    handleStatus();
+    renderRuntimeEvidencePanel({ revealSensitive: true, defaultShareRedaction: true });
+    const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
+    const panelEl = panel.closest(".itotori-panel") as HTMLElement;
+
+    expect(screen.getByRole("checkbox", { name: /reveal sensitive/i })).toBeDisabled();
+    expect(
+      panelEl.querySelectorAll(
+        '.itotori-redaction-frame[data-redacted="true"][data-share-redaction="true"]',
+      ).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(panelEl.querySelectorAll('[data-runtime-evidence-redacted="true"]')).toHaveLength(3);
   });
 
   it("splits the runtime-status artifacts by sensitivity purely from the artifactKind", () => {
@@ -367,7 +406,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("surfaces the loading surface before the read-model settles", () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     // The typed resource starts in `loading`; the panel paints the loading
     // surface synchronously on first render, before the fetch resolves.
     expect(screen.getByText("Loading runtime evidence…")).toBeInTheDocument();
@@ -375,7 +414,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("stamps the root <Panel> with data-pane-id / data-pane-state / data-review-item-id", async () => {
     handleStatus();
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     await screen.findByRole("heading", { name: "Runtime evidence" });
     const panel = document.querySelector('[data-pane-id="runtime-evidence"]');
     expect(panel).not.toBeNull();
@@ -405,7 +444,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
         ),
       ),
     );
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     expect(await screen.findByText("No trace events recorded.")).toBeInTheDocument();
     expect(screen.getByText("No findings recorded.")).toBeInTheDocument();
     expect(screen.getByText("No artifacts recorded.")).toBeInTheDocument();
@@ -415,12 +454,8 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
     // The body is exported separately so a test can mount it over an
     // explicit empty state, without standing up the full msw fetch.
     const emptyStatus: ApiCallState<RuntimeDashboardStatus> = { state: "empty" };
-    render(
-      <RuntimeEvidencePanelBody
-        status={emptyStatus}
-        canRevealSensitive={false}
-        reviewItemId={REVIEW_ITEM_ID}
-      />,
+    renderWithRedactionGovernor(
+      <RuntimeEvidencePanelBody status={emptyStatus} reviewItemId={REVIEW_ITEM_ID} />,
     );
     expect(
       screen.getByText(/The runtime dashboard returned no trace, findings, or artifacts/i),
@@ -429,7 +464,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
   it("renders an error state (not a blank panel) when the runtime status fetch 404s", async () => {
     server.use(http.get(STATUS_PATH, () => new HttpResponse(null, { status: 404 })));
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     expect(await screen.findByText(/This view could not load/i)).toBeInTheDocument();
   });
 
@@ -442,7 +477,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
         ),
       ),
     );
-    render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+    renderRuntimeEvidencePanel();
     expect(await screen.findByText("runtime dashboard unavailable")).toBeInTheDocument();
   });
 
@@ -453,12 +488,8 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
       state: "ready",
       data: statusFixture(),
     };
-    render(
-      <RuntimeEvidencePanelBody
-        status={readyStatus}
-        canRevealSensitive={false}
-        reviewItemId={REVIEW_ITEM_ID}
-      />,
+    renderWithRedactionGovernor(
+      <RuntimeEvidencePanelBody status={readyStatus} reviewItemId={REVIEW_ITEM_ID} />,
     );
     expect(screen.getByRole("heading", { name: "Runtime evidence" })).toBeInTheDocument();
     expect(screen.getAllByText("layout_probe").length).toBeGreaterThanOrEqual(1);
@@ -474,7 +505,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
   describe("cross-surface addressable jumps (xs-deep-jumps)", () => {
     it("renders the runtime RUN as a deep-link to /runs/:runtimeRunId (frame -> run)", async () => {
       handleStatus();
-      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      renderRuntimeEvidencePanel();
       await screen.findByRole("heading", { name: "Runtime evidence" });
       const runJump = document.querySelector(".itotori-runtime-evidence__run-jump");
       expect(runJump).not.toBeNull();
@@ -485,7 +516,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
     it("renders each finding as a deep-link to /findings/:findingId + its source unit as the player LINE", async () => {
       handleStatus();
-      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      renderRuntimeEvidencePanel();
       const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
       const findingsSection = (panel.closest(".itotori-panel") as HTMLElement).querySelector(
         '[data-runtime-evidence-section="findings"]',
@@ -511,7 +542,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
 
     it("renders each trace event + non-sensitive artifact source unit as the player LINE", async () => {
       handleStatus();
-      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      renderRuntimeEvidencePanel();
       const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
       const panelEl = panel.closest(".itotori-panel") as HTMLElement;
 
@@ -562,7 +593,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
           ),
         ),
       );
-      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      renderRuntimeEvidencePanel();
       await screen.findByRole("heading", { name: "Runtime evidence" });
       // No jump links render when no row carries a bridge/source unit.
       expect(document.querySelectorAll(".itotori-runtime-evidence__line-jump")).toHaveLength(0);
@@ -618,7 +649,7 @@ describe("RuntimeEvidencePanel — runtime.status + frame-capture read-model", (
           ),
         ),
       );
-      render(<RuntimeEvidencePanel reviewItemId={REVIEW_ITEM_ID} />);
+      renderRuntimeEvidencePanel();
       const panel = await screen.findByRole("heading", { name: "Runtime evidence" });
       const panelEl = panel.closest(".itotori-panel") as HTMLElement;
 

@@ -116,14 +116,7 @@ export function ReviewerDetailScreen({
       ? null
       : (context.permission.denialReasons.find((r) => r.includes("queue.manage")) ??
         "queue.manage permission required to decide"));
-  return (
-    <ReadyView
-      context={context}
-      canDecide={resolvedCanDecide}
-      decideDenial={decideDenial}
-      canReveal={caps?.canReveal ?? false}
-    />
-  );
+  return <ReadyView context={context} canDecide={resolvedCanDecide} decideDenial={decideDenial} />;
 }
 
 function DeniedView({ context }: { context: ReviewerDetailContext }): ReactNode {
@@ -153,12 +146,10 @@ function ReadyView({
   context,
   canDecide,
   decideDenial,
-  canReveal,
 }: {
   context: ReviewerDetailContext;
   canDecide: boolean;
   decideDenial: string | null;
-  canReveal: boolean;
 }): ReactNode {
   const item = context.item;
   return (
@@ -197,7 +188,7 @@ function ReadyView({
         <GlossaryPanel context={context} />
         <BranchReferencePanel context={context} />
         <QaFindingsPanel context={context} />
-        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} canRevealSensitive={canReveal} />
+        <RuntimeEvidencePanel reviewItemId={context.reviewItemId} />
         <RationalePanel context={context} />
         <TransitionsPanel context={context} />
       </section>

@@ -11,31 +11,25 @@
 // the typed `ItotoriApiClient` (`useApiQuery`, never an ad-hoc fetch).
 //
 // Sensitive frames — every `screenshot` and `recording` artifact — render
-// inside the ds `RedactionFrame`, which blurs them by default
+// inside the shell `RedactedFrame`, which blurs them by default
 // ([[feedback_redaction_is_a_toggle]]): a sensitive frame is redacted unless
 // the viewer has cap-gated `canReveal` AND we are not in share/export mode.
 // Non-sensitive artifacts (trace logs, frame captures, reference comparisons)
 // are NOT wrapped — redaction is a TOGGLE for sensitive content only.
 //
-// Painted with `@itotori/ds` (`Panel`, `DataTable`, `Badge`, `StatReadout`,
-// `RedactionFrame`); className-based, ds tokens, no literal styles, no game
-// named. [[feedback_behavior_first_code_agnostic_testing]] — the
+// Painted with `@itotori/ds` (`Panel`, `DataTable`, `Badge`, `StatReadout`)
+// plus the shell redaction governor; className-based, ds tokens, no literal
+// styles, no game named. [[feedback_behavior_first_code_agnostic_testing]] — the
 // behavior-first test mounts the panel over an msw-intercepted read-model and
 // asserts only the rendered trace / findings / artifacts + tier + redaction +
 // loading / empty / error surfaces.
 
 import type { ReactNode } from "react";
 import type { RuntimeDashboardStatus } from "@itotori/db";
-import {
-  Badge,
-  DataTable,
-  Panel,
-  RedactionFrame,
-  StatReadout,
-  shouldRedactFrame,
-} from "@itotori/ds";
+import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import { AddressableJump } from "../addressable-jump.js";
+import { RedactedFrame, useRedactionGovernor } from "../redaction-governor.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 
@@ -123,36 +117,20 @@ export function splitRuntimeEvidenceArtifacts(
 export interface RuntimeEvidencePanelProps {
   /** The reviewer item the runtime evidence is being painted for. */
   reviewItemId: string;
-  /**
-   * Cap-gated authority to reveal sensitive frames locally. Default `false`
-   * — sensitive frames render redacted. Pass `true` only for an actor who
-   * has the explicit cap (e.g. the owner with `revealSensitive`). Share /
-   * export mode ALWAYS forces redaction regardless of this prop, via
-   * `shareRedaction` on the `RedactionFrame`.
-   */
-  canRevealSensitive?: boolean;
 }
 
 /**
  * The reviewer detail runtime-evidence panel. Issues the typed
  * `runtime.status` query (the runtime-dashboard read-model) through the API
  * client and renders trace / findings / artifacts + the fidelity / evidence
- * TIER. Sensitive artifacts (screenshot + recording) render inside the ds
- * `RedactionFrame` (blurred unless `canRevealSensitive`). Settles into
+ * TIER. Sensitive artifacts (screenshot + recording) render inside the shell
+ * `RedactedFrame`, so the single redaction governor owns default-on shared
+ * rendering, cap-gated private reveal, and share/export locking. Settles into
  * loading / empty / error independently of the parent screen.
  */
-export function RuntimeEvidencePanel({
-  reviewItemId,
-  canRevealSensitive = false,
-}: RuntimeEvidencePanelProps): ReactNode {
+export function RuntimeEvidencePanel({ reviewItemId }: RuntimeEvidencePanelProps): ReactNode {
   const status = useApiQuery("runtime.status", {}, `runtime-evidence:${reviewItemId}`);
-  return (
-    <RuntimeEvidencePanelBody
-      status={status}
-      canRevealSensitive={canRevealSensitive}
-      reviewItemId={reviewItemId}
-    />
-  );
+  return <RuntimeEvidencePanelBody status={status} reviewItemId={reviewItemId} />;
 }
 
 /**
@@ -162,11 +140,9 @@ export function RuntimeEvidencePanel({
  */
 export function RuntimeEvidencePanelBody({
   status,
-  canRevealSensitive,
   reviewItemId,
 }: {
   status: ApiCallState<RuntimeDashboardStatus>;
-  canRevealSensitive: boolean;
   reviewItemId: string;
 }): ReactNode {
   return (
@@ -178,17 +154,15 @@ export function RuntimeEvidencePanelBody({
       data-pane-state={status.state}
       data-review-item-id={reviewItemId}
     >
-      <RuntimeEvidenceBodyContent status={status} canRevealSensitive={canRevealSensitive} />
+      <RuntimeEvidenceBodyContent status={status} />
     </Panel>
   );
 }
 
 function RuntimeEvidenceBodyContent({
   status,
-  canRevealSensitive,
 }: {
   status: ApiCallState<RuntimeDashboardStatus>;
-  canRevealSensitive: boolean;
 }): ReactNode {
   if (status.state === "loading") {
     return <LoadingState label="Loading runtime evidence…" />;
@@ -204,7 +178,7 @@ function RuntimeEvidenceBodyContent({
       />
     );
   }
-  return <RuntimeEvidenceReady status={status.data} canRevealSensitive={canRevealSensitive} />;
+  return <RuntimeEvidenceReady status={status.data} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,13 +187,7 @@ function RuntimeEvidenceBodyContent({
 // enumerates, plus the sensitive/non-sensitive artifact split.
 // ---------------------------------------------------------------------------
 
-function RuntimeEvidenceReady({
-  status,
-  canRevealSensitive,
-}: {
-  status: RuntimeDashboardStatus;
-  canRevealSensitive: boolean;
-}): ReactNode {
+function RuntimeEvidenceReady({ status }: { status: RuntimeDashboardStatus }): ReactNode {
   const split = splitRuntimeEvidenceArtifacts(status.artifacts);
   const totalArtifacts = status.artifacts.length;
   const sensitiveCount = split.sensitive.length;
@@ -276,11 +244,7 @@ function RuntimeEvidenceReady({
 
       <RuntimeEvidenceTraceTable traceEvents={status.traceEvents} />
       <RuntimeEvidenceFindingsTable findings={status.findings} />
-      <RuntimeEvidenceArtifacts
-        status={status}
-        split={split}
-        canRevealSensitive={canRevealSensitive}
-      />
+      <RuntimeEvidenceArtifacts status={status} split={split} />
     </div>
   );
 }
@@ -456,7 +420,7 @@ function RuntimeEvidenceFindingsTable({
 
 // ---------------------------------------------------------------------------
 // Artifacts — split into SENSITIVE (screenshot + recording → wrapped in the
-// ds `RedactionFrame`) and NON-SENSITIVE (trace log / frame capture /
+// shell-governed redaction frame) and NON-SENSITIVE (trace log / frame capture /
 // reference comparison → plain metadata). Each card carries the artifact id,
 // kind, hash, media type, byte size, and bridge-unit / source-unit keys.
 // ---------------------------------------------------------------------------
@@ -464,11 +428,9 @@ function RuntimeEvidenceFindingsTable({
 function RuntimeEvidenceArtifacts({
   status,
   split,
-  canRevealSensitive,
 }: {
   status: RuntimeDashboardStatus;
   split: RuntimeEvidenceArtifactsSplit;
-  canRevealSensitive: boolean;
 }): ReactNode {
   return (
     <section
@@ -482,10 +444,7 @@ function RuntimeEvidenceArtifacts({
       ) : (
         <>
           {split.sensitive.length > 0 && (
-            <RuntimeEvidenceSensitiveArtifacts
-              artifacts={split.sensitive}
-              canRevealSensitive={canRevealSensitive}
-            />
+            <RuntimeEvidenceSensitiveArtifacts artifacts={split.sensitive} />
           )}
           {split.nonSensitive.length > 0 && (
             <RuntimeEvidenceNonSensitiveArtifacts
@@ -501,18 +460,17 @@ function RuntimeEvidenceArtifacts({
 
 /**
  * Sensitive artifacts (screenshot + recording) — wrapped in the ds
- * `RedactionFrame` per [[feedback_redaction_is_a_toggle]]. Redaction is the
- * DEFAULT for committed frames; `canRevealSensitive` is the cap-gated
- * unblur and is honored here as the prop the parent (today: the test;
- * tomorrow: the fnd-caps-context wiring) supplies.
+ * redaction surface per [[feedback_redaction_is_a_toggle]]. Redaction is the
+ * DEFAULT for shared/committed frames; private reveal is cap-gated by the
+ * single shell governor and share/export mode always wins.
  */
 function RuntimeEvidenceSensitiveArtifacts({
   artifacts,
-  canRevealSensitive,
 }: {
   artifacts: readonly RuntimeEvidenceArtifact[];
-  canRevealSensitive: boolean;
 }): ReactNode {
+  const { canReveal, shareRedaction } = useRedactionGovernor();
+  const isRedacted = !canReveal || shareRedaction;
   return (
     <div
       className="itotori-runtime-evidence__sensitive-artifacts"
@@ -529,18 +487,14 @@ function RuntimeEvidenceSensitiveArtifacts({
             data-runtime-evidence-artifact-id={artifact.artifactId}
             data-runtime-evidence-artifact-kind={artifact.artifactKind}
           >
-            <RedactionFrame
-              sensitive={true}
-              canReveal={canRevealSensitive}
-              label={`${artifact.artifactKind} · redacted`}
-            >
+            <RedactedFrame sensitive={true} label={`${artifact.artifactKind} · redacted`}>
               <div className="itotori-runtime-evidence__artifact-surface" aria-hidden="true">
                 <span className="itotori-runtime-evidence__artifact-kind">
                   {artifact.artifactKind}
                 </span>
                 <span className="itotori-runtime-evidence__artifact-id">{artifact.artifactId}</span>
               </div>
-            </RedactionFrame>
+            </RedactedFrame>
             <dl className="itotori-runtime-evidence__artifact-meta">
               <div>
                 <dt>Hash</dt>
@@ -571,24 +525,8 @@ function RuntimeEvidenceSensitiveArtifacts({
               </div>
               <div>
                 <dt>Redacted</dt>
-                <dd
-                  data-runtime-evidence-redacted={
-                    shouldRedactFrame({
-                      sensitive: true,
-                      canReveal: canRevealSensitive,
-                      shareRedaction: false,
-                    })
-                      ? "true"
-                      : "false"
-                  }
-                >
-                  {shouldRedactFrame({
-                    sensitive: true,
-                    canReveal: canRevealSensitive,
-                    shareRedaction: false,
-                  })
-                    ? "yes"
-                    : "no"}
+                <dd data-runtime-evidence-redacted={isRedacted ? "true" : "false"}>
+                  {isRedacted ? "yes" : "no"}
                 </dd>
               </div>
             </dl>

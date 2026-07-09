@@ -33,6 +33,7 @@ import { workspaceComparisonFixture } from "../src/workspace/index.js";
 import type { ReviewerQueueItemRecord } from "@itotori/db";
 import { reviewerQueueItemKindValues, reviewerQueueItemStateValues } from "@itotori/db";
 import { ReviewerDetailScreen } from "../src/ui/screens/ReviewerDetailScreen.js";
+import { RedactionGovernor } from "../src/ui/redaction-governor.js";
 import { ToastProvider } from "../src/ui/toast-host.js";
 import { apiJson } from "./msw-handlers.js";
 import { runtimeStatusFixture } from "./api-fixtures.js";
@@ -113,7 +114,11 @@ function handleAll(context: ReviewerDetailContext = jumpContext()): void {
 }
 
 function renderWithToasts(ui: ReactNode): void {
-  render(<ToastProvider>{ui}</ToastProvider>);
+  render(
+    <RedactionGovernor>
+      <ToastProvider>{ui}</ToastProvider>
+    </RedactionGovernor>,
+  );
 }
 
 describe("ReviewerDetailScreen — cross-surface addressable jumps (xs-deep-jumps)", () => {
