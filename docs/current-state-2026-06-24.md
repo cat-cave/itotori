@@ -14,8 +14,10 @@
 > `roadmap/spec-dag.json` is the source of truth; the README/audits indices
 > point here as the snapshot, not the live state).
 
-Cold-start orientation for an orchestrator or subagent. Read this first;
-drill into the named audit/research doc only when you need the evidence.
+Historical cold-start orientation for an orchestrator or subagent as of
+2026-06-24. Read this snapshot when reconstructing the audit-batch context;
+use [`docs/dev/spec-dag.md`](dev/spec-dag.md) for current DAG state before
+starting new work.
 
 ## Where We Stand
 
