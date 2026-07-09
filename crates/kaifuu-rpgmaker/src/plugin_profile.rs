@@ -710,7 +710,6 @@ pub fn patch_file(
     Ok(out)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

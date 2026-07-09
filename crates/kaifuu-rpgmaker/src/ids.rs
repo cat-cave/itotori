@@ -55,7 +55,10 @@ mod tests {
         let other_namespace = deterministic_uuid7("rpgmaker-k110:KAIFUU-110", "unit:Map001");
 
         assert_eq!(first, again, "identical input is stable");
-        assert_ne!(first, other_namespace, "caller namespace remains part of identity");
+        assert_ne!(
+            first, other_namespace,
+            "caller namespace remains part of identity"
+        );
         assert_eq!(&first[14..15], "7", "UUID version is 7");
         assert!(matches!(&first[19..20], "8" | "9" | "a" | "b"));
     }

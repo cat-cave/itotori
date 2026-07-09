@@ -828,7 +828,6 @@ pub fn patch_file(
     patch_file_bytes(source_file, original, &edits)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
