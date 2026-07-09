@@ -486,6 +486,9 @@ pub enum VmWarning {
     ObjectChoiceResumeWithoutChoice {
         longop_id: LongOpId,
     },
+    ObjectChoiceResumeUnsupportedOutcome {
+        longop_id: LongOpId,
+    },
     ObjectChoiceResumeOutOfRange {
         longop_id: LongOpId,
         selected: u16,
@@ -845,8 +848,8 @@ impl Vm {
 
     /// Apply typed selection resume: legacy A2 stores its chosen index, while
     /// durable A3 maps its selected display index to its persisted i32 return
-    /// value. Pending, malformed, and out-of-range A3 carriers warn without
-    /// writing the store register.
+    /// value. Pending, cancelled, malformed, and out-of-range A3 carriers
+    /// warn without writing the store register.
     ///
     /// Exposed so per-module integration tests and the substrate
     /// runner can drive the same code path as [`Vm::step`] without
@@ -869,20 +872,31 @@ impl Vm {
             }
             Some(crate::rlop::OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
                 match crate::rlop::ObjectSelectLongOp::try_from_longop(popped) {
-                    Ok(select) => match select.selected() {
-                        Some(index) => match select.return_values().get(index as usize) {
-                            Some(value) => self.banks.set_store(*value as u32),
-                            None => self.warnings.push(VmWarning::ObjectChoiceResumeOutOfRange {
-                                longop_id: popped.id,
-                                selected: index,
-                                choice_count: select.choice_count(),
-                            }),
-                        },
-                        None => self
-                            .warnings
-                            .push(VmWarning::ObjectChoiceResumeWithoutChoice {
-                                longop_id: popped.id,
-                            }),
+                    Ok(select) => match select.outcome() {
+                        crate::rlop::ObjectSelectOutcome::DisplayIndex(index) => {
+                            match select.return_values().get(index as usize) {
+                                Some(value) => self.banks.set_store(*value as u32),
+                                None => {
+                                    self.warnings.push(VmWarning::ObjectChoiceResumeOutOfRange {
+                                        longop_id: popped.id,
+                                        selected: index,
+                                        choice_count: select.choice_count(),
+                                    })
+                                }
+                            }
+                        }
+                        crate::rlop::ObjectSelectOutcome::Pending => {
+                            self.warnings
+                                .push(VmWarning::ObjectChoiceResumeWithoutChoice {
+                                    longop_id: popped.id,
+                                })
+                        }
+                        crate::rlop::ObjectSelectOutcome::Cancelled => {
+                            self.warnings
+                                .push(VmWarning::ObjectChoiceResumeUnsupportedOutcome {
+                                    longop_id: popped.id,
+                                })
+                        }
                     },
                     Err(err) => self.warnings.push(VmWarning::ObjectChoiceResumeMalformed {
                         longop_id: popped.id,
@@ -2256,6 +2270,12 @@ mod tests {
     #[test]
     fn empty_vm_snapshots_with_substrate_inspectable() {
         let mut vm = Vm::new(0, 0);
+        let v1 = LongOp::new(
+            LongOpId(6),
+            vec![0xA3, 1, 0xFF, 0xFF, 2, 0, 7, 0, 0, 0, 2, 0, 0, 0],
+        );
+        let v1_state = v1.private_state.clone();
+        vm.enqueue_longop(v1);
         vm.enqueue_longop(
             crate::rlop::ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2])
                 .expect("bounded")
@@ -2270,12 +2290,16 @@ mod tests {
         }
         let mut restored = Vm::new(0, 0);
         restored.restore_state(&tree).expect("restore");
-        let mut object = crate::rlop::ObjectSelectLongOp::try_from_longop(
-            restored.longop_queue().front().expect("object head"),
-        )
-        .expect("object carrier");
+        assert_eq!(restored.longop_queue()[0].private_state, v1_state);
+        let v1 = crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[0])
+            .expect("v1 carrier");
+        assert_eq!(v1.flags(), 0);
+        assert_eq!(v1.outcome(), crate::rlop::ObjectSelectOutcome::Pending);
+        let mut object =
+            crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[1])
+                .expect("object carrier");
         assert_eq!(object.return_values(), &[7, 2]);
-        assert_eq!(object.selected(), None);
+        assert_eq!(object.outcome(), crate::rlop::ObjectSelectOutcome::Pending);
         restored.apply_choice_resume(&object.clone().into_longop());
         assert_eq!(restored.banks().store(), 0);
         object.select(1);
@@ -2286,6 +2310,11 @@ mod tests {
             crate::rlop::ObjectSelectLongOp::try_new(LongOpId(8), vec![7, 2]).expect("bounded");
         invalid.select(9);
         restored.apply_choice_resume(&invalid.into_longop());
+        let mut cancelled =
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(9), vec![7, 2]).expect("bounded");
+        cancelled.set_cancelable(true);
+        cancelled.cancel();
+        restored.apply_choice_resume(&cancelled.into_longop());
         restored.apply_choice_resume(&LongOp::new(LongOpId(9), vec![0xA3, 1]));
         assert_eq!(restored.banks().store(), 99);
         assert!(matches!(
@@ -2293,6 +2322,7 @@ mod tests {
             [
                 VmWarning::ObjectChoiceResumeWithoutChoice { .. },
                 VmWarning::ObjectChoiceResumeOutOfRange { .. },
+                VmWarning::ObjectChoiceResumeUnsupportedOutcome { .. },
                 VmWarning::ObjectChoiceResumeMalformed { .. }
             ]
         ));

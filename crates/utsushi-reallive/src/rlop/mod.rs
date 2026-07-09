@@ -64,8 +64,9 @@ pub mod module_sys;
 
 pub use longops::{
     DEFAULT_PAUSE_POLLS, HeadlessChoicePolicy, HeadlessInputScheduler,
-    OBJECT_SELECT_PRIVATE_STATE_MAGIC, OBJECT_SELECT_PRIVATE_STATE_VERSION, ObjectSelectLongOp,
-    ObjectSelectLongOpDecodeError, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
+    OBJECT_SELECT_FLAG_CANCELABLE, OBJECT_SELECT_PRIVATE_STATE_MAGIC,
+    OBJECT_SELECT_PRIVATE_STATE_VERSION, ObjectSelectLongOp, ObjectSelectLongOpDecodeError,
+    ObjectSelectOutcome, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
     SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectLongOpDecodeError,
     SelectionChoiceCountScheduler,
 };
