@@ -510,11 +510,15 @@ function verifySignedSamlAssertion(
     }
   }
   if (verifiedAssertions.length !== 1) {
-    throw new ItotoriSamlLoginAdapterError("SAML response must contain exactly one signed assertion");
+    throw new ItotoriSamlLoginAdapterError(
+      "SAML response must contain exactly one signed assertion",
+    );
   }
   const verifiedAssertion = verifiedAssertions[0];
   if (verifiedAssertion === undefined) {
-    throw new ItotoriSamlLoginAdapterError("SAML response must contain exactly one signed assertion");
+    throw new ItotoriSamlLoginAdapterError(
+      "SAML response must contain exactly one signed assertion",
+    );
   }
   return verifiedAssertion;
 }
@@ -549,12 +553,7 @@ function assertSamlBinding(
     throw new ItotoriSamlLoginAdapterError("SAML response root is not Response");
   }
   assertRequiredAttribute(response, "Destination", input.acsUrl, "SAML response Destination");
-  assertRequiredAttribute(
-    response,
-    "InResponseTo",
-    input.requestId,
-    "SAML response InResponseTo",
-  );
+  assertRequiredAttribute(response, "InResponseTo", input.requestId, "SAML response InResponseTo");
   const audiences = readElementTexts(assertionDoc, "Audience");
   if (!audiences.includes(input.spEntityId)) {
     throw new ItotoriSamlLoginAdapterError("SAML assertion audience mismatch");
