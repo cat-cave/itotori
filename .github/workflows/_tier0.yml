@@ -1,0 +1,37 @@
+# Reusable Tier-0: format, static checks, policy/schema/toolchain gates, lane-manifest.
+# No DB, browser, private bytes, or provider work. Target p95 <= 5 min.
+# SHADOW: called from pr-tiers.yml; not yet a branch-protection required check.
+name: reusable tier0
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Tier 0 / ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [meta, ts, rust, manifest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - name: Run Tier-0 lane
+        run: just ci-tier0-${{ matrix.lane }}
+
+  required:
+    name: Tier 0 / required
+    if: ${{ always() }}
+    needs: [gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aggregate Tier-0 gates
+        run: test '${{ needs.gate.result }}' = success

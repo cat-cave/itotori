@@ -1,0 +1,30 @@
+# SHADOW tier dispatcher — runs alongside legacy ci.yml (which remains the
+# required gate). Does NOT modify branch protection. Enables merge_group so the
+# same T0/T1 aggregates can later become the only merge authority.
+name: PR tiers
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Cancel superseded PR runs only; never cancel merge_group / push / dispatch.
+  group: pr-tiers-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  tier0:
+    uses: ./.github/workflows/_tier0.yml
+    secrets: inherit
+
+  tier1:
+    uses: ./.github/workflows/_tier1.yml
+    secrets: inherit

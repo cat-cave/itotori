@@ -721,3 +721,185 @@ qd-import:
 qd-export:
     qd export --out roadmap/spec-dag.json
     just roadmap-validate
+
+# =============================================================================
+# SHADOW tiered-CI recipes (Phase 1). Added alongside the existing `check` /
+# `ci` / `test` surface — do NOT remove or rename those. GitHub Actions
+# `.github/workflows/{pr-tiers,_tier0,_tier1}.yml` invoke the same recipe names
+# so local and CI share one command authority. Full run-tier.mjs ownership lands
+# with the parallel scanner stream; until then these recipes wrap the existing
+# gates directly.
+# =============================================================================
+
+# --- Tier 0: format + static + policy; no DB/browser/private bytes ------------
+
+ci-tier0: ci-tier0-meta ci-tier0-ts ci-tier0-rust ci-tier0-manifest
+
+# Policy / schema / toolchain / compose-model / fixture / readiness gates.
+# Mirrors the non-Rust, non-TS portion of `just check`.
+ci-tier0-meta:
+    node --test scripts/itotori-db-compose-config.test.mjs
+    node --test scripts/db-test-skip-visibility.test.mjs
+    node --test scripts/permission-denial-db-gate.test.mjs
+    node --test scripts/catalog-replay-db-gate.test.mjs
+    node --test scripts/style-guide-fixture-flow-db-gate.test.mjs
+    node --test scripts/qd-full-ci.test.mjs
+    node --test scripts/affected.test.mjs
+    node --test scripts/native-deps.test.mjs
+    node --test scripts/itotori-installable-package.test.mjs
+    node --test scripts/alpha-proof-gate.test.mjs
+    node --test scripts/validate-tracked-artifact-hygiene.test.mjs
+    node scripts/validate-tracked-artifact-hygiene.mjs --mode check
+    node --test scripts/stale-residue-guard.test.mjs
+    node scripts/stale-residue-guard.mjs --mode check
+    just localize-project-test
+    node scripts/spec-dag-issues.test.mjs
+    node scripts/spec-dag-lifecycle.test.mjs
+    node scripts/spec-dag-validator.test.mjs
+    node scripts/spec-dag.mjs validate
+    node --test scripts/audit-no-hardcoded-cost.test.mjs
+    node scripts/audit-no-hardcoded-cost.mjs
+    node --test scripts/audit-strictness.test.mjs
+    node scripts/audit-strictness.mjs
+    node --test scripts/classify-test-seams.test.mjs
+    node --test scripts/audit-no-hardcoded-roles.test.mjs
+    node scripts/audit-no-hardcoded-roles.mjs
+    node --test scripts/generate-engine-capability-matrix.test.mjs
+    node scripts/generate-engine-capability-matrix.mjs --check
+    node --test scripts/synthetic-coverage-manifest.test.mjs
+    node scripts/synthetic-coverage-manifest.mjs --check
+    node --test scripts/mutation-differential.test.mjs
+    node --test scripts/coverage-parity.test.mjs
+    node scripts/coverage-parity.mjs
+    node --test scripts/alpha-readiness-checklist.test.mjs
+    node scripts/alpha-readiness-checklist.mjs
+    node --test scripts/rgt-readiness-checklist.test.mjs
+    node scripts/rgt-readiness-checklist.mjs
+    just fixtures-validate
+    node --test fixtures/generate-kaifuu-encrypted-public-fixtures.test.mjs
+    just impl-map-schema-validate
+    node scripts/verify-toolchain-policy.mjs
+    node scripts/verify-deny-strict.mjs
+
+# TypeScript / Vite+ static: format + lint (vp check) and workspace typecheck.
+ci-tier0-ts:
+    pnpm exec vp check
+    pnpm exec vp run ts:typecheck
+
+# Rust static: fmt + check + clippy -D warnings + cargo-deny.
+ci-tier0-rust:
+    cargo fmt --check
+    cargo check --workspace
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo deny check
+
+# Lane-manifest gate. Scanner stream owns the real gate script; tolerate absence
+# so this shadow workflow can land first.
+ci-tier0-manifest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f scripts/ci/lane-manifest-gate.mjs ]; then
+      node scripts/ci/lane-manifest-gate.mjs
+    else
+      echo "manifest gate pending (parallel stream)"
+    fi
+
+# --- Tier 1: portable behavior, DB, browser, alpha, mutation ------------------
+
+ci-tier1: ci-tier1-ts-public-1of2 ci-tier1-ts-public-2of2 ci-tier1-rust-1of3 ci-tier1-rust-2of3 ci-tier1-rust-3of3 ci-tier1-db ci-tier1-browser ci-tier1-alpha ci-tier1-mutation
+
+# Public TS shard 1/2: schema + runtime-web-review + ds + app vitest shard 1/2.
+# DATABASE_URL unset → DB-backed suites skip honestly (owned by ci-tier1-db).
+ci-tier1-ts-public-1of2:
+    pnpm --filter @itotori/localization-bridge-schema test
+    pnpm --filter @itotori/runtime-web-review test
+    pnpm --filter @itotori/ds test
+    pnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**'
+
+# Public TS shard 2/2: remaining packages + app vitest shard 2/2.
+ci-tier1-ts-public-2of2:
+    pnpm --filter @itotori/spec-dag-dashboard test
+    pnpm --filter @itotori/db test
+    pnpm --filter @itotori/app exec vitest run --shard=2/2 --exclude '**/.direnv/**'
+
+# Rust nextest hash partitions (union = full workspace default suite).
+ci-tier1-rust-1of3:
+    cargo nextest run --workspace --partition hash:1/3
+
+ci-tier1-rust-2of3:
+    cargo nextest run --workspace --partition hash:2/3
+
+ci-tier1-rust-3of3:
+    cargo nextest run --workspace --partition hash:3/3
+
+# Authoritative Postgres lane (ci-itotori strict receipts). Uses DATABASE_URL
+# when set (CI service container); otherwise brings up the worktree-scoped
+# compose DB. Never green-on-skip.
+ci-tier1-db:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    started_db=0
+    if [ -z "${DATABASE_URL:-}" ]; then
+      just db-up
+      started_db=1
+      trap 'if [ "$started_db" = 1 ]; then just db-down; fi' EXIT
+      just db-wait
+      export DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)"
+    fi
+    test -n "${DATABASE_URL:-}"
+    just db-cli-build
+    node apps/itotori/dist/cli.js db-migrate
+    node apps/itotori/dist/cli.js db-reset
+    pnpm --filter @itotori/db typecheck
+    rm -f .tmp/itotori-db/no-database-skipped.json
+    pnpm --filter @itotori/db test:db
+    node scripts/assert-db-tests-not-skipped.mjs
+    node scripts/permission-denial-db-gate.mjs
+    node scripts/catalog-replay-db-gate.mjs
+    node scripts/style-guide-fixture-flow-db-gate.mjs
+    pnpm --filter @itotori/app typecheck
+    pnpm --filter @itotori/app test
+
+# Playwright Chromium for both app e2e projects. Requires
+# PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts selected count > 0
+# via --list before running; resource skip is never success.
+ci-tier1-browser:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="${PLAYWRIGHT_CHROMIUM_BIN:-${UTSUSHI_BROWSER_BIN:-}}"
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+      echo "ci-tier1-browser: no runnable Chromium — PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN is unset or not executable (\"$bin\")." >&2
+      echo "  Refusing to pass with the browser e2e unexercised (strict lane, no green-on-skip)." >&2
+      exit 1
+    fi
+    echo "ci-tier1-browser: Chromium = $bin"
+    # List tests and require a non-zero selected count before executing.
+    app_list="$(pnpm --filter @itotori/app exec playwright test --config e2e/playwright.config.ts --list 2>&1 || true)"
+    rwr_list="$(pnpm --filter @itotori/runtime-web-review exec playwright test --config e2e/playwright.config.ts --list 2>&1 || true)"
+    printf '%s\n' "$app_list"
+    printf '%s\n' "$rwr_list"
+    app_n="$(printf '%s\n' "$app_list" | grep -oE '[0-9]+ (total|tests? in)' | head -1 | grep -oE '^[0-9]+' || echo 0)"
+    rwr_n="$(printf '%s\n' "$rwr_list" | grep -oE '[0-9]+ (total|tests? in)' | head -1 | grep -oE '^[0-9]+' || echo 0)"
+    # Fallback: count listed test lines (Playwright --list prints "  [project] › file:line: title").
+    if [ "${app_n:-0}" = "0" ]; then
+      app_n="$(printf '%s\n' "$app_list" | grep -cE '›' || true)"
+    fi
+    if [ "${rwr_n:-0}" = "0" ]; then
+      rwr_n="$(printf '%s\n' "$rwr_list" | grep -cE '›' || true)"
+    fi
+    total=$(( ${app_n:-0} + ${rwr_n:-0} ))
+    echo "ci-tier1-browser: selected count app=${app_n:-0} runtime-web-review=${rwr_n:-0} total=${total}"
+    if [ "$total" -le 0 ]; then
+      echo "ci-tier1-browser: executed-count assertion failed — zero Playwright tests selected" >&2
+      exit 1
+    fi
+    pnpm --filter @itotori/app e2e
+    pnpm --filter @itotori/runtime-web-review e2e
+    echo "ci-tier1-browser: executed-count ok (selected=${total})"
+
+# ALPHA public-fixture vertical + linkage proof.
+ci-tier1-alpha: alpha-proof
+
+# Synthetic mutation differential (heavy recompile; dedicated CI job + sccache).
+ci-tier1-mutation:
+    node scripts/mutation-differential.mjs
