@@ -243,8 +243,10 @@ pub use save::{
 
 pub use g00::{
     G00_HEADER_PREAMBLE_BYTE_LEN, G00_REGION_RECORD_BYTE_LEN, G00_TYPE_PALETTED_LZSS,
-    G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS, G00_TYPE0_BGR_BYTES_PER_PIXEL, G00CorpusHistogram,
-    G00DecodeError, G00Image, G00Rect, G00Region, G00Type, G00Warning, decode_g00,
+    G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS, G00_TYPE0_BGR_BYTES_PER_PIXEL,
+    G00ContentValidationError, G00CorpusHistogram, G00DecodeError, G00Image, G00LzssValidation,
+    G00MetadataError, G00PatternGeometry, G00Rect, G00Region, G00Type, G00Warning, decode_g00,
+    probe_g00_pattern_geometry, validate_g00_lzss_content,
 };
 
 pub use input_bridge::{
