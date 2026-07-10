@@ -835,14 +835,10 @@ function writeSiglusExpectedOutputs() {
 
 function writeCommandExpectedOutput(relativePath, args) {
   mkdirSync(dirname(resolve(fixtureRoot, relativePath)), { recursive: true });
-  execFileSync(
-    "direnv",
-    ["exec", ".", "cargo", "run", "--quiet", "-p", "kaifuu-cli", "--", ...args],
-    {
-      cwd: repoRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  execFileSync("cargo", ["run", "--quiet", "--locked", "-p", "kaifuu-cli", "--", ...args], {
+    cwd: repoRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   files.push({
     path: `fixtures/public/kaifuu-encrypted-matrix/${relativePath}`,
     role: "expected-output",
