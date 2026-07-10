@@ -301,13 +301,22 @@ export function objectPropertyKeyName(key, computed = false) {
  * Callee / expression surface name for `foo`, `obj.foo`, `obj?.foo`,
  * `obj["foo"]`, `obj?.["foo"]`. Dynamic computed keys return undefined.
  *
+ * When `includeComputedMember` is false (coverage-guard conservatism matching
+ * the pre-Babel TypeScript walk), only Identifier and static `.prop` / `?.prop`
+ * members resolve — literal-computed `obj["prop"]` returns undefined.
+ *
  * @param {import("@babel/types").Node | null | undefined} expression
+ * @param {{ includeComputedMember?: boolean }} [options]
  * @returns {string | undefined}
  */
-export function callExpressionName(expression) {
+export function callExpressionName(expression, options = {}) {
+  const includeComputedMember = options.includeComputedMember !== false;
   const unwrapped = unwrapTsTypeAssertions(expression);
   if (!unwrapped) return undefined;
   if (unwrapped.type === "Identifier") return unwrapped.name;
+  if (!includeComputedMember && isMemberExpression(unwrapped) && unwrapped.computed) {
+    return undefined;
+  }
   return memberPropertyName(unwrapped);
 }
 
@@ -411,11 +420,25 @@ export function forEachPatternBinding(pattern, onBinding, parentKeyName = undefi
  * destructured/object/array/default patterns and literal-computed member
  * access (`authorization?.["requirePermission"]`).
  *
+ * Options (defaults are the wide role-guard behavior):
+ * - `includeDestructureAliases` (default true): collect renamed destructure
+ *   bindings such as `{ requireApiPermission: gate }`. Set false for the
+ *   mutation-coverage guard so adversarial fake-helper renames stay uncovered
+ *   (matches the pre-Babel TypeScript walk, which only tracked import renames
+ *   and simple `const alias = helper` assignments).
+ * - `includeComputedMember` (default true): treat literal-computed member
+ *   access (`obj["requireApiPermission"]`) as an alias source / helper name.
+ *   Set false for coverage-guard conservatism.
+ *
  * @param {import("@babel/types").Node} root
  * @param {string} helperName
+ * @param {{ includeDestructureAliases?: boolean, includeComputedMember?: boolean }} [options]
  * @returns {Set<string>}
  */
-export function permissionHelperAliases(root, helperName) {
+export function permissionHelperAliases(root, helperName, options = {}) {
+  const includeDestructureAliases = options.includeDestructureAliases !== false;
+  const includeComputedMember = options.includeComputedMember !== false;
+  const nameOpts = { includeComputedMember };
   const aliases = new Set([helperName]);
   let changed = true;
 
@@ -432,11 +455,11 @@ export function permissionHelperAliases(root, helperName) {
 
     /**
      * If `init` resolves to a known helper name (identifier or member ending
-     * in that name, static or literal-computed), return it.
+     * in that name, static or — when enabled — literal-computed), return it.
      * @param {import("@babel/types").Node | null | undefined} init
      */
     function helperNameFromInit(init) {
-      const name = callExpressionName(init);
+      const name = callExpressionName(init, nameOpts);
       return name !== undefined && aliases.has(name) ? name : undefined;
     }
 
@@ -456,6 +479,15 @@ export function permissionHelperAliases(root, helperName) {
         if (helperNameFromInit(init) !== undefined) {
           addAlias(pattern.name);
         }
+        return;
+      }
+
+      // Coverage-conservative path: skip object/array destructure alias
+      // collection so `{ requireApiPermission: gate }` does not make `gate`
+      // count as a real permission gate. Non-renamed
+      // `const { requireApiPermission } = services` still works because the
+      // seed set already contains the helper name.
+      if (!includeDestructureAliases) {
         return;
       }
 
@@ -531,9 +563,10 @@ export function permissionHelperAliases(root, helperName) {
 /**
  * @param {import("@babel/types").Node} expression
  * @param {ReadonlySet<string>} aliases
+ * @param {{ includeComputedMember?: boolean }} [options]
  * @returns {string | undefined}
  */
-export function permissionHelperCallName(expression, aliases) {
-  const name = callExpressionName(expression);
+export function permissionHelperCallName(expression, aliases, options = {}) {
+  const name = callExpressionName(expression, options);
   return name !== undefined && aliases.has(name) ? name : undefined;
 }

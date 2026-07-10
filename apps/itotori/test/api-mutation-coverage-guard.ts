@@ -1,4 +1,4 @@
-import type { Node, ObjectExpression, Statement } from "@babel/types";
+import type { Node, ObjectExpression, ObjectProperty, Statement } from "@babel/types";
 import {
   isCallExpression,
   isMemberExpression,
@@ -10,6 +10,21 @@ import {
   sourceLocation,
   walk,
 } from "../../../scripts/stable-ts-ast.mjs";
+
+/**
+ * Coverage-guard path options for shared permission-helper detection.
+ *
+ * The role audit keeps the wider defaults (renamed destructure + literal-
+ * computed member). The mutation-coverage guard is intentionally more
+ * conservative so adversarial fake helpers that the pre-Babel walk left
+ * uncovered stay FLAGGED:
+ * - no renamed-destructure alias (`{ requireApiPermission: gate }` → `gate`)
+ * - no literal-computed helper call (`fake?.["requireApiPermission"]?.(...)`)
+ */
+const COVERAGE_HELPER_OPTIONS = {
+  includeDestructureAliases: false,
+  includeComputedMember: false,
+} as const;
 
 /**
  * SHARED-026 — shape-robust API mutation-permission coverage guard.
@@ -99,10 +114,15 @@ export function findUncoveredApiPermissionMutations(
   fileName: string,
 ): UncoveredApiMutation[] {
   const root = parseTypeScript(source, fileName);
-  const apiPermissionGateAliases = permissionHelperAliases(root, API_PERMISSION_GATE_HELPER);
+  const apiPermissionGateAliases = permissionHelperAliases(
+    root,
+    API_PERMISSION_GATE_HELPER,
+    COVERAGE_HELPER_OPTIONS,
+  );
   const reviewerQueuePermissionViewAliases = permissionHelperAliases(
     root,
     API_REVIEWER_QUEUE_PERMISSION_VIEW_HELPER,
+    COVERAGE_HELPER_OPTIONS,
   );
   const uncovered: UncoveredApiMutation[] = [];
 
@@ -261,7 +281,7 @@ function containsPermissionHelperCall(node: Node, aliases: ReadonlySet<string>):
     }
     if (
       isCallExpression(current) &&
-      permissionHelperCallName(current.callee, aliases) !== undefined
+      permissionHelperCallName(current.callee, aliases, COVERAGE_HELPER_OPTIONS) !== undefined
     ) {
       found = true;
     }
@@ -334,7 +354,7 @@ function objectExpressionReceivesResolvedPermissionView(
     }
     if (
       property.type === "ObjectProperty" &&
-      propertyNameText(property.key) === "permission" &&
+      staticPropertyNameText(property) === "permission" &&
       property.value.type === "Identifier" &&
       resolvedPermissionViews.has(property.value.name)
     ) {
@@ -344,6 +364,15 @@ function objectExpressionReceivesResolvedPermissionView(
   return false;
 }
 
-function propertyNameText(name: Node): string | undefined {
-  return nameOf(name);
+/**
+ * Static object-property key text only. Computed keys (`{ [permission]: … }`,
+ * `{ ["permission"]: … }`) are DYNAMIC — do not read an Identifier key name as
+ * a static property when `computed` is true (matches pre-Babel PropertyName
+ * handling, where ComputedPropertyName never yielded text).
+ */
+function staticPropertyNameText(property: ObjectProperty): string | undefined {
+  if (property.computed) {
+    return undefined;
+  }
+  return nameOf(property.key);
 }
