@@ -38,7 +38,7 @@ import {
   reviewerSingleActionList,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import { ITOTORI_API_ROUTE_IDS, ITOTORI_API_ROUTES, type ItotoriApiRoute } from "./api-routes.js";
+import { ITOTORI_API_ROUTE_IDS, ITOTORI_API_ROUTES } from "./api-routes.js";
 
 // ---------------------------------------------------------------------------
 // JSON value + deterministic sort
@@ -172,6 +172,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { targetLanguage: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.benchmark_seed_finder.v0.1",
+    }),
+  CatalogContextPanelReadModel: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
+      properties: { params: obj, row: obj, releases: arr, projectState: obj },
+      additionalProperties: false,
+      schemaVersion: "catalog.context_panel_route.v0.1",
     }),
   CatalogCompletenessBenchmarkPools: () =>
     object({

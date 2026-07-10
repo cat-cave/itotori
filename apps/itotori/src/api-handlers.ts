@@ -17,6 +17,7 @@ import {
   type CatalogBenchmarkLocalOwnership,
   type CatalogBenchmarkSeedFinderFilter,
   type CatalogBenchmarkSeedFinderReadModel,
+  type CatalogContextPanelCatalogReadModel,
   type CatalogOpportunityRankingFilter,
   type CatalogOpportunityRankingReadModel,
   permissionValues,
@@ -101,6 +102,7 @@ import {
   type ApiConfigureAuthSsoSettingsResponse,
   type ApiAcceptMemberInvitationRequest,
   type ApiAssetDecisionsResponse,
+  type ApiCatalogContextPanelResponse,
   type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
   type ApiInviteMemberRequest,
@@ -169,6 +171,7 @@ import type {
 import type { WorkspaceCorrectionServicePort } from "./workspace/correction-service.js";
 import { workspaceSearchModeValues } from "./workspace/read-model.js";
 import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
+import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
 import type {
   ApiWorkspaceAssetBrowseResponse,
   ApiWorkspaceComparisonResponse,
@@ -254,6 +257,10 @@ export type ItotoriReadOnlyApiServices = {
     catalogBenchmarkSeedFinder(
       filter?: CatalogBenchmarkSeedFinderFilter,
     ): Promise<CatalogBenchmarkSeedFinderReadModel>;
+    catalogContextPanelForWork(input: {
+      workId: string;
+      targetLanguage: string;
+    }): Promise<CatalogContextPanelCatalogReadModel | null>;
     catalogOpportunityRanking(
       filter?: CatalogOpportunityRankingFilter,
     ): Promise<CatalogOpportunityRankingReadModel>;
@@ -450,6 +457,8 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
         services.catalogRepository.catalogCompletenessBenchmarkPools(filter),
       catalogBenchmarkSeedFinder: (filter) =>
         services.catalogRepository.catalogBenchmarkSeedFinder(filter),
+      catalogContextPanelForWork: (input) =>
+        services.catalogRepository.catalogContextPanelForWork(input),
       catalogOpportunityRanking: (filter) =>
         services.catalogRepository.catalogOpportunityRanking(filter),
     },
@@ -623,6 +632,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   }
   if (parsePlayFlagApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
+  }
+  if (parseCatalogContextPanelApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["GET"]);
   }
   if (parseProjectRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
@@ -1631,6 +1643,53 @@ async function routeReadOnlyItotoriApiRequest(
     return ok("play.routeMap", model);
   }
 
+  const catalogContextRoute = parseCatalogContextPanelApiRoute(request.pathname);
+  if (request.method === "GET" && catalogContextRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: catalogContextRoute.projectId,
+      localeBranchId: catalogContextRoute.localeBranchId,
+    });
+    const dashboard = await services.projectWorkflow.getDashboardStatus();
+    if (dashboard.projectId !== scope.projectId) {
+      return errorBody(
+        404,
+        "not_found",
+        `project dashboard status for ${scope.projectId} is not loaded`,
+      );
+    }
+    const localeBranch =
+      dashboard.localeBranches.find((branch) => branch.localeBranchId === scope.localeBranchId) ??
+      null;
+    if (localeBranch === null) {
+      return errorBody(
+        404,
+        "not_found",
+        `locale branch ${scope.localeBranchId} is not present in project dashboard status`,
+      );
+    }
+    const catalog = await services.catalogRepository.catalogContextPanelForWork({
+      workId: catalogContextRoute.workId,
+      targetLanguage: localeBranch.targetLocale,
+    });
+    if (catalog === null) {
+      return errorBody(
+        404,
+        "not_found",
+        `catalog context for work ${catalogContextRoute.workId} was not found`,
+      );
+    }
+    return ok(
+      "catalog.contextPanel",
+      catalogContextPanelResponse({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        workId: catalogContextRoute.workId,
+        localeBranch,
+        catalog,
+      }),
+    );
+  }
+
   const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
   if (request.method === "GET" && assetDecisionRoute !== null) {
     const filter = parseAssetDecisionReadFilter(request.search);
@@ -1737,6 +1796,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/wiki/entries" ||
     request.pathname === "/api/queue/health" ||
     playRouteMapRoute !== null ||
+    catalogContextRoute !== null ||
     assetDecisionRoute !== null ||
     request.pathname === "/api/reviewer/queue" ||
     reviewerDetailRoute !== null
@@ -1970,6 +2030,30 @@ function redactRuntimeDashboardStatus(status: RuntimeDashboardStatus): RuntimeDa
       uri: null,
       hash: null,
     })),
+  };
+}
+
+function catalogContextPanelResponse(input: {
+  projectId: string;
+  localeBranchId: string;
+  workId: string;
+  localeBranch: ProjectDashboardStatus["localeBranches"][number];
+  catalog: CatalogContextPanelCatalogReadModel;
+}): CatalogContextPanelReadModel {
+  return {
+    schemaVersion: "catalog.context_panel_route.v0.1",
+    generatedAt: input.catalog.generatedAt,
+    params: {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      workId: input.workId,
+    },
+    row: input.catalog.row,
+    releases: input.catalog.releases,
+    projectState: {
+      targetLanguage: input.localeBranch.targetLocale,
+      localeBranch: input.localeBranch,
+    },
   };
 }
 
@@ -2519,6 +2603,28 @@ function parseAssetDecisionApiRoute(pathname: string): {
   };
 }
 
+function parseCatalogContextPanelApiRoute(
+  pathname: string,
+): { projectId: string; localeBranchId: string; workId: string } | null {
+  const match =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/catalog-context\/([^/]+)$/u.exec(
+      pathname,
+    );
+  if (
+    match === null ||
+    match[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined
+  ) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+    workId: decodeApiPathSegment(match[3], "workId"),
+  };
+}
+
 function parsePlayRouteMapApiRoute(
   pathname: string,
 ): { projectId: string; localeBranchId: string } | null {
@@ -3013,6 +3119,7 @@ function ok(
   routeId: "catalog.benchmarkSeeds",
   body: CatalogBenchmarkSeedFinderReadModel,
 ): ApiJsonResponse;
+function ok(routeId: "catalog.contextPanel", body: ApiCatalogContextPanelResponse): ApiJsonResponse;
 function ok(
   routeId: "catalog.opportunities",
   body: CatalogOpportunityRankingReadModel,

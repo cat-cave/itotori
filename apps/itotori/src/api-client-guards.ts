@@ -41,6 +41,7 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "catalog.conflicts": ["rows"],
   "catalog.completeness": ["pools"],
   "catalog.benchmarkSeeds": ["rows"],
+  "catalog.contextPanel": ["params", "row", "releases", "projectState"],
   "catalog.opportunities": ["rows"],
 };
 

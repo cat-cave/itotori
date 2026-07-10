@@ -100,6 +100,7 @@ import type {
   ApiRevokeAuthSessionResponse,
   ApiAuthIdentityResponse,
   ApiAuthCapabilitiesResponse,
+  ApiCatalogContextPanelResponse,
   ApiTerminologySearchResponse,
   ApiWikiEntriesResponse,
   ApiWorkspaceAssetBrowseResponse,
@@ -138,6 +139,10 @@ interface ItotoriApiRouteTypeMap {
   "catalog.benchmarkSeeds": {
     response: ApiCatalogBenchmarkSeedsResponse;
     collectionKey: "rows";
+  };
+  "catalog.contextPanel": {
+    response: ApiCatalogContextPanelResponse;
+    pathParams: { projectId: string; localeBranchId: string; workId: string };
   };
   "catalog.completeness": {
     response: ApiCatalogCompletenessResponse;

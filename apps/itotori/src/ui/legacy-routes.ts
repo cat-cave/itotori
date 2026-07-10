@@ -10,6 +10,7 @@
 
 import { assertBrowserItotoriApiResponse } from "../api-client-guards.js";
 import type { AssetDecisionsRouteParams } from "../asset-decisions/route.js";
+import type { CatalogContextPanelRouteParams } from "../catalog-context-panel-route.js";
 import type {
   ReviewerBatchActionRequest,
   ReviewerBatchActionServicePort,
@@ -23,6 +24,8 @@ export type LegacyRouteRenderer = (root: HTMLElement) => void | Promise<void>;
 
 const assetDecisionsRoutePathRegex =
   /^\/projects\/([^/]+)\/locale-branches\/([^/]+)\/asset-decisions(\/batch)?$/u;
+const catalogContextPanelRoutePathRegex =
+  /^\/projects\/([^/]+)\/locale-branches\/([^/]+)\/catalog-context\/([^/]+)$/u;
 const reviewerBatchRoutePathRegex = /^\/reviewer-queue\/batch$/u;
 
 const reviewerQueueActionValues = {
@@ -48,6 +51,13 @@ export function matchLegacyRoute(pathname: string, search: string): LegacyRouteR
     return async (root) => {
       const { renderAssetDecisionsRoute } = await import("../asset-decisions/route.js");
       await renderAssetDecisionsRoute(root, assetDecisions);
+    };
+  }
+  const catalogContextPanel = parseCatalogContextPanelRoute(pathname);
+  if (catalogContextPanel !== null) {
+    return async (root) => {
+      const { renderCatalogContextPanelRoute } = await import("../catalog-context-panel-route.js");
+      await renderCatalogContextPanelRoute(root, catalogContextPanel);
     };
   }
   const reviewerBatch = parseReviewerBatchRoute(pathname);
@@ -86,6 +96,21 @@ function parseAssetDecisionsRoute(pathname: string): AssetDecisionsRouteParams |
     projectId: decodeURIComponent(projectId),
     localeBranchId: decodeURIComponent(localeBranchId),
     view: match?.[3] === "/batch" ? "batch" : "policy",
+  };
+}
+
+function parseCatalogContextPanelRoute(pathname: string): CatalogContextPanelRouteParams | null {
+  const match = catalogContextPanelRoutePathRegex.exec(pathname);
+  const projectId = match?.[1];
+  const localeBranchId = match?.[2];
+  const workId = match?.[3];
+  if (projectId === undefined || localeBranchId === undefined || workId === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeURIComponent(projectId),
+    localeBranchId: decodeURIComponent(localeBranchId),
+    workId: decodeURIComponent(workId),
   };
 }
 

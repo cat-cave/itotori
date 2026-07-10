@@ -64,6 +64,17 @@ export type CatalogContextPanelInput = {
   projectState: CatalogContextProjectState;
 };
 
+/** DB/API read-model consumed by the live catalog-context dashboard route. */
+export type CatalogContextPanelReadModel = CatalogContextPanelInput & {
+  schemaVersion: "catalog.context_panel_route.v0.1";
+  generatedAt: Date;
+  params: {
+    projectId: string;
+    localeBranchId: string;
+    workId: string;
+  };
+};
+
 /** One edition of the work, projected verbatim from a catalog release. */
 export type CatalogContextEdition = {
   releaseId: string;

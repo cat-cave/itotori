@@ -47,6 +47,7 @@ import {
   type ItotoriCatalogCrawlerRepositoryPort,
   type CatalogBenchmarkSeedFinderFilter,
   type CatalogBenchmarkSeedFinderReadModel,
+  type CatalogContextPanelCatalogReadModel,
   type CatalogOpportunityRankingFilter,
   type CatalogOpportunityRankingReadModel,
   type CatalogConflictReviewFilter,
@@ -173,6 +174,10 @@ export type ItotoriApplicationServices = {
     catalogBenchmarkSeedFinder(
       filter?: CatalogBenchmarkSeedFinderFilter,
     ): Promise<CatalogBenchmarkSeedFinderReadModel>;
+    catalogContextPanelForWork(input: {
+      workId: string;
+      targetLanguage: string;
+    }): Promise<CatalogContextPanelCatalogReadModel | null>;
     catalogOpportunityRanking(
       filter?: CatalogOpportunityRankingFilter,
     ): Promise<CatalogOpportunityRankingReadModel>;
@@ -775,6 +780,8 @@ export async function withDatabaseItotoriServices<T>(
           catalogRepository.catalogCompletenessBenchmarkPools(localUserActor, filter),
         catalogBenchmarkSeedFinder: (filter) =>
           catalogRepository.catalogBenchmarkSeedFinder(localUserActor, filter),
+        catalogContextPanelForWork: (input) =>
+          catalogRepository.catalogContextPanelForWork(localUserActor, input),
         catalogOpportunityRanking: (filter) =>
           catalogRepository.catalogOpportunityRanking(localUserActor, filter),
       },

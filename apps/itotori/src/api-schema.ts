@@ -141,11 +141,13 @@ import {
   BMK_COCKPIT_CONTESTANT_ROLES,
   BMK_COCKPIT_SCHEMA_VERSION,
 } from "./bmk-cockpit-read-model.js";
+import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
   | "assetDecisions.candidates"
   | "catalog.benchmarkSeeds"
+  | "catalog.contextPanel"
   | "catalog.completeness"
   | "catalog.conflicts"
   | "catalog.opportunities"
@@ -269,6 +271,14 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "entries",
   ],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
+  CatalogContextPanelReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "params",
+    "row",
+    "releases",
+    "projectState",
+  ],
   CatalogCompletenessBenchmarkPools: ["targetLanguage", "pools", "publicReport"],
   CatalogConflictReviewReadModel: ["rows"],
   CatalogOpportunityRankingReadModel: [
@@ -748,6 +758,8 @@ export type ApiCatalogConflictReviewResponse = CatalogConflictReviewReadModel;
 export type ApiCatalogCompletenessResponse = CatalogCompletenessBenchmarkPools;
 
 export type ApiCatalogBenchmarkSeedsResponse = CatalogBenchmarkSeedFinderReadModel;
+
+export type ApiCatalogContextPanelResponse = CatalogContextPanelReadModel;
 
 export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel;
 
@@ -1396,6 +1408,7 @@ export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
   | ApiCatalogBenchmarkSeedsResponse
+  | ApiCatalogContextPanelResponse
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
   | ApiCatalogOpportunitiesResponse
@@ -1978,6 +1991,9 @@ export function assertItotoriApiResponse(
       return;
     case "catalog.benchmarkSeeds":
       assertCatalogBenchmarkSeedFinderReadModel(value);
+      return;
+    case "catalog.contextPanel":
+      assertCatalogContextPanelReadModel(value);
       return;
     case "catalog.completeness":
       assertCatalogCompletenessBenchmarkPools(value);
@@ -3630,6 +3646,194 @@ function assertCatalogOpportunityDemotionSourceIds(value: unknown, label: string
     }
     assertPublicOpportunityString(sourceId.sourceId, `${label}[${index}].sourceId`);
   }
+}
+
+export function assertCatalogContextPanelReadModel(
+  value: unknown,
+  label = "CatalogContextPanelReadModel",
+): asserts value is CatalogContextPanelReadModel {
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.CatalogContextPanelReadModel,
+  );
+  assertLiteral(model.schemaVersion, "catalog.context_panel_route.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  const params = asStrictRecord(model.params, `${label}.params`, [
+    "projectId",
+    "localeBranchId",
+    "workId",
+  ]);
+  assertPublicBenchmarkSeedString(params.projectId, `${label}.params.projectId`);
+  assertPublicBenchmarkSeedString(params.localeBranchId, `${label}.params.localeBranchId`);
+  assertPublicBenchmarkSeedString(params.workId, `${label}.params.workId`);
+  assertCatalogBenchmarkSeedRow(model.row, `${label}.row`);
+  assertCatalogReleaseRecords(model.releases, `${label}.releases`);
+  const projectState = asStrictRecord(model.projectState, `${label}.projectState`, [
+    "targetLanguage",
+    "localeBranch",
+  ]);
+  assertPublicBenchmarkSeedString(
+    projectState.targetLanguage,
+    `${label}.projectState.targetLanguage`,
+  );
+  if (projectState.localeBranch !== null) {
+    assertLocaleBranchStatus(projectState.localeBranch, `${label}.projectState.localeBranch`);
+  }
+}
+
+function assertCatalogBenchmarkSeedRow(value: unknown, label: string): void {
+  const row = asStrictRecord(value, label, [
+    "workId",
+    "canonicalTitle",
+    "originalLanguage",
+    "sourceIds",
+    "completenessPool",
+    "translationStatuses",
+    "localOwnership",
+    "localEvidenceCount",
+    "demandBucket",
+    "readiness",
+    "provenance",
+    "decision",
+    "rank",
+    "seedRank",
+    "explanationCodes",
+  ]);
+  assertPublicBenchmarkSeedString(row.workId, `${label}.workId`);
+  assertPublicBenchmarkSeedString(row.canonicalTitle, `${label}.canonicalTitle`);
+  assertNullablePublicBenchmarkSeedString(row.originalLanguage, `${label}.originalLanguage`);
+  assertCatalogBenchmarkSeedSourceIds(row.sourceIds, `${label}.sourceIds`);
+  assertEnum(
+    row.completenessPool,
+    ["mtl_only", "fan_partial", "no_english", "unknown", "conflict"] as const,
+    `${label}.completenessPool`,
+  );
+  assertCatalogBenchmarkSeedTranslationStatuses(
+    row.translationStatuses,
+    `${label}.translationStatuses`,
+  );
+  assertEnum(
+    row.localOwnership,
+    ["owned", "not_owned", "unknown"] as const,
+    `${label}.localOwnership`,
+  );
+  assertNonNegativeNumber(row.localEvidenceCount, `${label}.localEvidenceCount`);
+  assertEnum(
+    row.demandBucket,
+    ["none", "low", "medium", "high", "very_high"] as const,
+    `${label}.demandBucket`,
+  );
+  assertCatalogBenchmarkSeedReadiness(row.readiness, `${label}.readiness`);
+  assertCatalogBenchmarkSeedProvenance(row.provenance, `${label}.provenance`);
+  assertEnum(
+    row.decision,
+    ["seed", "candidate", "demoted", "excluded"] as const,
+    `${label}.decision`,
+  );
+  assertNonNegativeInteger(row.rank, `${label}.rank`);
+  if (row.seedRank !== null) {
+    assertNonNegativeInteger(row.seedRank, `${label}.seedRank`);
+  }
+  assertPublicBenchmarkSeedStringArray(row.explanationCodes, `${label}.explanationCodes`);
+}
+
+function assertCatalogReleaseRecords(value: unknown, label: string): void {
+  const releases = asArray(value, label);
+  for (const [index, releaseValue] of releases.entries()) {
+    const releaseLabel = `${label}[${index}]`;
+    const release = asStrictRecord(releaseValue, releaseLabel, [
+      "releaseId",
+      "workId",
+      "catalogSource",
+      "sourceReleaseId",
+      "releaseTitle",
+      "releaseKind",
+      "editionName",
+      "milestone",
+      "packageKind",
+      "engineName",
+      "engineSource",
+      "engineConfidence",
+      "engineProvenanceId",
+      "platform",
+      "language",
+      "releaseDate",
+      "releaseYear",
+      "isOfficial",
+      "sourceProvenanceId",
+      "metadata",
+      "createdAt",
+      "updatedAt",
+    ]);
+    assertPublicBenchmarkSeedString(release.releaseId, `${releaseLabel}.releaseId`);
+    assertPublicBenchmarkSeedString(release.workId, `${releaseLabel}.workId`);
+    assertEnum(
+      release.catalogSource,
+      Object.values(catalogSourceValues) as CatalogSource[],
+      `${releaseLabel}.catalogSource`,
+    );
+    assertNullablePublicBenchmarkSeedString(
+      release.sourceReleaseId,
+      `${releaseLabel}.sourceReleaseId`,
+    );
+    assertPublicBenchmarkSeedString(release.releaseTitle, `${releaseLabel}.releaseTitle`);
+    assertPublicBenchmarkSeedString(release.releaseKind, `${releaseLabel}.releaseKind`);
+    assertNullablePublicBenchmarkSeedString(release.editionName, `${releaseLabel}.editionName`);
+    assertNullablePublicBenchmarkSeedString(release.milestone, `${releaseLabel}.milestone`);
+    assertPublicBenchmarkSeedString(release.packageKind, `${releaseLabel}.packageKind`);
+    assertNullablePublicBenchmarkSeedString(release.engineName, `${releaseLabel}.engineName`);
+    assertNullablePublicBenchmarkSeedString(release.engineSource, `${releaseLabel}.engineSource`);
+    if (release.engineConfidence !== null) {
+      assertEnum(
+        release.engineConfidence,
+        Object.values(catalogConfidenceValues) as CatalogConfidence[],
+        `${releaseLabel}.engineConfidence`,
+      );
+    }
+    assertNullablePublicBenchmarkSeedString(
+      release.engineProvenanceId,
+      `${releaseLabel}.engineProvenanceId`,
+    );
+    assertNullablePublicBenchmarkSeedString(release.platform, `${releaseLabel}.platform`);
+    assertNullablePublicBenchmarkSeedString(release.language, `${releaseLabel}.language`);
+    assertNullablePublicBenchmarkSeedString(release.releaseDate, `${releaseLabel}.releaseDate`);
+    if (release.releaseYear !== null) {
+      assertNonNegativeInteger(release.releaseYear, `${releaseLabel}.releaseYear`);
+    }
+    assertBoolean(release.isOfficial, `${releaseLabel}.isOfficial`);
+    assertNullablePublicBenchmarkSeedString(
+      release.sourceProvenanceId,
+      `${releaseLabel}.sourceProvenanceId`,
+    );
+    asRecord(release.metadata, `${releaseLabel}.metadata`);
+    assertDateLike(release.createdAt, `${releaseLabel}.createdAt`);
+    assertDateLike(release.updatedAt, `${releaseLabel}.updatedAt`);
+  }
+}
+
+function assertLocaleBranchStatus(value: unknown, label: string): void {
+  const branch = asStrictRecord(value, label, [
+    "localeBranchId",
+    "targetLocale",
+    "status",
+    "currentStyleGuidePolicyVersionId",
+    "unitCount",
+    "translatedUnitCount",
+    "openFindingCount",
+    "artifactCount",
+  ]);
+  assertString(branch.localeBranchId, `${label}.localeBranchId`);
+  assertString(branch.targetLocale, `${label}.targetLocale`);
+  assertString(branch.status, `${label}.status`);
+  assertNullableString(
+    branch.currentStyleGuidePolicyVersionId,
+    `${label}.currentStyleGuidePolicyVersionId`,
+  );
+  assertNonNegativeInteger(branch.unitCount, `${label}.unitCount`);
+  assertNonNegativeInteger(branch.translatedUnitCount, `${label}.translatedUnitCount`);
+  assertNonNegativeInteger(branch.openFindingCount, `${label}.openFindingCount`);
+  assertNonNegativeInteger(branch.artifactCount, `${label}.artifactCount`);
 }
 
 export function assertCatalogBenchmarkSeedFinderReadModel(

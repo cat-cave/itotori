@@ -146,6 +146,15 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "CatalogBenchmarkSeedFinderReadModel",
   },
+  "catalog.contextPanel": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/catalog-context/{workId}",
+    operationId: "catalogContextPanel",
+    summary: "Catalog context panel read model for a work and target locale branch.",
+    pathParams: ["projectId", "localeBranchId", "workId"],
+    responseSchema: "CatalogContextPanelReadModel",
+  },
   "catalog.opportunities": {
     method: "GET",
     pathTemplate: "/api/catalog/opportunities",

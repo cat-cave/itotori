@@ -2348,6 +2348,36 @@
       ],
       "type": "object"
     },
+    "CatalogContextPanelReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "generatedAt": {},
+        "params": {
+          "type": "object"
+        },
+        "projectState": {
+          "type": "object"
+        },
+        "releases": {
+          "type": "array"
+        },
+        "row": {
+          "type": "object"
+        },
+        "schemaVersion": {
+          "const": "catalog.context_panel_route.v0.1"
+        }
+      },
+      "required": [
+        "generatedAt",
+        "params",
+        "projectState",
+        "releases",
+        "row",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "CatalogOpportunityRankingReadModel": {
       "additionalProperties": false,
       "properties": {

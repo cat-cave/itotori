@@ -1531,6 +1531,26 @@ describe("Itotori API handlers", () => {
     },
   );
 
+  it.each(["POST", "PUT"])(
+    "405s a %s request to the catalog-context GET route",
+    async (method) => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        {
+          method,
+          pathname: "/api/projects/project-1/locale-branches/locale-1/catalog-context/work-1",
+          body: {},
+        },
+        services,
+      );
+
+      expect(response.statusCode).toBe(405);
+      expect(response.body).toMatchObject({ code: "method_not_allowed" });
+      expect(services.catalogRepository.catalogContextPanelForWork).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     {
       query: "?targetLanguage=en-US",
@@ -4841,6 +4861,13 @@ function serviceFixture(): ItotoriApiServices {
       catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
       catalogCompletenessBenchmarkPools: vi.fn(async () => catalogCompletenessFixture),
       catalogBenchmarkSeedFinder: vi.fn(async () => catalogBenchmarkSeedsFixture),
+      catalogContextPanelForWork: vi.fn(async ({ targetLanguage }) => ({
+        schemaVersion: "catalog.context_panel_catalog.v0.1" as const,
+        targetLanguage,
+        generatedAt: new Date("2026-06-17T00:03:00.000Z"),
+        row: catalogBenchmarkSeedsFixture.rows[0]!,
+        releases: [],
+      })),
       catalogOpportunityRanking: vi.fn(async () => catalogOpportunitiesFixture),
     },
     terminologyRepository: {

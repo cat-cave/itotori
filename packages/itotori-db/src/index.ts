@@ -589,6 +589,7 @@ export type {
   CatalogBenchmarkSeedFinderDecision,
   CatalogBenchmarkSeedFinderFilter,
   CatalogBenchmarkSeedFinderReadModel,
+  CatalogContextPanelCatalogReadModel,
   CatalogBenchmarkSeedProvenanceSummary,
   CatalogBenchmarkSeedReadiness,
   CatalogBenchmarkSeedReadinessLevel,
