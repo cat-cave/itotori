@@ -23,7 +23,7 @@ import { deflateSync } from "node:zlib";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { runVisionGateCommand } from "../src/render-gate/index.js";
 
 const LIVE_ENABLED =
@@ -97,7 +97,14 @@ function solidColorPng(width: number, height: number, rgb: [number, number, numb
 }
 
 describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)", () => {
-  mkdirSync(SMOKE_OUT_DIR, { recursive: true });
+  // Create the (uncommitted, developer-local) /scratch verdict dir only when the
+  // live suite actually runs. Vitest still evaluates a skipped describe's factory
+  // at COLLECTION time, so a top-level mkdirSync here would try to create
+  // `/scratch/...` on every default-suite run — failing on a hosted runner that
+  // has no writable /scratch. A `beforeAll` runs only for the non-skipped suite.
+  beforeAll(() => {
+    mkdirSync(SMOKE_OUT_DIR, { recursive: true });
+  });
 
   it("REJECTS a garbage (solid-color) frame → coherent:false", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vision-gate-garbage-"));

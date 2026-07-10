@@ -10065,8 +10065,17 @@ mod tests {
     #[test]
     #[ignore = "requires owned Siglus corpus via KAIFUU_SIGLUS_REAL_DIRS"]
     fn siglus_detects_real_corpus_titles() {
+        // Visible SKIP (not a panic) when the owned Siglus corpus is not wired.
+        // This `#[ignore]`d test is selected by the broad `-p kaifuu-engine-fixture
+        // -- --ignored` real-bytes invocation; the Siglus corpus is provisioned
+        // separately (vault-materialized), so a `panic!` here false-FAILED that
+        // lane whenever KAIFUU_SIGLUS_REAL_DIRS was absent. Skipping matches the
+        // Softpal detector proofs in this crate: no corpus -> no assertion, no red.
         let Ok(dirs) = std::env::var("KAIFUU_SIGLUS_REAL_DIRS") else {
-            panic!("set KAIFUU_SIGLUS_REAL_DIRS to a :-separated list of Siglus game dirs");
+            eprintln!(
+                "skipping: set KAIFUU_SIGLUS_REAL_DIRS to a :-separated list of Siglus game dirs"
+            );
+            return;
         };
         let adapter = SiglusProfileDetectorAdapter;
         let mut recognized = 0usize;

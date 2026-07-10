@@ -137,7 +137,19 @@ if (packageJson.engines?.node !== `>=${nodeVersion}`) {
   failures.push("package.json: engines.node must match .node-version minimum");
 }
 
-has("rust-toolchain.toml", /channel\s*=\s*"stable"/, "Rust channel must be stable");
+// The Rust channel is PINNED to an exact release (not a floating `stable`) so
+// the runner and local shells resolve the identical clippy/rustc — a floating
+// channel is the documented source of local-green/runner-red `-D warnings`
+// drift. The CI action's `toolchain:` input must match this pin (asserted below).
+const rustChannel = read("rust-toolchain.toml").match(/channel\s*=\s*"(?<channel>[^"]+)"/u)?.groups
+  ?.channel;
+if (rustChannel === undefined) {
+  failures.push("rust-toolchain.toml: channel must be set");
+} else if (rustChannel === "stable" || !/^\d+\.\d+\.\d+$/u.test(rustChannel)) {
+  failures.push(
+    `rust-toolchain.toml: channel must pin an exact stable release (got "${rustChannel}"); floating "stable" causes clippy version drift`,
+  );
+}
 has("rust-toolchain.toml", /"rustfmt"/, "rustfmt component must be installed");
 has("rust-toolchain.toml", /"clippy"/, "clippy component must be installed");
 
@@ -149,9 +161,18 @@ has(
 );
 has(
   ".github/workflows/ci.yml",
-  /dtolnay\/rust-toolchain@stable/,
-  "CI must install the Rust stable toolchain",
+  /dtolnay\/rust-toolchain@v1/,
+  "CI must install the Rust toolchain via the pinned dtolnay/rust-toolchain@v1 action ref",
 );
+// The CI action's `toolchain:` input must match the exact rust-toolchain.toml
+// pin, so the runner never resolves a different compiler than the pin claims.
+if (rustChannel !== undefined && /^\d+\.\d+\.\d+$/u.test(rustChannel)) {
+  has(
+    ".github/workflows/ci.yml",
+    new RegExp(`toolchain:\\s*${rustChannel.replace(/\./g, "\\.")}`),
+    `CI dtolnay toolchain input must match the rust-toolchain.toml pin (${rustChannel})`,
+  );
+}
 has(".github/workflows/ci.yml", /just ci/, "CI must call the root just ci recipe");
 
 hasRecipeCommand("check", "pnpm exec vp check", "must run Vite+ checks");
