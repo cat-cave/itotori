@@ -126,6 +126,7 @@ const SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS: f64 = 6.5;
 const REALLIVE_SEEN_TXT_PATH: &str = "SEEN.TXT";
 const REALLIVE_SEEN_GAN_PATH: &str = "SEEN.GAN";
 const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
+const REALLIVE_XOR2_VALIDATION_ASSET_REF: &str = "REALLIVEDATA/Seen.txt";
 // KAIFUU-192 nested-data-dir-resolved evidence code. Emitted whenever the
 // detector walks past the game root and locates a nested REALLIVEDATA/
 // subdirectory (e.g. Sweetie HD ships its REALLIVEDATA under a
@@ -4595,7 +4596,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
         let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
         let produced =
-            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory);
+            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory)?;
         let mut units: Vec<BridgeUnit> = Vec::new();
         for (_scene_id, bundle) in &produced {
             for unit in &bundle.bundle.units {
@@ -4645,6 +4646,12 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 state.variant,
             ));
         };
+        let resolved = Self::resolve_reallive_data_dir(request.game_dir);
+        let gameexe_path =
+            Self::gameexe_ini_path_with_resolved(request.game_dir, resolved.as_deref());
+        let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
+        let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
+        let _ = Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory)?;
         let mut scenes = Vec::new();
         for entry in &scene_index.entries {
             let blob = &archive_bytes[entry.byte_offset as usize
@@ -4723,7 +4730,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         // walk `extract` uses, so the PatchExport's bridgeUnitIds (minted
         // by extract) match the ids re-derived here.
         let produced_scenes =
-            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory);
+            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory)?;
         let mut matched_entry_ids: BTreeSet<String> = BTreeSet::new();
         let mut touched: Vec<(u16, serde_json::Value)> = Vec::new();
         // Length-CHANGING patch-back (reallive-adapter-expose-length-changing-
@@ -4944,6 +4951,20 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
 }
 
 impl RealLiveProfileDetectorAdapter {
+    fn xor2_validation_failure() -> AdapterFailure {
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::KeyValidationFailed,
+                REALLIVE_DETECTOR_ADAPTER_ID,
+                "kaifuu.reallive.xor2.validation_failed",
+            )
+            .engine("reallive")
+            .asset_ref(REALLIVE_XOR2_VALIDATION_ASSET_REF)
+            .required_capability(Capability::CryptoAccess)
+            .remediation("retry only after validation"),
+        )
+    }
+
     fn parser_failure(variant: &str, diagnostic_code: &str, message: &str) -> AdapterFailure {
         AdapterFailure::semantic(
             AdapterFailureSemanticParams::new(
@@ -5055,12 +5076,15 @@ impl RealLiveProfileDetectorAdapter {
         archive_bytes: &[u8],
         scene_index: &kaifuu_reallive::RealLiveSceneIndex,
         gameexe_inventory: &kaifuu_reallive::GameexeInventoryReport,
-    ) -> Vec<(u16, kaifuu_reallive::ProducedBundle)> {
+    ) -> KaifuuResult<Vec<(u16, kaifuu_reallive::ProducedBundle)>> {
         let mut bundles = Vec::new();
         let mut decompressed_archive =
             kaifuu_reallive::decompress_archive_scenes(archive_bytes, scene_index);
         let xor2_report =
             kaifuu_reallive::recover_and_decrypt_archive(&mut decompressed_archive.scenes);
+        if xor2_report.scenes_eligible > 0 && !xor2_report.validated {
+            return Err(Self::diagnostic_error(Self::xor2_validation_failure()));
+        }
         for entry in &scene_index.entries {
             let blob = &archive_bytes[entry.byte_offset as usize
                 ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
@@ -5096,7 +5120,7 @@ impl RealLiveProfileDetectorAdapter {
             };
             bundles.push((entry.scene_id, produced));
         }
-        bundles
+        Ok(bundles)
     }
 
     // Project a validated v0.2 localization unit onto the v0.1
@@ -10815,12 +10839,16 @@ mod tests {
     }
 
     fn xor2_adapter_seen_txt() -> Vec<u8> {
+        xor2_adapter_seen_txt_with_scene_len(540)
+    }
+
+    fn xor2_adapter_seen_txt_with_scene_len(scene_bytecode_len: usize) -> Vec<u8> {
         let dir_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
         let mut directory = vec![0u8; dir_len];
         let mut payload = Vec::new();
         for scene_id in 1..=6u16 {
-            let mut plaintext = vec![0u8; 540];
-            if scene_id == 1 {
+            let mut plaintext = vec![0u8; scene_bytecode_len];
+            if scene_id == 1 && plaintext.len() >= 261 {
                 plaintext[256..261].copy_from_slice(b"Hello");
             }
             let blob = xor2_scene_blob(&plaintext);
@@ -10844,6 +10872,7 @@ mod tests {
     #[test]
     fn reallive_adapter_extract_emits_bridge_bundle_with_scene_dialogue_units() {
         let dir = reallive_174_fixture_dir("kaifuu-174-extract-bridge-bundle");
+        let seen = fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
         let result = RealLiveProfileDetectorAdapter
             .extract(ExtractRequest { game_dir: &dir })
             .unwrap();
@@ -10874,6 +10903,11 @@ mod tests {
             .expect("dialogue unit present");
         assert_eq!(dialogue.source_text, "Hello");
         assert_eq!(dialogue.source_unit_key, "reallive:scene-0001#0000");
+        assert_eq!(
+            fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap(),
+            seen,
+            "extract must not mutate an archive without xor2 scenes"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -10915,7 +10949,80 @@ mod tests {
             dialogue.source_text, "Hello",
             "produce_scene_bundles must decrypt xor2 before bridge production"
         );
+        assert_eq!(
+            fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap(),
+            seen,
+            "extract must not mutate a validated xor2 source archive"
+        );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_adapter_refuses_unvalidated_xor2_before_extract_or_patch_writes() {
+        let dir = temp_dir("kaifuu-174-xor2-validation-failure");
+        fs::write(
+            dir.join(REALLIVE_SEEN_TXT_PATH),
+            xor2_adapter_seen_txt_with_scene_len(200),
+        )
+        .unwrap();
+        fs::write(dir.join(REALLIVE_GAMEEXE_INI_PATH), synthetic_gameexe_ini()).unwrap();
+        let export = PatchExport {
+            patch_export_id: "kaifuu-reallive-xor2-validation".to_string(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+
+        let extract_error = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap_err()
+            .to_string();
+        let expected = json!({
+            "errorCode": "kaifuu.key_validation_failed",
+            "adapter": REALLIVE_DETECTOR_ADAPTER_ID,
+            "engine": "reallive",
+            "detectedVariant": null,
+            "assetRef": REALLIVE_XOR2_VALIDATION_ASSET_REF,
+            "requiredCapability": "crypto_access",
+            "supportBoundary": "kaifuu.reallive.xor2.validation_failed",
+            "remediation": "retry only after validation",
+        });
+        assert_eq!(
+            serde_json::from_str::<Value>(&extract_error).unwrap(),
+            expected
+        );
+        assert!(
+            !extract_error.contains("candidate")
+                && !extract_error.contains("Hello")
+                && !extract_error.contains(dir.to_string_lossy().as_ref()),
+            "validation failure must not expose recovery findings, raw bytes, or game paths"
+        );
+
+        let preflight_error = RealLiveProfileDetectorAdapter
+            .patch_preflight(PatchPreflightRequest {
+                game_dir: &dir,
+                patch_export: &export,
+            })
+            .unwrap_err()
+            .to_string();
+        assert_eq!(preflight_error, extract_error);
+
+        let output_dir = temp_dir("kaifuu-174-xor2-validation-failure-output");
+        let patch_error = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap_err()
+            .to_string();
+        assert_eq!(patch_error, extract_error);
+        assert!(
+            !output_dir.join(REALLIVE_SEEN_TXT_PATH).exists(),
+            "patch must fail before it writes output"
+        );
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output_dir);
     }
 
     #[test]
