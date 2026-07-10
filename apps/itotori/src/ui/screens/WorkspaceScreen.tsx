@@ -9,7 +9,7 @@
 // does not read the source can navigate.
 
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Badge, BiText, ComparisonPane, DataTable, Panel } from "@itotori/ds";
+import { Badge, BiText, ComparisonPane, DataTable, Pagination, Panel } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import { apiClient } from "../client.js";
 import type { ItotoriApiRouteId } from "../../api-schema.js";
@@ -30,7 +30,11 @@ import type { WorkspaceRoute } from "../../workspace/route.js";
 import type { ApiRequestOptionsFor, ApiRouteResponse } from "../../api-client.js";
 import { ANNOTATION_SEVERITIES, type AnnotationSeverity } from "../../annotation.js";
 import { useApiQuery } from "../use-api-resource.js";
+import { useOffsetPager } from "../use-offset-pager.js";
+import { VirtualList } from "../virtual-list.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
+
+const WORKSPACE_SCENES_PAGE_SIZE = 100;
 
 export function WorkspaceScreen({ route }: { route: WorkspaceRoute }): ReactNode {
   return (
@@ -100,14 +104,7 @@ function WorkspaceRouteBody({ route }: { route: WorkspaceRoute }): ReactNode {
         />
       );
     case "scenes":
-      return (
-        <QueryView
-          routeId="workspace.scenes"
-          options={{ query: { projectId: route.projectId, localeBranchId: route.localeBranchId } }}
-          depsKey={`workspace.scenes:${route.projectId}:${route.localeBranchId}`}
-          render={(data) => <SceneBrowseView model={data} />}
-        />
-      );
+      return <SceneBrowseRoute route={route} />;
     case "assets":
       return (
         <QueryView
@@ -162,6 +159,29 @@ function WorkspaceRouteBody({ route }: { route: WorkspaceRoute }): ReactNode {
         />
       );
   }
+}
+
+function SceneBrowseRoute({
+  route,
+}: {
+  route: Extract<WorkspaceRoute, { kind: "scenes" }>;
+}): ReactNode {
+  const pager = useOffsetPager(
+    "workspace.scenes",
+    {
+      query: { projectId: route.projectId, localeBranchId: route.localeBranchId },
+      limit: WORKSPACE_SCENES_PAGE_SIZE,
+    },
+    `workspace.scenes:${route.projectId}:${route.localeBranchId}`,
+  );
+  const page = pager.page;
+  if (page === null) {
+    if (pager.phase === "error" && pager.error !== null) {
+      return <ErrorState title="Workspace" error={pager.error} />;
+    }
+    return <LoadingState label="Loading workspace…" />;
+  }
+  return <SceneBrowseView model={page.data} pager={pager} />;
 }
 
 function DeniedShell({ permission }: { permission: WorkspacePermissionView }): ReactNode {
@@ -288,33 +308,66 @@ function workspaceSurfaceHref(
   return `/workspace/${view}?${params.toString()}`;
 }
 
-function SceneBrowseView({ model }: { model: WorkspaceSceneBrowseReadModel }): ReactNode {
+function SceneBrowseView({
+  model,
+  pager,
+}: {
+  model: WorkspaceSceneBrowseReadModel;
+  pager: ReturnType<typeof useOffsetPager<"workspace.scenes">>;
+}): ReactNode {
   if (!model.permission.canReadQueue) {
     return <DeniedShell permission={model.permission} />;
   }
   return (
     <>
       <DiagnosticBanner diagnostics={model.diagnostics} />
-      {model.scenes.map((scene) => (
-        <Panel
-          key={scene.sceneId}
-          title={scene.summaryText}
-          eyebrow={`${scene.summaryLocale} · ${scene.citedUnitCount} cited unit(s)`}
-        >
-          {scene.stale && <Badge status="stale">stale summary</Badge>}
-          <DataTable
-            caption="Units"
-            columns={[
-              { key: "key", header: "Unit", render: (u) => <code>{u.sourceUnitKey}</code> },
-              { key: "speaker", header: "Speaker", render: (u) => u.speaker ?? "—" },
-              { key: "cited", header: "Cited", render: (u) => (u.cited ? "yes" : "no") },
-            ]}
-            rows={scene.units}
-            getRowKey={(u) => u.occurrenceId}
-          />
-        </Panel>
-      ))}
+      {model.scenes.length === 0 ? (
+        <p className="itotori-empty-copy">No scenes were returned for this page.</p>
+      ) : (
+        <VirtualList
+          ariaLabel="Workspace scenes virtualized list"
+          items={model.scenes}
+          getItemKey={(scene) => scene.sceneId}
+          itemHeight={260}
+          viewportHeight={640}
+          renderItem={(scene) => <SceneBrowseCard scene={scene} />}
+        />
+      )}
+      <Pagination
+        label="Workspace scenes pagination"
+        page={Math.max(0, model.pagination.page - 1)}
+        pageCount={Math.max(1, model.pagination.pageCount)}
+        totalItems={model.pagination.total}
+        itemName="scene"
+        onPrevious={pager.previous}
+        onNext={pager.next}
+      />
     </>
+  );
+}
+
+function SceneBrowseCard({
+  scene,
+}: {
+  scene: WorkspaceSceneBrowseReadModel["scenes"][number];
+}): ReactNode {
+  return (
+    <Panel
+      title={scene.summaryText}
+      eyebrow={`${scene.summaryLocale} · ${scene.citedUnitCount} cited unit(s)`}
+    >
+      {scene.stale && <Badge status="stale">stale summary</Badge>}
+      <DataTable
+        caption="Units"
+        columns={[
+          { key: "key", header: "Unit", render: (u) => <code>{u.sourceUnitKey}</code> },
+          { key: "speaker", header: "Speaker", render: (u) => u.speaker ?? "—" },
+          { key: "cited", header: "Cited", render: (u) => (u.cited ? "yes" : "no") },
+        ]}
+        rows={scene.units}
+        getRowKey={(u) => u.occurrenceId}
+      />
+    </Panel>
   );
 }
 

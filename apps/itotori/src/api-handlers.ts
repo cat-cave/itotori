@@ -1733,8 +1733,9 @@ async function routeReadOnlyItotoriApiRequest(
     if (!permission.canReadQueue) {
       throw new AuthorizationError({ userId: permission.actorUserId }, permissionValues.queueRead);
     }
+    const query = parseReviewerQueueDashboardQuery(request.search);
     const localeBranchId =
-      parseReviewerQueueDashboardQuery(request.search).localeBranchId ??
+      query.localeBranchId ??
       (await services.projectWorkflow.getDashboardStatus()).selectedLocaleBranchId;
     if (localeBranchId === null) {
       throw new ApiValidationError(
@@ -1743,7 +1744,12 @@ async function routeReadOnlyItotoriApiRequest(
     }
     return ok(
       "reviewer.queue",
-      await services.reviewerQueue.loadDashboard({ localeBranchId, permission }),
+      await services.reviewerQueue.loadDashboard({
+        localeBranchId,
+        permission,
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.offset === undefined ? {} : { offset: query.offset }),
+      }),
     );
   }
 
@@ -2332,24 +2338,53 @@ function parseActorUserIdQuery(search = ""): string | undefined {
   return actorUserId;
 }
 
-function parseReviewerQueueDashboardQuery(search = ""): { localeBranchId: string | null } {
+function parseReviewerQueueDashboardQuery(search = ""): {
+  localeBranchId: string | null;
+  limit?: number;
+  offset?: number;
+} {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(params, ["localeBranchId", "actorUserId"], "reviewer queue dashboard");
+  assertKnownQueryParams(
+    params,
+    ["localeBranchId", "actorUserId", "limit", "offset"],
+    "reviewer queue dashboard",
+  );
   const localeBranchId = params.get("localeBranchId");
   if (localeBranchId !== null && localeBranchId.trim().length === 0) {
     throw new ApiValidationError("localeBranchId must be non-empty");
   }
-  return { localeBranchId };
+  const query: { localeBranchId: string | null; limit?: number; offset?: number } = {
+    localeBranchId,
+  };
+  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
+  if (limit !== undefined) {
+    if (limit < 1) {
+      throw new ApiValidationError("limit must be a positive integer");
+    }
+    query.limit = limit;
+  }
+  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
+  if (offset !== undefined) {
+    query.offset = offset;
+  }
+  return query;
 }
 
 function parseWorkspaceBranchScopeQuery(
   search = "",
   context: string,
-): { projectId: string; localeBranchId: string; sceneId?: string; sourceRevisionId?: string } {
+): {
+  projectId: string;
+  localeBranchId: string;
+  sceneId?: string;
+  sourceRevisionId?: string;
+  limit?: number;
+  offset?: number;
+} {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
     params,
-    ["projectId", "localeBranchId", "sceneId", "sourceRevisionId", "actorUserId"],
+    ["projectId", "localeBranchId", "sceneId", "sourceRevisionId", "actorUserId", "limit", "offset"],
     context,
   );
   const projectId = requiredNonEmptyParam(params, "projectId");
@@ -2359,6 +2394,8 @@ function parseWorkspaceBranchScopeQuery(
     localeBranchId: string;
     sceneId?: string;
     sourceRevisionId?: string;
+    limit?: number;
+    offset?: number;
   } = { projectId, localeBranchId };
   const sceneId = params.get("sceneId");
   if (sceneId !== null) {
@@ -2373,6 +2410,17 @@ function parseWorkspaceBranchScopeQuery(
       throw new ApiValidationError("sourceRevisionId must be non-empty");
     }
     scope.sourceRevisionId = sourceRevisionId;
+  }
+  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
+  if (limit !== undefined) {
+    if (limit < 1) {
+      throw new ApiValidationError("limit must be a positive integer");
+    }
+    scope.limit = limit;
+  }
+  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
+  if (offset !== undefined) {
+    scope.offset = offset;
   }
   return scope;
 }

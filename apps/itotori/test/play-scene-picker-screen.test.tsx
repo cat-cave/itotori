@@ -37,6 +37,7 @@ import {
   filmstripFramesForUnit,
   localizedTextboxText,
 } from "../src/ui/screens/PlayScenePickerScreen.js";
+import { hrefForAddressable } from "../src/ui/addressable-routing.js";
 import { apiJson, authCapabilitiesMswHandler, authIdentityMswHandler } from "./msw-handlers.js";
 import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
@@ -47,6 +48,14 @@ const PLAY_ROUTE = {
   search: `?projectId=${PROJECT_ID}&localeBranchId=${LOCALE_BRANCH_ID}`,
 };
 const PLAY_SCENE_PICKER_CSS = join(process.cwd(), "src/ui/screens/PlayScenePickerScreen.css");
+
+function splitHref(href: string): { pathname: string; search: string } {
+  const queryStart = href.indexOf("?");
+  if (queryStart === -1) {
+    return { pathname: href, search: "" };
+  }
+  return { pathname: href.slice(0, queryStart), search: href.slice(queryStart) };
+}
 
 // Two scenes with distinct translated summaries so the NavPills rendering +
 // the scene-switch behavior are observable. Each scene cites one unit; the
@@ -274,7 +283,7 @@ describe("SPA shell — Play scene picker", () => {
     // The first scene's first cited unit is auto-selected, so the comparison
     // fires + the BiText paints source ↔ draft from the mocked cells. The
     // pair container is stamped with the unit's bridge id.
-    await screen.findByText("Good morning.");
+    expect((await screen.findAllByText("Good morning.")).length).toBeGreaterThanOrEqual(1);
 
     // The BiText renders the SOURCE cell text verbatim.
     expect(screen.getAllByText("おはよう。").length).toBeGreaterThanOrEqual(1);
@@ -467,6 +476,64 @@ describe("SPA shell — Play scene picker", () => {
     expect((await screen.findAllByText("Good morning.")).length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('[data-comparison-for="bridge-unit-play-two"]')).not.toBeNull();
     expect(document.querySelector('[data-comparison-for="bridge-unit-play-one"]')).toBeNull();
+  });
+
+  it("resolves a focused scene deep-link outside the first paged scene result", async () => {
+    const browse = sceneBrowseFixture();
+    const firstPageScene = browse.scenes[0]!;
+    const focusedScene = browse.scenes[1]!;
+    server.use(
+      http.get("*/api/workspace/scenes", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const sceneId = params.get("sceneId");
+        if (sceneId === focusedScene.sceneId) {
+          return apiJson("workspace.scenes", {
+            ...browse,
+            pagination: {
+              ...browse.pagination,
+              total: 1,
+              limit: 1,
+              pageCount: 1,
+              hasMore: false,
+              nextOffset: null,
+            },
+            scenes: [focusedScene],
+          });
+        }
+        return apiJson("workspace.scenes", {
+          ...browse,
+          pagination: {
+            ...browse.pagination,
+            total: 101,
+            limit: 100,
+            pageCount: 2,
+            hasMore: true,
+            nextOffset: 100,
+          },
+          scenes: [firstPageScene],
+        });
+      }),
+    );
+
+    const href = hrefForAddressable({
+      kind: "scene",
+      id: focusedScene.sceneId,
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+    });
+    const { pathname, search } = splitHref(href);
+    render(<App location={{ pathname, search }} />);
+
+    const body = await screen.findByLabelText("Play scene picker");
+    expect(body).toHaveAttribute("data-selected-scene-id", focusedScene.sceneId);
+    expect(body).toHaveAttribute("data-selected-unit-id", "bridge-unit-play-two");
+    expect(body).toHaveAttribute("data-addressable-focus", `scene:${focusedScene.sceneId}`);
+
+    const nav = screen.getByRole("navigation", { name: "Scenes by translated summary" });
+    expect(within(nav).getByRole("tab", { name: /confrontation unfolds/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("shows loading placeholders while the reads are in flight", () => {

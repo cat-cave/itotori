@@ -207,6 +207,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: {
         localeBranchId: str,
         permission: ref("ReviewerQueuePermissionView"),
+        pagination: obj,
         rows: arr,
         aggregate: obj,
         defaultBatchRequest: obj,
@@ -285,6 +286,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         permission: ref("ReviewerQueuePermissionView"),
         projectId: str,
         localeBranchId: str,
+        pagination: obj,
         scenes: arr,
         diagnostics: arr,
       },

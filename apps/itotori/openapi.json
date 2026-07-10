@@ -2780,6 +2780,9 @@
           "localeBranchId": {
             "type": "string"
           },
+          "pagination": {
+            "type": "object"
+          },
           "permission": {
             "$ref": "#/components/schemas/ReviewerQueuePermissionView"
           },
@@ -2795,6 +2798,7 @@
           "defaultBatchRequest",
           "generatedAt",
           "localeBranchId",
+          "pagination",
           "permission",
           "rows",
           "schemaVersion"
@@ -3213,6 +3217,9 @@
           "localeBranchId": {
             "type": "string"
           },
+          "pagination": {
+            "type": "object"
+          },
           "permission": {
             "$ref": "#/components/schemas/ReviewerQueuePermissionView"
           },
@@ -3230,6 +3237,7 @@
           "diagnostics",
           "generatedAt",
           "localeBranchId",
+          "pagination",
           "permission",
           "projectId",
           "scenes",

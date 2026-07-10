@@ -321,6 +321,15 @@ function reviewerDashboard(): ReviewerQueueDashboardReadModel {
     localeBranchId: BRANCH_ID,
     generatedAt: NOW,
     permission: permission(),
+    pagination: {
+      total: 1,
+      limit: 100,
+      offset: 0,
+      page: 1,
+      pageCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    },
     rows: [
       {
         reviewItemId: "reviewer-queue-finding-1",
@@ -494,6 +503,45 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
       bridgeUnitId: "bridge-unit-1",
       reviewItemId: "reviewer-queue-bridge-unit-1",
     });
+  });
+
+  it("paginates scene summaries before hydrating cited units", async () => {
+    let requestedBridgeUnitIds: string[] = [];
+    const summaries = Array.from({ length: 125 }, (_, index) =>
+      sceneSummary({
+        sceneSummaryId: `scene-summary-${index}`,
+        sceneId: `scene.${String(index).padStart(3, "0")}`,
+        summaryText: `Translated scene summary ${index}`,
+      }),
+    );
+    const service = makeService({
+      loadSceneSummaries: async () => summaries,
+      loadReviewItemIdsByBridgeUnit: async ({ bridgeUnitIds }) => {
+        requestedBridgeUnitIds = bridgeUnitIds;
+        return new Map([["bridge-unit-1", "reviewer-queue-bridge-unit-1"]]);
+      },
+    });
+
+    const model = await service.loadSceneBrowse({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      limit: 25,
+      offset: 100,
+      permission: permission(),
+    });
+
+    expect(model.pagination).toMatchObject({
+      total: 125,
+      limit: 25,
+      offset: 100,
+      page: 5,
+      pageCount: 5,
+      hasMore: false,
+      nextOffset: null,
+    });
+    expect(model.scenes).toHaveLength(25);
+    expect(model.scenes[0]!.sceneId).toBe("scene.100");
+    expect(requestedBridgeUnitIds).toEqual(["bridge-unit-1"]);
   });
 
   it("drops summaries from other locale branches and records a conflation guard diagnostic", async () => {

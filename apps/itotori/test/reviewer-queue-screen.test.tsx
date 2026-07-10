@@ -28,7 +28,7 @@ import { App } from "../src/ui/App.js";
 import type { ReviewerQueueDashboardReadModel } from "../src/reviewer/index.js";
 import type { ReviewerQueueDashboardRow } from "../src/reviewer/index.js";
 import { apiJson, authCapabilitiesMswHandler, authIdentityMswHandler } from "./msw-handlers.js";
-import { dashboardStatusFixture } from "./api-fixtures.js";
+import { costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
 const QUEUE_ROUTE = { pathname: "/reviewer-queue", search: `?localeBranchId=${LOCALE_BRANCH_ID}` };
@@ -129,9 +129,13 @@ const QUEUE_ROWS: ReviewerQueueDashboardRow[] = [
 
 function queueReadModel(
   rows: ReviewerQueueDashboardRow[] = QUEUE_ROWS,
+  limit = 100,
+  offset = 0,
 ): ReviewerQueueDashboardReadModel {
   const countState = (state: ReviewerQueueDashboardRow["dashboardState"]): number =>
     rows.filter((row) => row.dashboardState === state).length;
+  const pageRows = rows.slice(offset, offset + limit);
+  const hasMore = offset + limit < rows.length;
   return {
     schemaVersion: "reviewer.queue_dashboard.v0.1",
     localeBranchId: LOCALE_BRANCH_ID,
@@ -142,7 +146,16 @@ function queueReadModel(
       canManageQueue: true,
       denialReasons: [],
     },
-    rows,
+    pagination: {
+      total: rows.length,
+      limit,
+      offset,
+      page: Math.floor(offset / limit) + 1,
+      pageCount: rows.length === 0 ? 0 : Math.ceil(rows.length / limit),
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+    },
+    rows: pageRows,
     aggregate: {
       pending: countState("pending"),
       resolved: countState("resolved"),
@@ -153,7 +166,7 @@ function queueReadModel(
     defaultBatchRequest: {
       action: reviewerQueueActionValues.approve,
       actorUserId: "local-user",
-      selections: rows
+      selections: pageRows
         .filter((row) => row.selectedForBatch)
         .map((row) => ({
           reviewItemId: row.reviewItemId,
@@ -166,8 +179,15 @@ function queueReadModel(
 const server = setupServer(
   authCapabilitiesMswHandler,
   authIdentityMswHandler,
-  http.get("*/api/reviewer/queue", () => apiJson("reviewer.queue", queueReadModel())),
+  http.get("*/api/reviewer/queue", ({ request }) => {
+    const url = new URL(request.url);
+    const limit = Number(url.searchParams.get("limit") ?? "100");
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    return apiJson("reviewer.queue", queueReadModel(QUEUE_ROWS, limit, offset));
+  }),
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
+  http.get("*/api/projects", () => apiJson("projects.list", { projects: [dashboardStatusFixture] })),
+  http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -196,56 +216,71 @@ describe("SPA shell — categorized reviewer queue", () => {
     expect(screen.getByRole("tab", { name: /Runtime evidence/ })).toBeInTheDocument();
 
     // SEVERITY: the priority-40 QA row renders a critical-tone `blocker` badge.
-    const table = screen.getByRole("table");
-    const blocker = within(table).getByText("blocker");
+    const list = screen.getByLabelText("Reviewer queue virtualized rows");
+    expect(list).toHaveAttribute("data-virtualized", "true");
+    const blocker = within(list).getAllByText("blocker")[0]!;
     expect(blocker).toHaveAttribute("data-status", "blocker");
     expect(blocker).toHaveAttribute("data-tone", "critical");
     // …and a lower-priority row renders a neutral-tone `minor` badge.
-    expect(within(table).getAllByText("minor")[0]).toHaveAttribute("data-tone", "neutral");
+    expect(within(list).getAllByText("minor")[0]).toHaveAttribute("data-tone", "neutral");
 
     // Rows render their summary as a link into the detail route.
-    const rowLink = within(table).getByRole("link", { name: "Blocker QA finding zero" });
+    const rowLink = within(list).getByRole("link", { name: "Blocker QA finding zero" });
     expect(rowLink).toHaveAttribute("href", "/reviewer-queue/review-item-0");
   });
 
-  it("paginates: Next reveals page-2 rows, Previous restores page 1", async () => {
+  it("paginates through server pages and virtualizes the visible page", async () => {
+    const rows = Array.from({ length: 130 }, (_, index) =>
+      makeRow(index, {
+        itemKind: reviewerQueueItemKindValues.qa,
+        priority: index === 105 ? 35 : 5,
+        summary: index === 105 ? "Server page two blocker" : `Paged QA item ${index}`,
+      }),
+    );
+    server.use(
+      http.get("*/api/reviewer/queue", ({ request }) => {
+        const url = new URL(request.url);
+        const limit = Number(url.searchParams.get("limit") ?? "100");
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        return apiJson("reviewer.queue", queueReadModel(rows, limit, offset));
+      }),
+    );
     render(<App location={QUEUE_ROUTE} />);
 
     const body = await screen.findByLabelText("Reviewer queue");
     expect(body).toHaveAttribute("data-page", "1");
     expect(body).toHaveAttribute("data-page-count", "2");
+    const list = await screen.findByLabelText("Reviewer queue virtualized rows");
+    expect(list).toHaveAttribute("data-total-items", "100");
+    expect(Number(list.getAttribute("data-rendered-items"))).toBeLessThan(100);
 
-    // Page 1 (rows 0-7): the page-2 runtime row is NOT yet shown.
-    expect(screen.getByText("Blocker QA finding zero")).toBeInTheDocument();
-    expect(screen.queryByText("Runtime evidence review nine")).not.toBeInTheDocument();
+    expect(screen.getByText("Paged QA item 0")).toBeInTheDocument();
+    expect(screen.queryByText("Server page two blocker")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    // Page 2 (rows 8-9): the runtime row appears, the first page-1 row is gone.
-    expect(await screen.findByText("Runtime evidence review nine")).toBeInTheDocument();
-    expect(screen.queryByText("Blocker QA finding zero")).not.toBeInTheDocument();
+    expect(await screen.findByText("Server page two blocker")).toBeInTheDocument();
+    expect(screen.queryByText("Paged QA item 0")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Reviewer queue")).toHaveAttribute("data-page", "2");
 
     fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
-    expect(await screen.findByText("Blocker QA finding zero")).toBeInTheDocument();
+    expect(await screen.findByText("Paged QA item 0")).toBeInTheDocument();
     expect(screen.getByLabelText("Reviewer queue")).toHaveAttribute("data-page", "1");
   });
 
-  it("filters by category and resets the page window", async () => {
+  it("filters by category within the current server page", async () => {
     render(<App location={QUEUE_ROUTE} />);
 
-    // Advance to page 2 first, then narrow to Style (2 rows, single page).
-    fireEvent.click(await screen.findByRole("button", { name: "Next page" }));
-    fireEvent.click(screen.getByRole("tab", { name: /Style/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Style/ }));
 
     const body = screen.getByLabelText("Reviewer queue");
     expect(body).toHaveAttribute("data-active-category", reviewerQueueItemKindValues.style);
     expect(body).toHaveAttribute("data-page", "1");
 
-    const table = screen.getByRole("table");
-    expect(within(table).getByText("Style note five")).toBeInTheDocument();
+    const list = screen.getByLabelText("Reviewer queue virtualized rows");
+    expect(within(list).getByText("Style note five")).toBeInTheDocument();
     // A QA-only row is filtered out.
-    expect(within(table).queryByText("Blocker QA finding zero")).not.toBeInTheDocument();
+    expect(within(list).queryByText("Blocker QA finding zero")).not.toBeInTheDocument();
   });
 
   it("scopes to the project's selected locale branch when no query is given", async () => {
@@ -266,7 +301,7 @@ describe("SPA shell — categorized reviewer queue", () => {
     expect(
       await screen.findByText("No reviewer queue items were returned by the API."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("main")).toHaveAttribute("data-state", "empty");
+    expect(screen.queryByLabelText("Reviewer queue virtualized rows")).not.toBeInTheDocument();
   });
 
   it("surfaces a typed error state instead of a blank panel", async () => {

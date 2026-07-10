@@ -108,6 +108,8 @@ export type LoadWorkspaceSceneBrowseInput = {
   localeBranchId: string;
   sceneId?: string;
   sourceRevisionId?: string;
+  limit?: number;
+  offset?: number;
   permission: WorkspacePermissionView;
 };
 
@@ -216,12 +218,15 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
   async loadSceneBrowse(
     input: LoadWorkspaceSceneBrowseInput,
   ): Promise<WorkspaceSceneBrowseReadModel> {
+    const limit = normalizeWorkspaceSceneLimit(input.limit);
+    const offset = normalizeWorkspaceSceneOffset(input.offset);
     const base = {
       schemaVersion: "workspace.scene_browse.v0.1" as const,
       generatedAt: this.now(),
       permission: input.permission,
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
+      pagination: searchPagination(0, limit, offset),
     };
     if (!input.permission.canReadQueue) {
       return {
@@ -258,9 +263,11 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         message: `No scene summaries are available for locale branch ${input.localeBranchId}; the reviewer cannot navigate by translated summaries yet.`,
       });
     }
+    const pageSummaries = scopedSummaries.slice(offset, offset + limit);
+    const pagination = searchPagination(scopedSummaries.length, limit, offset);
     const allBridgeUnitIds = [
       ...new Set(
-        scopedSummaries.flatMap((summary) =>
+        pageSummaries.flatMap((summary) =>
           summary.citations.map((citation) => citation.bridgeUnitId),
         ),
       ),
@@ -277,7 +284,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
             bridgeUnitIds: allBridgeUnitIds,
             permission: input.permission,
           });
-    const scenes: WorkspaceSceneContext[] = scopedSummaries.map((summary) => {
+    const scenes: WorkspaceSceneContext[] = pageSummaries.map((summary) => {
       const stale = summary.status === sceneSummaryStatusValues.stale;
       const units: WorkspaceSceneUnit[] = [];
       let unresolvedCitedUnitCount = 0;
@@ -338,6 +345,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
     });
     return {
       ...base,
+      pagination,
       scenes,
       diagnostics,
     };
@@ -932,6 +940,26 @@ function searchPagination(total: number, limit: number, offset: number): Workspa
     hasMore,
     nextOffset: hasMore ? offset + limit : null,
   };
+}
+
+const WORKSPACE_SCENE_DEFAULT_LIMIT = 100;
+const WORKSPACE_SCENE_MAX_LIMIT = 500;
+
+function normalizeWorkspaceSceneLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return WORKSPACE_SCENE_DEFAULT_LIMIT;
+  }
+  if (!Number.isInteger(limit) || limit < 1) {
+    return WORKSPACE_SCENE_DEFAULT_LIMIT;
+  }
+  return Math.min(limit, WORKSPACE_SCENE_MAX_LIMIT);
+}
+
+function normalizeWorkspaceSceneOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isInteger(offset) || offset < 0) {
+    return 0;
+  }
+  return offset;
 }
 
 function searchTextMatches(query: string, values: readonly (string | null | undefined)[]): boolean {

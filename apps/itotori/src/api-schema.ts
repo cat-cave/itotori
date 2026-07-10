@@ -293,6 +293,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "localeBranchId",
     "generatedAt",
     "permission",
+    "pagination",
     "rows",
     "aggregate",
     "defaultBatchRequest",
@@ -582,6 +583,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "permission",
     "projectId",
     "localeBranchId",
+    "pagination",
     "scenes",
     "diagnostics",
   ],
@@ -2414,7 +2416,11 @@ export function assertReviewerQueueDashboardReadModel(
   assertString(model.localeBranchId, `${label}.localeBranchId`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
   const rows = asArray(model.rows, `${label}.rows`);
+  if (rows.length > Number((model.pagination as { limit: unknown }).limit)) {
+    throw new Error(`${label}.rows must not exceed pagination.limit`);
+  }
   for (const [index, row] of rows.entries()) {
     assertReviewerQueueDashboardRow(row, `${label}.rows[${index}]`);
   }
@@ -2851,7 +2857,11 @@ export function assertWorkspaceSceneBrowseReadModel(
   assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
   assertString(model.projectId, `${label}.projectId`);
   assertString(model.localeBranchId, `${label}.localeBranchId`);
+  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
   const scenes = asArray(model.scenes, `${label}.scenes`);
+  if (scenes.length > Number((model.pagination as { limit: unknown }).limit)) {
+    throw new Error(`${label}.scenes must not exceed pagination.limit`);
+  }
   for (const [index, sceneValue] of scenes.entries()) {
     const sceneLabel = `${label}.scenes[${index}]`;
     const scene = asStrictRecord(sceneValue, sceneLabel, [

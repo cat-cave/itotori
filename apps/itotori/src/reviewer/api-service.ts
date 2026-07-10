@@ -68,11 +68,22 @@ export type ReviewerQueueDashboardRow = {
 
 export type ReviewerQueueDashboardAggregate = Record<ReviewerQueueDashboardState, number>;
 
+export type ReviewerQueuePagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
 export type ReviewerQueueDashboardReadModel = {
   schemaVersion: "reviewer.queue_dashboard.v0.1";
   localeBranchId: string;
   generatedAt: Date;
   permission: ReviewerQueuePermissionView;
+  pagination: ReviewerQueuePagination;
   rows: ReviewerQueueDashboardRow[];
   aggregate: ReviewerQueueDashboardAggregate;
   defaultBatchRequest: ReviewerBatchActionRequest;
@@ -144,6 +155,8 @@ export type ReviewerQueueApiServicePort = {
   loadDashboard(input: {
     localeBranchId: string;
     permission: ReviewerQueuePermissionView;
+    limit?: number;
+    offset?: number;
   }): Promise<ReviewerQueueDashboardReadModel>;
   loadDetailContext(input: {
     reviewItemId: string;
@@ -184,7 +197,11 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
   async loadDashboard(input: {
     localeBranchId: string;
     permission: ReviewerQueuePermissionView;
+    limit?: number;
+    offset?: number;
   }): Promise<ReviewerQueueDashboardReadModel> {
+    const limit = normalizeReviewerQueueLimit(input.limit);
+    const offset = normalizeReviewerQueueOffset(input.offset);
     const items = await this.deps.repository.loadItemsByBranch(input.localeBranchId);
     const rows = await Promise.all(items.map((item) => this.dashboardRow(item)));
     const sortedRows = rows.sort((left, right) => {
@@ -196,17 +213,19 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
       }
       return left.createdAt.getTime() - right.createdAt.getTime();
     });
+    const pageRows = sortedRows.slice(offset, offset + limit);
     return {
       schemaVersion: "reviewer.queue_dashboard.v0.1",
       localeBranchId: input.localeBranchId,
       generatedAt: this.now(),
       permission: input.permission,
-      rows: sortedRows,
+      pagination: reviewerQueuePagination(sortedRows.length, limit, offset),
+      rows: pageRows,
       aggregate: aggregateRows(sortedRows),
       defaultBatchRequest: {
         action: reviewerQueueActionValues.approve,
         actorUserId: input.permission.actorUserId,
-        selections: sortedRows
+        selections: pageRows
           .filter((row) => row.selectedForBatch)
           .map((row) => ({
             reviewItemId: row.reviewItemId,
@@ -358,6 +377,44 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
       resolvedAt: item.resolvedAt,
     };
   }
+}
+
+const REVIEWER_QUEUE_DEFAULT_LIMIT = 100;
+const REVIEWER_QUEUE_MAX_LIMIT = 500;
+
+function normalizeReviewerQueueLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return REVIEWER_QUEUE_DEFAULT_LIMIT;
+  }
+  if (!Number.isInteger(limit) || limit < 1) {
+    return REVIEWER_QUEUE_DEFAULT_LIMIT;
+  }
+  return Math.min(limit, REVIEWER_QUEUE_MAX_LIMIT);
+}
+
+function normalizeReviewerQueueOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isInteger(offset) || offset < 0) {
+    return 0;
+  }
+  return offset;
+}
+
+function reviewerQueuePagination(
+  total: number,
+  limit: number,
+  offset: number,
+): ReviewerQueuePagination {
+  const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+  const hasMore = offset + limit < total;
+  return {
+    total,
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    pageCount,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
+  };
 }
 
 function reviewerItemSelectionRank(state: ReviewerQueueItemState): number {

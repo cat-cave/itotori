@@ -4,11 +4,10 @@
 // scoped to the selected locale branch). This is the full-page surface: the
 // same `reviewer.queue` read model, but rendered as a CATEGORIZED queue — items
 // grouped by `itemKind` (QA / style / glossary / feedback / runtime evidence)
-// behind a `NavPills` category filter, each row carrying a derived SEVERITY
-// badge (from the item's `priority`), and the collection PAGINATED client-side
-// (the `reviewer.queue` route returns the whole branch queue in one read model
-// — it has no server-side offset `pagination` field, so the page window is
-// walked over the returned `rows` here).
+// behind a `NavPills` category filter, each row carrying a derived SEVERITY badge
+// (from the item's `priority`). The collection is SERVER-PAGINATED via
+// `OffsetPager` and the visible page is virtualized so large branches do not
+// mount thousands of rows at once.
 //
 // Follows the app-shell pattern the ~50 downstream screen nodes inherit: parse
 // the route → read `/api/reviewer/queue` THROUGH the typed `ItotoriApiClient`
@@ -20,7 +19,6 @@ import { useState, type ReactNode } from "react";
 import type { ReviewerQueueItemKind } from "@itotori/db";
 import {
   Badge,
-  DataTable,
   NavPills,
   Pagination,
   Panel,
@@ -31,7 +29,9 @@ import type { ReviewerQueueDashboardRow } from "../../reviewer/index.js";
 import type { ApiReviewerQueueDashboardResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useSelectedLocaleBranch } from "../use-selected-locale-branch.js";
+import { useOffsetPager } from "../use-offset-pager.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { VirtualList } from "../virtual-list.js";
 
 const reviewerQueueItemKindValues = {
   qa: "qa",
@@ -116,8 +116,8 @@ const CATEGORY_LABEL: Record<ReviewerQueueItemKind, string> = {
   [reviewerQueueItemKindValues.runtimeEvidence]: "Runtime evidence",
 };
 
-/** Client-side page window size over the returned queue rows. */
-const PAGE_SIZE = 8;
+/** Server page size over branch queue rows. */
+const REVIEWER_QUEUE_PAGE_SIZE = 100;
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -171,30 +171,45 @@ export function ReviewerQueueScreen({ route }: { route: ReviewerQueueRouteParams
 }
 
 function ReviewerQueueForBranch({ localeBranchId }: { localeBranchId: string }): ReactNode {
-  const queue = useApiQuery(
+  const queue = useOffsetPager(
     "reviewer.queue",
-    { query: { localeBranchId } },
+    { query: { localeBranchId }, limit: REVIEWER_QUEUE_PAGE_SIZE },
     `reviewer.queue:${localeBranchId}`,
   );
   return (
     <main
       className="itotori-shell reviewer-queue"
       data-screen="reviewer-queue"
-      data-state={queue.state}
+      data-state={queue.phase}
       data-locale-branch-id={localeBranchId}
     >
       <ShellHeader eyebrow="Human review" title="Reviewer queue" />
-      {queue.state === "loading" && <LoadingState label="Loading reviewer queue…" />}
-      {queue.state === "empty" && (
-        <EmptyState
-          title="Reviewer queue"
-          message="No reviewer queue items were returned by the API."
-        />
-      )}
-      {queue.state === "error" && <ErrorState title="Reviewer queue" error={queue.error} />}
-      {queue.state === "ready" && <ReviewerQueueReady queue={queue.data} />}
+      <ReviewerQueuePagerBody pager={queue} />
     </main>
   );
+}
+
+function ReviewerQueuePagerBody({
+  pager,
+}: {
+  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
+}): ReactNode {
+  const page = pager.page;
+  if (page === null) {
+    if (pager.phase === "error" && pager.error !== null) {
+      return <ErrorState title="Reviewer queue" error={pager.error} />;
+    }
+    return <LoadingState label="Loading reviewer queue…" />;
+  }
+  if (page.data.rows.length === 0 && page.data.pagination.total === 0) {
+    return (
+      <EmptyState
+        title="Reviewer queue"
+        message="No reviewer queue items were returned by the API."
+      />
+    );
+  }
+  return <ReviewerQueueReady page={page.data} pager={pager} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,11 +217,16 @@ function ReviewerQueueForBranch({ localeBranchId }: { localeBranchId: string }):
 // active-category + page cursor; changing the category resets the page window.
 // ---------------------------------------------------------------------------
 
-function ReviewerQueueReady({ queue }: { queue: ApiReviewerQueueDashboardResponse }): ReactNode {
+function ReviewerQueueReady({
+  page,
+  pager,
+}: {
+  page: ApiReviewerQueueDashboardResponse;
+  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
+}): ReactNode {
   const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORY_ID);
-  const [page, setPage] = useState(0);
 
-  const categoryItems = buildCategoryItems(queue.rows);
+  const categoryItems = buildCategoryItems(page.rows);
   // Guard against a stale pill (category filtered out on a data change).
   const effectiveCategory = categoryItems.some((item) => item.id === activeCategory)
     ? activeCategory
@@ -214,17 +234,11 @@ function ReviewerQueueReady({ queue }: { queue: ApiReviewerQueueDashboardRespons
 
   const filteredRows =
     effectiveCategory === ALL_CATEGORY_ID
-      ? queue.rows
-      : queue.rows.filter((row) => row.itemKind === effectiveCategory);
-
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageStart = safePage * PAGE_SIZE;
-  const pageRows = filteredRows.slice(pageStart, pageStart + PAGE_SIZE);
+      ? page.rows
+      : page.rows.filter((row) => row.itemKind === effectiveCategory);
 
   const selectCategory = (id: string): void => {
     setActiveCategory(id);
-    setPage(0);
   };
 
   return (
@@ -232,10 +246,10 @@ function ReviewerQueueReady({ queue }: { queue: ApiReviewerQueueDashboardRespons
       className="reviewer-queue__body"
       aria-label="Reviewer queue"
       data-active-category={effectiveCategory}
-      data-page={safePage + 1}
-      data-page-count={pageCount}
+      data-page={page.pagination.page}
+      data-page-count={page.pagination.pageCount}
     >
-      <AggregateStrip queue={queue} />
+      <AggregateStrip queue={page} />
       <NavPills
         items={categoryItems}
         activeId={effectiveCategory}
@@ -243,68 +257,68 @@ function ReviewerQueueReady({ queue }: { queue: ApiReviewerQueueDashboardRespons
         label="Reviewer queue categories"
       />
       <Panel title="Categorized items" eyebrow="Severity" className="reviewer-queue__panel">
-        <DataTable
-          caption="Reviewer queue items by category and severity"
-          columns={[
-            {
-              key: "severity",
-              header: "Severity",
-              render: (row) => {
-                const severity = severityForPriority(row.priority);
-                return <Badge status={severity}>{severity}</Badge>;
-              },
-            },
-            {
-              key: "category",
-              header: "Category",
-              render: (row) => CATEGORY_LABEL[row.itemKind],
-            },
-            {
-              key: "state",
-              header: "State",
-              render: (row) => <Badge status={row.dashboardState} />,
-            },
-            {
-              key: "item",
-              header: "Item",
-              render: (row) => (
-                <span>
-                  <a href={row.detailPath}>{row.summary}</a>
-                  <br />
-                  <code>{row.reviewItemId}</code>
-                </span>
-              ),
-            },
-            {
-              key: "priority",
-              header: "Priority",
-              align: "end",
-              render: (row) => row.priority,
-            },
-            {
-              key: "last",
-              header: "Last action",
-              render: (row) => row.lastAction ?? "none",
-            },
-          ]}
-          rows={pageRows}
-          getRowKey={(row: ReviewerQueueDashboardRow) => row.reviewItemId}
-          emptyLabel="No reviewer items in this category."
-        />
+        {filteredRows.length === 0 ? (
+          <p className="itotori-empty-copy">No reviewer items in this category.</p>
+        ) : (
+          <VirtualList
+            ariaLabel="Reviewer queue virtualized rows"
+            items={filteredRows}
+            getItemKey={(row) => row.reviewItemId}
+            itemHeight={112}
+            viewportHeight={520}
+            renderItem={(row) => <ReviewerQueueVirtualRow row={row} />}
+          />
+        )}
         <Pagination
           label="Reviewer queue pagination"
-          page={safePage}
-          pageCount={pageCount}
-          totalItems={filteredRows.length}
-          onPrevious={() => setPage((current) => Math.max(0, current - 1))}
-          onNext={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+          page={Math.max(0, page.pagination.page - 1)}
+          pageCount={Math.max(1, page.pagination.pageCount)}
+          totalItems={page.pagination.total}
+          onPrevious={pager.previous}
+          onNext={pager.next}
         />
       </Panel>
     </section>
   );
 }
 
-function AggregateStrip({ queue }: { queue: ApiReviewerQueueDashboardResponse }): ReactNode {
+function ReviewerQueueVirtualRow({ row }: { row: ReviewerQueueDashboardRow }): ReactNode {
+  const severity = severityForPriority(row.priority);
+  return (
+    <article className="itotori-virtual-list__row" data-review-item-id={row.reviewItemId}>
+      <span>
+        <span className="itotori-virtual-list__label">Item</span>
+        <span className="itotori-virtual-list__value">
+          <a href={row.detailPath}>{row.summary}</a>
+          <br />
+          <code>{row.reviewItemId}</code>
+        </span>
+      </span>
+      <span>
+        <span className="itotori-virtual-list__label">Category / state</span>
+        <span className="itotori-virtual-list__value">
+          {CATEGORY_LABEL[row.itemKind]} <Badge status={row.dashboardState} />
+          <br />
+          {row.lastAction ?? "none"}
+        </span>
+      </span>
+      <span>
+        <span className="itotori-virtual-list__label">Severity</span>
+        <span className="itotori-virtual-list__value">
+          <Badge status={severity}>{severity}</Badge>
+          <br />
+          priority {row.priority}
+        </span>
+      </span>
+    </article>
+  );
+}
+
+function AggregateStrip({
+  queue,
+}: {
+  queue: ApiReviewerQueueDashboardResponse;
+}): ReactNode {
   return (
     <div className="itotori-metric-row" aria-label="Reviewer queue aggregate">
       <StatReadout label="Pending" value={queue.aggregate.pending} />

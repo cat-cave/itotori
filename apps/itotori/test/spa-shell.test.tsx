@@ -38,6 +38,7 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   draftBranchResponseFixture,
+  jobsRunTableFixture,
   modelRoutingSettingsFixture,
   projectOverviewFixture,
   runtimeStatusFixture,
@@ -67,6 +68,7 @@ const server = setupServer(
   http.get("*/api/projects/cost/drilldown", () =>
     apiJson("projects.costDrilldown", costDrilldownFixture),
   ),
+  http.get("*/api/jobs/run-table", () => apiJson("jobs.runTable", jobsRunTableFixture)),
   http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
   http.get("*/api/projects/:projectId/bmk-cockpit", () =>
     apiJson("projects.bmkCockpit", bmkCockpitFixture),
@@ -114,6 +116,13 @@ describe("SPA shell — Workbench dashboard", () => {
     // Reviewer queue panel (reviewer.queue) — aggregate + a detail link.
     expect(await screen.findByRole("heading", { name: "Reviewer queue" })).toBeInTheDocument();
     expect(await screen.findByText("Preview batch actions")).toBeInTheDocument();
+
+    // Jobs panel (jobs.runTable) — server-paged + virtualized.
+    expect(await screen.findByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Jobs run table virtualized rows")).toHaveAttribute(
+      "data-virtualized",
+      "true",
+    );
 
     // Model cost panel (projects.cost) — the empirical $25 target.
     expect(await screen.findByRole("heading", { name: "Model cost" })).toBeInTheDocument();

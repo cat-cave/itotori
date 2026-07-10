@@ -27,6 +27,7 @@ import {
   BiText,
   DataTable,
   NavPills,
+  Pagination,
   Panel,
   ScenePlayer,
   type NavPillItem,
@@ -42,9 +43,12 @@ import type {
   WorkspaceSceneUnit,
 } from "../../workspace/index.js";
 import { useApiQuery, useApiQueryWhen } from "../use-api-resource.js";
+import { useOffsetPager } from "../use-offset-pager.js";
 import { RedactedFrame } from "../redaction-governor.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import "./PlayScenePickerScreen.css";
+
+const PLAY_SCENES_PAGE_SIZE = 100;
 
 // ---------------------------------------------------------------------------
 // Route identity — `/play` (bare) plus addressable deep-links
@@ -209,34 +213,83 @@ function PlayScenePickerForBranch({
   localeBranchId: string;
   focus: PlayFocus;
 }): ReactNode {
-  const scenes = useApiQuery(
+  const scenes = useOffsetPager(
     "workspace.scenes",
-    { query: { projectId, localeBranchId } },
+    { query: { projectId, localeBranchId }, limit: PLAY_SCENES_PAGE_SIZE },
     `play-scene-picker:scenes:${projectId}:${localeBranchId}`,
   );
+  const focusedScene = useApiQueryWhen(
+    "workspace.scenes",
+    {
+      query: {
+        projectId,
+        localeBranchId,
+        sceneId: focus.sceneId ?? "",
+        limit: 1,
+      },
+    },
+    `play-scene-picker:focused-scene:${projectId}:${localeBranchId}:${focus.sceneId ?? "none"}`,
+    focus.sceneId !== null,
+  );
   const focusToken = playFocusToken(focus);
+  const screenState =
+    scenes.page?.data.scenes.length === 0 && focus.sceneId === null ? "empty" : scenes.phase;
   return (
     <main
       className="itotori-shell play-scene-picker"
       data-screen="play-scene-picker"
-      data-state={scenes.state}
+      data-state={screenState}
       data-locale-branch-id={localeBranchId}
       data-addressable-focus={focusToken ?? undefined}
       data-addressable-focused={focusToken !== null ? "true" : undefined}
       data-focus-route-id={focus.routeId ?? undefined}
     >
       <ShellHeader eyebrow="Play" title="Scene picker" />
-      {scenes.state === "loading" && <LoadingState label="Loading scenes…" />}
-      {scenes.state === "empty" && (
-        <EmptyState
-          title="Scene picker"
-          message="No scenes were returned for this locale branch."
-        />
-      )}
-      {scenes.state === "error" && <ErrorState title="Scene picker" error={scenes.error} />}
-      {scenes.state === "ready" && <PlayScenePickerReady model={scenes.data} focus={focus} />}
+      <PlayScenePickerPage pager={scenes} focus={focus} focusedScene={focusedScene} />
     </main>
   );
+}
+
+function PlayScenePickerPage({
+  pager,
+  focus,
+  focusedScene,
+}: {
+  pager: ReturnType<typeof useOffsetPager<"workspace.scenes">>;
+  focus: PlayFocus;
+  focusedScene: ApiCallState<ApiWorkspaceSceneBrowseResponse>;
+}): ReactNode {
+  const page = pager.page;
+  if (page === null) {
+    if (pager.phase === "error" && pager.error !== null) {
+      return <ErrorState title="Scene picker" error={pager.error} />;
+    }
+    return <LoadingState label="Loading scenes…" />;
+  }
+  if (page.data.scenes.length === 0 && focus.sceneId === null) {
+    return (
+      <EmptyState
+        title="Scene picker"
+        message="No scenes were returned for this locale branch."
+      />
+    );
+  }
+  const focusMissing =
+    focus.sceneId !== null && !page.data.scenes.some((scene) => scene.sceneId === focus.sceneId);
+  if (focusMissing && focusedScene.state === "loading") {
+    return <LoadingState label="Loading focused scene…" />;
+  }
+  if (focusMissing && focusedScene.state === "error") {
+    return <ErrorState title="Focused scene" error={focusedScene.error} />;
+  }
+  const model =
+    focusMissing && focusedScene.state === "ready"
+      ? prependFocusedScene(page.data, focusedScene.data)
+      : page.data;
+  const readyKey = `${model.pagination.offset}:${playFocusToken(focus) ?? "none"}:${model.scenes
+    .map((scene) => scene.sceneId)
+    .join("|")}`;
+  return <PlayScenePickerReady key={readyKey} model={model} focus={focus} pager={pager} />;
 }
 
 /** Prefer unit focus, then scene, then route — the deepest pin wins. */
@@ -261,9 +314,11 @@ function playFocusToken(focus: PlayFocus): string | null {
 function PlayScenePickerReady({
   model,
   focus,
+  pager,
 }: {
   model: ApiWorkspaceSceneBrowseResponse;
   focus: PlayFocus;
+  pager: ReturnType<typeof useOffsetPager<"workspace.scenes">>;
 }): ReactNode {
   const initial = initialPlaySelection(model, focus);
   const [selectedSceneId, setSelectedSceneId] = useState<string>(initial.sceneId);
@@ -304,6 +359,15 @@ function PlayScenePickerReady({
         onSelect={selectScene}
         label="Scenes by translated summary"
         className="play-scene-picker__scenes"
+      />
+      <Pagination
+        label="Play scenes pagination"
+        page={Math.max(0, model.pagination.page - 1)}
+        pageCount={Math.max(1, model.pagination.pageCount)}
+        totalItems={model.pagination.total}
+        itemName="scene"
+        onPrevious={pager.previous}
+        onNext={pager.next}
       />
       {selectedScene === null ? (
         <EmptyState
@@ -741,4 +805,19 @@ function preferredUnit(scene: WorkspaceSceneContext | null): WorkspaceSceneUnit 
 /** Stable selection key for a scene unit (its bridge unit id). */
 function unitSelectionKey(unit: WorkspaceSceneUnit | null): string {
   return unit?.bridgeUnitId ?? "";
+}
+
+function prependFocusedScene(
+  pageModel: ApiWorkspaceSceneBrowseResponse,
+  focusedModel: ApiWorkspaceSceneBrowseResponse,
+): ApiWorkspaceSceneBrowseResponse {
+  const focused = focusedModel.scenes[0] ?? null;
+  if (focused === null || pageModel.scenes.some((scene) => scene.sceneId === focused.sceneId)) {
+    return pageModel;
+  }
+  return {
+    ...pageModel,
+    diagnostics: [...pageModel.diagnostics, ...focusedModel.diagnostics],
+    scenes: [focused, ...pageModel.scenes],
+  };
 }

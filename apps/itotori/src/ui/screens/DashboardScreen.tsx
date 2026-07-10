@@ -18,25 +18,32 @@ import type {
   CatalogOpportunityFactor,
   CatalogOpportunityRankingReadModel,
   CatalogOpportunityRow,
+  JobsRunTableRow,
   ProjectDashboardStatus,
 } from "@itotori/db";
-import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
+import { Badge, DataTable, Pagination, Panel, StatReadout } from "@itotori/ds";
 import type { ApiCallState } from "../../api-client.js";
 import type {
   ApiDashboardDecisionsResponse,
+  ApiJobsRunTableResponse,
   ApiProjectsResponse,
   ApiReviewerQueueDashboardResponse,
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useSelectedLocaleBranch } from "../use-selected-locale-branch.js";
+import { useOffsetPager } from "../use-offset-pager.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { VirtualList } from "../virtual-list.js";
 import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { DecisionsBand } from "./DecisionsBand.js";
 import { LoopSpinePanel } from "./LoopSpinePanel.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
+
+const DASHBOARD_REVIEWER_QUEUE_PAGE_SIZE = 50;
+const DASHBOARD_JOBS_PAGE_SIZE = 100;
 
 export function DashboardScreen(): ReactNode {
   const projects = useApiQuery("projects.list", {}, "projects");
@@ -76,6 +83,7 @@ export function DashboardScreen(): ReactNode {
         <ProjectsPanel projects={projects} />
         <CatalogOpportunitiesPanel opportunities={opportunities} />
         <ReviewerQueuePanel status={status} />
+        <JobsRunTablePanel status={status} />
         <CostDrilldownPanel cost={cost} overview={overview} />
         <QaFindingsPanel decisions={decisions} />
       </section>
@@ -459,27 +467,48 @@ function ReviewerQueuePanel({
 }
 
 function ReviewerQueueBody({ localeBranchId }: { localeBranchId: string }): ReactNode {
-  const queue = useApiQuery(
+  const queue = useOffsetPager(
     "reviewer.queue",
-    { query: { localeBranchId } },
+    { query: { localeBranchId }, limit: DASHBOARD_REVIEWER_QUEUE_PAGE_SIZE },
     `reviewer.queue:${localeBranchId}`,
   );
   return (
     <Panel title="Reviewer queue" eyebrow="Human review">
-      {queue.state === "loading" && <LoadingState label="Loading reviewer queue…" />}
-      {queue.state === "empty" && (
-        <EmptyState
-          title="Reviewer queue"
-          message="No reviewer queue items were returned by the API."
-        />
-      )}
-      {queue.state === "error" && <ErrorState title="Reviewer queue" error={queue.error} />}
-      {queue.state === "ready" && <ReviewerQueueContent queue={queue.data} />}
+      <ReviewerQueuePagerContent pager={queue} />
     </Panel>
   );
 }
 
-function ReviewerQueueContent({ queue }: { queue: ApiReviewerQueueDashboardResponse }): ReactNode {
+function ReviewerQueuePagerContent({
+  pager,
+}: {
+  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
+}): ReactNode {
+  const page = pager.page;
+  if (page === null) {
+    if (pager.phase === "error" && pager.error !== null) {
+      return <ErrorState title="Reviewer queue" error={pager.error} />;
+    }
+    return <LoadingState label="Loading reviewer queue…" />;
+  }
+  if (page.data.rows.length === 0 && page.data.pagination.total === 0) {
+    return (
+      <EmptyState
+        title="Reviewer queue"
+        message="No reviewer queue items were returned by the API."
+      />
+    );
+  }
+  return <ReviewerQueueContent queue={page.data} pager={pager} />;
+}
+
+function ReviewerQueueContent({
+  queue,
+  pager,
+}: {
+  queue: ApiReviewerQueueDashboardResponse;
+  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
+}): ReactNode {
   return (
     <>
       <div className="itotori-metric-row" aria-label="Reviewer queue aggregate">
@@ -489,31 +518,42 @@ function ReviewerQueueContent({ queue }: { queue: ApiReviewerQueueDashboardRespo
         <StatReadout label="Escalated" value={queue.aggregate.escalated} />
         <StatReadout label="Batch applied" value={queue.aggregate.batch_applied} />
       </div>
-      <DataTable
-        caption="Reviewer queue items"
-        columns={[
-          {
-            key: "state",
-            header: "State",
-            render: (row) => <Badge status={row.dashboardState} />,
-          },
-          {
-            key: "item",
-            header: "Item",
-            render: (row) => (
-              <span>
+      <VirtualList
+        ariaLabel="Dashboard reviewer queue virtualized rows"
+        items={queue.rows}
+        getItemKey={(row) => row.reviewItemId}
+        itemHeight={96}
+        viewportHeight={360}
+        renderItem={(row) => (
+          <article className="itotori-virtual-list__row">
+            <span>
+              <span className="itotori-virtual-list__label">Item</span>
+              <span className="itotori-virtual-list__value">
                 <a href={row.detailPath}>{row.summary}</a>
                 <br />
                 <code>{row.reviewItemId}</code>
               </span>
-            ),
-          },
-          { key: "kind", header: "Kind", render: (row) => row.itemKind },
-          { key: "last", header: "Last action", render: (row) => row.lastAction ?? "none" },
-          { key: "batch", header: "Batch id", render: (row) => row.batchActionId ?? "none" },
-        ]}
-        rows={queue.rows}
-        getRowKey={(row) => row.reviewItemId}
+            </span>
+            <span>
+              <span className="itotori-virtual-list__label">State / kind</span>
+              <span className="itotori-virtual-list__value">
+                <Badge status={row.dashboardState} /> {row.itemKind}
+              </span>
+            </span>
+            <span>
+              <span className="itotori-virtual-list__label">Last action</span>
+              <span className="itotori-virtual-list__value">{row.lastAction ?? "none"}</span>
+            </span>
+          </article>
+        )}
+      />
+      <Pagination
+        label="Dashboard reviewer queue pagination"
+        page={Math.max(0, queue.pagination.page - 1)}
+        pageCount={Math.max(1, queue.pagination.pageCount)}
+        totalItems={queue.pagination.total}
+        onPrevious={pager.previous}
+        onNext={pager.next}
       />
       <p>
         <a
@@ -526,6 +566,121 @@ function ReviewerQueueContent({ queue }: { queue: ApiReviewerQueueDashboardRespo
         </a>
       </p>
     </>
+  );
+}
+
+function JobsRunTablePanel({
+  status,
+}: {
+  status: ApiCallState<ProjectDashboardStatus>;
+}): ReactNode {
+  if (status.state === "loading") {
+    return (
+      <Panel title="Jobs" eyebrow="Run table">
+        <LoadingState label="Loading project context…" />
+      </Panel>
+    );
+  }
+  if (status.state === "error") {
+    return (
+      <Panel title="Jobs" eyebrow="Run table">
+        <ErrorState title="Jobs" error={status.error} />
+      </Panel>
+    );
+  }
+  const projectId = status.state === "ready" ? status.data.projectId : null;
+  if (projectId === null) {
+    return (
+      <Panel title="Jobs" eyebrow="Run table">
+        <EmptyState title="Jobs" message="No project is selected for the jobs run table." />
+      </Panel>
+    );
+  }
+  return <JobsRunTableBody projectId={projectId} />;
+}
+
+function JobsRunTableBody({ projectId }: { projectId: string }): ReactNode {
+  const pager = useOffsetPager(
+    "jobs.runTable",
+    { query: { projectId }, limit: DASHBOARD_JOBS_PAGE_SIZE },
+    `jobs.runTable:${projectId}`,
+  );
+  const page = pager.page;
+  return (
+    <Panel title="Jobs" eyebrow="Run table">
+      {page === null ? (
+        pager.phase === "error" && pager.error !== null ? (
+          <ErrorState title="Jobs" error={pager.error} />
+        ) : (
+          <LoadingState label="Loading jobs…" />
+        )
+      ) : page.data.rows.length === 0 && page.data.pagination.total === 0 ? (
+        <EmptyState title="Jobs" message="No job runs were returned by the API." />
+      ) : (
+        <JobsRunTableContent page={page.data} pager={pager} />
+      )}
+    </Panel>
+  );
+}
+
+function JobsRunTableContent({
+  page,
+  pager,
+}: {
+  page: ApiJobsRunTableResponse;
+  pager: ReturnType<typeof useOffsetPager<"jobs.runTable">>;
+}): ReactNode {
+  return (
+    <>
+      <VirtualList
+        ariaLabel="Jobs run table virtualized rows"
+        items={page.rows}
+        getItemKey={(row) => row.runId}
+        itemHeight={108}
+        viewportHeight={420}
+        renderItem={(row) => <JobsRunTableRowView row={row} />}
+      />
+      <Pagination
+        label="Jobs run table pagination"
+        page={Math.max(0, page.pagination.page - 1)}
+        pageCount={Math.max(1, page.pagination.pageCount)}
+        totalItems={page.pagination.total}
+        itemName="run"
+        onPrevious={pager.previous}
+        onNext={pager.next}
+      />
+    </>
+  );
+}
+
+function JobsRunTableRowView({ row }: { row: JobsRunTableRow }): ReactNode {
+  return (
+    <article className="itotori-virtual-list__row" data-job-run-id={row.runId}>
+      <span>
+        <span className="itotori-virtual-list__label">Job</span>
+        <span className="itotori-virtual-list__value">
+          {row.task}
+          <br />
+          <code>{row.draftJobId}</code>
+        </span>
+      </span>
+      <span>
+        <span className="itotori-virtual-list__label">Provider / model</span>
+        <span className="itotori-virtual-list__value">
+          {row.servedProvider}
+          <br />
+          {row.servedModel ?? "unrecorded"}
+        </span>
+      </span>
+      <span>
+        <span className="itotori-virtual-list__label">Status</span>
+        <span className="itotori-virtual-list__value">
+          <Badge status={row.status} />
+          <br />
+          {row.createdAt}
+        </span>
+      </span>
+    </article>
   );
 }
 

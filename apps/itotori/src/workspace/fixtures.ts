@@ -101,6 +101,15 @@ export function workspaceSceneBrowseFixture(
     permission: workspaceReaderPermissionFixture(),
     projectId: itotori040FixtureProjectId,
     localeBranchId: itotori040FixtureLocaleBranchId,
+    pagination: {
+      total: 1,
+      limit: 100,
+      offset: 0,
+      page: 1,
+      pageCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    },
     scenes: [
       {
         sceneId: "scene.001",

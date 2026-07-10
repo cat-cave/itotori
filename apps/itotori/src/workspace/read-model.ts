@@ -94,6 +94,8 @@ export type WorkspaceSearchPagination = {
   nextOffset: number | null;
 };
 
+export type WorkspaceListPagination = WorkspaceSearchPagination;
+
 // ---------------------------------------------------------------------------
 // Project / locale-branch browse
 // ---------------------------------------------------------------------------
@@ -195,6 +197,7 @@ export type WorkspaceSceneBrowseReadModel = {
   permission: WorkspacePermissionView;
   projectId: string;
   localeBranchId: string;
+  pagination: WorkspaceListPagination;
   scenes: WorkspaceSceneContext[];
   diagnostics: WorkspaceDiagnostic[];
 };

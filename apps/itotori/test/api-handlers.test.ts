@@ -5469,6 +5469,15 @@ function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
       canManageQueue: true,
       denialReasons: [],
     },
+    pagination: {
+      total: rows.length,
+      limit: 100,
+      offset: 0,
+      page: 1,
+      pageCount: rows.length === 0 ? 0 : 1,
+      hasMore: false,
+      nextOffset: null,
+    },
     rows,
     aggregate: {
       pending: rows.filter((row) => row.dashboardState === "pending").length,

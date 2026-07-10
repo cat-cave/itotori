@@ -1,0 +1,50 @@
+.itotori-virtual-list {
+  block-size: var(--itotori-virtual-list-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: var(--ito-space-2);
+}
+
+.itotori-virtual-list__spacer {
+  position: relative;
+}
+
+.itotori-virtual-list__window {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: var(--itotori-virtual-list-row-gap);
+}
+
+.itotori-virtual-list__item {
+  box-sizing: border-box;
+}
+
+.itotori-virtual-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(9rem, 0.75fr) minmax(6rem, 0.5fr);
+  gap: var(--ito-space-10);
+  align-items: start;
+  padding: var(--ito-space-10);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface);
+}
+
+.itotori-virtual-list__row--compact {
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.4fr);
+}
+
+.itotori-virtual-list__label {
+  display: block;
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  text-transform: uppercase;
+}
+
+.itotori-virtual-list__value {
+  display: block;
+  margin-block-start: var(--ito-space-4);
+}
