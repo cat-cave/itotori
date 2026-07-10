@@ -23,12 +23,12 @@ use serde_json::Value;
 
 use utsushi_core::substrate::CaptureOutcome;
 use utsushi_core::{
-    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, CaptureOutcome,
-    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
-    FrameArtifactSink, Inspectable, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
-    RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult,
-    SinkSet, SnapshotError, StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
+    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, EngineParityProfile,
+    EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink,
+    Inspectable, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef, PortCapability,
+    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, RuntimeArtifactKind,
+    RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, SnapshotError,
+    StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy
