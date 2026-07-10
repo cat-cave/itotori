@@ -41,6 +41,11 @@ pub const PAUSE_PRIVATE_STATE_MAGIC: u8 = 0xA1;
 /// Magic byte that prefixes every `SelectLongOp` private-state payload.
 pub const SELECT_PRIVATE_STATE_MAGIC: u8 = 0xA2;
 
+pub const OBJECT_SELECT_PRIVATE_STATE_MAGIC: u8 = 0xA3;
+pub const OBJECT_SELECT_PRIVATE_STATE_VERSION: u8 = 2;
+const OBJECT_SELECT_V1: u8 = 1;
+pub const OBJECT_SELECT_FLAG_CANCELABLE: u8 = 0x01;
+
 /// Default number of `Pending` polls a [`PauseLongOp`] observes before
 /// the synthetic test scheduler reports it as `Ready`. Pinned so the
 /// synthetic tests have a stable cadence — the runtime scheduler will
@@ -334,6 +339,236 @@ pub enum SelectLongOpDecodeError {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectSelectLongOp {
+    id: LongOpId,
+    return_values: Vec<i32>,
+    flags: u8,
+    outcome: ObjectSelectOutcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ObjectSelectOutcome {
+    Pending,
+    DisplayIndex(u16),
+    /// Valid only when [`OBJECT_SELECT_FLAG_CANCELABLE`] is set.
+    Cancelled,
+}
+
+impl ObjectSelectLongOp {
+    pub const SELECTED_SENTINEL_PENDING: u16 = 0xFFFF;
+
+    pub(crate) fn try_new(
+        id: LongOpId,
+        return_values: Vec<i32>,
+    ) -> Result<Self, ObjectSelectLongOpBuildError> {
+        if return_values.len() > u16::MAX as usize {
+            return Err(ObjectSelectLongOpBuildError::TooManyReturnValues {
+                observed: return_values.len(),
+            });
+        }
+        Ok(Self {
+            id,
+            return_values,
+            flags: 0,
+            outcome: ObjectSelectOutcome::Pending,
+        })
+    }
+
+    pub fn return_values(&self) -> &[i32] {
+        &self.return_values
+    }
+
+    pub fn choice_count(&self) -> usize {
+        self.return_values.len()
+    }
+
+    pub fn flags(&self) -> u8 {
+        self.flags
+    }
+
+    pub fn is_cancelable(&self) -> bool {
+        self.flags & OBJECT_SELECT_FLAG_CANCELABLE != 0
+    }
+
+    pub fn set_cancelable(&mut self, cancelable: bool) {
+        if cancelable {
+            self.flags |= OBJECT_SELECT_FLAG_CANCELABLE;
+        } else {
+            self.flags &= !OBJECT_SELECT_FLAG_CANCELABLE;
+        }
+    }
+
+    pub fn outcome(&self) -> ObjectSelectOutcome {
+        self.outcome
+    }
+
+    pub fn select(&mut self, index: u16) {
+        self.outcome = ObjectSelectOutcome::DisplayIndex(index);
+    }
+
+    pub fn cancel(&mut self) {
+        self.outcome = ObjectSelectOutcome::Cancelled;
+    }
+
+    pub fn into_longop(self) -> LongOp {
+        let count = self.return_values.len();
+        let (tag, index) = match self.outcome {
+            ObjectSelectOutcome::Pending => (0, 0),
+            ObjectSelectOutcome::DisplayIndex(index) => (1, index),
+            ObjectSelectOutcome::Cancelled => (2, 0),
+        };
+        let mut state = Vec::with_capacity(8 + count * 4);
+        state.push(OBJECT_SELECT_PRIVATE_STATE_MAGIC);
+        state.push(OBJECT_SELECT_PRIVATE_STATE_VERSION);
+        state.push(self.flags);
+        state.push(tag);
+        state.extend_from_slice(&index.to_le_bytes());
+        state.extend_from_slice(&(count as u16).to_le_bytes());
+        for value in self.return_values {
+            state.extend_from_slice(&value.to_le_bytes());
+        }
+        LongOp::new(self.id, state)
+    }
+
+    pub fn try_from_longop(op: &LongOp) -> Result<Self, ObjectSelectLongOpDecodeError> {
+        let state = &op.private_state;
+        if state.len() < 2 {
+            return Err(ObjectSelectLongOpDecodeError::UnexpectedPayloadLength {
+                observed: state.len(),
+                minimum: 2,
+            });
+        }
+        if state[0] != OBJECT_SELECT_PRIVATE_STATE_MAGIC {
+            return Err(ObjectSelectLongOpDecodeError::MagicMismatch {
+                observed: state[0],
+                expected: OBJECT_SELECT_PRIVATE_STATE_MAGIC,
+            });
+        }
+        match state[1] {
+            OBJECT_SELECT_V1 => Self::decode_v1(op),
+            OBJECT_SELECT_PRIVATE_STATE_VERSION => Self::decode_v2(op),
+            observed => Err(ObjectSelectLongOpDecodeError::UnsupportedVersion { observed }),
+        }
+    }
+
+    fn decode_v1(op: &LongOp) -> Result<Self, ObjectSelectLongOpDecodeError> {
+        let state = &op.private_state;
+        let (return_values, selected) = decode_object_values(state, 6)?;
+        Ok(Self {
+            id: op.id,
+            return_values,
+            flags: 0,
+            outcome: selected.map_or(
+                ObjectSelectOutcome::Pending,
+                ObjectSelectOutcome::DisplayIndex,
+            ),
+        })
+    }
+
+    fn decode_v2(op: &LongOp) -> Result<Self, ObjectSelectLongOpDecodeError> {
+        let state = &op.private_state;
+        if state.len() < 8 {
+            return Err(ObjectSelectLongOpDecodeError::UnexpectedPayloadLength {
+                observed: state.len(),
+                minimum: 8,
+            });
+        }
+        let flags = state[2];
+        if flags & !OBJECT_SELECT_FLAG_CANCELABLE != 0 {
+            return Err(ObjectSelectLongOpDecodeError::UnknownFlags { observed: flags });
+        }
+        let index = u16::from_le_bytes([state[4], state[5]]);
+        let tag = state[3];
+        let outcome = match tag {
+            0 => {
+                if index != 0 {
+                    return Err(ObjectSelectLongOpDecodeError::ReservedOutcomeIndex { tag, index });
+                }
+                ObjectSelectOutcome::Pending
+            }
+            1 => ObjectSelectOutcome::DisplayIndex(index),
+            2 => {
+                if index != 0 {
+                    return Err(ObjectSelectLongOpDecodeError::ReservedOutcomeIndex { tag, index });
+                }
+                if flags & OBJECT_SELECT_FLAG_CANCELABLE == 0 {
+                    return Err(ObjectSelectLongOpDecodeError::CancelledWithoutCancelableFlag);
+                }
+                ObjectSelectOutcome::Cancelled
+            }
+            observed => return Err(ObjectSelectLongOpDecodeError::UnknownOutcomeTag { observed }),
+        };
+        let (return_values, _) = decode_object_values(state, 8)?;
+        Ok(Self {
+            id: op.id,
+            return_values,
+            flags,
+            outcome,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ObjectSelectLongOpBuildError {
+    TooManyReturnValues { observed: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ObjectSelectLongOpDecodeError {
+    #[error(
+        "utsushi.reallive.rlop.object_select.payload_length: observed={observed} minimum={minimum}"
+    )]
+    UnexpectedPayloadLength { observed: usize, minimum: usize },
+    #[error(
+        "utsushi.reallive.rlop.object_select.magic_mismatch: observed=0x{observed:02x} expected=0x{expected:02x}"
+    )]
+    MagicMismatch { observed: u8, expected: u8 },
+    #[error("utsushi.reallive.rlop.object_select.unsupported_version: observed={observed}")]
+    UnsupportedVersion { observed: u8 },
+    #[error(
+        "utsushi.reallive.rlop.object_select.values_length: observed={observed} expected={expected}"
+    )]
+    ValuesLengthMismatch { observed: usize, expected: usize },
+    #[error("utsushi.reallive.rlop.object_select.flags: observed=0x{observed:02x}")]
+    UnknownFlags { observed: u8 },
+    #[error("utsushi.reallive.rlop.object_select.outcome_tag: observed={observed}")]
+    UnknownOutcomeTag { observed: u8 },
+    #[error("utsushi.reallive.rlop.object_select.reserved_outcome_index: tag={tag} index={index}")]
+    ReservedOutcomeIndex { tag: u8, index: u16 },
+    #[error("utsushi.reallive.rlop.object_select.cancelled_without_cancelable_flag")]
+    CancelledWithoutCancelableFlag,
+}
+
+fn decode_object_values(
+    state: &[u8],
+    header_len: usize,
+) -> Result<(Vec<i32>, Option<u16>), ObjectSelectLongOpDecodeError> {
+    if state.len() < header_len {
+        return Err(ObjectSelectLongOpDecodeError::UnexpectedPayloadLength {
+            observed: state.len(),
+            minimum: header_len,
+        });
+    }
+    let count_offset = header_len - 2;
+    let count = u16::from_le_bytes([state[count_offset], state[count_offset + 1]]) as usize;
+    let expected = header_len + count * 4;
+    if state.len() != expected {
+        return Err(ObjectSelectLongOpDecodeError::ValuesLengthMismatch {
+            observed: state.len(),
+            expected,
+        });
+    }
+    let values = state[header_len..]
+        .chunks_exact(4)
+        .map(|bytes| i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        .collect();
+    let selected = (header_len == 6)
+        .then(|| u16::from_le_bytes([state[2], state[3]]))
+        .filter(|index| *index != ObjectSelectLongOp::SELECTED_SENTINEL_PENDING);
+    Ok((values, selected))
+}
+
 /// Scheduler that resumes a [`SelectLongOp`] after observing the queue
 /// head as pending for `polls_remaining` polls. The shape mirrors
 /// [`crate::rlop::AfterNPollsScheduler`] so a test can swap one for
@@ -510,6 +745,22 @@ impl LongOpScheduler for HeadlessInputScheduler {
                 }
                 LongOpReadiness::Ready
             }
+            Some(OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                if let Ok(mut select) = ObjectSelectLongOp::try_from_longop(head) {
+                    let index = self
+                        .policy
+                        .resolve(self.choice_cursor, select.choice_count());
+                    select.select(index);
+                    let LongOp { id, private_state } = select.into_longop();
+                    head.id = id;
+                    head.private_state = private_state;
+                    self.choice_cursor += 1;
+                    self.choices_made = self.choices_made.saturating_add(1);
+                } else {
+                    self.other_advanced = self.other_advanced.saturating_add(1);
+                }
+                LongOpReadiness::Ready
+            }
             _ => {
                 self.other_advanced = self.other_advanced.saturating_add(1);
                 LongOpReadiness::Ready
@@ -614,6 +865,67 @@ mod tests {
     }
 
     #[test]
+    fn object_select_wire_is_bounded_and_round_trips() {
+        assert!(matches!(
+            ObjectSelectLongOp::try_new(LongOpId(5), vec![0; u16::MAX as usize + 1]),
+            Err(ObjectSelectLongOpBuildError::TooManyReturnValues { .. })
+        ));
+        let mut select = ObjectSelectLongOp::try_new(LongOpId(6), vec![7, -2]).expect("bounded");
+        select.set_cancelable(true);
+        select.select(1);
+        let longop = select.into_longop();
+        assert_eq!(
+            longop.private_state[..8],
+            [OBJECT_SELECT_PRIVATE_STATE_MAGIC, 2, 1, 1, 1, 0, 2, 0]
+        );
+        let decoded = ObjectSelectLongOp::try_from_longop(&longop).expect("decode");
+        assert_eq!(decoded.return_values(), &[7, -2]);
+        assert!(decoded.is_cancelable());
+        assert_eq!(decoded.outcome(), ObjectSelectOutcome::DisplayIndex(1));
+        let mut cancelled = decoded;
+        cancelled.cancel();
+        assert_eq!(
+            ObjectSelectLongOp::try_from_longop(&cancelled.into_longop())
+                .expect("decode")
+                .outcome(),
+            ObjectSelectOutcome::Cancelled
+        );
+        let v1 = LongOp::new(
+            LongOpId(7),
+            vec![0xA3, 1, 1, 0, 2, 0, 7, 0, 0, 0, 2, 0, 0, 0],
+        );
+        let v1 = ObjectSelectLongOp::try_from_longop(&v1).expect("v1 decode");
+        assert_eq!(v1.flags(), 0);
+        assert_eq!(v1.outcome(), ObjectSelectOutcome::DisplayIndex(1));
+
+        let decode = |state| ObjectSelectLongOp::try_from_longop(&LongOp::new(LongOpId(8), state));
+        assert!(matches!(
+            decode(vec![0xA3, 2, 0, 0, 1, 0, 0, 0]),
+            Err(ObjectSelectLongOpDecodeError::ReservedOutcomeIndex { tag: 0, index: 1 })
+        ));
+        assert!(matches!(
+            decode(vec![0xA3, 2, 1, 2, 1, 0, 0, 0]),
+            Err(ObjectSelectLongOpDecodeError::ReservedOutcomeIndex { tag: 2, index: 1 })
+        ));
+        assert!(matches!(
+            decode(vec![0xA3, 2, 0, 2, 0, 0, 0, 0]),
+            Err(ObjectSelectLongOpDecodeError::CancelledWithoutCancelableFlag)
+        ));
+        assert!(matches!(
+            decode(vec![0xA3, 2, 2, 0, 0, 0, 0, 0]),
+            Err(ObjectSelectLongOpDecodeError::UnknownFlags { observed: 2 })
+        ));
+        assert!(matches!(
+            decode(vec![0xA3, 2, 0, 3, 0, 0, 0, 0]),
+            Err(ObjectSelectLongOpDecodeError::UnknownOutcomeTag { observed: 3 })
+        ));
+        assert!(matches!(
+            decode(vec![0xA3, 3]),
+            Err(ObjectSelectLongOpDecodeError::UnsupportedVersion { observed: 3 })
+        ));
+    }
+
+    #[test]
     fn selection_choice_count_scheduler_observes_pending_then_ready() {
         let mut scheduler = SelectionChoiceCountScheduler::new(2);
         let mut op = LongOp::new(LongOpId(1), vec![]);
@@ -698,21 +1010,23 @@ mod tests {
 
     #[test]
     fn headless_scheduler_is_deterministic_across_identical_drives() {
-        let choices = vec![b"a".to_vec(), b"b".to_vec()];
         let run = || {
-            let mut sched = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
+            let mut sched = HeadlessInputScheduler::new(HeadlessChoicePolicy::Fixed(1));
             let mut picks = Vec::new();
             for _ in 0..3 {
-                let mut head = SelectLongOp::new(LongOpId(6), choices.clone()).into_longop();
+                let mut head = ObjectSelectLongOp::try_new(LongOpId(6), vec![7, 2])
+                    .expect("bounded")
+                    .into_longop();
                 sched.poll(&mut head);
                 picks.push(
-                    SelectLongOp::try_from_longop(&head)
+                    ObjectSelectLongOp::try_from_longop(&head)
                         .expect("decode")
-                        .chosen(),
+                        .outcome(),
                 );
             }
             picks
         };
+        assert_eq!(run(), vec![ObjectSelectOutcome::DisplayIndex(1); 3]);
         assert_eq!(run(), run());
     }
 }

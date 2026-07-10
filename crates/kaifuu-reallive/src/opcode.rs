@@ -1905,7 +1905,7 @@ fn is_catalogued_command_opcode(module_id: u8, opcode_u16: u16) -> bool {
         ),
         11 => matches!(opcode_u16, 0..=7),
         20 => matches!(opcode_u16, 0 | 1 | 2 | 3 | 4 | 5 | 105 | 106),
-        21 => matches!(opcode_u16, 0 | 1 | 5 | 105),
+        21 => matches!(opcode_u16, 0 | 1 | 2 | 5 | 105),
         22 => matches!(opcode_u16, 0..=2),
         23 => matches!(opcode_u16, 0 | 1 | 3 | 4 | 5 | 6 | 8 | 15 | 101),
         30 => matches!(opcode_u16, 0 | 2 | 20 | 22 | 31),
@@ -2636,6 +2636,24 @@ mod tests {
         // MSG opcode 3 is CharacterTextDisplay; this catalogued text opcode
         // classifies as TextDisplay.
         assert!(matches!(opcodes[0], RealLiveOpcode::TextDisplay { .. }));
+    }
+
+    #[test]
+    fn pcm_wav_loop_is_catalogued_as_recognized_audio() {
+        // `module_pcm` is `(module_type=1, module_id=21)`; its opcode 2
+        // is `wavLoop`. The semantic catalogue must admit the tuple so the
+        // already-typed audio family does not fall back to generic Command.
+        let bytes = &[opener::COMMAND, 1, 21, 2, 0, 0, 0, 0];
+        let opcodes = parse_real_bytecode(bytes).expect("must decode");
+        assert_eq!(opcodes.len(), 1);
+        assert!(matches!(
+            opcodes[0],
+            RealLiveOpcode::Audio {
+                module_id: 21,
+                opcode: 2
+            }
+        ));
+        assert!(opcodes[0].is_recognized());
     }
 
     #[test]

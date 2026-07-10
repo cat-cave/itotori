@@ -35,7 +35,10 @@ use thiserror::Error;
 
 use super::{DispatchOutcome, ExprValue, RLOperation};
 use crate::g00::{G00DecodeError, G00Warning, decode_g00};
-use crate::graphics_objects::{GraphicsLayer, GraphicsObject, GraphicsObjectStack};
+use crate::graphics_objects::{
+    ButtonOptions, GraphicsLayer, GraphicsObject, GraphicsObjectStack, GraphicsObjectTarget,
+    GraphicsPlane,
+};
 use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
 use utsushi_core::substrate::{AssetPackage, VfsError};
@@ -62,13 +65,11 @@ pub const OBJ_BG_MODULE_ID: u8 = 82;
 
 /// `objButtonOpts` opcode (button-object setup). REAL RealLive value
 /// `1064` (rlvm `AddOpcode(1064, 2, "objButtonOpts")` →
-/// `GraphicsObject::SetButtonOpts`), VALIDATED on real Sweetie HD bytes:
-/// `(1, {81, 82}, 1064)` occurs once per selectable button object — its
-/// args carry the button's 0-based ordinal (arg 0) and group id (arg 1).
-/// The COUNT of these ops before a `select_objbtn` (`sel (0,2,4)`) is the
-/// real source of that graphical select's option count (the objbtn scenes
-/// carry no inline `{ … }` option block). Registered on both the fg (`81`)
-/// and bg (`82`) planes.
+/// `GraphicsObject::SetButtonOpts`). Oracle and synthetic tests establish the
+/// exact five-int binding shape; strict-cipher real-byte validation remains
+/// pending. `(1, {81, 82}, 1064)` attaches the exact five-int
+/// `(buf, action, se, group, button_number)` state to its addressed object.
+/// Registered on both the fg (`81`) and bg (`82`) object planes.
 pub const OPCODE_OBJ_BUTTON_OPTS: u16 = 1064;
 
 /// Default ticks-per-millisecond rate the `module_grp::fade` longop
@@ -286,6 +287,17 @@ pub struct GraphicsRuntime {
     inner: Mutex<GraphicsRuntimeInner>,
 }
 
+/// Immutable foreground object-button candidate detached from runtime state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForegroundButtonCandidate {
+    pub slot: usize,
+    pub options: ButtonOptions,
+    pub visible: bool,
+    /// Exact detached top-level object state captured while the graphics mutex
+    /// is held. It is not an asset-resolution or hit-test result.
+    pub object: GraphicsObject,
+}
+
 struct GraphicsRuntimeInner {
     stack: GraphicsObjectStack,
     dc_allocations: Vec<DcAllocation>,
@@ -380,6 +392,40 @@ impl GraphicsRuntime {
     /// Mutable access to the object stack.
     pub fn with_stack_mut<R>(&self, body: impl FnOnce(&mut GraphicsObjectStack) -> R) -> R {
         body(&mut self.lock_inner().stack)
+    }
+
+    /// Deterministic foreground-only button bindings for one exact group.
+    pub fn foreground_button_group(&self, group: i32) -> Vec<(usize, ButtonOptions)> {
+        let guard = self.lock_inner();
+        (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            .filter_map(|slot| {
+                let options = guard
+                    .stack
+                    .get_layer(GraphicsLayer::ForegroundObject, slot)?
+                    .button_options?;
+                (options.group == group).then_some((slot, options))
+            })
+            .collect()
+    }
+
+    /// Exact foreground bindings for `group`, scanned in ascending slot order.
+    /// Visibility is reported but never filters a candidate.
+    pub fn foreground_button_candidates(&self, group: i32) -> Vec<ForegroundButtonCandidate> {
+        let guard = self.lock_inner();
+        (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            .filter_map(|slot| {
+                let object = guard
+                    .stack
+                    .get_layer(GraphicsLayer::ForegroundObject, slot)?;
+                let options = object.button_options?;
+                (options.group == group).then_some(ForegroundButtonCandidate {
+                    slot,
+                    options,
+                    visible: object.visible,
+                    object: object.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Record a DC-allocation observation. Overwrites any prior entry
@@ -672,59 +718,95 @@ pub enum FadeLongOpDecodeError {
     MagicMismatch { observed: u8, expected: u8 },
 }
 
-// ---- argument helpers -----------------------------------------------
-
-fn arg_int(
-    args: &[ExprValue],
-    at: usize,
-    slot: &'static str,
-) -> Result<i32, GraphicsRuntimeWarning> {
-    args.get(at)
-        .ok_or(GraphicsRuntimeWarning::MissingArg {
-            opcode_tag: "",
-            slot,
-        })
-        .and_then(|value| {
-            value
-                .as_int()
-                .ok_or(GraphicsRuntimeWarning::ArgShapeMismatch {
-                    opcode_tag: "",
-                    expected: "int",
-                })
-        })
-}
-
 // ---- registry helper ------------------------------------------------
 
-/// `objButtonOpts` (`obj (1,{81,82},1064)`) — button-object setup. rlvm's
-/// `objButtonOpts` calls `GraphicsObject::SetButtonOpts(action, se, group,
-/// button_number)`, marking the object a selectable button that a
-/// `select_objbtn` collects for its group. This port records the button on
-/// the VM's pending button group ([`Vm::objbtn_register`]) so the following
-/// `select_objbtn` (`sel (0,2,4)`) can recover the option set (count +
-/// per-button ordinal). It does NOT touch the graphics stack — the button's
-/// sprite / position are placed by separate `objOfFile` / `objSetPos` ops —
-/// so it carries no [`GraphicsRuntime`].
-///
-/// Args (real Sweetie bytes): arg 0 = button ordinal, arg 1 = group id.
-/// Mis-shaped / missing args fail soft — the button is still appended (its
-/// ordinal defaults to the append position, group to `0`) so the recovered
-/// option COUNT stays faithful to the number of setup ops.
-#[derive(Debug, Default)]
-pub struct ObjButtonOptsOp;
+/// `objButtonOpts` (`obj (1,{81,82},1064)`) binds the authoritative
+/// `(buf, action, se, group, button_number)` tuple to the exact graphics
+/// object at `(plane, buf)`. Bad shapes, invalid slots, and empty slots fail
+/// soft without creating a binding. The current foreground-only group query
+/// is an inspection seam; select/resume mapping and rendering stay separate.
+#[derive(Debug)]
+pub struct ObjButtonOptsOp {
+    runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
+    child_addressed: bool,
+}
 
 impl ObjButtonOptsOp {
-    /// Construct the op (stateless — it mutates the VM's button group).
-    pub fn new() -> Self {
-        Self
+    pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self {
+            runtime,
+            plane,
+            child_addressed: false,
+        }
+    }
+
+    pub fn new_child(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self {
+            runtime,
+            plane,
+            child_addressed: true,
+        }
     }
 }
 
 impl RLOperation for ObjButtonOptsOp {
-    fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let number = arg_int(args, 0, "button_number").unwrap_or(vm.objbtn_buttons().len() as i32);
-        let group = arg_int(args, 1, "group").unwrap_or(0);
-        vm.objbtn_register(number, group);
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let (target, args) = if self.child_addressed {
+            let Some(parent) = args.first().and_then(ExprValue::as_int).and_then(|value| {
+                usize::try_from(value)
+                    .ok()
+                    .filter(|&slot| slot < crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            }) else {
+                return DispatchOutcome::Advance;
+            };
+            let Some(child) = args.get(1).and_then(ExprValue::as_int).and_then(|value| {
+                usize::try_from(value)
+                    .ok()
+                    .filter(|&slot| slot < crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            }) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::Child {
+                    plane: self.plane,
+                    parent,
+                    child,
+                },
+                &args[1..],
+            )
+        } else {
+            let Some(slot) = args
+                .first()
+                .and_then(ExprValue::as_int)
+                .and_then(|value| usize::try_from(value).ok())
+            else {
+                return DispatchOutcome::Advance;
+            };
+            let layer = match self.plane {
+                GraphicsPlane::Foreground => GraphicsLayer::ForegroundObject,
+                GraphicsPlane::Background => GraphicsLayer::BackgroundObject,
+            };
+            (GraphicsObjectTarget::TopLevel { layer, slot }, args)
+        };
+        let values: Option<[i32; 5]> = args
+            .iter()
+            .map(ExprValue::as_int)
+            .collect::<Option<Vec<_>>>()
+            .and_then(|values| values.try_into().ok());
+        let Some([_buf, action, se, group, button_number]) = values else {
+            return DispatchOutcome::Advance;
+        };
+        self.runtime.with_stack_mut(|stack| {
+            if let Some(object) = stack.target_mut(target) {
+                object.button_options = Some(ButtonOptions {
+                    action,
+                    se,
+                    group,
+                    button_number,
+                });
+            }
+        });
         DispatchOutcome::Advance
     }
 }
@@ -748,12 +830,245 @@ mod tests {
     }
 
     #[test]
-    fn obj_button_opts_registers_button_on_vm_group() {
-        let op = ObjButtonOptsOp::new();
+    fn obj_button_opts_binds_exact_foreground_slot() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            stack
+                .set_layer(
+                    GraphicsLayer::ForegroundObject,
+                    2,
+                    GraphicsObject::image("button"),
+                )
+                .expect("slot");
+        });
+        let op = ObjButtonOptsOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground);
         let mut vm = vm();
-        op.dispatch(&mut vm, &[int(2), int(7)]);
-        op.dispatch(&mut vm, &[int(3), int(7)]);
-        assert_eq!(vm.objbtn_buttons().len(), 2);
+        op.dispatch(&mut vm, &[int(2), int(10), int(11), int(7), int(3)]);
+        let options = runtime
+            .state_snapshot()
+            .foreground_object_slot(2)
+            .and_then(|object| object.button_options);
+        assert_eq!(
+            options,
+            Some(ButtonOptions {
+                action: 10,
+                se: 11,
+                group: 7,
+                button_number: 3
+            })
+        );
+        assert_eq!(
+            runtime.foreground_button_group(7),
+            vec![(2, options.unwrap())]
+        );
+    }
+
+    #[test]
+    fn child_button_opts_binds_only_an_existing_child() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            assert!(stack.create_parent(GraphicsPlane::Foreground, 4, 2, None, None));
+            assert!(stack.set_child(
+                GraphicsPlane::Foreground,
+                4,
+                1,
+                GraphicsObject::image("child"),
+            ));
+            stack
+                .set_layer(
+                    GraphicsLayer::ForegroundObject,
+                    1,
+                    GraphicsObject::image("top"),
+                )
+                .expect("slot");
+        });
+        let op = ObjButtonOptsOp::new_child(Arc::clone(&runtime), GraphicsPlane::Foreground);
+        op.dispatch(
+            &mut vm(),
+            &[int(4), int(1), int(10), int(11), int(7), int(3)],
+        );
+        op.dispatch(&mut vm(), &[int(4), int(2), int(1), int(2), int(3), int(4)]);
+        op.dispatch(&mut vm(), &[int(4), int(1), int(10)]);
+        op.dispatch(
+            &mut vm(),
+            &[int(256), int(1), int(1), int(2), int(3), int(4)],
+        );
+
+        let snapshot = runtime.state_snapshot();
+        assert_eq!(
+            snapshot
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 1,
+                })
+                .and_then(|object| object.button_options),
+            Some(ButtonOptions {
+                action: 10,
+                se: 11,
+                group: 7,
+                button_number: 3,
+            })
+        );
+        assert!(
+            snapshot
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 2,
+                })
+                .is_none()
+        );
+        assert!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .and_then(|object| object.button_options)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn background_binding_is_preserved_but_excluded_from_foreground_query() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            stack
+                .set_layer(
+                    GraphicsLayer::BackgroundObject,
+                    4,
+                    GraphicsObject::image("button"),
+                )
+                .expect("slot");
+        });
+        ObjButtonOptsOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
+            .dispatch(&mut vm(), &[int(4), int(1), int(2), int(9), int(5)]);
+        assert!(
+            runtime
+                .state_snapshot()
+                .background_object_slot(4)
+                .and_then(|object| object.button_options)
+                .is_some()
+        );
+        assert!(runtime.foreground_button_group(9).is_empty());
+    }
+
+    #[test]
+    fn foreground_query_keeps_duplicate_and_reordered_button_records() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            for slot in [1, 5, 7] {
+                stack
+                    .set_layer(
+                        GraphicsLayer::ForegroundObject,
+                        slot,
+                        GraphicsObject::image("b"),
+                    )
+                    .expect("slot");
+            }
+        });
+        let op = ObjButtonOptsOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground);
+        let mut vm = vm();
+        op.dispatch(&mut vm, &[int(7), int(1), int(2), int(4), int(9)]);
+        op.dispatch(&mut vm, &[int(1), int(3), int(4), int(4), int(9)]);
+        op.dispatch(&mut vm, &[int(5), int(5), int(6), int(8), int(9)]);
+        assert_eq!(
+            runtime.foreground_button_group(4),
+            vec![
+                (
+                    1,
+                    ButtonOptions {
+                        action: 3,
+                        se: 4,
+                        group: 4,
+                        button_number: 9
+                    }
+                ),
+                (
+                    7,
+                    ButtonOptions {
+                        action: 1,
+                        se: 2,
+                        group: 4,
+                        button_number: 9
+                    }
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_or_unallocated_setters_do_not_bind() {
+        let runtime = runtime();
+        let op = ObjButtonOptsOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground);
+        let mut vm = vm();
+        for args in [
+            vec![int(1), int(2)],
+            vec![ExprValue::Bytes(vec![]), int(1), int(2), int(3), int(4)],
+            vec![int(-1), int(1), int(2), int(3), int(4)],
+            vec![int(999), int(1), int(2), int(3), int(4)],
+            vec![int(1), int(1), int(2), int(3), int(4)],
+        ] {
+            op.dispatch(&mut vm, &args);
+        }
+        assert!(runtime.foreground_button_group(3).is_empty());
+    }
+
+    #[test]
+    fn candidates_are_slot_ordered_detached_and_keep_invisible_foreground_only() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            for slot in [2, 5, 7] {
+                stack
+                    .set_layer(
+                        GraphicsLayer::ForegroundObject,
+                        slot,
+                        GraphicsObject::image("f"),
+                    )
+                    .unwrap();
+            }
+            stack
+                .set_layer(
+                    GraphicsLayer::BackgroundObject,
+                    1,
+                    GraphicsObject::image("b"),
+                )
+                .unwrap();
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 7)
+                .unwrap()
+                .visible = false;
+        });
+        let mut vm = vm();
+        for (plane, slot, group, number) in [
+            (GraphicsPlane::Foreground, 7, 4, 70),
+            (GraphicsPlane::Foreground, 5, 8, 50),
+            (GraphicsPlane::Foreground, 2, 4, 20),
+            (GraphicsPlane::Background, 1, 4, 10),
+        ] {
+            ObjButtonOptsOp::new(Arc::clone(&runtime), plane).dispatch(
+                &mut vm,
+                &[int(slot), int(1), int(2), int(group), int(number)],
+            );
+        }
+        let candidates = runtime.foreground_button_candidates(4);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.slot)
+                .collect::<Vec<_>>(),
+            vec![2, 7]
+        );
+        assert_eq!(candidates[1].options.button_number, 70);
+        assert!(!candidates[1].visible);
+        runtime.with_stack_mut(|stack| {
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 2)
+                .unwrap()
+                .button_options = None;
+        });
+        assert_eq!(candidates[0].options.button_number, 20);
     }
 
     #[test]

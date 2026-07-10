@@ -63,9 +63,12 @@ pub mod module_str;
 pub mod module_sys;
 
 pub use longops::{
-    DEFAULT_PAUSE_POLLS, HeadlessChoicePolicy, HeadlessInputScheduler, PAUSE_PRIVATE_STATE_MAGIC,
-    PauseLongOp, PauseLongOpDecodeError, SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
-    SelectLongOpDecodeError, SelectionChoiceCountScheduler,
+    DEFAULT_PAUSE_POLLS, HeadlessChoicePolicy, HeadlessInputScheduler,
+    OBJECT_SELECT_FLAG_CANCELABLE, OBJECT_SELECT_PRIVATE_STATE_MAGIC,
+    OBJECT_SELECT_PRIVATE_STATE_VERSION, ObjectSelectLongOp, ObjectSelectLongOpDecodeError,
+    ObjectSelectOutcome, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
+    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectLongOpDecodeError,
+    SelectionChoiceCountScheduler,
 };
 pub use module_msg::{
     LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp,
@@ -79,9 +82,11 @@ pub use module_msg::{
 pub use module_sel::{
     ChoiceInputScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT as SEL_OPCODE_SELECT,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3,
-    OPCODE_SELECT_W, ObjbtnInitOp, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_RLOP_COUNT, SelRuntime,
-    SelRuntimeWarning, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp, SelectS3Op,
-    SelectSOp, SelectVariant, SelectWOp, SelectionControlSignal, register_sel_rlops,
+    OPCODE_SELECT_W, ObjbtnInitOp, ObjectButtonCandidateScope, ObjectButtonHitRegion,
+    ObjectButtonHitRegionUnavailable, ObjectButtonPromptOption, SEL_MODULE_ID, SEL_MODULE_TYPE,
+    SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning, SelectModality, SelectObjbtnCancelOp,
+    SelectObjbtnOp, SelectOp, SelectS3Op, SelectSOp, SelectVariant, SelectWOp,
+    SelectionControlSignal, SelectionPrompt, SelectionPromptKind, register_sel_rlops,
     select_modality, selection_control_signal,
 };
 

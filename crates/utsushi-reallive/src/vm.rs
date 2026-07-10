@@ -482,6 +482,21 @@ pub enum VmWarning {
         /// Long-op id that was missing a recorded choice.
         longop_id: LongOpId,
     },
+    ObjectChoiceResumeMalformed {
+        longop_id: LongOpId,
+        reason: String,
+    },
+    ObjectChoiceResumeWithoutChoice {
+        longop_id: LongOpId,
+    },
+    ObjectChoiceResumeUnsupportedOutcome {
+        longop_id: LongOpId,
+    },
+    ObjectChoiceResumeOutOfRange {
+        longop_id: LongOpId,
+        selected: u16,
+        choice_count: usize,
+    },
 }
 
 /// Typed error variants surfaced by [`Vm::step`]. Every failure mode is
@@ -643,47 +658,15 @@ pub struct Vm {
     /// a real control transfer was rewritten to a fall-through). Lets the
     /// driver confirm the modeled event landed on a genuine transfer.
     last_transfer_suppressed: bool,
-    /// The on-screen button-object group a pending `select_objbtn`
-    /// (`sel (0,2,4)`) selects over — the graphical route / love-interest
-    /// and clothing / costume picks. Populated as the linear walk executes
-    /// the scene's button-setup ops: `objbtn_init` (`sel (0,2,20)`) CLEARS
-    /// it and each `objButtonOpts` (`obj (1,{81,82},1064)`) APPENDS one
-    /// button (rlvm's `GraphicsObject::SetButtonOpts` → the button objects a
-    /// `ButtonObjectSelectLongOperation` collects for `group_`). When
-    /// `select_objbtn` dispatches it reads this list to recover the option
-    /// SET (button count + numbers) — the real objbtn scenes carry NO inline
-    /// `{ … }` option block, so the button-setup ops are the only source of
-    /// the option count — then CONSUMES it (the pick resolves through the
-    /// same [`crate::rlop::SelectLongOp`] → store-register seam as a text
-    /// select, and the scene's own `intL[0] = store` + `goto_on(intL[0])`
-    /// drives the branch). Not part of the substrate snapshot: it is
-    /// transient set-then-consumed setup state, empty at every choice
-    /// boundary.
-    objbtn_buttons: Vec<ObjbtnButton>,
 }
 
-/// One selectable on-screen button object recovered from a scene's
-/// `objButtonOpts` (`obj (1,{81,82},1064)`) setup op — the real-bytes
-/// source of a `select_objbtn` (`sel (0,2,4)`) prompt's option set. The
-/// `number` is the button's 0-based ordinal (`objButtonOpts` arg 0, the
-/// value that reaches `intL[0]`/`goto_on` when this button is picked);
-/// `group` is the button-group id (`objButtonOpts` arg 1) a matching
-/// `select_objbtn` selects over (rlvm `GraphicsObject::GetButtonGroup`).
-///
-/// The setup op carries the button's group + ordinal, NOT its screen
-/// coordinates or g00 image ref (those are placed by separate
-/// `objSetPos` / `objOfFile` ops on the button object slots), so the
-/// recovered datum is the option COUNT + per-button NUMBER; the render
-/// layer lays the buttons out from that real count (see
-/// [`crate::SpatialChoiceWindow`] / [`crate::ImageGridChoiceWindow`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObjbtnButton {
-    /// 0-based button ordinal (`objButtonOpts` arg 0).
-    pub number: i32,
-    /// Button-group id (`objButtonOpts` arg 1) a `select_objbtn` selects
-    /// over.
-    pub group: i32,
-}
+// Object-button bindings belong to the graphics runtime, not VM state.
+// Historical note: `objButtonOpts` (`obj (1,{81,82},1064)`) recovers each
+// selectable on-screen button (0-based `number` + button-group `group`)
+// for a matching `select_objbtn` (`sel (0,2,4)`). Screen coordinates /
+// g00 refs come from separate `objSetPos` / `objOfFile` ops; the render
+// layer lays buttons out from that real count (see
+// `SpatialChoiceWindow` / `ImageGridChoiceWindow`).
 
 impl Vm {
     /// Construct a VM positioned at `(scene, pc)` with empty banks /
@@ -700,35 +683,7 @@ impl Vm {
             post_pc: 0,
             suppress_next_transfer: false,
             last_transfer_suppressed: false,
-            objbtn_buttons: Vec::new(),
         }
-    }
-
-    /// Clear the pending button-object group. Called by `objbtn_init`
-    /// (`sel (0,2,20)`), which rlvm treats as a group-setup boundary: the
-    /// following `objButtonOpts` ops populate a fresh button set.
-    pub fn objbtn_reset(&mut self) {
-        self.objbtn_buttons.clear();
-    }
-
-    /// Append one selectable button to the pending group. Called by
-    /// `objButtonOpts` (`obj (1,{81,82},1064)`) with the button's ordinal
-    /// (`number`) and group id.
-    pub fn objbtn_register(&mut self, number: i32, group: i32) {
-        self.objbtn_buttons.push(ObjbtnButton { number, group });
-    }
-
-    /// Borrow the pending button-object group (the option set a
-    /// `select_objbtn` will present).
-    pub fn objbtn_buttons(&self) -> &[ObjbtnButton] {
-        &self.objbtn_buttons
-    }
-
-    /// Take (and clear) the pending button-object group. Called by
-    /// `select_objbtn` (`sel (0,2,4)`) when it consumes the setup to build
-    /// its option set — the group does not persist past the select.
-    pub fn objbtn_take(&mut self) -> Vec<ObjbtnButton> {
-        std::mem::take(&mut self.objbtn_buttons)
     }
 
     /// Fold the FULL deterministic control state — active `(scene, pc)`,
@@ -886,39 +841,62 @@ impl Vm {
         self.apply_outcome(outcome, post_pc)
     }
 
-    /// Apply the typed resume side-effect for a popped longop.
-    ///
-    /// If `popped` carries a select-shaped private state (magic byte =
-    /// [`crate::rlop::SELECT_PRIVATE_STATE_MAGIC`]) and the chosen
-    /// index has been recorded, write the chosen index to the store
-    /// register through [`crate::var_banks::VarBanks::set_store`].
-    /// Non-select longops are ignored. Malformed payloads surface a
-    /// fail-soft [`VmWarning::ChoiceResumeMalformed`].
+    /// Apply typed selection resume: legacy A2 stores its chosen index, while
+    /// durable A3 maps its selected display index to its persisted i32 return
+    /// value. Pending, cancelled, malformed, and out-of-range A3 carriers
+    /// warn without writing the store register.
     ///
     /// Exposed so per-module integration tests and the substrate
     /// runner can drive the same code path as [`Vm::step`] without
     /// staging a synthetic scene store.
     pub fn apply_choice_resume(&mut self, popped: &crate::rlop::LongOp) {
-        if popped.private_state.first() != Some(&crate::rlop::SELECT_PRIVATE_STATE_MAGIC) {
-            return;
-        }
-        match crate::rlop::SelectLongOp::try_from_longop(popped) {
-            Ok(select) => match select.chosen() {
-                Some(index) => {
-                    self.banks.set_store(index as u32);
-                }
-                None => {
-                    self.warnings.push(VmWarning::ChoiceResumeWithoutChoice {
+        match popped.private_state.first().copied() {
+            Some(crate::rlop::SELECT_PRIVATE_STATE_MAGIC) => {
+                match crate::rlop::SelectLongOp::try_from_longop(popped) {
+                    Ok(select) => match select.chosen() {
+                        Some(index) => self.banks.set_store(index as u32),
+                        None => self.warnings.push(VmWarning::ChoiceResumeWithoutChoice {
+                            longop_id: popped.id,
+                        }),
+                    },
+                    Err(err) => self.warnings.push(VmWarning::ChoiceResumeMalformed {
                         longop_id: popped.id,
-                    });
+                        reason: err.to_string(),
+                    }),
                 }
-            },
-            Err(err) => {
-                self.warnings.push(VmWarning::ChoiceResumeMalformed {
-                    longop_id: popped.id,
-                    reason: err.to_string(),
-                });
             }
+            Some(crate::rlop::OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                match crate::rlop::ObjectSelectLongOp::try_from_longop(popped) {
+                    Ok(select) => match select.outcome() {
+                        crate::rlop::ObjectSelectOutcome::DisplayIndex(index) => {
+                            match select.return_values().get(index as usize) {
+                                Some(value) => self.banks.set_store(*value as u32),
+                                None => {
+                                    self.warnings.push(VmWarning::ObjectChoiceResumeOutOfRange {
+                                        longop_id: popped.id,
+                                        selected: index,
+                                        choice_count: select.choice_count(),
+                                    });
+                                }
+                            }
+                        }
+                        crate::rlop::ObjectSelectOutcome::Pending => {
+                            self.warnings
+                                .push(VmWarning::ObjectChoiceResumeWithoutChoice {
+                                    longop_id: popped.id,
+                                });
+                        }
+                        crate::rlop::ObjectSelectOutcome::Cancelled => {
+                            self.banks.set_store((-1_i32) as u32);
+                        }
+                    },
+                    Err(err) => self.warnings.push(VmWarning::ObjectChoiceResumeMalformed {
+                        longop_id: popped.id,
+                        reason: err.to_string(),
+                    }),
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1125,19 +1103,20 @@ impl Vm {
                     let mut args = if module_type == crate::rlop::SEL_MODULE_TYPE
                         && module_id == crate::rlop::SEL_MODULE_ID
                     {
-                        // `module_sel` SelectElement: the selectable choice
-                        // labels live in the trailing `{ ... }` option block,
-                        // NOT the `(...)` argument list (which carries only the
-                        // optional window/param expression). Extract the option
-                        // strings and hand them to the choice op as the choice
-                        // labels, so the selection screen renders the REAL
-                        // options and the resolved index drives the matching
-                        // branch. See
+                        // Text `select` / `select_s` / `select_w` carry option
+                        // labels in the trailing `{ ... }` SelectElement block.
+                        // Object-button ops (`select_objbtn` / cancel / setup)
+                        // carry their payload in the `(...)` arg list instead
+                        // (e.g. `select_objbtn(group)`) with no option block —
+                        // fall back to normal command-arg decoding so the group
+                        // id reaches the op. See
                         // [`crate::bytecode_element::extract_select_choice_texts`].
-                        extract_select_choice_texts(&raw_bytes)
-                            .into_iter()
-                            .map(ExprValue::Bytes)
-                            .collect()
+                        let choice_texts = extract_select_choice_texts(&raw_bytes);
+                        if choice_texts.is_empty() {
+                            self.decode_command_args(&raw_bytes)
+                        } else {
+                            choice_texts.into_iter().map(ExprValue::Bytes).collect()
+                        }
                     } else {
                         self.decode_command_args(&raw_bytes)
                     };
@@ -2285,7 +2264,20 @@ mod tests {
 
     #[test]
     fn empty_vm_snapshots_with_substrate_inspectable() {
-        let vm = Vm::new(0, 0);
+        let mut vm = Vm::new(0, 0);
+        let v1 = LongOp::new(
+            LongOpId(6),
+            vec![0xA3, 1, 0xFF, 0xFF, 2, 0, 7, 0, 0, 0, 2, 0, 0, 0],
+        );
+        let v1_state = v1.private_state.clone();
+        vm.enqueue_longop(v1);
+        let mut v2 =
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2]).expect("bounded");
+        v2.set_cancelable(true);
+        v2.cancel();
+        let v2 = v2.into_longop();
+        let v2_state = v2.private_state.clone();
+        vm.enqueue_longop(v2);
         let tree = vm.inspect_state().expect("inspect");
         assert!(tree.len() >= 6); // manifest + scene + pc + halted + stack + longop + var-banks manifest + store
         let manifest_path = StatePath::parse(MANIFEST_PATH).expect("path");
@@ -2293,6 +2285,38 @@ mod tests {
             StateValue::String { value } => assert_eq!(value, VM_MANIFEST),
             other => panic!("manifest must be a string, got {other:?}"),
         }
+        let mut restored = Vm::new(0, 0);
+        restored.restore_state(&tree).expect("restore");
+        assert_eq!(restored.longop_queue()[0].private_state, v1_state);
+        let v1 = crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[0])
+            .expect("v1 carrier");
+        assert_eq!(v1.flags(), 0);
+        assert_eq!(v1.outcome(), crate::rlop::ObjectSelectOutcome::Pending);
+        assert_eq!(restored.longop_queue()[1].private_state, v2_state);
+        let object = crate::rlop::ObjectSelectLongOp::try_from_longop(&restored.longop_queue()[1])
+            .expect("object carrier");
+        assert_eq!(object.return_values(), &[7, 2]);
+        assert!(object.is_cancelable());
+        assert_eq!(
+            object.outcome(),
+            crate::rlop::ObjectSelectOutcome::Cancelled
+        );
+        restored.apply_choice_resume(&object.into_longop());
+        assert_eq!(restored.banks().store(), (-1_i32) as u32);
+        restored.banks_mut().set_store(99);
+        let mut invalid =
+            crate::rlop::ObjectSelectLongOp::try_new(LongOpId(8), vec![7, 2]).expect("bounded");
+        invalid.select(9);
+        restored.apply_choice_resume(&invalid.into_longop());
+        restored.apply_choice_resume(&LongOp::new(LongOpId(9), vec![0xA3, 1]));
+        assert_eq!(restored.banks().store(), 99);
+        assert!(matches!(
+            restored.warnings(),
+            [
+                VmWarning::ObjectChoiceResumeOutOfRange { .. },
+                VmWarning::ObjectChoiceResumeMalformed { .. }
+            ]
+        ));
     }
 
     #[test]

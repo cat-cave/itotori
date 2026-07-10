@@ -21,7 +21,7 @@
 //!    args carry the button's 0-based ordinal (arg 0) and group id (arg 1,
 //!    observed `9`). The COUNT of these before the select is the real
 //!    option count.
-//!  * `select_objbtn` (`sel (0,2,4)`, no args) selects over the group.
+//!  * `select_objbtn` (`sel (0,2,4)`, one group arg) selects over that group.
 //!  * The select result reaches the branch via the scene's OWN bytecode:
 //!    an expression element `intL[0] = store` (`24 0b 5b .. 5d 5c 1e 24 c8`)
 //!    copies the picked index, then `goto_on(intL[0])` (`jmp (0,1,4)`)

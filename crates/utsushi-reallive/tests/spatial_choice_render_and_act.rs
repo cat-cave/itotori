@@ -15,69 +15,73 @@
 //! opcode (`select_objbtn` vs. `select`) differ.
 //!
 //! Synthetic scene (fast + deterministic, CI-friendly) that exercises the
-//! REAL seams: the `select_objbtn` command is framed exactly as RealLive's
-//! SelectElement (`{ opt \n opt }`), so the VM's real
-//! `extract_select_choice_texts` path pulls the option labels, the modality
-//! classifier keys on the button-object SelectionControl signal (a
-//! `select_objbtn` op → graphical, ≤2 → the SpatialPair layout), and
-//! `goto_on($store)` jumps to the
-//! branch for the resolved index. A real-bytes Sweetie HD route-select scene
-//! was not cheaply reachable on this path; the recognition (opcode `(0,2,4)`)
-//! and the act/render seams are the real ones. Real option ART is a
-//! follow-up — the panels are faithful placeholders.
+//! REAL seams: foreground button objects are created and bound with
+//! `objButtonOpts(buf, action, se, group, button_number)`, then the real
+//! one-argument `select_objbtn(group)` selects those objects with NO inline
+//! text block. The modality classifier keys on that object-button prompt
+//! (two placed buttons → the SpatialPair layout), and `goto_on($store)`
+//! jumps through the selected button number. A real-bytes Sweetie HD
+//! route-select scene was not cheaply reachable on this path; the recognition
+//! (opcode `(0,2,4)`) and the act/render seams are the real ones. Real option
+//! ART is a follow-up — the panels are faithful placeholders.
 
 use std::collections::HashSet;
 
 use utsushi_reallive::bytecode_element::BytecodeElement;
 use utsushi_reallive::vm::{InMemorySceneStore, Scene};
 use utsushi_reallive::{
-    Framebuffer, HeadlessChoicePolicy, OPCODE_SELECT_OBJBTN, RGBA_BYTES_PER_PIXEL, ReplayEngine,
-    ReplayOpts, SEL_MODULE_ID, SEL_MODULE_TYPE, SpatialChoiceWindow, WipeColour,
+    Framebuffer, HeadlessChoicePolicy, OBJ_FG_CREATION_ID, OBJ_FG_MODULE_ID, OBJ_FG_MODULE_TYPE,
+    OPCODE_OBJ_BUTTON_OPTS, OPCODE_SELECT_OBJBTN, RGBA_BYTES_PER_PIXEL, ReplayEngine, ReplayOpts,
+    SEL_MODULE_ID, SEL_MODULE_TYPE, SelectionPromptKind, SpatialChoiceWindow, WipeColour,
     encode_png_rgba_deterministic, extract_select_choice_texts,
 };
 
 // -- Byte constants for the hand-laid select_objbtn / goto_on scene ---------
 
-const META_LINE_LEAD: u8 = 0x0A;
-const SELECT_BLOCK_OPEN: u8 = 0x7B; // '{'
-const SELECT_BLOCK_CLOSE: u8 = 0x7D; // '}'
 const STORE_REGISTER: [u8; 2] = [0x24, 0xC8]; // `$\xC8` — store-register ref
 const MODULE_JMP_TYPE: u8 = 0;
 const MODULE_JMP_ID: u8 = 1;
 const OPCODE_GOTO: u16 = 0;
 const OPCODE_GOTO_ON: u16 = 3;
 
-/// A `module_sel.select_objbtn` command framed as a real SelectElement:
-/// `{ opt0 \n opt1 }`. This is the SPATIAL (object-button) opcode `(0,2,4)`;
-/// the option labels live in the `{ ... }` block the VM's
-/// `extract_select_choice_texts` walks.
-fn select_objbtn_command(offset: usize, options: &[&str]) -> (BytecodeElement, usize) {
-    let opcode = OPCODE_SELECT_OBJBTN;
+fn int_literal(value: i32) -> Vec<u8> {
+    let mut raw = vec![0x24, 0xFF];
+    raw.extend_from_slice(&value.to_le_bytes());
+    raw
+}
+
+fn command_with_args(
+    offset: usize,
+    module_type: u8,
+    module_id: u8,
+    opcode: u16,
+    args: &[Vec<u8>],
+) -> (BytecodeElement, usize) {
     let mut raw = vec![
         0x23,
-        SEL_MODULE_TYPE,
-        SEL_MODULE_ID,
+        module_type,
+        module_id,
         opcode as u8,
         (opcode >> 8) as u8,
+        args.len() as u8,
         0,
         0,
-        0,
+        b'(',
     ];
-    raw.push(SELECT_BLOCK_OPEN);
-    for (i, option) in options.iter().enumerate() {
-        if i > 0 {
-            raw.extend_from_slice(&[META_LINE_LEAD, 0x00, 0x00]);
+    for (index, arg) in args.iter().enumerate() {
+        if index > 0 {
+            raw.push(b',');
         }
-        raw.extend_from_slice(option.as_bytes());
+        raw.extend_from_slice(arg);
     }
-    raw.push(SELECT_BLOCK_CLOSE);
+    raw.push(b')');
     let byte_len = raw.len();
     (
         BytecodeElement::Command {
-            module_type: SEL_MODULE_TYPE,
-            module_id: SEL_MODULE_ID,
+            module_type,
+            module_id,
             opcode,
-            arg_count: 0,
+            arg_count: args.len() as u16,
             overload: 0,
             goto_targets: Vec::new(),
             goto_case_exprs: Vec::new(),
@@ -86,6 +90,56 @@ fn select_objbtn_command(offset: usize, options: &[&str]) -> (BytecodeElement, u
             byte_len,
         },
         byte_len,
+    )
+}
+
+fn foreground_button_object(offset: usize, slot: i32, asset_key: &str) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        0,
+        OBJ_FG_CREATION_ID,
+        1000,
+        &[
+            int_literal(slot),
+            asset_key.as_bytes().to_vec(),
+            int_literal(1),
+        ],
+    )
+}
+
+/// Bind a pre-existing foreground object with rlvm's exact five-int
+/// `objButtonOpts(buf, action, se, group, button_number)` shape.
+fn obj_button_opts(
+    offset: usize,
+    slot: i32,
+    group: i32,
+    button_number: i32,
+) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        OBJ_FG_MODULE_TYPE,
+        OBJ_FG_MODULE_ID,
+        OPCODE_OBJ_BUTTON_OPTS,
+        &[
+            int_literal(slot),
+            int_literal(0),
+            int_literal(0),
+            int_literal(group),
+            int_literal(button_number),
+        ],
+    )
+}
+
+/// A canonical graphical select: `select_objbtn(group)`, with no inline
+/// SelectElement option labels. The foreground objects bound above are its
+/// complete option source.
+fn select_objbtn_command(offset: usize, group: i32) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        SEL_MODULE_TYPE,
+        SEL_MODULE_ID,
+        OPCODE_SELECT_OBJBTN,
+        &[int_literal(group)],
     )
 }
 
@@ -175,11 +229,23 @@ const OPTION_LEFT: &str = "Rin the spirited childhood friend";
 const OPTION_RIGHT: &str = "Mei the quiet honor student";
 const BRANCH_LEFT_MSG: &str = "Rin's route opens: the spirited path begins.";
 const BRANCH_RIGHT_MSG: &str = "Mei's route opens: the quiet path begins.";
+const ROUTE_BUTTON_GROUP: i32 = 23;
 
-/// Build the two-branch spatial-select scene + the Shift-JIS textout set.
+/// Build the two-branch spatial-select scene from foreground object buttons
+/// plus the Shift-JIS textout set.
 fn build_route_select_engine() -> ReplayEngine {
     let mut offset = 0usize;
-    let (select_el, select_len) = select_objbtn_command(offset, &[OPTION_LEFT, OPTION_RIGHT]);
+    let (left_object, left_object_len) = foreground_button_object(offset, 20, OPTION_LEFT);
+    offset += left_object_len;
+    // Display order is slot order, while selection returns button_number:
+    // left=1 and right=0 prove `$store` follows the bound number.
+    let (left_opts, left_opts_len) = obj_button_opts(offset, 20, ROUTE_BUTTON_GROUP, 1);
+    offset += left_opts_len;
+    let (right_object, right_object_len) = foreground_button_object(offset, 21, OPTION_RIGHT);
+    offset += right_object_len;
+    let (right_opts, right_opts_len) = obj_button_opts(offset, 21, ROUTE_BUTTON_GROUP, 0);
+    offset += right_opts_len;
+    let (select_el, select_len) = select_objbtn_command(offset, ROUTE_BUTTON_GROUP);
     offset += select_len;
 
     let goto_on_offset = offset;
@@ -201,14 +267,25 @@ fn build_route_select_engine() -> ReplayEngine {
 
     let end = offset as u32;
 
-    let (goto_on_el, _) = goto_on_store(goto_on_offset, vec![t0 as u32, t1 as u32]);
+    // `goto_on($store)` indexes by button_number, not display index:
+    // right=0 and left=1.
+    let (goto_on_el, _) = goto_on_store(goto_on_offset, vec![t1 as u32, t0 as u32]);
     let (goto0_el, _) = goto_command(t0 + t0_text_len, end);
     let (goto1_el, _) = goto_command(goto1_offset, end);
 
     let scene = Scene::new(
         1,
         vec![
-            select_el, goto_on_el, textout0, goto0_el, textout1, goto1_el,
+            left_object,
+            left_opts,
+            right_object,
+            right_opts,
+            select_el,
+            goto_on_el,
+            textout0,
+            goto0_el,
+            textout1,
+            goto1_el,
         ],
     )
     .expect("route-select scene builds");
@@ -229,7 +306,8 @@ fn opts() -> ReplayOpts {
     }
 }
 
-/// Option lines the spatial select emitted (the plain `choice:<idx>` base).
+/// Text-choice lines emitted by this scene. The graphical object-button
+/// prompt emits no `choice:<idx>` text lines.
 fn observed_spatial_choice_lines(
     engine: &ReplayEngine,
     policy: HeadlessChoicePolicy,
@@ -248,6 +326,30 @@ fn observed_spatial_choice_lines(
         .collect()
 }
 
+fn observed_object_button_prompt(engine: &ReplayEngine) -> (i32, Vec<(u16, i32, usize)>) {
+    let observation = engine.observe_for_port(1, &opts());
+    let object_prompts: Vec<_> = observation
+        .selection_prompts
+        .into_iter()
+        .filter_map(|prompt| match prompt.kind {
+            SelectionPromptKind::ObjectButtons { group, options } => Some((
+                group,
+                options
+                    .into_iter()
+                    .map(|option| (option.display_index, option.button_number, option.fg_slot))
+                    .collect(),
+            )),
+            SelectionPromptKind::Text => None,
+        })
+        .collect();
+    assert_eq!(
+        object_prompts.len(),
+        1,
+        "one graphical object-button prompt"
+    );
+    object_prompts.into_iter().next().expect("object prompt")
+}
+
 fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy) -> Vec<String> {
     engine
         .branch_following_lines(1, &opts(), policy)
@@ -264,16 +366,16 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
 
 // -------------------------------------------------------------------------
 // RECOGNIZE: the spatial select is the object-button `(0,2,4)` variant. A
-// `select_objbtn` op is itself a button-object SelectionControl setup op, so
-// the scene's SelectionControl SIGNAL is `ButtonObject` → a graphical
-// modality (≤2 placed buttons → the side-by-side pair). Modality is derived
-// from the REAL SelectionControl signal, NOT the option count; dispatch emits
-// the plain `choice:<idx>` base surface (no marker).
+// `select_objbtn` plus foreground `objButtonOpts` bindings creates a real
+// object-button prompt → a graphical modality (≤2 placed buttons → the
+// side-by-side pair). Modality is derived from the REAL SelectionControl
+// signal, NOT the option count; graphical dispatch emits no inline
+// `choice:<idx>` text surfaces.
 // -------------------------------------------------------------------------
 
 #[test]
 fn spatial_select_is_objbtn_and_classifies_graphical_from_the_signal() {
-    let (select_el, _) = select_objbtn_command(0, &[OPTION_LEFT, OPTION_RIGHT]);
+    let (select_el, _) = select_objbtn_command(0, ROUTE_BUTTON_GROUP);
     let BytecodeElement::Command {
         module_type,
         module_id,
@@ -290,32 +392,32 @@ fn spatial_select_is_objbtn_and_classifies_graphical_from_the_signal() {
         (SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_SELECT_OBJBTN),
         "spatial select is sel.select_objbtn at the real (0,2,4)"
     );
-    // The SelectElement `{ ... }` framing yields the two option labels — the
-    // same seam a real Seen.txt hits.
-    let choices = extract_select_choice_texts(raw_bytes);
-    let decoded: Vec<String> = choices
-        .iter()
-        .map(|b| String::from_utf8(b.clone()).expect("ascii"))
-        .collect();
-    assert_eq!(
-        decoded,
-        vec![OPTION_LEFT.to_string(), OPTION_RIGHT.to_string()]
+    assert!(
+        extract_select_choice_texts(raw_bytes).is_empty(),
+        "canonical select_objbtn(group) carries no inline text options"
     );
 
-    // Interpretation: the SelectionControl signal from a `select_objbtn`
-    // button-object op is `ButtonObject`; ≤2 placed buttons → the SPATIAL pair.
+    // Interpretation: a `select_objbtn` plus foreground object bindings is a
+    // `ButtonObject` prompt; ≤2 placed buttons → the SPATIAL pair.
     let signal = utsushi_reallive::selection_control_signal([*opcode]);
     assert_eq!(
         utsushi_reallive::select_modality(signal, 2),
         utsushi_reallive::SelectModality::SpatialPair
     );
 
-    // Dispatch emits the plain `choice:<idx>` base surface — no `;spatial`
-    // marker (the graphical modality is a scene-context property).
     let engine = build_route_select_engine();
+    assert_eq!(
+        observed_object_button_prompt(&engine),
+        (ROUTE_BUTTON_GROUP, vec![(0, 1, 20), (1, 0, 21)]),
+        "the graphical prompt must come from foreground objButtonOpts bindings"
+    );
+
+    // No inline-text model remains for the graphical select.
     let lines = observed_spatial_choice_lines(&engine, HeadlessChoicePolicy::Fixed(0));
-    let surfaces: Vec<&str> = lines.iter().map(|(_, s)| s.as_str()).collect();
-    assert_eq!(surfaces, vec!["choice:0", "choice:1"]);
+    assert!(
+        lines.is_empty(),
+        "object-button selection emits no text-choice lines"
+    );
 }
 
 // -------------------------------------------------------------------------

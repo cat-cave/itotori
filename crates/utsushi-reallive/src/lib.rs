@@ -218,9 +218,12 @@ pub use syscall::{
 };
 
 pub use graphics_objects::{
-    GRAPHICS_OBJECT_SLOT_COUNT, GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone,
-    GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
-    GraphicsPosition, GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
+    DstRectKernelInput, DstRectKernelParent, GRAPHICS_OBJECT_SLOT_COUNT,
+    GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject,
+    GraphicsObjectKind, GraphicsObjectParent, GraphicsObjectStack, GraphicsObjectTarget,
+    GraphicsPercentScale, GraphicsPlane, GraphicsPosition, GraphicsScale, GraphicsStackError,
+    HitRect, HitRegion, HitRegionUnavailable, ImageRef, ObjectGeometryState, SurfaceGeometry,
+    WipeColour, derive_dst_rect,
 };
 pub use render_pipeline::{
     ChoiceWindow, Framebuffer, ImageGridCell, ImageGridChoiceWindow, ObjectWarning, PNG_BIT_DEPTH,
@@ -306,13 +309,16 @@ pub use rlop::{
     OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE,
     OPCODE_NAME_OPEN, OPCODE_OBJBTN_INIT, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3,
-    OPCODE_SELECT_W, OPCODE_TEXT_WINDOW, ObjbtnInitOp, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
-    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
-    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
-    SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp,
-    SelectOp, SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
-    SelectionControlSignal, dispatch_textout, register_sel_rlops, register_text_rlops,
-    select_modality, selection_control_signal, text_module_msg_keys,
+    OPCODE_SELECT_W, OPCODE_TEXT_WINDOW, ObjbtnInitOp, ObjectButtonCandidateScope,
+    ObjectButtonHitRegion, ObjectButtonHitRegionUnavailable, ObjectButtonPromptOption,
+    PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError, RLOperation, RlopKey,
+    RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT,
+    SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning, SelectLongOp,
+    SelectLongOpDecodeError, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp,
+    SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
+    SelectionControlSignal, SelectionPrompt, SelectionPromptKind, dispatch_textout,
+    register_sel_rlops, register_text_rlops, select_modality, selection_control_signal,
+    text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{
@@ -330,10 +336,10 @@ pub use rlop::module_str::{
 
 pub use rlop::module_obj::{
     BgCanvas, DEFAULT_FADE_TICKS_PER_MS, DcAllocation, FADE_PRIVATE_STATE_MAGIC, FadeLongOp,
-    FadeLongOpDecodeError, FadeSchedule, GraphicsRuntime, GraphicsRuntimeWarning,
-    GraphicsStateSnapshot, OBJ_BG_MODULE_ID, OBJ_BG_MODULE_TYPE, OBJ_FG_MODULE_ID,
-    OBJ_FG_MODULE_TYPE, OBJ_MGMT_MODULE_ID, OBJ_MGMT_MODULE_TYPE, OPCODE_OBJ_BUTTON_OPTS,
-    ObjButtonOptsOp,
+    FadeLongOpDecodeError, FadeSchedule, ForegroundButtonCandidate, GraphicsRuntime,
+    GraphicsRuntimeWarning, GraphicsStateSnapshot, OBJ_BG_MODULE_ID, OBJ_BG_MODULE_TYPE,
+    OBJ_FG_MODULE_ID, OBJ_FG_MODULE_TYPE, OBJ_MGMT_MODULE_ID, OBJ_MGMT_MODULE_TYPE,
+    OPCODE_OBJ_BUTTON_OPTS, ObjButtonOptsOp,
 };
 
 pub use rlop::module_render::{
@@ -371,9 +377,9 @@ pub use rlop::module_ctrl::{
 };
 
 pub use vm::{
-    DEFAULT_STEP_BUDGET, InMemorySceneStore, ObjbtnButton, STACK_DEPTH_LIMIT, Scene, SceneId,
-    SceneStore, StackFrame, StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm,
-    VmError, VmEvent, VmWarning,
+    DEFAULT_STEP_BUDGET, InMemorySceneStore, STACK_DEPTH_LIMIT, Scene, SceneId, SceneStore,
+    StackFrame, StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm, VmError,
+    VmEvent, VmWarning,
 };
 
 /// The clean-room boundary statement carried as a publicly reachable

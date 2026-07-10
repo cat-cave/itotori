@@ -124,13 +124,18 @@ use std::sync::{Arc, Mutex};
 
 use utsushi_core::substrate::{ChoiceIndex, EvidenceTier, TextLine, TextSurfaceSink};
 
-use super::longops::{SELECT_PRIVATE_STATE_MAGIC, SelectLongOp};
+use super::longops::{
+    OBJECT_SELECT_PRIVATE_STATE_MAGIC, ObjectSelectLongOp, ObjectSelectLongOpBuildError,
+    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
+};
 use super::module_msg::LongOpIdSequence;
 use super::{
     DispatchOutcome, ExprValue, LongOp, LongOpReadiness, LongOpScheduler, RLOperation, RlopKey,
     RlopRegistry,
 };
 use crate::gameexe::Gameexe;
+use crate::graphics_objects::GraphicsObject;
+use crate::rlop::module_obj::GraphicsRuntime;
 use crate::vm::Vm;
 
 /// `module_sel` module type byte. The REAL RealLive `Sel` module lives at
@@ -194,13 +199,11 @@ pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// as `select_objbtn` (`4`) but calls `set_cancelable()` so the user may escape
 /// the prompt. Observed 3× on real Sweetie HD bytes — ALL at `module_type=0`
 /// (0× at types 1/2; 0× in Kanon), so registering `(0,2,14)` fully covers every
-/// real occurrence. Handled by [`SelectObjbtnCancelOp`], which dispatches
-/// through the same recovered-button-group path as `select_objbtn` (see
-/// [`dispatch_select_objbtn`]); the cancelable AFFORDANCE (escape-to-cancel) is
-/// a render/input-layer concern the port does not yet model on
-/// [`SelectLongOp`], exactly as button-object PRESENTATION is already a
-/// render-layer concern here. Previously this opcode was a catalog `Advance`
-/// no-op (`module_catalog` `(2,14)`); it is now a real Sel op.
+/// real occurrence. [`SelectObjbtnCancelOp`] creates a cancelable A3 carrier
+/// over the same foreground bindings as opcode `4`; only the exact Raw
+/// secondary-release input token cancels it. Other cancel/input affordances
+/// remain outside this opcode path. Previously this opcode was a catalog
+/// `Advance` no-op (`module_catalog` `(2,14)`); it is now a real Sel op.
 pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
 
 /// Stable enum naming the select-family variants. Used by the typed
@@ -418,6 +421,7 @@ pub struct SelRuntime {
     sink: Arc<dyn TextSurfaceSink>,
     id_sequence: Arc<LongOpIdSequence>,
     gameexe: Option<Arc<Gameexe>>,
+    graphics: Option<Arc<GraphicsRuntime>>,
     inner: Mutex<SelRuntimeInner>,
 }
 
@@ -430,6 +434,51 @@ struct SelRuntimeInner {
     /// shape does not match the declared contract. Drained via
     /// [`SelRuntime::take_warnings`].
     warnings: Vec<SelRuntimeWarning>,
+    prompts: Vec<SelectionPrompt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectButtonPromptOption {
+    pub display_index: u16,
+    pub button_number: i32,
+    pub fg_slot: usize,
+    /// Exact top-level foreground state at prompt time. This snapshot does not
+    /// resolve assets, infer bounds, or render pixels.
+    pub visual_snapshot: GraphicsObject,
+    pub candidate_scope: ObjectButtonCandidateScope,
+    pub hit_region: ObjectButtonHitRegion,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonCandidateScope {
+    TopLevelForegroundOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonHitRegion {
+    Unavailable(ObjectButtonHitRegionUnavailable),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonHitRegionUnavailable {
+    TopLevelObjectDataNotModeled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionPromptKind {
+    Text,
+    ObjectButtons {
+        group: i32,
+        options: Vec<ObjectButtonPromptOption>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionPrompt {
+    pub longop_id: super::LongOpId,
+    pub kind: SelectionPromptKind,
+    pub cancelable: bool,
+    pub option_line_ids: Vec<String>,
 }
 
 /// Typed warning the [`SelRuntime`] records on a sink failure or a
@@ -468,6 +517,21 @@ pub enum SelRuntimeWarning {
         /// Variant that observed the missing args.
         variant: SelectVariant,
     },
+    ObjectButtonRuntimeUnavailable {
+        group: i32,
+    },
+    ObjectButtonCandidatesEmpty {
+        group: i32,
+    },
+    ObjectButtonGroupArgsInvalid {
+        observed: usize,
+    },
+    ObjectButtonCarrierTooLarge {
+        observed: usize,
+    },
+    ObjectButtonCancelArgsInvalid {
+        observed: usize,
+    },
 }
 
 impl std::fmt::Debug for SelRuntime {
@@ -475,6 +539,7 @@ impl std::fmt::Debug for SelRuntime {
         formatter
             .debug_struct("SelRuntime")
             .field("has_gameexe", &self.gameexe.is_some())
+            .field("has_graphics", &self.graphics.is_some())
             .finish()
     }
 }
@@ -493,6 +558,7 @@ impl SelRuntime {
             sink,
             id_sequence,
             gameexe,
+            graphics: None,
             inner: Mutex::new(SelRuntimeInner::default()),
         }
     }
@@ -511,6 +577,16 @@ impl SelRuntime {
         Self::new(sink, Arc::new(LongOpIdSequence::new()), Some(gameexe))
     }
 
+    pub fn with_graphics(sink: Arc<dyn TextSurfaceSink>, graphics: Arc<GraphicsRuntime>) -> Self {
+        Self {
+            sink,
+            id_sequence: Arc::new(LongOpIdSequence::new()),
+            gameexe: None,
+            graphics: Some(graphics),
+            inner: Mutex::new(SelRuntimeInner::default()),
+        }
+    }
+
     /// Borrow the sink.
     pub fn sink(&self) -> &Arc<dyn TextSurfaceSink> {
         &self.sink
@@ -526,6 +602,10 @@ impl SelRuntime {
         self.gameexe.as_ref()
     }
 
+    pub fn graphics(&self) -> Option<&Arc<GraphicsRuntime>> {
+        self.graphics.as_ref()
+    }
+
     /// Drain the fail-soft warnings observed since the last call.
     pub fn take_warnings(&self) -> Vec<SelRuntimeWarning> {
         let mut guard = self
@@ -533,6 +613,14 @@ impl SelRuntime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         std::mem::take(&mut guard.warnings)
+    }
+
+    pub fn take_prompts(&self) -> Vec<SelectionPrompt> {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::mem::take(&mut guard.prompts)
     }
 
     fn record_warning(&self, warning: SelRuntimeWarning) {
@@ -581,7 +669,12 @@ impl SelRuntime {
     /// render-modality marker and the SELBTN styling tags when the
     /// Gameexe exposes them). Sink-side errors are recorded as fail-soft
     /// warnings.
-    fn emit_choice(&self, variant: SelectVariant, choice_index: usize, text: String) {
+    fn emit_choice(
+        &self,
+        variant: SelectVariant,
+        choice_index: usize,
+        text: String,
+    ) -> Option<String> {
         let line_id = self.next_line_id();
         // Compose the choice surface from parts: the base `choice:<idx>`
         // (what `branch_following_lines` filters on) plus the optional Gameexe
@@ -599,7 +692,7 @@ impl SelRuntime {
             text_surface.push_str(&suffix);
         }
         let line = TextLine {
-            line_id,
+            line_id: line_id.clone(),
             evidence_tier: EvidenceTier::E1,
             text,
             speaker: None,
@@ -608,12 +701,24 @@ impl SelRuntime {
             bridge_ref: None,
             source_asset: None,
         };
-        if let Err(err) = self.sink.emit_line(line) {
-            self.record_warning(SelRuntimeWarning::SinkRejected {
-                variant,
-                reason: err.to_string(),
-            });
+        match self.sink.emit_line(line) {
+            Ok(()) => Some(line_id),
+            Err(err) => {
+                self.record_warning(SelRuntimeWarning::SinkRejected {
+                    variant,
+                    reason: err.to_string(),
+                });
+                None
+            }
         }
+    }
+
+    fn record_prompt(&self, prompt: SelectionPrompt) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.prompts.push(prompt);
     }
 }
 
@@ -637,6 +742,7 @@ fn dispatch_select(
     args: &[ExprValue],
 ) -> DispatchOutcome {
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
+    let mut rendered: Vec<(usize, String)> = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
         let bytes = match arg {
             ExprValue::Bytes(bytes) => bytes.clone(),
@@ -667,7 +773,7 @@ fn dispatch_select(
             });
             String::from_utf8_lossy(&bytes).into_owned()
         };
-        runtime.emit_choice(variant, choice_index, text);
+        rendered.push((choice_index, text));
         choices.push(bytes);
     }
     if args.is_empty() {
@@ -688,6 +794,18 @@ fn dispatch_select(
         return DispatchOutcome::Advance;
     }
     let id = runtime.id_sequence().allocate();
+    let option_line_ids: Vec<String> = rendered
+        .into_iter()
+        .filter_map(|(index, text)| runtime.emit_choice(variant, index, text))
+        .collect();
+    if option_line_ids.len() == choices.len() {
+        runtime.record_prompt(SelectionPrompt {
+            longop_id: id,
+            kind: SelectionPromptKind::Text,
+            cancelable: false,
+            option_line_ids,
+        });
+    }
     let select = SelectLongOp::new(id, choices);
     let LongOp { id, private_state } = select.into_longop();
     DispatchOutcome::Yield {
@@ -754,62 +872,72 @@ impl RLOperation for SelectWOp {
     }
 }
 
-/// Build the synthetic option label for one recovered button object. The
-/// real objbtn scenes carry NO inline `{ … }` option text (the on-screen
-/// art is the g00 button sprite), so the pipeline label is a stable ASCII
-/// placeholder keyed on the button's real ordinal — it decodes cleanly
-/// (no `InvalidShiftJis` warning) and the render layer lays the buttons
-/// out from the real recovered count.
-fn objbtn_option_label(number: i32) -> Vec<u8> {
-    format!("objbtn {number}").into_bytes()
-}
-
-/// Dispatch a `select_objbtn` (`sel (0,2,4)`) as a REAL select driven by
-/// the scene's recovered button-object group.
-///
-/// rlvm's `Sel_select_objbtn` pushes a `ButtonObjectSelectLongOperation`
-/// that collects every on-screen graphics object whose button group
-/// matches the select's group, and resolves to the picked button's
-/// number → `set_store_register`. This port mirrors that: the linear walk
-/// has already executed the scene's `objbtn_init` + `objButtonOpts` setup
-/// ops, which populated [`Vm::objbtn_buttons`]. Here we CONSUME that group
-/// ([`Vm::objbtn_take`]) and dispatch it through the ordinary choice seam —
-/// one `choice:<idx>` surface per button, a queued [`SelectLongOp`], and
-/// (on resume) the picked index written to the store register. The scene's
-/// own `intL[0] = store` assignment + `goto_on(intL[0])` then drive the
-/// matching route branch — exactly the bytecode that follows every real
-/// Sweetie `select_objbtn`.
-///
-/// When no button group was set up (the setup ops did not run, or the walk
-/// reached the select without them) the op falls back to the shared
-/// [`dispatch_select`] over its inline args — which, for a real objbtn (no
-/// option block), fail-soft `Advance`s exactly as before.
-///
-/// `variant` selects the audit tag: [`SelectVariant::SelectObjbtn`] (`4`) or the
-/// cancelable [`SelectVariant::SelectObjbtnCancel`] (`14`). Both push the same
-/// `ButtonObjectSelectLongOperation` in rlvm and drive the identical recovered-
-/// button-group path here; the cancelable form's escape-to-cancel affordance is
-/// a render/input-layer concern (see [`OPCODE_SELECT_OBJBTN_CANCEL`]).
 fn dispatch_select_objbtn(
-    variant: SelectVariant,
     runtime: &SelRuntime,
-    vm: &mut Vm,
+    _vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
-    let buttons = vm.objbtn_take();
-    if buttons.is_empty() {
-        return dispatch_select(variant, runtime, vm, args);
-    }
-    let synth: Vec<ExprValue> = buttons
-        .iter()
-        .map(|button| ExprValue::Bytes(objbtn_option_label(button.number)))
-        .collect();
-    dispatch_select(variant, runtime, vm, &synth)
+    let [ExprValue::Int(group)] = args else {
+        runtime.record_warning(SelRuntimeWarning::ObjectButtonGroupArgsInvalid {
+            observed: args.len(),
+        });
+        return DispatchOutcome::Advance;
+    };
+    dispatch_object_select(runtime, *group, false)
 }
 
-/// `select_objbtn` — object-button (graphical) choice. Unlike the other
-/// three variants it carries NO inline option block; its option set is the
-/// scene's recovered button-object group (see [`dispatch_select_objbtn`]).
+fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) -> DispatchOutcome {
+    let Some(graphics) = runtime.graphics() else {
+        runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group });
+        return DispatchOutcome::Advance;
+    };
+    let candidates = graphics.foreground_button_candidates(group);
+    if candidates.is_empty() {
+        runtime.record_warning(SelRuntimeWarning::ObjectButtonCandidatesEmpty { group });
+        return DispatchOutcome::Advance;
+    }
+    let return_values: Vec<i32> = candidates
+        .iter()
+        .map(|candidate| candidate.options.button_number)
+        .collect();
+    let mut select =
+        match ObjectSelectLongOp::try_new(runtime.id_sequence().allocate(), return_values) {
+            Ok(select) => select,
+            Err(ObjectSelectLongOpBuildError::TooManyReturnValues { observed }) => {
+                runtime.record_warning(SelRuntimeWarning::ObjectButtonCarrierTooLarge { observed });
+                return DispatchOutcome::Advance;
+            }
+        };
+    select.set_cancelable(cancelable);
+    let LongOp { id, private_state } = select.into_longop();
+    runtime.record_prompt(SelectionPrompt {
+        longop_id: id,
+        kind: SelectionPromptKind::ObjectButtons {
+            group,
+            options: candidates
+                .into_iter()
+                .enumerate()
+                .map(|(display_index, candidate)| ObjectButtonPromptOption {
+                    display_index: display_index as u16,
+                    button_number: candidate.options.button_number,
+                    fg_slot: candidate.slot,
+                    visual_snapshot: candidate.object,
+                    candidate_scope: ObjectButtonCandidateScope::TopLevelForegroundOnly,
+                    hit_region: ObjectButtonHitRegion::Unavailable(
+                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
+                    ),
+                })
+                .collect(),
+        },
+        cancelable,
+        option_line_ids: Vec::new(),
+    });
+    DispatchOutcome::Yield {
+        longop_id: id,
+        private_state,
+    }
+}
+
 #[derive(Debug)]
 pub struct SelectObjbtnOp {
     runtime: Arc<SelRuntime>,
@@ -823,7 +951,7 @@ impl SelectObjbtnOp {
 
 impl RLOperation for SelectObjbtnOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select_objbtn(SelectVariant::SelectObjbtn, &self.runtime, vm, args)
+        dispatch_select_objbtn(&self.runtime, vm, args)
     }
 }
 
@@ -851,15 +979,6 @@ impl RLOperation for SelectS3Op {
     }
 }
 
-/// `select_objbtn_cancel` (`sel (0,2,14)`) — the CANCELABLE button-object
-/// select. Mirrors rlvm's `Sel_select_objbtn_cancel`, which pushes the same
-/// `ButtonObjectSelectLongOperation` as `select_objbtn` (`4`) but marks it
-/// `set_cancelable()`. This port dispatches through the identical recovered-
-/// button-group path ([`dispatch_select_objbtn`]) tagged
-/// [`SelectVariant::SelectObjbtnCancel`]; the escape-to-cancel affordance is a
-/// render/input-layer concern not yet modeled on [`SelectLongOp`] (see
-/// [`OPCODE_SELECT_OBJBTN_CANCEL`]). Previously a catalog `Advance` no-op; now a
-/// real Sel op driving the same `goto_on($store)` branch machinery.
 #[derive(Debug)]
 pub struct SelectObjbtnCancelOp {
     runtime: Arc<SelRuntime>,
@@ -874,29 +993,36 @@ impl SelectObjbtnCancelOp {
 
 impl RLOperation for SelectObjbtnCancelOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select_objbtn(SelectVariant::SelectObjbtnCancel, &self.runtime, vm, args)
+        let group = match args {
+            [ExprValue::Int(group)] | [ExprValue::Int(group), ExprValue::Int(_)] => *group,
+            _ => {
+                self.runtime
+                    .record_warning(SelRuntimeWarning::ObjectButtonCancelArgsInvalid {
+                        observed: args.len(),
+                    });
+                return DispatchOutcome::Advance;
+            }
+        };
+        let _ = vm;
+        dispatch_object_select(&self.runtime, group, true)
     }
 }
 
-/// `objbtn_init` (`sel (0,2,20)`) — button-object group setup boundary. In
-/// rlvm this is a no-op (`objbtn_init_0/1` have empty bodies); here it
-/// CLEARS the pending [`Vm::objbtn_buttons`] group so the `objButtonOpts`
-/// ops that follow build a fresh option set for the next `select_objbtn`.
-/// Recognized 0-unknown either way; this op gives it its real setup-reset
-/// semantics instead of a catalog `Advance`.
+/// `objbtn_init` (`sel (0,2,20)`) is recognized as an exact no-op. Binding
+/// state lives on graphics objects; selection/resume and rendering remain
+/// separate work.
 #[derive(Debug, Default)]
 pub struct ObjbtnInitOp;
 
 impl ObjbtnInitOp {
-    /// Construct the op (stateless — it mutates the VM's button group).
+    /// Construct the stateless no-op.
     pub fn new() -> Self {
         Self
     }
 }
 
 impl RLOperation for ObjbtnInitOp {
-    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        vm.objbtn_reset();
+    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
         DispatchOutcome::Advance
     }
 }
@@ -935,11 +1061,7 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
         SelectVariant::SelectObjbtnCancel.rlop_key(),
         Arc::new(SelectObjbtnCancelOp::new(Arc::clone(&runtime))),
     );
-    // `objbtn_init` — the button-object group-setup boundary. Registered
-    // with its real reset semantics (clears the pending button group) so a
-    // `select_objbtn` that follows recovers a fresh option set. `runtime`
-    // is unused by this op (it mutates the VM's button group), so it is not
-    // threaded in.
+    // `objbtn_init` is a recognized no-op; bindings live on graphics objects.
     registry.register(
         RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_OBJBTN_INIT),
         Arc::new(ObjbtnInitOp::new()),
@@ -1013,26 +1135,30 @@ impl LongOpScheduler for ChoiceInputScheduler {
         let Some(index) = pending else {
             return LongOpReadiness::Pending;
         };
-        // Only rewrite the head if it carries a SelectLongOp payload.
-        // Other longop shapes pass through untouched.
-        if head.private_state.first() != Some(&SELECT_PRIVATE_STATE_MAGIC) {
-            return LongOpReadiness::Pending;
-        }
-        // Decode -> mutate chosen -> re-encode.
-        match SelectLongOp::try_from_longop(head) {
-            Ok(mut select) => {
-                select.choose(index.get());
-                let LongOp { id, private_state } = select.into_longop();
-                head.id = id;
-                head.private_state = private_state;
-                LongOpReadiness::Ready
+        match head.private_state.first().copied() {
+            Some(SELECT_PRIVATE_STATE_MAGIC) => match SelectLongOp::try_from_longop(head) {
+                Ok(mut select) => {
+                    select.choose(index.get());
+                    let LongOp { id, private_state } = select.into_longop();
+                    head.id = id;
+                    head.private_state = private_state;
+                    LongOpReadiness::Ready
+                }
+                Err(_) => LongOpReadiness::Pending,
+            },
+            Some(OBJECT_SELECT_PRIVATE_STATE_MAGIC) => {
+                match ObjectSelectLongOp::try_from_longop(head) {
+                    Ok(mut select) => {
+                        select.select(index.get());
+                        let LongOp { id, private_state } = select.into_longop();
+                        head.id = id;
+                        head.private_state = private_state;
+                        LongOpReadiness::Ready
+                    }
+                    Err(_) => LongOpReadiness::Pending,
+                }
             }
-            Err(_) => {
-                // Malformed select payload — leave the longop alone
-                // and stay pending so the audit trail names the
-                // mismatch (the VM emits a typed warning on resume).
-                LongOpReadiness::Pending
-            }
+            _ => LongOpReadiness::Pending,
         }
     }
 }
@@ -1041,19 +1167,28 @@ impl LongOpScheduler for ChoiceInputScheduler {
 mod tests {
     use std::sync::Mutex;
 
-    use utsushi_core::substrate::{SinkCapability, SinkResult};
+    use utsushi_core::substrate::{SinkCapability, SinkError, SinkKind, SinkResult};
 
     use super::*;
     use crate::var_banks::VarBanks;
 
     struct CollectingSink {
         lines: Mutex<Vec<TextLine>>,
+        reject_after: Option<usize>,
     }
 
     impl CollectingSink {
         fn new() -> Self {
             Self {
                 lines: Mutex::new(Vec::new()),
+                reject_after: None,
+            }
+        }
+
+        fn rejecting_after(emitted: usize) -> Self {
+            Self {
+                lines: Mutex::new(Vec::new()),
+                reject_after: Some(emitted),
             }
         }
     }
@@ -1067,7 +1202,15 @@ mod tests {
 
         fn emit_line(&self, line: TextLine) -> SinkResult<()> {
             line.validate()?;
-            self.lines.lock().expect("lock").push(line);
+            let mut lines = self.lines.lock().expect("lock");
+            if self.reject_after == Some(lines.len()) {
+                return Err(SinkError::UnsupportedKind {
+                    sink: SinkKind::TextSurface,
+                    adapter_id: "reject-second-choice".to_string(),
+                    reason: "test sink rejects one choice".to_string(),
+                });
+            }
+            lines.push(line);
             Ok(())
         }
     }
@@ -1206,33 +1349,215 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_emits_base_surface_without_a_modality_marker() {
-        // Dispatch has NO scene context, so it never tags a graphical marker
-        // — every variant emits the plain `choice:<idx>` base surface. The
-        // graphical-vs-text modality is a SCENE-context property applied by
-        // `select_modality` at the render / analysis layer, not by dispatch.
-        let sink = Arc::new(CollectingSink::new());
-        let runtime = Arc::new(SelRuntime::with_sink(
-            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+    fn objbtn_init_is_a_noop() {
+        let mut vm = Vm::new(1, 0);
+        assert!(matches!(
+            ObjbtnInitOp::new().dispatch(&mut vm, &[]),
+            DispatchOutcome::Advance
         ));
-        SelectObjbtnOp::new(runtime).dispatch(
-            &mut Vm::new(1, 0),
-            &[
-                ExprValue::Bytes(b"L".to_vec()),
-                ExprValue::Bytes(b"R".to_vec()),
-            ],
-        );
-        let surfaces: Vec<Option<String>> = sink
-            .lines
-            .lock()
-            .expect("lock")
-            .iter()
-            .map(|line| line.text_surface.clone())
-            .collect();
+    }
+
+    #[test]
+    fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
+        use crate::graphics_objects::{
+            ButtonOptions, GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject,
+            GraphicsObjectKind, GraphicsPosition, GraphicsScale, ImageRef, WipeColour,
+        };
+
+        let sink = Arc::new(CollectingSink::new());
+        let graphics = Arc::new(GraphicsRuntime::new());
+        let mut image_button = GraphicsObject::image("missing-g00");
+        image_button.kind = GraphicsObjectKind::Image {
+            image_ref: ImageRef {
+                asset_key: "missing-g00".to_string(),
+                region_index: Some(12),
+            },
+        };
+        image_button.position = GraphicsPosition { x: 31, y: -9 };
+        image_button.scale = GraphicsScale {
+            x_thousandths: 750,
+            y_thousandths: 1250,
+        };
+        image_button.alpha = GraphicsAlpha(137);
+        image_button.colour_tone = GraphicsColourTone {
+            red_thousandths: 100,
+            green_thousandths: -200,
+            blue_thousandths: 300,
+        };
+        image_button.layer_order = 41;
+        image_button.visible = false;
+        image_button.button_options = Some(ButtonOptions {
+            action: 0,
+            se: 0,
+            group: 5,
+            button_number: 7,
+        });
+        let expected_image = image_button.clone();
+
+        let mut wipe_button = GraphicsObject::wipe(WipeColour {
+            red: 1,
+            green: 2,
+            blue: 3,
+            alpha: 4,
+        });
+        wipe_button.button_options = Some(ButtonOptions {
+            action: 0,
+            se: 0,
+            group: 5,
+            button_number: 2,
+        });
+        let expected_wipe = wipe_button.clone();
+        graphics.with_stack_mut(|stack| {
+            stack
+                .set_layer(GraphicsLayer::ForegroundObject, 3, image_button)
+                .expect("slot");
+            stack
+                .set_layer(GraphicsLayer::ForegroundObject, 11, wipe_button)
+                .expect("slot");
+        });
+        let runtime = Arc::new(SelRuntime::with_graphics(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
+            Arc::clone(&graphics),
+        ));
+        let outcome = SelectObjbtnOp::new(Arc::clone(&runtime))
+            .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(5)]);
+        let DispatchOutcome::Yield {
+            longop_id,
+            private_state,
+        } = outcome
+        else {
+            panic!("object group must yield");
+        };
+        let carrier = ObjectSelectLongOp::try_from_longop(&LongOp::new(longop_id, private_state))
+            .expect("object carrier");
+        assert_eq!(carrier.return_values(), &[7, 2]);
+        assert!(sink.lines.lock().expect("lock").is_empty());
+        // Reusing or mutating slots after the yield must not alter the
+        // prompt-time snapshots detached from the graphics mutex scan.
+        graphics.with_stack_mut(|stack| {
+            stack
+                .set_layer(
+                    GraphicsLayer::ForegroundObject,
+                    3,
+                    GraphicsObject::image("reused-after-yield"),
+                )
+                .expect("slot");
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 11)
+                .expect("slot")
+                .visible = false;
+        });
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 1);
+        let prompt = &prompts[0];
+        assert_eq!(prompt.longop_id, longop_id);
+        assert!(!prompt.cancelable);
+        assert!(prompt.option_line_ids.is_empty());
+        let SelectionPromptKind::ObjectButtons { group, options } = &prompt.kind else {
+            panic!("object selection must produce object-button prompt");
+        };
+        assert_eq!(*group, 5);
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0].display_index, 0);
+        assert_eq!(options[0].button_number, 7);
+        assert_eq!(options[0].fg_slot, 3);
+        assert_eq!(options[0].visual_snapshot, expected_image);
+        assert_eq!(options[1].display_index, 1);
+        assert_eq!(options[1].button_number, 2);
+        assert_eq!(options[1].fg_slot, 11);
+        assert_eq!(options[1].visual_snapshot, expected_wipe);
+        assert!(options.iter().all(|option| {
+            option.candidate_scope == ObjectButtonCandidateScope::TopLevelForegroundOnly
+                && option.hit_region
+                    == ObjectButtonHitRegion::Unavailable(
+                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
+                    )
+        }));
+        assert!(matches!(
+            &options[0].visual_snapshot.kind,
+            GraphicsObjectKind::Image { image_ref }
+                if image_ref.asset_key == "missing-g00" && image_ref.region_index == Some(12)
+        ));
+        assert!(matches!(
+            options[1].visual_snapshot.kind,
+            GraphicsObjectKind::Wipe { .. }
+        ));
+        assert!(matches!(
+            SelectObjbtnOp::new(Arc::clone(&runtime))
+                .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
+            DispatchOutcome::Advance
+        ));
         assert_eq!(
-            surfaces,
-            vec![Some("choice:0".to_string()), Some("choice:1".to_string())],
-            "dispatch emits the plain base surface with no ;spatial/;imagegrid marker"
+            runtime.take_warnings(),
+            vec![SelRuntimeWarning::ObjectButtonCandidatesEmpty { group: 8 }]
+        );
+    }
+
+    #[test]
+    fn select_objbtn_cancel_overloads_ignore_select_se_and_set_cancelable() {
+        use crate::graphics_objects::{ButtonOptions, GraphicsLayer, GraphicsObject};
+
+        let sink = Arc::new(CollectingSink::new());
+        let graphics = Arc::new(GraphicsRuntime::new());
+        graphics.with_stack_mut(|stack| {
+            for (slot, number) in [(11, 2), (3, 7)] {
+                let mut object = GraphicsObject::image("test");
+                object.button_options = Some(ButtonOptions {
+                    action: 0,
+                    se: 0,
+                    group: 5,
+                    button_number: number,
+                });
+                stack
+                    .set_layer(GraphicsLayer::ForegroundObject, slot, object)
+                    .expect("slot");
+            }
+        });
+        let runtime = Arc::new(SelRuntime::with_graphics(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
+            graphics,
+        ));
+        for args in [
+            &[ExprValue::Int(5)][..],
+            &[ExprValue::Int(5), ExprValue::Int(99)][..],
+        ] {
+            let DispatchOutcome::Yield {
+                longop_id,
+                private_state,
+            } = SelectObjbtnCancelOp::new(Arc::clone(&runtime)).dispatch(&mut Vm::new(1, 0), args)
+            else {
+                panic!("cancel object group must yield");
+            };
+            let carrier =
+                ObjectSelectLongOp::try_from_longop(&LongOp::new(longop_id, private_state))
+                    .expect("object carrier");
+            assert_eq!(carrier.return_values(), &[7, 2]);
+            assert!(carrier.is_cancelable());
+        }
+        assert!(sink.lines.lock().expect("lock").is_empty());
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 2);
+        assert!(prompts.iter().all(|prompt| {
+            prompt.cancelable
+                && prompt.option_line_ids.is_empty()
+                && matches!(
+                    &prompt.kind,
+                    SelectionPromptKind::ObjectButtons { group: 5, options }
+                        if options.iter().map(|option| (
+                            option.display_index,
+                            option.button_number,
+                            option.fg_slot,
+                        )).collect::<Vec<_>>() == vec![(0, 7, 3), (1, 2, 11)]
+                )
+        }));
+        assert!(matches!(
+            SelectObjbtnCancelOp::new(Arc::clone(&runtime))
+                .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
+            DispatchOutcome::Advance
+        ));
+        assert_eq!(
+            runtime.take_warnings(),
+            vec![SelRuntimeWarning::ObjectButtonCandidatesEmpty { group: 8 }]
         );
     }
 
@@ -1302,7 +1627,7 @@ mod tests {
     fn choice_input_scheduler_flips_to_ready_after_record_choice() {
         use crate::rlop::LongOpId;
         let mut scheduler = ChoiceInputScheduler::new();
-        let select = SelectLongOp::new(LongOpId(7), vec![b"a".to_vec(), b"b".to_vec()]);
+        let select = ObjectSelectLongOp::try_new(LongOpId(7), vec![7, 2]).expect("bounded");
         let mut head = select.into_longop();
         // No choice yet — pending.
         assert_eq!(
@@ -1316,9 +1641,11 @@ mod tests {
             LongOpReadiness::Ready,
             "ready after record_choice"
         );
-        // The head's private state now carries chosen=1.
-        let decoded = SelectLongOp::try_from_longop(&head).expect("decode");
-        assert_eq!(decoded.chosen(), Some(1));
+        let decoded = ObjectSelectLongOp::try_from_longop(&head).expect("decode");
+        assert_eq!(
+            decoded.outcome(),
+            crate::rlop::ObjectSelectOutcome::DisplayIndex(1)
+        );
     }
 
     #[test]
@@ -1376,6 +1703,8 @@ mod tests {
         );
         let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(texts, vec!["A", "B"]);
+        let line_ids: Vec<String> = lines.iter().map(|line| line.line_id.clone()).collect();
+        drop(lines);
 
         // The yielded SelectLongOp stores exactly the two Bytes choices, so
         // index 1 (the emitted "choice:1") decodes back to "B".
@@ -1392,6 +1721,15 @@ mod tests {
         };
         let select = SelectLongOp::try_from_longop(&head).expect("decode select payload");
         assert_eq!(select.choices(), &[b"A".to_vec(), b"B".to_vec()]);
+        assert_eq!(
+            runtime.take_prompts(),
+            vec![SelectionPrompt {
+                longop_id,
+                kind: SelectionPromptKind::Text,
+                cancelable: false,
+                option_line_ids: line_ids,
+            }]
+        );
 
         // The skipped Int is reported against its raw arg position (1).
         let warnings = runtime.take_warnings();
@@ -1401,6 +1739,33 @@ mod tests {
                 variant: SelectVariant::Select,
                 choice_index: 1,
                 expected: "bytes",
+            }]
+        );
+    }
+
+    #[test]
+    fn text_prompt_is_omitted_when_any_stored_choice_line_is_rejected() {
+        let sink = Arc::new(CollectingSink::rejecting_after(1));
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+
+        assert!(matches!(
+            SelectOp::new(Arc::clone(&runtime)).dispatch(
+                &mut Vm::new(1, 0),
+                &[
+                    ExprValue::Bytes(b"first".to_vec()),
+                    ExprValue::Bytes(b"second".to_vec())
+                ],
+            ),
+            DispatchOutcome::Yield { .. }
+        ));
+        assert!(runtime.take_prompts().is_empty());
+        assert_eq!(
+            runtime.take_warnings(),
+            vec![SelRuntimeWarning::SinkRejected {
+                variant: SelectVariant::Select,
+                reason: "utsushi.sink.unsupported_kind: sink=text_surface adapter=reject-second-choice reason=test sink rejects one choice".to_string(),
             }]
         );
     }

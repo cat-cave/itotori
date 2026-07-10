@@ -23,14 +23,13 @@
 //! carries no opcode to tell the two graphical layouts apart.
 //!
 //! Synthetic scene (fast + deterministic, CI-friendly) that exercises the
-//! REAL seams: the `select_objbtn` command is framed exactly as RealLive's
-//! SelectElement (`{ opt \n opt \n opt }`), so the VM's real
-//! `extract_select_choice_texts` path pulls the option labels, the modality
-//! classifier keys on the button-object SelectionControl signal (a
-//! `select_objbtn` op → graphical, ≥3 → the ImageGrid layout), and
-//! `goto_on($store)` jumps to
-//! the branch for the resolved index; each image branch converges on a
-//! second, dialogue-style confirm select whose own `goto_on($store)`
+//! REAL seams: foreground button objects are created and bound with
+//! `objButtonOpts(buf, action, se, group, button_number)`, then the real
+//! one-argument `select_objbtn(group)` selects those objects with NO inline
+//! text block. The modality classifier keys on that object-button prompt
+//! (three placed buttons → the ImageGrid layout), and `goto_on($store)`
+//! jumps through the selected button number; each image branch converges on
+//! a second, dialogue-style confirm select whose own `goto_on($store)`
 //! resolves the confirm. A real-bytes Sweetie HD clothing-select scene was
 //! not cheaply reachable on this path; the recognition (opcode `(0,2,4)`),
 //! the image-grid interpretation (option-count keyed), and the act/render
@@ -43,9 +42,11 @@ use utsushi_reallive::bytecode_element::BytecodeElement;
 use utsushi_reallive::vm::{InMemorySceneStore, Scene};
 use utsushi_reallive::{
     ChoiceWindow, Framebuffer, HeadlessChoicePolicy, ImageGridChoiceWindow, MessageWindowConfig,
+    OBJ_FG_CREATION_ID, OBJ_FG_MODULE_ID, OBJ_FG_MODULE_TYPE, OPCODE_OBJ_BUTTON_OPTS,
     OPCODE_SELECT_OBJBTN, RGBA_BYTES_PER_PIXEL, ReplayEngine, ReplayOpts, SEL_MODULE_ID,
-    SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SelectModality, WipeColour, encode_png_rgba_deterministic,
-    extract_select_choice_texts, select_modality, selection_control_signal,
+    SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SelectModality, SelectionPromptKind, WipeColour,
+    encode_png_rgba_deterministic, extract_select_choice_texts, select_modality,
+    selection_control_signal,
 };
 
 // -- Byte constants for the hand-laid select scene --------------------------
@@ -59,10 +60,9 @@ const MODULE_JMP_ID: u8 = 1;
 const OPCODE_GOTO: u16 = 0;
 const OPCODE_GOTO_ON: u16 = 3;
 
-/// A `module_sel` select command framed as a real SelectElement:
-/// `{ opt0 \n opt1 \n ... }`. `opcode` picks the variant (objbtn for the
-/// image grid, plain select for the confirm). The option labels live in
-/// the `{ ... }` block the VM's `extract_select_choice_texts` walks.
+/// A text `module_sel` command framed as a real SelectElement:
+/// `{ opt0 \n opt1 \n ... }`. This fixture uses it only for the follow-on
+/// dialogue-style confirm; graphical `select_objbtn` has no inline labels.
 fn select_command(offset: usize, opcode: u16, options: &[&str]) -> (BytecodeElement, usize) {
     let mut raw = vec![
         0x23,
@@ -97,6 +97,105 @@ fn select_command(offset: usize, opcode: u16, options: &[&str]) -> (BytecodeElem
             byte_len,
         },
         byte_len,
+    )
+}
+
+fn int_literal(value: i32) -> Vec<u8> {
+    let mut raw = vec![0x24, 0xFF];
+    raw.extend_from_slice(&value.to_le_bytes());
+    raw
+}
+
+fn command_with_args(
+    offset: usize,
+    module_type: u8,
+    module_id: u8,
+    opcode: u16,
+    args: &[Vec<u8>],
+) -> (BytecodeElement, usize) {
+    let mut raw = vec![
+        0x23,
+        module_type,
+        module_id,
+        opcode as u8,
+        (opcode >> 8) as u8,
+        args.len() as u8,
+        0,
+        0,
+        b'(',
+    ];
+    for (index, arg) in args.iter().enumerate() {
+        if index > 0 {
+            raw.push(b',');
+        }
+        raw.extend_from_slice(arg);
+    }
+    raw.push(b')');
+    let byte_len = raw.len();
+    (
+        BytecodeElement::Command {
+            module_type,
+            module_id,
+            opcode,
+            arg_count: args.len() as u16,
+            overload: 0,
+            goto_targets: Vec::new(),
+            goto_case_exprs: Vec::new(),
+            raw_bytes: raw,
+            byte_offset: offset,
+            byte_len,
+        },
+        byte_len,
+    )
+}
+
+fn foreground_button_object(offset: usize, slot: i32, asset_key: &str) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        0,
+        OBJ_FG_CREATION_ID,
+        1000,
+        &[
+            int_literal(slot),
+            asset_key.as_bytes().to_vec(),
+            int_literal(1),
+        ],
+    )
+}
+
+/// Bind a pre-existing foreground object with rlvm's exact five-int
+/// `objButtonOpts(buf, action, se, group, button_number)` shape.
+fn obj_button_opts(
+    offset: usize,
+    slot: i32,
+    group: i32,
+    button_number: i32,
+) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        OBJ_FG_MODULE_TYPE,
+        OBJ_FG_MODULE_ID,
+        OPCODE_OBJ_BUTTON_OPTS,
+        &[
+            int_literal(slot),
+            int_literal(0),
+            int_literal(0),
+            int_literal(group),
+            int_literal(button_number),
+        ],
+    )
+}
+
+/// A canonical graphical select: `select_objbtn(group)`, with no inline
+/// SelectElement option labels. The foreground objects bound above are its
+/// complete option source.
+fn select_objbtn_command(offset: usize, group: i32) -> (BytecodeElement, usize) {
+    command_with_args(
+        offset,
+        SEL_MODULE_TYPE,
+        SEL_MODULE_ID,
+        OPCODE_SELECT_OBJBTN,
+        &[int_literal(group)],
     )
 }
 
@@ -186,6 +285,7 @@ const COSTUME_A: &str = "Swimsuit high leg";
 const COSTUME_B: &str = "Qipao dress";
 const COSTUME_C: &str = "School uniform";
 const COSTUMES: [&str; 3] = [COSTUME_A, COSTUME_B, COSTUME_C];
+const COSTUME_BUTTON_GROUP: i32 = 17;
 
 // The reaction message each costume pick leads into (branch K output).
 const REACTION_A: &str = "The high-leg swimsuit draws a sharp look.";
@@ -198,12 +298,13 @@ const CONFIRM_REDO: &str = "Think it over a little more";
 const OUTCOME_KEPT: &str = "The costume is settled.";
 const OUTCOME_REDO: &str = "Back to the wardrobe for another look.";
 
-/// Build the image-grid clothing-select scene: a 3-option `select_objbtn`
-/// image grid → per-costume reaction → a converged dialogue-style confirm
-/// select → confirm outcome.
+/// Build the image-grid clothing-select scene: three foreground objects bound
+/// to one `objButtonOpts` group → `select_objbtn(group)` → per-costume
+/// reaction → a converged dialogue-style confirm select → confirm outcome.
 ///
 /// Layout (byte offsets computed as we lay elements down):
-///   [grid select_objbtn] [goto_on -> rA/rB/rC]
+///   [foreground objects + objButtonOpts] [grid select_objbtn(group)]
+///   [goto_on -> rA/rB/rC]
 ///   rA: textout REACTION_A ; goto CONFIRM
 ///   rB: textout REACTION_B ; goto CONFIRM
 ///   rC: textout REACTION_C ; goto CONFIRM
@@ -214,7 +315,22 @@ const OUTCOME_REDO: &str = "Back to the wardrobe for another look.";
 fn build_clothing_select_engine() -> ReplayEngine {
     let mut offset = 0usize;
 
-    let (grid_el, grid_len) = select_command(offset, OPCODE_SELECT_OBJBTN, &COSTUMES);
+    let (costume_a_object, costume_a_object_len) = foreground_button_object(offset, 10, COSTUME_A);
+    offset += costume_a_object_len;
+    // Display order is slot order, while selection returns button_number:
+    // A=2, B=0, C=1 proves `$store` receives the binding, not display index.
+    let (costume_a_opts, costume_a_opts_len) = obj_button_opts(offset, 10, COSTUME_BUTTON_GROUP, 2);
+    offset += costume_a_opts_len;
+    let (costume_b_object, costume_b_object_len) = foreground_button_object(offset, 11, COSTUME_B);
+    offset += costume_b_object_len;
+    let (costume_b_opts, costume_b_opts_len) = obj_button_opts(offset, 11, COSTUME_BUTTON_GROUP, 0);
+    offset += costume_b_opts_len;
+    let (costume_c_object, costume_c_object_len) = foreground_button_object(offset, 12, COSTUME_C);
+    offset += costume_c_object_len;
+    let (costume_c_opts, costume_c_opts_len) = obj_button_opts(offset, 12, COSTUME_BUTTON_GROUP, 1);
+    offset += costume_c_opts_len;
+
+    let (grid_el, grid_len) = select_objbtn_command(offset, COSTUME_BUTTON_GROUP);
     offset += grid_len;
 
     let grid_goto_on_offset = offset;
@@ -274,8 +390,10 @@ fn build_clothing_select_engine() -> ReplayEngine {
     let end = offset as u32;
 
     // Now the real elements with resolved jump targets.
+    // `goto_on($store)` indexes by button_number, not display index:
+    // B=0, C=1, A=2.
     let (grid_goto_on, _) =
-        goto_on_store(grid_goto_on_offset, vec![ra as u32, rb as u32, rc as u32]);
+        goto_on_store(grid_goto_on_offset, vec![rb as u32, rc as u32, ra as u32]);
     let (ra_goto, _) = goto_command(ra_goto_offset, confirm_offset as u32);
     let (rb_goto, _) = goto_command(rb_goto_offset, confirm_offset as u32);
     let (rc_goto, _) = goto_command(rc_goto_offset, confirm_offset as u32);
@@ -287,6 +405,12 @@ fn build_clothing_select_engine() -> ReplayEngine {
     let scene = Scene::new(
         1,
         vec![
+            costume_a_object,
+            costume_a_opts,
+            costume_b_object,
+            costume_b_opts,
+            costume_c_object,
+            costume_c_opts,
             grid_el,
             grid_goto_on,
             ra_text,
@@ -322,7 +446,8 @@ fn opts() -> ReplayOpts {
     }
 }
 
-/// Choice-option lines emitted across the scene, tagged `choice:<idx>...`.
+/// Text-choice lines emitted by the follow-on confirm, tagged `choice:<idx>`.
+/// The graphical object-button prompt itself emits no text-choice lines.
 fn observed_choice_lines(
     engine: &ReplayEngine,
     policy: HeadlessChoicePolicy,
@@ -339,6 +464,30 @@ fn observed_choice_lines(
             }
         })
         .collect()
+}
+
+fn observed_object_button_prompt(engine: &ReplayEngine) -> (i32, Vec<(u16, i32, usize)>) {
+    let observation = engine.observe_for_port(1, &opts());
+    let object_prompts: Vec<_> = observation
+        .selection_prompts
+        .into_iter()
+        .filter_map(|prompt| match prompt.kind {
+            SelectionPromptKind::ObjectButtons { group, options } => Some((
+                group,
+                options
+                    .into_iter()
+                    .map(|option| (option.display_index, option.button_number, option.fg_slot))
+                    .collect(),
+            )),
+            SelectionPromptKind::Text => None,
+        })
+        .collect();
+    assert_eq!(
+        object_prompts.len(),
+        1,
+        "one graphical object-button prompt"
+    );
+    object_prompts.into_iter().next().expect("object prompt")
 }
 
 /// Non-choice (branch) messages the resolved path leads into.
@@ -359,16 +508,16 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
 // -------------------------------------------------------------------------
 // RECOGNIZE: the image-grid select is the object-button `(0,2,4)` variant.
 // Because a `select_objbtn` op is itself a button-object SelectionControl
-// setup op, the scene's SelectionControl SIGNAL is `ButtonObject` → a
-// graphical modality (the ≥3 placed buttons lay out as an image grid). The
-// modality is derived from the REAL SelectionControl signal, NOT the option
-// count. Dispatch emits the plain `choice:<idx>` base surface (no marker) —
-// the graphical modality is a scene-context property, not a per-command one.
+// setup and foreground `objButtonOpts` bindings, the scene exposes a real
+// object-button prompt → a graphical modality (the ≥3 placed buttons lay out
+// as an image grid). The modality is derived from the REAL SelectionControl
+// signal, NOT the option count. The graphical prompt has no `choice:<idx>`
+// text lines; only the follow-on text confirm does.
 // -------------------------------------------------------------------------
 
 #[test]
 fn image_grid_select_is_objbtn_and_classifies_graphical_from_the_signal() {
-    let (grid_el, _) = select_command(0, OPCODE_SELECT_OBJBTN, &COSTUMES);
+    let (grid_el, _) = select_objbtn_command(0, COSTUME_BUTTON_GROUP);
     let BytecodeElement::Command {
         module_type,
         module_id,
@@ -386,35 +535,38 @@ fn image_grid_select_is_objbtn_and_classifies_graphical_from_the_signal() {
         (SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_SELECT_OBJBTN),
         "image-grid select is sel.select_objbtn at the real (0,2,4)"
     );
-    let choices = extract_select_choice_texts(raw_bytes);
-    let decoded: Vec<String> = choices
-        .iter()
-        .map(|b| String::from_utf8(b.clone()).expect("ascii"))
-        .collect();
-    assert_eq!(
-        decoded,
-        COSTUMES.iter().map(ToString::to_string).collect::<Vec<_>>()
+    assert!(
+        extract_select_choice_texts(raw_bytes).is_empty(),
+        "canonical select_objbtn(group) carries no inline text options"
     );
 
-    // Interpretation: the SelectionControl signal from a scene containing a
-    // `select_objbtn` (a button-object setup op) is `ButtonObject`; with ≥3
-    // placed option-buttons the layout is the IMAGE GRID.
+    // Interpretation: a `select_objbtn` plus its foreground object bindings
+    // is a `ButtonObject` prompt; with ≥3 placed option-buttons the layout is
+    // the IMAGE GRID.
     let signal = selection_control_signal([*opcode]);
     assert_eq!(
         select_modality(signal, COSTUMES.len()),
         SelectModality::ImageGrid
     );
 
-    // Dispatch emits the plain `choice:<idx>` base surface for EVERY option —
-    // no `;imagegrid` marker (dispatch has no scene context; the modality is
-    // applied by the render / analysis layer).
     let engine = build_clothing_select_engine();
+    assert_eq!(
+        observed_object_button_prompt(&engine),
+        (
+            COSTUME_BUTTON_GROUP,
+            vec![(0, 2, 10), (1, 0, 11), (2, 1, 12)]
+        ),
+        "the graphical prompt must come from foreground objButtonOpts bindings"
+    );
+
+    // The only `choice:<idx>` surfaces belong to the follow-on TEXT confirm;
+    // the graphical select emits its object-button prompt instead.
     let lines = observed_choice_lines(&engine, HeadlessChoicePolicy::Scripted(vec![0, 0]));
     let surfaces: Vec<&str> = lines.iter().map(|(_, s)| s.as_str()).collect();
     assert_eq!(
         surfaces,
-        vec!["choice:0", "choice:1", "choice:2", "choice:0", "choice:1"],
-        "dispatch emits the plain base surface; the graphical modality is scene-context"
+        vec!["choice:0", "choice:1"],
+        "only the follow-on text confirm emits text-choice surfaces"
     );
 }
 

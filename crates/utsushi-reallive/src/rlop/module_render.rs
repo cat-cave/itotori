@@ -74,7 +74,7 @@ use super::module_obj::{FadeLongOp, GraphicsRuntime, GraphicsRuntimeWarning};
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::graphics_objects::{
     GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject, GraphicsObjectKind,
-    GraphicsPlane, GraphicsScale, WipeColour,
+    GraphicsObjectTarget, GraphicsPlane, GraphicsScale, ImageProvenance, WipeColour,
 };
 use crate::vm::Vm;
 
@@ -104,6 +104,22 @@ pub const OBJ_BG_MGMT_ID: u8 = 62;
 /// The three lattice `module_type` bytes every render op is registered
 /// under (the compiler-version artifact; `module_id` is the real key).
 const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
+
+fn register_on_types(
+    registry: &mut RlopRegistry,
+    module_types: &[u8],
+    module_id: u8,
+    opcode: u16,
+    op: Arc<dyn RLOperation>,
+) -> usize {
+    for &module_type in module_types {
+        registry.register(
+            RlopKey::new(module_type, module_id, opcode),
+            Arc::clone(&op),
+        );
+    }
+    module_types.len()
+}
 
 /// On-screen DC slot (rlvm `DC0`). `openBg` / `open` / `display` land here.
 pub const SCREEN_DC_SLOT: usize = 0;
@@ -522,25 +538,60 @@ impl RLOperation for GrpRenderOp {
 pub struct ObjCreateOp {
     runtime: Arc<GraphicsRuntime>,
     plane: GraphicsPlane,
+    provenance: ImageProvenance,
 }
 
 impl ObjCreateOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
-        Self { runtime, plane }
+        Self::with_provenance(runtime, plane, ImageProvenance::FileBacked)
     }
 
-    fn layer_base(&self) -> i32 {
-        match self.plane {
-            GraphicsPlane::Foreground => OBJ_FG_LAYER_BASE,
-            GraphicsPlane::Background => OBJ_BG_LAYER_BASE,
+    fn with_provenance(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        provenance: ImageProvenance,
+    ) -> Self {
+        Self {
+            runtime,
+            plane,
+            provenance,
         }
     }
+}
+
+fn created_object(
+    plane: GraphicsPlane,
+    args: &[ExprValue],
+    provenance: ImageProvenance,
+) -> Option<(usize, GraphicsObject)> {
+    let buf = arg_int(args, 0).and_then(slot_ok)?;
+    let name = arg_bytes(args, 1)
+        .and_then(decode_shift_jis)
+        .filter(|name| !name.is_empty() && name != "???");
+    let mut object = GraphicsObject::image(name.unwrap_or_default());
+    object.image_provenance = provenance;
+    object.layer_order = match plane {
+        GraphicsPlane::Foreground => OBJ_FG_LAYER_BASE + buf as i32,
+        GraphicsPlane::Background => OBJ_BG_LAYER_BASE + buf as i32,
+    };
+    if let Some(visible) = arg_int(args, 2) {
+        object.visible = visible != 0;
+    }
+    if let (Some(x), Some(y)) = (arg_int(args, 3), arg_int(args, 4)) {
+        object.position = crate::graphics_objects::GraphicsPosition { x, y };
+    }
+    if let (Some(pattern), GraphicsObjectKind::Image { image_ref }) =
+        (arg_int(args, 5), &mut object.kind)
+    {
+        image_ref.region_index = Some(pattern.max(0) as u32);
+    }
+    Some((buf, object))
 }
 
 impl RLOperation for ObjCreateOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         // objGeneric_*: (buf, filename[, visible, x, y, pattern, …]).
-        let Some(buf) = arg_int(args, 0).and_then(slot_ok) else {
+        let Some((buf, object)) = created_object(self.plane, args, self.provenance) else {
             self.runtime
                 .push_warning(GraphicsRuntimeWarning::MissingArg {
                     opcode_tag: "obj.objOfFile",
@@ -548,31 +599,197 @@ impl RLOperation for ObjCreateOp {
                 });
             return DispatchOutcome::Advance;
         };
-        let name = arg_bytes(args, 1)
-            .and_then(decode_shift_jis)
-            .filter(|n| !n.is_empty() && n != "???");
         let layer = object_layer(self.plane);
-        let layer_base = self.layer_base();
         self.runtime.with_stack_mut(|stack| {
-            // For every creation op (objOfFile and the placeholder-modelled
-            // text/digit/drift/gan variants) the decoded arg-1 string is the
-            // object's asset key; objOfText carries inline text there, which
-            // this model records but does not rasterise (a documented gap).
-            let mut object = GraphicsObject::image(name.unwrap_or_default());
-            object.layer_order = layer_base + buf as i32;
-            // Optional trailing (visible, x, y, pattern).
-            if let Some(v) = arg_int(args, 2) {
-                object.visible = v != 0;
-            }
-            if let (Some(x), Some(y)) = (arg_int(args, 3), arg_int(args, 4)) {
-                object.position = crate::graphics_objects::GraphicsPosition { x, y };
-            }
-            if let (Some(pattern), GraphicsObjectKind::Image { image_ref }) =
-                (arg_int(args, 5), &mut object.kind)
-            {
-                image_ref.region_index = Some(pattern.max(0) as u32);
-            }
             let _ = stack.set_layer(layer, buf, object);
+        });
+        DispatchOutcome::Advance
+    }
+}
+
+#[derive(Debug)]
+pub struct ChildCreateOp {
+    runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
+    provenance: ImageProvenance,
+}
+
+impl ChildCreateOp {
+    pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self::with_provenance(runtime, plane, ImageProvenance::FileBacked)
+    }
+
+    fn with_provenance(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        provenance: ImageProvenance,
+    ) -> Self {
+        Self {
+            runtime,
+            plane,
+            provenance,
+        }
+    }
+}
+
+impl RLOperation for ChildCreateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+            return DispatchOutcome::Advance;
+        };
+        let Some((child, object)) = created_object(self.plane, &args[1..], self.provenance) else {
+            return DispatchOutcome::Advance;
+        };
+        self.runtime.with_stack_mut(|stack| {
+            let _ = stack.set_child(self.plane, parent, child, object);
+        });
+        DispatchOutcome::Advance
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ObjButtonStateRoute {
+    DirectTop,
+    DirectChild,
+    TopRange,
+    ChildRange,
+}
+
+#[derive(Debug)]
+struct ObjButtonStateOp {
+    runtime: Arc<GraphicsRuntime>,
+    route: ObjButtonStateRoute,
+}
+
+impl ObjButtonStateOp {
+    fn new(runtime: Arc<GraphicsRuntime>, route: ObjButtonStateRoute) -> Self {
+        Self { runtime, route }
+    }
+}
+
+impl RLOperation for ObjButtonStateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        match self.route {
+            ObjButtonStateRoute::DirectTop => {
+                let Some(slot) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 1) else {
+                    return DispatchOutcome::Advance;
+                };
+                self.runtime.with_stack_mut(|stack| {
+                    if let Some(object) = stack.target_mut(GraphicsObjectTarget::TopLevel {
+                        layer: GraphicsLayer::ForegroundObject,
+                        slot,
+                    }) {
+                        object.button_state = state;
+                    }
+                });
+            }
+            ObjButtonStateRoute::DirectChild => {
+                let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(child) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 2) else {
+                    return DispatchOutcome::Advance;
+                };
+                self.runtime.with_stack_mut(|stack| {
+                    if let Some(object) = stack.target_mut(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent,
+                        child,
+                    }) {
+                        object.button_state = state;
+                    }
+                });
+            }
+            ObjButtonStateRoute::TopRange => {
+                let Some(lower) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(upper) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 2) else {
+                    return DispatchOutcome::Advance;
+                };
+                if lower > upper {
+                    return DispatchOutcome::Advance;
+                }
+                self.runtime.with_stack_mut(|stack| {
+                    for slot in lower..=upper {
+                        if let Some(object) = stack.target_mut(GraphicsObjectTarget::TopLevel {
+                            layer: GraphicsLayer::ForegroundObject,
+                            slot,
+                        }) {
+                            object.button_state = state;
+                        }
+                    }
+                });
+            }
+            ObjButtonStateRoute::ChildRange => {
+                let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(lower) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(upper) = arg_int(args, 2).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 3) else {
+                    return DispatchOutcome::Advance;
+                };
+                if lower > upper {
+                    return DispatchOutcome::Advance;
+                }
+                self.runtime.with_stack_mut(|stack| {
+                    for child in lower..=upper {
+                        if let Some(object) = stack.target_mut(GraphicsObjectTarget::Child {
+                            plane: GraphicsPlane::Foreground,
+                            parent,
+                            child,
+                        }) {
+                            object.button_state = state;
+                        }
+                    }
+                });
+            }
+        }
+        DispatchOutcome::Advance
+    }
+}
+
+#[derive(Debug)]
+pub struct ParentCreateOp {
+    runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
+}
+
+impl ParentCreateOp {
+    pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self { runtime, plane }
+    }
+}
+
+impl RLOperation for ParentCreateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+            return DispatchOutcome::Advance;
+        };
+        let Some(capacity) = arg_int(args, 1).and_then(|value| usize::try_from(value).ok()) else {
+            return DispatchOutcome::Advance;
+        };
+        let visible = arg_int(args, 2).map(|value| value != 0);
+        let position = match (arg_int(args, 3), arg_int(args, 4)) {
+            (Some(x), Some(y)) => Some(crate::graphics_objects::GraphicsPosition { x, y }),
+            _ => None,
+        };
+        self.runtime.with_stack_mut(|stack| {
+            let _ = stack.create_parent(self.plane, parent, capacity, visible, position);
         });
         DispatchOutcome::Advance
     }
@@ -611,14 +828,24 @@ pub enum ObjSetProp {
     Layer,
     /// `objPattNo` (1039): (buf, pattern).
     PattNo,
-    /// `Scale` (1046): (buf, width‰, height‰).
+    /// Classic `Scale` (1046): (buf, width%, height%).
     Scale,
-    /// `Width` (1047): (buf, width‰).
+    /// Classic `Width` (1047): (buf, width%).
     Width,
-    /// `Height` (1048): (buf, height‰).
+    /// Classic `Height` (1048): (buf, height%).
     Height,
-    /// `Adjust` (1006): (buf, repno, x, y) — modelled as a position add.
+    /// `Adjust` (1006): (buf, repno, x, y).
     Adjust,
+    AdjustX,
+    AdjustY,
+    /// `Origin` (1053): (buf, x, y).
+    Origin,
+    OriginX,
+    OriginY,
+    /// High-quality `Scale` (1061): (buf, width‰, height‰).
+    HqScale,
+    HqScaleX,
+    HqScaleY,
 }
 
 impl ObjSetProp {
@@ -640,6 +867,14 @@ impl ObjSetProp {
             Self::Width => "obj.width",
             Self::Height => "obj.height",
             Self::Adjust => "obj.adjust",
+            Self::AdjustX => "obj.adjustX",
+            Self::AdjustY => "obj.adjustY",
+            Self::Origin => "obj.origin",
+            Self::OriginX => "obj.originX",
+            Self::OriginY => "obj.originY",
+            Self::HqScale => "obj.hqScale",
+            Self::HqScaleX => "obj.hqScaleX",
+            Self::HqScaleY => "obj.hqScaleY",
         }
     }
 }
@@ -649,8 +884,10 @@ impl ObjSetProp {
 pub struct ObjSetOp {
     runtime: Arc<GraphicsRuntime>,
     prop: ObjSetProp,
+    plane: GraphicsPlane,
     layer: GraphicsLayer,
     layer_base: i32,
+    child_addressed: bool,
 }
 
 impl ObjSetOp {
@@ -662,22 +899,59 @@ impl ObjSetOp {
         Self {
             runtime,
             prop,
+            plane,
             layer: object_layer(plane),
             layer_base,
+            child_addressed: false,
         }
+    }
+
+    pub fn new_child(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        prop: ObjSetProp,
+    ) -> Self {
+        let mut op = Self::new(runtime, plane, prop);
+        op.child_addressed = true;
+        op
     }
 }
 
 impl RLOperation for ObjSetOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let Some(buf) = arg_int(args, 0).and_then(slot_ok) else {
-            return DispatchOutcome::Advance;
+        let (target, args, slot) = if self.child_addressed {
+            let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            let Some(child) = arg_int(args, 1).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::Child {
+                    plane: self.plane,
+                    parent,
+                    child,
+                },
+                &args[1..],
+                child,
+            )
+        } else {
+            let Some(slot) = arg_int(args, 0).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::TopLevel {
+                    layer: self.layer,
+                    slot,
+                },
+                args,
+                slot,
+            )
         };
         let prop = self.prop;
-        let layer = self.layer;
         let layer_base = self.layer_base;
         let observed = self.runtime.with_stack_mut(|stack| {
-            let Some(o) = stack.get_layer_mut(layer, buf) else {
+            let Some(o) = stack.target_mut(target) else {
                 return false;
             };
             match prop {
@@ -738,23 +1012,76 @@ impl RLOperation for ObjSetOp {
                     }
                 }
                 ObjSetProp::Scale => {
-                    o.scale = GraphicsScale {
-                        x_thousandths: arg_int(args, 1).unwrap_or(o.scale.x_thousandths),
-                        y_thousandths: arg_int(args, 2).unwrap_or(o.scale.y_thousandths),
-                    };
+                    o.geometry.classic_percent.x_percent = arg_int(args, 1).unwrap_or(100);
+                    o.geometry.classic_percent.y_percent = arg_int(args, 2).unwrap_or(100);
+                    o.sync_render_scale_from_geometry();
                 }
-                ObjSetProp::Width => o.scale.x_thousandths = arg_int(args, 1).unwrap_or(1000),
-                ObjSetProp::Height => o.scale.y_thousandths = arg_int(args, 1).unwrap_or(1000),
+                ObjSetProp::Width => {
+                    o.geometry.classic_percent.x_percent = arg_int(args, 1).unwrap_or(100);
+                    o.sync_render_scale_from_geometry();
+                }
+                ObjSetProp::Height => {
+                    o.geometry.classic_percent.y_percent = arg_int(args, 1).unwrap_or(100);
+                    o.sync_render_scale_from_geometry();
+                }
                 ObjSetProp::Adjust => {
-                    // objAdjust(buf, repno, x, y): position add (gap: repno).
-                    o.position.x += arg_int(args, 2).unwrap_or(0);
-                    o.position.y += arg_int(args, 3).unwrap_or(0);
+                    if let Some(slot) =
+                        arg_int(args, 1).and_then(|value| usize::try_from(value).ok())
+                        && let Some(adjust) = o.geometry.adjust_slots.get_mut(slot)
+                    {
+                        adjust.x = arg_int(args, 2).unwrap_or(adjust.x);
+                        adjust.y = arg_int(args, 3).unwrap_or(adjust.y);
+                    }
+                }
+                ObjSetProp::AdjustX | ObjSetProp::AdjustY => {
+                    if let Some(slot) =
+                        arg_int(args, 1).and_then(|value| usize::try_from(value).ok())
+                        && let Some(adjust) = o.geometry.adjust_slots.get_mut(slot)
+                    {
+                        if matches!(prop, ObjSetProp::AdjustX) {
+                            adjust.x = arg_int(args, 2).unwrap_or(adjust.x);
+                        } else {
+                            adjust.y = arg_int(args, 2).unwrap_or(adjust.y);
+                        }
+                    }
+                }
+                ObjSetProp::Origin | ObjSetProp::OriginX | ObjSetProp::OriginY => {
+                    let mut origin = o
+                        .geometry
+                        .origin_override
+                        .or(o.geometry.surface.map(|surface| surface.origin))
+                        .unwrap_or(crate::graphics_objects::GraphicsPosition::ORIGIN);
+                    match prop {
+                        ObjSetProp::Origin => {
+                            origin.x = arg_int(args, 1).unwrap_or(origin.x);
+                            origin.y = arg_int(args, 2).unwrap_or(origin.y);
+                        }
+                        ObjSetProp::OriginX => origin.x = arg_int(args, 1).unwrap_or(origin.x),
+                        ObjSetProp::OriginY => origin.y = arg_int(args, 1).unwrap_or(origin.y),
+                        _ => unreachable!("origin property matched above"),
+                    }
+                    o.geometry.origin_override = Some(origin);
+                }
+                ObjSetProp::HqScale => {
+                    o.geometry.hq_thousandths = GraphicsScale {
+                        x_thousandths: arg_int(args, 1).unwrap_or(1000),
+                        y_thousandths: arg_int(args, 2).unwrap_or(1000),
+                    };
+                    o.sync_render_scale_from_geometry();
+                }
+                ObjSetProp::HqScaleX => {
+                    o.geometry.hq_thousandths.x_thousandths = arg_int(args, 1).unwrap_or(1000);
+                    o.sync_render_scale_from_geometry();
+                }
+                ObjSetProp::HqScaleY => {
+                    o.geometry.hq_thousandths.y_thousandths = arg_int(args, 1).unwrap_or(1000);
+                    o.sync_render_scale_from_geometry();
                 }
             }
             true
         });
         if !observed {
-            warn(&self.runtime, prop.tag(), buf);
+            warn(&self.runtime, prop.tag(), slot);
         }
         DispatchOutcome::Advance
     }
@@ -909,16 +1236,50 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         (OBJ_FG_CREATION_ID, GraphicsPlane::Foreground),
         (OBJ_BG_CREATION_ID, GraphicsPlane::Background),
     ] {
-        let create =
-            || -> Arc<dyn RLOperation> { Arc::new(ObjCreateOp::new(Arc::clone(&runtime), plane)) };
-        // objOfFile / objOfFileGan / objOfArea / objOfRect / objOfText /
-        // objDriftOfFile / objOfDigits / objOfChild — all image/placeholder
-        // loaders whose arg-1 string is the object's asset key.
-        for op in [
-            1000u16, 1001, 1003, 1005, 1100, 1101, 1200, 1300, 1400, 1500,
-        ] {
-            reg(registry, mid, op, create());
+        let create = |provenance| -> Arc<dyn RLOperation> {
+            Arc::new(ObjCreateOp::with_provenance(
+                Arc::clone(&runtime),
+                plane,
+                provenance,
+            ))
+        };
+        let child_create = |provenance| -> Arc<dyn RLOperation> {
+            Arc::new(ChildCreateOp::with_provenance(
+                Arc::clone(&runtime),
+                plane,
+                provenance,
+            ))
+        };
+        for op in [1000u16, 1001, 1003, 1005, 1100, 1101, 1200, 1300, 1400] {
+            let provenance = if matches!(op, 1000 | 1001) {
+                ImageProvenance::FileBacked
+            } else {
+                ImageProvenance::Placeholder
+            };
+            count += register_on_types(registry, &[0, 1], mid, op, create(provenance));
+            count += register_on_types(registry, &[2], mid, op, child_create(provenance));
         }
+        count += register_on_types(
+            registry,
+            &[0],
+            mid,
+            1500,
+            create(ImageProvenance::Placeholder),
+        );
+        count += register_on_types(
+            registry,
+            &[1],
+            mid,
+            1500,
+            Arc::new(ParentCreateOp::new(Arc::clone(&runtime), plane)),
+        );
+        count += register_on_types(
+            registry,
+            &[2],
+            mid,
+            1500,
+            child_create(ImageProvenance::Placeholder),
+        );
     }
 
     // ---- object setters (81 fg / 82 bg / 90,91 range) ------------------
@@ -931,6 +1292,9 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         let set = |p: ObjSetProp| -> Arc<dyn RLOperation> {
             Arc::new(ObjSetOp::new(Arc::clone(&runtime), plane, p))
         };
+        let child_set = |p: ObjSetProp| -> Arc<dyn RLOperation> {
+            Arc::new(ObjSetOp::new_child(Arc::clone(&runtime), plane, p))
+        };
         let setters: &[(u16, ObjSetProp)] = &[
             (1000, ObjSetProp::Move),
             (1001, ObjSetProp::Left),
@@ -938,6 +1302,8 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             (1003, ObjSetProp::Alpha),
             (1004, ObjSetProp::Show),
             (1006, ObjSetProp::Adjust),
+            (1007, ObjSetProp::AdjustX),
+            (1008, ObjSetProp::AdjustY),
             (1009, ObjSetProp::Mono),
             (1010, ObjSetProp::Invert),
             (1011, ObjSetProp::Light),
@@ -948,17 +1314,58 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             (1046, ObjSetProp::Scale),
             (1047, ObjSetProp::Width),
             (1048, ObjSetProp::Height),
+            (1053, ObjSetProp::Origin),
+            (1054, ObjSetProp::OriginX),
+            (1055, ObjSetProp::OriginY),
+            (1061, ObjSetProp::HqScale),
+            (1062, ObjSetProp::HqScaleX),
+            (1063, ObjSetProp::HqScaleY),
             (2004, ObjSetProp::Show), // objEveDisplay → final Show (anim gap)
         ];
         for (op, prop) in setters {
-            reg(registry, mid, *op, set(*prop));
+            count += register_on_types(registry, &[0, 1], mid, *op, set(*prop));
+            if matches!(mid, OBJ_FG_SETTER_ID | OBJ_BG_SETTER_ID) {
+                count += register_on_types(registry, &[2], mid, *op, child_set(*prop));
+            }
         }
         // objButtonOpts (1064): button-object setup feeding select_objbtn.
-        reg(
+        count += register_on_types(
             registry,
+            &[0, 1],
             mid,
             1064,
-            Arc::new(super::module_obj::ObjButtonOptsOp::new()),
+            Arc::new(super::module_obj::ObjButtonOptsOp::new(
+                Arc::clone(&runtime),
+                plane,
+            )),
+        );
+        if matches!(mid, OBJ_FG_SETTER_ID | OBJ_BG_SETTER_ID) {
+            count += register_on_types(
+                registry,
+                &[2],
+                mid,
+                1064,
+                Arc::new(super::module_obj::ObjButtonOptsOp::new_child(
+                    Arc::clone(&runtime),
+                    plane,
+                )),
+            );
+        }
+    }
+
+    // objBtnState (1066) uses distinct direct/range address shapes.
+    for (module_type, module_id, route) in [
+        (0, OBJ_FG_SETTER_ID, ObjButtonStateRoute::DirectTop),
+        (2, OBJ_FG_SETTER_ID, ObjButtonStateRoute::DirectChild),
+        (1, OBJ_FG_RANGE_ID, ObjButtonStateRoute::TopRange),
+        (2, OBJ_FG_RANGE_ID, ObjButtonStateRoute::ChildRange),
+    ] {
+        count += register_on_types(
+            registry,
+            &[module_type],
+            module_id,
+            1066,
+            Arc::new(ObjButtonStateOp::new(Arc::clone(&runtime), route)),
         );
     }
 
@@ -974,16 +1381,17 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
                 None => Arc::new(ObjMgmtRenderOp::new(Arc::clone(&runtime), o)),
             }
         };
-        reg(registry, mid, 0, mgmt(ObjMgmtOp::Free));
-        reg(registry, mid, 10, mgmt(ObjMgmtOp::Init));
-        reg(registry, mid, 11, mgmt(ObjMgmtOp::FreeInit));
-        reg(registry, mid, 100, mgmt(ObjMgmtOp::FreeAll));
-        reg(registry, mid, 110, mgmt(ObjMgmtOp::FreeAll));
-        reg(registry, mid, 111, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 0, mgmt(ObjMgmtOp::Free));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 10, mgmt(ObjMgmtOp::Init));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 11, mgmt(ObjMgmtOp::FreeInit));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 100, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 110, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 111, mgmt(ObjMgmtOp::FreeAll));
     }
     // objCopyFgToBg lives on the generic ObjManagement module (60) only.
-    reg(
+    count += register_on_types(
         registry,
+        &LATTICE_TYPES,
         OBJ_MGMT_ID,
         2,
         Arc::new(ObjMgmtRenderOp::new(
@@ -1000,7 +1408,10 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graphics_objects::GraphicsObjectKind as Kind;
+    use crate::graphics_objects::{
+        GraphicsObjectKind as Kind, GraphicsObjectTarget, GraphicsPosition, HitRegion,
+        SurfaceGeometry,
+    };
 
     fn rt() -> Arc<GraphicsRuntime> {
         Arc::new(GraphicsRuntime::new())
@@ -1148,6 +1559,81 @@ mod tests {
     }
 
     #[test]
+    fn only_direct_file_creation_forms_are_file_backed() {
+        let runtime = rt();
+        let mut registry = RlopRegistry::new();
+        register_render_rlops(&mut registry, Arc::clone(&runtime));
+        let dispatch = |module_type, opcode, args: &[ExprValue]| {
+            registry
+                .get(RlopKey::new(module_type, OBJ_FG_CREATION_ID, opcode))
+                .unwrap()
+                .dispatch(&mut vm(), args);
+        };
+        for (module_type, opcode, slot) in [(0, 1000, 0), (1, 1001, 1)] {
+            dispatch(module_type, opcode, &[int(slot), s(b"SAME")]);
+            let snapshot = runtime.state_snapshot();
+            let object = snapshot
+                .stack
+                .get(GraphicsPlane::Foreground, slot as usize)
+                .unwrap();
+            assert_eq!(object.image_provenance, ImageProvenance::FileBacked);
+            assert_eq!(object.clone().image_provenance, ImageProvenance::FileBacked);
+            assert!(
+                matches!(&object.kind, Kind::Image { image_ref } if image_ref.asset_key == "SAME")
+            );
+        }
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2)]);
+        for (opcode, child) in [(1000, 0), (1001, 1)] {
+            dispatch(2, opcode, &[int(4), int(child), s(b"SAME")]);
+            assert_eq!(
+                runtime
+                    .state_snapshot()
+                    .stack
+                    .target(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent: 4,
+                        child: child as usize,
+                    })
+                    .unwrap()
+                    .image_provenance,
+                ImageProvenance::FileBacked
+            );
+        }
+        for (index, opcode) in [1003, 1005, 1100, 1101, 1200, 1300, 1400, 1500]
+            .into_iter()
+            .enumerate()
+        {
+            let slot = index + 10;
+            dispatch(0, opcode, &[int(slot as i32), s(b"SAME")]);
+            assert_eq!(
+                runtime
+                    .state_snapshot()
+                    .stack
+                    .get(GraphicsPlane::Foreground, slot)
+                    .unwrap()
+                    .image_provenance,
+                ImageProvenance::Placeholder
+            );
+        }
+        dispatch(2, 1003, &[int(4), int(0), s(b"SAME")]);
+        let snapshot = runtime.state_snapshot();
+        let placeholder = snapshot
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Foreground,
+                parent: 4,
+                child: 0,
+            })
+            .unwrap();
+        assert_eq!(placeholder.image_provenance, ImageProvenance::Placeholder);
+        assert_eq!(
+            placeholder.clone().image_provenance,
+            ImageProvenance::Placeholder
+        );
+    }
+
+    #[test]
     fn bg_and_fg_object_creation_same_buf_do_not_overwrite() {
         let runtime = rt();
         ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
@@ -1176,6 +1662,188 @@ mod tests {
         assert_eq!(fg.layer_order, OBJ_FG_LAYER_BASE + 5);
     }
 
+    #[test]
+    fn parent_and_child_creation_route_only_to_sparse_children() {
+        let runtime = rt();
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2), int(0), int(30), int(40)]);
+        ObjSetOp::new(
+            Arc::clone(&runtime),
+            GraphicsPlane::Foreground,
+            ObjSetProp::Move,
+        )
+        .dispatch(&mut vm(), &[int(4), int(31), int(41)]);
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground).dispatch(
+            &mut vm(),
+            &[int(4), int(1), s(b"CHILD"), int(0), int(7), int(9), int(3)],
+        );
+        let child = GraphicsObjectTarget::Child {
+            plane: GraphicsPlane::Foreground,
+            parent: 4,
+            child: 1,
+        };
+        let snapshot = runtime.state_snapshot();
+        let object = snapshot.stack.target(child).expect("child object");
+        assert_eq!((object.position.x, object.position.y), (7, 9));
+        assert!(matches!(
+            &object.kind,
+            Kind::Image { image_ref }
+                if image_ref.asset_key == "CHILD" && image_ref.region_index == Some(3)
+        ));
+        assert!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .is_none()
+        );
+        let parent_object = snapshot
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 4)
+            .expect("materialized parent object");
+        assert!(!parent_object.visible);
+        assert_eq!(
+            (parent_object.position.x, parent_object.position.y),
+            (31, 41)
+        );
+        assert_eq!(
+            snapshot
+                .stack
+                .parent(GraphicsPlane::Foreground, 4)
+                .unwrap()
+                .declared_capacity,
+            2
+        );
+
+        // Out-of-range and malformed child routes neither create a child nor
+        // lazily materialise a parent.
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2), s(b"NO")]);
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(6), s(b"MALFORMED")]);
+        assert!(
+            runtime
+                .state_snapshot()
+                .stack
+                .parent(GraphicsPlane::Foreground, 6)
+                .is_none()
+        );
+
+        // An absent parent becomes sparse at the default 256 capacity only
+        // for an in-range child, and snapshots remain deeply detached.
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(5), int(255), s(b"LAZY")]);
+        let before_replace = runtime.state_snapshot();
+        assert_eq!(
+            before_replace
+                .stack
+                .parent(GraphicsPlane::Foreground, 5)
+                .unwrap()
+                .declared_capacity,
+            256
+        );
+        let lazy_parent = before_replace
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 5)
+            .expect("default lazy parent object");
+        assert!(lazy_parent.visible);
+        assert_eq!((lazy_parent.position.x, lazy_parent.position.y), (0, 0));
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(5), int(256), s(b"OUT")]);
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(1)]);
+        let replaced = runtime.state_snapshot();
+        assert!(replaced.stack.target(child).is_none());
+        let parent_object = replaced
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 4)
+            .expect("retained parent object");
+        assert!(!parent_object.visible);
+        assert_eq!(
+            (parent_object.position.x, parent_object.position.y),
+            (31, 41)
+        );
+        assert!(before_replace.stack.target(child).is_some());
+    }
+
+    #[test]
+    fn child_setters_mutate_only_the_exact_foreground_child() {
+        let runtime = rt();
+        for plane in [GraphicsPlane::Foreground, GraphicsPlane::Background] {
+            ParentCreateOp::new(Arc::clone(&runtime), plane).dispatch(&mut vm(), &[int(4), int(2)]);
+            ChildCreateOp::new(Arc::clone(&runtime), plane)
+                .dispatch(&mut vm(), &[int(4), int(1), s(b"CHILD")]);
+        }
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(1), s(b"TOP")]);
+        let set = |prop, args: &[ExprValue]| {
+            ObjSetOp::new_child(Arc::clone(&runtime), GraphicsPlane::Foreground, prop)
+                .dispatch(&mut vm(), args);
+        };
+        set(ObjSetProp::Move, &[int(4), int(1), int(7), int(9)]);
+        set(ObjSetProp::Scale, &[int(4), int(1), int(700), int(1300)]);
+        set(ObjSetProp::Show, &[int(4), int(1), int(0)]);
+        set(ObjSetProp::PattNo, &[int(4), int(1), int(5)]);
+        set(ObjSetProp::Move, &[int(4), int(2), int(99), int(99)]);
+        set(ObjSetProp::Move, &[int(4)]);
+        set(ObjSetProp::Move, &[int(256), int(1), int(99), int(99)]);
+
+        let snap = runtime.state_snapshot();
+        let fg_child = snap
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Foreground,
+                parent: 4,
+                child: 1,
+            })
+            .expect("fg child");
+        assert_eq!((fg_child.position.x, fg_child.position.y), (7, 9));
+        // rlvm combined scale factor with classic=(700,1300), hq=(1000,1000):
+        // x = 700% * 1 -> 700*1000/100 = 7000; y = 1300% * 1 -> 13000.
+        assert_eq!(
+            (fg_child.scale.x_thousandths, fg_child.scale.y_thousandths),
+            (7000, 13000)
+        );
+        assert_eq!(
+            (
+                fg_child.geometry.classic_percent.x_percent,
+                fg_child.geometry.classic_percent.y_percent,
+            ),
+            (700, 1300)
+        );
+        assert!(!fg_child.visible);
+        assert!(matches!(
+            &fg_child.kind,
+            Kind::Image { image_ref } if image_ref.region_index == Some(5)
+        ));
+        assert_eq!(
+            snap.stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .and_then(|object| match &object.kind {
+                    Kind::Image { image_ref } => Some(image_ref.asset_key.as_str()),
+                    Kind::Wipe { .. } => None,
+                }),
+            Some("TOP")
+        );
+        let bg_child = snap
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Background,
+                parent: 4,
+                child: 1,
+            })
+            .expect("bg child");
+        assert_eq!((bg_child.position.x, bg_child.position.y), (0, 0));
+        assert!(
+            snap.stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 2,
+                })
+                .is_none()
+        );
+    }
+
     // rlvm object setters: Move / Alpha / Show / Layer / PattNo (buf FIRST).
     #[test]
     fn obj_setters_mutate_created_object() {
@@ -1200,6 +1868,310 @@ mod tests {
         if let Kind::Image { image_ref } = &o.kind {
             assert_eq!(image_ref.region_index, Some(2));
         }
+    }
+
+    #[test]
+    fn objbtn_state_routes_exact_direct_and_inclusive_range_shapes() {
+        let runtime = rt();
+        for slot in 0..5 {
+            ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+                .dispatch(&mut vm(), &[int(slot), s(b"TOP")]);
+        }
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
+            .dispatch(&mut vm(), &[int(0), s(b"BG")]);
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(3)]);
+        for child in 0..3 {
+            ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+                .dispatch(&mut vm(), &[int(4), int(child), s(b"CHILD")]);
+        }
+        let mut registry = RlopRegistry::new();
+        register_render_rlops(&mut registry, Arc::clone(&runtime));
+        let dispatch = |module_type, module_id, args: &[ExprValue]| {
+            registry
+                .get(RlopKey::new(module_type, module_id, 1066))
+                .unwrap()
+                .dispatch(&mut vm(), args);
+        };
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(0), int(10)]);
+        dispatch(2, OBJ_FG_SETTER_ID, &[int(4), int(0), int(11)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(1), int(3), int(20)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(0), int(1), int(30)]);
+
+        let snapshot = runtime.state_snapshot();
+        for (slot, state) in [(0, 10), (1, 20), (2, 20), (3, 20), (4, 0)] {
+            let object = snapshot.stack.get(GraphicsPlane::Foreground, slot).unwrap();
+            assert_eq!(object.button_state, state);
+            assert!(object.button_options.is_none());
+        }
+        for (child, state) in [(0, 30), (1, 30), (2, 0)] {
+            assert_eq!(
+                snapshot
+                    .stack
+                    .target(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent: 4,
+                        child,
+                    })
+                    .unwrap()
+                    .button_state,
+                state
+            );
+        }
+        assert_eq!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::BackgroundObject, 0)
+                .unwrap()
+                .button_state,
+            0
+        );
+        assert_eq!(
+            snapshot
+                .stack
+                .get(GraphicsPlane::Foreground, 1)
+                .unwrap()
+                .clone()
+                .button_state,
+            20
+        );
+        assert!(runtime.foreground_button_candidates(20).is_empty());
+
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(0)]);
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(256), int(99)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(3), int(1), int(99)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(1), int(256), int(99)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(1), int(0), int(99)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(0), int(256), int(99)]);
+        let unchanged = runtime.state_snapshot();
+        assert_eq!(
+            unchanged
+                .stack
+                .get(GraphicsPlane::Foreground, 0)
+                .unwrap()
+                .button_state,
+            10
+        );
+        assert_eq!(
+            unchanged
+                .stack
+                .get(GraphicsPlane::Foreground, 1)
+                .unwrap()
+                .button_state,
+            20
+        );
+        assert_eq!(
+            unchanged
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 0,
+                })
+                .unwrap()
+                .button_state,
+            30
+        );
+    }
+
+    #[test]
+    fn geometry_setters_sync_render_scale_and_require_a_surface() {
+        let runtime = rt();
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), s(b"X")]);
+        let set = |prop, args: &[ExprValue]| {
+            ObjSetOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground, prop)
+                .dispatch(&mut vm(), args);
+        };
+        let defaults = runtime.state_snapshot();
+        let object = defaults.stack.get(GraphicsPlane::Foreground, 4).unwrap();
+        assert_eq!(
+            (
+                object.geometry.classic_percent.x_percent,
+                object.geometry.classic_percent.y_percent,
+                object.geometry.hq_thousandths.x_thousandths,
+                object.geometry.hq_thousandths.y_thousandths,
+            ),
+            (100, 100, 1000, 1000)
+        );
+        set(ObjSetProp::Scale, &[int(4), int(150)]);
+        set(ObjSetProp::HqScale, &[int(4), int(1200)]);
+        let partial = runtime.state_snapshot();
+        let object = partial.stack.get(GraphicsPlane::Foreground, 4).unwrap();
+        assert_eq!(
+            (
+                object.geometry.classic_percent.x_percent,
+                object.geometry.classic_percent.y_percent,
+                object.geometry.hq_thousandths.x_thousandths,
+                object.geometry.hq_thousandths.y_thousandths,
+            ),
+            (150, 100, 1200, 1000)
+        );
+        // The render scale tracks rlvm's combined GetWidthScaleFactor:
+        // x = 150% * 1200/1000 -> 150*1200/100 = 1800; y = 100% * 1 -> 1000.
+        assert_eq!(
+            (object.scale.x_thousandths, object.scale.y_thousandths),
+            (1800, 1000)
+        );
+        for slot in 0..8 {
+            set(
+                ObjSetProp::Adjust,
+                &[int(4), int(slot), int(slot), int(-slot)],
+            );
+        }
+        set(ObjSetProp::AdjustX, &[int(4), int(6), int(-9)]);
+        set(ObjSetProp::AdjustY, &[int(4), int(7), int(8)]);
+        set(ObjSetProp::Scale, &[int(4), int(150), int(80)]);
+        set(ObjSetProp::Width, &[int(4), int(-50)]);
+        set(ObjSetProp::Height, &[int(4), int(0)]);
+        set(ObjSetProp::HqScale, &[int(4), int(1200), int(700)]);
+        set(ObjSetProp::HqScaleX, &[int(4), int(0)]);
+        set(ObjSetProp::HqScaleY, &[int(4), int(-300)]);
+        set(ObjSetProp::Origin, &[int(4), int(12), int(-3)]);
+        set(ObjSetProp::OriginX, &[int(4), int(-1)]);
+
+        let first = runtime.state_snapshot();
+        let object = first.stack.get(GraphicsPlane::Foreground, 4).unwrap();
+        assert_eq!((object.position.x, object.position.y), (0, 0));
+        // rlvm combined scale factor with classic=(-50,0) and hq=(0,-300):
+        // x = -50% * 0/1000 -> -50*0/100 = 0; y = 0% * -300/1000 -> 0.
+        // Every objScale/objWidth/objHeight/objHqScale... setter keeps the
+        // render scale in lock-step, so a scaled object composites correctly.
+        assert_eq!(
+            (object.scale.x_thousandths, object.scale.y_thousandths),
+            (0, 0)
+        );
+        assert_eq!(
+            (
+                object.geometry.classic_percent.x_percent,
+                object.geometry.classic_percent.y_percent,
+                object.geometry.hq_thousandths.x_thousandths,
+                object.geometry.hq_thousandths.y_thousandths,
+            ),
+            (-50, 0, 0, -300)
+        );
+        for (slot, adjust) in object.geometry.adjust_slots.iter().enumerate() {
+            assert_eq!(
+                (adjust.x, adjust.y),
+                (
+                    if slot == 6 { -9 } else { slot as i32 },
+                    if slot == 7 { 8 } else { -(slot as i32) },
+                )
+            );
+        }
+        assert_eq!(
+            object.geometry.origin_override,
+            Some(GraphicsPosition { x: -1, y: -3 })
+        );
+        assert!(matches!(object.hit_region(None), HitRegion::Unavailable(_)));
+
+        runtime.with_stack_mut(|stack| {
+            let object = stack.get_mut(GraphicsPlane::Foreground, 4).unwrap();
+            object.geometry.surface = Some(SurfaceGeometry {
+                width: 11,
+                height: 7,
+                origin: GraphicsPosition { x: 5, y: -4 },
+            });
+            object.geometry.origin_override = None;
+        });
+        set(ObjSetProp::OriginX, &[int(4), int(21)]);
+        assert_eq!(
+            runtime
+                .state_snapshot()
+                .stack
+                .get(GraphicsPlane::Foreground, 4)
+                .unwrap()
+                .geometry
+                .origin_override,
+            Some(GraphicsPosition { x: 21, y: -4 })
+        );
+    }
+
+    #[test]
+    fn type2_geometry_setters_mutate_only_the_addressed_child() {
+        let runtime = rt();
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2)]);
+        for child in 0..2 {
+            ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+                .dispatch(&mut vm(), &[int(4), int(child), s(b"CHILD")]);
+        }
+        ObjSetOp::new(
+            Arc::clone(&runtime),
+            GraphicsPlane::Foreground,
+            ObjSetProp::Scale,
+        )
+        .dispatch(&mut vm(), &[int(4), int(150), int(80)]);
+        ObjSetOp::new(
+            Arc::clone(&runtime),
+            GraphicsPlane::Foreground,
+            ObjSetProp::Adjust,
+        )
+        .dispatch(&mut vm(), &[int(4), int(0), int(2), int(-1)]);
+        let mut registry = RlopRegistry::new();
+        register_render_rlops(&mut registry, Arc::clone(&runtime));
+        let dispatch = |opcode, args: &[ExprValue]| {
+            registry
+                .get(RlopKey::new(2, OBJ_FG_SETTER_ID, opcode))
+                .expect("type-2 child setter")
+                .dispatch(&mut vm(), args);
+        };
+        dispatch(1006, &[int(4), int(1), int(3), int(-2)]);
+        dispatch(1007, &[int(4), int(1), int(3), int(-6)]);
+        dispatch(1008, &[int(4), int(1), int(3), int(9)]);
+        dispatch(1046, &[int(4), int(1), int(-50), int(0)]);
+        dispatch(1061, &[int(4), int(1), int(0), int(-300)]);
+        dispatch(1053, &[int(4), int(1), int(8), int(-1)]);
+
+        let snapshot = runtime.state_snapshot();
+        let child = snapshot
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Foreground,
+                parent: 4,
+                child: 1,
+            })
+            .unwrap();
+        assert_eq!(
+            (
+                child.geometry.adjust_slots[3].x,
+                child.geometry.adjust_slots[3].y
+            ),
+            (-6, 9)
+        );
+        assert_eq!(
+            (
+                child.geometry.classic_percent.x_percent,
+                child.geometry.classic_percent.y_percent,
+                child.geometry.hq_thousandths.x_thousandths,
+                child.geometry.hq_thousandths.y_thousandths,
+                child.geometry.origin_override,
+            ),
+            (-50, 0, 0, -300, Some(GraphicsPosition { x: 8, y: -1 }))
+        );
+        assert!(matches!(child.hit_region(None), HitRegion::Unavailable(_)));
+        let parent = snapshot.stack.get(GraphicsPlane::Foreground, 4).unwrap();
+        assert_eq!(
+            (
+                parent.geometry.classic_percent.x_percent,
+                parent.geometry.classic_percent.y_percent,
+                parent.geometry.adjust_slots[0],
+            ),
+            (150, 80, GraphicsPosition { x: 2, y: -1 })
+        );
+        assert_eq!(
+            snapshot
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 0,
+                })
+                .unwrap()
+                .geometry
+                .origin_override,
+            None
+        );
     }
 
     #[test]
@@ -1263,32 +2235,52 @@ mod tests {
         );
     }
 
-    // Registration mounts every real op under all three lattice types and
-    // is displacement-free (no key collision panic).
     #[test]
-    fn register_mounts_under_all_lattice_types() {
+    fn registration_routes_child_creation_and_type2_object_setters() {
         let mut registry = RlopRegistry::new();
         let n = register_render_rlops(&mut registry, rt());
-        assert!(
-            n.is_multiple_of(3),
-            "every op registered under 3 lattice types"
-        );
         assert_eq!(registry.len(), n);
-        // Spot-check the real opcode keys under all three types.
-        for mt in [0u8, 1, 2] {
-            assert!(registry.get(RlopKey::new(mt, GRP_MODULE_ID, 73)).is_some());
-            assert!(
-                registry
-                    .get(RlopKey::new(mt, OBJ_FG_CREATION_ID, 1000))
-                    .is_some()
-            );
-            assert!(
-                registry
-                    .get(RlopKey::new(mt, OBJ_FG_SETTER_ID, 1026))
-                    .is_some()
-            );
-            assert!(registry.get(RlopKey::new(mt, OBJ_FG_MGMT_ID, 0)).is_some());
+        assert!(
+            registry
+                .get(RlopKey::new(0, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(1, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_CREATION_ID, 1000))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        for opcode in [
+            1006, 1007, 1008, 1046, 1047, 1048, 1053, 1054, 1055, 1061, 1062, 1063,
+        ] {
+            for module_type in [0, 1, 2] {
+                assert!(
+                    registry
+                        .get(RlopKey::new(module_type, OBJ_FG_SETTER_ID, opcode))
+                        .is_some()
+                );
+            }
         }
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_SETTER_ID, 1064))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_RANGE_ID, 1063))
+                .is_none()
+        );
     }
 
     #[test]
