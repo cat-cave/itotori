@@ -44,6 +44,8 @@
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
+#[path = "support/xor2_staging.rs"]
+mod xor2_staging;
 
 use std::fs;
 
@@ -77,7 +79,8 @@ fn staged_engine(seen_bytes: &[u8]) -> ReplayEngine {
             bytecode: s.bytecode.clone(),
         })
         .collect();
-    let _ = recover_and_decrypt_archive(&mut xor2);
+    let report = recover_and_decrypt_archive(&mut xor2);
+    xor2_staging::require_xor2_ready(&report).expect("xor2 corpus staging is ready");
     for (s, d) in decompressed.iter_mut().zip(xor2) {
         s.bytecode = d.bytecode;
     }
