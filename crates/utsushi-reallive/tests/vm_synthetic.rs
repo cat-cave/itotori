@@ -448,9 +448,15 @@ fn missing_rlop_emits_typed_warning_and_advances() {
         .expect("missing rlop");
     match outcome {
         StepOutcome::Advanced {
-            event: VmEvent::CommandDispatched { key, outcome },
+            event:
+                VmEvent::CommandDispatched {
+                    key,
+                    provenance,
+                    outcome,
+                },
         } => {
             assert_eq!(key, RlopKey::new(0xFF, 0xFE, 0x1234));
+            assert_eq!(provenance, None);
             assert_eq!(outcome, DispatchOutcome::Advance);
         }
         other => panic!("expected CommandDispatched(Advance), got {other:?}"),

@@ -68,8 +68,8 @@ use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
 use crate::rlop::{
-    AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler, RlopKey,
-    RlopRegistry,
+    AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler,
+    RlopImplementationProvenance, RlopKey, RlopRegistry,
 };
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader};
 use crate::scene_index::RealSceneIndex;
@@ -77,7 +77,7 @@ use crate::vm::{InMemorySceneStore, Scene, SceneId, SceneStore, StepOutcome, Vm,
 
 /// Stable schema version for [`ReplayLog`]. Pinned so a future bump is
 /// detected at restore time by any consumer that deserialises the JSON.
-pub const REPLAY_LOG_SCHEMA_VERSION: &str = "utsushi-reallive-replay-log/0.1.0-alpha";
+pub const REPLAY_LOG_SCHEMA_VERSION: &str = "utsushi-reallive-replay-log/0.2.0-alpha";
 
 /// Default step budget for [`replay_scene`]. Sized so the Sweetie HD
 /// scene-1 walk reaches the first Shift-JIS textout run plus its
@@ -154,6 +154,18 @@ pub enum ReplayEvent {
     /// names the key so the alpha audit trail records the unknown
     /// opcode density without halting the run.
     UnknownOpcode {
+        /// pc where the command sits.
+        byte_offset_in_scene: u32,
+        /// Module type byte from the Command header.
+        module_type: u8,
+        /// Module id byte from the Command header.
+        module_id: u8,
+        /// Opcode (`u16 LE` from the Command header).
+        opcode: u16,
+    },
+    /// A command resolved only through the observed-command catalog gap fill.
+    /// The VM advanced, but no semantic implementation claimed the tuple.
+    CatalogFallback {
         /// pc where the command sits.
         byte_offset_in_scene: u32,
         /// Module type byte from the Command header.
@@ -293,6 +305,34 @@ impl ReplayLog {
         keys
     }
 
+    /// Number of commands that resolved only through the catalog fallback.
+    pub fn catalog_fallback_count(&self) -> usize {
+        self.events
+            .iter()
+            .filter(|event| matches!(event, ReplayEvent::CatalogFallback { .. }))
+            .count()
+    }
+
+    /// Sorted, de-duplicated catalog fallback tuples observed on this replay.
+    pub fn catalog_fallback_keys(&self) -> Vec<(u8, u8, u16)> {
+        let mut keys: Vec<(u8, u8, u16)> = self
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                ReplayEvent::CatalogFallback {
+                    module_type,
+                    module_id,
+                    opcode,
+                    ..
+                } => Some((*module_type, *module_id, *opcode)),
+                _ => None,
+            })
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
+    }
+
     /// First non-empty Shift-JIS-decoded body, or `None` if no TextLine
     /// produced a non-empty decode. The real-bytes test prints this as
     /// the alpha-defining evidence.
@@ -402,6 +442,33 @@ fn event_to_canonical_value(event: &ReplayEvent) -> serde_json::Value {
             map.insert(
                 "kind".to_string(),
                 serde_json::Value::String("unknown_opcode".to_string()),
+            );
+            map.insert(
+                "moduleId".to_string(),
+                serde_json::Value::Number((*module_id).into()),
+            );
+            map.insert(
+                "moduleType".to_string(),
+                serde_json::Value::Number((*module_type).into()),
+            );
+            map.insert(
+                "opcode".to_string(),
+                serde_json::Value::Number((*opcode).into()),
+            );
+        }
+        ReplayEvent::CatalogFallback {
+            byte_offset_in_scene,
+            module_type,
+            module_id,
+            opcode,
+        } => {
+            map.insert(
+                "byteOffsetInScene".to_string(),
+                serde_json::Value::Number((*byte_offset_in_scene).into()),
+            );
+            map.insert(
+                "kind".to_string(),
+                serde_json::Value::String("catalog_fallback".to_string()),
             );
             map.insert(
                 "moduleId".to_string(),
@@ -2203,7 +2270,19 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
                             text_emitted = text_emitted.saturating_add(1);
                         }
                     }
-                    VmEvent::CommandDispatched { key, outcome }
+                    VmEvent::CommandDispatched {
+                        key,
+                        provenance: Some(RlopImplementationProvenance::CatalogFallback),
+                        ..
+                    } => {
+                        events.push(ReplayEvent::CatalogFallback {
+                            byte_offset_in_scene: pc_before,
+                            module_type: key.module_type,
+                            module_id: key.module_id,
+                            opcode: key.opcode,
+                        });
+                    }
+                    VmEvent::CommandDispatched { key, outcome, .. }
                         if key.module_type == MSG_MODULE_TYPE
                             && key.module_id == MSG_MODULE_ID
                             && key.opcode == crate::rlop::module_msg::OPCODE_PAUSE
@@ -2392,6 +2471,9 @@ pub struct BranchReplayReport {
     /// walk could not dispatch on the EXECUTED path. The acceptance
     /// asserts this is EMPTY.
     pub unknown_opcode_keys: Vec<(u8, u8, u16)>,
+    /// Sorted, de-duplicated command tuples that advanced only through the
+    /// catalog gap fill on the executed path. Distinct from missing opcodes.
+    pub catalog_fallback_keys: Vec<(u8, u8, u16)>,
     /// `Some(scene)` iff the walk terminated because a cross-scene
     /// transfer targeted a scene absent from the store. The acceptance
     /// asserts this is `None`.
@@ -2553,6 +2635,7 @@ fn drive_branch_following(
     // loses this). Drives cross-scene play-loop chaining.
     let mut first_cross_scene: Option<SceneId> = None;
     let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
+    let mut catalog_fallback: Vec<(u8, u8, u16)> = Vec::new();
     let mut text_lines: usize = 0;
 
     // --- Deterministic event-flag modeling (provable-spin break) ---
@@ -2654,7 +2737,14 @@ fn drive_branch_following(
                         }
                         text_lines += refs.sink.drain().len();
                     }
-                    VmEvent::CommandDispatched { key, outcome } if key.module_id == 1 => {
+                    VmEvent::CommandDispatched {
+                        key,
+                        provenance: Some(RlopImplementationProvenance::CatalogFallback),
+                        ..
+                    } => {
+                        catalog_fallback.push((key.module_type, key.module_id, key.opcode));
+                    }
+                    VmEvent::CommandDispatched { key, outcome, .. } if key.module_id == 1 => {
                         // Count the real control transfer this jmp op
                         // executed. `outcome` is the RESOLVED outcome
                         // (cross-scene entrypoints already resolved to a
@@ -2758,6 +2848,8 @@ fn drive_branch_following(
 
     unknown.sort_unstable();
     unknown.dedup();
+    catalog_fallback.sort_unstable();
+    catalog_fallback.dedup();
 
     let scene_not_found = if let BranchTerminus::SceneNotFound(scene) = &terminus {
         Some(*scene)
@@ -2772,6 +2864,7 @@ fn drive_branch_following(
         transfers,
         scenes_visited,
         unknown_opcode_keys: unknown,
+        catalog_fallback_keys: catalog_fallback,
         scene_not_found,
         text_lines,
         pauses_advanced: scheduler.pauses_advanced(),
@@ -2819,6 +2912,47 @@ pub fn restore_into_fresh_vm(snapshot: &Snapshot, scene_id: u16) -> Result<Vm, R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn command_element(
+        module_type: u8,
+        module_id: u8,
+        opcode: u16,
+        byte_offset: usize,
+    ) -> BytecodeElement {
+        let mut raw_bytes = vec![0, module_type, module_id];
+        raw_bytes.extend_from_slice(&opcode.to_le_bytes());
+        raw_bytes.extend_from_slice(&[0, 0, 0]);
+        BytecodeElement::Command {
+            module_type,
+            module_id,
+            opcode,
+            arg_count: 0,
+            overload: 0,
+            goto_targets: Vec::new(),
+            goto_case_exprs: Vec::new(),
+            raw_bytes,
+            byte_offset,
+            byte_len: 8,
+        }
+    }
+
+    fn semantic_catalog_and_missing_engine() -> ReplayEngine {
+        let semantic = RlopKey::new(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_LINE_BREAK);
+        let catalog = RlopKey::new(0, 5, 0);
+        let missing = RlopKey::new(2, 250, 9);
+        let scene = Scene::new(
+            1,
+            vec![
+                command_element(semantic.module_type, semantic.module_id, semantic.opcode, 0),
+                command_element(catalog.module_type, catalog.module_id, catalog.opcode, 8),
+                command_element(missing.module_type, missing.module_id, missing.opcode, 16),
+            ],
+        )
+        .expect("synthetic command scene");
+        let mut store = InMemorySceneStore::new();
+        store.insert(scene);
+        ReplayEngine::from_store(store, HashSet::new())
+    }
 
     #[test]
     fn replay_opts_default_step_budget_matches_constant() {
@@ -2919,6 +3053,43 @@ mod tests {
         assert_eq!(log.text_line_count(), 1);
         assert_eq!(log.unknown_opcode_count(), 0);
         assert_eq!(log.first_text_line_utf8(), Some("あ"));
+    }
+
+    #[test]
+    fn semantic_catalog_and_missing_commands_have_distinct_replay_provenance() {
+        let engine = semantic_catalog_and_missing_engine();
+        let opts = ReplayOpts::default();
+        let log = engine.replay_from(1, &opts);
+
+        assert_eq!(log.final_outcome, ReplayOutcome::EndOfScene { events: 6 });
+        assert_eq!(log.catalog_fallback_count(), 1);
+        assert_eq!(log.catalog_fallback_keys(), vec![(0, 5, 0)]);
+        assert_eq!(log.unknown_opcode_count(), 1);
+        assert_eq!(log.unknown_opcode_keys(), vec![(2, 250, 9)]);
+        assert!(log.events.iter().any(|event| {
+            matches!(
+                event,
+                ReplayEvent::CatalogFallback {
+                    byte_offset_in_scene: 8,
+                    module_type: 0,
+                    module_id: 5,
+                    opcode: 0,
+                }
+            )
+        }));
+
+        let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        assert_eq!(report.catalog_fallback_keys, vec![(0, 5, 0)]);
+        assert_eq!(report.unknown_opcode_keys, vec![(2, 250, 9)]);
+
+        let once = log
+            .to_deterministic_json()
+            .expect("serialise catalog event");
+        let twice = log
+            .to_deterministic_json()
+            .expect("serialise catalog event again");
+        assert_eq!(once, twice);
+        assert!(once.contains("\"kind\": \"catalog_fallback\""));
     }
 
     #[test]

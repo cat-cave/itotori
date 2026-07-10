@@ -281,9 +281,23 @@ impl fmt::Display for RlopKey {
 /// advances past the command. Per the UTSUSHI-208 spec node this is
 /// intentional — the alpha-tier opcode coverage frontier is the gating
 /// criterion, not the all-opcodes-implemented bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RlopImplementationProvenance {
+    /// A family registrar supplied behavior for this command.
+    Semantic,
+    /// The observed-command catalog supplied an `Advance` gap fill only.
+    CatalogFallback,
+}
+
+#[derive(Clone)]
+struct RlopEntry {
+    operation: Arc<dyn RLOperation>,
+    provenance: RlopImplementationProvenance,
+}
+
 #[derive(Default, Clone)]
 pub struct RlopRegistry {
-    entries: BTreeMap<RlopKey, Arc<dyn RLOperation>>,
+    entries: BTreeMap<RlopKey, RlopEntry>,
 }
 
 impl fmt::Debug for RlopRegistry {
@@ -327,6 +341,25 @@ impl RlopRegistry {
         key: RlopKey,
         op: Arc<dyn RLOperation>,
     ) -> Option<Arc<dyn RLOperation>> {
+        self.register_with_provenance(key, op, RlopImplementationProvenance::Semantic)
+    }
+
+    /// Register a catalog gap-fill. Only [`module_catalog`] should call this:
+    /// all family registrars use [`Self::register`] and are semantic by default.
+    pub(crate) fn register_catalog(
+        &mut self,
+        key: RlopKey,
+        op: Arc<dyn RLOperation>,
+    ) -> Option<Arc<dyn RLOperation>> {
+        self.register_with_provenance(key, op, RlopImplementationProvenance::CatalogFallback)
+    }
+
+    fn register_with_provenance(
+        &mut self,
+        key: RlopKey,
+        op: Arc<dyn RLOperation>,
+        provenance: RlopImplementationProvenance,
+    ) -> Option<Arc<dyn RLOperation>> {
         assert!(
             !self.entries.contains_key(&key),
             "RlopRegistry key collision: {key} is already registered; a second registrar would \
@@ -334,13 +367,34 @@ impl RlopRegistry {
              `(1, 5, 3)` msg.pause/sel.select_objbtn registry key — fix the offending \
              module_id/opcode)"
         );
-        self.entries.insert(key, op)
+        self.entries
+            .insert(
+                key,
+                RlopEntry {
+                    operation: op,
+                    provenance,
+                },
+            )
+            .map(|entry| entry.operation)
     }
 
     /// Look up an op by `key`. Returns `None` for a missing entry; the
     /// VM converts the miss into a fail-soft warning.
     pub fn get(&self, key: RlopKey) -> Option<Arc<dyn RLOperation>> {
-        self.entries.get(&key).cloned()
+        self.entries
+            .get(&key)
+            .map(|entry| Arc::clone(&entry.operation))
+    }
+
+    /// Look up an operation together with the registrar provenance the VM
+    /// records in its command-dispatch event.
+    pub fn resolve(
+        &self,
+        key: RlopKey,
+    ) -> Option<(Arc<dyn RLOperation>, RlopImplementationProvenance)> {
+        self.entries
+            .get(&key)
+            .map(|entry| (Arc::clone(&entry.operation), entry.provenance))
     }
 
     /// Number of registered ops. Pinned so audit tooling can assert
@@ -484,6 +538,21 @@ mod tests {
         let op = registry.get(key).expect("registered op resolves");
         // dispatch must compile through the dyn trait pointer.
         let _ = op;
+        assert_eq!(
+            registry.resolve(key).map(|(_, provenance)| provenance),
+            Some(RlopImplementationProvenance::Semantic),
+        );
+    }
+
+    #[test]
+    fn registry_catalog_registration_is_marked_as_fallback() {
+        let mut registry = RlopRegistry::new();
+        crate::rlop::module_catalog::register_catalog_rlops(&mut registry);
+        let key = RlopKey::new(0, 5, 0);
+        assert_eq!(
+            registry.resolve(key).map(|(_, provenance)| provenance),
+            Some(RlopImplementationProvenance::CatalogFallback),
+        );
     }
 
     #[test]
