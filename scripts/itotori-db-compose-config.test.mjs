@@ -401,7 +401,15 @@ test("docker compose config preserves a $-bearing generated credential", (t) => 
       ["compose", "--env-file", "gen.env", "config", "--format", "json"],
       { cwd: dir, encoding: "utf8" },
     );
-    const resolved = JSON.parse(out).services?.postgres?.environment?.POSTGRES_PASSWORD;
+    // `--format json` normalizes `environment` to either a map or a `KEY=VALUE`
+    // string array depending on the compose version; handle both so this stays
+    // a robust SEMANTIC check (never a shape-dependent false-fail on the runner).
+    const env = JSON.parse(out).services?.postgres?.environment;
+    const resolved = Array.isArray(env)
+      ? env
+          .find((entry) => entry.startsWith("POSTGRES_PASSWORD="))
+          ?.slice("POSTGRES_PASSWORD=".length)
+      : env?.POSTGRES_PASSWORD;
     assert.equal(
       resolved,
       credential,
