@@ -1,7 +1,8 @@
 import type { Node, ObjectExpression, Statement } from "@babel/types";
 import {
   isCallExpression,
-  isStaticMember,
+  isMemberExpression,
+  memberPropertyName,
   nameOf,
   parseTypeScript,
   permissionHelperAliases,
@@ -144,22 +145,26 @@ export function findUncoveredProjectWorkflowMutations(
  * read-only denylist), else undefined. The receiver identifier is NOT
  * constrained to `services`, so a route-table handler using a differently-named
  * parameter is still caught.
+ *
+ * Static, optional, and literal-computed forms are equivalent:
+ * `services.projectWorkflow.importBridge`,
+ * `services?.projectWorkflow?.importBridge`,
+ * `services?.projectWorkflow?.["importBridge"]`.
+ * Dynamic (non-literal) computed keys stay conservative and are not matched.
  */
 function mutatingApiServiceMethod(
   expression: Node,
 ): { surface: GuardedApiServiceSurface; method: string } | undefined {
-  if (!isStaticMember(expression) || !isStaticMember(expression.object)) {
-    return undefined;
-  }
-  if (expression.property.type !== "Identifier") {
-    return undefined;
-  }
-  if (expression.object.property.type !== "Identifier") {
+  if (!isMemberExpression(expression) || !isMemberExpression(expression.object)) {
     return undefined;
   }
 
-  const surface = expression.object.property.name;
-  const method = expression.property.name;
+  const method = memberPropertyName(expression);
+  const surface = memberPropertyName(expression.object);
+  if (method === undefined || surface === undefined) {
+    return undefined;
+  }
+
   switch (surface) {
     case "projectWorkflow":
       return READ_ONLY_PROJECT_WORKFLOW_METHODS.has(method) ? undefined : { surface, method };

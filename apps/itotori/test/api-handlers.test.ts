@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import type { Node } from "@babel/types";
 import {
   isCallExpression,
-  isStaticMember,
+  isMemberExpression,
+  memberPropertyName,
   nodeText,
   parseTypeScript,
   permissionHelperAliases,
@@ -4057,6 +4058,56 @@ describe("Itotori API handlers", () => {
     ).toThrow(/undeclared API permission call/u);
   });
 
+  it("discovers computed/optional/destructured permission helpers at parity with plain (P1)", () => {
+    expect(
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            await requireApiPermission?.(services, apiMutationPermissionGates.bridgeImport);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toEqual(["bridgeImport"]);
+
+    expect(
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            const helpers = { requireApiPermission };
+            const { requireApiPermission: gate } = helpers;
+            await gate(services, apiMutationPermissionGates["bridgeImport"]);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toEqual(["bridgeImport"]);
+
+    expect(() =>
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            await services.authorization?.["requirePermission"]?.(permissionValues.draftWrite);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toThrow(/undeclared API permission call/u);
+
+    expect(() =>
+      sourceApiPermissionGateIdsFromSource(
+        `
+          async function routeItotoriApiRequest(request, services) {
+            const authorization = services.authorization;
+            const { requirePermission: check } = authorization;
+            await check(permissionValues.draftWrite);
+          }
+        `,
+        "fixture-api-handlers.ts",
+      ),
+    ).toThrow(/undeclared API permission call/u);
+  });
+
   it("allows failed runtime evidence ingest results with validation findings", async () => {
     const services = serviceFixture();
     services.projectWorkflow.ingestRuntimeReport.mockResolvedValueOnce({
@@ -4614,13 +4665,14 @@ function equalityText(
 
 function requestPropertyName(expression: Node): "method" | "pathname" | undefined {
   if (
-    isStaticMember(expression) &&
+    isMemberExpression(expression) &&
     expression.object.type === "Identifier" &&
-    expression.object.name === "request" &&
-    expression.property.type === "Identifier" &&
-    (expression.property.name === "method" || expression.property.name === "pathname")
+    expression.object.name === "request"
   ) {
-    return expression.property.name;
+    const property = memberPropertyName(expression);
+    if (property === "method" || property === "pathname") {
+      return property;
+    }
   }
   return undefined;
 }
@@ -4656,16 +4708,20 @@ function mutatingProjectWorkflowCalls(node: Node): MutatingProjectWorkflowServic
 function projectWorkflowServiceName(
   expression: Node,
 ): keyof ItotoriApiServices["projectWorkflow"] | undefined {
+  // Static, optional, and literal-computed chains are equivalent:
+  // services.projectWorkflow.importBridge /
+  // services?.projectWorkflow?.["importBridge"]
   if (
-    isStaticMember(expression) &&
-    isStaticMember(expression.object) &&
-    expression.object.property.type === "Identifier" &&
-    expression.object.property.name === "projectWorkflow" &&
+    isMemberExpression(expression) &&
+    isMemberExpression(expression.object) &&
+    memberPropertyName(expression.object) === "projectWorkflow" &&
     expression.object.object.type === "Identifier" &&
-    expression.object.object.name === "services" &&
-    expression.property.type === "Identifier"
+    expression.object.object.name === "services"
   ) {
-    return expression.property.name as keyof ItotoriApiServices["projectWorkflow"];
+    const method = memberPropertyName(expression);
+    if (method !== undefined) {
+      return method as keyof ItotoriApiServices["projectWorkflow"];
+    }
   }
   return undefined;
 }
@@ -4685,17 +4741,19 @@ function apiGateIdFromCall(
     );
   }
   const gate = node.arguments[1];
+  const gateId =
+    gate !== undefined && isMemberExpression(gate) ? memberPropertyName(gate) : undefined;
   if (
     gate === undefined ||
-    !isStaticMember(gate) ||
+    !isMemberExpression(gate) ||
     nodeText(source, gate.object) !== "apiMutationPermissionGates" ||
-    gate.property.type !== "Identifier"
+    gateId === undefined
   ) {
     throw new Error(
       `API permission call at ${sourceLocation(fileName, node)} must pass apiMutationPermissionGates.<gateId>`,
     );
   }
-  return gate.property.name as ApiMutationPermissionGateId;
+  return gateId as ApiMutationPermissionGateId;
 }
 
 function assertNoUndeclaredAppPermissionCalls(): void {

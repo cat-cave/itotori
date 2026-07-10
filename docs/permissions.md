@@ -39,23 +39,27 @@ files (same helper used by `authorization-matrix.test.ts` and the API mutation
 guards), a pragmatic pattern-scan for Rust `.rs` — and fails the build
 (non-zero) on any auth-role-name branching.
 
-A **role read** is an identifier named `role`, any `<obj>.role` property access,
-or a variable that aliases one (`const r = x.role`, `const { role } = x`). A
-role-read branch is an **auth** violation (rather than a legitimate domain role)
-when ANY of these hold, in these shapes:
+A **role read** is an identifier named `role`, any `<obj>.role` property access
+(including optional and literal-computed forms: `user?.role`,
+`actor?.["role"]`), or a variable that aliases one (`const r = x.role`,
+`const { role } = x`, `const [{ role: r }] = users`,
+`({ role: r = "admin" } = actor)`). A role-read branch is an **auth** violation
+(rather than a legitimate domain role) when ANY of these hold, in these shapes:
 
 - **comparison** — `===`/`==`/`!==`/`!=` between a role read and a string
-  literal (`if (user.role === "admin")`, `if (role !== "viewer")`);
+  literal (`if (user.role === "admin")`, `if (actor?.["role"] === "admin")`,
+  `if (role !== "viewer")`);
 - **switch** — `switch` on a role read with string-literal cases
   (`switch (role) { case "admin": … }`);
 - **lookup map** — indexing an auth-roles map by a role read (`ROLES[role]`,
-  `ROLE_PERMISSIONS[actor.role]`);
-- **auth-subject read** — any `<subject>.role` where the subject is an auth
-  actor (`user`, `actor`, `principal`, `session`, `subject`, …), regardless of
-  the compared value (the permission-based `AuthorizationActor` carries only
-  `userId`);
-- **name-based** — `isAdmin`/`is_admin`, `hasRole(...)`/`has_role(...)`,
-  `roleValues`, `ROLES`.
+  `ROLE_MAP?.[actor?.["role"]]`), or a literal AUTH-role-NAME key
+  (`user?.perms?.["admin"]`);
+- **auth-subject read** — any `<subject>.role` / `<subject>?.["role"]` where the
+  subject is an auth actor (`user`, `actor`, `principal`, `session`,
+  `subject`, …), regardless of the compared value (the permission-based
+  `AuthorizationActor` carries only `userId`);
+- **name-based** — `isAdmin`/`is_admin`, `hasRole(...)`/`has_role(...)` (also
+  `auth?.["hasRole"]?.(...)`), `roleValues`, `ROLES`.
 
 The auth-vs-domain distinction is by the role VALUE, the auth-subject object, or
 the map name — because the shape alone cannot tell `user.role === "admin"`

@@ -227,6 +227,139 @@ test("does NOT flag permission-based authorization (negative control)", () => {
 });
 
 // =========================================================================
+// Computed / literal-key / full pattern matrix (P1 re-audit after optional fix).
+// Static `.role`, optional `?.role`, and literal-computed `["role"]` must be
+// equivalent; destructuring-assignment and ArrayPattern aliases must not escape.
+// =========================================================================
+test('catches computed optional role compare: `actor?.["role"] === "admin"`', () => {
+  const hits = labels(TS, 'if (actor?.["role"] === "admin") grant();');
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+  assert.ok(hits.includes(LABELS.subject), JSON.stringify(hits));
+});
+
+test('catches literal auth-role map key: `user?.perms?.["admin"]`', () => {
+  const hits = labels(TS, 'if (user?.perms?.["admin"]) grant();');
+  assert.ok(hits.includes(LABELS.lookup), JSON.stringify(hits));
+});
+
+test('catches nested computed role index: `ROLE_MAP?.[actor?.["role"]]`', () => {
+  const hits = labels(TS, "const permitted = ROLE_MAP?.[actor?.['role']];");
+  assert.ok(hits.includes(LABELS.lookup), JSON.stringify(hits));
+  assert.ok(hits.includes(LABELS.subject), JSON.stringify(hits));
+});
+
+test('catches computed hasRole helper: `auth?.["hasRole"]?.("admin")`', () => {
+  assert.ok(labels(TS, 'if (auth?.["hasRole"]?.("admin")) grant();').includes(LABELS.hasRole));
+});
+
+test('catches destructuring-assignment default alias: `({ role: r = "admin" } = x); r === "admin"`', () => {
+  const hits = labels(
+    TS,
+    ["let r;", '({ role: r = "admin" } = actor);', 'if (r === "admin") grant();'].join("\n"),
+  );
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches array-pattern nested default alias: `const [{ role: r = "admin" }] = users; r === "admin"`', () => {
+  const hits = labels(
+    TS,
+    ['const [{ role: r = "admin" }] = users;', 'if (r === "admin") grant();'].join("\n"),
+  );
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches nested assignment-pattern profile binding: `({ profile: { role: r = "admin" } = {} } = actor)`', () => {
+  const hits = labels(
+    TS,
+    [
+      "let r;",
+      '({ profile: { role: r = "admin" } = {} } = actor);',
+      'if (r === "admin") grant();',
+    ].join("\n"),
+  );
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches computed role alias then domain-value compare: `const r = actor?.["role"]; r === "draft"`', () => {
+  // Auth-subject origin makes even a non-auth literal an auth branch.
+  const hits = labels(TS, ['const r = actor?.["role"];', 'if (r === "draft") grant();'].join("\n"));
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+  assert.ok(hits.includes(LABELS.subject), JSON.stringify(hits));
+});
+
+test("catches TS-asserted role index: `ROLE_MAP?.[(role as string)]`", () => {
+  assert.ok(labels(TS, "const p = ROLE_MAP?.[(role as string)];").includes(LABELS.lookup));
+});
+
+test("computed/optional GOOD controls: permission-based forms stay clean", () => {
+  assert.deepEqual(labels(TS, 'if (user?.perms?.["project.read"]) grant();'), []);
+  assert.deepEqual(labels(TS, "const p = PERMISSION_MAP?.[permission];"), []);
+  assert.deepEqual(labels(TS, 'if (actor?.["permission"] === "project.read") grant();'), []);
+  assert.deepEqual(
+    labels(
+      TS,
+      [
+        "let p;",
+        '({ permission: p = "project.read" } = actor);',
+        'if (p === "project.read") grant();',
+      ].join("\n"),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    labels(
+      TS,
+      ["const [{ permission: p }] = users;", 'if (p === "project.read") grant();'].join("\n"),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    labels(TS, "await requirePermission?.(actor, permissionValues.projectRead);"),
+    [],
+  );
+});
+
+test('CLI exits 1 on computed optional role probe `actor?.["role"] === "admin"`', () => {
+  const probe = writeShippedProbe(
+    "probe-computed-role.ts",
+    'export function gate(actor: { role?: string }) {\n  return actor?.["role"] === "admin";\n}\n',
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /no-hardcoded-roles audit failed/u);
+});
+
+test('CLI exits 1 on literal auth-role key probe `user?.perms?.["admin"]`', () => {
+  const probe = writeShippedProbe(
+    "probe-perms-admin.ts",
+    'export function gate(user: { perms?: Record<string, boolean> }) {\n  return Boolean(user?.perms?.["admin"]);\n}\n',
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /lookup map/u);
+});
+
+test('CLI exits 1 on ROLE_MAP?.[actor?.["role"]] probe', () => {
+  const probe = writeShippedProbe(
+    "probe-role-map-nested.ts",
+    "const ROLE_MAP: Record<string, boolean> = {};\nexport const ok = (actor: { role?: string }) => ROLE_MAP?.[actor?.['role']];\n",
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /lookup map/u);
+});
+
+test("CLI exits 1 on destructuring-assignment default alias probe", () => {
+  const probe = writeShippedProbe(
+    "probe-destruct-assign.ts",
+    'export function gate(actor: { role?: string }) {\n  let r: string;\n  ({ role: r = "admin" } = actor);\n  return r === "admin";\n}\n',
+  );
+  const { code, stderr } = runAuditCli(probe);
+  assert.equal(code, 1);
+  assert.match(stderr, /comparison on a role read/u);
+});
+
+// =========================================================================
 // Auth-subject `.role` read in any context (a bare access, not only a compare).
 // =========================================================================
 test("catches a bare `actor.role` / `principal.role` read even outside a comparison", () => {

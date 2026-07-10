@@ -263,6 +263,21 @@ async function routeItotoriApiRequest(request, services) {
     expect(uncovered[0]?.method).toBe("importBridge");
   });
 
+  it('FAILS on uncovered computed optional mutation (`services?.projectWorkflow?.["importBridge"]`)', () => {
+    // Literal-computed method names must match static `.importBridge` (P1 re-audit).
+    const computedUncovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    return services?.projectWorkflow?.["importBridge"](request.body.bridge);
+  }
+}
+`;
+    const uncovered = findUncoveredProjectWorkflowMutations(computedUncovered, FILE);
+    expect(uncovered).toHaveLength(1);
+    expect(uncovered[0]?.method).toBe("importBridge");
+    expect(uncovered[0]?.surface).toBe("projectWorkflow");
+  });
+
   it("passes when an optional-chained mutation is covered by requireApiPermission", () => {
     const optionalCovered = `
 async function routeItotoriApiRequest(request, services) {
@@ -273,6 +288,28 @@ async function routeItotoriApiRequest(request, services) {
 }
 `;
     expect(findUncoveredProjectWorkflowMutations(optionalCovered, FILE)).toEqual([]);
+  });
+
+  it("passes when a computed optional mutation is covered by requireApiPermission", () => {
+    const computedCovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    await requireApiPermission?.(services, apiMutationPermissionGates.bridgeImport);
+    return services?.projectWorkflow?.["importBridge"](request.body.bridge);
+  }
+}
+`;
+    expect(findUncoveredProjectWorkflowMutations(computedCovered, FILE)).toEqual([]);
+  });
+
+  it("does NOT treat dynamic computed method names as known mutations (conservative)", () => {
+    const dynamic = `
+async function routeItotoriApiRequest(request, services) {
+  const method = "importBridge";
+  return services.projectWorkflow[method](request.body.bridge);
+}
+`;
+    expect(findUncoveredProjectWorkflowMutations(dynamic, FILE)).toEqual([]);
   });
 
   it("treats read-only projectWorkflow reads as non-mutations", () => {

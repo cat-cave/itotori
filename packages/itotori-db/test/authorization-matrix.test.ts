@@ -3,8 +3,9 @@ import type { Node } from "@babel/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   isCallExpression,
-  isStaticMember,
+  isMemberExpression,
   leadingCommentText,
+  memberPropertyName,
   nameOf,
   parseTypeScript,
   permissionHelperAliases,
@@ -2522,6 +2523,88 @@ describe("repository permission gate matrix", () => {
     ]);
   });
 
+  it("discovers destructured / array / default / computed requirePermission aliases (P1 matrix)", () => {
+    const expected = [
+      "ItotoriAliasProbeRepository:alias-probe-repository.ts:destructuredMutation:draftWrite",
+    ];
+
+    const destructured = sourcePermissionGatesFromSource(
+      "alias-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+        const authorization = { requirePermission };
+
+        class ItotoriAliasProbeRepository {
+          async destructuredMutation(actor) {
+            const { requirePermission: check } = authorization;
+            await check(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+    expect(destructured.map(sourceGateKey)).toEqual(expected);
+
+    const arrayAliased = sourcePermissionGatesFromSource(
+      "alias-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriAliasProbeRepository {
+          async destructuredMutation(actor) {
+            const [check] = [requirePermission];
+            await check(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+    expect(arrayAliased.map(sourceGateKey)).toEqual(expected);
+
+    const defaulted = sourcePermissionGatesFromSource(
+      "alias-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+        const authorization = { requirePermission };
+
+        class ItotoriAliasProbeRepository {
+          async destructuredMutation(actor) {
+            const { requirePermission: check = requirePermission } = authorization;
+            await check(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+    expect(defaulted.map(sourceGateKey)).toEqual(expected);
+
+    const computed = sourcePermissionGatesFromSource(
+      "alias-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+        const authorization = { requirePermission };
+
+        class ItotoriAliasProbeRepository {
+          async destructuredMutation(actor) {
+            await authorization?.["requirePermission"]?.(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+    expect(computed.map(sourceGateKey)).toEqual(expected);
+
+    const computedPermissionKey = sourcePermissionGatesFromSource(
+      "alias-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriAliasProbeRepository {
+          async destructuredMutation(actor) {
+            await requirePermission(this.db, actor, permissionValues?.["draftWrite"]);
+          }
+        }
+      `,
+    );
+    expect(computedPermissionKey.map(sourceGateKey)).toEqual(expected);
+  });
+
   it("distinguishes two repositories that share a method name and permission key by repository identity (SHARED-029)", () => {
     // Two repository classes in one source file both gate a method with the
     // same name on the same permission. Repository identity must keep the two
@@ -3409,11 +3492,11 @@ function permissionKeyFromRepositoryCall(
     );
   }
   const permissionArgument = node.arguments[2];
+  // Static `permissionValues.draftWrite` and literal-computed
+  // `permissionValues?.["draftWrite"]` are equivalent gate identities.
   const permissionKey =
-    permissionArgument !== undefined &&
-    isStaticMember(permissionArgument) &&
-    permissionArgument.property.type === "Identifier"
-      ? permissionArgument.property.name
+    permissionArgument !== undefined && isMemberExpression(permissionArgument)
+      ? memberPropertyName(permissionArgument)
       : undefined;
 
   if (permissionKey === undefined && annotation !== undefined) {
