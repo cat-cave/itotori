@@ -74,7 +74,7 @@ use super::module_obj::{FadeLongOp, GraphicsRuntime, GraphicsRuntimeWarning};
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::graphics_objects::{
     GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject, GraphicsObjectKind,
-    GraphicsPlane, GraphicsScale, WipeColour,
+    GraphicsObjectTarget, GraphicsPlane, GraphicsScale, WipeColour,
 };
 use crate::vm::Vm;
 
@@ -719,8 +719,10 @@ impl ObjSetProp {
 pub struct ObjSetOp {
     runtime: Arc<GraphicsRuntime>,
     prop: ObjSetProp,
+    plane: GraphicsPlane,
     layer: GraphicsLayer,
     layer_base: i32,
+    child_addressed: bool,
 }
 
 impl ObjSetOp {
@@ -732,22 +734,59 @@ impl ObjSetOp {
         Self {
             runtime,
             prop,
+            plane,
             layer: object_layer(plane),
             layer_base,
+            child_addressed: false,
         }
+    }
+
+    pub fn new_child(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        prop: ObjSetProp,
+    ) -> Self {
+        let mut op = Self::new(runtime, plane, prop);
+        op.child_addressed = true;
+        op
     }
 }
 
 impl RLOperation for ObjSetOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let Some(buf) = arg_int(args, 0).and_then(slot_ok) else {
-            return DispatchOutcome::Advance;
+        let (target, args, slot) = if self.child_addressed {
+            let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            let Some(child) = arg_int(args, 1).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::Child {
+                    plane: self.plane,
+                    parent,
+                    child,
+                },
+                &args[1..],
+                child,
+            )
+        } else {
+            let Some(slot) = arg_int(args, 0).and_then(slot_ok) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::TopLevel {
+                    layer: self.layer,
+                    slot,
+                },
+                args,
+                slot,
+            )
         };
         let prop = self.prop;
-        let layer = self.layer;
         let layer_base = self.layer_base;
         let observed = self.runtime.with_stack_mut(|stack| {
-            let Some(o) = stack.get_layer_mut(layer, buf) else {
+            let Some(o) = stack.target_mut(target) else {
                 return false;
             };
             match prop {
@@ -824,7 +863,7 @@ impl RLOperation for ObjSetOp {
             true
         });
         if !observed {
-            warn(&self.runtime, prop.tag(), buf);
+            warn(&self.runtime, prop.tag(), slot);
         }
         DispatchOutcome::Advance
     }
@@ -1010,6 +1049,9 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         let set = |p: ObjSetProp| -> Arc<dyn RLOperation> {
             Arc::new(ObjSetOp::new(Arc::clone(&runtime), plane, p))
         };
+        let child_set = |p: ObjSetProp| -> Arc<dyn RLOperation> {
+            Arc::new(ObjSetOp::new_child(Arc::clone(&runtime), plane, p))
+        };
         let setters: &[(u16, ObjSetProp)] = &[
             (1000, ObjSetProp::Move),
             (1001, ObjSetProp::Left),
@@ -1031,6 +1073,9 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         ];
         for (op, prop) in setters {
             count += register_on_types(registry, &[0, 1], mid, *op, set(*prop));
+            if matches!(mid, OBJ_FG_SETTER_ID | OBJ_BG_SETTER_ID) {
+                count += register_on_types(registry, &[2], mid, *op, child_set(*prop));
+            }
         }
         // objButtonOpts (1064): button-object setup feeding select_objbtn.
         count += register_on_types(
@@ -1043,6 +1088,18 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
                 plane,
             )),
         );
+        if matches!(mid, OBJ_FG_SETTER_ID | OBJ_BG_SETTER_ID) {
+            count += register_on_types(
+                registry,
+                &[2],
+                mid,
+                1064,
+                Arc::new(super::module_obj::ObjButtonOptsOp::new_child(
+                    Arc::clone(&runtime),
+                    plane,
+                )),
+            );
+        }
     }
 
     // ---- object management (60 / 61 fg / 62 bg) ------------------------
@@ -1363,6 +1420,76 @@ mod tests {
         assert!(before_replace.stack.target(child).is_some());
     }
 
+    #[test]
+    fn child_setters_mutate_only_the_exact_foreground_child() {
+        let runtime = rt();
+        for plane in [GraphicsPlane::Foreground, GraphicsPlane::Background] {
+            ParentCreateOp::new(Arc::clone(&runtime), plane).dispatch(&mut vm(), &[int(4), int(2)]);
+            ChildCreateOp::new(Arc::clone(&runtime), plane)
+                .dispatch(&mut vm(), &[int(4), int(1), s(b"CHILD")]);
+        }
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(1), s(b"TOP")]);
+        let set = |prop, args: &[ExprValue]| {
+            ObjSetOp::new_child(Arc::clone(&runtime), GraphicsPlane::Foreground, prop)
+                .dispatch(&mut vm(), args);
+        };
+        set(ObjSetProp::Move, &[int(4), int(1), int(7), int(9)]);
+        set(ObjSetProp::Scale, &[int(4), int(1), int(700), int(1300)]);
+        set(ObjSetProp::Show, &[int(4), int(1), int(0)]);
+        set(ObjSetProp::PattNo, &[int(4), int(1), int(5)]);
+        set(ObjSetProp::Move, &[int(4), int(2), int(99), int(99)]);
+        set(ObjSetProp::Move, &[int(4)]);
+        set(ObjSetProp::Move, &[int(256), int(1), int(99), int(99)]);
+
+        let snap = runtime.state_snapshot();
+        let fg_child = snap
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Foreground,
+                parent: 4,
+                child: 1,
+            })
+            .expect("fg child");
+        assert_eq!((fg_child.position.x, fg_child.position.y), (7, 9));
+        assert_eq!(
+            (fg_child.scale.x_thousandths, fg_child.scale.y_thousandths),
+            (700, 1300)
+        );
+        assert!(!fg_child.visible);
+        assert!(matches!(
+            &fg_child.kind,
+            Kind::Image { image_ref } if image_ref.region_index == Some(5)
+        ));
+        assert_eq!(
+            snap.stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .and_then(|object| match &object.kind {
+                    Kind::Image { image_ref } => Some(image_ref.asset_key.as_str()),
+                    Kind::Wipe { .. } => None,
+                }),
+            Some("TOP")
+        );
+        let bg_child = snap
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Background,
+                parent: 4,
+                child: 1,
+            })
+            .expect("bg child");
+        assert_eq!((bg_child.position.x, bg_child.position.y), (0, 0));
+        assert!(
+            snap.stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 2,
+                })
+                .is_none()
+        );
+    }
+
     // rlvm object setters: Move / Alpha / Show / Layer / PattNo (buf FIRST).
     #[test]
     fn obj_setters_mutate_created_object() {
@@ -1451,7 +1578,7 @@ mod tests {
     }
 
     #[test]
-    fn registration_routes_child_creation_and_fails_closed_for_type2_setters() {
+    fn registration_routes_child_creation_and_type2_object_setters() {
         let mut registry = RlopRegistry::new();
         let n = register_render_rlops(&mut registry, rt());
         assert_eq!(registry.len(), n);
@@ -1488,11 +1615,16 @@ mod tests {
         assert!(
             registry
                 .get(RlopKey::new(2, OBJ_FG_SETTER_ID, 1026))
-                .is_none()
+                .is_some()
         );
         assert!(
             registry
                 .get(RlopKey::new(2, OBJ_FG_SETTER_ID, 1064))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_RANGE_ID, 1026))
                 .is_none()
         );
     }

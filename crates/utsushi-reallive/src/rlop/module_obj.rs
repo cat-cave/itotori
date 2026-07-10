@@ -36,7 +36,8 @@ use thiserror::Error;
 use super::{DispatchOutcome, ExprValue, RLOperation};
 use crate::g00::{G00DecodeError, G00Warning, decode_g00};
 use crate::graphics_objects::{
-    ButtonOptions, GraphicsLayer, GraphicsObject, GraphicsObjectStack, GraphicsPlane,
+    ButtonOptions, GraphicsLayer, GraphicsObject, GraphicsObjectStack, GraphicsObjectTarget,
+    GraphicsPlane,
 };
 use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
@@ -728,33 +729,76 @@ pub enum FadeLongOpDecodeError {
 pub struct ObjButtonOptsOp {
     runtime: Arc<GraphicsRuntime>,
     plane: GraphicsPlane,
+    child_addressed: bool,
 }
 
 impl ObjButtonOptsOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
-        Self { runtime, plane }
+        Self {
+            runtime,
+            plane,
+            child_addressed: false,
+        }
+    }
+
+    pub fn new_child(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self {
+            runtime,
+            plane,
+            child_addressed: true,
+        }
     }
 }
 
 impl RLOperation for ObjButtonOptsOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let (target, args) = if self.child_addressed {
+            let Some(parent) = args.first().and_then(ExprValue::as_int).and_then(|value| {
+                usize::try_from(value)
+                    .ok()
+                    .filter(|&slot| slot < crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            }) else {
+                return DispatchOutcome::Advance;
+            };
+            let Some(child) = args.get(1).and_then(ExprValue::as_int).and_then(|value| {
+                usize::try_from(value)
+                    .ok()
+                    .filter(|&slot| slot < crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+            }) else {
+                return DispatchOutcome::Advance;
+            };
+            (
+                GraphicsObjectTarget::Child {
+                    plane: self.plane,
+                    parent,
+                    child,
+                },
+                &args[1..],
+            )
+        } else {
+            let Some(slot) = args
+                .first()
+                .and_then(ExprValue::as_int)
+                .and_then(|value| usize::try_from(value).ok())
+            else {
+                return DispatchOutcome::Advance;
+            };
+            let layer = match self.plane {
+                GraphicsPlane::Foreground => GraphicsLayer::ForegroundObject,
+                GraphicsPlane::Background => GraphicsLayer::BackgroundObject,
+            };
+            (GraphicsObjectTarget::TopLevel { layer, slot }, args)
+        };
         let values: Option<[i32; 5]> = args
             .iter()
             .map(ExprValue::as_int)
             .collect::<Option<Vec<_>>>()
             .and_then(|values| values.try_into().ok());
-        let Some([buf, action, se, group, button_number]) = values else {
+        let Some([_buf, action, se, group, button_number]) = values else {
             return DispatchOutcome::Advance;
-        };
-        let Ok(slot) = usize::try_from(buf) else {
-            return DispatchOutcome::Advance;
-        };
-        let layer = match self.plane {
-            GraphicsPlane::Foreground => GraphicsLayer::ForegroundObject,
-            GraphicsPlane::Background => GraphicsLayer::BackgroundObject,
         };
         self.runtime.with_stack_mut(|stack| {
-            if let Some(object) = stack.get_layer_mut(layer, slot) {
+            if let Some(object) = stack.target_mut(target) {
                 object.button_options = Some(ButtonOptions {
                     action,
                     se,
@@ -816,6 +860,73 @@ mod tests {
         assert_eq!(
             runtime.foreground_button_group(7),
             vec![(2, options.unwrap())]
+        );
+    }
+
+    #[test]
+    fn child_button_opts_binds_only_an_existing_child() {
+        let runtime = runtime();
+        runtime.with_stack_mut(|stack| {
+            assert!(stack.create_parent(GraphicsPlane::Foreground, 4, 2, None, None));
+            assert!(stack.set_child(
+                GraphicsPlane::Foreground,
+                4,
+                1,
+                GraphicsObject::image("child"),
+            ));
+            stack
+                .set_layer(
+                    GraphicsLayer::ForegroundObject,
+                    1,
+                    GraphicsObject::image("top"),
+                )
+                .expect("slot");
+        });
+        let op = ObjButtonOptsOp::new_child(Arc::clone(&runtime), GraphicsPlane::Foreground);
+        op.dispatch(
+            &mut vm(),
+            &[int(4), int(1), int(10), int(11), int(7), int(3)],
+        );
+        op.dispatch(&mut vm(), &[int(4), int(2), int(1), int(2), int(3), int(4)]);
+        op.dispatch(&mut vm(), &[int(4), int(1), int(10)]);
+        op.dispatch(
+            &mut vm(),
+            &[int(256), int(1), int(1), int(2), int(3), int(4)],
+        );
+
+        let snapshot = runtime.state_snapshot();
+        assert_eq!(
+            snapshot
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 1,
+                })
+                .and_then(|object| object.button_options),
+            Some(ButtonOptions {
+                action: 10,
+                se: 11,
+                group: 7,
+                button_number: 3,
+            })
+        );
+        assert!(
+            snapshot
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 2,
+                })
+                .is_none()
+        );
+        assert!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .and_then(|object| object.button_options)
+                .is_none()
         );
     }
 

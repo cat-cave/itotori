@@ -587,6 +587,21 @@ impl GraphicsObjectStack {
         }
     }
 
+    pub fn target_mut(&mut self, target: GraphicsObjectTarget) -> Option<&mut GraphicsObject> {
+        match target {
+            GraphicsObjectTarget::TopLevel { layer, slot } => self.get_layer_mut(layer, slot),
+            GraphicsObjectTarget::Child {
+                plane,
+                parent,
+                child,
+            } => self
+                .parents_mut(plane)
+                .get_mut(&parent)?
+                .children
+                .get_mut(&child),
+        }
+    }
+
     pub fn create_parent(
         &mut self,
         plane: GraphicsPlane,
