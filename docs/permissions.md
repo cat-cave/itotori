@@ -33,9 +33,11 @@ fails verification.
 A CI guard enforces the "Authorization checks must not branch on role names"
 rule above. `scripts/audit-no-hardcoded-roles.mjs` is **AST-based**: it parses
 shipped source (`apps/*/src`, `packages/*/src`, `crates/*/src`, excluding
-tests/fixtures/docs) — the TypeScript compiler API for `.ts`/`.tsx`/`.js`/`.mjs`
-files (mirroring `authorization-matrix.test.ts`), a pragmatic pattern-scan for
-Rust `.rs` — and fails the build (non-zero) on any auth-role-name branching.
+tests/fixtures/docs) — Babel's TypeScript parser via the shared helper
+`scripts/stable-ts-ast.mjs` for `.ts`/`.tsx`/`.mts`/`.cts`/`.js`/`.mjs`/`.cjs`
+files (same helper used by `authorization-matrix.test.ts` and the API mutation
+guards), a pragmatic pattern-scan for Rust `.rs` — and fails the build
+(non-zero) on any auth-role-name branching.
 
 A **role read** is an identifier named `role`, any `<obj>.role` property access,
 or a variable that aliases one (`const r = x.role`, `const { role } = x`). A

@@ -1,5 +1,6 @@
-import type { CallExpression, Node, ObjectExpression, Statement } from "@babel/types";
+import type { Node, ObjectExpression, Statement } from "@babel/types";
 import {
+  isCallExpression,
   isStaticMember,
   nameOf,
   parseTypeScript,
@@ -105,7 +106,9 @@ export function findUncoveredApiPermissionMutations(
   const uncovered: UncoveredApiMutation[] = [];
 
   walk(root, (node) => {
-    if (node.type === "CallExpression") {
+    // Optional service calls (`services.projectWorkflow?.importBridge(…)`) are
+    // OptionalCallExpression in Babel — still mutations that need a gate.
+    if (isCallExpression(node)) {
       const mutation = mutatingApiServiceMethod(node.callee);
       if (
         mutation !== undefined &&
@@ -206,7 +209,7 @@ function isCoveredByApiPermission(
     return false;
   }
   return (
-    mutation.type === "CallExpression" &&
+    isCallExpression(mutation) &&
     callReceivesResolvedPermissionView(mutation, resolvedPermissionViews)
   );
 }
@@ -252,7 +255,7 @@ function containsPermissionHelperCall(node: Node, aliases: ReadonlySet<string>):
       return;
     }
     if (
-      current.type === "CallExpression" &&
+      isCallExpression(current) &&
       permissionHelperCallName(current.callee, aliases) !== undefined
     ) {
       found = true;
@@ -280,9 +283,12 @@ function addResolvedPermissionViewDeclarations(
 }
 
 function callReceivesResolvedPermissionView(
-  call: CallExpression,
+  call: Node,
   resolvedPermissionViews: ReadonlySet<string>,
 ): boolean {
+  if (!isCallExpression(call)) {
+    return false;
+  }
   return call.arguments.some((argument) =>
     objectLiteralReceivesResolvedPermissionView(argument, resolvedPermissionViews),
   );

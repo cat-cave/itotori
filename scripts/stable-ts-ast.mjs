@@ -193,39 +193,72 @@ export function nameOf(node) {
 }
 
 /**
- * Callee / expression surface name for `foo` or `obj.foo`.
+ * Ordinary or optional member expression (`obj.prop` / `obj?.prop` /
+ * `obj[prop]` / `obj?.[prop]`). Babel splits optional chaining into
+ * `OptionalMemberExpression`; TypeScript's AST did not, so every property
+ * access check must accept both.
+ * @param {import("@babel/types").Node | null | undefined} node
+ * @returns {node is import("@babel/types").MemberExpression | import("@babel/types").OptionalMemberExpression}
+ */
+export function isMemberExpression(node) {
+  return node?.type === "MemberExpression" || node?.type === "OptionalMemberExpression";
+}
+
+/**
+ * Ordinary or optional call (`foo()` / `foo?.()` / `obj.foo?.()`). Babel uses
+ * `OptionalCallExpression` for optional calls; treat both as calls everywhere
+ * callees/args are analyzed.
+ * @param {import("@babel/types").Node | null | undefined} node
+ * @returns {node is import("@babel/types").CallExpression | import("@babel/types").OptionalCallExpression}
+ */
+export function isCallExpression(node) {
+  return node?.type === "CallExpression" || node?.type === "OptionalCallExpression";
+}
+
+/**
+ * Callee / expression surface name for `foo`, `obj.foo`, or `obj?.foo`.
  * @param {import("@babel/types").Node | null | undefined} expression
  * @returns {string | undefined}
  */
 export function callExpressionName(expression) {
   if (!expression) return undefined;
   if (expression.type === "Identifier") return expression.name;
-  if (
-    expression.type === "MemberExpression" &&
-    !expression.computed &&
-    expression.property.type === "Identifier"
-  ) {
+  if (isStaticMember(expression) && expression.property.type === "Identifier") {
     return expression.property.name;
   }
   return undefined;
 }
 
 /**
- * Non-computed member expression: `obj.prop` (not `obj[prop]`).
+ * Non-computed member expression: `obj.prop` / `obj?.prop` (not `obj[prop]`).
  * @param {import("@babel/types").Node | null | undefined} node
- * @returns {node is import("@babel/types").MemberExpression}
+ * @returns {node is (import("@babel/types").MemberExpression | import("@babel/types").OptionalMemberExpression) & { computed: false }}
  */
 export function isStaticMember(node) {
-  return node?.type === "MemberExpression" && !node.computed;
+  return isMemberExpression(node) && !node.computed;
 }
 
 /**
- * Computed member expression: `obj[prop]`.
+ * Computed member expression: `obj[prop]` / `obj?.[prop]`.
  * @param {import("@babel/types").Node | null | undefined} node
- * @returns {node is import("@babel/types").MemberExpression}
+ * @returns {node is (import("@babel/types").MemberExpression | import("@babel/types").OptionalMemberExpression) & { computed: true }}
  */
 export function isComputedMember(node) {
-  return node?.type === "MemberExpression" && node.computed;
+  return isMemberExpression(node) && node.computed;
+}
+
+/**
+ * Identifier bound by a pattern node, unwrapping default bindings
+ * (`AssignmentPattern`) so `{ role: r = "admin" }` and `{ role = "admin" }`
+ * yield the bound name the same way the TypeScript API's binding element did.
+ * @param {import("@babel/types").Node | null | undefined} node
+ * @returns {import("@babel/types").Identifier | null}
+ */
+export function bindingIdentifier(node) {
+  if (!node) return null;
+  if (node.type === "Identifier") return node;
+  if (node.type === "AssignmentPattern") return bindingIdentifier(node.left);
+  return null;
 }
 
 /**

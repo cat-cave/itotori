@@ -98,8 +98,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import {
+  bindingIdentifier,
   callExpressionName,
   forEachChild,
+  isCallExpression,
   isComputedMember,
   isStaticMember,
   parseTypeScript,
@@ -288,10 +290,59 @@ function roleReadInfo(node, aliases) {
 }
 
 // Collect alias declarations across the whole file, so `const r = x.role; if (r
-// === "admin")` and `const { role: r } = actor; if (r) …` treat `r` as a role
-// read. A single pre-pass keeps this order-independent.
+// === "admin")`, `const { role: r } = actor; if (r) …`, defaulted bindings
+// (`const { role: r = "draft" } = actor`), and parameter destructuring
+// (`function f({ role: r })`) treat `r` as a role read. A single pre-pass keeps
+// this order-independent. Optional member forms (`user?.role`) are accepted via
+// isStaticMember.
 function collectAliases(root) {
   const aliases = new Map();
+
+  /**
+   * @param {import("@babel/types").Node} pattern
+   * @param {boolean} initSubject
+   */
+  function collectRoleBindingsFromPattern(pattern, initSubject) {
+    if (pattern.type === "AssignmentPattern") {
+      collectRoleBindingsFromPattern(pattern.left, initSubject);
+      return;
+    }
+    if (pattern.type !== "ObjectPattern") return;
+    for (const property of pattern.properties) {
+      if (property.type === "RestElement") {
+        collectRoleBindingsFromPattern(property.argument, initSubject);
+        continue;
+      }
+      if (property.type !== "ObjectProperty") continue;
+      const propName =
+        property.key.type === "Identifier"
+          ? property.key.name
+          : property.key.type === "StringLiteral"
+            ? property.key.value
+            : undefined;
+      if (propName === "role") {
+        // `role`, `role: r`, `role = def`, `role: r = def` (AssignmentPattern).
+        const binding = bindingIdentifier(property.value);
+        if (binding !== null) {
+          aliases.set(binding.name, { authSubject: initSubject });
+        }
+      } else {
+        // Nested patterns: `{ profile: { role: r } }`
+        collectRoleBindingsFromPattern(property.value, initSubject);
+      }
+    }
+  }
+
+  /**
+   * @param {import("@babel/types").Node | null | undefined} init
+   */
+  function initAuthSubject(init) {
+    if (!init) return false;
+    return init.type === "Identifier" || isStaticMember(init)
+      ? isAuthSubjectName(immediateObjectName(init))
+      : false;
+  }
+
   function visit(node) {
     if (node.type === "VariableDeclarator" && node.init !== null && node.init !== undefined) {
       const init = node.init;
@@ -301,7 +352,7 @@ function collectAliases(root) {
         init.property.type === "Identifier" &&
         init.property.name === "role"
       ) {
-        // `const r = <obj>.role`
+        // `const r = <obj>.role` / `const r = <obj>?.role`
         aliases.set(node.id.name, {
           authSubject: isAuthSubjectName(immediateObjectName(init.object)),
         });
@@ -313,26 +364,38 @@ function collectAliases(root) {
         // `const r = role` / `const r2 = r`
         const origin = init.name === "role" ? { authSubject: false } : aliases.get(init.name);
         aliases.set(node.id.name, { authSubject: origin?.authSubject ?? false });
-      } else if (node.id.type === "ObjectPattern") {
-        // `const { role } = x` / `const { role: r } = x`
-        const initSubject =
-          init.type === "Identifier" || isStaticMember(init)
-            ? isAuthSubjectName(immediateObjectName(init))
-            : false;
-        for (const property of node.id.properties) {
-          if (property.type !== "ObjectProperty") continue;
-          const propName =
-            property.key.type === "Identifier"
-              ? property.key.name
-              : property.key.type === "StringLiteral"
-                ? property.key.value
-                : undefined;
-          if (propName === "role" && property.value.type === "Identifier") {
-            aliases.set(property.value.name, { authSubject: initSubject });
+      } else if (node.id.type === "ObjectPattern" || node.id.type === "AssignmentPattern") {
+        // `const { role } = x` / `const { role: r = "draft" } = actor`
+        collectRoleBindingsFromPattern(node.id, initAuthSubject(init));
+      }
+    }
+
+    // Default / destructured parameters: `function f({ role: r = "admin" })`,
+    // `({ role }) => …`, class/object methods. No initializer object → not an
+    // auth-subject origin (auth-role NAME compares still flag the alias).
+    if (
+      node.type === "FunctionDeclaration" ||
+      node.type === "FunctionExpression" ||
+      node.type === "ArrowFunctionExpression" ||
+      node.type === "ClassMethod" ||
+      node.type === "ObjectMethod" ||
+      node.type === "ClassPrivateMethod"
+    ) {
+      for (const param of node.params) {
+        if (param.type === "AssignmentPattern") {
+          if (param.left.type === "Identifier" && param.left.name === "role") {
+            aliases.set("role", { authSubject: false });
+          } else {
+            collectRoleBindingsFromPattern(param.left, false);
           }
+        } else if (param.type === "Identifier" && param.name === "role") {
+          aliases.set("role", { authSubject: false });
+        } else {
+          collectRoleBindingsFromPattern(param, false);
         }
       }
     }
+
     forEachChild(node, visit);
   }
   visit(root);
@@ -416,12 +479,14 @@ function findTsViolations(path, contents, lines) {
     }
 
     // Shape 5 — classic name-based auth shortcuts.
-    if (node.type === "Identifier") {
+    // Babel uses JSXIdentifier for JSX names; TS treated them as identifiers.
+    if (node.type === "Identifier" || node.type === "JSXIdentifier") {
       if (/^is_?[Aa]dmin$/u.test(node.name)) record(node, LABELS.isAdmin);
       else if (node.name === "roleValues") record(node, LABELS.roleValues);
       else if (node.name === "ROLES") record(node, LABELS.roles);
     }
-    if (node.type === "CallExpression") {
+    // Optional calls (`auth?.hasRole?.("admin")`) are OptionalCallExpression.
+    if (isCallExpression(node)) {
       const calleeName = callExpressionName(node.callee);
       if (calleeName !== undefined && /^has_?[Rr]ole$/u.test(calleeName)) {
         record(node, LABELS.hasRole);

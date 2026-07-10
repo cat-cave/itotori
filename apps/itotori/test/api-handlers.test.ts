@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import type { CallExpression, Node } from "@babel/types";
+import type { Node } from "@babel/types";
 import {
+  isCallExpression,
   isStaticMember,
   nodeText,
   parseTypeScript,
@@ -4502,7 +4503,9 @@ function sourceApiPermissionGateIdsFromSource(
   const gateIds: ApiMutationPermissionGateId[] = [];
 
   walk(root, (node) => {
-    if (node.type === "CallExpression") {
+    // Optional permission calls (`requireApiPermission?.(...)`) are
+    // OptionalCallExpression in Babel; still count as gates / undeclared calls.
+    if (isCallExpression(node)) {
       if (permissionHelperCallName(node.callee, requireApiPermissionAliases) !== undefined) {
         gateIds.push(apiGateIdFromCall(source, fileName, node));
       }
@@ -4639,7 +4642,7 @@ function mutatingProjectWorkflowCalls(node: Node): MutatingProjectWorkflowServic
   const services: MutatingProjectWorkflowService[] = [];
 
   walk(node, (current) => {
-    if (current.type === "CallExpression") {
+    if (isCallExpression(current)) {
       const service = projectWorkflowServiceName(current.callee);
       if (service !== undefined && !readOnlyProjectWorkflowServices.has(service)) {
         services.push(service as MutatingProjectWorkflowService);
@@ -4674,8 +4677,13 @@ function compareApiMutationRoutes(left: ApiMutationRoute, right: ApiMutationRout
 function apiGateIdFromCall(
   source: string,
   fileName: string,
-  node: CallExpression,
+  node: Node,
 ): ApiMutationPermissionGateId {
+  if (!isCallExpression(node)) {
+    throw new Error(
+      `API permission call at ${sourceLocation(fileName, node)} is not a call expression`,
+    );
+  }
   const gate = node.arguments[1];
   if (
     gate === undefined ||
@@ -4710,7 +4718,7 @@ function assertNoUndeclaredAppPermissionCallsInSource(source: string, fileName: 
 
   walk(root, (node) => {
     if (
-      node.type === "CallExpression" &&
+      isCallExpression(node) &&
       permissionHelperCallName(node.callee, requirePermissionAliases) !== undefined
     ) {
       throw new Error(

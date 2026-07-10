@@ -1,19 +1,22 @@
 // auth-006-no-hardcoded-roles-guard — regression suite for the AST-based
 // no-hardcoded-roles CI guard (auth-noroles-guard-ast).
 //
-// The guard was rewritten from a line-regex sieve to an AST walk (TypeScript
-// compiler API for .ts/.tsx/.js/.mjs/.cjs; a pragmatic pattern-scan for Rust
-// .rs). This suite proves it now CATCHES the four shapes the regex missed —
-// each with a POSITIVE fixture (auth role → flagged) and a NEGATIVE fixture
-// (the SAME shape on a domain/LLM role → passes):
+// The guard was rewritten from a line-regex sieve to an AST walk (Babel TS
+// parser via scripts/stable-ts-ast.mjs for .ts/.tsx/.mts/.cts/.js/.mjs/.cjs; a
+// pragmatic pattern-scan for Rust .rs). This suite proves it now CATCHES the
+// four shapes the regex missed — each with a POSITIVE fixture (auth role →
+// flagged) and a NEGATIVE fixture (the SAME shape on a domain/LLM role →
+// passes):
 //   1. property-access comparison   `user.role === "admin"`   vs `message.role === "user"`
 //   2. switch on a role read        `switch (role) { case "admin" }` vs domain cases
 //   3. inequality comparison        `role !== "viewer"`       vs `role !== "inventory_only"`
 //   4. role-keyed lookup map        `ROLES[role]`             vs `roles[role]` / `accepted[role]`
-// plus alias/destructuring role reads, the Rust equivalents, the classic
-// name-based shortcuts (`isAdmin`, `hasRole`, `roleValues`, `ROLES`), and the
-// expression-narrow `// authz-guard:allow domain-role` marker (inline OR in the
-// comment block above; a bare marker with no reason does NOT exempt).
+// plus alias/destructuring role reads (including defaulted bindings), optional
+// chaining forms (`user?.role`, `auth?.hasRole?.(...)`, `ROLE_PERMISSIONS?.[role]`),
+// the Rust equivalents, the classic name-based shortcuts (`isAdmin`, `hasRole`,
+// `roleValues`, `ROLES`), and the expression-narrow `// authz-guard:allow
+// domain-role` marker (inline OR in the comment block above; a bare marker with
+// no reason does NOT exempt).
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -166,6 +169,21 @@ test('catches a destructured/aliased role read: `const { role: r } = actor; r ==
   assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
 });
 
+test('catches a defaulted destructured alias: `const { role: r = "draft" } = actor; r === "draft"`', () => {
+  // AssignmentPattern defaults must not drop the bound alias; actor is an
+  // auth-subject so even a non-auth literal still flags the branch.
+  const hits = labels(
+    TS,
+    ['const { role: r = "draft" } = actor;', 'if (r === "draft") grant();'].join("\n"),
+  );
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches a defaulted parameter destructure: `function f({ role: r = "admin" }) { r === "admin" }`', () => {
+  const hits = labels(TS, 'function f({ role: r = "admin" }) { if (r === "admin") grant(); }');
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
 test("does NOT flag an aliased DOMAIN role read compared to a non-auth value", () => {
   // `const role = edition.translationRole; role === "official_translation"` —
   // the real catalog shape (bare-`role` alias, non-auth value).
@@ -178,6 +196,34 @@ test("does NOT flag an aliased DOMAIN role read compared to a non-auth value", (
     ),
     [],
   );
+});
+
+// =========================================================================
+// Optional chaining — Babel OptionalMember/CallExpression must not hide
+// auth-role branches (P1 regression from the TS7 stable-AST migration).
+// =========================================================================
+test('catches optional property-access comparison: `user?.role === "admin"`', () => {
+  const hits = labels(TS, 'if (user?.role === "admin") grant();');
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+  assert.ok(hits.includes(LABELS.subject), JSON.stringify(hits));
+});
+
+test('catches plain property-access comparison: `user.role === "admin"`', () => {
+  const hits = labels(TS, 'if (user.role === "admin") grant();');
+  assert.ok(hits.includes(LABELS.comparison), JSON.stringify(hits));
+});
+
+test('catches optional hasRole helper: `auth?.hasRole?.("admin")`', () => {
+  assert.ok(labels(TS, 'if (auth?.hasRole?.("admin")) grant();').includes(LABELS.hasRole));
+});
+
+test("catches optional auth-role map lookup: `ROLE_PERMISSIONS?.[role]`", () => {
+  assert.ok(labels(TS, "const p = ROLE_PERMISSIONS?.[role];").includes(LABELS.lookup));
+});
+
+test("does NOT flag permission-based authorization (negative control)", () => {
+  assert.deepEqual(labels(TS, 'await requirePermission(actor, "project.read");'), []);
+  assert.deepEqual(labels(TS, "await requirePermission(actor, permissionValues.projectRead);"), []);
 });
 
 // =========================================================================

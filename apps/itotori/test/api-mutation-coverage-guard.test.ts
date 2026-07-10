@@ -248,6 +248,33 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
     },
   );
 
+  it("FAILS on an uncovered optional-chained mutation (`services.projectWorkflow?.importBridge`)", () => {
+    // Babel emits OptionalCallExpression / OptionalMemberExpression for `?.`
+    // call chains; the guard must still discover the mutation (P1).
+    const optionalUncovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    return services.projectWorkflow?.importBridge(request.body.bridge);
+  }
+}
+`;
+    const uncovered = findUncoveredProjectWorkflowMutations(optionalUncovered, FILE);
+    expect(uncovered).toHaveLength(1);
+    expect(uncovered[0]?.method).toBe("importBridge");
+  });
+
+  it("passes when an optional-chained mutation is covered by requireApiPermission", () => {
+    const optionalCovered = `
+async function routeItotoriApiRequest(request, services) {
+  if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
+    await requireApiPermission(services, apiMutationPermissionGates.bridgeImport);
+    return services.projectWorkflow?.importBridge(request.body.bridge);
+  }
+}
+`;
+    expect(findUncoveredProjectWorkflowMutations(optionalCovered, FILE)).toEqual([]);
+  });
+
   it("treats read-only projectWorkflow reads as non-mutations", () => {
     const readOnly = `
       async function routeItotoriApiRequest(request, services) {

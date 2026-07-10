@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
-import type { CallExpression, Node } from "@babel/types";
+import type { Node } from "@babel/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  isCallExpression,
   isStaticMember,
   leadingCommentText,
   nameOf,
@@ -2487,6 +2488,40 @@ describe("repository permission gate matrix", () => {
     );
   });
 
+  it("discovers optional-chained requirePermission calls the same as plain ones (P1)", () => {
+    // Babel uses OptionalCallExpression for `requirePermission?.(…)`; source
+    // gate discovery must not drop those calls.
+    const plainGates = sourcePermissionGatesFromSource(
+      "optional-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriOptionalProbeRepository {
+          async plainMutation(actor) {
+            await requirePermission(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+    const optionalGates = sourcePermissionGatesFromSource(
+      "optional-probe-repository.ts",
+      `
+        import { permissionValues, requirePermission } from "../authorization.js";
+
+        class ItotoriOptionalProbeRepository {
+          async plainMutation(actor) {
+            await requirePermission?.(this.db, actor, permissionValues.draftWrite);
+          }
+        }
+      `,
+    );
+
+    expect(optionalGates.map(sourceGateKey)).toEqual(plainGates.map(sourceGateKey));
+    expect(optionalGates.map(sourceGateKey)).toEqual([
+      "ItotoriOptionalProbeRepository:optional-probe-repository.ts:plainMutation:draftWrite",
+    ]);
+  });
+
   it("distinguishes two repositories that share a method name and permission key by repository identity (SHARED-029)", () => {
     // Two repository classes in one source file both gate a method with the
     // same name on the same permission. Repository identity must keep the two
@@ -3271,8 +3306,10 @@ function sourcePermissionGatesFromSource(
   >[] = [];
 
   walk(parsedSource, (node) => {
+    // Optional calls (`requirePermission?.(…)`) are OptionalCallExpression in
+    // Babel; TypeScript's AST treated them as ordinary CallExpression.
     if (
-      node.type === "CallExpression" &&
+      isCallExpression(node) &&
       permissionHelperCallName(node.callee, requirePermissionAliases) !== undefined
     ) {
       const gateAnnotation = repositoryGateAnnotation(node);
@@ -3362,10 +3399,15 @@ type RepositoryGateAnnotation = {
 type ParentNode = Node & { parent?: Node | null };
 
 function permissionKeyFromRepositoryCall(
-  node: CallExpression,
+  node: Node,
   annotation: RepositoryGateAnnotation | undefined,
   fileName: string,
 ): PermissionKey {
+  if (!isCallExpression(node)) {
+    throw new Error(
+      `repository permission call at ${sourceLocation(fileName, node)} is not a call expression`,
+    );
+  }
   const permissionArgument = node.arguments[2];
   const permissionKey =
     permissionArgument !== undefined &&
