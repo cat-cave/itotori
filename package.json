@@ -12,7 +12,7 @@
   "devDependencies": {
     "@types/node": "^24.10.1",
     "ajv": "^8.20.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.4",
     "vite-plus": "^0.1.24",
     "vitest": "^4.1.10"
