@@ -776,6 +776,109 @@ pub fn validate_g00_lzss_content(
     })
 }
 
+/// Header and stream-valid pattern metadata only; this neither decodes pixels
+/// nor validates palette/region-container semantics or visual correctness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct G00PatternGeometry {
+    pub g00_type: G00Type,
+    pub pattern_count: u32,
+    pub selected_pattern: u32,
+    pub width: u32,
+    pub height: u32,
+    pub origin_x: i32,
+    pub origin_y: i32,
+}
+
+/// Metadata failures from [`probe_g00_pattern_geometry`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum G00MetadataError {
+    Validator(G00ContentValidationError),
+    ZeroRegionTable,
+    RegionTableBounds { region_count: u32 },
+    InvertedRegion { pattern: u32 },
+    RegionDimensionOverflow { pattern: u32 },
+}
+
+impl std::fmt::Display for G00MetadataError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("utsushi.reallive.g00.metadata")
+    }
+}
+
+impl std::error::Error for G00MetadataError {}
+
+/// Probe one g00 pattern's dimensions and origin after strict LZSS validation.
+/// Types 0/1 expose one full-header pattern; type-2 out-of-range patterns fall
+/// back to zero, matching RLVM's region selection behavior.
+pub fn probe_g00_pattern_geometry(
+    input: &[u8],
+    pattern: u32,
+) -> Result<G00PatternGeometry, G00MetadataError> {
+    let validation = validate_g00_lzss_content(input).map_err(G00MetadataError::Validator)?;
+    let width = u16::from_le_bytes([input[1], input[2]]) as u32;
+    let height = u16::from_le_bytes([input[3], input[4]]) as u32;
+    if validation.g00_type != G00Type::RegionedLzss {
+        return Ok(G00PatternGeometry {
+            g00_type: validation.g00_type,
+            pattern_count: 1,
+            selected_pattern: 0,
+            width,
+            height,
+            origin_x: 0,
+            origin_y: 0,
+        });
+    }
+    let region_count = u32::from_le_bytes([input[5], input[6], input[7], input[8]]);
+    if region_count == 0 {
+        return Err(G00MetadataError::ZeroRegionTable);
+    }
+    let selected_pattern = if pattern < region_count { pattern } else { 0 };
+    let table_start = G00_HEADER_PREAMBLE_BYTE_LEN + 4;
+    let record_offset = (selected_pattern as usize)
+        .checked_mul(G00_REGION_RECORD_BYTE_LEN)
+        .and_then(|offset| table_start.checked_add(offset))
+        .ok_or(G00MetadataError::RegionTableBounds { region_count })?;
+    let record_end = record_offset
+        .checked_add(G00_REGION_RECORD_BYTE_LEN)
+        .ok_or(G00MetadataError::RegionTableBounds { region_count })?;
+    if record_end > input.len() {
+        return Err(G00MetadataError::RegionTableBounds { region_count });
+    }
+    let x1 = g00_i32(input, record_offset);
+    let y1 = g00_i32(input, record_offset + 4);
+    let x2 = g00_i32(input, record_offset + 8);
+    let y2 = g00_i32(input, record_offset + 12);
+    if x2 < x1 || y2 < y1 {
+        return Err(G00MetadataError::InvertedRegion {
+            pattern: selected_pattern,
+        });
+    }
+    let dimension = |start: i32, end: i32| {
+        u32::try_from(i64::from(end) - i64::from(start) + 1).map_err(|_| {
+            G00MetadataError::RegionDimensionOverflow {
+                pattern: selected_pattern,
+            }
+        })
+    };
+    Ok(G00PatternGeometry {
+        g00_type: validation.g00_type,
+        pattern_count: region_count,
+        selected_pattern,
+        width: dimension(x1, x2)?,
+        height: dimension(y1, y2)?,
+        origin_x: g00_i32(input, record_offset + 16),
+        origin_y: g00_i32(input, record_offset + 20),
+    })
+}
+
+fn g00_i32(input: &[u8], offset: usize) -> i32 {
+    i32::from_le_bytes(
+        input[offset..offset + 4]
+            .try_into()
+            .expect("checked record bounds"),
+    )
+}
+
 fn strict_lzss_section(
     input: &[u8],
     section_offset: usize,
@@ -1825,6 +1928,115 @@ mod tests {
         bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
         bytes.extend_from_slice(&lzss);
         bytes
+    }
+
+    fn append_type2_region(
+        mut bytes: Vec<u8>,
+        rect: (i32, i32, i32, i32),
+        origin: (i32, i32),
+    ) -> Vec<u8> {
+        let mut record = Vec::new();
+        for value in [rect.0, rect.1, rect.2, rect.3, origin.0, origin.1] {
+            record.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.splice(33..33, record);
+        bytes[5..9].copy_from_slice(&2u32.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn pattern_geometry_reads_header_patterns_and_rlvm_fallback() {
+        let type0 = synth_type0(2, 1, &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            probe_g00_pattern_geometry(&type0, 7).unwrap(),
+            G00PatternGeometry {
+                g00_type: G00Type::RawBgr,
+                pattern_count: 1,
+                selected_pattern: 0,
+                width: 2,
+                height: 1,
+                origin_x: 0,
+                origin_y: 0,
+            }
+        );
+        let mut type1 = vec![G00_TYPE_PALETTED_LZSS, 4, 0, 3, 0];
+        type1.extend_from_slice(&10u32.to_le_bytes());
+        type1.extend_from_slice(&0u32.to_le_bytes());
+        type1.extend_from_slice(&[1, 0]);
+        assert_eq!(
+            probe_g00_pattern_geometry(&type1, 7).unwrap(),
+            G00PatternGeometry {
+                g00_type: G00Type::PalettedLzss,
+                pattern_count: 1,
+                selected_pattern: 0,
+                width: 4,
+                height: 3,
+                origin_x: 0,
+                origin_y: 0,
+            }
+        );
+        let type2 = append_type2_region(synth_type2(2, 1, &[0; 8]), (3, -2, 5, 1), (7, -9));
+        let selected = probe_g00_pattern_geometry(&type2, 1).unwrap();
+        assert_eq!(
+            (
+                selected.pattern_count,
+                selected.selected_pattern,
+                selected.width,
+                selected.height,
+                selected.origin_x,
+                selected.origin_y
+            ),
+            (2, 1, 3, 4, 7, -9)
+        );
+        let fallback = probe_g00_pattern_geometry(&type2, 9).unwrap();
+        assert_eq!(
+            (
+                fallback.selected_pattern,
+                fallback.width,
+                fallback.height,
+                fallback.origin_x,
+                fallback.origin_y
+            ),
+            (0, 2, 1, 0, 0)
+        );
+    }
+
+    #[test]
+    fn pattern_geometry_rejects_invalid_or_unvalidated_metadata() {
+        let inverted = append_type2_region(synth_type2(1, 1, &[0; 4]), (2, 0, 1, 0), (0, 0));
+        assert!(matches!(
+            probe_g00_pattern_geometry(&inverted, 1),
+            Err(G00MetadataError::InvertedRegion { pattern: 1 })
+        ));
+        let overflow = append_type2_region(
+            synth_type2(1, 1, &[0; 4]),
+            (i32::MIN, 0, i32::MAX, 0),
+            (0, 0),
+        );
+        assert!(matches!(
+            probe_g00_pattern_geometry(&overflow, 1),
+            Err(G00MetadataError::RegionDimensionOverflow { pattern: 1 })
+        ));
+        let truncated_table = [G00_TYPE_REGIONED_LZSS, 0, 0, 0, 0, 1, 0, 0, 0];
+        assert!(matches!(
+            probe_g00_pattern_geometry(&truncated_table, 0),
+            Err(G00MetadataError::Validator(
+                G00ContentValidationError::HeaderBounds { .. }
+            ))
+        ));
+        let zero_table = [G00_TYPE_REGIONED_LZSS, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert!(matches!(
+            probe_g00_pattern_geometry(&zero_table, 0),
+            Err(G00MetadataError::Validator(
+                G00ContentValidationError::Type2ZeroRegions
+            ))
+        ));
+        assert!(matches!(
+            probe_g00_pattern_geometry(&type0_with(&[1], 4), 0),
+            Err(G00MetadataError::Validator(
+                G00ContentValidationError::TruncatedLiteral { .. }
+            ))
+        ));
     }
 
     /// Like [`synth_type2`] but with a caller-chosen region rectangle and
