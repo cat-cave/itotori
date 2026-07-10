@@ -155,18 +155,38 @@ test("local compose applies durable runtime Postgres connection tuning", () => {
   assert.match(compose, /4x Postgres' default max_connections/u);
 });
 
-test("the DB-backed CI workflow uses the local db compose path for Postgres parity", () => {
+test("the DB-backed CI workflow provisions Postgres via a health-checked GH service", () => {
   // ALPHA-009: only DB-backed workflows are asserted here. The alpha-proof
   // integration workflow is public-fixture-only and deterministic — it does
   // NOT start Postgres — so it is intentionally excluded from this matrix.
+  //
+  // The hosted PR lane provisions Postgres as a GitHub `services:` container
+  // (postgres:18, health-checked) rather than starting docker-compose in-job.
+  // A service container is up and ready before any step runs, so the DB-backed
+  // suites execute against a real database instead of racing a compose bring-up.
+  // docker-compose.yml stays the LOCAL developer path (see the tuning test
+  // above); the runner no longer depends on the compose interpolation impl.
   for (const [name, workflow] of [["ci", ciWorkflow]]) {
-    assert.doesNotMatch(workflow, /^\s+services:\n\s+postgres:/mu, `${name} uses a GH service`);
-    assert.match(workflow, /- run: just db-up\n/u, `${name} starts the compose db`);
-    assert.match(workflow, /- run: just db-wait\n/u, `${name} waits for the compose db`);
     assert.match(
       workflow,
-      /- run: just db-down\n\s+if: always\(\)\n/u,
-      `${name} tears down the compose db`,
+      /^\s+services:\n\s+postgres:\n\s+image: postgres:18\n/mu,
+      `${name} must provision Postgres 18 as a GH service container`,
+    );
+    assert.match(
+      workflow,
+      /--health-cmd "pg_isready/u,
+      `${name} service must health-check Postgres before steps run`,
+    );
+    assert.match(
+      workflow,
+      /DATABASE_URL: postgres:\/\/itotori:itotori@127\.0\.0\.1:55433\/itotori/u,
+      `${name} must wire DATABASE_URL to the service`,
+    );
+    // The runner no longer starts/tears down the local compose stack.
+    assert.doesNotMatch(
+      workflow,
+      /just db-up|just db-wait|just db-down/u,
+      `${name} must not drive local docker-compose on the hosted runner`,
     );
   }
 });
@@ -326,24 +346,31 @@ test("public no-secret defaults render and round-trip unchanged", () => {
 
 // Real compose-config proof: write a minimal compose file + generated env file
 // with a `$`-bearing password and confirm `docker compose config` reports the
-// credential unchanged. Skipped when no compose CLI is present (e.g. minimal CI
-// images); the encoder-model tests above still prove preservation.
+// credential unchanged. Skipped when no `docker compose` CLI is present (e.g.
+// minimal CI images); the encoder-model tests above still prove preservation.
+//
+// SEMANTIC comparison (not a naive substring match): `docker compose config`
+// RE-ESCAPES every literal `$` in a resolved value back to `$$` — in BOTH its
+// yaml and `--format json` output — so the rendered config is itself
+// re-interpolatable. So the encoder preserving `p$4ssw0rd` is REPORTED by
+// compose as `p$$4ssw0rd`: that `$$` is CORRECT compose output escaping, not a
+// bug (the old test's substring match on the raw credential false-failed on it).
+// The honest check therefore compares the reported value against the credential
+// with that documented `$`->`$$` output-escaping applied (split/join, since a
+// `"$$"` string replacement would collapse back to a single `$`). Podman's
+// `docker` shim delegates compose parsing to podman-compose (divergent dotenv
+// semantics), so we skip when the CLI is podman-backed and rely on the
+// compose-go model tests above.
 test("docker compose config preserves a $-bearing generated credential", (t) => {
-  let composeCli = null;
-  for (const [cmd, args] of [
-    ["docker", ["compose"]],
-    ["podman-compose", []],
-  ]) {
-    try {
-      execFileSync(cmd, [...args, "version"], { stdio: "ignore" });
-      composeCli = [cmd, args];
-      break;
-    } catch {
-      // try the next CLI
-    }
+  let composeVersion;
+  try {
+    composeVersion = execFileSync("docker", ["compose", "version"], { encoding: "utf8" });
+  } catch {
+    t.skip("no docker compose CLI available");
+    return;
   }
-  if (!composeCli) {
-    t.skip("no docker/podman compose CLI available");
+  if (/podman/iu.test(composeVersion)) {
+    t.skip("docker command delegates compose parsing to podman-compose");
     return;
   }
 
@@ -367,21 +394,35 @@ test("docker compose config preserves a $-bearing generated credential", (t) => 
   // provider expands it against the OS env — a tool divergence, not an encoder
   // fault — so the brace-ref preservation is asserted by the compose-model
   // round-trip tests above (which follow compose-go semantics), not this one.
-  const [cmd, baseArgs] = composeCli;
   for (const credential of ["p$4ssw0rd", "a$$b", "sp ace$x", 'q"q$y', "back\\slash$z"]) {
     const values = composeEnvValues({
       DATABASE_URL: `postgres://itotori:${encodeURIComponent(credential)}@127.0.0.1:56000/itotori`,
     });
     writeFileSync(path.join(dir, "gen.env"), renderComposeEnvFile(values));
-    const out = execFileSync(cmd, [...baseArgs, "--env-file", "gen.env", "config"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
-    const parsed = out.split("\n").find((l) => /POSTGRES_PASSWORD:/u.test(l));
-    assert.notEqual(parsed, undefined, "compose config must report POSTGRES_PASSWORD");
-    assert.ok(
-      parsed.includes(credential),
-      `compose config must preserve ${JSON.stringify(credential)}; got: ${parsed.trim()}`,
+    const out = execFileSync(
+      "docker",
+      ["compose", "--env-file", "gen.env", "config", "--format", "json"],
+      { cwd: dir, encoding: "utf8" },
+    );
+    // `--format json` normalizes `environment` to either a map or a `KEY=VALUE`
+    // string array depending on the compose version; handle both so this stays
+    // a robust SEMANTIC check (never a shape-dependent false-fail on the runner).
+    const env = JSON.parse(out).services?.postgres?.environment;
+    const resolved = Array.isArray(env)
+      ? env
+          .find((entry) => entry.startsWith("POSTGRES_PASSWORD="))
+          ?.slice("POSTGRES_PASSWORD=".length)
+      : env?.POSTGRES_PASSWORD;
+    // compose config re-escapes each literal `$` as `$$` in its output (so the
+    // rendered config re-interpolates back to the same value). Apply that same
+    // documented output-escaping to the expected credential; equality then proves
+    // the resolved internal value equals the credential byte-for-byte.
+    const expected = credential.split("$").join("$$");
+    assert.equal(
+      resolved,
+      expected,
+      `compose config must resolve POSTGRES_PASSWORD to ${JSON.stringify(credential)} ` +
+        `(reported with compose's $->$$ output escaping as ${JSON.stringify(expected)})`,
     );
   }
 });

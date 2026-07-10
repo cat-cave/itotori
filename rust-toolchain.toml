@@ -1,4 +1,9 @@
 [toolchain]
-channel = "stable"
+# Pinned to an exact stable release (was floating `stable`). A floating channel
+# let the GitHub runner's rustup resolve a DIFFERENT clippy than the local Nix
+# shell, so `clippy -D warnings` could pass locally and fail runner-only. Bump
+# this deliberately in a dedicated toolchain PR; keep CI's dtolnay `toolchain:`
+# input in lockstep with this value.
+channel = "1.97.0"
 components = ["rustfmt", "clippy", "rust-src"]
 profile = "default"

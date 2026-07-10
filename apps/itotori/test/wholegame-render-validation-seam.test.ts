@@ -8,7 +8,19 @@ import {
   type WholeGameRenderValidationResult,
 } from "../src/orchestrator/wholegame-render-validation-seam.js";
 import type { DrivenPatchReport } from "../src/orchestrator/project-driven-executor.js";
-import type { NativeCliProcessResult } from "../src/native-bin/cli-bin-resolver.js";
+import {
+  resolveNativeCli,
+  type NativeCliProcessResult,
+} from "../src/native-bin/cli-bin-resolver.js";
+
+// The one real-binary test below spawns the actual utsushi-cli. It only runs
+// when a PREBUILT binary is resolvable (env override / libexec / CARGO_TARGET_DIR
+// / repo target / PATH). When resolution falls through to the `cargo run -p
+// utsushi-cli` dev-shell fallback (command === "cargo"), the genuine resource —
+// a compiled utsushi-cli — is absent, so the test SELF-SKIPS rather than trigger
+// a slow, flaky mid-test cargo compile. `just ci` builds the workspace before
+// `test`, so the binary is present on the runner and the test RUNS there.
+const PREBUILT_UTSUSHI_CLI = resolveNativeCli("utsushi-cli").command !== "cargo";
 
 const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1";
 const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2";
@@ -353,77 +365,84 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(result.findings[0]!.phase).toBe("render-validate");
   });
 
-  it("drives real utsushi-cli through replay success into render-validation signal per unit", () => {
-    // No nativeCli mock: the real binary runs. The committed Seen fixture is a
-    // valid RealLive archive for scene 1, so replay-validate must pass before
-    // render-validate can emit a typed render-validation signal asserted below.
-    const workDir = mkdtempSync(join(tmpdir(), "itotori-wholegame-render-real-"));
-    const sourceRoot = join(workDir, "source");
-    const targetRoot = join(workDir, "target");
-    const artifactRoot = join(workDir, "artifacts");
-    const fixtureRoot = join(
-      process.cwd(),
-      "..",
-      "..",
-      "crates",
-      "kaifuu-reallive",
-      "tests",
-      "fixtures",
-      "bridge-inventory-001",
-    );
-    mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
-    mkdirSync(join(targetRoot, "REALLIVEDATA"), { recursive: true });
-    writeFileSync(
-      join(sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
-      "#SCREENSIZE_MOD=1\r\n" +
-        "#WINDOW_ATTR=100,100,160,200,0\r\n" +
-        "#WINDOW.000.POS=0:0,345\r\n" +
-        "#WINDOW.000.ATTR_MOD=0\r\n" +
-        "#WINDOW.000.ATTR=080,112,160,255,0\r\n" +
-        "#WINDOW.000.MOJI_SIZE=25\r\n" +
-        "#WINDOW.000.MOJI_POS=19,0,53,0\r\n" +
-        "#WINDOW.000.MOJI_CNT=22,3\r\n" +
-        "#WINDOW.000.MOJI_REP=-1,3\r\n" +
-        "#WINDOW.000.NAME_MOD=0\r\n" +
-        "#WINDOW.000.MESSAGE_MOD=0\r\n",
-    );
-    copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(sourceRoot, "REALLIVEDATA", "Seen.txt"));
-    copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(targetRoot, "REALLIVEDATA", "Seen.txt"));
+  it.skipIf(!PREBUILT_UTSUSHI_CLI)(
+    "drives real utsushi-cli through replay success into render-validation signal per unit",
+    () => {
+      // No nativeCli mock: the real binary runs. The committed Seen fixture is a
+      // valid RealLive archive for scene 1, so replay-validate must pass before
+      // render-validate can emit a typed render-validation signal asserted below.
+      const workDir = mkdtempSync(join(tmpdir(), "itotori-wholegame-render-real-"));
+      const sourceRoot = join(workDir, "source");
+      const targetRoot = join(workDir, "target");
+      const artifactRoot = join(workDir, "artifacts");
+      const fixtureRoot = join(
+        process.cwd(),
+        "..",
+        "..",
+        "crates",
+        "kaifuu-reallive",
+        "tests",
+        "fixtures",
+        "bridge-inventory-001",
+      );
+      mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+      mkdirSync(join(targetRoot, "REALLIVEDATA"), { recursive: true });
+      writeFileSync(
+        join(sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
+        "#SCREENSIZE_MOD=1\r\n" +
+          "#WINDOW_ATTR=100,100,160,200,0\r\n" +
+          "#WINDOW.000.POS=0:0,345\r\n" +
+          "#WINDOW.000.ATTR_MOD=0\r\n" +
+          "#WINDOW.000.ATTR=080,112,160,255,0\r\n" +
+          "#WINDOW.000.MOJI_SIZE=25\r\n" +
+          "#WINDOW.000.MOJI_POS=19,0,53,0\r\n" +
+          "#WINDOW.000.MOJI_CNT=22,3\r\n" +
+          "#WINDOW.000.MOJI_REP=-1,3\r\n" +
+          "#WINDOW.000.NAME_MOD=0\r\n" +
+          "#WINDOW.000.MESSAGE_MOD=0\r\n",
+      );
+      copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(sourceRoot, "REALLIVEDATA", "Seen.txt"));
+      copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(targetRoot, "REALLIVEDATA", "Seen.txt"));
 
-    const result = runWholeGameReplayRenderValidate({
-      rawBridge: rawBridgeFixtureSceneOneTwoUnits(),
-      patchReport: patchReport([
-        { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-0001/line-001", finalDraftText: DRAFT_A },
-        { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-0001/line-002", finalDraftText: DRAFT_B },
-      ]),
-      sourceRoot,
-      targetRoot,
-      artifactRoot,
-      // real utsushi-cli via default spawn — not a fabricated runtimeValidation,
-      // not a fully-mocked nativeCli.
-    });
+      const result = runWholeGameReplayRenderValidate({
+        rawBridge: rawBridgeFixtureSceneOneTwoUnits(),
+        patchReport: patchReport([
+          { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-0001/line-001", finalDraftText: DRAFT_A },
+          { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-0001/line-002", finalDraftText: DRAFT_B },
+        ]),
+        sourceRoot,
+        targetRoot,
+        artifactRoot,
+        // real utsushi-cli via default spawn — not a fabricated runtimeValidation,
+        // not a fully-mocked nativeCli.
+      });
 
-    expect(result.coverage.selectedUnitCount).toBe(2);
-    expect(result.coverage.candidateUnitCount).toBe(2);
-    expect(result.coverage.sampled).toBe(false);
-    expect(result.coverage.selectedUnitIds).toEqual([UNIT_A, UNIT_B]);
-    expect(result.coverage.skippedUnitIds).toEqual([]);
+      expect(result.coverage.selectedUnitCount).toBe(2);
+      expect(result.coverage.candidateUnitCount).toBe(2);
+      expect(result.coverage.sampled).toBe(false);
+      expect(result.coverage.selectedUnitIds).toEqual([UNIT_A, UNIT_B]);
+      expect(result.coverage.skippedUnitIds).toEqual([]);
 
-    // Strict semantic replay is allowed to reject this fixture after writing
-    // replay + dispatch evidence; that nonzero result must short-circuit render.
-    expect(result.findings).toHaveLength(2);
-    const unitIds = new Set(result.findings.map((finding) => finding.bridgeUnitId));
-    expect(unitIds.has(UNIT_A)).toBe(true);
-    expect(unitIds.has(UNIT_B)).toBe(true);
-    for (const finding of result.findings) {
-      expect(finding.phase).toBe("replay-validate");
-      expect(finding.code).toBe("native-cli-failed");
-      expect(finding.artifactRefs.renderEvidence).toBeUndefined();
-      expect(existsSync(finding.artifactRefs.replayLog!)).toBe(true);
-      expect(existsSync(finding.artifactRefs.dispatchReport!)).toBe(true);
-      expect(finding.diagnostic.error.message).toContain("semantic_path_unavailable");
-      expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_A);
-      expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_B);
-    }
-  });
+      // Strict semantic replay is allowed to reject this fixture after writing
+      // replay + dispatch evidence; that nonzero result must short-circuit render.
+      expect(result.findings).toHaveLength(2);
+      const unitIds = new Set(result.findings.map((finding) => finding.bridgeUnitId));
+      expect(unitIds.has(UNIT_A)).toBe(true);
+      expect(unitIds.has(UNIT_B)).toBe(true);
+      for (const finding of result.findings) {
+        expect(finding.phase).toBe("replay-validate");
+        expect(finding.code).toBe("native-cli-failed");
+        expect(finding.artifactRefs.renderEvidence).toBeUndefined();
+        expect(existsSync(finding.artifactRefs.replayLog!)).toBe(true);
+        expect(existsSync(finding.artifactRefs.dispatchReport!)).toBe(true);
+        expect(finding.diagnostic.error.message).toContain("semantic_path_unavailable");
+        expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_A);
+        expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_B);
+      }
+    },
+    // Generous timeout: the real utsushi-cli spawn (replay-validate over the
+    // committed fixture) is far slower than a mocked seam and exceeds Vitest's
+    // default 5s on a cold hosted runner.
+    180_000,
+  );
 });

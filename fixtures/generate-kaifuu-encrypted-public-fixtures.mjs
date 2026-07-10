@@ -17,6 +17,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
 const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
 const checkMode = process.argv.includes("--check");
+// Cached kaifuu-cli cargo runner (see cargoRunner() below). Declared here — above
+// the top-level driver code — so it is initialized before any call to cargoRunner.
+let cargoRunnerCached;
 const originalFixtureTree = checkMode ? snapshotTree(fixtureRoot) : null;
 const originalManifest = checkMode && existsSync(manifestPath) ? readFileSync(manifestPath) : null;
 
@@ -833,11 +836,35 @@ function writeSiglusExpectedOutputs() {
   ]);
 }
 
+// Resolve how to invoke `cargo` for kaifuu-cli fixture regeneration. Locally we
+// enter the nix devshell via `direnv exec .` so the pinned toolchain + shared
+// CARGO_TARGET_DIR are used. On the hosted CI runner direnv/nix are absent but
+// `cargo` is on PATH (the dtolnay toolchain honoring rust-toolchain.toml), so we
+// invoke cargo directly — spawning `direnv` there fails with ENOENT and false-
+// reds `just check`. Probed once and cached (the cache var is declared at the
+// top of the file so top-level driver code can call this before this point).
+function cargoRunner() {
+  if (cargoRunnerCached === undefined) {
+    let hasDirenv = false;
+    try {
+      execFileSync("direnv", ["version"], { stdio: "ignore" });
+      hasDirenv = true;
+    } catch {
+      hasDirenv = false;
+    }
+    cargoRunnerCached = hasDirenv
+      ? { command: "direnv", prefix: ["exec", ".", "cargo"] }
+      : { command: "cargo", prefix: [] };
+  }
+  return cargoRunnerCached;
+}
+
 function writeCommandExpectedOutput(relativePath, args) {
   mkdirSync(dirname(resolve(fixtureRoot, relativePath)), { recursive: true });
+  const runner = cargoRunner();
   execFileSync(
-    "direnv",
-    ["exec", ".", "cargo", "run", "--quiet", "-p", "kaifuu-cli", "--", ...args],
+    runner.command,
+    [...runner.prefix, "run", "--quiet", "-p", "kaifuu-cli", "--", ...args],
     {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],

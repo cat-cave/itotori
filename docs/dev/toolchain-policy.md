@@ -7,14 +7,14 @@ and proven by CI.
 
 ## Authorities
 
-| Surface               | Authority                                 | Notes                                                                            |
-| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------- |
-| Node runtime          | `.node-version`                           | CI and local shells should use this exact version.                               |
-| pnpm runtime          | `packageManager` in `package.json`        | Corepack reads this exact package manager version.                               |
-| TypeScript/web tools  | root `package.json` and `pnpm-lock.yaml`  | Vite+ is the high-level TypeScript/web command surface.                          |
-| Rust runtime          | `rust-toolchain.toml`                     | Cargo remains the build, test, clippy, and dependency authority for Rust crates. |
-| CI behavior           | `.github/workflows/ci.yml` and `justfile` | CI must call the same root recipes developers use locally.                       |
-| Dependency lock state | `pnpm-lock.yaml` and `Cargo.lock`         | Lockfiles are committed and reviewed.                                            |
+| Surface               | Authority                                 | Notes                                                                                                                                                                                                                            |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node runtime          | `.node-version`                           | CI and local shells should use this exact version.                                                                                                                                                                               |
+| pnpm runtime          | `packageManager` in `package.json`        | Corepack reads this exact package manager version.                                                                                                                                                                               |
+| TypeScript/web tools  | root `package.json` and `pnpm-lock.yaml`  | Vite+ is the high-level TypeScript/web command surface.                                                                                                                                                                          |
+| Rust runtime          | `rust-toolchain.toml`                     | Pins an EXACT stable release (e.g. `1.97.0`), not a floating `stable`. Cargo remains the build, test, clippy, and dependency authority for Rust crates. CI's `dtolnay/rust-toolchain@v1` `toolchain:` input must equal this pin. |
+| CI behavior           | `.github/workflows/ci.yml` and `justfile` | CI must call the same root recipes developers use locally.                                                                                                                                                                       |
+| Dependency lock state | `pnpm-lock.yaml` and `Cargo.lock`         | Lockfiles are committed and reviewed.                                                                                                                                                                                            |
 
 Vite+ manages the TypeScript/web workspace and task graph. It does not replace
 Cargo, Cargo.lock, rustup, or Rust's dependency model. Root `just` recipes are the
@@ -59,7 +59,9 @@ just ci
 4. Run `node scripts/sync-pnpm-engine.mjs` so `package.json`
    `engines.pnpm` matches the new `packageManager` minimum.
 5. Upgrade TypeScript/web dependencies to latest compatible releases.
-6. Update the stable Rust toolchain.
+6. Update the Rust toolchain pin: bump `rust-toolchain.toml`'s exact `channel`
+   to the newest stable release and update the matching `toolchain:` input in
+   `.github/workflows/ci.yml`. Keep the two in lockstep.
 7. Refresh Cargo dependencies.
 8. Run the toolchain policy verifier.
 9. Finish with `just ci` before an upgrade PR is considered mergeable.
