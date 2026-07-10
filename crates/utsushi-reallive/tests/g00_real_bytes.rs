@@ -52,8 +52,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{
-    G00_TYPE_PALETTED_LZSS, G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS, G00CorpusHistogram, G00Type,
-    G00Warning, decode_g00,
+    G00_TYPE_PALETTED_LZSS, G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS, G00ContentValidationError,
+    G00CorpusHistogram, G00MetadataError, G00Type, G00Warning, decode_g00,
+    probe_g00_pattern_geometry, validate_g00_lzss_content,
 };
 
 // Relative path under the Sweetie HD extraction root to the
@@ -278,6 +279,187 @@ fn g00_type0_corpus_coherence_both_titles() {
     if !ran {
         real_corpus::require_real_bytes(
             "utsushi-reallive g00 type-0 corpus coherence (needs ITOTORI_REAL_GAME_ROOT or ITOTORI_REAL_GAME_ROOT_2)",
+        );
+    }
+}
+
+/// Stable discriminant name for a [`G00ContentValidationError`], used to
+/// build a rejection histogram in the real-corpus cross-check below.
+fn content_err_kind(err: &G00ContentValidationError) -> &'static str {
+    match err {
+        G00ContentValidationError::TruncatedPreamble => "TruncatedPreamble",
+        G00ContentValidationError::UnknownType => "UnknownType",
+        G00ContentValidationError::HeaderBounds { .. } => "HeaderBounds",
+        G00ContentValidationError::RegionTableOverflow => "RegionTableOverflow",
+        G00ContentValidationError::Type2ZeroRegions => "Type2ZeroRegions",
+        G00ContentValidationError::InvalidCompressedSize => "InvalidCompressedSize",
+        G00ContentValidationError::OuterLengthMismatch { .. } => "OuterLengthMismatch",
+        G00ContentValidationError::DeclaredOutputMismatch { .. } => "DeclaredOutputMismatch",
+        G00ContentValidationError::CountOverflow => "CountOverflow",
+        G00ContentValidationError::TruncatedLiteral { .. } => "TruncatedLiteral",
+        G00ContentValidationError::TruncatedBackreference { .. } => "TruncatedBackreference",
+        G00ContentValidationError::InvalidDistance { .. } => "InvalidDistance",
+        G00ContentValidationError::OutputOverrun { .. } => "OutputOverrun",
+        G00ContentValidationError::OutputUnderrun { .. } => "OutputUnderrun",
+        G00ContentValidationError::UnconsumedPayload { .. } => "UnconsumedPayload",
+    }
+}
+
+/// Stable discriminant name for a [`G00MetadataError`].
+fn metadata_err_kind(err: &G00MetadataError) -> &'static str {
+    match err {
+        G00MetadataError::Validator(inner) => content_err_kind(inner),
+        G00MetadataError::ZeroRegionTable => "ZeroRegionTable",
+        G00MetadataError::RegionTableBounds { .. } => "RegionTableBounds",
+        G00MetadataError::InvertedRegion { .. } => "InvertedRegion",
+        G00MetadataError::RegionDimensionOverflow { .. } => "RegionDimensionOverflow",
+    }
+}
+
+/// Real-oracle proof for the UTSUSHI-217/218 strict `validate_g00_lzss_content`
+/// (and `probe_g00_pattern_geometry`) helpers: the strict validator adds
+/// invariants (exact outer-length match, fully-consumed payload,
+/// declared-output cross-check) that the tolerant `decode_g00` does NOT
+/// enforce. This walks the whole real corpus and asserts the strict validator
+/// ACCEPTS every real g00 file the decoder decodes **cleanly** (`Ok` with zero
+/// warnings) — i.e. it may not false-reject a well-formed archived asset. Files
+/// the decoder itself flags with a `PayloadLengthMismatch` warning are already
+/// imperfect and are reported for information only (strict is allowed to reject
+/// those). This is the assertion that turns the synthetic-only proof of these
+/// helpers into a real-bytes oracle proof.
+fn assert_strict_validator_accepts_clean_decodes(title: &str, g00_dir: &PathBuf) {
+    let entries = fs::read_dir(g00_dir).unwrap_or_else(|err| {
+        panic!(
+            "failed to walk {title} g00 dir {}: {err}",
+            g00_dir.display()
+        )
+    });
+
+    let mut total = 0usize;
+    let mut decode_err = 0usize;
+    let mut clean = 0usize;
+    let mut warned = 0usize;
+    // Informational: how the strict validator treats the decoder's
+    // already-flagged (warned) files. Not asserted — strict may reject these.
+    let mut validate_ok_on_warned = 0usize;
+    let mut validate_err_on_warned = 0usize;
+    // The load-bearing failures: files the decoder decoded CLEANLY but the
+    // strict validator / probe rejected. Any entry here is a real false
+    // rejection, not a proof gap.
+    let mut clean_rejections: Vec<(String, &'static str)> = Vec::new();
+    let mut probe_rejections: Vec<(String, &'static str)> = Vec::new();
+
+    for entry in entries {
+        let path = entry.expect("DirEntry").path();
+        if !path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("g00"))
+        {
+            continue;
+        }
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        total += 1;
+        let (_image, warnings) = match decode_g00(&bytes) {
+            Ok(decoded) => decoded,
+            Err(_) => {
+                decode_err += 1;
+                continue;
+            }
+        };
+        if !warnings.is_empty() {
+            warned += 1;
+            match validate_g00_lzss_content(&bytes) {
+                Ok(_) => validate_ok_on_warned += 1,
+                Err(_) => validate_err_on_warned += 1,
+            }
+            continue;
+        }
+        clean += 1;
+        // Core invariant: a cleanly-decoded real file must not be rejected by
+        // the strict content validator.
+        if let Err(err) = validate_g00_lzss_content(&bytes) {
+            clean_rejections.push((
+                path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                content_err_kind(&err),
+            ));
+        }
+        // Probe pattern 0 must likewise accept a cleanly-decoded file.
+        if let Err(err) = probe_g00_pattern_geometry(&bytes, 0) {
+            probe_rejections.push((
+                path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                metadata_err_kind(&err),
+            ));
+        }
+    }
+
+    eprintln!(
+        "{title} strict-validator vs decoder: total={total} decode_err={decode_err} \
+         clean={clean} warned={warned} (warned→validate_ok={validate_ok_on_warned} \
+         validate_err={validate_err_on_warned}) clean_rejections={} probe_rejections={}",
+        clean_rejections.len(),
+        probe_rejections.len(),
+    );
+
+    assert!(
+        clean > 0,
+        "{title}: expected at least one cleanly-decoded g00 file"
+    );
+
+    // Build a discriminant histogram + a small sample for any failure message.
+    let summarize = |label: &str, rejects: &[(String, &'static str)]| -> String {
+        let mut counts: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        for (_, kind) in rejects {
+            *counts.entry(kind).or_default() += 1;
+        }
+        let sample: Vec<String> = rejects
+            .iter()
+            .take(10)
+            .map(|(name, kind)| format!("{name} → {kind}"))
+            .collect();
+        format!(
+            "{title}: {label} strict validator false-rejected {} of {clean} cleanly-decoded \
+             files — histogram={counts:?}; sample={sample:?}. These are real files the tolerant \
+             decoder accepts with zero warnings; do NOT weaken the validator to force a pass — \
+             this is a real correctness finding.",
+            rejects.len(),
+        )
+    };
+
+    assert!(
+        clean_rejections.is_empty(),
+        "{}",
+        summarize("validate_g00_lzss_content", &clean_rejections),
+    );
+    assert!(
+        probe_rejections.is_empty(),
+        "{}",
+        summarize("probe_g00_pattern_geometry", &probe_rejections),
+    );
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
+fn g00_strict_validator_accepts_real_corpus_both_titles() {
+    let mut ran = false;
+    for env_var in [
+        real_corpus::REAL_GAME_ROOT_ENV,
+        real_corpus::REAL_GAME_ROOT_2_ENV,
+    ] {
+        if let Some(dir) = real_corpus::g00_dir_for_env(env_var) {
+            ran = true;
+            assert_strict_validator_accepts_clean_decodes(env_var, &dir);
+        }
+    }
+    if !ran {
+        real_corpus::require_real_bytes(
+            "utsushi-reallive g00 strict-validator vs decoder (needs ITOTORI_REAL_GAME_ROOT or ITOTORI_REAL_GAME_ROOT_2)",
         );
     }
 }
