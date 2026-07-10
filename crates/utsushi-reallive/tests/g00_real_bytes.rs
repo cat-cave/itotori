@@ -361,12 +361,9 @@ fn assert_strict_validator_accepts_clean_decodes(title: &str, g00_dir: &PathBuf)
             continue;
         };
         total += 1;
-        let (_image, warnings) = match decode_g00(&bytes) {
-            Ok(decoded) => decoded,
-            Err(_) => {
-                decode_err += 1;
-                continue;
-            }
+        let Ok((_image, warnings)) = decode_g00(&bytes) else {
+            decode_err += 1;
+            continue;
         };
         if !warnings.is_empty() {
             warned += 1;

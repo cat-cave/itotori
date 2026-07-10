@@ -139,6 +139,24 @@ pub const G00_REGION_RECORD_BYTE_LEN: usize = 24;
 /// 32-bpp RGBA at the decoder boundary.
 pub const G00_TYPE0_BGR_BYTES_PER_PIXEL: usize = 3;
 
+/// Maximum trailing (unconsumed) LZSS-payload byte the strict content
+/// validator tolerates for a **type-2** stream once the full declared
+/// output has been emitted.
+///
+/// Real AVG2000 ("SCN2k") type-2 streams pad `compressed_size` by exactly
+/// one byte beyond what the LZSS tokens need: the reference decoder
+/// (xclannad `G00CONV`, `file.cc` `lzExtract`) stops the instant the
+/// canvas fills (`while (ldest < ldestend && lsrc < lsrcend)` — the
+/// `ldest < ldestend` guard fails) and never reads that trailing pad, so
+/// the byte is legitimate padding, not corruption. Measured across the
+/// Kanon corpus: 13 type-2 files carry exactly one trailing byte and the
+/// corpus-wide maximum residue is 1 (Sweetie HD type-2 files consume their
+/// payload exactly). The bound is kept at 1 so an oversized
+/// `compressed_size` that would mask genuine framing corruption is still
+/// rejected as [`G00ContentValidationError::UnconsumedPayload`]. See the
+/// `g00_strict_validator_accepts_real_corpus_both_titles` oracle.
+const G00_TYPE2_MAX_TRAILING_PADDING: usize = 1;
+
 /// Strongly-typed enumeration of the three documented g00 sub-formats.
 ///
 /// The discriminator is the value of byte 0 of the file. Any other
@@ -742,7 +760,18 @@ pub fn validate_g00_lzss_content(
         }
     };
     let (payload, declared_output) = strict_lzss_section(input, section_offset, g00_type)?;
-    let expected_output = match g00_type {
+    // Per type, resolve three walk parameters:
+    //   * `expected_output` — the LZSS output size the decoder targets
+    //     (the loop's hard upper bound; the walk never emits past it).
+    //   * `accept_min` — the real content floor at/above which a payload
+    //     that runs out *before* `expected_output` is a clean end-of-stream
+    //     rather than a truncation error. This mirrors the xclannad
+    //     `G00CONV` `lzExtract` oracle, whose loop terminates on
+    //     `while (ldest < ldestend && lsrc < lsrcend)` — a stream exhausted
+    //     before the destination fills simply stops, no error.
+    //   * `max_trailing` — bounded trailing padding tolerated once the full
+    //     output has been emitted.
+    let (expected_output, accept_min, max_trailing) = match g00_type {
         G00Type::RawBgr => {
             let pixels = width
                 .checked_mul(height)
@@ -760,14 +789,38 @@ pub fn validate_g00_lzss_content(
                     expected: expected_rgba,
                 });
             }
-            expected_bgr
+            // Type-0 is byte-exact in both real corpora: the BGR canvas
+            // fills exactly and the payload is fully consumed. Keep it
+            // strict (floor == target, no trailing slack).
+            (expected_bgr, expected_bgr, 0usize)
         }
-        G00Type::PalettedLzss => declared_output
-            .checked_add(1)
-            .ok_or(G00ContentValidationError::CountOverflow)?,
-        G00Type::RegionedLzss => declared_output,
+        G00Type::PalettedLzss => {
+            // The AVG2000 type-1 decoder targets `declared_output + 1`
+            // (`uncompress_size = read_little_endian_int(data+9) + 1` in the
+            // reference `Read_Type1`), but that trailing `+1` byte is a pure
+            // over-allocation: the palette + one index-per-pixel occupy at
+            // most `declared_output` bytes, and the reference never reads the
+            // extra byte. Real Kanon streams therefore stop exactly one byte
+            // short of the `+1` target with the payload fully consumed (40
+            // files, all landing at `declared_output`). Set the floor at
+            // `declared_output` so that legitimate palette+index coverage is
+            // accepted while a genuinely short stream (emitting fewer than
+            // `declared_output` bytes) is still rejected.
+            let expected = declared_output
+                .checked_add(1)
+                .ok_or(G00ContentValidationError::CountOverflow)?;
+            (expected, declared_output, 0usize)
+        }
+        // Type-2 fills the declared output exactly, then carries a bounded
+        // trailing padding byte (see `G00_TYPE2_MAX_TRAILING_PADDING`).
+        G00Type::RegionedLzss => (
+            declared_output,
+            declared_output,
+            G00_TYPE2_MAX_TRAILING_PADDING,
+        ),
     };
-    let emitted_count = walk_lzss_counts(payload, expected_output, g00_type)?;
+    let emitted_count =
+        walk_lzss_counts(payload, expected_output, accept_min, max_trailing, g00_type)?;
     Ok(G00LzssValidation {
         g00_type,
         region_count,
@@ -931,9 +984,33 @@ fn strict_lzss_section(
     Ok((&input[header_end..declared_end], declared_output))
 }
 
+/// Strict, allocation-free walk of the LZSS token stream.
+///
+/// Emits toward `expected` (the decoder's output target). Two real,
+/// format-legal tolerances — both grounded in the xclannad `G00CONV`
+/// `lzExtract` oracle (`file.cc`, loop guard
+/// `while (ldest < ldestend && lsrc < lsrcend)`) — are honoured:
+///
+///  * **Early end-of-stream** (`accept_min`): if the payload runs out at a
+///    flag/token boundary *before* `expected` is reached, that is a clean
+///    stream end (the oracle's `lsrc < lsrcend` guard failing) rather than
+///    a truncation error, provided at least `accept_min` bytes were
+///    emitted. Type-1 uses this for the AVG2000 `+1` over-allocation tail;
+///    type-0/2 set `accept_min == expected` so a short stream still fails.
+///  * **Bounded trailing padding** (`max_trailing`): once the full
+///    `expected` output has been emitted, up to `max_trailing` unconsumed
+///    payload bytes are tolerated (the oracle stops the moment
+///    `ldest == ldestend` and never reads the pad). Type-2 uses this for
+///    its single padding byte; type-0/1 set `max_trailing == 0`.
+///
+/// Genuine corruption — invalid back-distances, mid-token truncation below
+/// the content floor, output overruns, oversized trailing residue — is
+/// still rejected with a typed error.
 fn walk_lzss_counts(
     payload: &[u8],
     expected: usize,
+    accept_min: usize,
+    max_trailing: usize,
     g00_type: G00Type,
 ) -> Result<usize, G00ContentValidationError> {
     let variant = match g00_type {
@@ -944,6 +1021,12 @@ fn walk_lzss_counts(
     let mut emitted_count = 0;
     while emitted_count < expected {
         if src_offset == payload.len() {
+            // Payload exhausted at a flag boundary. Clean end-of-stream when
+            // the content floor is met (oracle: `lsrc < lsrcend` fails); a
+            // genuinely short stream (below `accept_min`) still underruns.
+            if emitted_count >= accept_min {
+                return Ok(emitted_count);
+            }
             return Err(G00ContentValidationError::OutputUnderrun {
                 g00_type,
                 emitted: emitted_count,
@@ -960,6 +1043,11 @@ fn walk_lzss_counts(
                 let unit = variant.literal_unit();
                 let remaining = payload.len().saturating_sub(src_offset);
                 if remaining < unit {
+                    // Literal cannot be completed: end-of-stream if the
+                    // content floor is met, else a real truncation.
+                    if emitted_count >= accept_min {
+                        return Ok(emitted_count);
+                    }
                     return Err(G00ContentValidationError::TruncatedLiteral {
                         g00_type,
                         src_offset,
@@ -980,6 +1068,13 @@ fn walk_lzss_counts(
             } else {
                 let remaining = payload.len().saturating_sub(src_offset);
                 if remaining < 2 {
+                    // Back-reference token cannot be completed: end-of-stream
+                    // if the content floor is met (this is exactly where the
+                    // 40 Kanon type-1 files land — one byte short of the `+1`
+                    // AVG2000 target), else a real truncation.
+                    if emitted_count >= accept_min {
+                        return Ok(emitted_count);
+                    }
                     return Err(G00ContentValidationError::TruncatedBackreference {
                         g00_type,
                         src_offset,
@@ -1010,7 +1105,11 @@ fn walk_lzss_counts(
             }
         }
     }
-    if src_offset != payload.len() {
+    // Full declared output emitted. The payload is normally fully consumed;
+    // a bounded trailing pad (type-2's single byte) is legitimate framing,
+    // anything larger is a genuine unconsumed-payload error.
+    let trailing = payload.len().saturating_sub(src_offset);
+    if trailing > max_trailing {
         return Err(G00ContentValidationError::UnconsumedPayload {
             g00_type,
             src_offset,
