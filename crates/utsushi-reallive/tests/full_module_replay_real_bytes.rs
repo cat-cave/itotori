@@ -22,6 +22,8 @@
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
+#[path = "support/xor2_staging.rs"]
+mod xor2_staging;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -67,10 +69,7 @@ fn staged_engine(seen_bytes: &[u8]) -> ReplayEngine {
         })
         .collect();
     let report = recover_and_decrypt_archive(&mut xor2);
-    eprintln!(
-        "  xor2: eligible={} decrypted={} validated={} after_clean={}",
-        report.scenes_eligible, report.scenes_decrypted, report.validated, report.after_clean,
-    );
+    xor2_staging::require_xor2_ready(&report).expect("xor2 corpus staging is ready");
     for (scene, dec) in decompressed.iter_mut().zip(xor2) {
         scene.bytecode = dec.bytecode;
     }
