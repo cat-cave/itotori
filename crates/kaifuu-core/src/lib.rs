@@ -503,6 +503,12 @@ pub trait EngineAdapter {
     fn name(&self) -> &'static str;
     fn capabilities(&self) -> AdapterCapabilities;
     fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult>;
+    /// Whether this adapter wants an otherwise-undetected result routed back
+    /// to it solely to produce a structured diagnostic. The default is false:
+    /// a variant alone never promotes an adapter into diagnostic selection.
+    fn is_diagnostic_candidate(&self, _detection: &DetectionResult) -> bool {
+        false
+    }
     fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile>;
     fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList>;
     fn asset_inventory(
@@ -565,6 +571,66 @@ impl AdapterRegistry {
             }
         }
         Ok(best)
+    }
+
+    /// Selects the strongest diagnostic-only result from a registry detection
+    /// pass. A diagnostic candidate is explicitly *not* a detected adapter:
+    /// it is an adapter that **opts in** via
+    /// [`EngineAdapter::is_diagnostic_candidate`] for an input it recognizes
+    /// well enough to explain why profiling or inventory cannot proceed.
+    ///
+    /// Eligibility is adapter-owned opt-in (default false). The presence of
+    /// `detected_variant` alone is never sufficient — variant strings are
+    /// descriptive detection data, not a capability or consent marker.
+    ///
+    /// This selection never changes `DetectionResult::detected` or adapter
+    /// capability declarations. Callers may use the selected adapter only to
+    /// obtain its structured diagnostic; they must not treat it as supported
+    /// for profile, extract, inventory, or patch operations.
+    pub fn diagnostic_candidate_from_results(
+        &self,
+        detections: &[DetectionResult],
+    ) -> Option<DetectionResult> {
+        let mut best: Option<(usize, usize, DetectionResult)> = None;
+        for detection in detections {
+            if detection.detected
+                || !self
+                    .get(&detection.adapter_id)
+                    .is_some_and(|adapter| adapter.is_diagnostic_candidate(detection))
+            {
+                continue;
+            }
+
+            let matched_evidence = detection
+                .evidence
+                .iter()
+                .filter(|evidence| evidence.status == EvidenceStatus::Matched)
+                .count();
+            let diagnostic_evidence = detection
+                .evidence
+                .iter()
+                .filter(|evidence| evidence.status != EvidenceStatus::Informational)
+                .count();
+            let score = (matched_evidence, diagnostic_evidence);
+
+            // Registry detections are ordered by adapter id. Keeping the
+            // first equal-scoring result makes the tie break deterministic.
+            if best
+                .as_ref()
+                .is_none_or(|(best_matched, best_diagnostic, _)| {
+                    score > (*best_matched, *best_diagnostic)
+                })
+            {
+                best = Some((matched_evidence, diagnostic_evidence, detection.clone()));
+            }
+        }
+        best.map(|(_, _, detection)| detection)
+    }
+
+    /// Runs detection and returns the best diagnostic-only candidate, if an
+    /// adapter explicitly recognized an otherwise unsupported input.
+    pub fn diagnostic_candidate(&self, game_dir: &Path) -> KaifuuResult<Option<DetectionResult>> {
+        Ok(self.diagnostic_candidate_from_results(&self.detect_all(game_dir)?))
     }
 }
 
@@ -29492,6 +29558,197 @@ mod tests {
             .map(|adapter| adapter.id())
             .collect::<Vec<_>>();
         assert_eq!(ids, vec!["a.fixture", "z.fixture"]);
+    }
+
+    /// KAIFUU-156 P1: an undetected adapter that supplies `detected_variant`
+    /// without overriding [`EngineAdapter::is_diagnostic_candidate`] must not
+    /// become a diagnostic candidate, and profile/inventory must never run.
+    #[test]
+    fn diagnostic_candidate_requires_adapter_opt_in_not_variant_presence() {
+        struct VariantOnlyAdapter {
+            profile_calls: Arc<AtomicUsize>,
+            inventory_calls: Arc<AtomicUsize>,
+        }
+
+        impl EngineAdapter for VariantOnlyAdapter {
+            fn id(&self) -> &'static str {
+                "kaifuu.test.variant-only-no-opt-in"
+            }
+
+            fn name(&self) -> &'static str {
+                "Variant-only adapter without diagnostic opt-in"
+            }
+
+            fn capabilities(&self) -> AdapterCapabilities {
+                AdapterCapabilities::new(self.id(), vec![], derived_matrix_for(self.id(), &[]))
+            }
+
+            fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+                Ok(DetectionResult {
+                    adapter_id: self.id().to_string(),
+                    detected: false,
+                    engine_family: Some("decoy".to_string()),
+                    engine_version: None,
+                    // Descriptive variant alone must NOT grant diagnostic routing.
+                    detected_variant: Some("looks-like-mine".to_string()),
+                    evidence: vec![DetectionEvidence {
+                        path: "decoy.marker".to_string(),
+                        kind: "variant_only_marker".to_string(),
+                        status: EvidenceStatus::Matched,
+                        detail: "undetected adapter with a variant string".to_string(),
+                    }],
+                    requirements: vec![],
+                    capabilities: vec![],
+                })
+            }
+
+            // Default is_diagnostic_candidate → false (no opt-in).
+
+            fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+                self.profile_calls.fetch_add(1, Ordering::SeqCst);
+                panic!("profile must not run for non-opted-in diagnostic candidates");
+            }
+
+            fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+                unreachable!("list_assets must not run")
+            }
+
+            fn asset_inventory(
+                &self,
+                _request: AssetInventoryRequest<'_>,
+            ) -> KaifuuResult<AssetInventoryManifest> {
+                self.inventory_calls.fetch_add(1, Ordering::SeqCst);
+                panic!("asset_inventory must not run for non-opted-in diagnostic candidates");
+            }
+
+            fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+                unreachable!("extract must not run")
+            }
+
+            fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+                unreachable!("patch must not run")
+            }
+
+            fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+                unreachable!("verify must not run")
+            }
+        }
+
+        let profile_calls = Arc::new(AtomicUsize::new(0));
+        let inventory_calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = AdapterRegistry::new();
+        registry.register(VariantOnlyAdapter {
+            profile_calls: Arc::clone(&profile_calls),
+            inventory_calls: Arc::clone(&inventory_calls),
+        });
+
+        let detections = registry
+            .detect_all(Path::new("/tmp/kaifuu-156-variant-only"))
+            .expect("detect_all");
+        assert_eq!(detections.len(), 1);
+        assert!(!detections[0].detected);
+        assert_eq!(
+            detections[0].detected_variant.as_deref(),
+            Some("looks-like-mine")
+        );
+
+        // Selection must refuse: variant presence is not opt-in.
+        assert!(
+            registry
+                .diagnostic_candidate_from_results(&detections)
+                .is_none(),
+            "undetected adapter with detected_variant but no opt-in must stay off the diagnostic path"
+        );
+        assert!(
+            registry
+                .diagnostic_candidate(Path::new("/tmp/kaifuu-156-variant-only"))
+                .expect("diagnostic_candidate")
+                .is_none()
+        );
+
+        // Never invoke profile/inventory just because a variant string appeared.
+        assert_eq!(profile_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(inventory_calls.load(Ordering::SeqCst), 0);
+    }
+
+    /// KAIFUU-156: adapters that opt in via `is_diagnostic_candidate` are
+    /// selectable even when `detected` is false.
+    #[test]
+    fn diagnostic_candidate_selects_opted_in_adapter() {
+        struct OptInDiagnosticAdapter;
+
+        impl EngineAdapter for OptInDiagnosticAdapter {
+            fn id(&self) -> &'static str {
+                "kaifuu.test.diagnostic-opt-in"
+            }
+
+            fn name(&self) -> &'static str {
+                "Opted-in diagnostic adapter"
+            }
+
+            fn capabilities(&self) -> AdapterCapabilities {
+                AdapterCapabilities::new(self.id(), vec![], derived_matrix_for(self.id(), &[]))
+            }
+
+            fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+                Ok(DetectionResult {
+                    adapter_id: self.id().to_string(),
+                    detected: false,
+                    engine_family: None,
+                    engine_version: None,
+                    detected_variant: Some("partial-pair".to_string()),
+                    evidence: vec![DetectionEvidence {
+                        path: "partial.marker".to_string(),
+                        kind: "diagnostic_marker".to_string(),
+                        status: EvidenceStatus::Matched,
+                        detail: "recognized incomplete fixture".to_string(),
+                    }],
+                    requirements: vec![],
+                    capabilities: vec![],
+                })
+            }
+
+            fn is_diagnostic_candidate(&self, detection: &DetectionResult) -> bool {
+                !detection.detected && detection.detected_variant.as_deref() == Some("partial-pair")
+            }
+
+            fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+                unreachable!()
+            }
+
+            fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+                unreachable!()
+            }
+
+            fn asset_inventory(
+                &self,
+                _request: AssetInventoryRequest<'_>,
+            ) -> KaifuuResult<AssetInventoryManifest> {
+                unreachable!()
+            }
+
+            fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+                unreachable!()
+            }
+
+            fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+                unreachable!()
+            }
+
+            fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+                unreachable!()
+            }
+        }
+
+        let mut registry = AdapterRegistry::new();
+        registry.register(OptInDiagnosticAdapter);
+        let candidate = registry
+            .diagnostic_candidate(Path::new("/tmp/kaifuu-156-opt-in"))
+            .expect("diagnostic_candidate")
+            .expect("opted-in adapter must be selected");
+        assert_eq!(candidate.adapter_id, "kaifuu.test.diagnostic-opt-in");
+        assert!(!candidate.detected);
+        assert_eq!(candidate.detected_variant.as_deref(), Some("partial-pair"));
     }
 
     // =========================================================================

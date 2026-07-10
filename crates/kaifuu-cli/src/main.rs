@@ -89,8 +89,8 @@ fn run_with_args_and_registry(
             }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
-            match detect_or_partial(registry, &game_dir)? {
-                DetectOutcome::FullDetect(adapter) => {
+            match detect_or_partial(registry, &game_dir, false)? {
+                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => {
                     let extraction = adapter.extract(ExtractRequest {
                         game_dir: &game_dir,
                     })?;
@@ -114,7 +114,10 @@ fn run_with_args_and_registry(
         Some("asset-inventory" | "assets") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
-            let adapter = registered_adapter_for_game(registry, &game_dir)?;
+            let adapter = match detect_or_partial(registry, &game_dir, true)? {
+                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => adapter,
+                DetectOutcome::Partial(_) => registered_adapter_for_game(registry, &game_dir)?,
+            };
             let manifest = adapter.asset_inventory(AssetInventoryRequest {
                 game_dir: &game_dir,
             })?;
@@ -219,8 +222,8 @@ fn run_with_args_and_registry(
         Some("verify") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = flag_optional(&args, "--output").unwrap_or("verify-result.json");
-            match detect_or_partial(registry, &game_dir)? {
-                DetectOutcome::FullDetect(adapter) => {
+            match detect_or_partial(registry, &game_dir, false)? {
+                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => {
                     let result = adapter
                         .verify(VerifyRequest {
                             game_dir: &game_dir,
@@ -3387,8 +3390,8 @@ fn run_profile_command(
         "init" => {
             let game_dir = PathBuf::from(positional(args, 2)?);
             let output = PathBuf::from(flag(args, "--output")?);
-            match detect_or_partial(registry, &game_dir)? {
-                DetectOutcome::FullDetect(adapter) => {
+            match detect_or_partial(registry, &game_dir, true)? {
+                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => {
                     let profile = adapter.profile(ProfileRequest {
                         game_dir: &game_dir,
                     })?;
@@ -3416,8 +3419,8 @@ fn run_profile_command(
         _ => {
             let game_dir = PathBuf::from(positional(args, 1)?);
             let output = PathBuf::from(flag(args, "--output")?);
-            match detect_or_partial(registry, &game_dir)? {
-                DetectOutcome::FullDetect(adapter) => {
+            match detect_or_partial(registry, &game_dir, true)? {
+                DetectOutcome::FullDetect(adapter) | DetectOutcome::Diagnostic(adapter) => {
                     let profile = adapter.profile(ProfileRequest {
                         game_dir: &game_dir,
                     })?;
@@ -3468,30 +3471,34 @@ fn registered_adapter_for_game<'a>(
     })
 }
 
-/// Outcome of the KAIFUU-193 detect-vs-partial gate. The CLI runs this
-/// gate before extract / profile / verify so that adapters which report
-/// `detected == false` but accumulated nonzero Matched evidence still
-/// surface what bytes were recovered, instead of failing closed with
-/// `"no registered adapter detected"`.
+/// Outcome of the detect-vs-diagnostic-vs-partial gate. A diagnostic route is
+/// deliberately distinct from a full detection: it invokes an adapter only so
+/// it can return a structured `AdapterFailure`, never as a support claim.
 enum DetectOutcome<'a> {
     FullDetect(&'a dyn EngineAdapter),
+    Diagnostic(&'a dyn EngineAdapter),
     Partial(DetectionResult),
 }
 
-/// Implements the KAIFUU-193 partial gate.
+/// Implements the KAIFUU-193 partial gate, with optional KAIFUU-156
+/// diagnostic routing for commands that can faithfully expose AdapterFailure.
 ///
 /// Order of precedence:
 /// 1. Any adapter that returns `detected == true` (highest-priority
 ///    Matched evidence wins by registry ordering, like `AdapterRegistry::detect`).
-/// 2. Otherwise, the DetectionResult with the most `EvidenceStatus::Matched`
+/// 2. Otherwise, an explicit registry diagnostic candidate is routed to its
+///    adapter so its semantic `AdapterFailure` reaches the caller. This is not
+///    a detection or a support claim.
+/// 3. Otherwise, the DetectionResult with the most `EvidenceStatus::Matched`
 ///    rows (provided that count is non-zero) drives the partial path.
-/// 3. Otherwise — no Matched evidence anywhere — the historical
+/// 4. Otherwise — no Matched evidence anywhere — the historical
 ///    `"no registered adapter detected"` error is returned. Partial output
 ///    is never a substitute for "no adapter recognized anything"; without
 ///    Matched evidence we have nothing to surface.
 fn detect_or_partial<'a>(
     registry: &'a AdapterRegistry,
     game_dir: &Path,
+    include_diagnostic_candidates: bool,
 ) -> KaifuuResult<DetectOutcome<'a>> {
     let detections = registry.detect_all(game_dir)?;
     if let Some(detection) = detections.iter().find(|detection| detection.detected) {
@@ -3506,6 +3513,21 @@ fn detect_or_partial<'a>(
                     .into()
                 })?;
         return Ok(DetectOutcome::FullDetect(adapter));
+    }
+    if include_diagnostic_candidates
+        && let Some(detection) = registry.diagnostic_candidate_from_results(&detections)
+    {
+        let adapter =
+            registry
+                .get(&detection.adapter_id)
+                .ok_or_else(|| -> Box<dyn std::error::Error> {
+                    format!(
+                        "diagnostic adapter {} is not registered",
+                        detection.adapter_id
+                    )
+                    .into()
+                })?;
+        return Ok(DetectOutcome::Diagnostic(adapter));
     }
     let best_partial = detections
         .into_iter()
@@ -10601,6 +10623,39 @@ mod tests {
             requirement.key == "Gameexe.dat" && requirement.status == RequirementStatus::Missing
         }));
 
+        let missing_profile = root.join("missing-pair-profile.json");
+        let missing_profile_error = run_cli_with_registry_result(
+            &[
+                "profile",
+                "init",
+                missing_pair_dir.to_str().unwrap(),
+                "--output",
+                missing_profile.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(missing_profile_error.contains("kaifuu.missing_capability.container"));
+        assert!(missing_profile_error.contains("scene-pck-missing-gameexe-dat"));
+        assert!(!missing_profile.exists());
+
+        let missing_inventory = root.join("missing-pair-inventory.json");
+        let missing_inventory_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                missing_pair_dir.to_str().unwrap(),
+                "--output",
+                missing_inventory.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(missing_inventory_error.contains("kaifuu.missing_capability.container"));
+        assert!(missing_inventory_error.contains("scene-pck-missing-gameexe-dat"));
+        assert!(!missing_inventory.exists());
+
         let unknown_dir = root.join("unknown-variant");
         fs::create_dir_all(&unknown_dir).unwrap();
         fs::write(
@@ -10637,6 +10692,256 @@ mod tests {
             requirement.key == "siglus-synthetic-signature"
                 && requirement.status == RequirementStatus::Unsupported
         }));
+
+        let unknown_profile = root.join("unknown-variant-profile.json");
+        let unknown_profile_error = run_cli_with_registry_result(
+            &[
+                "profile",
+                "init",
+                unknown_dir.to_str().unwrap(),
+                "--output",
+                unknown_profile.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(unknown_profile_error.contains("kaifuu.unknown_engine_variant"));
+        assert!(unknown_profile_error.contains("unknown-siglus-named-files"));
+        assert!(!unknown_profile.exists());
+
+        let unknown_inventory = root.join("unknown-variant-inventory.json");
+        let unknown_inventory_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                unknown_dir.to_str().unwrap(),
+                "--output",
+                unknown_inventory.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(unknown_inventory_error.contains("kaifuu.unknown_engine_variant"));
+        assert!(unknown_inventory_error.contains("unknown-siglus-named-files"));
+        assert!(!unknown_inventory.exists());
+
+        let generic_dir = root.join("unrecognized");
+        fs::create_dir_all(&generic_dir).unwrap();
+        let generic_profile = root.join("generic-profile.json");
+        let generic_profile_error = run_cli_with_registry_result(
+            &[
+                "profile",
+                "init",
+                generic_dir.to_str().unwrap(),
+                "--output",
+                generic_profile.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(generic_profile_error.contains("no registered adapter detected"));
+
+        let generic_inventory = root.join("generic-inventory.json");
+        let generic_inventory_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                generic_dir.to_str().unwrap(),
+                "--output",
+                generic_inventory.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(generic_inventory_error.contains("no registered adapter detected"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// KAIFUU-156 P1: variant string without adapter opt-in must stay on the
+    /// partial / no-adapter path; profile and inventory must never run.
+    #[test]
+    fn undetected_variant_without_diagnostic_opt_in_never_invokes_profile_or_inventory() {
+        const ADAPTER_ID: &str = "kaifuu.test.variant-only-no-opt-in";
+
+        struct VariantOnlyNoOptInAdapter {
+            calls: Rc<RefCell<Vec<&'static str>>>,
+        }
+
+        impl VariantOnlyNoOptInAdapter {
+            fn record(&self, call: &'static str) {
+                self.calls.borrow_mut().push(call);
+            }
+        }
+
+        impl EngineAdapter for VariantOnlyNoOptInAdapter {
+            fn id(&self) -> &'static str {
+                ADAPTER_ID
+            }
+
+            fn name(&self) -> &'static str {
+                "Variant-only adapter without diagnostic opt-in"
+            }
+
+            fn capabilities(&self) -> AdapterCapabilities {
+                AdapterCapabilities::new(
+                    ADAPTER_ID,
+                    vec![
+                        CapabilityReport::supported(Capability::Detection),
+                        CapabilityReport::supported(Capability::ProfileGeneration),
+                        CapabilityReport::supported(Capability::AssetInventory),
+                    ],
+                    AdapterCapabilityMatrix::identify_only(
+                        ADAPTER_ID,
+                        "test adapter is identify-only decoy",
+                    ),
+                )
+            }
+
+            fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+                self.record("detect");
+                Ok(DetectionResult {
+                    adapter_id: ADAPTER_ID.to_string(),
+                    detected: false,
+                    engine_family: Some("decoy".to_string()),
+                    engine_version: None,
+                    detected_variant: Some("looks-like-mine".to_string()),
+                    evidence: vec![DetectionEvidence {
+                        path: request.game_dir.display().to_string(),
+                        kind: "variant_only_marker".to_string(),
+                        status: EvidenceStatus::Matched,
+                        detail: "undetected adapter with a descriptive variant".to_string(),
+                    }],
+                    requirements: vec![],
+                    capabilities: self.capabilities().reports,
+                })
+            }
+
+            // Default is_diagnostic_candidate → false.
+
+            fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+                self.record("profile");
+                panic!("profile must not run without diagnostic opt-in");
+            }
+
+            fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+                self.record("list_assets");
+                unreachable!("list_assets must not run")
+            }
+
+            fn asset_inventory(
+                &self,
+                _request: AssetInventoryRequest<'_>,
+            ) -> KaifuuResult<AssetInventoryManifest> {
+                self.record("asset_inventory");
+                panic!("asset_inventory must not run without diagnostic opt-in");
+            }
+
+            fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+                self.record("extract");
+                unreachable!("extract must not run")
+            }
+
+            fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+                self.record("patch");
+                unreachable!("patch must not run")
+            }
+
+            fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+                self.record("verify");
+                unreachable!("verify must not run")
+            }
+        }
+
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = AdapterRegistry::new();
+        registry.register(VariantOnlyNoOptInAdapter {
+            calls: Rc::clone(&calls),
+        });
+
+        let root = temp_dir("variant-only-no-opt-in");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+
+        // Registry selection refuses the decoy.
+        let detections = registry.detect_all(&game_dir).unwrap();
+        assert!(
+            registry
+                .diagnostic_candidate_from_results(&detections)
+                .is_none()
+        );
+
+        // Profile: matched evidence without opt-in takes the partial path —
+        // never Diagnostic, never adapter.profile.
+        let profile_out = root.join("profile.json");
+        run_cli_with_registry(
+            &[
+                "profile",
+                "init",
+                game_dir.to_str().unwrap(),
+                "--output",
+                profile_out.to_str().unwrap(),
+            ],
+            &registry,
+        );
+        let profile_report: serde_json::Value = read_json(&profile_out).unwrap();
+        assert_eq!(
+            profile_report["partial"].as_bool(),
+            Some(true),
+            "must stay on partial path, not diagnostic profile route: {profile_report}"
+        );
+        assert_eq!(
+            profile_report["detected"].as_bool(),
+            Some(false),
+            "partial report must not claim full detection: {profile_report}"
+        );
+        assert_eq!(
+            profile_report["command"].as_str(),
+            Some("profile"),
+            "partial envelope command must be profile: {profile_report}"
+        );
+        // Full GameProfile carries schemaVersion 0.1.0 + engine.adapterId;
+        // partial reports never carry an engine block.
+        assert!(
+            profile_report.get("engine").is_none(),
+            "must not emit a full profile for the decoy adapter: {profile_report}"
+        );
+
+        // Inventory: partial gate falls through to registered_adapter_for_game,
+        // which requires detected=true → hard error; inventory must not run.
+        let inventory_out = root.join("inventory.json");
+        let inventory_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                game_dir.to_str().unwrap(),
+                "--output",
+                inventory_out.to_str().unwrap(),
+            ],
+            &registry,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            inventory_error.contains("no registered adapter detected"),
+            "unexpected inventory error: {inventory_error}"
+        );
+        assert!(!inventory_out.exists());
+
+        let recorded = calls.borrow().clone();
+        assert!(
+            recorded
+                .iter()
+                .all(|call| *call == "detect" || *call == "capabilities"),
+            "profile/inventory must never be invoked; calls={recorded:?}"
+        );
+        assert!(
+            !recorded
+                .iter()
+                .any(|call| *call == "profile" || *call == "asset_inventory"),
+            "profile/inventory must never be invoked; calls={recorded:?}"
+        );
 
         let _ = fs::remove_dir_all(root);
     }

@@ -3411,6 +3411,21 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
         Ok(result)
     }
 
+    fn is_diagnostic_candidate(&self, detection: &DetectionResult) -> bool {
+        // Adapter-owned opt-in: only the Siglus diagnostic-only fixture
+        // variants (incomplete pair / unknown named files) may be routed for
+        // structured AdapterFailure. Variant presence alone is not consent.
+        !detection.detected
+            && matches!(
+                detection.detected_variant.as_deref(),
+                Some(
+                    "scene-pck-missing-gameexe-dat"
+                        | "gameexe-dat-missing-scene-pck"
+                        | "unknown-siglus-named-files"
+                )
+            )
+    }
+
     fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
         self.profile_from_state(Self::inspect(request.game_dir))
     }
