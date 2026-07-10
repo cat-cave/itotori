@@ -13,9 +13,9 @@
 // excluded property-access role reads (`user.role === "admin"`), never handled
 // `switch (role)`, only caught `===`/`==` (not `!==`/`!=`), and never saw a
 // role-keyed lookup map (`ROLES[role]`). It was a false-negative sieve. For
-// .ts/.tsx/.js/.mjs/.cjs files this now walks the TypeScript compiler API AST
-// (mirroring packages/itotori-db/test/authorization-matrix.test.ts's
-// `ts.createSourceFile` + `forEachChild` walk); for Rust .rs files it uses a
+// .ts/.tsx/.js/.mjs/.cjs files this walks a stable Babel TS AST
+// (`@babel/parser` + parent-linked walk via scripts/stable-ts-ast.mjs),
+// decoupled from the TypeScript compiler API; for Rust .rs files it uses a
 // pragmatic pattern-scan of the same shapes. The companion regression suite
 // scripts/audit-no-hardcoded-roles.test.mjs exercises every shape below,
 // including a positive + negative fixture for each of the four previously
@@ -97,7 +97,20 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
 import { execSync } from "node:child_process";
-import * as ts from "typescript";
+import {
+  bindingIdentifier,
+  callExpressionName,
+  forEachChild,
+  isCallExpression,
+  isComputedMember,
+  isMemberExpression,
+  memberPropertyName,
+  objectPropertyKeyName,
+  parseTypeScript,
+  stringLiteralValue,
+  unwrapTsTypeAssertions,
+  zeroBasedStartLine,
+} from "./stable-ts-ast.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -236,123 +249,214 @@ function markerOnLineOrAbove(lines, i) {
 
 // ---- TypeScript / JavaScript AST scan -------------------------------------
 
-const BINARY_EQUALITY_TOKENS = new Set([
-  ts.SyntaxKind.EqualsEqualsEqualsToken,
-  ts.SyntaxKind.EqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsToken,
-]);
+const BINARY_EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
 
 // The immediate object name of a property access `<obj>.role` — the identifier
-// or property name closest to `.role` (for `session.user.role` → `user`).
+// or property name closest to `.role` (for `session.user.role` → `user`, and
+// for `session?.["user"]?.["role"]` → `user` via literal-computed keys).
 function immediateObjectName(expression) {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  const unwrapped = unwrapTsTypeAssertions(expression);
+  if (!unwrapped) return undefined;
+  if (unwrapped.type === "Identifier") return unwrapped.name;
+  if (isMemberExpression(unwrapped)) {
+    return memberPropertyName(unwrapped);
+  }
   return undefined;
 }
 
 // The name of a lookup-map container expression `X[...]` — `X`'s identifier or
-// trailing property name.
+// trailing property name (static or literal-computed).
 function containerName(expression) {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
-  return undefined;
+  return immediateObjectName(expression);
 }
 
 // If `node` is a role read, return { authSubject } describing it; else null.
 // `aliases` maps an aliased variable name → { authSubject } captured from its
-// initializer. `role` (bare) and any `<obj>.role` are role reads; an aliased
-// variable inherits its origin's auth-subject flag.
+// initializer. `role` (bare) and any `<obj>.role` / `<obj>?.["role"]` are role
+// reads; an aliased variable inherits its origin's auth-subject flag. TS `as`
+// wrappers on the read are stripped so `ROLE_MAP?.[(role as string)]` still
+// sees the inner role read.
 function roleReadInfo(node, aliases) {
-  if (ts.isIdentifier(node)) {
-    if (node.text === "role") return { authSubject: false };
-    const alias = aliases.get(node.text);
+  const unwrapped = unwrapTsTypeAssertions(node);
+  if (!unwrapped) return null;
+  if (unwrapped.type === "Identifier") {
+    if (unwrapped.name === "role") return { authSubject: false };
+    const alias = aliases.get(unwrapped.name);
     if (alias !== undefined) return { authSubject: alias.authSubject };
     return null;
   }
-  if (ts.isPropertyAccessExpression(node) && node.name.text === "role") {
-    return { authSubject: isAuthSubjectName(immediateObjectName(node.expression)) };
-  }
-  return null;
-}
-
-// The string value of a string-literal / no-substitution-template node, else
-// null. Template literals catch the `role === \`owner\`` form.
-function stringLiteralValue(node) {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return node.text;
+  // Static `.role` AND literal-computed `["role"]` / `?.["role"]` are role reads.
+  if (isMemberExpression(unwrapped) && memberPropertyName(unwrapped) === "role") {
+    return { authSubject: isAuthSubjectName(immediateObjectName(unwrapped.object)) };
   }
   return null;
 }
 
 // Collect alias declarations across the whole file, so `const r = x.role; if (r
-// === "admin")` and `const { role: r } = actor; if (r) …` treat `r` as a role
-// read. A single pre-pass keeps this order-independent.
-function collectAliases(sourceFile) {
+// === "admin")`, `const { role: r } = actor; if (r) …`, defaulted bindings
+// (`const { role: r = "draft" } = actor`), array/nested patterns, destructuring
+// *assignment* targets (`({ role: r } = actor)`), and parameter destructuring
+// (`function f({ role: r })`) treat `r` as a role read. A single pre-pass keeps
+// this order-independent. Optional + literal-computed member forms
+// (`user?.role`, `actor?.["role"]`) are accepted via memberPropertyName.
+function collectAliases(root) {
   const aliases = new Map();
+
+  /**
+   * @param {import("@babel/types").Node | null | undefined} pattern
+   * @param {boolean} initSubject
+   */
+  function collectRoleBindingsFromPattern(pattern, initSubject) {
+    if (!pattern) return;
+    if (pattern.type === "AssignmentPattern") {
+      collectRoleBindingsFromPattern(pattern.left, initSubject);
+      return;
+    }
+    if (pattern.type === "RestElement") {
+      collectRoleBindingsFromPattern(pattern.argument, initSubject);
+      return;
+    }
+    if (pattern.type === "Identifier") {
+      if (pattern.name === "role") {
+        aliases.set("role", { authSubject: initSubject });
+      }
+      return;
+    }
+    if (pattern.type === "ArrayPattern") {
+      // `const [{ role: r }] = users` / `const [role] = …`
+      for (const element of pattern.elements) {
+        if (element === null) continue;
+        collectRoleBindingsFromPattern(element, initSubject);
+      }
+      return;
+    }
+    if (pattern.type !== "ObjectPattern") return;
+    for (const property of pattern.properties) {
+      if (property.type === "RestElement") {
+        collectRoleBindingsFromPattern(property.argument, initSubject);
+        continue;
+      }
+      if (property.type !== "ObjectProperty") continue;
+      // Static `role` / literal-computed `"role"` keys both bind a role alias.
+      const propName = objectPropertyKeyName(property.key, property.computed);
+      if (propName === "role") {
+        // `role`, `role: r`, `role = def`, `role: r = def`, `"role": r`.
+        const binding = bindingIdentifier(property.value);
+        if (binding !== null) {
+          aliases.set(binding.name, { authSubject: initSubject });
+        }
+      } else {
+        // Nested patterns: `{ profile: { role: r } }` / `{ profile: { role: r } = {} }`
+        collectRoleBindingsFromPattern(property.value, initSubject);
+      }
+    }
+  }
+
+  /**
+   * @param {import("@babel/types").Node | null | undefined} init
+   */
+  function initAuthSubject(init) {
+    if (!init) return false;
+    const unwrapped = unwrapTsTypeAssertions(init);
+    if (!unwrapped) return false;
+    return unwrapped.type === "Identifier" || isMemberExpression(unwrapped)
+      ? isAuthSubjectName(immediateObjectName(unwrapped))
+      : false;
+  }
+
+  /**
+   * @param {import("@babel/types").Node | null | undefined} id
+   * @param {import("@babel/types").Node | null | undefined} init
+   */
+  function collectFromBinding(id, init) {
+    if (!id) return;
+    const unwrappedInit = unwrapTsTypeAssertions(init);
+    if (
+      id.type === "Identifier" &&
+      unwrappedInit &&
+      isMemberExpression(unwrappedInit) &&
+      memberPropertyName(unwrappedInit) === "role"
+    ) {
+      // `const r = <obj>.role` / `const r = <obj>?.role` / `const r = <obj>?.["role"]`
+      aliases.set(id.name, {
+        authSubject: isAuthSubjectName(immediateObjectName(unwrappedInit.object)),
+      });
+      return;
+    }
+    if (
+      id.type === "Identifier" &&
+      unwrappedInit?.type === "Identifier" &&
+      (unwrappedInit.name === "role" || aliases.has(unwrappedInit.name))
+    ) {
+      // `const r = role` / `const r2 = r`
+      const origin =
+        unwrappedInit.name === "role" ? { authSubject: false } : aliases.get(unwrappedInit.name);
+      aliases.set(id.name, { authSubject: origin?.authSubject ?? false });
+      return;
+    }
+    // Object / array / default patterns on the left of a declaration or assignment.
+    if (
+      id.type === "ObjectPattern" ||
+      id.type === "ArrayPattern" ||
+      id.type === "AssignmentPattern" ||
+      id.type === "RestElement"
+    ) {
+      collectRoleBindingsFromPattern(id, initAuthSubject(init));
+    }
+  }
+
   function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
-      const init = node.initializer;
-      if (
-        ts.isIdentifier(node.name) &&
-        ts.isPropertyAccessExpression(init) &&
-        init.name.text === "role"
-      ) {
-        // `const r = <obj>.role`
-        aliases.set(node.name.text, {
-          authSubject: isAuthSubjectName(immediateObjectName(init.expression)),
-        });
-      } else if (
-        ts.isIdentifier(node.name) &&
-        ts.isIdentifier(init) &&
-        (init.text === "role" || aliases.has(init.text))
-      ) {
-        // `const r = role` / `const r2 = r`
-        const origin = init.text === "role" ? { authSubject: false } : aliases.get(init.text);
-        aliases.set(node.name.text, { authSubject: origin?.authSubject ?? false });
-      } else if (ts.isObjectBindingPattern(node.name)) {
-        // `const { role } = x` / `const { role: r } = x`
-        const initSubject =
-          ts.isIdentifier(init) || ts.isPropertyAccessExpression(init)
-            ? isAuthSubjectName(immediateObjectName(init))
-            : false;
-        for (const element of node.name.elements) {
-          const propName = element.propertyName ?? element.name;
-          if (
-            ts.isIdentifier(propName) &&
-            propName.text === "role" &&
-            ts.isIdentifier(element.name)
-          ) {
-            aliases.set(element.name.text, { authSubject: initSubject });
+    if (node.type === "VariableDeclarator" && node.init !== null && node.init !== undefined) {
+      collectFromBinding(node.id, node.init);
+    }
+
+    // Destructuring assignment targets (not only declarations):
+    //   ({ role: r = "admin" } = actor); if (r === "admin") …
+    //   [{ role: r }] = users;
+    if (node.type === "AssignmentExpression") {
+      collectFromBinding(node.left, node.right);
+    }
+
+    // Default / destructured parameters: `function f({ role: r = "admin" })`,
+    // `({ role }) => …`, class/object methods. No initializer object → not an
+    // auth-subject origin (auth-role NAME compares still flag the alias).
+    if (
+      node.type === "FunctionDeclaration" ||
+      node.type === "FunctionExpression" ||
+      node.type === "ArrowFunctionExpression" ||
+      node.type === "ClassMethod" ||
+      node.type === "ObjectMethod" ||
+      node.type === "ClassPrivateMethod"
+    ) {
+      for (const param of node.params) {
+        if (param.type === "AssignmentPattern") {
+          if (param.left.type === "Identifier" && param.left.name === "role") {
+            aliases.set("role", { authSubject: false });
+          } else {
+            collectRoleBindingsFromPattern(param.left, false);
           }
+        } else if (param.type === "Identifier" && param.name === "role") {
+          aliases.set("role", { authSubject: false });
+        } else {
+          collectRoleBindingsFromPattern(param, false);
         }
       }
     }
-    ts.forEachChild(node, visit);
+
+    forEachChild(node, visit);
   }
-  visit(sourceFile);
+  visit(root);
   return aliases;
 }
 
-function scriptKindForPath(path) {
-  if (path.endsWith(".tsx") || path.endsWith(".jsx")) return ts.ScriptKind.TSX;
-  return ts.ScriptKind.TS;
-}
-
 function findTsViolations(path, contents, lines) {
-  const sourceFile = ts.createSourceFile(
-    path,
-    contents,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-    scriptKindForPath(path),
-  );
-  const aliases = collectAliases(sourceFile);
+  const root = parseTypeScript(contents, path);
+  const aliases = collectAliases(root);
   const found = [];
   const seen = new Set();
 
   const record = (node, label) => {
-    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const line = zeroBasedStartLine(node);
     if (markerOnLineOrAbove(lines, line)) return;
     const key = `${line}::${label}`;
     if (seen.has(key)) return;
@@ -367,7 +471,7 @@ function findTsViolations(path, contents, lines) {
 
   function visit(node) {
     // Shape 1 — binary equality with a role read vs a string literal.
-    if (ts.isBinaryExpression(node) && BINARY_EQUALITY_TOKENS.has(node.operatorToken.kind)) {
+    if (node.type === "BinaryExpression" && BINARY_EQUALITY_OPERATORS.has(node.operator)) {
       const leftRead = roleReadInfo(node.left, aliases);
       const rightRead = roleReadInfo(node.right, aliases);
       const leftStr = stringLiteralValue(node.left);
@@ -387,12 +491,12 @@ function findTsViolations(path, contents, lines) {
     }
 
     // Shape 2 — switch whose discriminant is a role read, with string cases.
-    if (ts.isSwitchStatement(node)) {
-      const discriminant = roleReadInfo(node.expression, aliases);
+    if (node.type === "SwitchStatement") {
+      const discriminant = roleReadInfo(node.discriminant, aliases);
       if (discriminant !== null) {
-        const caseValues = node.caseBlock.clauses
-          .filter((clause) => ts.isCaseClause(clause))
-          .map((clause) => stringLiteralValue(clause.expression))
+        const caseValues = node.cases
+          .filter((clause) => clause.test !== null)
+          .map((clause) => stringLiteralValue(clause.test))
           .filter((value) => value !== null);
         if (discriminant.authSubject || caseValues.some((value) => isAuthRoleName(value))) {
           record(node, LABELS.switch);
@@ -400,48 +504,55 @@ function findTsViolations(path, contents, lines) {
       }
     }
 
-    // Shape 3 — element-access lookup indexed by a role read into an auth map.
-    if (ts.isElementAccessExpression(node)) {
-      const index = roleReadInfo(node.argumentExpression, aliases);
+    // Shape 3 — element-access lookup:
+    //   (a) indexed by a role read into an auth map (`ROLES[role]`,
+    //       `ROLE_MAP?.[actor?.["role"]]`);
+    //   (b) a literal AUTH-role-NAME key (`user?.perms?.["admin"]`,
+    //       `ROLE_MAP["admin"]`) — a role-keyed authorization decision.
+    // Dynamic non-literal keys stay conservative (not flagged by key alone).
+    if (isComputedMember(node)) {
+      const index = roleReadInfo(node.property, aliases);
       if (index !== null) {
-        const container = containerName(node.expression);
+        const container = containerName(node.object);
         if (isAuthRoleMapName(container) || index.authSubject) {
           record(node, LABELS.lookup);
         }
       }
+      const keyLiteral = stringLiteralValue(node.property);
+      if (keyLiteral !== null && isAuthRoleName(keyLiteral)) {
+        record(node, LABELS.lookup);
+      }
     }
 
-    // Shape 4 — a bare `<authSubject>.role` read in any context.
+    // Shape 4 — a bare `<authSubject>.role` / `<authSubject>?.["role"]` read.
     if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "role" &&
-      isAuthSubjectName(immediateObjectName(node.expression))
+      isMemberExpression(node) &&
+      memberPropertyName(node) === "role" &&
+      isAuthSubjectName(immediateObjectName(node.object))
     ) {
       record(node, LABELS.subject);
     }
 
     // Shape 5 — classic name-based auth shortcuts.
-    if (ts.isIdentifier(node)) {
-      if (/^is_?[Aa]dmin$/u.test(node.text)) record(node, LABELS.isAdmin);
-      else if (node.text === "roleValues") record(node, LABELS.roleValues);
-      else if (node.text === "ROLES") record(node, LABELS.roles);
+    // Babel uses JSXIdentifier for JSX names; TS treated them as identifiers.
+    if (node.type === "Identifier" || node.type === "JSXIdentifier") {
+      if (/^is_?[Aa]dmin$/u.test(node.name)) record(node, LABELS.isAdmin);
+      else if (node.name === "roleValues") record(node, LABELS.roleValues);
+      else if (node.name === "ROLES") record(node, LABELS.roles);
     }
-    if (ts.isCallExpression(node)) {
-      const callee = node.expression;
-      const calleeName = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : undefined;
+    // Optional / computed calls (`auth?.hasRole?.("admin")`,
+    // `auth?.["hasRole"]?.("admin")`) via callExpressionName + memberPropertyName.
+    if (isCallExpression(node)) {
+      const calleeName = callExpressionName(node.callee);
       if (calleeName !== undefined && /^has_?[Rr]ole$/u.test(calleeName)) {
         record(node, LABELS.hasRole);
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  visit(sourceFile);
+  visit(root);
   return found;
 }
 

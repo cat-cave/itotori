@@ -28,6 +28,8 @@
     "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
+    "@babel/parser": "8.0.4",
+    "@babel/types": "8.0.4",
     "@types/pg": "^8.20.0",
     "vitest": "^4.1.10"
   }

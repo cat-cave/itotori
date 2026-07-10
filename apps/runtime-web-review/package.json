@@ -10,13 +10,13 @@
     "e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
-    "typescript": "^6.0.3",
     "vite": "^8.1.4"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }
