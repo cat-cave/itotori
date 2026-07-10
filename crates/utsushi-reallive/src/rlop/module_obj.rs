@@ -287,11 +287,14 @@ pub struct GraphicsRuntime {
 }
 
 /// Immutable foreground object-button candidate detached from runtime state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForegroundButtonCandidate {
     pub slot: usize,
     pub options: ButtonOptions,
     pub visible: bool,
+    /// Exact detached top-level object state captured while the graphics mutex
+    /// is held. It is not an asset-resolution or hit-test result.
+    pub object: GraphicsObject,
 }
 
 struct GraphicsRuntimeInner {
@@ -418,6 +421,7 @@ impl GraphicsRuntime {
                     slot,
                     options,
                     visible: object.visible,
+                    object: object.clone(),
                 })
             })
             .collect()

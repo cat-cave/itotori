@@ -134,6 +134,7 @@ use super::{
     RlopRegistry,
 };
 use crate::gameexe::Gameexe;
+use crate::graphics_objects::GraphicsObject;
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::vm::Vm;
 
@@ -441,6 +442,26 @@ pub struct ObjectButtonPromptOption {
     pub display_index: u16,
     pub button_number: i32,
     pub fg_slot: usize,
+    /// Exact top-level foreground state at prompt time. This snapshot does not
+    /// resolve assets, infer bounds, or render pixels.
+    pub visual_snapshot: GraphicsObject,
+    pub candidate_scope: ObjectButtonCandidateScope,
+    pub hit_region: ObjectButtonHitRegion,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonCandidateScope {
+    TopLevelForegroundOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonHitRegion {
+    Unavailable(ObjectButtonHitRegionUnavailable),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectButtonHitRegionUnavailable {
+    TopLevelObjectDataNotModeled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -900,6 +921,11 @@ fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) ->
                     display_index: display_index as u16,
                     button_number: candidate.options.button_number,
                     fg_slot: candidate.slot,
+                    visual_snapshot: candidate.object,
+                    candidate_scope: ObjectButtonCandidateScope::TopLevelForegroundOnly,
+                    hit_region: ObjectButtonHitRegion::Unavailable(
+                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
+                    ),
                 })
                 .collect(),
         },
@@ -1333,30 +1359,65 @@ mod tests {
 
     #[test]
     fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
-        use crate::graphics_objects::{ButtonOptions, GraphicsLayer, GraphicsObject};
+        use crate::graphics_objects::{
+            ButtonOptions, GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject,
+            GraphicsObjectKind, GraphicsPosition, GraphicsScale, ImageRef, WipeColour,
+        };
 
         let sink = Arc::new(CollectingSink::new());
         let graphics = Arc::new(GraphicsRuntime::new());
+        let mut image_button = GraphicsObject::image("missing-g00");
+        image_button.kind = GraphicsObjectKind::Image {
+            image_ref: ImageRef {
+                asset_key: "missing-g00".to_string(),
+                region_index: Some(12),
+            },
+        };
+        image_button.position = GraphicsPosition { x: 31, y: -9 };
+        image_button.scale = GraphicsScale {
+            x_thousandths: 750,
+            y_thousandths: 1250,
+        };
+        image_button.alpha = GraphicsAlpha(137);
+        image_button.colour_tone = GraphicsColourTone {
+            red_thousandths: 100,
+            green_thousandths: -200,
+            blue_thousandths: 300,
+        };
+        image_button.layer_order = 41;
+        image_button.visible = false;
+        image_button.button_options = Some(ButtonOptions {
+            action: 0,
+            se: 0,
+            group: 5,
+            button_number: 7,
+        });
+        let expected_image = image_button.clone();
+
+        let mut wipe_button = GraphicsObject::wipe(WipeColour {
+            red: 1,
+            green: 2,
+            blue: 3,
+            alpha: 4,
+        });
+        wipe_button.button_options = Some(ButtonOptions {
+            action: 0,
+            se: 0,
+            group: 5,
+            button_number: 2,
+        });
+        let expected_wipe = wipe_button.clone();
         graphics.with_stack_mut(|stack| {
-            for (layer, slot, group, number) in [
-                (GraphicsLayer::ForegroundObject, 11, 5, 2),
-                (GraphicsLayer::ForegroundObject, 3, 5, 7),
-                (GraphicsLayer::ForegroundObject, 6, 9, 99),
-                (GraphicsLayer::BackgroundObject, 1, 5, 42),
-            ] {
-                let mut object = GraphicsObject::image("test");
-                object.button_options = Some(ButtonOptions {
-                    action: 0,
-                    se: 0,
-                    group,
-                    button_number: number,
-                });
-                stack.set_layer(layer, slot, object).expect("slot");
-            }
+            stack
+                .set_layer(GraphicsLayer::ForegroundObject, 3, image_button)
+                .expect("slot");
+            stack
+                .set_layer(GraphicsLayer::ForegroundObject, 11, wipe_button)
+                .expect("slot");
         });
         let runtime = Arc::new(SelRuntime::with_graphics(
             Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
-            graphics,
+            Arc::clone(&graphics),
         ));
         let outcome = SelectObjbtnOp::new(Arc::clone(&runtime))
             .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(5)]);
@@ -1371,29 +1432,56 @@ mod tests {
             .expect("object carrier");
         assert_eq!(carrier.return_values(), &[7, 2]);
         assert!(sink.lines.lock().expect("lock").is_empty());
-        assert_eq!(
-            runtime.take_prompts(),
-            vec![SelectionPrompt {
-                longop_id,
-                kind: SelectionPromptKind::ObjectButtons {
-                    group: 5,
-                    options: vec![
-                        ObjectButtonPromptOption {
-                            display_index: 0,
-                            button_number: 7,
-                            fg_slot: 3,
-                        },
-                        ObjectButtonPromptOption {
-                            display_index: 1,
-                            button_number: 2,
-                            fg_slot: 11,
-                        },
-                    ],
-                },
-                cancelable: false,
-                option_line_ids: vec![],
-            }]
-        );
+        // Reusing or mutating slots after the yield must not alter the
+        // prompt-time snapshots detached from the graphics mutex scan.
+        graphics.with_stack_mut(|stack| {
+            stack
+                .set_layer(
+                    GraphicsLayer::ForegroundObject,
+                    3,
+                    GraphicsObject::image("reused-after-yield"),
+                )
+                .expect("slot");
+            stack
+                .get_layer_mut(GraphicsLayer::ForegroundObject, 11)
+                .expect("slot")
+                .visible = false;
+        });
+        let prompts = runtime.take_prompts();
+        assert_eq!(prompts.len(), 1);
+        let prompt = &prompts[0];
+        assert_eq!(prompt.longop_id, longop_id);
+        assert!(!prompt.cancelable);
+        assert!(prompt.option_line_ids.is_empty());
+        let SelectionPromptKind::ObjectButtons { group, options } = &prompt.kind else {
+            panic!("object selection must produce object-button prompt");
+        };
+        assert_eq!(*group, 5);
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0].display_index, 0);
+        assert_eq!(options[0].button_number, 7);
+        assert_eq!(options[0].fg_slot, 3);
+        assert_eq!(options[0].visual_snapshot, expected_image);
+        assert_eq!(options[1].display_index, 1);
+        assert_eq!(options[1].button_number, 2);
+        assert_eq!(options[1].fg_slot, 11);
+        assert_eq!(options[1].visual_snapshot, expected_wipe);
+        assert!(options.iter().all(|option| {
+            option.candidate_scope == ObjectButtonCandidateScope::TopLevelForegroundOnly
+                && option.hit_region
+                    == ObjectButtonHitRegion::Unavailable(
+                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
+                    )
+        }));
+        assert!(matches!(
+            &options[0].visual_snapshot.kind,
+            GraphicsObjectKind::Image { image_ref }
+                if image_ref.asset_key == "missing-g00" && image_ref.region_index == Some(12)
+        ));
+        assert!(matches!(
+            options[1].visual_snapshot.kind,
+            GraphicsObjectKind::Wipe { .. }
+        ));
         assert!(matches!(
             SelectObjbtnOp::new(Arc::clone(&runtime))
                 .dispatch(&mut Vm::new(1, 0), &[ExprValue::Int(8)]),
@@ -1455,18 +1543,11 @@ mod tests {
                 && matches!(
                     &prompt.kind,
                     SelectionPromptKind::ObjectButtons { group: 5, options }
-                        if options == &vec![
-                            ObjectButtonPromptOption {
-                                display_index: 0,
-                                button_number: 7,
-                                fg_slot: 3,
-                            },
-                            ObjectButtonPromptOption {
-                                display_index: 1,
-                                button_number: 2,
-                                fg_slot: 11,
-                            },
-                        ]
+                        if options.iter().map(|option| (
+                            option.display_index,
+                            option.button_number,
+                            option.fg_slot,
+                        )).collect::<Vec<_>>() == vec![(0, 7, 3), (1, 2, 11)]
                 )
         }));
         assert!(matches!(
