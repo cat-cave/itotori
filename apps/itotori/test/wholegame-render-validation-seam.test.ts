@@ -1,8 +1,9 @@
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  admitWholeGameRuntimeValidation,
   runWholeGameReplayRenderValidate,
   type WholeGameRenderValidationResult,
 } from "../src/orchestrator/wholegame-render-validation-seam.js";
@@ -113,6 +114,41 @@ function patchReport(
 }
 
 describe("runWholeGameReplayRenderValidate", () => {
+  it("returns retry admission for persisted runtime findings", () => {
+    const validation: WholeGameRenderValidationResult = {
+      schemaVersion: "itotori.wholegame-render-validation.v0",
+      redaction: "on",
+      coverage: {
+        acceptedUnitCount: 1,
+        candidateUnitCount: 1,
+        selectedUnitCount: 1,
+        candidateSceneCount: 1,
+        validatedSceneCount: 1,
+        sampled: false,
+        sceneIds: [6010],
+        selectedUnitIds: [UNIT_A],
+        skippedUnitIds: [],
+      },
+      findings: [
+        {
+          phase: "replay-validate",
+          bridgeUnitId: UNIT_A,
+          sourceUnitKey: "scene-6010/line-001",
+          sceneId: 6010,
+          code: "native-cli-failed",
+          message: "replay failed",
+          diagnostic: {} as never,
+          artifactRefs: { replayLog: "replay.json", dispatchReport: "dispatch.json" },
+        },
+      ],
+    };
+    expect(admitWholeGameRuntimeValidation(validation)).toMatchObject({
+      kind: "runtime-validation-incomplete",
+      validation,
+      retryUnitIds: [UNIT_A],
+    });
+  });
+
   it("runs replay then redacted render validation over the covered unit set and records failures", () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const logs: string[] = [];
@@ -175,6 +211,9 @@ describe("runWholeGameReplayRenderValidate", () => {
       "6010",
       "--print-replay-log",
       join(artifactRoot, "scene-6010", `unit-${UNIT_A}`, "replay-log.json"),
+      "--dispatch-report",
+      join(artifactRoot, "scene-6010", `unit-${UNIT_A}`, "dispatch-report.json"),
+      "--require-semantic-reached-path",
     ]);
     expect(calls[1]!.args).toContain("render-validate");
     expect(calls[1]!.args).toContain("--redaction");
@@ -370,22 +409,21 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(result.coverage.selectedUnitIds).toEqual([UNIT_A, UNIT_B]);
     expect(result.coverage.skippedUnitIds).toEqual([]);
 
-    // Replay succeeded for the valid fixture. These findings must therefore be
-    // real render-validate results; a silent render skip leaves this empty, and
-    // a replay short-circuit records phase=replay-validate instead.
+    // Strict semantic replay is allowed to reject this fixture after writing
+    // replay + dispatch evidence; that nonzero result must short-circuit render.
     expect(result.findings).toHaveLength(2);
     const unitIds = new Set(result.findings.map((finding) => finding.bridgeUnitId));
     expect(unitIds.has(UNIT_A)).toBe(true);
     expect(unitIds.has(UNIT_B)).toBe(true);
     for (const finding of result.findings) {
-      expect(finding.phase).toBe("render-validate");
+      expect(finding.phase).toBe("replay-validate");
       expect(finding.code).toBe("native-cli-failed");
-      expect(finding.artifactRefs.renderEvidence).toBe(
-        join(artifactRoot, "scene-1", `unit-${finding.bridgeUnitId}`, "render-evidence.json"),
-      );
-      expect(finding.diagnostic.error.message).toMatch(
-        /utsushi\.cli\.render_validate\.(?:no_text|expect_text_missing_at_index)/u,
-      );
+      expect(finding.artifactRefs.renderEvidence).toBeUndefined();
+      expect(existsSync(finding.artifactRefs.replayLog!)).toBe(true);
+      expect(existsSync(finding.artifactRefs.dispatchReport!)).toBe(true);
+      expect(finding.diagnostic.error.message).toContain("semantic_path_unavailable");
+      expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_A);
+      expect(JSON.stringify(finding.diagnostic)).not.toContain(DRAFT_B);
     }
   });
 });

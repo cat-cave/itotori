@@ -30,6 +30,7 @@ export type WholeGameRenderValidationFinding = {
   diagnostic: PipelineFailureDiagnostic;
   artifactRefs: {
     replayLog?: string;
+    dispatchReport?: string;
     renderEvidence?: string;
   };
 };
@@ -58,6 +59,33 @@ export type WholeGameRenderValidationResult = {
   coverage: WholeGameRenderValidationCoverage;
   findings: WholeGameRenderValidationFinding[];
 };
+
+export type WholeGameRuntimeValidationAdmission =
+  | { kind: "validated"; validation: WholeGameRenderValidationResult }
+  | {
+      kind: "runtime-validation-incomplete";
+      validation: WholeGameRenderValidationResult;
+      retryUnitIds: string[];
+    };
+
+export function admitWholeGameRuntimeValidation(
+  validation: WholeGameRenderValidationResult,
+): WholeGameRuntimeValidationAdmission {
+  const retryUnitIds = new Set(validation.coverage.skippedUnitIds);
+  for (const finding of validation.findings) retryUnitIds.add(finding.bridgeUnitId);
+  if (
+    validation.findings.length === 0 &&
+    !validation.coverage.sampled &&
+    validation.coverage.skippedUnitIds.length === 0
+  ) {
+    return { kind: "validated", validation };
+  }
+  return {
+    kind: "runtime-validation-incomplete",
+    validation,
+    retryUnitIds: [...retryUnitIds].sort(),
+  };
+}
 
 export type RunWholeGameReplayRenderValidateArgs = {
   rawBridge: unknown;
@@ -173,6 +201,9 @@ export function runWholeGameReplayRenderValidate(
         scene,
         "--print-replay-log",
         paths.replayLog,
+        "--dispatch-report",
+        paths.dispatchReport,
+        "--require-semantic-reached-path",
       ],
       args.nativeCli,
     );
@@ -374,6 +405,7 @@ function artifactPaths(
 ): {
   sceneArtifactRoot: string;
   replayLog: string;
+  dispatchReport: string;
   renderEvidence: string;
 } {
   // Per-unit paths: multiple accepted lines in one scene must not overwrite.
@@ -385,6 +417,7 @@ function artifactPaths(
   return {
     sceneArtifactRoot,
     replayLog: join(sceneArtifactRoot, "replay-log.json"),
+    dispatchReport: join(sceneArtifactRoot, "dispatch-report.json"),
     renderEvidence: join(sceneArtifactRoot, "render-evidence.json"),
   };
 }
@@ -477,6 +510,7 @@ function findingForFailure(args: {
     diagnostic,
     artifactRefs: {
       replayLog: args.paths.replayLog,
+      dispatchReport: args.paths.dispatchReport,
       ...(args.failure.phase === "render-validate"
         ? { renderEvidence: args.paths.renderEvidence }
         : {}),

@@ -197,6 +197,9 @@ describe("itotori validate", () => {
       "1",
       "--print-replay-log",
       "/run/replay-log.json",
+      "--dispatch-report",
+      "/run/replay-log.json.dispatch.json",
+      "--require-semantic-reached-path",
     ]);
 
     const renderIndex = calls[1]!.args.indexOf("render-validate");
