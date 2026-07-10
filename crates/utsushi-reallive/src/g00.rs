@@ -629,6 +629,294 @@ struct LzssSection<'a> {
     uncompressed_size: usize,
 }
 
+/// Count-only proof of framing and LZSS tokens, not pixels, checksums,
+/// container semantics, or visual interpretation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct G00LzssValidation {
+    pub g00_type: G00Type,
+    pub region_count: u32,
+    pub payload_bytes: usize,
+    pub emitted_count: usize,
+}
+
+/// Strict failures, separate from the decoder's best-effort errors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum G00ContentValidationError {
+    TruncatedPreamble,
+    UnknownType,
+    HeaderBounds {
+        g00_type: G00Type,
+        required_len: usize,
+        observed_len: usize,
+    },
+    RegionTableOverflow,
+    Type2ZeroRegions,
+    InvalidCompressedSize,
+    OuterLengthMismatch {
+        g00_type: G00Type,
+        declared_end: usize,
+        observed_len: usize,
+    },
+    DeclaredOutputMismatch {
+        g00_type: G00Type,
+        declared: usize,
+        expected: usize,
+    },
+    CountOverflow,
+    TruncatedLiteral {
+        g00_type: G00Type,
+        src_offset: usize,
+        required: usize,
+        remaining: usize,
+    },
+    TruncatedBackreference {
+        g00_type: G00Type,
+        src_offset: usize,
+        remaining: usize,
+    },
+    InvalidDistance {
+        g00_type: G00Type,
+        src_offset: usize,
+        distance: usize,
+        emitted: usize,
+    },
+    OutputOverrun {
+        g00_type: G00Type,
+        emitted: usize,
+        token_len: usize,
+        expected: usize,
+    },
+    OutputUnderrun {
+        g00_type: G00Type,
+        emitted: usize,
+        expected: usize,
+    },
+    UnconsumedPayload {
+        g00_type: G00Type,
+        src_offset: usize,
+        payload_len: usize,
+    },
+}
+
+impl std::fmt::Display for G00ContentValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("utsushi.reallive.g00.content_validation")
+    }
+}
+
+impl std::error::Error for G00ContentValidationError {}
+
+/// Strict framing/token validation without allocation; not a pixel or visual proof.
+pub fn validate_g00_lzss_content(
+    input: &[u8],
+) -> Result<G00LzssValidation, G00ContentValidationError> {
+    if input.len() < G00_HEADER_PREAMBLE_BYTE_LEN {
+        return Err(G00ContentValidationError::TruncatedPreamble);
+    }
+    let g00_type =
+        G00Type::from_lead_byte(input[0]).ok_or(G00ContentValidationError::UnknownType)?;
+    let width = u16::from_le_bytes([input[1], input[2]]) as usize;
+    let height = u16::from_le_bytes([input[3], input[4]]) as usize;
+    let (region_count, section_offset) = match g00_type {
+        G00Type::RawBgr | G00Type::PalettedLzss => (0, G00_HEADER_PREAMBLE_BYTE_LEN),
+        G00Type::RegionedLzss => {
+            const COUNT_END: usize = G00_HEADER_PREAMBLE_BYTE_LEN + 4;
+            if input.len() < COUNT_END {
+                return Err(G00ContentValidationError::HeaderBounds {
+                    g00_type,
+                    required_len: COUNT_END,
+                    observed_len: input.len(),
+                });
+            }
+            let count = u32::from_le_bytes([input[5], input[6], input[7], input[8]]);
+            if count == 0 {
+                return Err(G00ContentValidationError::Type2ZeroRegions);
+            }
+            let region_bytes = (count as usize)
+                .checked_mul(G00_REGION_RECORD_BYTE_LEN)
+                .ok_or(G00ContentValidationError::RegionTableOverflow)?;
+            let offset = COUNT_END
+                .checked_add(region_bytes)
+                .ok_or(G00ContentValidationError::RegionTableOverflow)?;
+            (count, offset)
+        }
+    };
+    let (payload, declared_output) = strict_lzss_section(input, section_offset, g00_type)?;
+    let expected_output = match g00_type {
+        G00Type::RawBgr => {
+            let pixels = width
+                .checked_mul(height)
+                .ok_or(G00ContentValidationError::CountOverflow)?;
+            let expected_bgr = pixels
+                .checked_mul(G00_TYPE0_BGR_BYTES_PER_PIXEL)
+                .ok_or(G00ContentValidationError::CountOverflow)?;
+            let expected_rgba = pixels
+                .checked_mul(4)
+                .ok_or(G00ContentValidationError::CountOverflow)?;
+            if declared_output != expected_rgba {
+                return Err(G00ContentValidationError::DeclaredOutputMismatch {
+                    g00_type,
+                    declared: declared_output,
+                    expected: expected_rgba,
+                });
+            }
+            expected_bgr
+        }
+        G00Type::PalettedLzss => declared_output
+            .checked_add(1)
+            .ok_or(G00ContentValidationError::CountOverflow)?,
+        G00Type::RegionedLzss => declared_output,
+    };
+    let emitted_count = walk_lzss_counts(payload, expected_output, g00_type)?;
+    Ok(G00LzssValidation {
+        g00_type,
+        region_count,
+        payload_bytes: payload.len(),
+        emitted_count,
+    })
+}
+
+fn strict_lzss_section(
+    input: &[u8],
+    section_offset: usize,
+    g00_type: G00Type,
+) -> Result<(&[u8], usize), G00ContentValidationError> {
+    let header_end =
+        section_offset
+            .checked_add(8)
+            .ok_or(G00ContentValidationError::HeaderBounds {
+                g00_type,
+                required_len: usize::MAX,
+                observed_len: input.len(),
+            })?;
+    if input.len() < header_end {
+        return Err(G00ContentValidationError::HeaderBounds {
+            g00_type,
+            required_len: header_end,
+            observed_len: input.len(),
+        });
+    }
+    let compressed_size = u32::from_le_bytes([
+        input[section_offset],
+        input[section_offset + 1],
+        input[section_offset + 2],
+        input[section_offset + 3],
+    ]) as usize;
+    if compressed_size < 8 {
+        return Err(G00ContentValidationError::InvalidCompressedSize);
+    }
+    let declared_end = section_offset.checked_add(compressed_size).ok_or(
+        G00ContentValidationError::OuterLengthMismatch {
+            g00_type,
+            declared_end: usize::MAX,
+            observed_len: input.len(),
+        },
+    )?;
+    if declared_end != input.len() {
+        return Err(G00ContentValidationError::OuterLengthMismatch {
+            g00_type,
+            declared_end,
+            observed_len: input.len(),
+        });
+    }
+    let declared_output = u32::from_le_bytes([
+        input[section_offset + 4],
+        input[section_offset + 5],
+        input[section_offset + 6],
+        input[section_offset + 7],
+    ]) as usize;
+    Ok((&input[header_end..declared_end], declared_output))
+}
+
+fn walk_lzss_counts(
+    payload: &[u8],
+    expected: usize,
+    g00_type: G00Type,
+) -> Result<usize, G00ContentValidationError> {
+    let variant = match g00_type {
+        G00Type::RawBgr => LzssVariant::Type0Bgr,
+        G00Type::PalettedLzss | G00Type::RegionedLzss => LzssVariant::Scn2k,
+    };
+    let mut src_offset = 0;
+    let mut emitted_count = 0;
+    while emitted_count < expected {
+        if src_offset == payload.len() {
+            return Err(G00ContentValidationError::OutputUnderrun {
+                g00_type,
+                emitted: emitted_count,
+                expected,
+            });
+        }
+        let flag = payload[src_offset];
+        src_offset += 1;
+        for bit in 0..8 {
+            if emitted_count == expected {
+                break;
+            }
+            if (flag >> bit) & 1 != 0 {
+                let unit = variant.literal_unit();
+                let remaining = payload.len().saturating_sub(src_offset);
+                if remaining < unit {
+                    return Err(G00ContentValidationError::TruncatedLiteral {
+                        g00_type,
+                        src_offset,
+                        required: unit,
+                        remaining,
+                    });
+                }
+                if expected - emitted_count < unit {
+                    return Err(G00ContentValidationError::OutputOverrun {
+                        g00_type,
+                        emitted: emitted_count,
+                        token_len: unit,
+                        expected,
+                    });
+                }
+                src_offset += unit;
+                emitted_count += unit;
+            } else {
+                let remaining = payload.len().saturating_sub(src_offset);
+                if remaining < 2 {
+                    return Err(G00ContentValidationError::TruncatedBackreference {
+                        g00_type,
+                        src_offset,
+                        remaining,
+                    });
+                }
+                let token =
+                    (payload[src_offset] as usize) | ((payload[src_offset + 1] as usize) << 8);
+                src_offset += 2;
+                let (distance, token_len) = variant.split_token(token);
+                if distance == 0 || distance > emitted_count {
+                    return Err(G00ContentValidationError::InvalidDistance {
+                        g00_type,
+                        src_offset: src_offset - 2,
+                        distance,
+                        emitted: emitted_count,
+                    });
+                }
+                if expected - emitted_count < token_len {
+                    return Err(G00ContentValidationError::OutputOverrun {
+                        g00_type,
+                        emitted: emitted_count,
+                        token_len,
+                        expected,
+                    });
+                }
+                emitted_count += token_len;
+            }
+        }
+    }
+    if src_offset != payload.len() {
+        return Err(G00ContentValidationError::UnconsumedPayload {
+            g00_type,
+            src_offset,
+            payload_len: payload.len(),
+        });
+    }
+    Ok(emitted_count)
+}
+
 /// Decode a g00 file into a typed [`G00Image`] + warnings tuple.
 ///
 /// Dispatches on the lead byte at offset 0 to one of the three
@@ -1246,6 +1534,85 @@ mod tests {
         bytes
     }
 
+    fn type0_with(payload: &[u8], declared_output: u32) -> Vec<u8> {
+        let mut bytes = vec![G00_TYPE_RAW_BGR, 1, 0, 1, 0];
+        bytes.extend_from_slice(&((payload.len() + 8) as u32).to_le_bytes());
+        bytes.extend_from_slice(&declared_output.to_le_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    #[test]
+    fn content_validator_rejects_strict_framing_and_token_failures() {
+        let err = |bytes: &[u8]| validate_g00_lzss_content(bytes).unwrap_err();
+        assert!(matches!(
+            err(&[0; 4]),
+            G00ContentValidationError::TruncatedPreamble
+        ));
+        assert!(matches!(
+            err(&[3; 5]),
+            G00ContentValidationError::UnknownType
+        ));
+        assert!(matches!(
+            err(&[0; 5]),
+            G00ContentValidationError::HeaderBounds { .. }
+        ));
+        let mut type2 = vec![G00_TYPE_REGIONED_LZSS, 0, 0, 0, 0];
+        type2.extend_from_slice(&1u32.to_le_bytes());
+        assert!(matches!(
+            err(&type2),
+            G00ContentValidationError::HeaderBounds { .. }
+        ));
+        let mut malformed = type0_with(&[7, 1, 2, 3], 4);
+        malformed[5..9].copy_from_slice(&4u32.to_le_bytes());
+        assert!(matches!(
+            err(&malformed),
+            G00ContentValidationError::InvalidCompressedSize
+        ));
+        let mut outer = type0_with(&[7, 1, 2, 3], 4);
+        outer[5..9].copy_from_slice(&13u32.to_le_bytes());
+        assert!(matches!(
+            err(&outer),
+            G00ContentValidationError::OuterLengthMismatch { .. }
+        ));
+        assert!(matches!(
+            err(&type0_with(&[7, 1, 2, 3], 3)),
+            G00ContentValidationError::DeclaredOutputMismatch { .. }
+        ));
+        assert!(matches!(
+            err(&type0_with(&[1], 4)),
+            G00ContentValidationError::TruncatedLiteral { .. }
+        ));
+        assert!(matches!(
+            err(&type0_with(&[0, 0], 4)),
+            G00ContentValidationError::TruncatedBackreference { .. }
+        ));
+        assert!(matches!(
+            err(&type0_with(&[0, 0, 0], 4)),
+            G00ContentValidationError::InvalidDistance { .. }
+        ));
+        let mut type1 = vec![G00_TYPE_PALETTED_LZSS, 0, 0, 0, 0];
+        type1.extend_from_slice(&12u32.to_le_bytes());
+        type1.extend_from_slice(&1u32.to_le_bytes());
+        type1.extend_from_slice(&[1, 0xaa, 0x10, 0]);
+        assert!(matches!(
+            err(&type1),
+            G00ContentValidationError::OutputOverrun { .. }
+        ));
+        assert!(matches!(
+            err(&type0_with(&[], 4)),
+            G00ContentValidationError::OutputUnderrun { .. }
+        ));
+        let mut trailing = type0_with(&[1, 1, 2, 3], 4);
+        trailing.push(0);
+        let compressed_size = (trailing.len() - 5) as u32;
+        trailing[5..9].copy_from_slice(&compressed_size.to_le_bytes());
+        assert!(matches!(
+            err(&trailing),
+            G00ContentValidationError::UnconsumedPayload { .. }
+        ));
+    }
+
     #[test]
     fn truncated_preamble_is_typed_error() {
         let err = decode_g00(&[0u8; 3]).expect_err("3-byte input is too short");
@@ -1311,6 +1678,16 @@ mod tests {
             warnings.is_empty(),
             "clean round trip must not warn: {warnings:?}"
         );
+        let validation = validate_g00_lzss_content(&bytes).unwrap();
+        assert_eq!(
+            (
+                validation.g00_type,
+                validation.region_count,
+                validation.payload_bytes,
+                validation.emitted_count
+            ),
+            (G00Type::RawBgr, 0, 7, 6)
+        );
     }
 
     #[test]
@@ -1348,6 +1725,7 @@ mod tests {
             )),
             "short stream must surface PayloadLengthMismatch; got {warnings:?}",
         );
+        assert!(validate_g00_lzss_content(&bytes).is_err());
     }
 
     #[test]
@@ -1384,6 +1762,10 @@ mod tests {
             warnings.is_empty(),
             "clean type-1 must not warn: {warnings:?}"
         );
+        assert_eq!(
+            validate_g00_lzss_content(&file).unwrap().emitted_count,
+            decoded.len()
+        );
     }
 
     #[test]
@@ -1395,6 +1777,10 @@ mod tests {
         bytes.extend_from_slice(&[0u8; 8]);
         let err = decode_g00(&bytes).expect_err("zero-region type-2 must error");
         assert!(matches!(err, G00DecodeError::Type2ZeroRegions));
+        assert!(matches!(
+            validate_g00_lzss_content(&bytes),
+            Err(G00ContentValidationError::Type2ZeroRegions)
+        ));
     }
 
     /// Build a minimal but format-faithful type-2 container + file for a
@@ -1596,6 +1982,7 @@ mod tests {
             warnings.is_empty(),
             "clean type-2 must not warn: {warnings:?}"
         );
+        assert_eq!(validate_g00_lzss_content(&bytes).unwrap().region_count, 1);
     }
 
     #[test]
