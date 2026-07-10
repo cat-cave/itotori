@@ -176,7 +176,14 @@ test("qd-full-ci lanes: a shared-file diff selects the full ci gate (everything)
   assert.deepEqual(affectedCiLanes(["Cargo.toml"]), ["ci"]);
   assert.deepEqual(affectedCiLanes(["Cargo.lock"]), ["ci"]);
   assert.deepEqual(affectedCiLanes(["scripts/qd-full-ci.mjs"]), ["ci"]);
-  assert.deepEqual(affectedCiLanes([".github/workflows/ci.yml"]), ["ci"]);
+  // Atomic CI swap: the CI-defining surface is the tier dispatcher + reusable
+  // tier workflows + shared setup composite (retired ci.yml / alpha-proof.yml).
+  // A change to any of these forces the full local `ci` gate so lane wiring
+  // cannot drift untested.
+  assert.deepEqual(affectedCiLanes([".github/workflows/pr-tiers.yml"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes([".github/workflows/_tier0.yml"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes([".github/workflows/_tier1.yml"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes([".github/actions/setup-itotori/action.yml"]), ["ci"]);
 });
 
 test("qd-full-ci lanes: a docs-only diff selects no build/real-bytes lane", () => {

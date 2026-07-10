@@ -23,7 +23,7 @@ and both lanes fail LOUD rather than passing on a skipped/absent prerequisite.
 
 **Entry points:** `just ci` / `just ci-full` / `node scripts/qd-full-ci.mjs`
 (affected-aware; `--all` forces the complete gate). `just check` is the fast
-sub-gate. GitHub: `.github/workflows/ci.yml`.
+sub-gate. GitHub: `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml`.
 
 **Contract:** single-mode SYNTHETIC — fast, offline, copyright-free, no real
 corpora, **no browser**, no live providers. Deterministic.
