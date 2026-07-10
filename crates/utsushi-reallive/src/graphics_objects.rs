@@ -155,6 +155,21 @@ impl GraphicsScale {
     };
 }
 
+/// Per-axis object-data scale in classic percent units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphicsPercentScale {
+    pub x_percent: i32,
+    pub y_percent: i32,
+}
+
+impl GraphicsPercentScale {
+    pub const IDENTITY: Self = Self {
+        x_percent: 100,
+        y_percent: 100,
+    };
+}
+
 /// Alpha in `0..=255` (rlvm-public convention). `0` = fully
 /// transparent, `255` = fully opaque.
 ///
@@ -269,6 +284,127 @@ pub struct ImageRef {
     pub region_index: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceGeometry {
+    pub width: i32,
+    pub height: i32,
+    pub origin: GraphicsPosition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HitRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HitRegionUnavailable {
+    AssetPatternGeometryUnavailable,
+    ObjOfFileGanUnsupported,
+    TextDigitsDriftAnimationUnsupported,
+    ColourAreaRectNoClickBounds,
+    NonFiniteTransform,
+    OutOfRangeTransform,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HitRegion {
+    Known(HitRect),
+    Unavailable(HitRegionUnavailable),
+}
+
+/// Typed object-data state used only by the pure hit-geometry kernel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectGeometryState {
+    pub surface: Option<SurfaceGeometry>,
+    pub unavailable: HitRegionUnavailable,
+    pub adjust_slots: [GraphicsPosition; 8],
+    pub origin_override: Option<GraphicsPosition>,
+    pub classic_percent: GraphicsPercentScale,
+    pub hq_thousandths: GraphicsScale,
+}
+
+impl Default for ObjectGeometryState {
+    fn default() -> Self {
+        Self {
+            surface: None,
+            unavailable: HitRegionUnavailable::AssetPatternGeometryUnavailable,
+            adjust_slots: [GraphicsPosition::ORIGIN; 8],
+            origin_override: None,
+            classic_percent: GraphicsPercentScale::IDENTITY,
+            hq_thousandths: GraphicsScale::IDENTITY,
+        }
+    }
+}
+
+/// f32-only input to the pure destination-rectangle kernel.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DstRectKernelInput {
+    pub surface: [f32; 2],
+    pub child_position: [f32; 2],
+    pub child_adjust: [f32; 2],
+    pub origin: [f32; 2],
+    pub child_factor: [f32; 2],
+    pub parent: Option<DstRectKernelParent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DstRectKernelParent {
+    pub position: [f32; 2],
+    pub adjust: [f32; 2],
+    pub factor: [f32; 2],
+}
+
+/// Oracle-ordered, un-clipped f32 destination geometry. Origin is unscaled;
+/// factors apply only to signed half extents before truncation toward zero.
+pub fn derive_dst_rect(input: DstRectKernelInput) -> Result<HitRect, HitRegionUnavailable> {
+    let parent = input.parent.unwrap_or(DstRectKernelParent {
+        position: [0.0, 0.0],
+        adjust: [0.0, 0.0],
+        factor: [1.0, 1.0],
+    });
+    let half_x = input.surface[0] * parent.factor[0] * input.child_factor[0] / 2.0;
+    let half_y = input.surface[1] * parent.factor[1] * input.child_factor[1] / 2.0;
+    let values = [
+        input.child_position[0] + input.child_adjust[0] - input.origin[0]
+            + input.surface[0] / 2.0
+            + parent.position[0]
+            + parent.adjust[0]
+            - half_x,
+        input.child_position[1] + input.child_adjust[1] - input.origin[1]
+            + input.surface[1] / 2.0
+            + parent.position[1]
+            + parent.adjust[1]
+            - half_y,
+        2.0 * half_x.trunc(),
+        2.0 * half_y.trunc(),
+    ];
+    if values.iter().any(|value| !value.is_finite()) {
+        return Err(HitRegionUnavailable::NonFiniteTransform);
+    }
+    let mut output = [0i32; 4];
+    for (index, value) in values.into_iter().enumerate() {
+        let value = value.trunc();
+        if value < i32::MIN as f32 || value >= 2_147_483_648.0 {
+            return Err(HitRegionUnavailable::OutOfRangeTransform);
+        }
+        output[index] = value as i32;
+    }
+    Ok(HitRect {
+        x: output[0],
+        y: output[1],
+        width: output[2],
+        height: output[3],
+    })
+}
+
 /// Per-object kind discriminator. Two kinds: `Image` (assigned an
 /// [`ImageRef`]; the render pass dereferences the ref, decodes the g00
 /// bitmap, and composites it) and `Wipe` (a full-framebuffer
@@ -312,6 +448,8 @@ pub struct GraphicsObject {
     pub visible: bool,
     /// Exact `objButtonOpts(buf, action, se, group, button_number)` binding.
     pub button_options: Option<ButtonOptions>,
+    /// Object-data geometry; intentionally independent of render scale/state.
+    pub geometry: ObjectGeometryState,
 }
 
 /// Sparse value-owned children declared by a parent object address.
@@ -372,6 +510,7 @@ impl GraphicsObject {
             },
             visible: true,
             button_options: None,
+            geometry: ObjectGeometryState::default(),
         }
     }
 
@@ -389,7 +528,55 @@ impl GraphicsObject {
             kind: GraphicsObjectKind::Wipe { colour },
             visible: true,
             button_options: None,
+            geometry: ObjectGeometryState::default(),
         }
+    }
+
+    fn factor(&self) -> (f32, f32) {
+        (
+            self.geometry.classic_percent.x_percent as f32 / 100.0
+                * (self.geometry.hq_thousandths.x_thousandths as f32 / 1000.0),
+            self.geometry.classic_percent.y_percent as f32 / 100.0
+                * (self.geometry.hq_thousandths.y_thousandths as f32 / 1000.0),
+        )
+    }
+
+    fn adjust_sum(&self) -> (f32, f32) {
+        self.geometry
+            .adjust_slots
+            .iter()
+            .fold((0.0, 0.0), |(x, y), adjust| {
+                (x + adjust.x as f32, y + adjust.y as f32)
+            })
+    }
+
+    /// Derive only from an explicit child surface. A parent contributes its
+    /// placement/transform but never makes an unknown child surface known.
+    pub fn hit_region(&self, parent: Option<&GraphicsObject>) -> HitRegion {
+        let Some(surface) = self.geometry.surface else {
+            return HitRegion::Unavailable(self.geometry.unavailable);
+        };
+        let origin = self.geometry.origin_override.unwrap_or(surface.origin);
+        let (child_adjust_x, child_adjust_y) = self.adjust_sum();
+        let (child_factor_x, child_factor_y) = self.factor();
+        let parent = parent.map(|parent| {
+            let (adjust_x, adjust_y) = parent.adjust_sum();
+            let (factor_x, factor_y) = parent.factor();
+            DstRectKernelParent {
+                position: [parent.position.x as f32, parent.position.y as f32],
+                adjust: [adjust_x, adjust_y],
+                factor: [factor_x, factor_y],
+            }
+        });
+        derive_dst_rect(DstRectKernelInput {
+            surface: [surface.width as f32, surface.height as f32],
+            child_position: [self.position.x as f32, self.position.y as f32],
+            child_adjust: [child_adjust_x, child_adjust_y],
+            origin: [origin.x as f32, origin.y as f32],
+            child_factor: [child_factor_x, child_factor_y],
+            parent,
+        })
+        .map_or_else(HitRegion::Unavailable, HitRegion::Known)
     }
 }
 
@@ -721,6 +908,125 @@ impl Default for GraphicsObjectStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn kernel_input() -> DstRectKernelInput {
+        DstRectKernelInput {
+            surface: [11.0, 7.0],
+            child_position: [100.0, 50.0],
+            child_adjust: [18.0, 7.0],
+            origin: [0.0, 5.0],
+            child_factor: [1.3, 0.7],
+            parent: None,
+        }
+    }
+
+    #[test]
+    fn dst_rect_kernel_pins_oracle_order_and_truncation() {
+        assert_eq!(
+            derive_dst_rect(kernel_input()),
+            Ok(HitRect {
+                x: 116,
+                y: 53,
+                width: 14,
+                height: 4,
+            })
+        );
+        assert_eq!(
+            derive_dst_rect(DstRectKernelInput {
+                surface: [11.0, 7.0],
+                child_position: [20.0, -10.0],
+                child_adjust: [6.0, 2.0],
+                origin: [3.0, -2.0],
+                child_factor: [1.5 * 1.2, 0.8 * 0.5],
+                parent: Some(DstRectKernelParent {
+                    position: [100.0, 50.0],
+                    adjust: [-5.0, 8.0],
+                    factor: [0.5 * 1.5, 2.0 * 0.75],
+                }),
+            }),
+            Ok(HitRect {
+                x: 116,
+                y: 53,
+                width: 14,
+                height: 4,
+            })
+        );
+        let mut negative = kernel_input();
+        negative.child_factor = [-0.5, 0.5];
+        let rect = derive_dst_rect(negative).expect("finite signed rectangle");
+        assert_eq!((rect.width, rect.height), (-4, 2));
+        let mut nonfinite = kernel_input();
+        nonfinite.surface[0] = f32::NAN;
+        assert_eq!(
+            derive_dst_rect(nonfinite),
+            Err(HitRegionUnavailable::NonFiniteTransform)
+        );
+        let mut out_of_range = kernel_input();
+        out_of_range.child_factor[0] = 1_000_000_000.0;
+        assert_eq!(
+            derive_dst_rect(out_of_range),
+            Err(HitRegionUnavailable::OutOfRangeTransform)
+        );
+    }
+
+    #[test]
+    fn object_geometry_uses_explicit_child_surface_only() {
+        let mut child = GraphicsObject::image("child");
+        child.position = GraphicsPosition { x: 100, y: 50 };
+        child.geometry.surface = Some(SurfaceGeometry {
+            width: 20,
+            height: 10,
+            origin: GraphicsPosition { x: 4, y: 2 },
+        });
+        child.geometry.adjust_slots[0] = GraphicsPosition { x: 17, y: 2 };
+        child.geometry.hq_thousandths = GraphicsScale {
+            x_thousandths: 700,
+            y_thousandths: 400,
+        };
+        assert_eq!(
+            child.hit_region(None),
+            HitRegion::Known(HitRect {
+                x: 116,
+                y: 53,
+                width: 14,
+                height: 4,
+            })
+        );
+        let snapshot = child.clone();
+        for adjust in &mut child.geometry.adjust_slots {
+            adjust.x += 1;
+            adjust.y += 1;
+        }
+        assert_eq!(
+            child.hit_region(None),
+            HitRegion::Known(HitRect {
+                x: 124,
+                y: 61,
+                width: 14,
+                height: 4,
+            })
+        );
+        child.geometry.origin_override = Some(GraphicsPosition::ORIGIN);
+        assert_ne!(child.hit_region(None), snapshot.hit_region(None));
+        assert_eq!(snapshot.geometry.origin_override, None);
+
+        let mut parent = GraphicsObject::image("parent");
+        parent.position = GraphicsPosition { x: 3, y: -2 };
+        parent.geometry.adjust_slots[7] = GraphicsPosition { x: 1, y: 2 };
+        assert_ne!(
+            snapshot.hit_region(None),
+            snapshot.hit_region(Some(&parent))
+        );
+        let unknown = GraphicsObject::image("asset-only");
+        assert_eq!(
+            unknown.hit_region(Some(&parent)),
+            HitRegion::Unavailable(HitRegionUnavailable::AssetPatternGeometryUnavailable)
+        );
+        assert_eq!(
+            GraphicsObject::image("text").geometry.unavailable,
+            HitRegionUnavailable::AssetPatternGeometryUnavailable
+        );
+    }
 
     #[test]
     fn new_stack_is_empty() {
