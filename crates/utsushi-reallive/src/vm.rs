@@ -53,8 +53,8 @@ use crate::bytecode_element::{
 use crate::expression::{ExprNode, parse_expression};
 use crate::expression_eval::{EvaluationError, evaluate, evaluate_assignment};
 use crate::rlop::{
-    DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpReadiness, LongOpScheduler, RlopKey,
-    RlopRegistry,
+    DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpReadiness, LongOpScheduler,
+    RlopImplementationProvenance, RlopKey, RlopRegistry,
 };
 use crate::var_banks::VarBanks;
 
@@ -387,6 +387,9 @@ pub enum VmEvent {
     CommandDispatched {
         /// Composite key (`module_type`, `module_id`, `opcode`).
         key: RlopKey,
+        /// Registrar provenance when a concrete operation resolved. `None`
+        /// remains distinct from a catalog fallback for missing-key advances.
+        provenance: Option<RlopImplementationProvenance>,
         /// The outcome the op returned.
         outcome: DispatchOutcome,
     },
@@ -1104,7 +1107,7 @@ impl Vm {
                 ..
             } => {
                 let key = RlopKey::new(module_type, module_id, opcode);
-                if let Some(op) = registry.get(key) {
+                if let Some((op, provenance)) = registry.resolve(key) {
                     // Decode the element's own argument list and
                     // dispatch with the REAL values. Previously this
                     // passed `&[]`, so every argument-taking op — all
@@ -1197,6 +1200,7 @@ impl Vm {
                     self.apply_outcome(&resolved, post_pc)?;
                     Ok(VmEvent::CommandDispatched {
                         key,
+                        provenance: Some(provenance),
                         outcome: resolved,
                     })
                 } else {
@@ -1208,6 +1212,7 @@ impl Vm {
                     self.pc = post_pc;
                     Ok(VmEvent::CommandDispatched {
                         key,
+                        provenance: None,
                         outcome: DispatchOutcome::Advance,
                     })
                 }

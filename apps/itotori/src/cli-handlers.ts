@@ -477,6 +477,9 @@ async function runValidateCommand(
     scene,
     "--print-replay-log",
     replayLogPath,
+    "--dispatch-report",
+    `${replayLogPath}.dispatch.json`,
+    "--require-semantic-reached-path",
   ];
   if (args.includes("--print-textlines")) {
     replayArgs.push("--print-textlines");
