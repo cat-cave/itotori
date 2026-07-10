@@ -3,25 +3,42 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  mkdtempSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const fixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
-const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
+const liveFixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
+const liveManifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
 const checkMode = process.argv.includes("--check");
 // Cached kaifuu-cli cargo runner (see cargoRunner() below). Declared here — above
 // the top-level driver code — so it is initialized before any call to cargoRunner.
 let cargoRunnerCached;
-const originalFixtureTree = checkMode ? snapshotTree(fixtureRoot) : null;
-const originalManifest = checkMode && existsSync(manifestPath) ? readFileSync(manifestPath) : null;
+const stagingRoot = mkdtempSync(join(tmpdir(), "itotori-kaifuu-encrypted-matrix-"));
+const fixtureRoot = resolve(stagingRoot, "kaifuu-encrypted-matrix");
+const manifestPath = resolve(stagingRoot, "kaifuu-encrypted-matrix.manifest.json");
+let promotionSequence = 0;
+
+// The generator may throw from any command. Exit handlers are synchronous, so
+// this removes the unique staging tree for both successful and failed runs
+// without ever touching the live fixture tree before promotion.
+process.once("exit", () => {
+  rmSync(stagingRoot, { recursive: true, force: true });
+});
+
+const originalFixtureTree = checkMode ? snapshotTree(liveFixtureRoot) : null;
+const originalManifest =
+  checkMode && existsSync(liveManifestPath) ? readFileSync(liveManifestPath) : null;
 
 // Expected outputs that are still AUTHORED by their originating command rather
 // than re-derived here. This generator owns the raw fixture bytes those commands
@@ -43,8 +60,6 @@ const preservedExpectedOutputs = [
 }));
 
 const files = [];
-
-rmSync(fixtureRoot, { recursive: true, force: true });
 
 writeText(
   "README.md",
@@ -517,6 +532,8 @@ writeSiglusExpectedOutputs();
 writeManifest();
 if (checkMode) {
   checkForDrift(originalFixtureTree, originalManifest);
+} else {
+  promoteStaging();
 }
 
 function keyProfile(input) {
@@ -719,7 +736,7 @@ function writeManifest() {
     },
     files: files
       .map((file) => {
-        const path = resolve(repoRoot, file.path);
+        const path = resolve(fixtureRoot, fixtureRelativePath(file.path));
         const content = Buffer.from(readFile(path));
         return {
           ...file,
@@ -784,7 +801,7 @@ function readFile(path) {
 }
 
 function readRequiredExpectedOutput(relativePath) {
-  const path = resolve(fixtureRoot, relativePath);
+  const path = resolve(liveFixtureRoot, relativePath);
   try {
     return readFileSync(path);
   } catch (error) {
@@ -860,6 +877,12 @@ function cargoRunner() {
 }
 
 function writeCommandExpectedOutput(relativePath, args) {
+  if (
+    process.env.KAIFUU_FIXTURE_GENERATOR_TEST_FAIL_FIRST_SIGLUS_COMMAND === "1" &&
+    relativePath === "expected/siglus-detection-report-v0.1.json"
+  ) {
+    throw new Error("test-only injected failure before the first Siglus fixture command");
+  }
   mkdirSync(dirname(resolve(fixtureRoot, relativePath)), { recursive: true });
   const runner = cargoRunner();
   execFileSync(
@@ -918,12 +941,10 @@ function checkForDrift(originalFiles, originalManifestBytes) {
     return;
   }
 
-  restoreSnapshot(originalFiles, originalManifestBytes);
-  console.error(
+  throw new Error(
     `public encrypted fixture matrix is stale or hand-edited; regenerate with ` +
       `\`node fixtures/generate-kaifuu-encrypted-public-fixtures.mjs\`:\n  ${problems.join("\n  ")}`,
   );
-  process.exit(1);
 }
 
 function compareFileMaps(before, after, label) {
@@ -941,19 +962,51 @@ function compareFileMaps(before, after, label) {
   return problems;
 }
 
-function restoreSnapshot(filesSnapshot, manifestBytes) {
-  rmSync(fixtureRoot, { recursive: true, force: true });
-  for (const [relativePath, content] of filesSnapshot.entries()) {
-    const path = resolve(fixtureRoot, relativePath);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, content);
+function promoteStaging() {
+  const stagedFiles = snapshotTree(fixtureRoot);
+  for (const [relativePath, content] of stagedFiles.entries()) {
+    atomicReplace(resolve(liveFixtureRoot, relativePath), content);
   }
-  if (manifestBytes === null) {
-    rmSync(manifestPath, { force: true });
-  } else {
-    mkdirSync(dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, manifestBytes);
+
+  atomicReplace(liveManifestPath, readFileSync(manifestPath));
+
+  for (const relativePath of listFiles(liveFixtureRoot)) {
+    if (!stagedFiles.has(relativePath)) {
+      rmSync(resolve(liveFixtureRoot, relativePath), { force: true });
+    }
   }
+  pruneEmptyDirectories(liveFixtureRoot);
+}
+
+function atomicReplace(path, content) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporaryPath = resolve(
+    dirname(path),
+    `.${basename(path)}.itotori-staging-${process.pid}-${promotionSequence++}`,
+  );
+  writeFileSync(temporaryPath, content);
+  renameSync(temporaryPath, path);
+}
+
+function pruneEmptyDirectories(root) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const path = resolve(root, entry.name);
+    pruneEmptyDirectories(path);
+    if (readdirSync(path).length === 0) {
+      rmdirSync(path);
+    }
+  }
+}
+
+function fixtureRelativePath(manifestFilePath) {
+  const prefix = "fixtures/public/kaifuu-encrypted-matrix/";
+  if (!manifestFilePath.startsWith(prefix)) {
+    throw new Error(`fixture manifest path escapes the generated matrix: ${manifestFilePath}`);
+  }
+  return manifestFilePath.slice(prefix.length);
 }
 
 function buffersEqual(left, right) {
