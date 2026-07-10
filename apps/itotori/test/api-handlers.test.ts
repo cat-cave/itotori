@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import * as ts from "typescript";
+import type { CallExpression, Node } from "@babel/types";
+import {
+  isStaticMember,
+  nodeText,
+  parseTypeScript,
+  permissionHelperAliases,
+  permissionHelperCallName,
+  sourceLocation,
+  stringLiteralValue,
+  walk,
+} from "../../../scripts/stable-ts-ast.mjs";
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
@@ -4480,72 +4490,80 @@ function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
   return sourceApiPermissionGateIdsFromSource(source, sourceUrl.pathname);
 }
 
+type ParentNode = Node & { parent?: Node | null };
+
 function sourceApiPermissionGateIdsFromSource(
   source: string,
   fileName: string,
 ): ApiMutationPermissionGateId[] {
-  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  const requireApiPermissionAliases = permissionHelperAliases(sourceFile, "requireApiPermission");
-  const requirePermissionAliases = permissionHelperAliases(sourceFile, "requirePermission");
+  const root = parseTypeScript(source, fileName);
+  const requireApiPermissionAliases = permissionHelperAliases(root, "requireApiPermission");
+  const requirePermissionAliases = permissionHelperAliases(root, "requirePermission");
   const gateIds: ApiMutationPermissionGateId[] = [];
 
-  function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node)) {
-      if (permissionHelperCallName(node.expression, requireApiPermissionAliases) !== undefined) {
-        gateIds.push(apiGateIdFromCall(node));
+  walk(root, (node) => {
+    if (node.type === "CallExpression") {
+      if (permissionHelperCallName(node.callee, requireApiPermissionAliases) !== undefined) {
+        gateIds.push(apiGateIdFromCall(source, fileName, node));
       }
       if (
-        permissionHelperCallName(node.expression, requirePermissionAliases) !== undefined &&
+        permissionHelperCallName(node.callee, requirePermissionAliases) !== undefined &&
         !isInsideFunction(node, "requireApiPermission") &&
         !isInsideFunction(node, "tryApiPermission")
       ) {
         throw new Error(
-          `undeclared API permission call at ${sourceLocation(sourceFile, node)}; route permission gates must use apiMutationPermissionGates and requireApiPermission`,
+          `undeclared API permission call at ${sourceLocation(fileName, node)}; route permission gates must use apiMutationPermissionGates and requireApiPermission`,
         );
       }
     }
-    ts.forEachChild(node, visit);
-  }
+  });
 
-  visit(sourceFile);
   return gateIds;
 }
 
 function sourceApiMutationRoutes(): ApiMutationRoute[] {
   const sourceUrl = new URL("../src/api-handlers.ts", import.meta.url);
   const source = readFileSync(sourceUrl, "utf8");
-  const sourceFile = ts.createSourceFile(sourceUrl.pathname, source, ts.ScriptTarget.Latest, true);
-  const routeFunction = sourceFile.statements.find(
-    (node): node is ts.FunctionDeclaration =>
-      ts.isFunctionDeclaration(node) && node.name?.text === "routeItotoriApiRequest",
-  );
+  const root = parseTypeScript(source, sourceUrl.pathname);
+  // `export function` / `export async function` is ExportNamedDeclaration in Babel.
+  let routeFunction: Extract<Node, { type: "FunctionDeclaration" }> | undefined;
+  walk(root, (node) => {
+    if (
+      routeFunction === undefined &&
+      node.type === "FunctionDeclaration" &&
+      node.id?.name === "routeItotoriApiRequest"
+    ) {
+      routeFunction = node;
+    }
+  });
   if (!routeFunction?.body) {
     throw new Error("routeItotoriApiRequest must exist for API mutation route coverage");
   }
 
   const routes: ApiMutationRoute[] = [];
-  for (const statement of routeFunction.body.statements) {
-    if (ts.isIfStatement(statement)) {
-      const pathname = postRoutePathname(statement.expression);
+  for (const statement of routeFunction.body.body) {
+    if (statement.type === "IfStatement") {
+      const pathname = postRoutePathname(statement.test);
       if (pathname !== undefined) {
         routes.push(
-          ...mutationRoutesForNode(sourceFile, `POST ${pathname}`, statement.thenStatement),
+          ...mutationRoutesForNode(sourceUrl.pathname, `POST ${pathname}`, statement.consequent),
         );
       }
       continue;
     }
     if (
-      ts.isSwitchStatement(statement) &&
-      statement.expression.getText(sourceFile) === "projectRoute.resource"
+      statement.type === "SwitchStatement" &&
+      nodeText(source, statement.discriminant) === "projectRoute.resource"
     ) {
-      for (const clause of statement.caseBlock.clauses) {
-        if (!ts.isCaseClause(clause) || !ts.isStringLiteral(clause.expression)) {
+      for (const clause of statement.cases) {
+        const caseValue = clause.test !== null ? stringLiteralValue(clause.test) : null;
+        if (caseValue === null) {
           continue;
         }
         routes.push(
           ...mutationRoutesForNode(
-            sourceFile,
-            `POST /api/projects/:projectId/${clause.expression.text}`,
+            sourceUrl.pathname,
+            `POST /api/projects/:projectId/${caseValue}`,
             clause,
           ),
         );
@@ -4556,14 +4574,11 @@ function sourceApiMutationRoutes(): ApiMutationRoute[] {
   return routes.sort(compareApiMutationRoutes);
 }
 
-function postRoutePathname(expression: ts.Expression): string | undefined {
-  if (ts.isParenthesizedExpression(expression)) {
+function postRoutePathname(expression: Node): string | undefined {
+  if (expression.type === "ParenthesizedExpression") {
     return postRoutePathname(expression.expression);
   }
-  if (
-    !ts.isBinaryExpression(expression) ||
-    expression.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken
-  ) {
+  if (expression.type !== "LogicalExpression" || expression.operator !== "&&") {
     return undefined;
   }
   const left = equalityText(expression.left);
@@ -4578,82 +4593,76 @@ function postRoutePathname(expression: ts.Expression): string | undefined {
 }
 
 function equalityText(
-  expression: ts.Expression,
+  expression: Node,
 ): { property: "method" | "pathname"; value: string } | undefined {
-  if (
-    !ts.isBinaryExpression(expression) ||
-    expression.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken
-  ) {
+  if (expression.type !== "BinaryExpression" || expression.operator !== "===") {
     return undefined;
   }
   const left = requestPropertyName(expression.left);
   const right = requestPropertyName(expression.right);
-  if (left !== undefined && ts.isStringLiteral(expression.right)) {
-    return { property: left, value: expression.right.text };
+  if (left !== undefined && expression.right.type === "StringLiteral") {
+    return { property: left, value: expression.right.value };
   }
-  if (right !== undefined && ts.isStringLiteral(expression.left)) {
-    return { property: right, value: expression.left.text };
+  if (right !== undefined && expression.left.type === "StringLiteral") {
+    return { property: right, value: expression.left.value };
   }
   return undefined;
 }
 
-function requestPropertyName(expression: ts.Expression): "method" | "pathname" | undefined {
+function requestPropertyName(expression: Node): "method" | "pathname" | undefined {
   if (
-    ts.isPropertyAccessExpression(expression) &&
-    ts.isIdentifier(expression.expression) &&
-    expression.expression.text === "request" &&
-    (expression.name.text === "method" || expression.name.text === "pathname")
+    isStaticMember(expression) &&
+    expression.object.type === "Identifier" &&
+    expression.object.name === "request" &&
+    expression.property.type === "Identifier" &&
+    (expression.property.name === "method" || expression.property.name === "pathname")
   ) {
-    return expression.name.text;
+    return expression.property.name;
   }
   return undefined;
 }
 
-function mutationRoutesForNode(
-  sourceFile: ts.SourceFile,
-  route: string,
-  node: ts.Node,
-): ApiMutationRoute[] {
+function mutationRoutesForNode(fileName: string, route: string, node: Node): ApiMutationRoute[] {
   const services = mutatingProjectWorkflowCalls(node);
   if (services.length === 0) {
     if (readOnlyPostApiRoutes.has(route)) {
       return [];
     }
     throw new Error(
-      `POST API route ${route} has no mutating projectWorkflow call at ${sourceLocation(sourceFile, node)}; add an explicit readonly exception if this route is intentionally non-mutating`,
+      `POST API route ${route} has no mutating projectWorkflow call at ${sourceLocation(fileName, node)}; add an explicit readonly exception if this route is intentionally non-mutating`,
     );
   }
   return services.map((service) => ({ route, service }));
 }
 
-function mutatingProjectWorkflowCalls(node: ts.Node): MutatingProjectWorkflowService[] {
+function mutatingProjectWorkflowCalls(node: Node): MutatingProjectWorkflowService[] {
   const services: MutatingProjectWorkflowService[] = [];
 
-  function visit(current: ts.Node): void {
-    if (ts.isCallExpression(current)) {
-      const service = projectWorkflowServiceName(current.expression);
+  walk(node, (current) => {
+    if (current.type === "CallExpression") {
+      const service = projectWorkflowServiceName(current.callee);
       if (service !== undefined && !readOnlyProjectWorkflowServices.has(service)) {
         services.push(service as MutatingProjectWorkflowService);
       }
     }
-    ts.forEachChild(current, visit);
-  }
+  });
 
-  visit(node);
   return services;
 }
 
 function projectWorkflowServiceName(
-  expression: ts.Expression,
+  expression: Node,
 ): keyof ItotoriApiServices["projectWorkflow"] | undefined {
   if (
-    ts.isPropertyAccessExpression(expression) &&
-    ts.isPropertyAccessExpression(expression.expression) &&
-    expression.expression.name.text === "projectWorkflow" &&
-    ts.isIdentifier(expression.expression.expression) &&
-    expression.expression.expression.text === "services"
+    isStaticMember(expression) &&
+    isStaticMember(expression.object) &&
+    expression.object.property.type === "Identifier" &&
+    expression.object.property.name === "projectWorkflow" &&
+    expression.object.object.type === "Identifier" &&
+    expression.object.object.name === "services" &&
+    expression.property.type === "Identifier"
   ) {
-    return expression.name.text as keyof ItotoriApiServices["projectWorkflow"];
+    return expression.property.name as keyof ItotoriApiServices["projectWorkflow"];
   }
   return undefined;
 }
@@ -4662,18 +4671,23 @@ function compareApiMutationRoutes(left: ApiMutationRoute, right: ApiMutationRout
   return `${left.route} ${left.service}`.localeCompare(`${right.route} ${right.service}`);
 }
 
-function apiGateIdFromCall(node: ts.CallExpression): ApiMutationPermissionGateId {
+function apiGateIdFromCall(
+  source: string,
+  fileName: string,
+  node: CallExpression,
+): ApiMutationPermissionGateId {
   const gate = node.arguments[1];
   if (
     gate === undefined ||
-    !ts.isPropertyAccessExpression(gate) ||
-    gate.expression.getText() !== "apiMutationPermissionGates"
+    !isStaticMember(gate) ||
+    nodeText(source, gate.object) !== "apiMutationPermissionGates" ||
+    gate.property.type !== "Identifier"
   ) {
     throw new Error(
-      `API permission call at ${sourceLocation(node.getSourceFile(), node)} must pass apiMutationPermissionGates.<gateId>`,
+      `API permission call at ${sourceLocation(fileName, node)} must pass apiMutationPermissionGates.<gateId>`,
     );
   }
-  return gate.name.text as ApiMutationPermissionGateId;
+  return gate.property.name as ApiMutationPermissionGateId;
 }
 
 function assertNoUndeclaredAppPermissionCalls(): void {
@@ -4691,22 +4705,19 @@ function assertNoUndeclaredAppPermissionCalls(): void {
 }
 
 function assertNoUndeclaredAppPermissionCallsInSource(source: string, fileName: string): void {
-  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  const requirePermissionAliases = permissionHelperAliases(sourceFile, "requirePermission");
+  const root = parseTypeScript(source, fileName);
+  const requirePermissionAliases = permissionHelperAliases(root, "requirePermission");
 
-  function visit(node: ts.Node): void {
+  walk(root, (node) => {
     if (
-      ts.isCallExpression(node) &&
-      permissionHelperCallName(node.expression, requirePermissionAliases) !== undefined
+      node.type === "CallExpression" &&
+      permissionHelperCallName(node.callee, requirePermissionAliases) !== undefined
     ) {
       throw new Error(
-        `undeclared app permission call at ${sourceLocation(sourceFile, node)}; app mutation gates must be represented by apiMutationPermissionGates or a documented follow-up`,
+        `undeclared app permission call at ${sourceLocation(fileName, node)}; app mutation gates must be represented by apiMutationPermissionGates or a documented follow-up`,
       );
     }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
+  });
 }
 
 function appSourceFiles(directory: URL): URL[] {
@@ -4719,83 +4730,15 @@ function appSourceFiles(directory: URL): URL[] {
   });
 }
 
-function callExpressionName(expression: ts.Expression): string | undefined {
-  if (ts.isIdentifier(expression)) {
-    return expression.text;
-  }
-  if (ts.isPropertyAccessExpression(expression)) {
-    return expression.name.text;
-  }
-  return undefined;
-}
-
-function permissionHelperCallName(
-  expression: ts.Expression,
-  aliases: ReadonlySet<string>,
-): string | undefined {
-  const name = callExpressionName(expression);
-  return name !== undefined && aliases.has(name) ? name : undefined;
-}
-
-function permissionHelperAliases(sourceFile: ts.SourceFile, helperName: string): Set<string> {
-  const aliases = new Set([helperName]);
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-
-    function addAlias(alias: string | undefined): void {
-      if (alias !== undefined && !aliases.has(alias)) {
-        aliases.add(alias);
-        changed = true;
-      }
-    }
-
-    function visit(node: ts.Node): void {
-      if (
-        ts.isImportSpecifier(node) &&
-        node.propertyName?.text === helperName &&
-        node.name.text !== helperName
-      ) {
-        addAlias(node.name.text);
-      }
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
-        const initializerName = callExpressionName(node.initializer);
-        if (initializerName !== undefined && aliases.has(initializerName)) {
-          addAlias(node.name.text);
-        }
-      }
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
-  }
-
-  return aliases;
-}
-
-function isInsideFunction(node: ts.Node, functionName: string): boolean {
-  let current: ts.Node | undefined = node.parent;
-  while (current !== undefined) {
-    if (
-      ts.isFunctionDeclaration(current) &&
-      current.name !== undefined &&
-      current.name.text === functionName
-    ) {
+function isInsideFunction(node: Node, functionName: string): boolean {
+  let current: ParentNode | null | undefined = (node as ParentNode).parent;
+  while (current !== undefined && current !== null) {
+    if (current.type === "FunctionDeclaration" && current.id?.name === functionName) {
       return true;
     }
     current = current.parent;
   }
   return false;
-}
-
-function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
-  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  return `${sourceFile.fileName}:${position.line + 1}:${position.character + 1}`;
 }
 
 function serviceFixture(): ItotoriApiServices {

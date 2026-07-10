@@ -20,7 +20,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import ts from "typescript";
+import { forEachChild, parseTypeScript, unwrapTsTypeAssertions } from "./stable-ts-ast.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requiredEnv = "DATABASE_URL";
@@ -211,15 +211,9 @@ process.exit(0);
 
 async function countRepositoryPermissionGateMatrixEntries() {
   const source = await readFile(authorizationMatrixPath, "utf8");
-  const sourceFile = ts.createSourceFile(
-    authorizationMatrixPath,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
+  const ast = parseTypeScript(source, authorizationMatrixPath);
   let count;
-  visit(sourceFile);
+  visit(ast);
   if (count === undefined) {
     throw new Error("repositoryPermissionGateMatrix declaration not found");
   }
@@ -227,22 +221,16 @@ async function countRepositoryPermissionGateMatrixEntries() {
 
   function visit(node) {
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "repositoryPermissionGateMatrix"
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.id.name === "repositoryPermissionGateMatrix"
     ) {
-      let initializer = node.initializer;
-      while (
-        initializer &&
-        (ts.isAsExpression(initializer) || ts.isSatisfiesExpression(initializer))
-      ) {
-        initializer = initializer.expression;
-      }
-      if (initializer && ts.isArrayLiteralExpression(initializer)) {
+      const initializer = unwrapTsTypeAssertions(node.init);
+      if (initializer && initializer.type === "ArrayExpression") {
         count = initializer.elements.length;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 }
 

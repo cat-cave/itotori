@@ -13,9 +13,9 @@
 // excluded property-access role reads (`user.role === "admin"`), never handled
 // `switch (role)`, only caught `===`/`==` (not `!==`/`!=`), and never saw a
 // role-keyed lookup map (`ROLES[role]`). It was a false-negative sieve. For
-// .ts/.tsx/.js/.mjs/.cjs files this now walks the TypeScript compiler API AST
-// (mirroring packages/itotori-db/test/authorization-matrix.test.ts's
-// `ts.createSourceFile` + `forEachChild` walk); for Rust .rs files it uses a
+// .ts/.tsx/.js/.mjs/.cjs files this walks a stable Babel TS AST
+// (`@babel/parser` + parent-linked walk via scripts/stable-ts-ast.mjs),
+// decoupled from the TypeScript compiler API; for Rust .rs files it uses a
 // pragmatic pattern-scan of the same shapes. The companion regression suite
 // scripts/audit-no-hardcoded-roles.test.mjs exercises every shape below,
 // including a positive + negative fixture for each of the four previously
@@ -97,7 +97,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
 import { execSync } from "node:child_process";
-import * as ts from "typescript";
+import {
+  callExpressionName,
+  forEachChild,
+  isComputedMember,
+  isStaticMember,
+  parseTypeScript,
+  stringLiteralValue,
+  zeroBasedStartLine,
+} from "./stable-ts-ast.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -236,26 +244,25 @@ function markerOnLineOrAbove(lines, i) {
 
 // ---- TypeScript / JavaScript AST scan -------------------------------------
 
-const BINARY_EQUALITY_TOKENS = new Set([
-  ts.SyntaxKind.EqualsEqualsEqualsToken,
-  ts.SyntaxKind.EqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsEqualsToken,
-  ts.SyntaxKind.ExclamationEqualsToken,
-]);
+const BINARY_EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
 
 // The immediate object name of a property access `<obj>.role` — the identifier
 // or property name closest to `.role` (for `session.user.role` → `user`).
 function immediateObjectName(expression) {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (expression.type === "Identifier") return expression.name;
+  if (isStaticMember(expression) && expression.property.type === "Identifier") {
+    return expression.property.name;
+  }
   return undefined;
 }
 
 // The name of a lookup-map container expression `X[...]` — `X`'s identifier or
 // trailing property name.
 function containerName(expression) {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (expression.type === "Identifier") return expression.name;
+  if (isStaticMember(expression) && expression.property.type === "Identifier") {
+    return expression.property.name;
+  }
   return undefined;
 }
 
@@ -264,23 +271,18 @@ function containerName(expression) {
 // initializer. `role` (bare) and any `<obj>.role` are role reads; an aliased
 // variable inherits its origin's auth-subject flag.
 function roleReadInfo(node, aliases) {
-  if (ts.isIdentifier(node)) {
-    if (node.text === "role") return { authSubject: false };
-    const alias = aliases.get(node.text);
+  if (node.type === "Identifier") {
+    if (node.name === "role") return { authSubject: false };
+    const alias = aliases.get(node.name);
     if (alias !== undefined) return { authSubject: alias.authSubject };
     return null;
   }
-  if (ts.isPropertyAccessExpression(node) && node.name.text === "role") {
-    return { authSubject: isAuthSubjectName(immediateObjectName(node.expression)) };
-  }
-  return null;
-}
-
-// The string value of a string-literal / no-substitution-template node, else
-// null. Template literals catch the `role === \`owner\`` form.
-function stringLiteralValue(node) {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return node.text;
+  if (
+    isStaticMember(node) &&
+    node.property.type === "Identifier" &&
+    node.property.name === "role"
+  ) {
+    return { authSubject: isAuthSubjectName(immediateObjectName(node.object)) };
   }
   return null;
 }
@@ -288,71 +290,63 @@ function stringLiteralValue(node) {
 // Collect alias declarations across the whole file, so `const r = x.role; if (r
 // === "admin")` and `const { role: r } = actor; if (r) …` treat `r` as a role
 // read. A single pre-pass keeps this order-independent.
-function collectAliases(sourceFile) {
+function collectAliases(root) {
   const aliases = new Map();
   function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
-      const init = node.initializer;
+    if (node.type === "VariableDeclarator" && node.init !== null && node.init !== undefined) {
+      const init = node.init;
       if (
-        ts.isIdentifier(node.name) &&
-        ts.isPropertyAccessExpression(init) &&
-        init.name.text === "role"
+        node.id.type === "Identifier" &&
+        isStaticMember(init) &&
+        init.property.type === "Identifier" &&
+        init.property.name === "role"
       ) {
         // `const r = <obj>.role`
-        aliases.set(node.name.text, {
-          authSubject: isAuthSubjectName(immediateObjectName(init.expression)),
+        aliases.set(node.id.name, {
+          authSubject: isAuthSubjectName(immediateObjectName(init.object)),
         });
       } else if (
-        ts.isIdentifier(node.name) &&
-        ts.isIdentifier(init) &&
-        (init.text === "role" || aliases.has(init.text))
+        node.id.type === "Identifier" &&
+        init.type === "Identifier" &&
+        (init.name === "role" || aliases.has(init.name))
       ) {
         // `const r = role` / `const r2 = r`
-        const origin = init.text === "role" ? { authSubject: false } : aliases.get(init.text);
-        aliases.set(node.name.text, { authSubject: origin?.authSubject ?? false });
-      } else if (ts.isObjectBindingPattern(node.name)) {
+        const origin = init.name === "role" ? { authSubject: false } : aliases.get(init.name);
+        aliases.set(node.id.name, { authSubject: origin?.authSubject ?? false });
+      } else if (node.id.type === "ObjectPattern") {
         // `const { role } = x` / `const { role: r } = x`
         const initSubject =
-          ts.isIdentifier(init) || ts.isPropertyAccessExpression(init)
+          init.type === "Identifier" || isStaticMember(init)
             ? isAuthSubjectName(immediateObjectName(init))
             : false;
-        for (const element of node.name.elements) {
-          const propName = element.propertyName ?? element.name;
-          if (
-            ts.isIdentifier(propName) &&
-            propName.text === "role" &&
-            ts.isIdentifier(element.name)
-          ) {
-            aliases.set(element.name.text, { authSubject: initSubject });
+        for (const property of node.id.properties) {
+          if (property.type !== "ObjectProperty") continue;
+          const propName =
+            property.key.type === "Identifier"
+              ? property.key.name
+              : property.key.type === "StringLiteral"
+                ? property.key.value
+                : undefined;
+          if (propName === "role" && property.value.type === "Identifier") {
+            aliases.set(property.value.name, { authSubject: initSubject });
           }
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  visit(sourceFile);
+  visit(root);
   return aliases;
 }
 
-function scriptKindForPath(path) {
-  if (path.endsWith(".tsx") || path.endsWith(".jsx")) return ts.ScriptKind.TSX;
-  return ts.ScriptKind.TS;
-}
-
 function findTsViolations(path, contents, lines) {
-  const sourceFile = ts.createSourceFile(
-    path,
-    contents,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-    scriptKindForPath(path),
-  );
-  const aliases = collectAliases(sourceFile);
+  const root = parseTypeScript(contents, path);
+  const aliases = collectAliases(root);
   const found = [];
   const seen = new Set();
 
   const record = (node, label) => {
-    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const line = zeroBasedStartLine(node);
     if (markerOnLineOrAbove(lines, line)) return;
     const key = `${line}::${label}`;
     if (seen.has(key)) return;
@@ -367,7 +361,7 @@ function findTsViolations(path, contents, lines) {
 
   function visit(node) {
     // Shape 1 — binary equality with a role read vs a string literal.
-    if (ts.isBinaryExpression(node) && BINARY_EQUALITY_TOKENS.has(node.operatorToken.kind)) {
+    if (node.type === "BinaryExpression" && BINARY_EQUALITY_OPERATORS.has(node.operator)) {
       const leftRead = roleReadInfo(node.left, aliases);
       const rightRead = roleReadInfo(node.right, aliases);
       const leftStr = stringLiteralValue(node.left);
@@ -387,12 +381,12 @@ function findTsViolations(path, contents, lines) {
     }
 
     // Shape 2 — switch whose discriminant is a role read, with string cases.
-    if (ts.isSwitchStatement(node)) {
-      const discriminant = roleReadInfo(node.expression, aliases);
+    if (node.type === "SwitchStatement") {
+      const discriminant = roleReadInfo(node.discriminant, aliases);
       if (discriminant !== null) {
-        const caseValues = node.caseBlock.clauses
-          .filter((clause) => ts.isCaseClause(clause))
-          .map((clause) => stringLiteralValue(clause.expression))
+        const caseValues = node.cases
+          .filter((clause) => clause.test !== null)
+          .map((clause) => stringLiteralValue(clause.test))
           .filter((value) => value !== null);
         if (discriminant.authSubject || caseValues.some((value) => isAuthRoleName(value))) {
           record(node, LABELS.switch);
@@ -401,10 +395,10 @@ function findTsViolations(path, contents, lines) {
     }
 
     // Shape 3 — element-access lookup indexed by a role read into an auth map.
-    if (ts.isElementAccessExpression(node)) {
-      const index = roleReadInfo(node.argumentExpression, aliases);
+    if (isComputedMember(node)) {
+      const index = roleReadInfo(node.property, aliases);
       if (index !== null) {
-        const container = containerName(node.expression);
+        const container = containerName(node.object);
         if (isAuthRoleMapName(container) || index.authSubject) {
           record(node, LABELS.lookup);
         }
@@ -413,35 +407,31 @@ function findTsViolations(path, contents, lines) {
 
     // Shape 4 — a bare `<authSubject>.role` read in any context.
     if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "role" &&
-      isAuthSubjectName(immediateObjectName(node.expression))
+      isStaticMember(node) &&
+      node.property.type === "Identifier" &&
+      node.property.name === "role" &&
+      isAuthSubjectName(immediateObjectName(node.object))
     ) {
       record(node, LABELS.subject);
     }
 
     // Shape 5 — classic name-based auth shortcuts.
-    if (ts.isIdentifier(node)) {
-      if (/^is_?[Aa]dmin$/u.test(node.text)) record(node, LABELS.isAdmin);
-      else if (node.text === "roleValues") record(node, LABELS.roleValues);
-      else if (node.text === "ROLES") record(node, LABELS.roles);
+    if (node.type === "Identifier") {
+      if (/^is_?[Aa]dmin$/u.test(node.name)) record(node, LABELS.isAdmin);
+      else if (node.name === "roleValues") record(node, LABELS.roleValues);
+      else if (node.name === "ROLES") record(node, LABELS.roles);
     }
-    if (ts.isCallExpression(node)) {
-      const callee = node.expression;
-      const calleeName = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : undefined;
+    if (node.type === "CallExpression") {
+      const calleeName = callExpressionName(node.callee);
       if (calleeName !== undefined && /^has_?[Rr]ole$/u.test(calleeName)) {
         record(node, LABELS.hasRole);
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  visit(sourceFile);
+  visit(root);
   return found;
 }
 

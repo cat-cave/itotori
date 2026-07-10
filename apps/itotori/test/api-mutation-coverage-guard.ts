@@ -1,4 +1,13 @@
-import * as ts from "typescript";
+import type { CallExpression, Node, ObjectExpression, Statement } from "@babel/types";
+import {
+  isStaticMember,
+  nameOf,
+  parseTypeScript,
+  permissionHelperAliases,
+  permissionHelperCallName,
+  sourceLocation,
+  walk,
+} from "../../../scripts/stable-ts-ast.mjs";
 
 /**
  * SHARED-026 — shape-robust API mutation-permission coverage guard.
@@ -76,6 +85,8 @@ export type UncoveredApiMutation = {
   location: string;
 };
 
+type ParentNode = Node & { parent?: Node | null };
+
 /**
  * Discover every mutating guarded API service call in `source` that is NOT
  * covered by a permission gate in the same innermost handler scope. An empty
@@ -85,17 +96,17 @@ export function findUncoveredApiPermissionMutations(
   source: string,
   fileName: string,
 ): UncoveredApiMutation[] {
-  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  const apiPermissionGateAliases = permissionHelperAliases(sourceFile, API_PERMISSION_GATE_HELPER);
+  const root = parseTypeScript(source, fileName);
+  const apiPermissionGateAliases = permissionHelperAliases(root, API_PERMISSION_GATE_HELPER);
   const reviewerQueuePermissionViewAliases = permissionHelperAliases(
-    sourceFile,
+    root,
     API_REVIEWER_QUEUE_PERMISSION_VIEW_HELPER,
   );
   const uncovered: UncoveredApiMutation[] = [];
 
-  function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node)) {
-      const mutation = mutatingApiServiceMethod(node.expression);
+  walk(root, (node) => {
+    if (node.type === "CallExpression") {
+      const mutation = mutatingApiServiceMethod(node.callee);
       if (
         mutation !== undefined &&
         !isCoveredByApiPermission(
@@ -105,13 +116,11 @@ export function findUncoveredApiPermissionMutations(
           reviewerQueuePermissionViewAliases,
         )
       ) {
-        uncovered.push({ ...mutation, location: sourceLocation(sourceFile, node) });
+        uncovered.push({ ...mutation, location: sourceLocation(fileName, node) });
       }
     }
-    ts.forEachChild(node, visit);
-  }
+  });
 
-  visit(sourceFile);
   return uncovered;
 }
 
@@ -134,17 +143,20 @@ export function findUncoveredProjectWorkflowMutations(
  * parameter is still caught.
  */
 function mutatingApiServiceMethod(
-  expression: ts.Expression,
+  expression: Node,
 ): { surface: GuardedApiServiceSurface; method: string } | undefined {
-  if (
-    !ts.isPropertyAccessExpression(expression) ||
-    !ts.isPropertyAccessExpression(expression.expression)
-  ) {
+  if (!isStaticMember(expression) || !isStaticMember(expression.object)) {
+    return undefined;
+  }
+  if (expression.property.type !== "Identifier") {
+    return undefined;
+  }
+  if (expression.object.property.type !== "Identifier") {
     return undefined;
   }
 
-  const surface = expression.expression.name.text;
-  const method = expression.name.text;
+  const surface = expression.object.property.name;
+  const method = expression.property.name;
   switch (surface) {
     case "projectWorkflow":
       return READ_ONLY_PROJECT_WORKFLOW_METHODS.has(method) ? undefined : { surface, method };
@@ -169,7 +181,7 @@ function mutatingApiServiceMethod(
  * handler never counts.
  */
 function isCoveredByApiPermission(
-  mutation: ts.Node,
+  mutation: Node,
   surface: GuardedApiServiceSurface,
   apiPermissionGateAliases: ReadonlySet<string>,
   reviewerQueuePermissionViewAliases: ReadonlySet<string>,
@@ -194,7 +206,7 @@ function isCoveredByApiPermission(
     return false;
   }
   return (
-    ts.isCallExpression(mutation) &&
+    mutation.type === "CallExpression" &&
     callReceivesResolvedPermissionView(mutation, resolvedPermissionViews)
   );
 }
@@ -205,14 +217,14 @@ function isCoveredByApiPermission(
  * index of the statement on the path to `node`.
  */
 function enclosingStatementList(
-  node: ts.Node,
-): { list: readonly ts.Statement[]; index: number } | undefined {
-  let child: ts.Node = node;
-  let parent: ts.Node | undefined = node.parent;
-  while (parent !== undefined) {
+  node: Node,
+): { list: readonly Statement[]; index: number } | undefined {
+  let child: ParentNode = node as ParentNode;
+  let parent: ParentNode | null | undefined = child.parent;
+  while (parent !== undefined && parent !== null) {
     const statements = statementListOf(parent);
     if (statements !== undefined) {
-      const index = statements.indexOf(child as ts.Statement);
+      const index = statements.indexOf(child as Statement);
       if (index >= 0) {
         return { list: statements, index };
       }
@@ -223,59 +235,52 @@ function enclosingStatementList(
   return undefined;
 }
 
-function statementListOf(node: ts.Node): readonly ts.Statement[] | undefined {
-  if (
-    ts.isBlock(node) ||
-    ts.isSourceFile(node) ||
-    ts.isModuleBlock(node) ||
-    ts.isCaseClause(node) ||
-    ts.isDefaultClause(node)
-  ) {
-    return node.statements;
+function statementListOf(node: Node): readonly Statement[] | undefined {
+  if (node.type === "BlockStatement" || node.type === "Program" || node.type === "TSModuleBlock") {
+    return node.body as readonly Statement[];
+  }
+  if (node.type === "SwitchCase") {
+    return node.consequent;
   }
   return undefined;
 }
 
-function containsPermissionHelperCall(node: ts.Node, aliases: ReadonlySet<string>): boolean {
+function containsPermissionHelperCall(node: Node, aliases: ReadonlySet<string>): boolean {
   let found = false;
-  function visit(current: ts.Node): void {
+  walk(node, (current) => {
     if (found) {
       return;
     }
     if (
-      ts.isCallExpression(current) &&
-      permissionHelperCallName(current.expression, aliases) !== undefined
+      current.type === "CallExpression" &&
+      permissionHelperCallName(current.callee, aliases) !== undefined
     ) {
       found = true;
-      return;
     }
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
+  });
   return found;
 }
 
 function addResolvedPermissionViewDeclarations(
-  node: ts.Node,
+  node: Node,
   reviewerQueuePermissionViewAliases: ReadonlySet<string>,
   resolvedPermissionViews: Set<string>,
 ): void {
-  function visit(current: ts.Node): void {
+  walk(node, (current) => {
     if (
-      ts.isVariableDeclaration(current) &&
-      ts.isIdentifier(current.name) &&
-      current.initializer !== undefined &&
-      containsPermissionHelperCall(current.initializer, reviewerQueuePermissionViewAliases)
+      current.type === "VariableDeclarator" &&
+      current.id.type === "Identifier" &&
+      current.init !== null &&
+      current.init !== undefined &&
+      containsPermissionHelperCall(current.init, reviewerQueuePermissionViewAliases)
     ) {
-      resolvedPermissionViews.add(current.name.text);
+      resolvedPermissionViews.add(current.id.name);
     }
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
+  });
 }
 
 function callReceivesResolvedPermissionView(
-  call: ts.CallExpression,
+  call: CallExpression,
   resolvedPermissionViews: ReadonlySet<string>,
 ): boolean {
   return call.arguments.some((argument) =>
@@ -284,31 +289,43 @@ function callReceivesResolvedPermissionView(
 }
 
 function objectLiteralReceivesResolvedPermissionView(
-  node: ts.Node,
+  node: Node,
   resolvedPermissionViews: ReadonlySet<string>,
 ): boolean {
   if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node)
+    node.type === "ParenthesizedExpression" ||
+    node.type === "TSAsExpression" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "TSTypeAssertion" ||
+    node.type === "TSNonNullExpression"
   ) {
     return objectLiteralReceivesResolvedPermissionView(node.expression, resolvedPermissionViews);
   }
-  if (!ts.isObjectLiteralExpression(node)) {
+  if (node.type !== "ObjectExpression") {
     return false;
   }
+  return objectExpressionReceivesResolvedPermissionView(node, resolvedPermissionViews);
+}
+
+function objectExpressionReceivesResolvedPermissionView(
+  node: ObjectExpression,
+  resolvedPermissionViews: ReadonlySet<string>,
+): boolean {
   for (const property of node.properties) {
     if (
-      ts.isShorthandPropertyAssignment(property) &&
-      resolvedPermissionViews.has(property.name.text)
+      property.type === "ObjectProperty" &&
+      property.shorthand &&
+      property.key.type === "Identifier"
     ) {
-      return true;
+      if (resolvedPermissionViews.has(property.key.name)) {
+        return true;
+      }
     }
     if (
-      ts.isPropertyAssignment(property) &&
-      propertyNameText(property.name) === "permission" &&
-      ts.isIdentifier(property.initializer) &&
-      resolvedPermissionViews.has(property.initializer.text)
+      property.type === "ObjectProperty" &&
+      propertyNameText(property.key) === "permission" &&
+      property.value.type === "Identifier" &&
+      resolvedPermissionViews.has(property.value.name)
     ) {
       return true;
     }
@@ -316,73 +333,6 @@ function objectLiteralReceivesResolvedPermissionView(
   return false;
 }
 
-function propertyNameText(name: ts.PropertyName): string | undefined {
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-    return name.text;
-  }
-  return undefined;
-}
-
-function callExpressionName(expression: ts.Expression): string | undefined {
-  if (ts.isIdentifier(expression)) {
-    return expression.text;
-  }
-  if (ts.isPropertyAccessExpression(expression)) {
-    return expression.name.text;
-  }
-  return undefined;
-}
-
-function permissionHelperCallName(
-  expression: ts.Expression,
-  aliases: ReadonlySet<string>,
-): string | undefined {
-  const name = callExpressionName(expression);
-  return name !== undefined && aliases.has(name) ? name : undefined;
-}
-
-function permissionHelperAliases(sourceFile: ts.SourceFile, helperName: string): Set<string> {
-  const aliases = new Set([helperName]);
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-
-    function addAlias(alias: string | undefined): void {
-      if (alias !== undefined && !aliases.has(alias)) {
-        aliases.add(alias);
-        changed = true;
-      }
-    }
-
-    function visit(node: ts.Node): void {
-      if (
-        ts.isImportSpecifier(node) &&
-        node.propertyName?.text === helperName &&
-        node.name.text !== helperName
-      ) {
-        addAlias(node.name.text);
-      }
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer !== undefined
-      ) {
-        const initializerName = callExpressionName(node.initializer);
-        if (initializerName !== undefined && aliases.has(initializerName)) {
-          addAlias(node.name.text);
-        }
-      }
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
-  }
-
-  return aliases;
-}
-
-function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
-  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  return `${sourceFile.fileName}:${position.line + 1}:${position.character + 1}`;
+function propertyNameText(name: Node): string | undefined {
+  return nameOf(name);
 }
