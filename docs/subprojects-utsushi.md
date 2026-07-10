@@ -183,6 +183,14 @@ Utsushi runtime reports use `RuntimeEvidenceReportV02` from
   a referenced screenshot artifact. It does not perform reference-runtime pixel
   comparison and must not be described as E4 fidelity evidence.
 
+### Conformance fixture builders
+
+`utsushi-core` exposes its deterministic, engine-neutral conformance fixture
+builders in the default public API. Downstream conformance tests may import
+them directly; there is no `conformance-fixtures` Cargo feature or feature
+handshake to enable. This keeps the test aid surface aligned with the shipped
+crate and lets in-crate and cross-crate consumers exercise the same builders.
+
 ## Runtime Adapter Contract
 
 Rust runtime adapters implement the `RuntimeAdapter` trait in `utsushi-core`.

@@ -145,9 +145,10 @@ crates/utsushi-core/src/conformance/
                    #   stable utsushi.conformance.* constants
   fixtures.rs      # Builder helpers + ConformanceFixture::*
                    #   constructors used by negative/positive round-trip
-                   #   tests. Gated cfg(any(test, feature =
-                   #   "conformance-fixtures")) so downstream test crates
-                   #   can opt in via dev-dep.
+                   #   tests. In the default public API (UTSUSHI-157
+                   #   removed the inert `conformance-fixtures` Cargo
+                   #   feature); downstream conformance tests import them
+                   #   directly.
 ```
 
 `utsushi-core/src/lib.rs` re-exports the public surface:

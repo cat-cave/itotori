@@ -1,8 +1,7 @@
 //! Loaders + builders for the trace_branch JSON fixture tree.
 //!
 //! Public test-aid surface for in-crate integration tests under
-//! `crates/utsushi-core/tests/` and for downstream conformance consumers
-//! that opt into the `conformance-fixtures` feature.
+//! `crates/utsushi-core/tests/` and for downstream conformance consumers.
 //!
 //! Each loader takes a parsed `serde_json::Value` (the integration test
 //! reads the file via `std::fs::read_to_string` and parses) and

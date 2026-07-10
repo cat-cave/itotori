@@ -6,12 +6,9 @@
 //! builders are deterministic and engine-neutral: no XP3/KAG/RGSS3/JSON
 //! engine names, no host paths, no fixture id collisions.
 //!
-//! The constructors are exposed unconditionally so the in-crate
-//! integration tests (`cargo test -p utsushi-core`) reach them without
-//! a feature pin and downstream test crates can consume them
-//! transparently. The `conformance-fixtures` feature is preserved as a
-//! documented opt-in marker for cross-crate consumers that want an
-//! explicit dev-dep handshake.
+//! The constructors are part of the default public conformance surface:
+//! in-crate integration tests and downstream test crates use the same
+//! engine-neutral builders without a Cargo feature handshake.
 
 use crate::snapshot::{
     InMemorySnapshotStore, Snapshot, SnapshotId, SnapshotRef, SnapshotRequest, SnapshotStore,
