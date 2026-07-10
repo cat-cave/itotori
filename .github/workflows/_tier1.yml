@@ -27,10 +27,20 @@ jobs:
       - name: Preflight native bins
         run: |
           set -euo pipefail
-          test -x target/release/kaifuu-cli
-          test -x target/release/utsushi-cli
-          target/release/kaifuu-cli --version
-          target/release/utsushi-cli --version
+          # kaifuu-cli / utsushi-cli print usage and exit non-zero on no-arg /
+          # --version (no clap --version). Existence + successful spawn is enough.
+          for bin in target/release/kaifuu-cli target/release/utsushi-cli; do
+            test -x "$bin"
+            set +e
+            "$bin" >/dev/null 2>&1
+            rc=$?
+            set -e
+            if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+              echo "Tier-1 native preflight: $bin failed to exec (exit $rc)" >&2
+              exit 1
+            fi
+            echo "Tier-1 native preflight: $bin runnable (exit $rc)"
+          done
 
       - uses: actions/upload-artifact@v7
         with:

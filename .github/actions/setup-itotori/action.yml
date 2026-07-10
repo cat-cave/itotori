@@ -21,9 +21,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # packageManager in package.json is pnpm@10.17.1. Pin explicitly so the
+    # action does not install a mismatched major (e.g. runner image pnpm v11)
+    # and leave a confusing PNPM_HOME layout warning + broken shims.
     - name: Install pnpm
       uses: pnpm/action-setup@v6
       with:
+        version: "10.17.1"
         run_install: false
 
     - name: Setup Node.js
@@ -107,7 +111,19 @@ runs:
       run: |
         set -euo pipefail
         cargo build --release -p kaifuu-cli -p utsushi-cli
-        test -x target/release/kaifuu-cli
-        test -x target/release/utsushi-cli
-        target/release/kaifuu-cli --version
-        target/release/utsushi-cli --version
+        # These CLIs have no --version/--help that exit 0: they print a usage
+        # banner and exit non-zero (same contract as scripts/native-deps.mjs
+        # versionOf). Prove each binary exists, is executable, and loads.
+        for bin in target/release/kaifuu-cli target/release/utsushi-cli; do
+          test -x "$bin"
+          set +e
+          "$bin" >/dev/null 2>&1
+          rc=$?
+          set -e
+          # 126/127 = not executable / not found after spawn failure.
+          if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+            echo "native preflight: $bin failed to exec (exit $rc)" >&2
+            exit 1
+          fi
+          echo "native preflight: $bin runnable (exit $rc)"
+        done

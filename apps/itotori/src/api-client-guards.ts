@@ -83,3 +83,18 @@ function assertRecord(value: unknown, label: string): Record<string, unknown> {
   }
   return value as Record<string, unknown>;
 }
+
+/**
+ * Browser-side structural gate for an uploaded bridge JSON.
+ *
+ * Do NOT call `assertBridgeInput` from `api-schema.ts` in the SPA: that module
+ * pulls `@itotori/localization-bridge-schema` validators that evaluate Node
+ * `Buffer` at import time and crash the client bundle (`Buffer is not defined`).
+ * Full bridge validation still runs server-side on `imports.bridge`.
+ */
+export function assertBrowserBridgeInput(value: unknown): asserts value is Record<string, unknown> {
+  const bridge = assertRecord(value, "BridgeInput");
+  if (typeof bridge.schemaVersion !== "string" || bridge.schemaVersion.length === 0) {
+    throw new Error("BridgeInput.schemaVersion is required");
+  }
+}

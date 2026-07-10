@@ -3,10 +3,10 @@ import type { CatalogOpportunityRow } from "@itotori/db";
 import { Badge, Panel } from "@itotori/ds";
 import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { ApiCallSettledState, ApiClientError, ApiRouteResponse } from "../../api-client.js";
-import {
-  assertBridgeInput,
-  type ApiConfigureAuthSsoSettingsRequest,
-  type ApiProjectImportRequest,
+import { assertBrowserBridgeInput } from "../../api-client-guards.js";
+import type {
+  ApiConfigureAuthSsoSettingsRequest,
+  ApiProjectImportRequest,
 } from "../../api-schema.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
@@ -124,10 +124,13 @@ export function OnboardingScreen(): ReactNode {
     setBootstrap({ state: "loading" });
     try {
       const parsed: unknown = JSON.parse(await readFileText(bridgeFile));
-      assertBridgeInput(parsed);
+      // Browser-safe structural gate only — full assertBridgeInput lives on the
+      // server (imports.bridge). Importing api-schema assertBridgeInput here
+      // pulls Node Buffer into the SPA graph and crashes mount.
+      assertBrowserBridgeInput(parsed);
       const bootstrapSelection = bootstrapSelectionFor(candidate.workId, candidateRows);
       const importRequest: ApiProjectImportRequest = {
-        bridge: parsed,
+        bridge: parsed as BridgeBundle | BridgeBundleV02,
         ...(bootstrapSelection === undefined ? {} : { bootstrapSelection }),
       };
       const importResult = await apiClient.request("imports.bridge", { body: importRequest });
