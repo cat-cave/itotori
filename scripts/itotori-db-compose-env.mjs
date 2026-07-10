@@ -51,9 +51,9 @@ export function composeEnvValues(env = process.env) {
   return {
     COMPOSE_PROJECT_NAME: safeProjectName,
     ITOTORI_DB_HOST_PORT: env.ITOTORI_DB_HOST_PORT || parsed.port || "5432",
-    ITOTORI_DB_USER: decodeURIComponent(parsed.username || "itotori"),
-    ITOTORI_DB_PASSWORD: decodeURIComponent(parsed.password || "itotori"),
-    ITOTORI_DB_NAME: decodeURIComponent(databaseName),
+    POSTGRES_USER: decodeURIComponent(parsed.username || "itotori"),
+    POSTGRES_PASSWORD: decodeURIComponent(parsed.password || "itotori"),
+    POSTGRES_DB: decodeURIComponent(databaseName),
   };
 }
 

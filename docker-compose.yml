@@ -10,10 +10,8 @@ services:
       - max_connections=400
       - -c
       - shared_buffers=512MB
-    environment:
-      POSTGRES_USER: ${ITOTORI_DB_USER:-itotori}
-      POSTGRES_PASSWORD: ${ITOTORI_DB_PASSWORD:-itotori}
-      POSTGRES_DB: ${ITOTORI_DB_NAME:-itotori}
+    env_file:
+      - ${ITOTORI_DB_COMPOSE_ENV_PATH}
     ports:
       - "${ITOTORI_DB_HOST_PORT:-55433}:5432"
     healthcheck:

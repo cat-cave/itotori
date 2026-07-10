@@ -155,6 +155,13 @@ test("local compose applies durable runtime Postgres connection tuning", () => {
   assert.match(compose, /4x Postgres' default max_connections/u);
 });
 
+test("local compose passes generated credentials through its managed env file", () => {
+  assert.match(compose, /^    env_file:\n      - \$\{ITOTORI_DB_COMPOSE_ENV_PATH\}\n/mu);
+  assert.doesNotMatch(compose, /^    environment:/mu);
+  assert.doesNotMatch(compose, /ITOTORI_DB_(?:USER|PASSWORD|NAME)/u);
+  assert.doesNotMatch(compose, /^      POSTGRES_(?:USER|PASSWORD|DB):/mu);
+});
+
 test("the DB-backed CI workflow uses the local db compose path for Postgres parity", () => {
   // ALPHA-009: only DB-backed workflows are asserted here. The alpha-proof
   // integration workflow is public-fixture-only and deterministic — it does
@@ -228,7 +235,7 @@ const preservedCredentials = [
 
 test("encodeEnvFileValue round-trips $/quotes/spaces/backslashes through the compose model", () => {
   for (const credential of preservedCredentials) {
-    const encoded = encodeEnvFileValue(credential, "ITOTORI_DB_PASSWORD");
+    const encoded = encodeEnvFileValue(credential, "POSTGRES_PASSWORD");
     assert.equal(
       decodeComposeEnvFileValue(encoded),
       credential,
@@ -242,18 +249,18 @@ test("encodeEnvFileValue round-trips $/quotes/spaces/backslashes through the com
 
 test("encodeEnvFileValue rejects bytes a single-quoted value cannot carry, naming the char", () => {
   assert.throws(
-    () => encodeEnvFileValue("pa'ss", "ITOTORI_DB_PASSWORD"),
-    /ITOTORI_DB_PASSWORD.*single quote \('\)/u,
+    () => encodeEnvFileValue("pa'ss", "POSTGRES_PASSWORD"),
+    /POSTGRES_PASSWORD.*single quote \('\)/u,
     "a single quote must be rejected with a diagnostic naming the offending char",
   );
   assert.throws(
-    () => encodeEnvFileValue("line1\nline2", "ITOTORI_DB_PASSWORD"),
-    /ITOTORI_DB_PASSWORD.*newline \(\\n\)/u,
+    () => encodeEnvFileValue("line1\nline2", "POSTGRES_PASSWORD"),
+    /POSTGRES_PASSWORD.*newline \(\\n\)/u,
     "a newline must be rejected with a diagnostic naming the offending char",
   );
   assert.throws(
-    () => encodeEnvFileValue("has\rcr", "ITOTORI_DB_NAME"),
-    /ITOTORI_DB_NAME.*carriage return \(\\r\)/u,
+    () => encodeEnvFileValue("has\rcr", "POSTGRES_DB"),
+    /POSTGRES_DB.*carriage return \(\\r\)/u,
   );
 });
 
@@ -261,21 +268,21 @@ test("encodeEnvFileValue rejects a value ending in an ODD backslash run (escapes
   // A single trailing backslash: its backslash escapes the closing quote in
   // compose-go's terminator scan, leaving the value unterminated.
   assert.throws(
-    () => encodeEnvFileValue("secret\\", "ITOTORI_DB_PASSWORD"),
-    /ITOTORI_DB_PASSWORD.*odd run of backslashes.*unterminated/su,
+    () => encodeEnvFileValue("secret\\", "POSTGRES_PASSWORD"),
+    /POSTGRES_PASSWORD.*odd run of backslashes.*unterminated/su,
     "an odd trailing backslash run must be rejected with a diagnostic naming the char",
   );
   // Three trailing backslashes is still odd -> still rejected.
   assert.throws(
-    () => encodeEnvFileValue("pw\\\\\\", "ITOTORI_DB_PASSWORD"),
-    /ITOTORI_DB_PASSWORD.*odd run of backslashes/u,
+    () => encodeEnvFileValue("pw\\\\\\", "POSTGRES_PASSWORD"),
+    /POSTGRES_PASSWORD.*odd run of backslashes/u,
   );
   // A value that is ONLY an odd backslash run is rejected too.
-  assert.throws(() => encodeEnvFileValue("\\", "ITOTORI_DB_PASSWORD"), /odd run of backslashes/u);
+  assert.throws(() => encodeEnvFileValue("\\", "POSTGRES_PASSWORD"), /odd run of backslashes/u);
 
   // An EVEN trailing run pairs up harmlessly and must round-trip, not be rejected.
   const even = "pw\\\\"; // pw + two backslashes
-  assert.equal(decodeComposeEnvFileValue(encodeEnvFileValue(even, "ITOTORI_DB_PASSWORD")), even);
+  assert.equal(decodeComposeEnvFileValue(encodeEnvFileValue(even, "POSTGRES_PASSWORD")), even);
 });
 
 test("decodeComposeEnvFileValue models compose-go's escape-during-terminator scan", () => {
@@ -294,11 +301,19 @@ test("a $-bearing DATABASE_URL credential survives the full compose-env render",
   // A password with a literal `$` (percent-encoded in the URL userinfo).
   const url = "postgres://us%24er:p%244ss%24@127.0.0.1:56000/it%24db";
   const values = composeEnvValues({ DATABASE_URL: url });
-  assert.equal(values.ITOTORI_DB_USER, "us$er");
-  assert.equal(values.ITOTORI_DB_PASSWORD, "p$4ss$");
-  assert.equal(values.ITOTORI_DB_NAME, "it$db");
+  assert.equal(values.POSTGRES_USER, "us$er");
+  assert.equal(values.POSTGRES_PASSWORD, "p$4ss$");
+  assert.equal(values.POSTGRES_DB, "it$db");
+  assert.deepEqual(Object.keys(values), [
+    "COMPOSE_PROJECT_NAME",
+    "ITOTORI_DB_HOST_PORT",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_DB",
+  ]);
 
   const rendered = renderComposeEnvFile(values);
+  assert.doesNotMatch(rendered, /^ITOTORI_DB_(?:USER|PASSWORD|NAME)=/mu);
   for (const [key, value] of Object.entries(values)) {
     const line = rendered.split("\n").find((l) => l.startsWith(`${key}=`));
     assert.notEqual(line, undefined, `rendered env must contain ${key}`);
@@ -312,76 +327,117 @@ test("a $-bearing DATABASE_URL credential survives the full compose-env render",
 
 test("public no-secret defaults render and round-trip unchanged", () => {
   const values = composeEnvValues({
+    COMPOSE_PROJECT_NAME: "itotori",
     DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori",
   });
   const rendered = renderComposeEnvFile(values);
-  assert.match(rendered, /ITOTORI_DB_USER='itotori'\n/u);
-  assert.match(rendered, /ITOTORI_DB_PASSWORD='itotori'\n/u);
-  assert.match(rendered, /ITOTORI_DB_NAME='itotori'\n/u);
+  assert.equal(
+    rendered,
+    [
+      "COMPOSE_PROJECT_NAME='itotori'",
+      "ITOTORI_DB_HOST_PORT='56000'",
+      "POSTGRES_USER='itotori'",
+      "POSTGRES_PASSWORD='itotori'",
+      "POSTGRES_DB='itotori'",
+      "",
+    ].join("\n"),
+  );
+  assert.doesNotMatch(rendered, /^ITOTORI_DB_(?:USER|PASSWORD|NAME)=/mu);
   for (const [key, value] of Object.entries(values)) {
     const line = rendered.split("\n").find((l) => l.startsWith(`${key}=`));
     assert.equal(decodeComposeEnvFileValue(line.slice(key.length + 1)), String(value));
   }
 });
 
-// Real compose-config proof: write a minimal compose file + generated env file
-// with a `$`-bearing password and confirm `docker compose config` reports the
-// credential unchanged. Skipped when no compose CLI is present (e.g. minimal CI
-// images); the encoder-model tests above still prove preservation.
-test("docker compose config preserves a $-bearing generated credential", (t) => {
-  let composeCli = null;
-  for (const [cmd, args] of [
-    ["docker", ["compose"]],
-    ["podman-compose", []],
-  ]) {
-    try {
-      execFileSync(cmd, [...args, "version"], { stdio: "ignore" });
-      composeCli = [cmd, args];
-      break;
-    } catch {
-      // try the next CLI
-    }
+// This proves interpolation at the container boundary. `docker compose config`
+// is not evidence: it reports a composed model, not the environment inherited
+// by the `postgres` container. Every sentinel is public and is compared only by
+// a fixed SHA-256 value inside the container, so no credential is emitted.
+test("Docker Compose runtime preserves generated dollar-bearing credentials", (t) => {
+  let composeVersion;
+  try {
+    composeVersion = execFileSync("docker", ["compose", "version"], { encoding: "utf8" });
+  } catch {
+    t.skip("no Docker Compose CLI available");
+    return;
   }
-  if (!composeCli) {
-    t.skip("no docker/podman compose CLI available");
+  if (/podman/iu.test(composeVersion)) {
+    t.skip("Docker command delegates Compose parsing to Podman Compose");
+    return;
+  }
+
+  try {
+    execFileSync("docker", ["info"], { stdio: "ignore" });
+  } catch {
+    t.skip("Docker daemon unavailable");
+    return;
+  }
+  try {
+    execFileSync("docker", ["image", "inspect", "postgres:18"], { stdio: "ignore" });
+  } catch {
+    t.skip("postgres:18 image unavailable");
     return;
   }
 
   const dir = mkdtempSync(path.join(tmpdir(), "univ022-compose-"));
-  writeFileSync(
-    path.join(dir, "docker-compose.yml"),
+  const envPath = path.join(dir, "gen.env");
+  const baseValues = composeEnvValues({
+    DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori",
+    COMPOSE_PROJECT_NAME: `univ022-${process.pid}-${path.basename(dir)}`,
+  });
+  const projectName = baseValues.COMPOSE_PROJECT_NAME;
+  const composeEnvironment = {
+    ...process.env,
+    COMPOSE_PROJECT_NAME: projectName,
+    ITOTORI_DB_COMPOSE_ENV_PATH: envPath,
+    UNIV022_SHOULD_NOT_EXPAND: "host-value-must-not-replace-the-literal",
+  };
+  const runtimeSentinels = [
+    ["p$4ssw0rd", "e65a53742fd64af5b1ea85ee5eb15f1a4109c1694211b96b17baf094a17e544c"],
+    ["a$$b", "6af6151534adb8c18aa8d3ac1cdf703a03993265763da0b20abfe1478097cfdd"],
     [
-      "services:",
-      "  postgres:",
-      "    image: postgres:18",
-      "    environment:",
-      "      POSTGRES_PASSWORD: ${ITOTORI_DB_PASSWORD:-itotori}",
-      "",
-    ].join("\n"),
-  );
-
-  // Representative UNIV-022 credentials: a bare `$` (which the previous
-  // double-quoted encoder let Compose interpolate away), a literal `$$`, plus
-  // spaces/quotes/backslashes. `${DEFINED_VAR}` is deliberately excluded here:
-  // compose-go keeps it literal inside single quotes, but the podman-compose
-  // provider expands it against the OS env — a tool divergence, not an encoder
-  // fault — so the brace-ref preservation is asserted by the compose-model
-  // round-trip tests above (which follow compose-go semantics), not this one.
-  const [cmd, baseArgs] = composeCli;
-  for (const credential of ["p$4ssw0rd", "a$$b", "sp ace$x", 'q"q$y', "back\\slash$z"]) {
-    const values = composeEnvValues({
-      DATABASE_URL: `postgres://itotori:${encodeURIComponent(credential)}@127.0.0.1:56000/itotori`,
-    });
-    writeFileSync(path.join(dir, "gen.env"), renderComposeEnvFile(values));
-    const out = execFileSync(cmd, [...baseArgs, "--env-file", "gen.env", "config"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
-    const parsed = out.split("\n").find((l) => /POSTGRES_PASSWORD:/u.test(l));
-    assert.notEqual(parsed, undefined, "compose config must report POSTGRES_PASSWORD");
-    assert.ok(
-      parsed.includes(credential),
-      `compose config must preserve ${JSON.stringify(credential)}; got: ${parsed.trim()}`,
-    );
+      "pre${UNIV022_SHOULD_NOT_EXPAND}post",
+      "5c786e8664c67cb35854321e23571a65c6c0561e6f18a61921b15772c7664eec",
+    ],
+  ];
+  let cleanupError;
+  try {
+    for (const [credential, expectedHash] of runtimeSentinels) {
+      // The unique project name limits the finally cleanup to this test's
+      // one-off containers; it cannot target a developer's normal DB project.
+      const values = {
+        ...baseValues,
+        POSTGRES_PASSWORD: credential,
+      };
+      writeFileSync(envPath, renderComposeEnvFile(values));
+      execFileSync(
+        "docker",
+        [
+          "compose",
+          "--env-file",
+          envPath,
+          "run",
+          "--rm",
+          "--no-deps",
+          "-T",
+          "--entrypoint",
+          "sh",
+          "postgres",
+          "-ec",
+          `actual="$(printf %s "$POSTGRES_PASSWORD" | sha256sum | cut -d ' ' -f 1)"; test "$actual" = "${expectedHash}"`,
+        ],
+        { env: composeEnvironment, stdio: "ignore" },
+      );
+    }
+  } finally {
+    try {
+      execFileSync("docker", ["compose", "--env-file", envPath, "down", "--remove-orphans"], {
+        env: composeEnvironment,
+        stdio: "ignore",
+      });
+    } catch (error) {
+      cleanupError = error;
+    }
   }
+  if (cleanupError) throw cleanupError;
 });
