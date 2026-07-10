@@ -268,10 +268,7 @@ function PlayScenePickerPage({
   }
   if (page.data.scenes.length === 0 && focus.sceneId === null) {
     return (
-      <EmptyState
-        title="Scene picker"
-        message="No scenes were returned for this locale branch."
-      />
+      <EmptyState title="Scene picker" message="No scenes were returned for this locale branch." />
     );
   }
   const focusMissing =

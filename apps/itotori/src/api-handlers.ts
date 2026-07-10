@@ -2384,7 +2384,15 @@ function parseWorkspaceBranchScopeQuery(
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
     params,
-    ["projectId", "localeBranchId", "sceneId", "sourceRevisionId", "actorUserId", "limit", "offset"],
+    [
+      "projectId",
+      "localeBranchId",
+      "sceneId",
+      "sourceRevisionId",
+      "actorUserId",
+      "limit",
+      "offset",
+    ],
     context,
   );
   const projectId = requiredNonEmptyParam(params, "projectId");

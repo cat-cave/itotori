@@ -67,10 +67,7 @@ export function VirtualList<T>({
 
   const window = useMemo(() => {
     let start = 0;
-    while (
-      start < items.length &&
-      geometry.offsets[start]! + geometry.sizeAt(start) < scrollTop
-    ) {
+    while (start < items.length && geometry.offsets[start]! + geometry.sizeAt(start) < scrollTop) {
       start += 1;
     }
     start = Math.max(0, start - overscan);

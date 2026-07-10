@@ -1531,25 +1531,22 @@ describe("Itotori API handlers", () => {
     },
   );
 
-  it.each(["POST", "PUT"])(
-    "405s a %s request to the catalog-context GET route",
-    async (method) => {
-      const services = serviceFixture();
+  it.each(["POST", "PUT"])("405s a %s request to the catalog-context GET route", async (method) => {
+    const services = serviceFixture();
 
-      const response = await handleItotoriApiRequest(
-        {
-          method,
-          pathname: "/api/projects/project-1/locale-branches/locale-1/catalog-context/work-1",
-          body: {},
-        },
-        services,
-      );
+    const response = await handleItotoriApiRequest(
+      {
+        method,
+        pathname: "/api/projects/project-1/locale-branches/locale-1/catalog-context/work-1",
+        body: {},
+      },
+      services,
+    );
 
-      expect(response.statusCode).toBe(405);
-      expect(response.body).toMatchObject({ code: "method_not_allowed" });
-      expect(services.catalogRepository.catalogContextPanelForWork).not.toHaveBeenCalled();
-    },
-  );
+    expect(response.statusCode).toBe(405);
+    expect(response.body).toMatchObject({ code: "method_not_allowed" });
+    expect(services.catalogRepository.catalogContextPanelForWork).not.toHaveBeenCalled();
+  });
 
   it.each([
     {

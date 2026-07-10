@@ -186,7 +186,9 @@ const server = setupServer(
     return apiJson("reviewer.queue", queueReadModel(QUEUE_ROWS, limit, offset));
   }),
   http.get("*/api/projects/status", () => apiJson("projects.status", dashboardStatusFixture)),
-  http.get("*/api/projects", () => apiJson("projects.list", { projects: [dashboardStatusFixture] })),
+  http.get("*/api/projects", () =>
+    apiJson("projects.list", { projects: [dashboardStatusFixture] }),
+  ),
   http.get("*/api/projects/cost", () => apiJson("projects.cost", costReportFixture)),
 );
 

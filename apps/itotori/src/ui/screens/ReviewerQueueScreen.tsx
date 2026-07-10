@@ -17,14 +17,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { ReviewerQueueItemKind } from "@itotori/db";
-import {
-  Badge,
-  NavPills,
-  Pagination,
-  Panel,
-  StatReadout,
-  type NavPillItem,
-} from "@itotori/ds";
+import { Badge, NavPills, Pagination, Panel, StatReadout, type NavPillItem } from "@itotori/ds";
 import type { ReviewerQueueDashboardRow } from "../../reviewer/index.js";
 import type { ApiReviewerQueueDashboardResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
@@ -314,11 +307,7 @@ function ReviewerQueueVirtualRow({ row }: { row: ReviewerQueueDashboardRow }): R
   );
 }
 
-function AggregateStrip({
-  queue,
-}: {
-  queue: ApiReviewerQueueDashboardResponse;
-}): ReactNode {
+function AggregateStrip({ queue }: { queue: ApiReviewerQueueDashboardResponse }): ReactNode {
   return (
     <div className="itotori-metric-row" aria-label="Reviewer queue aggregate">
       <StatReadout label="Pending" value={queue.aggregate.pending} />
