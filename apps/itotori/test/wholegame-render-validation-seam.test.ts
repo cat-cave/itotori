@@ -1,8 +1,9 @@
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  admitWholeGameRuntimeValidation,
   runWholeGameReplayRenderValidate,
   type WholeGameRenderValidationResult,
 } from "../src/orchestrator/wholegame-render-validation-seam.js";
@@ -113,6 +114,32 @@ function patchReport(
 }
 
 describe("runWholeGameReplayRenderValidate", () => {
+  it("returns runtime-validation-incomplete for sampled or failed reports with retry unit ids", () => {
+    const validation: WholeGameRenderValidationResult = {
+      schemaVersion: "itotori.wholegame-render-validation.v0",
+      redaction: "on",
+      coverage: {
+        acceptedUnitCount: 2,
+        candidateUnitCount: 2,
+        selectedUnitCount: 1,
+        candidateSceneCount: 2,
+        validatedSceneCount: 1,
+        sampled: true,
+        maxUnits: 1,
+        sceneIds: [6010],
+        selectedUnitIds: [UNIT_A],
+        skippedUnitIds: [UNIT_B],
+      },
+      findings: [],
+    };
+    const admission = admitWholeGameRuntimeValidation(validation);
+    expect(admission).toMatchObject({
+      kind: "runtime-validation-incomplete",
+      validation,
+      retryUnitIds: [UNIT_B],
+    });
+  });
+
   it("runs replay then redacted render validation over the covered unit set and records failures", () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const logs: string[] = [];
@@ -175,6 +202,7 @@ describe("runWholeGameReplayRenderValidate", () => {
       "6010",
       "--print-replay-log",
       join(artifactRoot, "scene-6010", `unit-${UNIT_A}`, "replay-log.json"),
+      "--require-zero-unknown",
     ]);
     expect(calls[1]!.args).toContain("render-validate");
     expect(calls[1]!.args).toContain("--redaction");
@@ -314,10 +342,11 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(result.findings[0]!.phase).toBe("render-validate");
   });
 
-  it("drives real utsushi-cli through replay success into render-validation signal per unit", () => {
+  it("keeps strict real replay artifacts and skips render when unknown opcodes fail replay", () => {
     // No nativeCli mock: the real binary runs. The committed Seen fixture is a
-    // valid RealLive archive for scene 1, so replay-validate must pass before
-    // render-validate can emit a typed render-validation signal asserted below.
+    // valid RealLive archive for scene 1. The strict replay gate is allowed to
+    // reject its observed unknown tuples, but must still write the deterministic
+    // replay artifact and prevent render from running after that nonzero result.
     const workDir = mkdtempSync(join(tmpdir(), "itotori-wholegame-render-real-"));
     const sourceRoot = join(workDir, "source");
     const targetRoot = join(workDir, "target");
@@ -370,22 +399,19 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(result.coverage.selectedUnitIds).toEqual([UNIT_A, UNIT_B]);
     expect(result.coverage.skippedUnitIds).toEqual([]);
 
-    // Replay succeeded for the valid fixture. These findings must therefore be
-    // real render-validate results; a silent render skip leaves this empty, and
-    // a replay short-circuit records phase=replay-validate instead.
+    // Strict replay rejected the fixture's observed unknown tuples. The replay
+    // artifact is retained for diagnosis, while the nonzero replay command
+    // short-circuits render for every unit.
     expect(result.findings).toHaveLength(2);
     const unitIds = new Set(result.findings.map((finding) => finding.bridgeUnitId));
     expect(unitIds.has(UNIT_A)).toBe(true);
     expect(unitIds.has(UNIT_B)).toBe(true);
     for (const finding of result.findings) {
-      expect(finding.phase).toBe("render-validate");
+      expect(finding.phase).toBe("replay-validate");
       expect(finding.code).toBe("native-cli-failed");
-      expect(finding.artifactRefs.renderEvidence).toBe(
-        join(artifactRoot, "scene-1", `unit-${finding.bridgeUnitId}`, "render-evidence.json"),
-      );
-      expect(finding.diagnostic.error.message).toMatch(
-        /utsushi\.cli\.render_validate\.(?:no_text|expect_text_missing_at_index)/u,
-      );
+      expect(finding.artifactRefs.renderEvidence).toBeUndefined();
+      expect(finding.diagnostic.error.message).toContain("unknown_opcode_gate");
+      expect(existsSync(finding.artifactRefs.replayLog!)).toBe(true);
     }
   });
 });

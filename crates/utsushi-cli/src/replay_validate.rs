@@ -13,7 +13,9 @@
 //! actually decoded from the patched bytes.
 
 use std::error::Error;
+use std::fmt;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 use serde_json::json;
@@ -37,7 +39,8 @@ USAGE:
     --seen <PATH> \
     --scene <N> \
     --print-replay-log <PATH> \
-    [--print-textlines]
+    [--print-textlines] \
+    [--require-zero-unknown]
 
 FLAGS:
   --engine reallive           Replay engine. Only `reallive` is supported.
@@ -47,12 +50,15 @@ FLAGS:
                               This is the OBSERVED-OUTPUT evidence the caller
                               validates against the real translated text.
   --print-textlines           Also print every observed TextLine body to stdout.
+  --require-zero-unknown      Fail after writing the replay artifact when replay
+                              observed one or more unknown opcode tuples.
   -h, --help                  Print this message and exit.
 
 EXIT CODES:
   0  utsushi.reallive.replay_observed_textlines_emitted — scene replayed and
      its observed TextLine evidence (ReplayLog) was written.
-  1  driver error (read / parse / decode / serialise / write).
+  1  driver error (read / parse / decode / serialise / write), or strict
+     unknown-opcode validation failure after the replay artifact is written.
 
 VALIDATION CONTRACT:
   This command does NOT assert on any substring. The caller reads the
@@ -69,13 +75,14 @@ VALIDATION CONTRACT:
 ///   --seen <PATH> \
 ///   --scene <N> \
 ///   --print-replay-log <PATH> \
-///   [--print-textlines]
+///   [--print-textlines] \
+///   [--require-zero-unknown]
 /// ```
 ///
-/// Returns `Err` only when the underlying driver fails (read, parse,
-/// decode) or the ReplayLog cannot be serialised/written. A scene that
-/// emits zero TextLine events is NOT an error here — the caller's
-/// observed-output validation surfaces that as a failed match.
+/// Returns `Err` when the underlying driver fails (read, parse, decode), the
+/// ReplayLog cannot be serialised/written, or strict mode observes an unknown
+/// opcode. A scene that emits zero TextLine events is NOT an error here — the
+/// caller's observed-output validation surfaces that as a failed match.
 pub fn run_replay_validate_command(
     args: &[String],
     registry: &RuntimeAdapterRegistry<'_>,
@@ -91,6 +98,7 @@ pub fn run_replay_validate_command(
     })?;
     let print_replay_log = PathBuf::from(required_flag(args, "--print-replay-log")?);
     let print_textlines = args.iter().any(|arg| arg == "--print-textlines");
+    let require_zero_unknown = args.iter().any(|arg| arg == "--require-zero-unknown");
 
     let result = run_registry_replay_validate(
         registry,
@@ -104,12 +112,112 @@ pub fn run_replay_validate_command(
     }
 
     let replay_json = replay_log_json(&result, "utsushi.cli.replay_validate")?;
-    fs::write(&print_replay_log, replay_json)
-        .map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
+    write_replay_artifact_then_apply_unknown_opcode_gate(
+        &replay_json,
+        &print_replay_log,
+        require_zero_unknown,
+    )?;
 
     let text_line_count = text_line_count(&result, "utsushi.cli.replay_validate")?;
     println!("{REPLAY_OK_CODE}: scene={scene_id} textline_count={text_line_count}");
     Ok(())
+}
+
+/// Typed strict-mode failure. It deliberately exposes only aggregate count and
+/// sorted, de-duplicated opcode tuple identifiers; it never includes replay
+/// text, game bytes, or filesystem paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayUnknownOpcodeGateError {
+    count: usize,
+    keys: Vec<(u8, u8, u16)>,
+}
+
+impl fmt::Display for ReplayUnknownOpcodeGateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "utsushi.cli.replay_validate.unknown_opcode_gate: count={} keys=[",
+            self.count
+        )?;
+        for (index, (module_type, module_id, opcode)) in self.keys.iter().enumerate() {
+            if index > 0 {
+                write!(formatter, ",")?;
+            }
+            write!(formatter, "({module_type},{module_id},{opcode})")?;
+        }
+        write!(formatter, "]")
+    }
+}
+
+impl Error for ReplayUnknownOpcodeGateError {}
+
+fn write_replay_artifact_then_apply_unknown_opcode_gate(
+    replay_json: &str,
+    output_path: &Path,
+    require_zero_unknown: bool,
+) -> Result<(), Box<dyn Error>> {
+    fs::write(output_path, replay_json)
+        .map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
+    if require_zero_unknown {
+        require_zero_unknown_opcodes(replay_json)?;
+    }
+    Ok(())
+}
+
+fn require_zero_unknown_opcodes(replay_json: &str) -> Result<(), ReplayUnknownOpcodeGateError> {
+    let replay_log: serde_json::Value = serde_json::from_str(replay_json).map_err(|_| {
+        // The replay artifact came from this command's registry result. If its
+        // typed replay-log contract is violated, fail closed without echoing
+        // the artifact (which may contain private game data).
+        ReplayUnknownOpcodeGateError {
+            count: 0,
+            keys: Vec::new(),
+        }
+    })?;
+    let events = replay_log
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| ReplayUnknownOpcodeGateError {
+            count: 0,
+            keys: Vec::new(),
+        })?;
+    let mut count = 0;
+    let mut keys = Vec::new();
+    for event in events {
+        if event.get("kind").and_then(serde_json::Value::as_str) != Some("unknown_opcode") {
+            continue;
+        }
+        let module_type = event
+            .get("moduleType")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u8::try_from(value).ok());
+        let module_id = event
+            .get("moduleId")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u8::try_from(value).ok());
+        let opcode = event
+            .get("opcode")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u16::try_from(value).ok());
+        let Some((module_type, module_id, opcode)) = module_type
+            .zip(module_id)
+            .zip(opcode)
+            .map(|((module_type, module_id), opcode)| (module_type, module_id, opcode))
+        else {
+            return Err(ReplayUnknownOpcodeGateError {
+                count: 0,
+                keys: Vec::new(),
+            });
+        };
+        count += 1;
+        keys.push((module_type, module_id, opcode));
+    }
+    if count == 0 {
+        return Ok(());
+    }
+    keys.sort_unstable();
+    keys.dedup();
+    Err(ReplayUnknownOpcodeGateError { count, keys })
 }
 
 fn run_registry_replay_validate(
@@ -185,6 +293,7 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
     use crate::replay_registry::RealLiveReplayAdapter;
+    use utsushi_reallive::{REPLAY_LOG_SCHEMA_VERSION, ReplayEvent, ReplayLog, ReplayOutcome};
 
     fn replay_registry() -> RuntimeAdapterRegistry<'static> {
         static ADAPTER: RealLiveReplayAdapter = RealLiveReplayAdapter::new();
@@ -265,6 +374,67 @@ mod tests {
         assert!(HELP.contains("--engine reallive"));
         assert!(HELP.contains("OBSERVED-OUTPUT evidence"));
         assert!(!HELP.contains("expect-textline-contains"));
+        assert!(HELP.contains("--require-zero-unknown"));
+    }
+
+    fn synthetic_replay_log_with_unknowns() -> String {
+        ReplayLog {
+            schema_version: REPLAY_LOG_SCHEMA_VERSION.to_string(),
+            scene_id: 1,
+            events: vec![
+                ReplayEvent::Tick { count: 1 },
+                ReplayEvent::UnknownOpcode {
+                    byte_offset_in_scene: 4,
+                    module_type: 2,
+                    module_id: 3,
+                    opcode: 4,
+                },
+                ReplayEvent::UnknownOpcode {
+                    byte_offset_in_scene: 8,
+                    module_type: 2,
+                    module_id: 3,
+                    opcode: 4,
+                },
+                ReplayEvent::UnknownOpcode {
+                    byte_offset_in_scene: 12,
+                    module_type: 5,
+                    module_id: 6,
+                    opcode: 7,
+                },
+            ],
+            final_outcome: ReplayOutcome::EndOfScene { events: 4 },
+        }
+        .to_deterministic_json()
+        .expect("synthetic ReplayLog serialises")
+    }
+
+    #[test]
+    fn unknown_opcode_gate_is_diagnostic_by_default_and_strict_after_artifact_write() {
+        let replay_json = synthetic_replay_log_with_unknowns();
+        let tempdir = tempfile::tempdir().expect("create tempdir");
+        let default_artifact = tempdir.path().join("default-replay-log.json");
+        let strict_artifact = tempdir.path().join("strict-replay-log.json");
+
+        write_replay_artifact_then_apply_unknown_opcode_gate(
+            &replay_json,
+            &default_artifact,
+            false,
+        )
+        .expect("default mode retains diagnostic/success behavior");
+        assert_eq!(fs::read_to_string(&default_artifact).unwrap(), replay_json);
+
+        let error = write_replay_artifact_then_apply_unknown_opcode_gate(
+            &replay_json,
+            &strict_artifact,
+            true,
+        )
+        .expect_err("strict mode rejects observed unknown opcodes");
+        assert_eq!(fs::read_to_string(&strict_artifact).unwrap(), replay_json);
+        assert_eq!(
+            error.to_string(),
+            "utsushi.cli.replay_validate.unknown_opcode_gate: count=3 keys=[(2,3,4),(5,6,7)]"
+        );
+        assert!(!error.to_string().contains("byte_offset"));
     }
 
     #[test]

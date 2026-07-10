@@ -286,7 +286,8 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     `dry-run plan must mention the kaifuu patch step; got:\n${result.stdout}`,
   );
   assert.ok(
-    result.stdout.includes("replay-validate --engine reallive"),
+    result.stdout.includes("replay-validate --engine reallive") &&
+      result.stdout.includes("--require-zero-unknown"),
     `dry-run plan must mention the replay-validate step; got:\n${result.stdout}`,
   );
   assert.ok(

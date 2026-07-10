@@ -314,6 +314,7 @@ export async function runLocalizeGameCommand(
       args.validateScene,
       "--print-replay-log",
       replayLogPath,
+      "--require-zero-unknown",
     ]);
     if (replay.status !== 0) {
       throw new Error(

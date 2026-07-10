@@ -477,6 +477,7 @@ async function runValidateCommand(
     scene,
     "--print-replay-log",
     replayLogPath,
+    "--require-zero-unknown",
   ];
   if (args.includes("--print-textlines")) {
     replayArgs.push("--print-textlines");

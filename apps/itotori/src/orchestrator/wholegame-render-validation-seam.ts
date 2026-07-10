@@ -59,6 +59,40 @@ export type WholeGameRenderValidationResult = {
   findings: WholeGameRenderValidationFinding[];
 };
 
+/**
+ * Admission decision for a post-patch runtime report. The full report remains
+ * attached to either outcome so a caller can persist its evidence and retry
+ * the exact incomplete units without treating partial validation as success.
+ */
+export type WholeGameRuntimeValidationAdmission =
+  | { kind: "validated"; validation: WholeGameRenderValidationResult }
+  | {
+      kind: "runtime-validation-incomplete";
+      validation: WholeGameRenderValidationResult;
+      retryUnitIds: string[];
+    };
+
+export function admitWholeGameRuntimeValidation(
+  validation: WholeGameRenderValidationResult,
+): WholeGameRuntimeValidationAdmission {
+  const retryUnitIds = new Set(validation.coverage.skippedUnitIds);
+  for (const finding of validation.findings) {
+    retryUnitIds.add(finding.bridgeUnitId);
+  }
+  const incomplete =
+    validation.findings.length > 0 ||
+    validation.coverage.sampled ||
+    validation.coverage.skippedUnitIds.length > 0;
+  if (!incomplete) {
+    return { kind: "validated", validation };
+  }
+  return {
+    kind: "runtime-validation-incomplete",
+    validation,
+    retryUnitIds: [...retryUnitIds].sort(),
+  };
+}
+
 export type RunWholeGameReplayRenderValidateArgs = {
   rawBridge: unknown;
   patchReport: DrivenPatchReport;
@@ -173,6 +207,7 @@ export function runWholeGameReplayRenderValidate(
         scene,
         "--print-replay-log",
         paths.replayLog,
+        "--require-zero-unknown",
       ],
       args.nativeCli,
     );

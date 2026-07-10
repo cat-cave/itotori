@@ -73,8 +73,10 @@ import type {
 } from "../patch-export/source-bridge-view.js";
 import type { DrivenPatchReport, TranslationScope } from "./project-driven-executor.js";
 import {
+  admitWholeGameRuntimeValidation,
   runWholeGameReplayRenderValidate,
   type RunWholeGameReplayRenderValidateArgs,
+  type WholeGameRuntimeValidationAdmission,
   type WholeGameRenderValidationResult,
 } from "./wholegame-render-validation-seam.js";
 
@@ -532,6 +534,8 @@ export type WholeGamePatchExportAndApplyResult = {
   draftArtifactBundleId: string;
   /** Present when the caller requested post-apply replay/render validation. */
   renderValidation?: WholeGameRenderValidationResult;
+  /** Admission result: partial or failed runtime evidence cannot be ready. */
+  runtimeValidationAdmission?: WholeGameRuntimeValidationAdmission;
 };
 
 export class WholeGamePatchExportPreflightError extends Error {
@@ -669,12 +673,15 @@ export async function runWholeGamePatchExportAndApply(
           targetRoot: args.targetRoot,
           ...args.renderValidation,
         });
+  const runtimeValidationAdmission =
+    renderValidation === undefined ? undefined : admitWholeGameRuntimeValidation(renderValidation);
 
   return {
     patchExportBundle: result,
     apply,
     draftArtifactBundleId,
     ...(renderValidation !== undefined ? { renderValidation } : {}),
+    ...(runtimeValidationAdmission !== undefined ? { runtimeValidationAdmission } : {}),
   };
 }
 

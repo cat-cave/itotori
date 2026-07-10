@@ -50,6 +50,7 @@ import {
   runWholeGamePatchExportAndApply,
   type WholeGamePatchExportAndApplyResult,
 } from "./patch-apply-seam.js";
+import type { WholeGameRuntimeValidationAdmission } from "./wholegame-render-validation-seam.js";
 import {
   PipelineFailureDiagnosticError,
   runPipelineStepWithDiagnostic,
@@ -83,6 +84,29 @@ export type RunLocalizeFullProjectLiveResult = LocalizeFullProjectResult & {
   /** Present when the source + target roots drove the patch-apply seam. */
   patchApply?: WholeGamePatchExportAndApplyResult;
 };
+
+/**
+ * Raised only after the pass and its runtime evidence have been persisted.
+ * Callers receive the full report and retry target, but cannot mistake a
+ * sampled, ambiguous, or failed replay/render validation for a ready result.
+ */
+export class RuntimeValidationIncompleteError extends Error {
+  readonly code = "runtime-validation-incomplete";
+
+  constructor(
+    public readonly admission: Extract<
+      WholeGameRuntimeValidationAdmission,
+      { kind: "runtime-validation-incomplete" }
+    >,
+    public readonly retryTargetRoot: string,
+  ) {
+    super(
+      `runtime-validation-incomplete: findings=${String(admission.validation.findings.length)} ` +
+        `retryUnits=${String(admission.retryUnitIds.length)}`,
+    );
+    this.name = "RuntimeValidationIncompleteError";
+  }
+}
 
 /**
  * Run `itotori localize <project>` against LIVE OpenRouter + real Postgres.
@@ -252,11 +276,20 @@ export async function runLocalizeFullProjectLive(
           },
         }),
     });
+    if (patchApply?.runtimeValidationAdmission?.kind === "runtime-validation-incomplete") {
+      throw new RuntimeValidationIncompleteError(
+        patchApply.runtimeValidationAdmission,
+        args.patchTargetRoot!,
+      );
+    }
     return patchApply === undefined ? passResult : { ...passResult, patchApply };
   } catch (error) {
     // Already a structured diagnostic → rethrow untouched (upstream has the
     // more specific step + context).
-    if (error instanceof PipelineFailureDiagnosticError) {
+    if (
+      error instanceof PipelineFailureDiagnosticError ||
+      error instanceof RuntimeValidationIncompleteError
+    ) {
       throw error;
     }
     // Anything else (a Postgres bootstrap error, a transport drop, a missing
