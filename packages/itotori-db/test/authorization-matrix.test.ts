@@ -357,6 +357,16 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.catalogOpportunityRanking(deniedActor, { limit: 20 }),
   ),
   catalogGate(
+    "catalogContextPanelForWork",
+    "catalogRead",
+    "catalog-context-panel read model coverage (itotori-119 panel route)",
+    (repo) =>
+      repo.catalogContextPanelForWork(deniedActor, {
+        workId: "work-id",
+        targetLanguage: "en-US",
+      }),
+  ),
+  catalogGate(
     "catalogBenchmarkSeedFinder",
     "catalogRead",
     "catalog-benchmark-seed-finder.test.ts read model coverage",
@@ -1595,6 +1605,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriCatalogRepository.catalogOpportunityRanking",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-opportunity-ranking-read-model.test.ts read model coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.catalogContextPanelForWork",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-context-panel read model coverage (itotori-119 panel route)",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
