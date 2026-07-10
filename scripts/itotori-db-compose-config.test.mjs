@@ -178,6 +178,39 @@ test("the DB-backed CI workflow uses the local db compose path for Postgres pari
   }
 });
 
+test("CI provisions lockfile-pinned Playwright Chromium before running the full gate", () => {
+  const dependencyInstall = ciWorkflow.indexOf("pnpm install --frozen-lockfile");
+  const chromiumInstall = ciWorkflow.indexOf(
+    "pnpm --filter @itotori/ds exec playwright install chromium",
+  );
+  const chromiumPath = ciWorkflow.indexOf("chromium.executablePath()");
+  const fullGate = ciWorkflow.indexOf("just ci");
+
+  assert.ok(dependencyInstall >= 0, "CI installs locked Node dependencies");
+  assert.ok(
+    chromiumInstall > dependencyInstall,
+    "Chromium install follows the locked dependency install",
+  );
+  assert.ok(chromiumPath > chromiumInstall, "CI resolves Chromium through the Playwright API");
+  assert.ok(fullGate > chromiumPath, "both browser consumers are configured before the full gate");
+  assert.match(
+    ciWorkflow,
+    /test -x "\$chromium_bin"/u,
+    "CI refuses a missing Playwright executable",
+  );
+  assert.match(
+    ciWorkflow,
+    /PLAYWRIGHT_CHROMIUM_BIN=\$chromium_bin/u,
+    "the Playwright consumer receives the resolved executable",
+  );
+  assert.match(
+    ciWorkflow,
+    /UTSUSHI_BROWSER_BIN=\$chromium_bin/u,
+    "the Utsushi consumer receives the resolved executable",
+  );
+  assert.match(ciWorkflow, />> "\$GITHUB_ENV"/u, "browser paths persist to later CI steps");
+});
+
 test("the alpha-proof integration workflow is public-fixture-only (no Postgres)", () => {
   // ALPHA-009: the alpha proof gate must not depend on a database, live
   // credentials, or private corpora; it runs the deterministic public-fixture

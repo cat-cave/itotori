@@ -26,6 +26,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      - name: Install lockfile-pinned Playwright Chromium
+        run: pnpm --filter @itotori/ds exec playwright install chromium
+      - name: Export Playwright Chromium for CI consumers
+        run: |
+          chromium_bin="$(pnpm --filter @itotori/ds exec node --input-type=module -e 'import { chromium } from "@playwright/test"; process.stdout.write(chromium.executablePath())')"
+          test -x "$chromium_bin"
+          {
+            echo "PLAYWRIGHT_CHROMIUM_BIN=$chromium_bin"
+            echo "UTSUSHI_BROWSER_BIN=$chromium_bin"
+          } >> "$GITHUB_ENV"
       - run: cargo install cargo-deny --locked
       - run: sudo snap install just --classic
       - run: just db-up
