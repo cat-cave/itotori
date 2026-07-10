@@ -14,7 +14,9 @@ jobs:
   native:
     name: Tier 1 / native artifact
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Provisional cold-run budget (empty cargo/pnpm caches + release build).
+    # Measure on shadow runs, then tighten toward p95 < 10 min / cold < 12.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -43,7 +45,8 @@ jobs:
     name: Tier 1 / portable (${{ matrix.shard }})
     needs: [native]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Provisional cold-run budget; measure on shadow runs, then tighten.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +82,9 @@ jobs:
     name: Tier 1 / postgres
     needs: [native]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Provisional cold-run budget (build graph + migrate + strict DB gates).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:18
@@ -132,7 +137,9 @@ jobs:
   browser:
     name: Tier 1 / chromium
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Provisional cold-run budget (Playwright install --with-deps + e2e + DS visual).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -154,7 +161,8 @@ jobs:
   alpha:
     name: Tier 1 / alpha proof
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Provisional cold-run budget; measure on shadow runs, then tighten.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 
@@ -166,7 +174,9 @@ jobs:
   mutation:
     name: Tier 1 / mutation differential
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Provisional cold-run budget (heavy recompile even with sccache miss).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
 

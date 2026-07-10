@@ -808,12 +808,17 @@ ci-tier0-manifest:
 
 ci-tier1: ci-tier1-ts-public-1of2 ci-tier1-ts-public-2of2 ci-tier1-rust-1of3 ci-tier1-rust-2of3 ci-tier1-rust-3of3 ci-tier1-db ci-tier1-browser ci-tier1-alpha ci-tier1-mutation
 
-# Public TS shard 1/2: schema + runtime-web-review + ds + app vitest shard 1/2.
+# Public TS shard 1/2: schema + runtime-web-review + ds unit + app vitest shard 1/2.
 # DATABASE_URL unset → DB-backed suites skip honestly (owned by ci-tier1-db).
+# DS visual regression is a browser oracle — owned by ci-tier1-browser (not this
+# shard). Use test:dom so visual:test cannot green-skip inside a portable shard.
 ci-tier1-ts-public-1of2:
+    #!/usr/bin/env bash
+    set -euo pipefail
     pnpm --filter @itotori/localization-bridge-schema test
     pnpm --filter @itotori/runtime-web-review test
-    pnpm --filter @itotori/ds test
+    echo "ci-tier1-ts-public-1of2: DS unit (vitest) only; DS visual owned by lane ci-tier1-browser"
+    pnpm --filter @itotori/ds test:dom
     pnpm --filter @itotori/app exec vitest run --shard=1/2 --exclude '**/.direnv/**'
 
 # Public TS shard 2/2: remaining packages + app vitest shard 2/2.
@@ -860,9 +865,11 @@ ci-tier1-db:
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app test
 
-# Playwright Chromium for both app e2e projects. Requires
-# PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts selected count > 0
-# via --list before running; resource skip is never success.
+# Playwright Chromium for app + runtime-web-review e2e, plus DS visual oracle.
+# Requires PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts post-run
+# executed count (passed+failed, non-skipped) > 0 from Playwright JSON reporter
+# output — collection/--list metadata alone is never sufficient. Resource skip
+# is never success. DS visual is owned here (not the portable TS shards).
 ci-tier1-browser:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -873,29 +880,78 @@ ci-tier1-browser:
       exit 1
     fi
     echo "ci-tier1-browser: Chromium = $bin"
-    # List tests and require a non-zero selected count before executing.
-    app_list="$(pnpm --filter @itotori/app exec playwright test --config e2e/playwright.config.ts --list 2>&1 || true)"
-    rwr_list="$(pnpm --filter @itotori/runtime-web-review exec playwright test --config e2e/playwright.config.ts --list 2>&1 || true)"
-    printf '%s\n' "$app_list"
-    printf '%s\n' "$rwr_list"
-    app_n="$(printf '%s\n' "$app_list" | grep -oE '[0-9]+ (total|tests? in)' | head -1 | grep -oE '^[0-9]+' || echo 0)"
-    rwr_n="$(printf '%s\n' "$rwr_list" | grep -oE '[0-9]+ (total|tests? in)' | head -1 | grep -oE '^[0-9]+' || echo 0)"
-    # Fallback: count listed test lines (Playwright --list prints "  [project] › file:line: title").
-    if [ "${app_n:-0}" = "0" ]; then
-      app_n="$(printf '%s\n' "$app_list" | grep -cE '›' || true)"
-    fi
-    if [ "${rwr_n:-0}" = "0" ]; then
-      rwr_n="$(printf '%s\n' "$rwr_list" | grep -cE '›' || true)"
-    fi
-    total=$(( ${app_n:-0} + ${rwr_n:-0} ))
-    echo "ci-tier1-browser: selected count app=${app_n:-0} runtime-web-review=${rwr_n:-0} total=${total}"
-    if [ "$total" -le 0 ]; then
-      echo "ci-tier1-browser: executed-count assertion failed — zero Playwright tests selected" >&2
+    echo "ci-tier1-browser: lane owns app e2e + runtime-web-review e2e + @itotori/ds visual:test"
+
+    # Run one Playwright project with JSON reporter to a file; parse post-execution
+    # counts. PLAYWRIGHT_JSON_OUTPUT_FILE is the json reporter's absolute-path env
+    # (see playwright resolveOutputFile("JSON", ...)).
+    # executed = stats.expected + stats.unexpected + stats.flaky (excludes skipped).
+    run_pw_json() {
+      local filter="$1"
+      local label="$2"
+      local outdir json
+      outdir="$(mktemp -d)"
+      json="$outdir/results.json"
+      export PLAYWRIGHT_JSON_OUTPUT_FILE="$json"
+      set +e
+      pnpm --filter "$filter" exec playwright test \
+        --config e2e/playwright.config.ts \
+        --reporter=json,list
+      local rc=$?
+      set -e
+      if [ ! -f "$json" ]; then
+        echo "ci-tier1-browser: ${label}: missing JSON results at $json (reporter did not write)" >&2
+        exit 1
+      fi
+      local counts
+      counts="$(node --input-type=module -e '
+        import { readFileSync } from "node:fs";
+        const j = JSON.parse(readFileSync(process.argv[1], "utf8"));
+        const stats = j.stats ?? {};
+        const expected = Number(stats.expected ?? 0);
+        const unexpected = Number(stats.unexpected ?? 0);
+        const flaky = Number(stats.flaky ?? 0);
+        const skipped = Number(stats.skipped ?? 0);
+        const executed = expected + unexpected + flaky;
+        process.stdout.write(JSON.stringify({ expected, unexpected, flaky, skipped, executed }));
+      ' "$json")"
+      echo "ci-tier1-browser: ${label}: post-execution ${counts}"
+      local executed
+      executed="$(node -e 'const c=JSON.parse(process.argv[1]); process.stdout.write(String(c.executed))' "$counts")"
+      if [ "${executed:-0}" -le 0 ]; then
+        echo "ci-tier1-browser: ${label}: executed-count assertion failed — zero non-skipped tests ran" >&2
+        echo "  (refusing selected/--list metadata as a substitute for post-run results)" >&2
+        exit 1
+      fi
+      if [ "$rc" -ne 0 ]; then
+        echo "ci-tier1-browser: ${label}: playwright exited $rc" >&2
+        exit "$rc"
+      fi
+      # Accumulate for the final summary line.
+      _pw_executed_total=$(( ${_pw_executed_total:-0} + executed ))
+    }
+
+    _pw_executed_total=0
+    run_pw_json "@itotori/app" "app-e2e"
+    run_pw_json "@itotori/runtime-web-review" "runtime-web-review-e2e"
+
+    # DS visual regression: browser-oracle ownership is explicit; Chromium is
+    # provisioned so the package-level green-skip path must not fire.
+    echo "ci-tier1-browser: running @itotori/ds visual:test (owner lane for DS visual)"
+    ds_out="$(mktemp)"
+    set +e
+    pnpm --filter @itotori/ds visual:test 2>&1 | tee "$ds_out"
+    ds_rc=${PIPESTATUS[0]}
+    set -e
+    if grep -q '"skipped"[[:space:]]*:[[:space:]]*true' "$ds_out"; then
+      echo "ci-tier1-browser: DS visual green-skipped despite Chromium provision — refusing" >&2
       exit 1
     fi
-    pnpm --filter @itotori/app e2e
-    pnpm --filter @itotori/runtime-web-review e2e
-    echo "ci-tier1-browser: executed-count ok (selected=${total})"
+    if [ "$ds_rc" -ne 0 ]; then
+      echo "ci-tier1-browser: DS visual:test failed (exit $ds_rc)" >&2
+      exit "$ds_rc"
+    fi
+    echo "ci-tier1-browser: executed-count ok (playwright_executed=${_pw_executed_total}; ds_visual=ran)"
 
 # ALPHA public-fixture vertical + linkage proof.
 ci-tier1-alpha: alpha-proof
