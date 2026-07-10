@@ -349,15 +349,18 @@ test("public no-secret defaults render and round-trip unchanged", () => {
 // credential unchanged. Skipped when no `docker compose` CLI is present (e.g.
 // minimal CI images); the encoder-model tests above still prove preservation.
 //
-// SEMANTIC comparison (not a naive YAML-substring match): `docker compose
-// config` in its DEFAULT yaml output RE-ESCAPES a literal `$` back to `$$` so
-// the rendered file is itself re-interpolatable — so a substring check for
-// `a$$b` false-fails against the correctly-rendered `a$$$$b`. That `$$` is
-// CORRECT compose escaping, not a bug. `--format json` emits the RESOLVED
-// value verbatim (no re-escaping), so we parse the JSON model and compare the
-// resolved environment value byte-for-byte. Podman's `docker` shim delegates
-// compose parsing to podman-compose (divergent dotenv semantics), so we skip
-// when the CLI is podman-backed and rely on the compose-go model tests above.
+// SEMANTIC comparison (not a naive substring match): `docker compose config`
+// RE-ESCAPES every literal `$` in a resolved value back to `$$` — in BOTH its
+// yaml and `--format json` output — so the rendered config is itself
+// re-interpolatable. So the encoder preserving `p$4ssw0rd` is REPORTED by
+// compose as `p$$4ssw0rd`: that `$$` is CORRECT compose output escaping, not a
+// bug (the old test's substring match on the raw credential false-failed on it).
+// The honest check therefore compares the reported value against the credential
+// with that documented `$`->`$$` output-escaping applied (split/join, since a
+// `"$$"` string replacement would collapse back to a single `$`). Podman's
+// `docker` shim delegates compose parsing to podman-compose (divergent dotenv
+// semantics), so we skip when the CLI is podman-backed and rely on the
+// compose-go model tests above.
 test("docker compose config preserves a $-bearing generated credential", (t) => {
   let composeVersion;
   try {
@@ -410,10 +413,16 @@ test("docker compose config preserves a $-bearing generated credential", (t) => 
           .find((entry) => entry.startsWith("POSTGRES_PASSWORD="))
           ?.slice("POSTGRES_PASSWORD=".length)
       : env?.POSTGRES_PASSWORD;
+    // compose config re-escapes each literal `$` as `$$` in its output (so the
+    // rendered config re-interpolates back to the same value). Apply that same
+    // documented output-escaping to the expected credential; equality then proves
+    // the resolved internal value equals the credential byte-for-byte.
+    const expected = credential.split("$").join("$$");
     assert.equal(
       resolved,
-      credential,
-      `compose config must resolve POSTGRES_PASSWORD to ${JSON.stringify(credential)} verbatim`,
+      expected,
+      `compose config must resolve POSTGRES_PASSWORD to ${JSON.stringify(credential)} ` +
+        `(reported with compose's $->$$ output escaping as ${JSON.stringify(expected)})`,
     );
   }
 });
