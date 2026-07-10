@@ -114,6 +114,7 @@
 //! [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
 
 use serde::{Deserialize, Serialize};
+use utsushi_core::substrate::{AssetId, AssetPackage, VfsError};
 
 /// Type discriminator for raw 24-bpp BGRA (LZSS-compressed) images.
 /// Lead byte is `0x00`.
@@ -797,6 +798,163 @@ pub enum G00MetadataError {
     RegionTableBounds { region_count: u32 },
     InvertedRegion { pattern: u32 },
     RegionDimensionOverflow { pattern: u32 },
+}
+
+/// A package-owned g00 asset plus its requested pattern index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct G00AssetPatternRef {
+    pub asset: AssetId,
+    pub pattern: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum G00PatternAvailability {
+    Available(G00PatternGeometry),
+    Unavailable(G00PatternUnavailableReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum G00PatternUnavailableReason {
+    PackageMismatch,
+    Vfs(G00PatternVfsReason),
+    Metadata(G00PatternMetadataReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum G00PatternVfsReason {
+    InvalidAssetId,
+    Missing,
+    OutsidePackage,
+    UnsafePath,
+    Encrypted,
+    HelperGated,
+    TransformUnsupported,
+    NotDirectory,
+    NotFile,
+    PackageIo,
+    ResourceBound,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum G00PatternMetadataReason {
+    Content(G00PatternContentReason),
+    ZeroRegionTable,
+    RegionTableBounds,
+    InvertedRegion,
+    RegionDimensionOverflow,
+}
+
+/// Closed projection of strict LZSS validation failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum G00PatternContentReason {
+    TruncatedPreamble,
+    UnknownType,
+    HeaderBounds,
+    RegionTableOverflow,
+    Type2ZeroRegions,
+    InvalidCompressedSize,
+    OuterLengthMismatch,
+    DeclaredOutputMismatch,
+    CountOverflow,
+    TruncatedLiteral,
+    TruncatedBackreference,
+    InvalidDistance,
+    OutputOverrun,
+    OutputUnderrun,
+    UnconsumedPayload,
+}
+
+/// Open exactly one already-identified asset and probe its pattern metadata.
+/// The result is copied and path-free; this neither decodes nor caches pixels.
+pub fn probe_g00_pattern_from_package(
+    package: &dyn AssetPackage,
+    reference: &G00AssetPatternRef,
+) -> G00PatternAvailability {
+    if reference.asset.package() != package.id() {
+        return G00PatternAvailability::Unavailable(G00PatternUnavailableReason::PackageMismatch);
+    }
+    let bytes = match package.open(&reference.asset) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return G00PatternAvailability::Unavailable(G00PatternUnavailableReason::Vfs(
+                g00_pattern_vfs_reason(error),
+            ));
+        }
+    };
+    match probe_g00_pattern_geometry(bytes.as_slice(), reference.pattern) {
+        Ok(geometry) => G00PatternAvailability::Available(geometry),
+        Err(error) => G00PatternAvailability::Unavailable(G00PatternUnavailableReason::Metadata(
+            g00_pattern_metadata_reason(error),
+        )),
+    }
+}
+
+fn g00_pattern_vfs_reason(error: VfsError) -> G00PatternVfsReason {
+    match error {
+        VfsError::InvalidAssetId { .. } => G00PatternVfsReason::InvalidAssetId,
+        VfsError::AssetMissing { .. } => G00PatternVfsReason::Missing,
+        VfsError::AssetOutsidePackage { .. } => G00PatternVfsReason::OutsidePackage,
+        VfsError::AssetPathUnsafe { .. } => G00PatternVfsReason::UnsafePath,
+        VfsError::AssetEncrypted { .. } => G00PatternVfsReason::Encrypted,
+        VfsError::AssetHelperGated { .. } => G00PatternVfsReason::HelperGated,
+        VfsError::AssetTransformUnsupported { .. } => G00PatternVfsReason::TransformUnsupported,
+        VfsError::AssetNotDirectory { .. } => G00PatternVfsReason::NotDirectory,
+        VfsError::AssetNotFile { .. } => G00PatternVfsReason::NotFile,
+        VfsError::PackageIo { .. } => G00PatternVfsReason::PackageIo,
+        VfsError::ResourceBound { .. } => G00PatternVfsReason::ResourceBound,
+    }
+}
+
+fn g00_pattern_metadata_reason(error: G00MetadataError) -> G00PatternMetadataReason {
+    match error {
+        G00MetadataError::Validator(error) => G00PatternMetadataReason::Content(match error {
+            G00ContentValidationError::TruncatedPreamble => {
+                G00PatternContentReason::TruncatedPreamble
+            }
+            G00ContentValidationError::UnknownType => G00PatternContentReason::UnknownType,
+            G00ContentValidationError::HeaderBounds { .. } => G00PatternContentReason::HeaderBounds,
+            G00ContentValidationError::RegionTableOverflow => {
+                G00PatternContentReason::RegionTableOverflow
+            }
+            G00ContentValidationError::Type2ZeroRegions => {
+                G00PatternContentReason::Type2ZeroRegions
+            }
+            G00ContentValidationError::InvalidCompressedSize => {
+                G00PatternContentReason::InvalidCompressedSize
+            }
+            G00ContentValidationError::OuterLengthMismatch { .. } => {
+                G00PatternContentReason::OuterLengthMismatch
+            }
+            G00ContentValidationError::DeclaredOutputMismatch { .. } => {
+                G00PatternContentReason::DeclaredOutputMismatch
+            }
+            G00ContentValidationError::CountOverflow => G00PatternContentReason::CountOverflow,
+            G00ContentValidationError::TruncatedLiteral { .. } => {
+                G00PatternContentReason::TruncatedLiteral
+            }
+            G00ContentValidationError::TruncatedBackreference { .. } => {
+                G00PatternContentReason::TruncatedBackreference
+            }
+            G00ContentValidationError::InvalidDistance { .. } => {
+                G00PatternContentReason::InvalidDistance
+            }
+            G00ContentValidationError::OutputOverrun { .. } => {
+                G00PatternContentReason::OutputOverrun
+            }
+            G00ContentValidationError::OutputUnderrun { .. } => {
+                G00PatternContentReason::OutputUnderrun
+            }
+            G00ContentValidationError::UnconsumedPayload { .. } => {
+                G00PatternContentReason::UnconsumedPayload
+            }
+        }),
+        G00MetadataError::ZeroRegionTable => G00PatternMetadataReason::ZeroRegionTable,
+        G00MetadataError::RegionTableBounds { .. } => G00PatternMetadataReason::RegionTableBounds,
+        G00MetadataError::InvertedRegion { .. } => G00PatternMetadataReason::InvertedRegion,
+        G00MetadataError::RegionDimensionOverflow { .. } => {
+            G00PatternMetadataReason::RegionDimensionOverflow
+        }
+    }
 }
 
 impl std::fmt::Display for G00MetadataError {
@@ -1549,7 +1707,63 @@ fn lzss_decode(input: &[u8], out_size: usize, variant: LzssVariant) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
+    use utsushi_core::IoSummary;
+    use utsushi_core::substrate::{AssetBytes, CaseRule, PackageDescriptor, VfsResult};
+
+    struct ProbePackage {
+        bytes: Option<Vec<u8>>,
+        opens: AtomicUsize,
+    }
+
+    impl ProbePackage {
+        fn new(bytes: Option<Vec<u8>>) -> Self {
+            Self {
+                bytes,
+                opens: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl AssetPackage for ProbePackage {
+        fn id(&self) -> &str {
+            "probe-package"
+        }
+        fn descriptor(&self) -> PackageDescriptor {
+            unreachable!("probe must not describe")
+        }
+        fn case_rule(&self) -> CaseRule {
+            CaseRule::Sensitive
+        }
+        fn resolve(&self, _: &str) -> VfsResult<AssetId> {
+            unreachable!("probe must not resolve")
+        }
+        fn exists(&self, _: &AssetId) -> VfsResult<bool> {
+            unreachable!("probe must not exists")
+        }
+        fn stat(&self, _: &AssetId) -> VfsResult<utsushi_core::substrate::AssetMetadata> {
+            unreachable!("probe must not stat")
+        }
+        fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
+            self.opens.fetch_add(1, Ordering::SeqCst);
+            self.bytes
+                .clone()
+                .map(AssetBytes::from)
+                .ok_or_else(|| VfsError::AssetMissing { id: id.clone() })
+        }
+        fn list(&self, _: &AssetId) -> VfsResult<Vec<AssetId>> {
+            unreachable!("probe must not list")
+        }
+    }
+
+    fn probe_ref(package: &str, path: &str, pattern: u32) -> G00AssetPatternRef {
+        G00AssetPatternRef {
+            asset: AssetId::from_parts(package, path).unwrap(),
+            pattern,
+        }
+    }
 
     /// Encode a byte stream as an all-literal g00 LZSS stream for the
     /// given variant (`bit = 1` → literal). Because the decoder stops the
@@ -1635,6 +1849,91 @@ mod tests {
         bytes.extend_from_slice(&uncompressed_size.to_le_bytes());
         bytes.extend_from_slice(&lzss);
         bytes
+    }
+
+    #[test]
+    fn asset_package_probe_is_single_open_path_free_and_uncached() {
+        let type0 = synth_type0(2, 1, &[1, 2, 3, 4, 5, 6]);
+        let package = ProbePackage::new(Some(type0));
+        let reference = probe_ref("probe-package", "path-sentinel", 0);
+        let first = probe_g00_pattern_from_package(&package, &reference);
+        let second = probe_g00_pattern_from_package(&package, &reference);
+        assert_eq!(package.opens.load(Ordering::SeqCst), 2);
+        assert_eq!(first, second);
+        assert!(matches!(
+            first,
+            G00PatternAvailability::Available(G00PatternGeometry {
+                width: 2,
+                height: 1,
+                ..
+            })
+        ));
+        assert!(!format!("{first:?}").contains("path-sentinel"));
+        let detached = {
+            let package = ProbePackage::new(Some(synth_type0(1, 1, &[1, 2, 3])));
+            probe_g00_pattern_from_package(&package, &probe_ref("probe-package", "x", 0))
+        };
+        assert!(matches!(detached, G00PatternAvailability::Available(_)));
+
+        let mismatch =
+            probe_g00_pattern_from_package(&package, &probe_ref("other-package", "x", 0));
+        assert_eq!(
+            mismatch,
+            G00PatternAvailability::Unavailable(G00PatternUnavailableReason::PackageMismatch)
+        );
+        assert_eq!(package.opens.load(Ordering::SeqCst), 2);
+        let missing = ProbePackage::new(None);
+        assert_eq!(
+            probe_g00_pattern_from_package(&missing, &probe_ref("probe-package", "x", 0)),
+            G00PatternAvailability::Unavailable(G00PatternUnavailableReason::Vfs(
+                G00PatternVfsReason::Missing
+            ))
+        );
+
+        let type2 = ProbePackage::new(Some(synth_type2(2, 1, &[0; 8])));
+        assert!(matches!(
+            probe_g00_pattern_from_package(&type2, &probe_ref("probe-package", "x", 99)),
+            G00PatternAvailability::Available(G00PatternGeometry {
+                selected_pattern: 0,
+                width: 2,
+                height: 1,
+                ..
+            })
+        ));
+        let malformed = ProbePackage::new(Some(type0_with(&[1], 4)));
+        assert_eq!(
+            probe_g00_pattern_from_package(&malformed, &probe_ref("probe-package", "x", 0)),
+            G00PatternAvailability::Unavailable(G00PatternUnavailableReason::Metadata(
+                G00PatternMetadataReason::Content(G00PatternContentReason::TruncatedLiteral)
+            ))
+        );
+    }
+
+    #[test]
+    fn asset_package_vfs_categories_are_closed_and_path_free() {
+        let id = AssetId::from_parts("probe-package", "path-sentinel").unwrap();
+        assert_eq!(
+            g00_pattern_vfs_reason(VfsError::AssetMissing { id: id.clone() }),
+            G00PatternVfsReason::Missing
+        );
+        assert_eq!(
+            g00_pattern_vfs_reason(VfsError::AssetOutsidePackage {
+                id: id.clone(),
+                package: "other".to_owned()
+            }),
+            G00PatternVfsReason::OutsidePackage
+        );
+        assert_eq!(
+            g00_pattern_vfs_reason(VfsError::AssetNotFile { id: id.clone() }),
+            G00PatternVfsReason::NotFile
+        );
+        assert_eq!(
+            g00_pattern_vfs_reason(VfsError::PackageIo {
+                id,
+                summary: IoSummary::Other
+            }),
+            G00PatternVfsReason::PackageIo
+        );
     }
 
     fn type0_with(payload: &[u8], declared_output: u32) -> Vec<u8> {
