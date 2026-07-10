@@ -105,6 +105,22 @@ pub const OBJ_BG_MGMT_ID: u8 = 62;
 /// under (the compiler-version artifact; `module_id` is the real key).
 const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 
+fn register_on_types(
+    registry: &mut RlopRegistry,
+    module_types: &[u8],
+    module_id: u8,
+    opcode: u16,
+    op: Arc<dyn RLOperation>,
+) -> usize {
+    for &module_type in module_types {
+        registry.register(
+            RlopKey::new(module_type, module_id, opcode),
+            Arc::clone(&op),
+        );
+    }
+    module_types.len()
+}
+
 /// On-screen DC slot (rlvm `DC0`). `openBg` / `open` / `display` land here.
 pub const SCREEN_DC_SLOT: usize = 0;
 
@@ -528,19 +544,36 @@ impl ObjCreateOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
         Self { runtime, plane }
     }
+}
 
-    fn layer_base(&self) -> i32 {
-        match self.plane {
-            GraphicsPlane::Foreground => OBJ_FG_LAYER_BASE,
-            GraphicsPlane::Background => OBJ_BG_LAYER_BASE,
-        }
+fn created_object(plane: GraphicsPlane, args: &[ExprValue]) -> Option<(usize, GraphicsObject)> {
+    let buf = arg_int(args, 0).and_then(slot_ok)?;
+    let name = arg_bytes(args, 1)
+        .and_then(decode_shift_jis)
+        .filter(|name| !name.is_empty() && name != "???");
+    let mut object = GraphicsObject::image(name.unwrap_or_default());
+    object.layer_order = match plane {
+        GraphicsPlane::Foreground => OBJ_FG_LAYER_BASE + buf as i32,
+        GraphicsPlane::Background => OBJ_BG_LAYER_BASE + buf as i32,
+    };
+    if let Some(visible) = arg_int(args, 2) {
+        object.visible = visible != 0;
     }
+    if let (Some(x), Some(y)) = (arg_int(args, 3), arg_int(args, 4)) {
+        object.position = crate::graphics_objects::GraphicsPosition { x, y };
+    }
+    if let (Some(pattern), GraphicsObjectKind::Image { image_ref }) =
+        (arg_int(args, 5), &mut object.kind)
+    {
+        image_ref.region_index = Some(pattern.max(0) as u32);
+    }
+    Some((buf, object))
 }
 
 impl RLOperation for ObjCreateOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         // objGeneric_*: (buf, filename[, visible, x, y, pattern, …]).
-        let Some(buf) = arg_int(args, 0).and_then(slot_ok) else {
+        let Some((buf, object)) = created_object(self.plane, args) else {
             self.runtime
                 .push_warning(GraphicsRuntimeWarning::MissingArg {
                     opcode_tag: "obj.objOfFile",
@@ -548,31 +581,68 @@ impl RLOperation for ObjCreateOp {
                 });
             return DispatchOutcome::Advance;
         };
-        let name = arg_bytes(args, 1)
-            .and_then(decode_shift_jis)
-            .filter(|n| !n.is_empty() && n != "???");
         let layer = object_layer(self.plane);
-        let layer_base = self.layer_base();
         self.runtime.with_stack_mut(|stack| {
-            // For every creation op (objOfFile and the placeholder-modelled
-            // text/digit/drift/gan variants) the decoded arg-1 string is the
-            // object's asset key; objOfText carries inline text there, which
-            // this model records but does not rasterise (a documented gap).
-            let mut object = GraphicsObject::image(name.unwrap_or_default());
-            object.layer_order = layer_base + buf as i32;
-            // Optional trailing (visible, x, y, pattern).
-            if let Some(v) = arg_int(args, 2) {
-                object.visible = v != 0;
-            }
-            if let (Some(x), Some(y)) = (arg_int(args, 3), arg_int(args, 4)) {
-                object.position = crate::graphics_objects::GraphicsPosition { x, y };
-            }
-            if let (Some(pattern), GraphicsObjectKind::Image { image_ref }) =
-                (arg_int(args, 5), &mut object.kind)
-            {
-                image_ref.region_index = Some(pattern.max(0) as u32);
-            }
             let _ = stack.set_layer(layer, buf, object);
+        });
+        DispatchOutcome::Advance
+    }
+}
+
+#[derive(Debug)]
+pub struct ChildCreateOp {
+    runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
+}
+
+impl ChildCreateOp {
+    pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self { runtime, plane }
+    }
+}
+
+impl RLOperation for ChildCreateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+            return DispatchOutcome::Advance;
+        };
+        let Some((child, object)) = created_object(self.plane, &args[1..]) else {
+            return DispatchOutcome::Advance;
+        };
+        self.runtime.with_stack_mut(|stack| {
+            let _ = stack.set_child(self.plane, parent, child, object);
+        });
+        DispatchOutcome::Advance
+    }
+}
+
+#[derive(Debug)]
+pub struct ParentCreateOp {
+    runtime: Arc<GraphicsRuntime>,
+    plane: GraphicsPlane,
+}
+
+impl ParentCreateOp {
+    pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
+        Self { runtime, plane }
+    }
+}
+
+impl RLOperation for ParentCreateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+            return DispatchOutcome::Advance;
+        };
+        let Some(capacity) = arg_int(args, 1).and_then(|value| usize::try_from(value).ok()) else {
+            return DispatchOutcome::Advance;
+        };
+        let visible = arg_int(args, 2).map(|value| value != 0);
+        let position = match (arg_int(args, 3), arg_int(args, 4)) {
+            (Some(x), Some(y)) => Some(crate::graphics_objects::GraphicsPosition { x, y }),
+            _ => None,
+        };
+        self.runtime.with_stack_mut(|stack| {
+            let _ = stack.create_parent(self.plane, parent, capacity, visible, position);
         });
         DispatchOutcome::Advance
     }
@@ -903,6 +973,7 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
     reg(registry, GRP_MODULE_ID, 302, grp(GrpOp::Colour));
     reg(registry, GRP_MODULE_ID, 303, grp(GrpOp::Light));
     reg(registry, GRP_MODULE_ID, 403, grp(GrpOp::Fade));
+    drop(reg);
 
     // ---- object creation (71 fg / 72 bg) -------------------------------
     for (mid, plane) in [
@@ -911,14 +982,22 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
     ] {
         let create =
             || -> Arc<dyn RLOperation> { Arc::new(ObjCreateOp::new(Arc::clone(&runtime), plane)) };
-        // objOfFile / objOfFileGan / objOfArea / objOfRect / objOfText /
-        // objDriftOfFile / objOfDigits / objOfChild — all image/placeholder
-        // loaders whose arg-1 string is the object's asset key.
-        for op in [
-            1000u16, 1001, 1003, 1005, 1100, 1101, 1200, 1300, 1400, 1500,
-        ] {
-            reg(registry, mid, op, create());
+        let child_create = || -> Arc<dyn RLOperation> {
+            Arc::new(ChildCreateOp::new(Arc::clone(&runtime), plane))
+        };
+        for op in [1000u16, 1001, 1003, 1005, 1100, 1101, 1200, 1300, 1400] {
+            count += register_on_types(registry, &[0, 1], mid, op, create());
+            count += register_on_types(registry, &[2], mid, op, child_create());
         }
+        count += register_on_types(registry, &[0], mid, 1500, create());
+        count += register_on_types(
+            registry,
+            &[1],
+            mid,
+            1500,
+            Arc::new(ParentCreateOp::new(Arc::clone(&runtime), plane)),
+        );
+        count += register_on_types(registry, &[2], mid, 1500, child_create());
     }
 
     // ---- object setters (81 fg / 82 bg / 90,91 range) ------------------
@@ -951,11 +1030,12 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             (2004, ObjSetProp::Show), // objEveDisplay → final Show (anim gap)
         ];
         for (op, prop) in setters {
-            reg(registry, mid, *op, set(*prop));
+            count += register_on_types(registry, &[0, 1], mid, *op, set(*prop));
         }
         // objButtonOpts (1064): button-object setup feeding select_objbtn.
-        reg(
+        count += register_on_types(
             registry,
+            &[0, 1],
             mid,
             1064,
             Arc::new(super::module_obj::ObjButtonOptsOp::new(
@@ -977,16 +1057,17 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
                 None => Arc::new(ObjMgmtRenderOp::new(Arc::clone(&runtime), o)),
             }
         };
-        reg(registry, mid, 0, mgmt(ObjMgmtOp::Free));
-        reg(registry, mid, 10, mgmt(ObjMgmtOp::Init));
-        reg(registry, mid, 11, mgmt(ObjMgmtOp::FreeInit));
-        reg(registry, mid, 100, mgmt(ObjMgmtOp::FreeAll));
-        reg(registry, mid, 110, mgmt(ObjMgmtOp::FreeAll));
-        reg(registry, mid, 111, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 0, mgmt(ObjMgmtOp::Free));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 10, mgmt(ObjMgmtOp::Init));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 11, mgmt(ObjMgmtOp::FreeInit));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 100, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 110, mgmt(ObjMgmtOp::FreeAll));
+        count += register_on_types(registry, &LATTICE_TYPES, mid, 111, mgmt(ObjMgmtOp::FreeAll));
     }
     // objCopyFgToBg lives on the generic ObjManagement module (60) only.
-    reg(
+    count += register_on_types(
         registry,
+        &LATTICE_TYPES,
         OBJ_MGMT_ID,
         2,
         Arc::new(ObjMgmtRenderOp::new(
@@ -1003,7 +1084,7 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graphics_objects::GraphicsObjectKind as Kind;
+    use crate::graphics_objects::{GraphicsObjectKind as Kind, GraphicsObjectTarget};
 
     fn rt() -> Arc<GraphicsRuntime> {
         Arc::new(GraphicsRuntime::new())
@@ -1179,6 +1260,109 @@ mod tests {
         assert_eq!(fg.layer_order, OBJ_FG_LAYER_BASE + 5);
     }
 
+    #[test]
+    fn parent_and_child_creation_route_only_to_sparse_children() {
+        let runtime = rt();
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2), int(0), int(30), int(40)]);
+        ObjSetOp::new(
+            Arc::clone(&runtime),
+            GraphicsPlane::Foreground,
+            ObjSetProp::Move,
+        )
+        .dispatch(&mut vm(), &[int(4), int(31), int(41)]);
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground).dispatch(
+            &mut vm(),
+            &[int(4), int(1), s(b"CHILD"), int(0), int(7), int(9), int(3)],
+        );
+        let child = GraphicsObjectTarget::Child {
+            plane: GraphicsPlane::Foreground,
+            parent: 4,
+            child: 1,
+        };
+        let snapshot = runtime.state_snapshot();
+        let object = snapshot.stack.target(child).expect("child object");
+        assert_eq!((object.position.x, object.position.y), (7, 9));
+        assert!(matches!(
+            &object.kind,
+            Kind::Image { image_ref }
+                if image_ref.asset_key == "CHILD" && image_ref.region_index == Some(3)
+        ));
+        assert!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::ForegroundObject, 1)
+                .is_none()
+        );
+        let parent_object = snapshot
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 4)
+            .expect("materialized parent object");
+        assert!(!parent_object.visible);
+        assert_eq!(
+            (parent_object.position.x, parent_object.position.y),
+            (31, 41)
+        );
+        assert_eq!(
+            snapshot
+                .stack
+                .parent(GraphicsPlane::Foreground, 4)
+                .unwrap()
+                .declared_capacity,
+            2
+        );
+
+        // Out-of-range and malformed child routes neither create a child nor
+        // lazily materialise a parent.
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2), s(b"NO")]);
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(6), s(b"MALFORMED")]);
+        assert!(
+            runtime
+                .state_snapshot()
+                .stack
+                .parent(GraphicsPlane::Foreground, 6)
+                .is_none()
+        );
+
+        // An absent parent becomes sparse at the default 256 capacity only
+        // for an in-range child, and snapshots remain deeply detached.
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(5), int(255), s(b"LAZY")]);
+        let before_replace = runtime.state_snapshot();
+        assert_eq!(
+            before_replace
+                .stack
+                .parent(GraphicsPlane::Foreground, 5)
+                .unwrap()
+                .declared_capacity,
+            256
+        );
+        let lazy_parent = before_replace
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 5)
+            .expect("default lazy parent object");
+        assert!(lazy_parent.visible);
+        assert_eq!((lazy_parent.position.x, lazy_parent.position.y), (0, 0));
+        ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(5), int(256), s(b"OUT")]);
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(1)]);
+        let replaced = runtime.state_snapshot();
+        assert!(replaced.stack.target(child).is_none());
+        let parent_object = replaced
+            .stack
+            .get_layer(GraphicsLayer::ForegroundObject, 4)
+            .expect("retained parent object");
+        assert!(!parent_object.visible);
+        assert_eq!(
+            (parent_object.position.x, parent_object.position.y),
+            (31, 41)
+        );
+        assert!(before_replace.stack.target(child).is_some());
+    }
+
     // rlvm object setters: Move / Alpha / Show / Layer / PattNo (buf FIRST).
     #[test]
     fn obj_setters_mutate_created_object() {
@@ -1266,32 +1450,51 @@ mod tests {
         );
     }
 
-    // Registration mounts every real op under all three lattice types and
-    // is displacement-free (no key collision panic).
     #[test]
-    fn register_mounts_under_all_lattice_types() {
+    fn registration_routes_child_creation_and_fails_closed_for_type2_setters() {
         let mut registry = RlopRegistry::new();
         let n = register_render_rlops(&mut registry, rt());
-        assert!(
-            n.is_multiple_of(3),
-            "every op registered under 3 lattice types"
-        );
         assert_eq!(registry.len(), n);
-        // Spot-check the real opcode keys under all three types.
-        for mt in [0u8, 1, 2] {
-            assert!(registry.get(RlopKey::new(mt, GRP_MODULE_ID, 73)).is_some());
-            assert!(
-                registry
-                    .get(RlopKey::new(mt, OBJ_FG_CREATION_ID, 1000))
-                    .is_some()
-            );
-            assert!(
-                registry
-                    .get(RlopKey::new(mt, OBJ_FG_SETTER_ID, 1026))
-                    .is_some()
-            );
-            assert!(registry.get(RlopKey::new(mt, OBJ_FG_MGMT_ID, 0)).is_some());
-        }
+        assert!(
+            registry
+                .get(RlopKey::new(0, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(1, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_CREATION_ID, 1000))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_CREATION_ID, 1500))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(0, OBJ_FG_SETTER_ID, 1026))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(1, OBJ_FG_SETTER_ID, 1026))
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_SETTER_ID, 1026))
+                .is_none()
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(2, OBJ_FG_SETTER_ID, 1064))
+                .is_none()
+        );
     }
 
     #[test]

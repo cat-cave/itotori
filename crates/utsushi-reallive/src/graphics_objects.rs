@@ -33,6 +33,8 @@
 //! crate-wide
 //! [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Per-plane slot count. Both the foreground and background planes
@@ -312,6 +314,35 @@ pub struct GraphicsObject {
     pub button_options: Option<ButtonOptions>,
 }
 
+/// Sparse value-owned children declared by a parent object address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphicsObjectParent {
+    pub declared_capacity: usize,
+    pub children: BTreeMap<usize, GraphicsObject>,
+}
+
+impl GraphicsObjectParent {
+    pub fn new(declared_capacity: usize) -> Self {
+        Self {
+            declared_capacity,
+            children: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphicsObjectTarget {
+    TopLevel {
+        layer: GraphicsLayer,
+        slot: usize,
+    },
+    Child {
+        plane: GraphicsPlane,
+        parent: usize,
+        child: usize,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ButtonOptions {
@@ -393,6 +424,8 @@ pub struct GraphicsObjectStack {
     display_commands: Vec<Option<GraphicsObject>>,
     background_objects: Vec<Option<GraphicsObject>>,
     foreground_objects: Vec<Option<GraphicsObject>>,
+    background_parents: BTreeMap<usize, GraphicsObjectParent>,
+    foreground_parents: BTreeMap<usize, GraphicsObjectParent>,
 }
 
 impl GraphicsObjectStack {
@@ -403,7 +436,36 @@ impl GraphicsObjectStack {
             display_commands: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
             background_objects: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
             foreground_objects: (0..GRAPHICS_OBJECT_SLOT_COUNT).map(|_| None).collect(),
+            background_parents: BTreeMap::new(),
+            foreground_parents: BTreeMap::new(),
         }
+    }
+
+    fn parents(&self, plane: GraphicsPlane) -> &BTreeMap<usize, GraphicsObjectParent> {
+        match plane {
+            GraphicsPlane::Background => &self.background_parents,
+            GraphicsPlane::Foreground => &self.foreground_parents,
+        }
+    }
+
+    fn parents_mut(&mut self, plane: GraphicsPlane) -> &mut BTreeMap<usize, GraphicsObjectParent> {
+        match plane {
+            GraphicsPlane::Background => &mut self.background_parents,
+            GraphicsPlane::Foreground => &mut self.foreground_parents,
+        }
+    }
+
+    fn materialize_parent_object(
+        &mut self,
+        plane: GraphicsPlane,
+        parent: usize,
+    ) -> Option<&mut GraphicsObject> {
+        let layer = GraphicsLayer::from_plane(plane);
+        if self.get_layer(layer, parent).is_none() {
+            self.set_layer(layer, parent, GraphicsObject::image(""))
+                .ok()?;
+        }
+        self.get_layer_mut(layer, parent)
     }
 
     fn layer_slice(&self, layer: GraphicsLayer) -> &[Option<GraphicsObject>] {
@@ -512,6 +574,74 @@ impl GraphicsObjectStack {
             return None;
         }
         self.layer_slice_mut(layer)[slot].as_mut()
+    }
+
+    pub fn target(&self, target: GraphicsObjectTarget) -> Option<&GraphicsObject> {
+        match target {
+            GraphicsObjectTarget::TopLevel { layer, slot } => self.get_layer(layer, slot),
+            GraphicsObjectTarget::Child {
+                plane,
+                parent,
+                child,
+            } => self.parents(plane).get(&parent)?.children.get(&child),
+        }
+    }
+
+    pub fn create_parent(
+        &mut self,
+        plane: GraphicsPlane,
+        parent: usize,
+        declared_capacity: usize,
+        visible: Option<bool>,
+        position: Option<GraphicsPosition>,
+    ) -> bool {
+        if parent >= GRAPHICS_OBJECT_SLOT_COUNT {
+            return false;
+        }
+        let Some(object) = self.materialize_parent_object(plane, parent) else {
+            return false;
+        };
+        if let Some(visible) = visible {
+            object.visible = visible;
+        }
+        if let Some(position) = position {
+            object.position = position;
+        }
+        self.parents_mut(plane)
+            .insert(parent, GraphicsObjectParent::new(declared_capacity));
+        true
+    }
+
+    pub fn set_child(
+        &mut self,
+        plane: GraphicsPlane,
+        parent: usize,
+        child: usize,
+        object: GraphicsObject,
+    ) -> bool {
+        if parent >= GRAPHICS_OBJECT_SLOT_COUNT {
+            return false;
+        }
+        let capacity = self
+            .parents(plane)
+            .get(&parent)
+            .map_or(GRAPHICS_OBJECT_SLOT_COUNT, |entry| entry.declared_capacity);
+        if child >= capacity {
+            return false;
+        }
+        if self.materialize_parent_object(plane, parent).is_none() {
+            return false;
+        }
+        self.parents_mut(plane)
+            .entry(parent)
+            .or_insert_with(|| GraphicsObjectParent::new(GRAPHICS_OBJECT_SLOT_COUNT))
+            .children
+            .insert(child, object);
+        true
+    }
+
+    pub fn parent(&self, plane: GraphicsPlane, parent: usize) -> Option<&GraphicsObjectParent> {
+        self.parents(plane).get(&parent)
     }
 
     /// Number of allocated slots on `plane`.

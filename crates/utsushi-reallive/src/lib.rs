@@ -219,8 +219,9 @@ pub use syscall::{
 
 pub use graphics_objects::{
     GRAPHICS_OBJECT_SLOT_COUNT, GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone,
-    GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
-    GraphicsPosition, GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
+    GraphicsLayer, GraphicsObject, GraphicsObjectKind, GraphicsObjectParent, GraphicsObjectStack,
+    GraphicsObjectTarget, GraphicsPlane, GraphicsPosition, GraphicsScale, GraphicsStackError,
+    ImageRef, WipeColour,
 };
 pub use render_pipeline::{
     ChoiceWindow, Framebuffer, ImageGridCell, ImageGridChoiceWindow, ObjectWarning, PNG_BIT_DEPTH,
