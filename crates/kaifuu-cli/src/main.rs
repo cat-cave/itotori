@@ -14,20 +14,21 @@ use kaifuu_core::{
     ProfileRequest, ProofHash, RpgMakerMvMzFixtureKeyValidationRequest, SecretRef,
     SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
     Xp3CapabilityProfileFixture, Xp3CapabilityProfileRequest, Xp3ProfileProofFixture,
-    Xp3ProfileProofRequest, atomic_write_text, encode_xp3, encrypted_media_proof,
-    fixture_helper_registry, generate_alpha_encrypted_readiness, generate_xp3_capability_profile,
-    normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
-    parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
-    read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
-    replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path, run_round_trip_golden,
+    Xp3ProfileProofRequest, atomic_write_bytes, atomic_write_text, encode_xp3,
+    encrypted_media_proof, fixture_helper_registry, generate_alpha_encrypted_readiness,
+    generate_xp3_capability_profile, normalize_helper_result_value, pack_plain_xp3_from_directory,
+    parse_helper_capability, parse_hex_bytes, plain_xp3_writer_capability,
+    promote_staged_directory_no_clobber, read_json, read_plain_xp3_archive,
+    redact_for_log_or_report, redact_report_value, replace_plain_xp3_entry_payload,
+    run_plain_xp3_smoke_from_path, run_round_trip_golden,
     run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
     unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_packed_engine_readiness_dir,
     validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
 use kaifuu_delta::{
-    ContractStageStatus, SourceProvenance, apply_delta, create_delta,
-    run_encrypted_xp3_contract_scaffold,
+    ContractStageStatus, Replacement, SourceProvenance, apply_delta, create_delta,
+    create_replacement_delta, run_encrypted_xp3_contract_scaffold,
 };
 
 mod binary_patch_smoke;
@@ -678,7 +679,8 @@ fn reallive_scene_slices<'a>(
 }
 
 /// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
-/// --bundle bridge-bundle-translated.json --scope <dialogue-only|dialogue+choices> [--force]`.
+/// --bundle bridge-bundle-translated.json --scope <dialogue-only|dialogue+choices>
+/// [--delta-output <delta.kaifuu>] [--force]`.
 ///
 /// `--scope` is the user's translation-scope config and is REQUIRED: it
 /// drives the config-driven byte-fidelity contract. `dialogue-only`
@@ -695,7 +697,10 @@ fn reallive_scene_slices<'a>(
 /// never read, copied, or written
 /// (`kaifuu-patch-touch-archive-not-copy-game-tree`) — a per-scene patch
 /// stays target-archive-sized, not full-tree-sized. The source tree is
-/// sha256-unchanged after the command.
+/// sha256-unchanged after the command. When requested, `--delta-output`
+/// produces a replacement-only v0.3 package from the in-memory patched
+/// archive: its target manifest inherits every source sibling, but it embeds
+/// only the resolved Seen.txt replacement bytes.
 fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
         PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackOpts, TranslatedBundleV02, TranslationScope,
@@ -705,12 +710,16 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let source_root = PathBuf::from(flag(args, "--source")?);
     let target_root = PathBuf::from(flag(args, "--target")?);
     let bundle_path = PathBuf::from(flag(args, "--bundle")?);
+    let delta_output = flag_optional(args, "--delta-output").map(PathBuf::from);
     let force = flag_optional(args, "--force").is_some();
 
     // Validate the untrusted target path BEFORE anything else (symlink
     // rejection must not depend on other flags being well-formed).
     validate_patch_target_root(&source_root, &target_root, "patch target directory")?;
     reject_reallive_target_tree_symlinks(&target_root)?;
+    if let Some(delta_output) = delta_output.as_deref() {
+        validate_reallive_delta_output(&source_root, &target_root, delta_output)?;
+    }
 
     // The caller declares the translation scope; it drives the config-driven
     // byte-fidelity contract (out-of-scope surfaces carried byte-identical,
@@ -780,22 +789,39 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
             .into()
         },
     )?;
-    let target_seen_path = target_root.join(source_seen_rel);
-    if let Some(parent) = target_seen_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| -> Box<dyn std::error::Error> {
-            reallive_patch_write_target_error(&target_seen_path, &err).into()
-        })?;
-    }
-
     let patched = apply_translated_bundle(
         &source_seen_bytes,
         &translated,
         &PatchbackOpts::shift_jis(scope),
     )
     .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
-    fs::write(&target_seen_path, &patched).map_err(|err| -> Box<dyn std::error::Error> {
-        reallive_patch_write_target_error(&target_seen_path, &err).into()
-    })?;
+
+    // Build and persist the optional package before creating anything under
+    // the sparse target tree. A bad delta destination or rejected source
+    // snapshot therefore cannot leave a patched target behind. The package
+    // uses the exact resolved Seen-relative path already used by the target
+    // overlay, and carries only the complete source provenance this CLI route
+    // can establish without inventing a new provenance-input flag.
+    if let Some(delta_output) = delta_output {
+        let seen_relative_path = reallive_delta_relative_path(source_seen_rel)?;
+        let delta = create_replacement_delta(
+            &source_root,
+            &[Replacement {
+                path: seen_relative_path,
+                bytes: patched.clone(),
+            }],
+            SourceProvenance::complete(),
+        )?;
+        let delta_bytes = kaifuu_core::stable_json(&delta)?;
+        atomic_write_bytes(&delta_output, delta_bytes.as_bytes())?;
+    }
+
+    let target_seen_path = target_root.join(source_seen_rel);
+    atomic_write_bytes(&target_seen_path, &patched).map_err(
+        |err| -> Box<dyn std::error::Error> {
+            reallive_patch_write_target_error(&target_seen_path, err.as_ref()).into()
+        },
+    )?;
 
     // Readonly-source sha256 invariant: re-read the source and assert
     // it still matches the pre-write hash. This is the
@@ -809,6 +835,99 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
             &post_source_hash,
         )
         .into());
+    }
+    Ok(())
+}
+
+/// Convert an already-resolved Seen.txt-relative path into the POSIX UTF-8
+/// path form required by the delta package. Components are retained exactly
+/// (including case); only the platform separator is normalized at this
+/// serialization boundary.
+fn reallive_delta_relative_path(relative: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        match component {
+            Component::Normal(part) => parts.push(
+                part.to_str()
+                    .ok_or(
+                        "kaifuu.reallive.delta_path_not_utf8: Seen.txt relative path must be UTF-8",
+                    )?
+                    .to_string(),
+            ),
+            _ => {
+                return Err(
+                    "kaifuu.reallive.delta_path_unsafe: resolved Seen.txt path must be a normal relative path"
+                        .into(),
+                );
+            }
+        }
+    }
+    if parts.is_empty() {
+        return Err("kaifuu.reallive.delta_path_empty: resolved Seen.txt path is empty".into());
+    }
+    Ok(parts.join("/"))
+}
+
+/// A delta is an external package, never an in-place source mutation or a
+/// member of the sparse overlay it describes. Check both lexical and existing
+/// canonical prefixes before any package or target write.
+fn validate_reallive_delta_output(
+    source_root: &Path,
+    target_root: &Path,
+    delta_output: &Path,
+) -> KaifuuResult<()> {
+    let source_lexical = lexical_absolute_path(source_root)?;
+    let target_lexical = lexical_absolute_path(target_root)?;
+    let delta_lexical = lexical_absolute_path(delta_output)?;
+    let source_canonical = canonical_existing_prefix(source_root)?;
+    let target_canonical = canonical_existing_prefix(target_root)?;
+    let delta_canonical = canonical_existing_prefix(delta_output)?;
+
+    if path_is_inside_root(&delta_lexical, &source_lexical)
+        || path_is_inside_root(&delta_canonical, &source_canonical)
+    {
+        return Err(format!(
+            "kaifuu.reallive.delta_output_inside_source: delta output must not be inside source game directory: {}",
+            local_path_for_diagnostic(delta_output)
+        )
+        .into());
+    }
+    if path_is_inside_root(&delta_lexical, &target_lexical)
+        || path_is_inside_root(&delta_canonical, &target_canonical)
+    {
+        return Err(format!(
+            "kaifuu.reallive.delta_output_inside_target: delta output must not be inside sparse patch target: {}",
+            local_path_for_diagnostic(delta_output)
+        )
+        .into());
+    }
+    reject_reallive_delta_output_symlink_components(&delta_lexical)?;
+    Ok(())
+}
+
+fn reject_reallive_delta_output_symlink_components(path: &Path) -> KaifuuResult<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir | Component::Normal(_) => {
+                current.push(component.as_os_str());
+                let metadata = match fs::symlink_metadata(&current) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+                    Err(error) => return Err(error.into()),
+                };
+                if metadata.file_type().is_symlink() {
+                    return Err(format!(
+                        "kaifuu.reallive.delta_output_symlink: delta output path must not contain symlinks: {}",
+                        local_path_for_diagnostic(&current)
+                    )
+                    .into());
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -928,7 +1047,7 @@ fn reallive_patch_read_source_error(path: &Path, error: &io::Error) -> String {
     )
 }
 
-fn reallive_patch_write_target_error(path: &Path, error: &io::Error) -> String {
+fn reallive_patch_write_target_error(path: &Path, error: &dyn std::error::Error) -> String {
     format!(
         "failed to write patched Seen.txt {}: {error}",
         local_path_for_diagnostic(path)
@@ -8669,6 +8788,10 @@ mod tests {
              siblings must NOT be copied into the target (found: {files:?})"
         );
         assert!(
+            !target_root.with_extension("kaifuu").exists(),
+            "without --delta-output, the compatible sparse-overlay command must not produce a default delta"
+        );
+        assert!(
             !target_root.join("voice").exists(),
             "voice sibling tree must not be copied to the target"
         );
@@ -8714,6 +8837,151 @@ mod tests {
             fs::read(image_dir.join("bg0001.g00")).unwrap(),
             big_sibling,
             "source image sibling must be untouched"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_reallive_delta_output_replaces_seen_and_inherits_source_siblings() {
+        use crate::binary_patch_smoke::{
+            build_synthetic_seen_txt, build_synthetic_translated_bundle_json,
+        };
+
+        let root = temp_dir("patch-reallive-delta-output");
+        let source_root = root.join("source-game-tree");
+        let source_data = source_root.join("REALLIVEDATA");
+        fs::create_dir_all(&source_data).unwrap();
+        let source_seen = build_synthetic_seen_txt();
+        fs::write(source_data.join("Seen.txt"), &source_seen).unwrap();
+        fs::write(source_root.join("voice.ogg"), b"source voice sibling").unwrap();
+        fs::create_dir_all(source_root.join("config")).unwrap();
+        fs::write(
+            source_root.join("config/settings.bin"),
+            b"source config sibling",
+        )
+        .unwrap();
+
+        let bundle = build_synthetic_translated_bundle_json("うえ", "reallive:scene-0001#0000");
+        let bundle_path = root.join("translated-bundle.json");
+        fs::write(&bundle_path, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+        let target_root = root.join("sparse-target");
+        let delta_path = root.join("replacement.kaifuu");
+
+        run_patch_reallive_bundle(
+            &[
+                "patch",
+                "--engine",
+                "reallive",
+                "--source",
+                source_root.to_str().unwrap(),
+                "--target",
+                target_root.to_str().unwrap(),
+                "--bundle",
+                bundle_path.to_str().unwrap(),
+                "--scope",
+                "dialogue-only",
+                "--delta-output",
+                delta_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>(),
+        )
+        .expect("patch and replacement delta must succeed");
+
+        let target_seen_path = target_root.join("REALLIVEDATA/Seen.txt");
+        let target_seen = fs::read(&target_seen_path).unwrap();
+        assert_ne!(
+            target_seen, source_seen,
+            "patchback must replace Seen.txt bytes"
+        );
+        let source_index = kaifuu_reallive::parse_archive(&source_seen).unwrap();
+        let target_index = kaifuu_reallive::parse_archive(&target_seen).unwrap();
+        assert_eq!(target_index.entries.len(), source_index.entries.len());
+        assert!(
+            !target_root.join("voice.ogg").exists() && !target_root.join("config").exists(),
+            "the direct target remains a sparse Seen-only overlay"
+        );
+
+        let delta: serde_json::Value = read_json(&delta_path).unwrap();
+        let changed = delta["changedEntries"].as_array().unwrap();
+        assert_eq!(changed.len(), 1, "delta must contain one replacement entry");
+        assert_eq!(changed[0]["path"], "REALLIVEDATA/Seen.txt");
+        assert_eq!(changed[0]["operation"], "replace");
+        assert!(
+            !changed.iter().any(|entry| entry["operation"] == "delete"),
+            "replacement-only output must never delete source siblings"
+        );
+
+        let applied_root = root.join("applied-full-tree");
+        apply_delta(&source_root, &delta_path, &applied_root).unwrap();
+        assert_eq!(
+            fs::read(applied_root.join("REALLIVEDATA/Seen.txt")).unwrap(),
+            target_seen
+        );
+        assert_eq!(
+            fs::read(applied_root.join("voice.ogg")).unwrap(),
+            b"source voice sibling"
+        );
+        assert_eq!(
+            fs::read(applied_root.join("config/settings.bin")).unwrap(),
+            b"source config sibling"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_reallive_rejects_delta_output_inside_source_before_target_write() {
+        use crate::binary_patch_smoke::{
+            build_synthetic_seen_txt, build_synthetic_translated_bundle_json,
+        };
+
+        let root = temp_dir("patch-reallive-delta-inside-source");
+        let source_root = root.join("source-game-tree");
+        let source_data = source_root.join("REALLIVEDATA");
+        fs::create_dir_all(&source_data).unwrap();
+        let source_seen = build_synthetic_seen_txt();
+        fs::write(source_data.join("Seen.txt"), &source_seen).unwrap();
+        let bundle = build_synthetic_translated_bundle_json("うえ", "reallive:scene-0001#0000");
+        let bundle_path = root.join("translated-bundle.json");
+        fs::write(&bundle_path, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+        let target_root = root.join("sparse-target");
+        let invalid_delta = source_root.join("must-not-write.kaifuu");
+
+        let error = run_patch_reallive_bundle(
+            &[
+                "patch",
+                "--engine",
+                "reallive",
+                "--source",
+                source_root.to_str().unwrap(),
+                "--target",
+                target_root.to_str().unwrap(),
+                "--bundle",
+                bundle_path.to_str().unwrap(),
+                "--scope",
+                "dialogue-only",
+                "--delta-output",
+                invalid_delta.to_str().unwrap(),
+            ]
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>(),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("kaifuu.reallive.delta_output_inside_source"),
+            "{error}"
+        );
+        assert_eq!(fs::read(source_data.join("Seen.txt")).unwrap(), source_seen);
+        assert!(!invalid_delta.exists());
+        assert!(
+            !target_root.exists(),
+            "rejected output must not create a target tree"
         );
 
         let _ = fs::remove_dir_all(root);
