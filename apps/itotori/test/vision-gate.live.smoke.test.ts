@@ -17,7 +17,12 @@
 // Copyright: the committed test carries NO raw game dialogue — the expected
 // localized text is supplied at runtime via ITOTORI_VISION_GATE_EXPECTED_TEXT
 // (a generic hint by default). Verdict artifacts are written to an
-// uncommitted /scratch directory.
+// uncommitted /scratch directory (or ITOTORI_VISION_GATE_SMOKE_OUT).
+//
+// IMPORTANT: do NOT mkdir /scratch (or any default out dir) at suite-collection
+// time. Vitest still executes the `describe.skipIf` factory while registering
+// skipped suites, so a top-level mkdir of a runner-absent path fails the whole
+// file BEFORE skipIf can skip. Create the out dir only inside live `it` bodies.
 
 import { deflateSync } from "node:zlib";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -40,6 +45,12 @@ const EXPECTED_TEXT =
   "a single line of localized English dialogue in a message box with a speaker name label";
 
 const SMOKE_OUT_DIR = process.env.ITOTORI_VISION_GATE_SMOKE_OUT ?? "/scratch/itotori-visgate-smoke";
+
+/** Create the smoke out dir only when a live test body is about to write into it. */
+function ensureSmokeOutDir(): string {
+  mkdirSync(SMOKE_OUT_DIR, { recursive: true });
+  return SMOKE_OUT_DIR;
+}
 
 /** crc32 (PNG chunk checksum). */
 function crc32(bytes: Uint8Array): number {
@@ -97,9 +108,8 @@ function solidColorPng(width: number, height: number, rgb: [number, number, numb
 }
 
 describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)", () => {
-  mkdirSync(SMOKE_OUT_DIR, { recursive: true });
-
   it("REJECTS a garbage (solid-color) frame → coherent:false", async () => {
+    const outDir = ensureSmokeOutDir();
     const dir = mkdtempSync(join(tmpdir(), "vision-gate-garbage-"));
     const framePath = join(dir, "garbage-solid-purple.png");
     // Solid purple — the same class of garbage (solid-color redaction) the
@@ -116,7 +126,7 @@ describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)",
     if (outcome.status === "skipped") throw new Error("live gate skipped unexpectedly");
 
     writeFileSync(
-      join(SMOKE_OUT_DIR, "garbage-verdict.json"),
+      join(outDir, "garbage-verdict.json"),
       `${JSON.stringify(outcome.result.artifact, null, 2)}\n`,
     );
 
@@ -130,6 +140,7 @@ describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)",
   }, 60_000);
 
   it("ACCEPTS the real proof frame → coherent:true + legible", async () => {
+    const outDir = ensureSmokeOutDir();
     const outcome = await runVisionGateCommand({
       framePath: PROOF_FRAME_PATH,
       expectedText: EXPECTED_TEXT,
@@ -140,7 +151,7 @@ describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)",
     if (outcome.status === "skipped") throw new Error("live gate skipped unexpectedly");
 
     writeFileSync(
-      join(SMOKE_OUT_DIR, "real-proof-verdict.json"),
+      join(outDir, "real-proof-verdict.json"),
       `${JSON.stringify(outcome.result.artifact, null, 2)}\n`,
     );
 
