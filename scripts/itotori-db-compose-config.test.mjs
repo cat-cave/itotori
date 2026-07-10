@@ -16,12 +16,31 @@ import {
 
 const compose = readFileSync("docker-compose.yml", "utf8");
 const justfile = readFileSync("justfile", "utf8");
-const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
-const alphaProofWorkflow = readFileSync(".github/workflows/alpha-proof.yml", "utf8");
+const tier1Workflow = readFileSync(".github/workflows/_tier1.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");
 const permissionDenialGate = readFileSync("scripts/permission-denial-db-gate.mjs", "utf8");
 const catalogReplayGate = readFileSync("scripts/catalog-replay-db-gate.mjs", "utf8");
 const styleGuideGate = readFileSync("scripts/style-guide-fixture-flow-db-gate.mjs", "utf8");
+
+/** Extract a top-level job block (`  jobId:`) from a GitHub Actions workflow YAML. */
+function extractWorkflowJob(workflow, jobId) {
+  const lines = workflow.split("\n");
+  const start = lines.findIndex((line) => line === `  ${jobId}:`);
+  assert.notEqual(start, -1, `workflow must define job ${jobId}`);
+  const body = [lines[start]];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // Next job key at the same indent under `jobs:`, or a new top-level key.
+    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(line) || /^[A-Za-z0-9_-]+:/u.test(line)) {
+      break;
+    }
+    body.push(line);
+  }
+  return `${body.join("\n")}\n`;
+}
+
+const tier1PostgresJob = extractWorkflowJob(tier1Workflow, "db");
+const tier1AlphaJob = extractWorkflowJob(tier1Workflow, "alpha");
 
 // Two roots that exercise both the same-basename-different-parent collision the
 // CARGO_TARGET_DIR scheme guards against and a plain distinct worktree.
@@ -156,9 +175,9 @@ test("local compose applies durable runtime Postgres connection tuning", () => {
 });
 
 test("the DB-backed CI workflow provisions Postgres via a health-checked GH service", () => {
-  // ALPHA-009: only DB-backed workflows are asserted here. The alpha-proof
-  // integration workflow is public-fixture-only and deterministic — it does
-  // NOT start Postgres — so it is intentionally excluded from this matrix.
+  // ALPHA-009: only DB-backed jobs are asserted here. The alpha-proof job is
+  // public-fixture-only and deterministic — it does NOT start Postgres — so it
+  // is intentionally excluded (see the job-scoped alpha-proof test below).
   //
   // The hosted PR lane provisions Postgres as a GitHub `services:` container
   // (postgres:18, health-checked) rather than starting docker-compose in-job.
@@ -166,25 +185,30 @@ test("the DB-backed CI workflow provisions Postgres via a health-checked GH serv
   // suites execute against a real database instead of racing a compose bring-up.
   // docker-compose.yml stays the LOCAL developer path (see the tuning test
   // above); the runner no longer depends on the compose interpolation impl.
-  for (const [name, workflow] of [["ci", ciWorkflow]]) {
+  //
+  // Atomic CI swap: the DB-backed surface is `_tier1.yml`'s `db` job
+  // (Tier 1 / postgres), not the retired top-level `ci.yml`.
+  for (const [name, job] of [["tier1/postgres", tier1PostgresJob]]) {
     assert.match(
-      workflow,
+      job,
       /^\s+services:\n\s+postgres:\n\s+image: postgres:18\n/mu,
       `${name} must provision Postgres 18 as a GH service container`,
     );
     assert.match(
-      workflow,
+      job,
       /--health-cmd "pg_isready/u,
       `${name} service must health-check Postgres before steps run`,
     );
+    // GH service publishes container port 5432 on the runner (not the local
+    // compose default 55433). Align the URL to what `_tier1.yml` wires.
     assert.match(
-      workflow,
-      /DATABASE_URL: postgres:\/\/itotori:itotori@127\.0\.0\.1:55433\/itotori/u,
+      job,
+      /DATABASE_URL: postgres:\/\/itotori:itotori@127\.0\.0\.1:5432\/itotori/u,
       `${name} must wire DATABASE_URL to the service`,
     );
     // The runner no longer starts/tears down the local compose stack.
     assert.doesNotMatch(
-      workflow,
+      job,
       /just db-up|just db-wait|just db-down/u,
       `${name} must not drive local docker-compose on the hosted runner`,
     );
@@ -193,11 +217,20 @@ test("the DB-backed CI workflow provisions Postgres via a health-checked GH serv
 
 test("the alpha-proof integration workflow is public-fixture-only (no Postgres)", () => {
   // ALPHA-009: the alpha proof gate must not depend on a database, live
-  // credentials, or private corpora; it runs the deterministic public-fixture
-  // vertical via `just alpha-proof`.
-  assert.doesNotMatch(alphaProofWorkflow, /just db-up|just db-wait|just db-down/u);
-  assert.doesNotMatch(alphaProofWorkflow, /DATABASE_URL/u);
-  assert.match(alphaProofWorkflow, /- run: just alpha-proof\n/u);
+  // credentials, or private corpora. After the atomic CI swap, alpha-proof is a
+  // job inside `_tier1.yml` (not a standalone workflow). The workflow file as a
+  // whole DOES contain DATABASE_URL (postgres job), so assertions are
+  // job-scoped to the alpha job only.
+  assert.doesNotMatch(
+    tier1AlphaJob,
+    /^\s+services:\n/mu,
+    "alpha-proof job must not provision GH service containers",
+  );
+  assert.doesNotMatch(tier1AlphaJob, /just db-up|just db-wait|just db-down/u);
+  assert.doesNotMatch(tier1AlphaJob, /DATABASE_URL/u);
+  // Tier recipe delegates to `alpha-proof` (`ci-tier1-alpha: alpha-proof`).
+  assert.match(tier1AlphaJob, /run: just ci-tier1-alpha\n/u);
+  assert.match(justfile, /^ci-tier1-alpha: alpha-proof$/mu);
 });
 
 test("db recipes use explicit compose env files without project-global .env leakage", () => {
