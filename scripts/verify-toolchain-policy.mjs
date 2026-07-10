@@ -153,27 +153,42 @@ if (rustChannel === undefined) {
 has("rust-toolchain.toml", /"rustfmt"/, "rustfmt component must be installed");
 has("rust-toolchain.toml", /"clippy"/, "clippy component must be installed");
 
-has(".github/workflows/ci.yml", /node-version-file:\s*\.node-version/, "CI must use .node-version");
+// Atomic CI swap: toolchain pinning lives in the shared composite action;
+// tier workflows call the real `just ci-tier*` recipes (not a retired mono-job
+// `ci.yml`). DATABASE_URL for DB-backed suites is wired on `_tier1.yml`'s `db`.
+const setupAction = ".github/actions/setup-itotori/action.yml";
+has(setupAction, /node-version-file:\s*\.node-version/, "CI must use .node-version");
+has(setupAction, /pnpm install --frozen-lockfile/, "CI must use frozen pnpm installs");
 has(
-  ".github/workflows/ci.yml",
-  /pnpm install --frozen-lockfile/,
-  "CI must use frozen pnpm installs",
-);
-has(
-  ".github/workflows/ci.yml",
+  setupAction,
   /dtolnay\/rust-toolchain@v1/,
   "CI must install the Rust toolchain via the pinned dtolnay/rust-toolchain@v1 action ref",
 );
-// The CI action's `toolchain:` input must match the exact rust-toolchain.toml
-// pin, so the runner never resolves a different compiler than the pin claims.
+// The composite action's `toolchain:` input must match the exact
+// rust-toolchain.toml pin, so the runner never resolves a different compiler
+// than the pin claims.
 if (rustChannel !== undefined && /^\d+\.\d+\.\d+$/u.test(rustChannel)) {
   has(
-    ".github/workflows/ci.yml",
-    new RegExp(`toolchain:\\s*${rustChannel.replace(/\./g, "\\.")}`),
+    setupAction,
+    new RegExp(`toolchain:\\s*"?${rustChannel.replace(/\./g, "\\.")}"?`),
     `CI dtolnay toolchain input must match the rust-toolchain.toml pin (${rustChannel})`,
   );
 }
-has(".github/workflows/ci.yml", /just ci/, "CI must call the root just ci recipe");
+has(
+  ".github/workflows/_tier0.yml",
+  /just ci-tier0-\$\{\{\s*matrix\.lane\s*\}\}/,
+  "Tier 0 must call the real just ci-tier0-* recipes",
+);
+has(
+  ".github/workflows/_tier1.yml",
+  /just ci-tier1-/,
+  "Tier 1 must call the real just ci-tier1-* recipes",
+);
+has(
+  ".github/workflows/_tier1.yml",
+  /DATABASE_URL:\s*postgres:\/\/itotori:itotori@127\.0\.0\.1:5432\/itotori/,
+  "Tier 1 db job must wire DATABASE_URL to the Postgres service",
+);
 
 hasRecipeCommand("check", "pnpm exec vp check", "must run Vite+ checks");
 hasRecipeCommand(

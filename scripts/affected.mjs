@@ -162,8 +162,12 @@ export function affectedTasks(changedPaths) {
 // per-gate qd-full-ci run can pay only for what a diff can affect:
 //
 //   * broad / shared / foundational change (workspace Cargo.toml, justfile,
-//     scripts/, .github/, root files) -> affectedTasks() collapses to the `ci`
-//     sentinel, so affectedCiLanes() returns exactly ["ci"] (the FULL gate).
+//     scripts/, .github/ — including the tier dispatcher pr-tiers.yml, reusable
+//     _tier0.yml/_tier1.yml, and setup-itotori composite — root files) ->
+//     affectedTasks() collapses to the `ci` sentinel, so affectedCiLanes()
+//     returns exactly ["ci"] (the FULL gate). A change to any CI-defining file
+//     forces the relevant lanes to re-run; the conservative mapping is the full
+//     local `ci` gate (covers every just lane the tier workflows exercise).
 //   * apps/itotori-only / TS-only change -> ci-itotori (+ check); NO rust
 //     build/test and NO mutation-differential lane.
 //   * a crates/kaifuu-* or crates/utsushi-* change -> that family's rust gate

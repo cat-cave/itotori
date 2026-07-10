@@ -58,8 +58,9 @@ Any disagreement is emitted as a structured finding and a blocking finding sets
 
 `ALPHA-009` removed the GitHub "Hello World" workflow and the literal
 `hello`-recipe loop. The required integration command is now `just alpha-proof`
-plus the artifact-linkage validator; CI runs it in
-[`.github/workflows/alpha-proof.yml`](../.github/workflows/alpha-proof.yml).
+plus the artifact-linkage validator; CI runs it as the `alpha` job in
+[`.github/workflows/_tier1.yml`](../.github/workflows/_tier1.yml)
+(`just ci-tier1-alpha` → `alpha-proof`).
 
 `just hello` is retained **only** as a compatibility alias because several
 roadmap nodes still declare it as a verification command. It delegates directly

@@ -1,0 +1,129 @@
+# Shared toolchain + cache provisioning for tiered CI.
+# Assumes the caller has already checked out the repo (actions/checkout).
+# Does not own test selection — only installs tools and restores accelerator caches.
+name: setup-itotori
+description: Install pinned toolchains and restore safe accelerator caches.
+
+inputs:
+  browser:
+    description: "When true, restore Playwright cache and install Chromium with OS deps"
+    required: false
+    default: "false"
+  native:
+    description: "When true, build release kaifuu-cli + utsushi-cli after install"
+    required: false
+    default: "false"
+  sccache:
+    description: "When true, install sccache and enable RUSTC_WRAPPER for this job"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # packageManager in package.json is pnpm@10.17.1. Pin explicitly so the
+    # action does not install a mismatched major (e.g. runner image pnpm v11)
+    # and leave a confusing PNPM_HOME layout warning + broken shims.
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        version: "10.17.1"
+        run_install: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+
+    # Explicit 1.97.0 is an intentional drift check against rust-toolchain.toml.
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: "1.97.0"
+        components: rustfmt,clippy
+
+    - name: Cache Rust build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: v2-rust-1.97.0
+        shared-key: ${{ runner.os }}-stable
+        cache-on-failure: true
+
+    # Pinned CLI tools (no snap, no unversioned cargo install).
+    # just@1.56.0, cargo-deny@0.20.2, nextest@0.9.140 researched 2026-07-10.
+    - name: Install just, cargo-deny, nextest
+      uses: taiki-e/install-action@v2
+      with:
+        tool: just@1.56.0,cargo-deny@0.20.2,nextest@0.9.140
+
+    - name: Install sccache
+      if: inputs.sccache == 'true'
+      uses: mozilla-actions/sccache-action@v0.0.10
+
+    - name: Enable sccache wrapper
+      if: inputs.sccache == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+
+    - name: Install JS deps (frozen) and verify tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        corepack enable
+        pnpm install --frozen-lockfile
+        cargo deny --version
+        cargo nextest --version
+        just --version
+        rustc --version
+        cargo --version
+
+    - name: Restore Playwright browser cache
+      if: inputs.browser == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          playwright-${{ runner.os }}-
+
+    - name: Install Playwright Chromium
+      if: inputs.browser == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        pnpm --filter @itotori/app exec playwright install --with-deps chromium
+        bin="$(pnpm --filter @itotori/app exec node -e 'import { chromium } from "@playwright/test"; console.log(chromium.executablePath())')"
+        test -x "$bin"
+        {
+          echo "PLAYWRIGHT_CHROMIUM_BIN=$bin"
+          echo "UTSUSHI_BROWSER_BIN=$bin"
+        } >> "$GITHUB_ENV"
+        echo "Playwright Chromium provisioned at $bin"
+
+    - name: Build release native CLIs
+      if: inputs.native == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo build --release -p kaifuu-cli -p utsushi-cli
+        # These CLIs have no --version/--help that exit 0: they print a usage
+        # banner and exit non-zero (same contract as scripts/native-deps.mjs
+        # versionOf). Prove each binary exists, is executable, and loads.
+        for bin in target/release/kaifuu-cli target/release/utsushi-cli; do
+          test -x "$bin"
+          set +e
+          "$bin" >/dev/null 2>&1
+          rc=$?
+          set -e
+          # 126/127 = not executable / not found after spawn failure.
+          if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+            echo "native preflight: $bin failed to exec (exit $rc)" >&2
+            exit 1
+          fi
+          echo "native preflight: $bin runnable (exit $rc)"
+        done

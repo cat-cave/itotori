@@ -1,0 +1,211 @@
+# Reusable Tier-1: portable behavior suite — TS shards, nextest partitions,
+# Postgres 18 service, Playwright Chromium, alpha-proof, mutation-differential.
+# Builds release CLIs once and fans out the small artifact. Target p95 < 10 min.
+# SHADOW: called from pr-tiers.yml; not yet a branch-protection required check.
+name: reusable tier1
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Tier 1 / native artifact
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget (empty cargo/pnpm caches + release build).
+    # Measure on shadow runs, then tighten toward p95 < 10 min / cold < 12.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+        with:
+          native: "true"
+
+      - name: Preflight native bins
+        run: |
+          set -euo pipefail
+          # kaifuu-cli / utsushi-cli print usage and exit non-zero on no-arg /
+          # --version (no clap --version). Existence + successful spawn is enough.
+          for bin in target/release/kaifuu-cli target/release/utsushi-cli; do
+            test -x "$bin"
+            set +e
+            "$bin" >/dev/null 2>&1
+            rc=$?
+            set -e
+            if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+              echo "Tier-1 native preflight: $bin failed to exec (exit $rc)" >&2
+              exit 1
+            fi
+            echo "Tier-1 native preflight: $bin runnable (exit $rc)"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ github.sha }}-linux-x64
+          path: |
+            target/release/kaifuu-cli
+            target/release/utsushi-cli
+          retention-days: 1
+          if-no-files-found: error
+
+  portable:
+    name: Tier 1 / portable (${{ matrix.shard }})
+    needs: [native]
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget; measure on shadow runs, then tighten.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - ts-public-1of2
+          - ts-public-2of2
+          - rust-1of3
+          - rust-2of3
+          - rust-3of3
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: native-${{ github.sha }}-linux-x64
+          path: .ci/bin
+
+      - name: Wire native bins into env
+        run: |
+          set -euo pipefail
+          chmod +x .ci/bin/kaifuu-cli .ci/bin/utsushi-cli
+          {
+            echo "ITOTORI_KAIFUU_BIN=$PWD/.ci/bin/kaifuu-cli"
+            echo "ITOTORI_UTSUSHI_BIN=$PWD/.ci/bin/utsushi-cli"
+          } >> "$GITHUB_ENV"
+
+      - name: Run portable shard
+        run: just ci-tier1-${{ matrix.shard }}
+
+  db:
+    name: Tier 1 / postgres
+    needs: [native]
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget (build graph + migrate + strict DB gates).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: itotori
+          POSTGRES_PASSWORD: itotori
+          POSTGRES_DB: itotori
+        options: >-
+          --health-cmd "pg_isready -U itotori -d itotori"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+        ports:
+          - "5432:5432"
+    env:
+      DATABASE_URL: postgres://itotori:itotori@127.0.0.1:5432/itotori
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: native-${{ github.sha }}-linux-x64
+          path: .ci/bin
+
+      - name: Wire native bins into env
+        run: |
+          set -euo pipefail
+          chmod +x .ci/bin/kaifuu-cli .ci/bin/utsushi-cli
+          {
+            echo "ITOTORI_KAIFUU_BIN=$PWD/.ci/bin/kaifuu-cli"
+            echo "ITOTORI_UTSUSHI_BIN=$PWD/.ci/bin/utsushi-cli"
+          } >> "$GITHUB_ENV"
+
+      - name: Preflight Postgres
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}"
+          # Service container is health-checked before steps; assert URL shape.
+          case "$DATABASE_URL" in
+            postgres://*|postgresql://*) ;;
+            *) echo "DATABASE_URL must be a postgres URL" >&2; exit 1 ;;
+          esac
+          echo "Tier-1 DB preflight ok: DATABASE_URL is set"
+
+      - name: Run Tier-1 DB suite
+        run: just ci-tier1-db
+
+  browser:
+    name: Tier 1 / chromium
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget (Playwright install --with-deps + e2e + DS visual).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+        with:
+          browser: "true"
+
+      - name: Preflight Chromium
+        run: |
+          set -euo pipefail
+          bin="${PLAYWRIGHT_CHROMIUM_BIN:-${UTSUSHI_BROWSER_BIN:-}}"
+          test -n "$bin"
+          test -x "$bin"
+          echo "Tier-1 browser preflight ok: $bin"
+
+      - name: Run Tier-1 browser suite
+        run: just ci-tier1-browser
+
+  alpha:
+    name: Tier 1 / alpha proof
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget; measure on shadow runs, then tighten.
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+
+      - name: Run alpha proof
+        run: just ci-tier1-alpha
+
+  mutation:
+    name: Tier 1 / mutation differential
+    runs-on: ubuntu-latest
+    # Provisional cold-run budget (heavy recompile even with sccache miss).
+    # Measure on shadow runs, then tighten.
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-itotori
+        with:
+          sccache: "true"
+
+      - name: Run mutation differential
+        run: just ci-tier1-mutation
+
+  required:
+    name: Tier 1 / required
+    if: ${{ always() }}
+    needs: [native, portable, db, browser, alpha, mutation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aggregate Tier-1 jobs
+        run: |
+          set -euo pipefail
+          # All six dependency groups must succeed (portable matrix is one group).
+          test '${{ join(needs.*.result, ',') }}' = 'success,success,success,success,success,success'

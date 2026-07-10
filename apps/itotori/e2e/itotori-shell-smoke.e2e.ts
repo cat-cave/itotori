@@ -26,6 +26,7 @@ import {
   bmkCockpitFixture,
   bmkCockpitHistoryFixture,
   benchmarkReportsFixture,
+  catalogOpportunitiesFixture,
   costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -144,9 +145,9 @@ test("Studio shell + Review core loop queues through detail and decide", async (
   await expect(
     page.locator('main[data-screen="reviewer-queue"][data-state="ready"]'),
   ).toBeVisible();
-  await expect(
-    page.getByRole("table", { name: "Reviewer queue items by category and severity" }),
-  ).toBeVisible();
+  // Queue list is a VirtualList (not a table) — assert the virtualized list
+  // region and that at least one detail link is present.
+  await expect(page.locator('[aria-label="Reviewer queue virtualized rows"]')).toBeVisible();
 
   const detailLink = page
     .locator('main[data-screen="reviewer-queue"] a[href^="/reviewer-queue/"]')
@@ -327,6 +328,10 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
   }
   if (path === "/api/jobs/run-table") {
     await fulfillJson(route, "jobs.runTable", jobsRunTableFixture);
+    return;
+  }
+  if (path === "/api/catalog/opportunities") {
+    await fulfillJson(route, "catalog.opportunities", catalogOpportunitiesFixture);
     return;
   }
   if (path === "/api/runtime/v0.2/status") {
@@ -577,6 +582,7 @@ function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
     updatedAt: decision.item.updatedAt,
     resolvedAt: decision.item.resolvedAt,
   }));
+  const limit = Math.max(rows.length, 1);
   return {
     schemaVersion: "reviewer.queue_dashboard.v0.1",
     localeBranchId: dashboardStatusFixture.selectedLocaleBranchId,
@@ -586,6 +592,15 @@ function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
       canReadQueue: true,
       canManageQueue: true,
       denialReasons: [],
+    },
+    pagination: {
+      total: rows.length,
+      limit,
+      offset: 0,
+      page: 1,
+      pageCount: rows.length === 0 ? 0 : 1,
+      hasMore: false,
+      nextOffset: null,
     },
     rows,
     aggregate: {
