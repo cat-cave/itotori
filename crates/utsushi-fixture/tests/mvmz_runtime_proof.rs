@@ -12,11 +12,13 @@
 //!   `--dump-dom` does. The proof over that live-DOM trace is E1. This proves
 //!   the whole launch -> trace -> proof pipeline through a real OS process
 //!   WITHOUT requiring Chromium to be installed in the CI sandbox.
-//! - **Real-browser gate:** when a launchable Chromium resolves (via
-//!   `UTSUSHI_BROWSER_BIN` or PATH), the same pipeline is driven through REAL
-//!   headless Chromium for trace AND screenshot capture, and the E1 verdict +
-//!   observation events are cross-checked against the committed real-launch
-//!   evidence artifacts. Skips honestly (never fakes E1) when no browser exists.
+//! - **Real-browser gate:** when a browser-lane Chromium is explicitly
+//!   provisioned via `UTSUSHI_BROWSER_BIN`, the same pipeline is driven through
+//!   REAL headless Chromium for trace AND screenshot capture, and the E1 verdict
+//!   with observation events is cross-checked against the committed real-launch
+//!   evidence artifacts. This runs in the browser-e2e/oracle lane; the portable
+//!   per-PR lane skips honestly (never fakes E1) — an arbitrary PATH Chrome is
+//!   not used, since it is unpinned and not reproducible against the goldens.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -190,32 +192,19 @@ fn committed_real_launch_evidence_reproduces_the_e1_proof() {
     );
 }
 
-/// Resolve a launchable real browser the same way the adapter does: an explicit
-/// `UTSUSHI_BROWSER_BIN`, else a Chromium-family binary on PATH. Returns None
-/// when none is available (the gate then skips honestly).
+/// Resolve a launchable real browser: ONLY an explicitly provisioned
+/// `UTSUSHI_BROWSER_BIN` (the pinned dev-shell / browser-lane Chromium). Returns
+/// None otherwise, so the gate skips. A generic Chromium that merely happens to
+/// be on PATH (e.g. the hosted PR runner's preinstalled google-chrome) is NOT
+/// used: it is unpinned and not the browser-lane binary, and auto-launching it
+/// in the portable per-PR `just ci` lane false-reds CI (the launch/evidence
+/// match is not reproducible against an arbitrary Chrome build). Real-browser
+/// proofs belong to the browser-e2e / oracle lane, which sets
+/// `UTSUSHI_BROWSER_BIN` via the nix dev-shell.
 fn resolve_real_browser() -> Option<PathBuf> {
-    if let Ok(configured) = std::env::var("UTSUSHI_BROWSER_BIN") {
-        let path = PathBuf::from(&configured);
-        if path.is_file() {
-            return Some(path);
-        }
-        return None;
-    }
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        for name in [
-            "chromium",
-            "chromium-browser",
-            "google-chrome",
-            "google-chrome-stable",
-        ] {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
+    let configured = std::env::var_os("UTSUSHI_BROWSER_BIN")?;
+    let path = PathBuf::from(&configured);
+    path.is_file().then_some(path)
 }
 
 /// REAL-BROWSER GATE: drive the whole pipeline through genuine headless
@@ -226,9 +215,9 @@ fn resolve_real_browser() -> Option<PathBuf> {
 fn real_chromium_launch_proves_e1_and_matches_committed_evidence() {
     let Some(browser) = resolve_real_browser() else {
         eprintln!(
-            "SKIP real_chromium_launch_proves_e1: no launchable Chromium resolved \
-             (set UTSUSHI_BROWSER_BIN or install chromium on PATH). The E1 proof runs \
-             under the real-browser gate in CI/oracle."
+            "SKIP real_chromium_launch_proves_e1: no browser-lane Chromium provisioned \
+             (set UTSUSHI_BROWSER_BIN). This browser proof runs in the browser-e2e/oracle lane; \
+             the portable per-PR `just ci` lane skips it — an arbitrary PATH Chrome is not used."
         );
         return;
     };
