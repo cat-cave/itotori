@@ -45,8 +45,9 @@ they are already inside `vp run ts:test` (and the per-family `ci-itotori` /
 and deterministic: `fetch` against an in-process server and a jsdom DOM need no
 real browser.
 
-**Not here:** the ~30-45min real-bytes suites and the real-browser Playwright
-e2e (below). The per-gate lane never launches a browser, so it stays fast.
+**Not here:** the ~30-45min real-bytes suites, DS visual regression, and the
+real-browser Playwright e2e (below). The per-gate lane never launches a browser,
+so it stays fast.
 
 ## Lane 2 — periodic/strict (browser + real bytes)
 
@@ -62,11 +63,12 @@ prerequisite; a strict proof lane may not go green-on-skip.
 
 **What runs here:**
 
-- **`browser-e2e`** — the runtime-web review Playwright e2e
-  (`apps/runtime-web-review/e2e/*.e2e.ts`, 5 tests) in a REAL Chromium. Drives
-  the shipping review UI (scene embed, branch-explorer filter/pagination,
-  input-bridge gestures) over the app's own committed fixtures — no game bytes,
-  no live game, no live server.
+- **`browser-e2e`** — the DS Storybook visual-regression suite and runtime-web
+  review Playwright e2e (`apps/runtime-web-review/e2e/*.e2e.ts`, 5 tests) in a
+  REAL Chromium. The visual suite compares every DS story with its committed
+  baseline; the runtime suite drives the shipping review UI (scene embed,
+  branch-explorer filter/pagination, input-bridge gestures) over the app's own
+  committed fixtures — no game bytes, no live game, no live server.
 - **`real-bytes-oracle`** — the strict-proof ground-truth anchor: re-runs the
   full real-bytes suite (`ci-real-bytes`) against the staged corpora + the
   synthetic-vs-real drift check. See `docs/real-bytes-periodic-oracle.md`.

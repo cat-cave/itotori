@@ -20,7 +20,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test": "vitest run && pnpm run visual:test",
+    "test": "vitest run",
     "test:dom": "vitest run",
     "build": "tsc -p tsconfig.json",
     "gallery:build": "vite build",

@@ -56,8 +56,7 @@ test/                   behaviour tests + committed Storybook visual baselines
 
 - `pnpm --filter @itotori/ds build` — tsc emits the library (JS + `.d.ts`).
 - `pnpm --filter @itotori/ds test` — Vitest component tests (jsdom), including
-  Storybook play-function runners via `composeStories`, then Storybook visual
-  regression against committed baselines.
+  Storybook play-function runners via `composeStories`.
 - `pnpm --filter @itotori/ds test:dom` — Vitest/jsdom only for tight component
   loops.
 - `pnpm --filter @itotori/ds typecheck` — `tsc --noEmit` over library + gallery +
@@ -86,10 +85,12 @@ interaction tests for interactive surfaces. Play bodies run:
 
 ## Visual regression
 
-Visual regression is the dev-only screenshot diff surface for
-`fe-ds-visual-regression`. It renders Storybook's generated `iframe.html` for
-every entry in the real `index.json`, so coverage follows the same CSF catalog
-used for design review.
+Visual regression is the developer-facing screenshot-diff surface and a
+strict/periodic CI proof for `fe-ds-visual-regression`. It renders Storybook's
+generated `iframe.html` for every entry in the real `index.json`, so coverage
+follows the same CSF catalog used for design review. Run it locally with
+`visual:test`; CI runs it in the strict browser lane (`just browser-e2e`, as
+part of `just periodic-strict`), outside the fast per-gate lane.
 
 The runner is deterministic by contract:
 

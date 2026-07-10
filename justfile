@@ -311,14 +311,15 @@ real-bytes-oracle:
 real-bytes-oracle-drift:
     node scripts/real-bytes-oracle.mjs --drift-only
 
-# fe-contract-ci-lanes: STRICT/PERIODIC browser e2e lane. Runs the runtime-web
-# review Playwright e2e (apps/runtime-web-review/e2e/*.e2e.ts, 5 tests) in a REAL
-# Chromium. This is a BROWSER lane, deliberately OUTSIDE the fast per-gate lane:
-# `just ci` / `qd-full-ci` stay jsdom-only and browser-free so a per-gate gate
-# stays fast (~86s) and deterministic. It runs in the periodic/strict lane
-# alongside the real-bytes oracle (see `just periodic-strict`). Being a NAMED
-# recipe (not an orphan `pnpm ... e2e` script) is the anti-drift guarantee: the
-# e2e is reachable from the command surface and cannot silently rot.
+# fe-contract-ci-lanes: STRICT/PERIODIC browser lane. Runs the DS Storybook
+# visual-regression suite and the runtime-web review Playwright e2e
+# (apps/runtime-web-review/e2e/*.e2e.ts, 5 tests) in a REAL Chromium. This is a
+# BROWSER lane, deliberately OUTSIDE the fast per-gate lane: `just ci` /
+# `qd-full-ci` stay jsdom-only and browser-free so a per-gate gate stays fast
+# (~86s) and deterministic. It runs in the periodic/strict lane alongside the
+# real-bytes oracle (see `just periodic-strict`). Being a NAMED recipe (not an
+# orphan `pnpm ... e2e` script) is the anti-drift guarantee: the browser proofs
+# are reachable from the command surface and cannot silently rot.
 #
 # BROWSER BINARY (nix-Chromium): Playwright's own downloaded Chromium is
 # dynamically linked against libraries absent on NixOS and cannot run here. The
@@ -348,6 +349,7 @@ browser-e2e:
       exit 1
     fi
     echo "browser-e2e: using nix-Chromium = $bin"
+    pnpm --filter @itotori/ds visual:test
     pnpm --filter @itotori/app e2e
     pnpm --filter @itotori/runtime-web-review e2e
 
