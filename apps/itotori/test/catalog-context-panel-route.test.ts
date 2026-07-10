@@ -266,7 +266,7 @@ function releaseFixture(
     sourceReleaseId: id,
     releaseTitle,
     releaseKind: catalogReleaseKindValues.original,
-    editionName,
+    ...(editionName !== null ? { editionName } : {}),
     packageKind: "loose_files",
     platform: "windows",
     language: "ja-JP",
@@ -390,5 +390,5 @@ function dashboardStatusFixture(): ProjectDashboardStatus {
 }
 
 function hash(input: string): string {
-  return createHash("sha256").update(input).digest("hex");
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
 }
