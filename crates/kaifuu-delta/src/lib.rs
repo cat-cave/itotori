@@ -375,6 +375,110 @@ pub fn create_delta(
     Ok(serde_json::to_value(package)?)
 }
 
+/// A byte replacement for an existing regular source file. Replacement-only
+/// delta production never adds or deletes paths: every omitted source file is
+/// inherited by `apply_delta` unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replacement {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Create an apply-compatible v0.3 delta directly from selected replacement
+/// bytes, without materialising a complete patched tree.
+pub fn create_replacement_delta(
+    source_root: &Path,
+    replacements: &[Replacement],
+    source_provenance: SourceProvenance,
+) -> KaifuuResult<Value> {
+    let source = snapshot_directory(source_root)?;
+    let mut replacement_paths = BTreeSet::new();
+    let mut target_files = source.files.clone();
+    let mut changed_entries = Vec::new();
+
+    for replacement in replacements {
+        validate_relative_package_path(&replacement.path)?;
+        if !replacement_paths.insert(replacement.path.as_str()) {
+            return Err(format!(
+                "replacement paths must be duplicate-free: {}",
+                replacement.path
+            )
+            .into());
+        }
+        let source_file = source.files.get(&replacement.path).ok_or_else(|| {
+            format!(
+                "replacement path must name an existing source file: {}",
+                replacement.path
+            )
+        })?;
+        let source_path = safe_join_relative(source_root, &replacement.path)?;
+        let metadata = fs::symlink_metadata(&source_path)?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(format!(
+                "replacement path must be a regular source file: {}",
+                replacement.path
+            )
+            .into());
+        }
+        let current = fs::read(&source_path)?;
+        if sha256_hex(&current) != source_file.hash
+            || current.len() as u64 != source_file.size_bytes
+        {
+            return Err(format!(
+                "source provenance drifted while creating replacement delta: {}",
+                replacement.path
+            )
+            .into());
+        }
+        let target = FileSnapshot {
+            path: replacement.path.clone(),
+            hash: sha256_hex(&replacement.bytes),
+            size_bytes: replacement.bytes.len() as u64,
+        };
+        target_files.insert(replacement.path.clone(), target.clone());
+        let (content_encoding, content) = encode_content(&replacement.bytes);
+        changed_entries.push(ChangedEntry {
+            path: replacement.path.clone(),
+            operation: DeltaOperation::Replace,
+            source_hash: Some(source_file.hash.clone()),
+            source_size_bytes: Some(source_file.size_bytes),
+            target_hash: Some(target.hash),
+            target_size_bytes: Some(target.size_bytes),
+            content_encoding: Some(content_encoding),
+            content: Some(content),
+        });
+    }
+
+    let target_byte_count = target_files.values().map(|file| file.size_bytes).sum();
+    let package = DeltaPackage {
+        schema_version: DELTA_SCHEMA_VERSION.to_string(),
+        delta_package_id: deterministic_id("delta", 2),
+        format: DELTA_FORMAT.to_string(),
+        metadata: DeltaMetadata {
+            generator: "kaifuu-delta/0.3".to_string(),
+            hash_algorithm: "sha256".to_string(),
+            path_encoding: "relative-utf8-posix".to_string(),
+            content_encodings: vec!["utf8".to_string(), "hex".to_string()],
+            ignored_artifacts: vec![],
+        },
+        source_provenance,
+        source_compatibility: SourceCompatibility {
+            root_hash: source.root_hash,
+            file_count: source.files.len() as u64,
+            byte_count: source.byte_count,
+            files: file_records(&source.files),
+        },
+        target: TargetManifest {
+            root_hash: root_hash(target_files.values()),
+            file_count: target_files.len() as u64,
+            byte_count: target_byte_count,
+            files: file_records(&target_files),
+        },
+        changed_entries,
+    };
+    Ok(serde_json::to_value(package)?)
+}
+
 pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> KaifuuResult<Value> {
     let package: DeltaPackage = read_json(delta_path)?;
     validate_package_shape(&package)?;
@@ -1981,5 +2085,127 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
             .count();
         assert_eq!(staging_count, 0);
+    }
+
+    #[test]
+    fn replacement_delta_embeds_only_replaced_bytes_and_inherits_siblings() {
+        let root = temp_dir("replacement-only");
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        write_file(&source, "data/target.bin", b"before");
+        write_file(&source, "data/large-sibling.bin", &vec![7; 32 * 1024]);
+        write_file(&source, "config/settings.bin", b"keep");
+        let delta = create_replacement_delta(
+            &source,
+            &[Replacement {
+                path: "data/target.bin".to_string(),
+                bytes: b"after".to_vec(),
+            }],
+            SourceProvenance::complete(),
+        )
+        .unwrap();
+        assert_eq!(delta["changedEntries"].as_array().unwrap().len(), 1);
+        assert_eq!(delta["changedEntries"][0]["operation"], "replace");
+        assert!(
+            delta["changedEntries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|entry| entry["operation"] != "delete")
+        );
+        let output = root.join("output");
+        let delta_path = root.join("patch.kaifuu");
+        write_json(&delta_path, &delta).unwrap();
+        apply_delta(&source, &delta_path, &output).unwrap();
+        assert_eq!(fs::read(output.join("data/target.bin")).unwrap(), b"after");
+        assert_eq!(
+            fs::read(output.join("data/large-sibling.bin")).unwrap(),
+            vec![7; 32 * 1024]
+        );
+        assert_eq!(
+            fs::read(output.join("config/settings.bin")).unwrap(),
+            b"keep"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replacement_delta_rejects_unknown_duplicate_and_unsafe_paths() {
+        let root = temp_dir("replacement-reject");
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        write_file(&source, "present.bin", b"present");
+        for replacements in [
+            vec![Replacement {
+                path: "missing.bin".to_string(),
+                bytes: vec![1],
+            }],
+            vec![
+                Replacement {
+                    path: "present.bin".to_string(),
+                    bytes: vec![1],
+                },
+                Replacement {
+                    path: "present.bin".to_string(),
+                    bytes: vec![2],
+                },
+            ],
+            vec![Replacement {
+                path: "../escape.bin".to_string(),
+                bytes: vec![1],
+            }],
+        ] {
+            assert!(
+                create_replacement_delta(&source, &replacements, SourceProvenance::complete())
+                    .is_err()
+            );
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replacement_delta_apply_refuses_source_provenance_drift() {
+        let root = temp_dir("replacement-drift");
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        write_file(&source, "present.bin", b"before");
+        let delta = create_replacement_delta(
+            &source,
+            &[Replacement {
+                path: "present.bin".to_string(),
+                bytes: b"after".to_vec(),
+            }],
+            SourceProvenance::complete(),
+        )
+        .unwrap();
+        write_file(&source, "present.bin", b"drifted");
+        let delta_path = root.join("patch.kaifuu");
+        write_json(&delta_path, &delta).unwrap();
+        assert!(apply_delta(&source, &delta_path, &root.join("output")).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacement_delta_rejects_symlinked_source_tree() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("replacement-symlink");
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        write_file(&source, "regular.bin", b"regular");
+        symlink(source.join("regular.bin"), source.join("linked.bin")).unwrap();
+        assert!(
+            create_replacement_delta(
+                &source,
+                &[Replacement {
+                    path: "regular.bin".to_string(),
+                    bytes: b"after".to_vec()
+                }],
+                SourceProvenance::complete(),
+            )
+            .is_err()
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }
