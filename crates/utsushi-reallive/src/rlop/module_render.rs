@@ -647,6 +647,122 @@ impl RLOperation for ChildCreateOp {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ObjButtonStateRoute {
+    DirectTop,
+    DirectChild,
+    TopRange,
+    ChildRange,
+}
+
+#[derive(Debug)]
+struct ObjButtonStateOp {
+    runtime: Arc<GraphicsRuntime>,
+    route: ObjButtonStateRoute,
+}
+
+impl ObjButtonStateOp {
+    fn new(runtime: Arc<GraphicsRuntime>, route: ObjButtonStateRoute) -> Self {
+        Self { runtime, route }
+    }
+}
+
+impl RLOperation for ObjButtonStateOp {
+    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        match self.route {
+            ObjButtonStateRoute::DirectTop => {
+                let Some(slot) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 1) else {
+                    return DispatchOutcome::Advance;
+                };
+                self.runtime.with_stack_mut(|stack| {
+                    if let Some(object) = stack.target_mut(GraphicsObjectTarget::TopLevel {
+                        layer: GraphicsLayer::ForegroundObject,
+                        slot,
+                    }) {
+                        object.button_state = state;
+                    }
+                });
+            }
+            ObjButtonStateRoute::DirectChild => {
+                let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(child) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 2) else {
+                    return DispatchOutcome::Advance;
+                };
+                self.runtime.with_stack_mut(|stack| {
+                    if let Some(object) = stack.target_mut(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent,
+                        child,
+                    }) {
+                        object.button_state = state;
+                    }
+                });
+            }
+            ObjButtonStateRoute::TopRange => {
+                let Some(lower) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(upper) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 2) else {
+                    return DispatchOutcome::Advance;
+                };
+                if lower > upper {
+                    return DispatchOutcome::Advance;
+                }
+                self.runtime.with_stack_mut(|stack| {
+                    for slot in lower..=upper {
+                        if let Some(object) = stack.target_mut(GraphicsObjectTarget::TopLevel {
+                            layer: GraphicsLayer::ForegroundObject,
+                            slot,
+                        }) {
+                            object.button_state = state;
+                        }
+                    }
+                });
+            }
+            ObjButtonStateRoute::ChildRange => {
+                let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(lower) = arg_int(args, 1).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(upper) = arg_int(args, 2).and_then(slot_ok) else {
+                    return DispatchOutcome::Advance;
+                };
+                let Some(state) = arg_int(args, 3) else {
+                    return DispatchOutcome::Advance;
+                };
+                if lower > upper {
+                    return DispatchOutcome::Advance;
+                }
+                self.runtime.with_stack_mut(|stack| {
+                    for child in lower..=upper {
+                        if let Some(object) = stack.target_mut(GraphicsObjectTarget::Child {
+                            plane: GraphicsPlane::Foreground,
+                            parent,
+                            child,
+                        }) {
+                            object.button_state = state;
+                        }
+                    }
+                });
+            }
+        }
+        DispatchOutcome::Advance
+    }
+}
+
 #[derive(Debug)]
 pub struct ParentCreateOp {
     runtime: Arc<GraphicsRuntime>,
@@ -1232,6 +1348,22 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         }
     }
 
+    // objBtnState (1066) uses distinct direct/range address shapes.
+    for (module_type, module_id, route) in [
+        (0, OBJ_FG_SETTER_ID, ObjButtonStateRoute::DirectTop),
+        (2, OBJ_FG_SETTER_ID, ObjButtonStateRoute::DirectChild),
+        (1, OBJ_FG_RANGE_ID, ObjButtonStateRoute::TopRange),
+        (2, OBJ_FG_RANGE_ID, ObjButtonStateRoute::ChildRange),
+    ] {
+        count += register_on_types(
+            registry,
+            &[module_type],
+            module_id,
+            1066,
+            Arc::new(ObjButtonStateOp::new(Arc::clone(&runtime), route)),
+        );
+    }
+
     // ---- object management (60 / 61 fg / 62 bg) ------------------------
     for (mid, plane) in [
         (OBJ_MGMT_ID, None),
@@ -1729,6 +1861,110 @@ mod tests {
         if let Kind::Image { image_ref } = &o.kind {
             assert_eq!(image_ref.region_index, Some(2));
         }
+    }
+
+    #[test]
+    fn objbtn_state_routes_exact_direct_and_inclusive_range_shapes() {
+        let runtime = rt();
+        for slot in 0..5 {
+            ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+                .dispatch(&mut vm(), &[int(slot), s(b"TOP")]);
+        }
+        ObjCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Background)
+            .dispatch(&mut vm(), &[int(0), s(b"BG")]);
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(3)]);
+        for child in 0..3 {
+            ChildCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+                .dispatch(&mut vm(), &[int(4), int(child), s(b"CHILD")]);
+        }
+        let mut registry = RlopRegistry::new();
+        register_render_rlops(&mut registry, Arc::clone(&runtime));
+        let dispatch = |module_type, module_id, args: &[ExprValue]| {
+            registry
+                .get(RlopKey::new(module_type, module_id, 1066))
+                .unwrap()
+                .dispatch(&mut vm(), args);
+        };
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(0), int(10)]);
+        dispatch(2, OBJ_FG_SETTER_ID, &[int(4), int(0), int(11)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(1), int(3), int(20)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(0), int(1), int(30)]);
+
+        let snapshot = runtime.state_snapshot();
+        for (slot, state) in [(0, 10), (1, 20), (2, 20), (3, 20), (4, 0)] {
+            let object = snapshot.stack.get(GraphicsPlane::Foreground, slot).unwrap();
+            assert_eq!(object.button_state, state);
+            assert!(object.button_options.is_none());
+        }
+        for (child, state) in [(0, 30), (1, 30), (2, 0)] {
+            assert_eq!(
+                snapshot
+                    .stack
+                    .target(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent: 4,
+                        child,
+                    })
+                    .unwrap()
+                    .button_state,
+                state
+            );
+        }
+        assert_eq!(
+            snapshot
+                .stack
+                .get_layer(GraphicsLayer::BackgroundObject, 0)
+                .unwrap()
+                .button_state,
+            0
+        );
+        assert_eq!(
+            snapshot
+                .stack
+                .get(GraphicsPlane::Foreground, 1)
+                .unwrap()
+                .clone()
+                .button_state,
+            20
+        );
+        assert!(runtime.foreground_button_candidates(20).is_empty());
+
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(0)]);
+        dispatch(0, OBJ_FG_SETTER_ID, &[int(256), int(99)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(3), int(1), int(99)]);
+        dispatch(1, OBJ_FG_RANGE_ID, &[int(1), int(256), int(99)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(1), int(0), int(99)]);
+        dispatch(2, OBJ_FG_RANGE_ID, &[int(4), int(0), int(256), int(99)]);
+        let unchanged = runtime.state_snapshot();
+        assert_eq!(
+            unchanged
+                .stack
+                .get(GraphicsPlane::Foreground, 0)
+                .unwrap()
+                .button_state,
+            10
+        );
+        assert_eq!(
+            unchanged
+                .stack
+                .get(GraphicsPlane::Foreground, 1)
+                .unwrap()
+                .button_state,
+            20
+        );
+        assert_eq!(
+            unchanged
+                .stack
+                .target(GraphicsObjectTarget::Child {
+                    plane: GraphicsPlane::Foreground,
+                    parent: 4,
+                    child: 0,
+                })
+                .unwrap()
+                .button_state,
+            30
+        );
     }
 
     #[test]

@@ -458,6 +458,8 @@ pub struct GraphicsObject {
     pub visible: bool,
     /// Exact `objButtonOpts(buf, action, se, group, button_number)` binding.
     pub button_options: Option<ButtonOptions>,
+    /// Exact `objBtnState` value; does not create a button binding.
+    pub button_state: i32,
     /// Object-data geometry; intentionally independent of render scale/state.
     pub geometry: ObjectGeometryState,
 }
@@ -521,6 +523,7 @@ impl GraphicsObject {
             image_provenance: ImageProvenance::Placeholder,
             visible: true,
             button_options: None,
+            button_state: 0,
             geometry: ObjectGeometryState::default(),
         }
     }
@@ -540,6 +543,7 @@ impl GraphicsObject {
             image_provenance: ImageProvenance::Placeholder,
             visible: true,
             button_options: None,
+            button_state: 0,
             geometry: ObjectGeometryState::default(),
         }
     }
