@@ -108,10 +108,7 @@ test("the alpha proof job is named for the vertical, not Hello World", () => {
   assert.match(justfile, /^ci-tier1-alpha: alpha-proof$/mu);
   // Public-fixture-only and deterministic: no database, no live credentials.
   // Job-scoped — the sibling `db` job in the same file wires DATABASE_URL.
-  assert.doesNotMatch(
-    tier1AlphaJob,
-    /just db-up|just db-wait|just db-down|DATABASE_URL/u,
-  );
+  assert.doesNotMatch(tier1AlphaJob, /just db-up|just db-wait|just db-down|DATABASE_URL/u);
   assert.doesNotMatch(
     tier1AlphaJob,
     /^\s+services:\n/mu,
