@@ -423,6 +423,14 @@ pub enum GraphicsObjectKind {
     Wipe { colour: WipeColour },
 }
 
+/// Creation provenance used to gate future asset-backed metadata work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageProvenance {
+    FileBacked,
+    Placeholder,
+}
+
 /// One graphics object slot. The state is intentionally `pub` so audit
 /// tooling can introspect a slot without going through accessors. A
 /// slot is either `Some(GraphicsObject { ... })` (allocated) or
@@ -442,6 +450,8 @@ pub struct GraphicsObject {
     pub layer_order: i32,
     /// Discriminator + payload (`Image` or `Wipe`).
     pub kind: GraphicsObjectKind,
+    /// Whether this object was created by a direct file form.
+    pub image_provenance: ImageProvenance,
     /// Visibility flag (`objShow` / `objHide` in UTSUSHI-215). The
     /// render pass skips invisible objects without dereferencing their
     /// image refs.
@@ -508,6 +518,7 @@ impl GraphicsObject {
                     region_index: None,
                 },
             },
+            image_provenance: ImageProvenance::Placeholder,
             visible: true,
             button_options: None,
             geometry: ObjectGeometryState::default(),
@@ -526,6 +537,7 @@ impl GraphicsObject {
             colour_tone: GraphicsColourTone::NEUTRAL,
             layer_order: 0,
             kind: GraphicsObjectKind::Wipe { colour },
+            image_provenance: ImageProvenance::Placeholder,
             visible: true,
             button_options: None,
             geometry: ObjectGeometryState::default(),

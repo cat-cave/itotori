@@ -74,7 +74,7 @@ use super::module_obj::{FadeLongOp, GraphicsRuntime, GraphicsRuntimeWarning};
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::graphics_objects::{
     GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject, GraphicsObjectKind,
-    GraphicsObjectTarget, GraphicsPlane, GraphicsScale, WipeColour,
+    GraphicsObjectTarget, GraphicsPlane, GraphicsScale, ImageProvenance, WipeColour,
 };
 use crate::vm::Vm;
 
@@ -538,20 +538,38 @@ impl RLOperation for GrpRenderOp {
 pub struct ObjCreateOp {
     runtime: Arc<GraphicsRuntime>,
     plane: GraphicsPlane,
+    provenance: ImageProvenance,
 }
 
 impl ObjCreateOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
-        Self { runtime, plane }
+        Self::with_provenance(runtime, plane, ImageProvenance::FileBacked)
+    }
+
+    fn with_provenance(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        provenance: ImageProvenance,
+    ) -> Self {
+        Self {
+            runtime,
+            plane,
+            provenance,
+        }
     }
 }
 
-fn created_object(plane: GraphicsPlane, args: &[ExprValue]) -> Option<(usize, GraphicsObject)> {
+fn created_object(
+    plane: GraphicsPlane,
+    args: &[ExprValue],
+    provenance: ImageProvenance,
+) -> Option<(usize, GraphicsObject)> {
     let buf = arg_int(args, 0).and_then(slot_ok)?;
     let name = arg_bytes(args, 1)
         .and_then(decode_shift_jis)
         .filter(|name| !name.is_empty() && name != "???");
     let mut object = GraphicsObject::image(name.unwrap_or_default());
+    object.image_provenance = provenance;
     object.layer_order = match plane {
         GraphicsPlane::Foreground => OBJ_FG_LAYER_BASE + buf as i32,
         GraphicsPlane::Background => OBJ_BG_LAYER_BASE + buf as i32,
@@ -573,7 +591,7 @@ fn created_object(plane: GraphicsPlane, args: &[ExprValue]) -> Option<(usize, Gr
 impl RLOperation for ObjCreateOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         // objGeneric_*: (buf, filename[, visible, x, y, pattern, …]).
-        let Some((buf, object)) = created_object(self.plane, args) else {
+        let Some((buf, object)) = created_object(self.plane, args, self.provenance) else {
             self.runtime
                 .push_warning(GraphicsRuntimeWarning::MissingArg {
                     opcode_tag: "obj.objOfFile",
@@ -593,11 +611,24 @@ impl RLOperation for ObjCreateOp {
 pub struct ChildCreateOp {
     runtime: Arc<GraphicsRuntime>,
     plane: GraphicsPlane,
+    provenance: ImageProvenance,
 }
 
 impl ChildCreateOp {
     pub fn new(runtime: Arc<GraphicsRuntime>, plane: GraphicsPlane) -> Self {
-        Self { runtime, plane }
+        Self::with_provenance(runtime, plane, ImageProvenance::FileBacked)
+    }
+
+    fn with_provenance(
+        runtime: Arc<GraphicsRuntime>,
+        plane: GraphicsPlane,
+        provenance: ImageProvenance,
+    ) -> Self {
+        Self {
+            runtime,
+            plane,
+            provenance,
+        }
     }
 }
 
@@ -606,7 +637,7 @@ impl RLOperation for ChildCreateOp {
         let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
             return DispatchOutcome::Advance;
         };
-        let Some((child, object)) = created_object(self.plane, &args[1..]) else {
+        let Some((child, object)) = created_object(self.plane, &args[1..], self.provenance) else {
             return DispatchOutcome::Advance;
         };
         self.runtime.with_stack_mut(|stack| {
@@ -1084,16 +1115,36 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         (OBJ_FG_CREATION_ID, GraphicsPlane::Foreground),
         (OBJ_BG_CREATION_ID, GraphicsPlane::Background),
     ] {
-        let create =
-            || -> Arc<dyn RLOperation> { Arc::new(ObjCreateOp::new(Arc::clone(&runtime), plane)) };
-        let child_create = || -> Arc<dyn RLOperation> {
-            Arc::new(ChildCreateOp::new(Arc::clone(&runtime), plane))
+        let create = |provenance| -> Arc<dyn RLOperation> {
+            Arc::new(ObjCreateOp::with_provenance(
+                Arc::clone(&runtime),
+                plane,
+                provenance,
+            ))
+        };
+        let child_create = |provenance| -> Arc<dyn RLOperation> {
+            Arc::new(ChildCreateOp::with_provenance(
+                Arc::clone(&runtime),
+                plane,
+                provenance,
+            ))
         };
         for op in [1000u16, 1001, 1003, 1005, 1100, 1101, 1200, 1300, 1400] {
-            count += register_on_types(registry, &[0, 1], mid, op, create());
-            count += register_on_types(registry, &[2], mid, op, child_create());
+            let provenance = if matches!(op, 1000 | 1001) {
+                ImageProvenance::FileBacked
+            } else {
+                ImageProvenance::Placeholder
+            };
+            count += register_on_types(registry, &[0, 1], mid, op, create(provenance));
+            count += register_on_types(registry, &[2], mid, op, child_create(provenance));
         }
-        count += register_on_types(registry, &[0], mid, 1500, create());
+        count += register_on_types(
+            registry,
+            &[0],
+            mid,
+            1500,
+            create(ImageProvenance::Placeholder),
+        );
         count += register_on_types(
             registry,
             &[1],
@@ -1101,7 +1152,13 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             1500,
             Arc::new(ParentCreateOp::new(Arc::clone(&runtime), plane)),
         );
-        count += register_on_types(registry, &[2], mid, 1500, child_create());
+        count += register_on_types(
+            registry,
+            &[2],
+            mid,
+            1500,
+            child_create(ImageProvenance::Placeholder),
+        );
     }
 
     // ---- object setters (81 fg / 82 bg / 90,91 range) ------------------
@@ -1362,6 +1419,81 @@ mod tests {
         assert!(o.visible);
         assert_eq!((o.position.x, o.position.y), (10, 20));
         assert_eq!(o.layer_order, OBJ_FG_LAYER_BASE + 5);
+    }
+
+    #[test]
+    fn only_direct_file_creation_forms_are_file_backed() {
+        let runtime = rt();
+        let mut registry = RlopRegistry::new();
+        register_render_rlops(&mut registry, Arc::clone(&runtime));
+        let dispatch = |module_type, opcode, args: &[ExprValue]| {
+            registry
+                .get(RlopKey::new(module_type, OBJ_FG_CREATION_ID, opcode))
+                .unwrap()
+                .dispatch(&mut vm(), args);
+        };
+        for (module_type, opcode, slot) in [(0, 1000, 0), (1, 1001, 1)] {
+            dispatch(module_type, opcode, &[int(slot), s(b"SAME")]);
+            let snapshot = runtime.state_snapshot();
+            let object = snapshot
+                .stack
+                .get(GraphicsPlane::Foreground, slot as usize)
+                .unwrap();
+            assert_eq!(object.image_provenance, ImageProvenance::FileBacked);
+            assert_eq!(object.clone().image_provenance, ImageProvenance::FileBacked);
+            assert!(
+                matches!(&object.kind, Kind::Image { image_ref } if image_ref.asset_key == "SAME")
+            );
+        }
+        ParentCreateOp::new(Arc::clone(&runtime), GraphicsPlane::Foreground)
+            .dispatch(&mut vm(), &[int(4), int(2)]);
+        for (opcode, child) in [(1000, 0), (1001, 1)] {
+            dispatch(2, opcode, &[int(4), int(child), s(b"SAME")]);
+            assert_eq!(
+                runtime
+                    .state_snapshot()
+                    .stack
+                    .target(GraphicsObjectTarget::Child {
+                        plane: GraphicsPlane::Foreground,
+                        parent: 4,
+                        child: child as usize,
+                    })
+                    .unwrap()
+                    .image_provenance,
+                ImageProvenance::FileBacked
+            );
+        }
+        for (index, opcode) in [1003, 1005, 1100, 1101, 1200, 1300, 1400, 1500]
+            .into_iter()
+            .enumerate()
+        {
+            let slot = index + 10;
+            dispatch(0, opcode, &[int(slot as i32), s(b"SAME")]);
+            assert_eq!(
+                runtime
+                    .state_snapshot()
+                    .stack
+                    .get(GraphicsPlane::Foreground, slot)
+                    .unwrap()
+                    .image_provenance,
+                ImageProvenance::Placeholder
+            );
+        }
+        dispatch(2, 1003, &[int(4), int(0), s(b"SAME")]);
+        let snapshot = runtime.state_snapshot();
+        let placeholder = snapshot
+            .stack
+            .target(GraphicsObjectTarget::Child {
+                plane: GraphicsPlane::Foreground,
+                parent: 4,
+                child: 0,
+            })
+            .unwrap();
+        assert_eq!(placeholder.image_provenance, ImageProvenance::Placeholder);
+        assert_eq!(
+            placeholder.clone().image_provenance,
+            ImageProvenance::Placeholder
+        );
     }
 
     #[test]
