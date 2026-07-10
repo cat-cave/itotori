@@ -454,7 +454,7 @@ pub fn register_catalog_rlops(registry: &mut RlopRegistry) -> usize {
         for module_type in LATTICE_TYPES {
             let key = RlopKey::new(module_type, module_id, opcode);
             if registry.get(key).is_none() {
-                registry.register(
+                registry.register_catalog(
                     key,
                     Arc::new(CatalogOp {
                         family,
@@ -476,12 +476,20 @@ mod tests {
     #[test]
     fn catalog_op_advances() {
         let mut vm = Vm::new(1, 0);
+        let before_scene = vm.scene();
+        let before_pc = vm.pc();
+        let before_banks = vm.banks().clone();
+        let before_stack = vm.stack().to_vec();
         let op = CatalogOp {
             family: "grp",
             module_id: 33,
             opcode: 73,
         };
         assert_eq!(op.dispatch(&mut vm, &[]), DispatchOutcome::Advance);
+        assert_eq!(vm.scene(), before_scene);
+        assert_eq!(vm.pc(), before_pc);
+        assert_eq!(vm.banks(), &before_banks);
+        assert_eq!(vm.stack(), before_stack.as_slice());
         assert!(vm.take_warnings().is_empty());
     }
 

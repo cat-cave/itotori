@@ -200,6 +200,7 @@ export async function runLocalizeGameCommand(
   const structureJsonPath = join(args.runDir, "structure.json");
   const effectiveConfigPath = join(args.runDir, "localize-game.config.json");
   const replayLogPath = join(args.runDir, "replay-log.json");
+  const dispatchReportPath = join(args.runDir, "dispatch-report.json");
   const renderArtifactsDir = join(args.runDir, "render-artifacts");
   const renderEvidencePath = join(args.runDir, "render-evidence.json");
 
@@ -314,6 +315,9 @@ export async function runLocalizeGameCommand(
       args.validateScene,
       "--print-replay-log",
       replayLogPath,
+      "--dispatch-report",
+      dispatchReportPath,
+      "--require-semantic-reached-path",
     ]);
     if (replay.status !== 0) {
       throw new Error(

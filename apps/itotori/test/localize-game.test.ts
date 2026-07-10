@@ -189,6 +189,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     const replay = capture.nativeCalls[0];
     const render = capture.nativeCalls[1];
     expect(replay).toContain("replay-validate");
+    expect(replay).toContain("--require-semantic-reached-path");
     expect(replay[replay.indexOf("--seen") + 1]).toBe(
       join("/out/patched", "REALLIVEDATA", "Seen.txt"),
     );

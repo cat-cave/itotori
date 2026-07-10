@@ -2199,6 +2199,7 @@ async function main() {
   const translatedBundlePath = join(runDir, "translated-bridge.json");
   const patchReportPath = join(runDir, "patch-report.json");
   const replayLogPath = join(runDir, "replay-log.json");
+  const dispatchReportPath = join(runDir, "dispatch-report.json");
   const renderEvidencePath = join(runDir, "render-evidence.json");
   const renderArtifactsDir = join(runDir, "render-artifacts");
   const providerRunArtifactsDir = join(runDir, "provider-runs");
@@ -2299,7 +2300,7 @@ async function main() {
         `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath} --decompile-report-output ${decompileReportPath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --scope ${projectMetadata.translationScope} --force`,
-        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath}`,
+        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath} --dispatch-report ${dispatchReportPath} --require-semantic-reached-path`,
         `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --gameexe <TARGET>/REALLIVEDATA/Gameexe.ini --game-dir <TARGET>/REALLIVEDATA --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
       ],
       flattenPostures(policy),
@@ -2530,6 +2531,9 @@ async function main() {
         String(sceneId),
         "--print-replay-log",
         replayLogPath,
+        "--dispatch-report",
+        dispatchReportPath,
+        "--require-semantic-reached-path",
       ],
       process.env,
       { redact: liveReplayRedactor },
