@@ -10,9 +10,7 @@ use utsushi_core::{
     cross_validate_conformance_manifest_against_port_manifest,
     cross_validate_results_against_manifest, diff_snapshots, take_snapshot, write_json,
 };
-use utsushi_fixture::{
-    FixtureEnginePort, FixturePortInspectState, FixturePortStateInspectable,
-};
+use utsushi_fixture::{FixtureEnginePort, FixturePortInspectState, FixturePortStateInspectable};
 
 const USAGE: &str = "usage: utsushi conform <game_dir> [--adapter utsushi-fixture] --output <path>";
 const RUN_ID: &str = "cli-conformance-run";
@@ -127,10 +125,7 @@ fn run_fixture_conformance(
             let evidence = SnapshotConformanceCheck::pass_evidence_for(&baseline)
                 .into_iter()
                 .collect::<Vec<_>>();
-            (
-                ResultOutcome::Pass { evidence_tier },
-                evidence,
-            )
+            (ResultOutcome::Pass { evidence_tier }, evidence)
         }
         ResultOutcome::Fail {
             semantic_code,
@@ -486,6 +481,9 @@ mod tests {
     fn unix_secs_to_rfc3339_z_known_epoch() {
         assert_eq!(unix_secs_to_rfc3339_z(0), "1970-01-01T00:00:00Z");
         // 2026-07-09T00:00:00Z
-        assert_eq!(unix_secs_to_rfc3339_z(1_783_555_200), "2026-07-09T00:00:00Z");
+        assert_eq!(
+            unix_secs_to_rfc3339_z(1_783_555_200),
+            "2026-07-09T00:00:00Z"
+        );
     }
 }
