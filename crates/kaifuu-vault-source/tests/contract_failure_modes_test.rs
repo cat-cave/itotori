@@ -102,11 +102,19 @@ fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
         .unwrap();
     drop(c);
 
+    // A writable scratch override: this test's vault is VALID, so `open` reaches
+    // `ensure_scratch_writable` before the catalog-schema probe. The default
+    // scratch root (`/scratch/itotori` on Linux) is not writable on a generic
+    // hosted runner, so without an override `open` would return `ScratchUnwritable`
+    // and never exercise the schema-version contract this test asserts.
+    let scratch = tempfile::tempdir().unwrap();
     let err = VaultSource::open(
         &VaultConfig {
             vault_root_override: Some(td.path().to_path_buf()),
         },
-        &ScratchConfig::default(),
+        &ScratchConfig {
+            scratch_root_override: Some(scratch.path().to_path_buf()),
+        },
     )
     .unwrap_err();
     assert!(matches!(
@@ -129,11 +137,17 @@ fn catalog_schema_unsupported_when_schema_version_exceeds_supported() {
     .unwrap();
     drop(c);
 
+    // Writable scratch override — see the sibling absent-version test: without it
+    // the unwritable default scratch root short-circuits `open` before the
+    // catalog-schema probe on a hosted runner.
+    let scratch = tempfile::tempdir().unwrap();
     let err = VaultSource::open(
         &VaultConfig {
             vault_root_override: Some(td.path().to_path_buf()),
         },
-        &ScratchConfig::default(),
+        &ScratchConfig {
+            scratch_root_override: Some(scratch.path().to_path_buf()),
+        },
     )
     .unwrap_err();
     assert!(matches!(
