@@ -23,12 +23,12 @@ use serde_json::Value;
 
 use utsushi_core::substrate::CaptureOutcome;
 use utsushi_core::{
-    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, EngineParityProfile,
-    EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink,
-    LifecycleStage, ObservationArtifactRef, ObservationBridgeRef, PortCapability, PortManifest,
-    PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, RuntimeArtifactKind,
-    RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, TextLine,
-    TextSurfaceSink,
+    AssetId, AudioEventSink, CapabilityDeclaration, CapabilityStance, CaptureOutcome,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, FrameArtifact,
+    FrameArtifactSink, Inspectable, LifecycleStage, ObservationArtifactRef, ObservationBridgeRef,
+    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
+    RuntimeArtifactKind, RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult,
+    SinkSet, SnapshotError, StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
 };
 
 /// Schema-version literal advertised on the legacy
@@ -190,11 +190,21 @@ impl Default for FixtureObservationSinks {
 /// launch, queues one text line per declared source unit (capped at
 /// the script length), and emits a single deterministic frame
 /// announcement once the text stream completes.
+///
+/// The port implements [`Inspectable`] so conformance can snapshot its
+/// real lifecycle counters (units loaded, lines/frames emitted, queue
+/// depths, lifecycle stage) rather than fabricating a sentinel state
+/// tree out of band.
 pub struct FixtureEnginePort {
     state: PortState,
     sinks: FixtureObservationSinks,
     queued_lines: Vec<TextLine>,
     queued_frames: Vec<FrameArtifact>,
+    /// Units loaded from `source.json` at launch. Survives drain so the
+    /// post-run inspectable surface still records what was processed.
+    units_loaded: u64,
+    lines_emitted: u64,
+    frames_emitted: u64,
     capture_target: Option<PathBuf>,
     shut_down: bool,
 }
@@ -205,6 +215,136 @@ enum PortState {
     Launched,
     Drained,
     ShutDown,
+}
+
+impl PortState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Launched => "launched",
+            Self::Drained => "drained",
+            Self::ShutDown => "shut_down",
+        }
+    }
+}
+
+/// Immutable view of the fixture port's inspectable state. Shared by the
+/// live [`FixtureEnginePort`] inspect path and the independently prepared
+/// golden baseline used by snapshot-restore conformance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixturePortInspectState {
+    pub lifecycle: &'static str,
+    pub units_loaded: u64,
+    pub queued_lines: u64,
+    pub queued_frames: u64,
+    pub lines_emitted: u64,
+    pub frames_emitted: u64,
+    pub shut_down: bool,
+}
+
+impl FixturePortInspectState {
+    /// Expected post-`run_trace` end state for a fixture source with
+    /// `units_loaded` script units. Computed independently of any live
+    /// port instance (immutable golden baseline for SnapshotRestore).
+    ///
+    /// Trace does not queue frames, so after a full drain every unit is
+    /// emitted as text, queues are empty, lifecycle is `drained`, and the
+    /// runner has shut the port down.
+    pub fn expected_post_trace(units_loaded: u64) -> Self {
+        Self {
+            lifecycle: "drained",
+            units_loaded,
+            queued_lines: 0,
+            queued_frames: 0,
+            lines_emitted: units_loaded,
+            frames_emitted: 0,
+            shut_down: true,
+        }
+    }
+
+    /// Materialize the shared fixture-port state contract as a
+    /// [`StateTree`]. Paths are stable public names under `port.*` /
+    /// `metadata.*` so golden baselines and live snapshots share the
+    /// same schema.
+    pub fn to_state_tree(&self) -> Result<StateTree, SnapshotError> {
+        let mut tree = StateTree::new();
+        tree.insert(
+            StatePath::parse("port.state")?,
+            StateValue::String {
+                value: self.lifecycle.to_string(),
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.units_loaded")?,
+            StateValue::Uint {
+                value: self.units_loaded,
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.queued_lines")?,
+            StateValue::Uint {
+                value: self.queued_lines,
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.queued_frames")?,
+            StateValue::Uint {
+                value: self.queued_frames,
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.lines_emitted")?,
+            StateValue::Uint {
+                value: self.lines_emitted,
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.frames_emitted")?,
+            StateValue::Uint {
+                value: self.frames_emitted,
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("port.shut_down")?,
+            StateValue::Uint {
+                value: u64::from(self.shut_down),
+            },
+        )?;
+        tree.insert(
+            StatePath::parse("metadata.adapter_name")?,
+            StateValue::String {
+                value: FIXTURE_PORT_ID.to_string(),
+            },
+        )?;
+        Ok(tree)
+    }
+}
+
+/// Thin [`Inspectable`] wrapping an independently prepared
+/// [`FixturePortInspectState`] golden baseline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixturePortStateInspectable {
+    state: FixturePortInspectState,
+}
+
+impl FixturePortStateInspectable {
+    pub fn new(state: FixturePortInspectState) -> Self {
+        Self { state }
+    }
+
+    pub fn state(&self) -> &FixturePortInspectState {
+        &self.state
+    }
+}
+
+impl Inspectable for FixturePortStateInspectable {
+    fn inspectable_id(&self) -> &'static str {
+        FIXTURE_PORT_ID
+    }
+
+    fn inspect_state(&self) -> Result<StateTree, SnapshotError> {
+        self.state.to_state_tree()
+    }
 }
 
 impl FixtureEnginePort {
@@ -224,23 +364,26 @@ impl FixtureEnginePort {
         env_schema: &[],
         fidelity_tier_max: FidelityTier::LayoutProbe,
         evidence_tier_max: EvidenceTier::E2,
-        limitations: &["Synthetic fixture engine port; emits deterministic sink payloads only."],
+        limitations: &[
+            "Synthetic fixture engine port; emits deterministic sink payloads only.",
+            "Inspect-only: the port implements Inspectable but not Restorable (no controlled-playback restore).",
+        ],
     };
 
     /// Cross-engine capability parity profile (UTSUSHI parity gate). The
     /// fixture wires the four required lifecycle capabilities; the
     /// port-driven `Snapshot` / `DeterministicReplay` capabilities (which
-    /// `utsushi-reallive` wires) are declared dev-`Pending` — the synthetic
-    /// fixture does not yet exercise the substrate snapshot/replay
-    /// primitives, but nothing precludes it, so this is a dev gap, never a
-    /// permanent one-engine hole.
+    /// `utsushi-reallive` wires) are declared dev-`Pending` — Inspectable
+    /// is wired for snapshot-restore conformance, but Restorable /
+    /// deterministic replay are not, so this remains a dev gap rather than
+    /// a permanent one-engine hole.
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
         manifest: Self::MANIFEST,
         declarations: &[
             CapabilityDeclaration {
                 capability: PortCapability::Snapshot,
                 stance: CapabilityStance::Pending,
-                note: "dev: the synthetic fixture does not yet drive the substrate snapshot primitives; no engine-specific reason it cannot.",
+                note: "dev: the synthetic fixture is inspect-only (Inspectable, not Restorable); full snapshot round-trip is not yet wired.",
             },
             CapabilityDeclaration {
                 capability: PortCapability::DeterministicReplay,
@@ -256,6 +399,9 @@ impl FixtureEnginePort {
             sinks: FixtureObservationSinks::new(),
             queued_lines: Vec::new(),
             queued_frames: Vec::new(),
+            units_loaded: 0,
+            lines_emitted: 0,
+            frames_emitted: 0,
             capture_target: None,
             shut_down: false,
         }
@@ -263,6 +409,27 @@ impl FixtureEnginePort {
 
     pub fn sinks(&self) -> &FixtureObservationSinks {
         &self.sinks
+    }
+
+    /// Read the live port's inspectable counters into the shared state
+    /// contract.
+    pub fn inspectable_state(&self) -> FixturePortInspectState {
+        FixturePortInspectState {
+            lifecycle: self.state.as_str(),
+            units_loaded: self.units_loaded,
+            queued_lines: self.queued_lines.len() as u64,
+            queued_frames: self.queued_frames.len() as u64,
+            lines_emitted: self.lines_emitted,
+            frames_emitted: self.frames_emitted,
+            shut_down: self.shut_down,
+        }
+    }
+
+    /// Test/conformance helper: deliberately corrupt a live counter so
+    /// negative snapshot-restore cases can assert real state drift
+    /// against an independently prepared golden baseline.
+    pub fn mutate_units_loaded_for_test(&mut self, units_loaded: u64) {
+        self.units_loaded = units_loaded;
     }
 }
 
@@ -300,6 +467,12 @@ impl EnginePort for FixtureEnginePort {
                 source: None,
             });
         }
+
+        self.units_loaded = units.len() as u64;
+        self.lines_emitted = 0;
+        self.frames_emitted = 0;
+        self.queued_lines.clear();
+        self.queued_frames.clear();
 
         for (index, unit) in units.iter().enumerate() {
             let source_unit_key = unit["sourceUnitKey"].as_str().unwrap_or("").to_string();
@@ -389,6 +562,7 @@ impl EnginePort for FixtureEnginePort {
                     message: format!("text emit failed: {error}"),
                     source: None,
                 })?;
+            self.lines_emitted = self.lines_emitted.saturating_add(1);
             return Ok(());
         }
         if let Some(frame) = pop_front(&mut self.queued_frames) {
@@ -400,6 +574,7 @@ impl EnginePort for FixtureEnginePort {
                     message: format!("frame emit failed: {error}"),
                     source: None,
                 })?;
+            self.frames_emitted = self.frames_emitted.saturating_add(1);
             return Ok(());
         }
         self.state = PortState::Drained;
@@ -452,6 +627,16 @@ impl EnginePort for FixtureEnginePort {
             self.shut_down = true;
             Ok(PortShutdownOutcome::clean())
         }
+    }
+}
+
+impl Inspectable for FixtureEnginePort {
+    fn inspectable_id(&self) -> &'static str {
+        FIXTURE_PORT_ID
+    }
+
+    fn inspect_state(&self) -> Result<StateTree, SnapshotError> {
+        self.inspectable_state().to_state_tree()
     }
 }
 

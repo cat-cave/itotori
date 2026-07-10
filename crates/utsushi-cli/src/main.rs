@@ -1,3 +1,4 @@
+mod conform;
 mod coverage_export;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
@@ -19,7 +20,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: OnceLock<utsushi_fixture::FixtureRuntimeAdapter> = OnceLock::new();
@@ -177,6 +178,10 @@ fn run_cli_with_registry(
             // own flag parsing; skips the leading `coverage-export` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             coverage_export::run_coverage_export_command(&tail)?;
+        }
+        Some("conform") => {
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            conform::run_conform_command(&tail)?;
         }
         Some("trace-kag") => {
             // UTSUSHI-008 — KAG command-trace probe for plaintext /

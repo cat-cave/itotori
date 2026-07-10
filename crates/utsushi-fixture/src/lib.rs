@@ -19,7 +19,7 @@ mod reference_corpus;
 
 pub use engine_port::{
     FIXTURE_OBSERVATION_HOOK_SCHEMA_VERSION, FixtureEnginePort, FixtureFrameSink,
-    FixtureObservationSinks, FixtureTextSink,
+    FixtureObservationSinks, FixturePortInspectState, FixturePortStateInspectable, FixtureTextSink,
 };
 pub use jump_targets::{
     BridgeUnitIndex, InMemoryBridgeUnitIndex, JUMP_TARGET_SCHEMA_VERSION, JumpTargetError,
