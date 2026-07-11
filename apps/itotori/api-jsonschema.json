@@ -1706,6 +1706,65 @@
       ],
       "type": "object"
     },
+    "ApiProjectDecodeExtractRequest": {
+      "additionalProperties": true,
+      "properties": {
+        "gameId": {
+          "type": "string"
+        },
+        "gameRoot": {
+          "type": "string"
+        },
+        "gameVersion": {
+          "type": "string"
+        },
+        "scene": {
+          "type": "number"
+        },
+        "sourceLocale": {
+          "type": "string"
+        },
+        "sourceProfileId": {
+          "type": "string"
+        },
+        "vaultCanonicalId": {
+          "type": "string"
+        },
+        "wholeSeen": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "gameId",
+        "gameVersion",
+        "sourceLocale",
+        "sourceProfileId"
+      ],
+      "type": "object"
+    },
+    "ApiProjectDecodeExtractResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "bridge": {
+          "type": "object"
+        },
+        "command": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "per-scene",
+            "whole-seen"
+          ]
+        }
+      },
+      "required": [
+        "bridge",
+        "command",
+        "mode"
+      ],
+      "type": "object"
+    },
     "ApiProjectImportRequest": {
       "additionalProperties": true,
       "properties": {

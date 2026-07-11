@@ -1705,6 +1705,65 @@
         ],
         "type": "object"
       },
+      "ApiProjectDecodeExtractRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "gameId": {
+            "type": "string"
+          },
+          "gameRoot": {
+            "type": "string"
+          },
+          "gameVersion": {
+            "type": "string"
+          },
+          "scene": {
+            "type": "number"
+          },
+          "sourceLocale": {
+            "type": "string"
+          },
+          "sourceProfileId": {
+            "type": "string"
+          },
+          "vaultCanonicalId": {
+            "type": "string"
+          },
+          "wholeSeen": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "gameId",
+          "gameVersion",
+          "sourceLocale",
+          "sourceProfileId"
+        ],
+        "type": "object"
+      },
+      "ApiProjectDecodeExtractResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "bridge": {
+            "type": "object"
+          },
+          "command": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "per-scene",
+              "whole-seen"
+            ]
+          }
+        },
+        "required": [
+          "bridge",
+          "command",
+          "mode"
+        ],
+        "type": "object"
+      },
       "ApiProjectImportRequest": {
         "additionalProperties": true,
         "properties": {
@@ -5137,6 +5196,85 @@
         },
         "summary": "Dashboard decision read model.",
         "x-itotoriRouteId": "projects.decisions"
+      }
+    },
+    "/api/projects/decode-extract": {
+      "post": {
+        "operationId": "projectsDecodeExtract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiProjectDecodeExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProjectDecodeExtractResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Decode a game source (identify/inventory/extract) into a bridge bundle.",
+        "x-itotoriRouteId": "projects.decodeExtract"
       }
     },
     "/api/projects/overview": {

@@ -36,8 +36,12 @@ import {
   type ProviderRunRecord,
 } from "../src/providers/index.js";
 import {
+  DecodeExtractNotConfiguredError,
   DraftProviderNotConfiguredError,
   ItotoriProjectWorkflowService,
+  type DecodeExtractInput,
+  type DecodeExtractOutcome,
+  type DecodeExtractPort,
   type ProjectState,
 } from "../src/services/project-workflow.js";
 
@@ -82,6 +86,64 @@ describe("ItotoriProjectWorkflowService", () => {
       DraftProviderNotConfiguredError,
     );
     expect(repository.saveDrafts).not.toHaveBeenCalled();
+  });
+
+  it("refuses decodeExtract with a typed error when no decode runner is configured", async () => {
+    // p3-in-studio-decode-extract-trigger — with no runner injected (a pure-HTTP
+    // install with no native kaifuu-cli / game bytes), decodeExtract must refuse
+    // LOUDLY rather than fabricate a fake bridge.
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+
+    await expect(
+      service.decodeExtract({
+        gameRoot: "/games/sweetie",
+        gameId: "sweetie",
+        gameVersion: "1.0",
+        sourceProfileId: "profile-1",
+        sourceLocale: "ja-JP",
+        wholeSeen: true,
+      }),
+    ).rejects.toBeInstanceOf(DecodeExtractNotConfiguredError);
+  });
+
+  it("delegates decodeExtract to the injected decode runner and returns its bridge", async () => {
+    // p3-in-studio-decode-extract-trigger — the workflow forwards the sourcing +
+    // identity + mode inputs to the real decode runner unchanged and returns the
+    // produced v0.2 bridge (here the runner is an explicit double).
+    const repository = repositoryFixture();
+    const bridge = bridgeV02Fixture();
+    let received: DecodeExtractInput | undefined;
+    const runner: DecodeExtractPort = {
+      runDecodeExtract: async (input): Promise<DecodeExtractOutcome> => {
+        received = input;
+        return { bridge, mode: "whole-seen", command: "kaifuu-cli extract --engine reallive" };
+      },
+    };
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      runner,
+    );
+
+    const outcome = await service.decodeExtract({
+      gameRoot: "/games/sweetie",
+      gameId: "sweetie",
+      gameVersion: "1.0",
+      sourceProfileId: "profile-1",
+      sourceLocale: "ja-JP",
+      wholeSeen: true,
+    });
+
+    expect(outcome.bridge).toBe(bridge);
+    expect(outcome.mode).toBe("whole-seen");
+    expect(received).toMatchObject({ gameRoot: "/games/sweetie", gameId: "sweetie" });
   });
 
   it("drafts deterministic translations before saving drafts", async () => {

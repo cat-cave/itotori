@@ -1045,6 +1045,16 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // Mutations --------------------------------------------------------------
+  ApiProjectDecodeExtractResponse: () =>
+    object({
+      required: ["bridge", "mode", "command"],
+      properties: {
+        bridge: obj,
+        mode: { enum: ["per-scene", "whole-seen"] },
+        command: str,
+      },
+      additionalProperties: true,
+    }),
   ApiProjectImportResponse: () =>
     object({
       required: ["project", "status"],
@@ -1109,6 +1119,21 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // Request bodies ---------------------------------------------------------
+  ApiProjectDecodeExtractRequest: () =>
+    object({
+      required: ["gameId", "gameVersion", "sourceProfileId", "sourceLocale"],
+      properties: {
+        vaultCanonicalId: str,
+        gameRoot: str,
+        gameId: str,
+        gameVersion: str,
+        sourceProfileId: str,
+        sourceLocale: str,
+        scene: num,
+        wholeSeen: bool,
+      },
+      additionalProperties: true,
+    }),
   ApiProjectImportRequest: () =>
     object({
       required: ["bridge"],

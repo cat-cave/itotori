@@ -330,8 +330,22 @@ const revokeAuthSessionRequestFixture = {
   requestId: "req-api-session-revoke",
 } satisfies ApiRevokeAuthSessionRequest;
 
+const decodeExtractRequestFixture = {
+  gameRoot: "/games/sweetie",
+  gameId: "sweetie",
+  gameVersion: "1.0",
+  sourceProfileId: "profile-1",
+  sourceLocale: "ja-JP",
+  wholeSeen: true,
+};
+
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
+  apiGate(
+    "decodeExtract",
+    post("/api/projects/decode-extract", decodeExtractRequestFixture),
+    "decodeExtract",
+  ),
   apiGate(
     "branchDraft",
     post("/api/projects/project-1/branches", {
@@ -3956,6 +3970,13 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "decode extract",
+          "requiredPermission": "project.import",
+          "route": "POST /api/projects/decode-extract",
+          "successFixture": "api-handlers.test.ts decode extract success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "branch draft",
           "requiredPermission": "draft.write",
           "route": "POST /api/projects/:projectId/branches",
@@ -4938,6 +4959,11 @@ function serviceFixture(): ItotoriApiServices {
       getCostDrilldown: vi.fn(async () => costDrilldownFixture),
       getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
       importBridge: vi.fn(async () => projectFixture),
+      decodeExtract: vi.fn(async () => ({
+        bridge: bridgeFixture,
+        mode: "whole-seen" as const,
+        command: "kaifuu-cli extract --engine reallive --whole-seen",
+      })),
       draftProject: vi.fn(async () => projectFixture),
       recordFinding: vi.fn(async () => ({
         findingId: findingRecordFixture.findingId,
