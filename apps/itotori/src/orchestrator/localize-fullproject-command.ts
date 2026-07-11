@@ -183,6 +183,14 @@ export type LocalizeFullProjectArgs = {
   configPath: string;
   /** Where the deterministic run-summary artifact lands. */
   runSummaryPath: string;
+  /**
+   * Optional client-side bounded-concurrency override. When present it WINS
+   * over the config's `concurrency` (and the executor default). Threaded from
+   * the `--concurrency` CLI flag so an operator can raise throughput for a
+   * whole-game run without editing the checked-in config. Clamped to `>= 1` by
+   * the executor. Generic — no game-specific coupling.
+   */
+  concurrency?: number;
   deps: LocalizeFullProjectDeps;
 };
 
@@ -191,6 +199,13 @@ export type LocalizeFullProjectResult = {
   record: LocalizationPassRecord;
   prior: LocalizationPassRecord | undefined;
 };
+
+export function resolveDrivenConcurrency(
+  cliOverride: number | undefined,
+  configValue: number | undefined,
+): number | undefined {
+  return cliOverride ?? configValue;
+}
 
 /**
  * Run the whole-project localize driver: parse the config, run the full
@@ -335,6 +350,7 @@ export async function runLocalizeFullProjectCommand(
     config.feedbackNotesByUnit === undefined
       ? undefined
       : new Map<string, string>(Object.entries(config.feedbackNotesByUnit));
+  const concurrency = resolveDrivenConcurrency(args.concurrency, config.concurrency);
 
   const executorInput: Omit<ProjectDrivenExecutorInput, "priorPass"> = {
     bridge,
@@ -363,7 +379,9 @@ export async function runLocalizeFullProjectCommand(
     ...(resolveUnitContext !== undefined ? { resolveUnitContext } : {}),
     ...(config.maxUnits !== undefined ? { maxUnits: config.maxUnits } : {}),
     ...(config.budgetCapUsd !== undefined ? { budgetCapUsd: config.budgetCapUsd } : {}),
-    ...(config.concurrency !== undefined ? { concurrency: config.concurrency } : {}),
+    // `--concurrency` CLI override wins over the config value; falls back to
+    // the config's `concurrency`, then the executor's DEFAULT_DRIVEN_CONCURRENCY.
+    ...(concurrency !== undefined ? { concurrency } : {}),
     ...(config.maxRepairAttempts !== undefined
       ? { maxRepairAttempts: config.maxRepairAttempts }
       : {}),

@@ -164,6 +164,12 @@ export type RunLocalizeGameArgs = {
   redaction?: "on" | "off";
   /** Per-process OpenRouter USD budget cap forwarded to the localize driver. */
   costCapUsd?: number;
+  /**
+   * Optional client-side bounded-concurrency override (from `--concurrency`),
+   * forwarded to the localize driver. Wins over the config's `concurrency` and
+   * the executor default.
+   */
+  concurrency?: number;
   io: LocalizeGameIo;
   /** Stage seams (default: the production seams). Injected for the CI test. */
   stages?: LocalizeGameStageSeams;
@@ -291,6 +297,7 @@ export async function runLocalizeGameCommand(
       sourceRoot: args.sourceRoot,
       patchTargetRoot: args.targetRoot,
       ...(args.costCapUsd !== undefined ? { costCapUsd: args.costCapUsd } : {}),
+      ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
       ...(args.log !== undefined ? { log: args.log } : {}),
     }),
   );
