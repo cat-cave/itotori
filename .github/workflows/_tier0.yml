@@ -1,6 +1,6 @@
 # Reusable Tier-0: format, static checks, policy/schema/toolchain gates, lane-manifest.
 # No DB, browser, private bytes, or provider work. Target p95 <= 5 min.
-# SHADOW: called from pr-tiers.yml; not yet a branch-protection required check.
+# Called from pr-tiers.yml; required via the main-merge-queue ruleset.
 name: reusable tier0
 
 on:

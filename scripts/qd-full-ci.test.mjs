@@ -151,7 +151,7 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
 });
 
 // ---------------------------------------------------------------------------
-// DIRECT-TO-MAIN affected-base default: when HEAD == the resolved base (main),
+// HEAD == base affected-base default: when HEAD == the resolved base (main),
 // selectLanes defaults the diff to this commit's own changes (HEAD~1...HEAD)
 // instead of conservatively re-running the full `ci` on an empty merge-base diff.
 // These exercise REAL temporary git repositories.
@@ -195,7 +195,7 @@ function makeGitRepo(commits) {
 // read Cargo.toml (empty members => no crate families) for fine-grained selections.
 const EMPTY_WORKSPACE_CARGO = '[workspace]\nresolver = "2"\nmembers = [\n]\n';
 
-test("selectLanes direct-to-main: HEAD==main itotori-only commit selects the fast ci-itotori lane (not full ci)", () => {
+test("selectLanes head-eq-base: HEAD==main itotori-only commit selects the fast ci-itotori lane (not full ci)", () => {
   const { root } = makeGitRepo([
     { files: { "Cargo.toml": EMPTY_WORKSPACE_CARGO, "README.md": "base\n" } },
     { files: { "apps/itotori/src/server.ts": "export const x = 1;\n" } },
@@ -208,7 +208,7 @@ test("selectLanes direct-to-main: HEAD==main itotori-only commit selects the fas
   assert.ok(!lanes.includes("ci"), "must NOT escalate to the full ci gate on HEAD==main");
 });
 
-test("selectLanes direct-to-main: HEAD==main docs-only commit selects only [check]", () => {
+test("selectLanes head-eq-base: HEAD==main docs-only commit selects only [check]", () => {
   const { root } = makeGitRepo([
     { files: { "README.md": "base\n" } },
     { files: { "docs/notes.md": "docs change\n" } },

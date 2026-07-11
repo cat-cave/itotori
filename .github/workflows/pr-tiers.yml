@@ -1,6 +1,6 @@
-# SHADOW tier dispatcher — runs alongside legacy ci.yml (which remains the
-# required gate). Does NOT modify branch protection. Enables merge_group so the
-# same T0/T1 aggregates can later become the only merge authority.
+# Active required tier dispatcher — gates main via GitHub's native merge queue
+# (ruleset main-merge-queue, enforcement active; tier0 + tier1 are the required
+# merge-queue checks). ci.yml + alpha-proof.yml are retired/deleted.
 name: PR tiers
 
 on:
