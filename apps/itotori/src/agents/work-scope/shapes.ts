@@ -195,7 +195,7 @@ export type WorkScope = {
   characterOverrides: ScopeCharacter[];
   /**
    * The work's OWN decoded narrative structure, rooted at its
-   * `branchEntryScene`. Absent until the per-work `structure_export` has run;
+   * `branchEntryScene`. Absent until the per-work `utsushi structure` export has run;
    * `buildWorkScopedContext` requires it.
    */
   structure?: NarrativeStructure | undefined;

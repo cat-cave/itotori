@@ -104,7 +104,7 @@ export type CarveOptions = {
    *      `farcall`/`jump` target the New-Game routine follows per branch), or
    *   2. read it off the game's own scenario layout / a community scene-id map,
    *      or
-   *   3. derive it from the dispatch graph the structure_export emits (the
+   *   3. derive it from the dispatch graph `utsushi structure` emits (the
    *      New-Game routine's `goto_case($store)` arms route to the base root and
    *      the fandisk root respectively — pick the two story-root scenes).
    *

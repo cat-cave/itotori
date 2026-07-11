@@ -1766,9 +1766,11 @@ impl ReplayEngine {
     ///    into (e.g. Kanon's `#SEEN_START` title scene branch-follows into
     ///    a spin before any message). The byte-order catalogue surfaces
     ///    each message ONCE, so it is still a faithful single-pass stream —
-    ///    it is used for `play_order_lines` ONLY when the branch pass
-    ///    reached no dialogue. It is NEVER added to the branch stream (that
-    ///    union was the ~2× inflation defect).
+    ///    it supplies `play_order_lines` when the branch pass reached no
+    ///    dialogue, OR when the branch pass exhausted its budget with strong
+    ///    text repetition (`branch_lines_show_spin`) while the linear pass
+    ///    reached a natural terminus and has dialogue. It is NEVER added to
+    ///    the branch stream (that union was the ~2× inflation defect).
     ///
     /// Graphics + audio are taken from the executed (branch) path, backfilled
     /// from the linear catalogue only when the branch path composited/played
@@ -1786,6 +1788,7 @@ impl ReplayEngine {
         );
         let first_cross_scene = branch_pass.first_cross_scene;
         let branch_prompts = branch_pass.selection_prompts;
+        let branch_termination = branch_pass.termination;
         let branch = branch_pass.scene;
         let branch_lines = branch_sink.take_lines();
 
@@ -1802,15 +1805,23 @@ impl ReplayEngine {
             &mut linear_scheduler,
         );
         let linear_prompts = linear_pass.selection_prompts;
+        let linear_termination = linear_pass.termination;
         let linear = linear_pass.scene;
         let linear_lines = linear_sink.take_lines();
 
-        // Choose the play order: branch when it reached dialogue, else the
-        // single-pass byte-order catalogue. Prompts follow that exact same
-        // choice: they identify the text lines in their own pass, never a
-        // cross-pass mixture. NEVER combine passes (no doubling).
-        let (play_order_lines, selection_prompts) =
-            select_port_pass(branch_lines, branch_prompts, linear_lines, linear_prompts);
+        // Choose the play order: retain branch unless it reached no dialogue,
+        // or it SPUN while a nonempty linear pass reached a natural terminus;
+        // then use the single-pass byte-order catalogue. Prompts follow that
+        // exact same choice: they identify the text lines in their own pass,
+        // never a cross-pass mixture. NEVER combine passes (no doubling).
+        let (play_order_lines, selection_prompts) = select_port_pass(
+            branch_lines,
+            branch_prompts,
+            branch_termination,
+            linear_lines,
+            linear_prompts,
+            linear_termination,
+        );
 
         let mut audio_events = branch.audio_events;
         audio_events.extend(linear.audio_events);
@@ -1905,16 +1916,15 @@ impl ReplayEngine {
         let handles = mount_registry_handles(text_sink, Arc::clone(&runtime), control_flow);
         let mut vm = Vm::new(scene_id, 0);
         let mut steps: u32 = 0;
-        let mut reached_natural_terminus = false;
         let mut first_cross_scene: Option<SceneId> = None;
-        loop {
+        let termination = loop {
             if steps >= opts.step_budget {
-                break;
+                break PassTermination::BudgetExhausted;
             }
             let pc_before = vm.pc();
             let scene_before = vm.scene();
             let Ok(step) = vm.step(&self.store, &handles.registry, scheduler) else {
-                break;
+                break PassTermination::VmError;
             };
             match step {
                 StepOutcome::Advanced { event } => {
@@ -1947,14 +1957,13 @@ impl ReplayEngine {
                     steps = steps.saturating_add(1);
                 }
                 StepOutcome::EndOfScene { .. } | StepOutcome::Halted => {
-                    reached_natural_terminus = true;
-                    break;
+                    break PassTermination::NaturalTerminus;
                 }
-                StepOutcome::Suspended { .. } => break,
+                StepOutcome::Suspended { .. } => break PassTermination::Suspended,
             }
             // Drain warnings so the VM's buffer does not grow unbounded.
             let _ = vm.take_warnings();
-        }
+        };
         let audio_events = handles.audio.emitter().store().drain_in_order();
         let graphics_stack = handles.graphics.state_snapshot().stack;
         PassObservation {
@@ -1962,10 +1971,11 @@ impl ReplayEngine {
                 audio_events,
                 graphics_stack,
                 steps,
-                reached_natural_terminus,
+                reached_natural_terminus: termination == PassTermination::NaturalTerminus,
             },
             first_cross_scene,
             selection_prompts: handles.selection.take_prompts(),
+            termination,
         }
     }
 
@@ -2558,17 +2568,64 @@ pub struct PortObservation {
 /// prompt trace alongside it. This is deliberately private transport logic,
 /// not selection policy: both passes have already executed their respective
 /// schedulers before this point.
+///
+/// A branch is treated as a spin only when it exhausted its step budget and
+/// its emitted text shows strong repetition evidence (at least 50 lines with
+/// fewer than 10% distinct texts). VM errors and suspended passes remain
+/// distinct failures and retain the branch's best-available lines; only a
+/// natural linear terminus can authorize the fallback.
 fn select_port_pass(
     branch_lines: Vec<TextLine>,
     branch_prompts: Vec<SelectionPrompt>,
+    branch_termination: PassTermination,
     linear_lines: Vec<TextLine>,
     linear_prompts: Vec<SelectionPrompt>,
+    linear_termination: PassTermination,
 ) -> (Vec<TextLine>, Vec<SelectionPrompt>) {
-    if branch_lines.is_empty() {
+    let branch_spun = branch_termination == PassTermination::BudgetExhausted
+        && branch_lines_show_spin(&branch_lines)
+        && linear_termination == PassTermination::NaturalTerminus
+        && !linear_lines.is_empty();
+    if branch_lines.is_empty() || (branch_spun && !linear_lines.is_empty()) {
         (linear_lines, linear_prompts)
     } else {
         (branch_lines, branch_prompts)
     }
+}
+
+/// A spin re-emits a small set of text lines to fill the step budget. Use a
+/// conservative threshold of at least 50 lines and fewer than 10% distinct
+/// line texts: tiny branches are never classified as spins, while a genuine
+/// runaway repetition has a clearly non-distinct stream. Text is used instead
+/// of `line_id` because each real emission receives a fresh sequence id.
+fn branch_lines_show_spin(lines: &[TextLine]) -> bool {
+    const MIN_SPIN_LINE_COUNT: usize = 50;
+
+    if lines.len() < MIN_SPIN_LINE_COUNT {
+        return false;
+    }
+    let distinct = lines
+        .iter()
+        .map(|line| line.text.as_str())
+        .collect::<HashSet<_>>()
+        .len();
+    distinct.saturating_mul(10) < lines.len()
+}
+
+/// Why an `observe_pass` drive stopped. Only `NaturalTerminus` is a clean
+/// completion; the other three are distinct non-terminus reasons that must
+/// not be conflated when deciding whether the branch pass spun.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PassTermination {
+    /// `EndOfScene` / `Halted` — the drive finished on its own.
+    NaturalTerminus,
+    /// Cut off at `opts.step_budget`.
+    BudgetExhausted,
+    /// `vm.step(...)` returned `Err` (a `VmError` in the dispatch loop).
+    VmError,
+    /// `StepOutcome::Suspended` — the VM parked on a queued longop the
+    /// scheduler never satisfied.
+    Suspended,
 }
 
 /// The outcome of a single branch-following drive under a fixed choice
@@ -2596,6 +2653,7 @@ struct PassObservation {
     scene: SceneObservation,
     first_cross_scene: Option<SceneId>,
     selection_prompts: Vec<SelectionPrompt>,
+    termination: PassTermination,
 }
 
 /// A bounded, continuous MULTI-SCENE play-order stream produced by
@@ -3006,27 +3064,395 @@ mod tests {
         }
     }
 
+    /// An ASCII textout run for the end-to-end port observation fixture. The
+    /// caller records its `(scene, offset)` in the Shift-JIS set so the real
+    /// replay path flushes it as a `TextLine`.
+    fn textout(offset: usize, text: &str) -> (BytecodeElement, usize) {
+        let raw_bytes = text.as_bytes().to_vec();
+        let byte_len = raw_bytes.len();
+        (
+            BytecodeElement::Textout {
+                encoding_hint: TextoutEncoding::Other,
+                raw_bytes,
+                byte_offset: offset,
+                byte_len,
+            },
+            byte_len,
+        )
+    }
+
+    const SELECT_BLOCK_OPEN: u8 = 0x7B;
+    const SELECT_BLOCK_CLOSE: u8 = 0x7D;
+    const META_LINE_LEAD: u8 = 0x0A;
+    const STORE_REGISTER: [u8; 2] = [0x24, 0xC8];
+    const JMP_MODULE_TYPE: u8 = 0;
+    const JMP_MODULE_ID: u8 = 1;
+    const OPCODE_GOTO: u16 = 0;
+    const OPCODE_GOTO_ON: u16 = 3;
+    const SEL_MODULE_TYPE: u8 = crate::rlop::module_sel::SEL_MODULE_TYPE;
+    const SEL_MODULE_ID: u8 = crate::rlop::module_sel::SEL_MODULE_ID;
+    const OPCODE_SELECT: u16 = crate::rlop::module_sel::OPCODE_SELECT;
+
+    /// Build the real `{ option \n option }` framing used by a text select.
+    fn select_command(offset: usize, options: &[&str]) -> (BytecodeElement, usize) {
+        let mut raw = vec![
+            0x23,
+            SEL_MODULE_TYPE,
+            SEL_MODULE_ID,
+            OPCODE_SELECT as u8,
+            (OPCODE_SELECT >> 8) as u8,
+            0,
+            0,
+            0,
+            SELECT_BLOCK_OPEN,
+        ];
+        for (index, option) in options.iter().enumerate() {
+            if index > 0 {
+                raw.extend_from_slice(&[META_LINE_LEAD, 0, 0]);
+            }
+            raw.extend_from_slice(option.as_bytes());
+        }
+        raw.push(SELECT_BLOCK_CLOSE);
+        let byte_len = raw.len();
+        (
+            BytecodeElement::Command {
+                module_type: SEL_MODULE_TYPE,
+                module_id: SEL_MODULE_ID,
+                opcode: OPCODE_SELECT,
+                arg_count: 0,
+                overload: 0,
+                goto_targets: Vec::new(),
+                goto_case_exprs: Vec::new(),
+                raw_bytes: raw,
+                byte_offset: offset,
+                byte_len,
+            },
+            byte_len,
+        )
+    }
+
+    /// Build `goto_on($store, { targets... })`; the synthetic VM element
+    /// carries the trailing target pointers in `goto_targets`, just like the
+    /// decoder does for real bytecode.
+    fn goto_on_store(offset: usize, targets: Vec<u32>) -> (BytecodeElement, usize) {
+        let arg_count = targets.len() as u16;
+        let mut raw = vec![
+            0x23,
+            JMP_MODULE_TYPE,
+            JMP_MODULE_ID,
+            OPCODE_GOTO_ON as u8,
+            (OPCODE_GOTO_ON >> 8) as u8,
+            arg_count as u8,
+            (arg_count >> 8) as u8,
+            0,
+            b'(',
+        ];
+        raw.extend_from_slice(&STORE_REGISTER);
+        raw.push(b')');
+        let byte_len = raw.len();
+        (
+            BytecodeElement::Command {
+                module_type: JMP_MODULE_TYPE,
+                module_id: JMP_MODULE_ID,
+                opcode: OPCODE_GOTO_ON,
+                arg_count,
+                overload: 0,
+                goto_targets: targets,
+                goto_case_exprs: Vec::new(),
+                raw_bytes: raw,
+                byte_offset: offset,
+                byte_len,
+            },
+            byte_len,
+        )
+    }
+
+    /// Build a `goto(target)` command with one trailing target pointer.
+    fn goto_command(offset: usize, target: u32) -> (BytecodeElement, usize) {
+        let raw = vec![
+            0x23,
+            JMP_MODULE_TYPE,
+            JMP_MODULE_ID,
+            OPCODE_GOTO as u8,
+            (OPCODE_GOTO >> 8) as u8,
+            0,
+            0,
+            0,
+        ];
+        let byte_len = raw.len() + 4;
+        (
+            BytecodeElement::Command {
+                module_type: JMP_MODULE_TYPE,
+                module_id: JMP_MODULE_ID,
+                opcode: OPCODE_GOTO,
+                arg_count: 0,
+                overload: 0,
+                goto_targets: vec![target],
+                goto_case_exprs: Vec::new(),
+                raw_bytes: raw,
+                byte_offset: offset,
+                byte_len,
+            },
+            byte_len,
+        )
+    }
+
+    /// A two-option text select whose options dispatch to distinct reaction
+    /// textouts. Branch-following takes the first reaction; linear walking
+    /// visits both reactions.
+    fn divergent_select_port_engine() -> ReplayEngine {
+        const FIRST_REACTION: &str = "reaction from the first option";
+        const SECOND_REACTION: &str = "reaction from the second option";
+
+        let mut offset = 0usize;
+        let (select, select_len) = select_command(offset, &["first option", "second option"]);
+        offset += select_len;
+
+        let goto_on_offset = offset;
+        let (_, goto_on_len) = goto_on_store(goto_on_offset, vec![0, 0]);
+        offset += goto_on_len;
+
+        let first_reaction = offset;
+        let (first_text, first_text_len) = textout(first_reaction, FIRST_REACTION);
+        offset += first_text_len;
+        let first_goto_offset = offset;
+        let (_, first_goto_len) = goto_command(first_goto_offset, 0);
+        offset += first_goto_len;
+
+        let second_reaction = offset;
+        let (second_text, second_text_len) = textout(second_reaction, SECOND_REACTION);
+        offset += second_text_len;
+        let second_goto_offset = offset;
+        let (_, second_goto_len) = goto_command(second_goto_offset, 0);
+        offset += second_goto_len;
+        let end = offset as u32;
+
+        let (goto_on, _) = goto_on_store(
+            goto_on_offset,
+            vec![first_reaction as u32, second_reaction as u32],
+        );
+        let (first_goto, _) = goto_command(first_goto_offset, end);
+        let (second_goto, _) = goto_command(second_goto_offset, end);
+        let scene = Scene::new(
+            1,
+            vec![
+                select,
+                goto_on,
+                first_text,
+                first_goto,
+                second_text,
+                second_goto,
+            ],
+        )
+        .expect("divergent select scene builds");
+
+        let mut store = InMemorySceneStore::new();
+        store.insert(scene);
+        let shift_jis = HashSet::from([(1, first_reaction as u32), (1, second_reaction as u32)]);
+        ReplayEngine::from_store(store, shift_jis)
+    }
+
+    /// A select/redraw loop whose branch path repeats the prompt, while the
+    /// linear catalogue walks through two reaction textouts and terminates.
+    fn spinning_select_port_engine() -> ReplayEngine {
+        const FIRST_REACTION: &str = "linear first reaction";
+        const SECOND_REACTION: &str = "linear second reaction";
+
+        let mut offset = 0usize;
+        let (select, select_len) = select_command(offset, &["repeat first", "repeat second"]);
+        offset += select_len;
+        let goto_on_offset = offset;
+        let (_, goto_on_len) = goto_on_store(goto_on_offset, vec![0, 0]);
+        offset += goto_on_len;
+
+        let first_reaction = offset;
+        let (first_text, first_text_len) = textout(first_reaction, FIRST_REACTION);
+        offset += first_text_len;
+        let second_reaction = offset;
+        let (second_text, _) = textout(second_reaction, SECOND_REACTION);
+
+        let (goto_on, _) = goto_on_store(goto_on_offset, vec![0, 0]);
+        let scene = Scene::new(1, vec![select, goto_on, first_text, second_text])
+            .expect("spinning select scene builds");
+        let mut store = InMemorySceneStore::new();
+        store.insert(scene);
+        let shift_jis = HashSet::from([(1, first_reaction as u32), (1, second_reaction as u32)]);
+        ReplayEngine::from_store(store, shift_jis)
+    }
+
     #[test]
     fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
         let branch_prompt = prompt(1, "branch-line");
         let linear_prompt = prompt(2, "linear-line");
+        // Branch reached a terminus → its play order is authoritative.
         let (lines, prompts) = select_port_pass(
             vec![line("branch-line")],
             vec![branch_prompt.clone()],
+            PassTermination::NaturalTerminus,
             vec![line("linear-line")],
             vec![linear_prompt.clone()],
+            PassTermination::NaturalTerminus,
         );
         assert_eq!(lines[0].line_id, "branch-line");
         assert_eq!(prompts, vec![branch_prompt]);
 
+        // Branch reached no dialogue → linear catalogue fallback (existing).
         let (lines, prompts) = select_port_pass(
             vec![],
             vec![prompt(3, "unused-branch-prompt")],
+            PassTermination::NaturalTerminus,
             vec![line("linear-line")],
             vec![linear_prompt.clone()],
+            PassTermination::NaturalTerminus,
         );
         assert_eq!(lines[0].line_id, "linear-line");
         assert_eq!(prompts, vec![linear_prompt]);
+    }
+
+    #[test]
+    fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
+        // A headless select/redraw SPIN: the branch pass emitted many
+        // (duplicated) prompt lines but never reached a natural terminus,
+        // while the byte-order linear pass surfaced each message once and DID
+        // complete. The linear catalogue must win — the runaway branch stream
+        // is a repetition, not a faithful play order.
+        let branch_prompt = prompt(1, "spin-line");
+        let linear_prompt = prompt(2, "catalogue-line");
+        let spun_branch: Vec<TextLine> = (0..5_000).map(|_| line("spin-line")).collect();
+        let (lines, prompts) = select_port_pass(
+            spun_branch,
+            vec![branch_prompt],
+            PassTermination::BudgetExhausted,
+            vec![line("catalogue-line")],
+            vec![linear_prompt.clone()],
+            PassTermination::NaturalTerminus,
+        );
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].line_id, "catalogue-line");
+        assert_eq!(prompts, vec![linear_prompt]);
+    }
+
+    #[test]
+    fn selected_port_pass_keeps_branch_when_neither_reaches_terminus() {
+        // If even the linear pass did not complete there is no better stream to
+        // fall back to, so the branch play order is retained (best available).
+        let branch_prompt = prompt(1, "branch-line");
+        let (lines, prompts) = select_port_pass(
+            vec![line("branch-line")],
+            vec![branch_prompt.clone()],
+            PassTermination::BudgetExhausted,
+            vec![line("linear-line")],
+            vec![prompt(2, "linear-line")],
+            PassTermination::BudgetExhausted,
+        );
+        assert_eq!(lines[0].line_id, "branch-line");
+        assert_eq!(prompts, vec![branch_prompt]);
+    }
+
+    #[test]
+    fn selected_port_pass_keeps_distinct_budget_exhausted_branch_and_failures() {
+        let distinct_branch: Vec<TextLine> = (0..5_000)
+            .map(|i| line(&format!("distinct-line-{i}")))
+            .collect();
+        let (lines, _) = select_port_pass(
+            distinct_branch,
+            Vec::new(),
+            PassTermination::BudgetExhausted,
+            vec![line("linear-line")],
+            Vec::new(),
+            PassTermination::NaturalTerminus,
+        );
+        // Under the old `!branch_reached_terminus && linear_reached_terminus`
+        // proxy this branch would be wrongly collapsed to linear; the
+        // evidence-based detector keeps it because the lines are distinct (no
+        // repetition).
+        assert_eq!(lines.len(), 5_000);
+        assert_eq!(lines[0].text, "distinct-line-0");
+        assert_eq!(lines[4_999].text, "distinct-line-4999");
+
+        for termination in [PassTermination::VmError, PassTermination::Suspended] {
+            let (lines, _) = select_port_pass(
+                vec![line("branch-failure")],
+                Vec::new(),
+                termination,
+                vec![line("linear-line")],
+                Vec::new(),
+                PassTermination::NaturalTerminus,
+            );
+            assert_eq!(
+                lines[0].text, "branch-failure",
+                "{termination:?} must retain the branch stream"
+            );
+        }
+    }
+
+    #[test]
+    fn observe_for_port_uses_branch_stream_when_select_paths_diverge() {
+        let engine = divergent_select_port_engine();
+        let opts = ReplayOpts {
+            step_budget: 128,
+            stop_at_first_pause: false,
+        };
+
+        let observation = engine.observe_for_port(1, &opts);
+        let branch_lines =
+            engine.branch_following_lines(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        assert_eq!(
+            observation.play_order_lines, branch_lines,
+            "port observation must select the real AlwaysFirst branch stream"
+        );
+
+        let texts: Vec<&str> = observation
+            .play_order_lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect();
+        assert!(texts.contains(&"reaction from the first option"));
+        assert!(
+            !texts.contains(&"reaction from the second option"),
+            "the linear catalogue's unchosen reaction must not leak into play order"
+        );
+    }
+
+    #[test]
+    fn observe_for_port_falls_back_to_linear_catalogue_for_repeated_choice_prompt() {
+        let engine = spinning_select_port_engine();
+        let opts = ReplayOpts {
+            step_budget: 192,
+            stop_at_first_pause: false,
+        };
+
+        // Prove the branch side of the divergent scene genuinely fills its
+        // budget with repeated prompt text. The assertion below then proves
+        // observe_for_port selected the other, natural linear pass.
+        let branch_lines =
+            engine.branch_following_lines(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        assert!(
+            branch_lines.len() >= 50,
+            "branch must emit enough prompt lines to spin"
+        );
+        assert!(
+            branch_lines
+                .iter()
+                .all(|line| { matches!(line.text.as_str(), "repeat first" | "repeat second") })
+        );
+
+        let observation = engine.observe_for_port(1, &opts);
+        let texts: Vec<&str> = observation
+            .play_order_lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            vec![
+                "repeat first",
+                "repeat second",
+                "linear first reaction",
+                "linear second reaction",
+            ],
+            "a repeated branch prompt must fall back to the completed linear catalogue"
+        );
     }
 
     #[test]

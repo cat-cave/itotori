@@ -3,7 +3,7 @@
 // Gated on ITOTORI_STRUCTCTX_LIVE=1 + OPENROUTER_API_KEY +
 // OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 + ITOTORI_STRUCTCTX_STRUCTURE_JSON (the
 // path to the real decoded NarrativeStructure JSON emitted by
-// `utsushi-reallive/examples/structure_export.rs` — held OUTSIDE the repo
+// the `utsushi structure` subcommand — held OUTSIDE the repo
 // because it carries copyrighted script text). When any is unset the test
 // prints a visible skip note and returns (no silent pass); `pnpm test` in CI
 // therefore skips it.

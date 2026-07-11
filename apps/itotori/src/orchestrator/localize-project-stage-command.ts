@@ -131,7 +131,7 @@ export type LocalizeProjectStageArgs = {
   /**
    * itotori-agentic-loop-real-context-stage — optional path to the decoded
    * `utsushi.narrative-structure.v1` JSON (emitted by
-   * `utsushi-reallive/examples/structure_export.rs`, held OUTSIDE the repo as
+   * the `utsushi structure` subcommand, held OUTSIDE the repo as
    * it carries copyrighted script text). When provided, the loop's context
    * stage builds the DETERMINISTIC structure-informed context slice for the
    * pair-policy `sceneId` and injects it into the translation prompt — the
