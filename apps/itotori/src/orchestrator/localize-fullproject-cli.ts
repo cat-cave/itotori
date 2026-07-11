@@ -55,10 +55,18 @@ import {
 import type { WholeGameRuntimeValidationAdmission } from "./wholegame-render-validation-seam.js";
 import {
   PipelineFailureDiagnosticError,
+  redactDiagnosticError,
   runPipelineStepWithDiagnostic,
 } from "./pipeline-failure-diagnostic.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 import type { DrivenPatchReport } from "./project-driven-executor.js";
+
+/**
+ * Schema version for the abort diagnostic written to `<run-dir>/run-diagnostic.json`
+ * whenever a live localize pass throws. Distinct from the success-path
+ * `run-summary.json` (which only lands when the pass completes without throwing).
+ */
+const RUN_DIAGNOSTIC_SCHEMA_VERSION = "itotori.localize-fullproject.run-diagnostic.v0" as const;
 
 export type RunLocalizeFullProjectLiveArgs = {
   configPath: string;
@@ -410,6 +418,44 @@ export async function runLocalizeFullProjectLive(
     }
     return patchApply === undefined ? passResult : { ...passResult, patchApply };
   } catch (error) {
+    // OBSERVABILITY (#78): a pass that aborts must NEVER be silent. `cli.ts`
+    // prints only the generic wrapper `.message`, so without this the real
+    // underlying error (e.g. the reviewer-queue FK violation surfaced during
+    // the post-drive persist loop) is thrown away and no artifact lands in the
+    // run dir. Persist a structured abort diagnostic BEFORE rethrowing so a
+    // reviewer can always SEE which step aborted and why. No game bytes: the
+    // diagnostic carries only the step + scrubbed error class/message + config
+    // identity — never source/draft text.
+    const abortDiagnostic =
+      error instanceof PipelineFailureDiagnosticError
+        ? {
+            step: error.diagnostic.step,
+            error: error.diagnostic.error,
+            repro: error.diagnostic.repro,
+          }
+        : {
+            step: "localize.run-pass" as const,
+            error: redactDiagnosticError(error),
+            repro: {
+              configPath: args.configPath,
+              bridgePath: config.bridgePath,
+              pairPolicyPath: config.pairPolicyPath,
+            },
+          };
+    try {
+      args.io.writeJson(join(args.runDir, "run-diagnostic.json"), {
+        schemaVersion: RUN_DIAGNOSTIC_SCHEMA_VERSION,
+        aborted: true,
+        abortedStep: abortDiagnostic.step,
+        error: abortDiagnostic.error,
+        repro: abortDiagnostic.repro,
+        configPath: args.configPath,
+        runDir: args.runDir,
+        occurredAt: new Date().toISOString(),
+      });
+    } catch {
+      // Best-effort: a diagnostic-write failure must never mask the real abort.
+    }
     // Already a structured diagnostic → rethrow untouched (upstream has the
     // more specific step + context).
     if (

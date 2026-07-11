@@ -176,6 +176,13 @@ describe("Translation prompt template", () => {
   it("declares the output schema version and confidence-floor enum in the system text", () => {
     const rendered = buildTranslationPrompt(inputFixture());
     expect(rendered.systemText).toContain(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION);
+    expect(rendered.systemText).toContain(
+      `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}"`,
+    );
+    expect(rendered.systemText).toContain('Do NOT include a "$schema" property');
+    expect(rendered.systemText).toContain(
+      "citationRefs MUST contain ONLY the exact ids shown in the Glossary block",
+    );
     for (const floor of ["low", "medium", "high"]) {
       expect(rendered.systemText).toContain(floor);
     }
@@ -200,6 +207,7 @@ describe("TranslationAgent.invokeTranslation happy path", () => {
     expect(result.tokensOut).toBeGreaterThan(0);
     expect(result.modelMetadata.modelProfile).toEqual(input.modelProfile);
     expect(result.modelMetadata.providerRun.taskKind).toBe("draft_translation");
+    expect(result.modelMetadata.retryProviderRuns).toEqual([]);
     expect(result.recordedArtifactId).toBeUndefined();
   });
 
@@ -456,8 +464,10 @@ describe("TranslationAgent.invokeTranslation bridge unit + citation resolution",
 
   it("rejects a draft citing an unknown citation ref", async () => {
     const input = inputFixture();
-    const provider = buildFakeTranslationProvider(() =>
-      JSON.stringify(
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(
         makeStructuredTranslationDraftOutputFixture([
           makeTranslationDraftFixture({
             bridgeUnitId: input.sourceBridgeUnits[1]!.bridgeUnitId,
@@ -466,11 +476,12 @@ describe("TranslationAgent.invokeTranslation bridge unit + citation resolution",
             citationRefs: ["glossary:does-not-exist"],
           }),
         ]),
-      ),
-    );
+      );
+    });
     const agent = new TranslationAgent({ provider });
     const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TranslationUnknownCitationError);
+    expect(invocations).toBe(1);
     if (error instanceof TranslationUnknownCitationError) {
       expect(error.citationRef).toBe("glossary:does-not-exist");
     }

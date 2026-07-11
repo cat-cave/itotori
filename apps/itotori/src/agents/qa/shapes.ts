@@ -107,6 +107,7 @@ export type QaInvocationModelMetadata = {
   modelProfile: QaModelProfile;
   providerIdentity: ProviderRunIdentity;
   providerRun: ProviderRunRecord;
+  retryProviderRuns: ProviderRunRecord[];
 };
 
 // ---------------------------------------------------------------------------
@@ -177,6 +178,23 @@ export class QaUnknownCitationError extends Error {
   ) {
     super(`QA agent refused: finding ${findingId} cites unknown bridge unit ${bridgeUnitId}`);
     this.name = "QaUnknownCitationError";
+  }
+}
+
+/** A finding span extends beyond the text of its cited bridge unit. */
+export class QaSpanOutOfBoundsError extends Error {
+  constructor(
+    public readonly bridgeUnitId: string,
+    public readonly findingId: string,
+    public readonly span: "sourceSpan" | "draftSpan",
+    public readonly end: number,
+    public readonly textLength: number,
+  ) {
+    super(
+      `QA agent refused: finding ${findingId} ${span} for bridge unit ${bridgeUnitId} ` +
+        `ends at ${end}, beyond text length ${textLength}`,
+    );
+    this.name = "QaSpanOutOfBoundsError";
   }
 }
 

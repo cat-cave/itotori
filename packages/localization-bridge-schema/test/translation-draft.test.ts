@@ -184,6 +184,34 @@ describe("StructuredTranslationDraftOutput", () => {
     expect(out.drafts[0]!.protectedSpanRefs[0]!.refId).toBe("span-1");
   });
 
+  it("strips echoed JSON-schema metadata and rewrites the known structural typo", () => {
+    const parsed = parseStructuredTranslationDraftOutput(
+      JSON.stringify({
+        $schema: "http://json-schema.org/draft-07/schema#",
+        $id: "itotori://fixture",
+        title: "StructuredTranslationDraftOutput",
+        schemaVersion: "itotori.structural-translation-draft-output.v1",
+        drafts: [],
+      }),
+    );
+    expect(parsed.schemaVersion).toBe(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION);
+    expect(parsed.drafts).toEqual([]);
+  });
+
+  it("does not coerce an unknown top-level key or rewrite a citation ref", () => {
+    expect(() =>
+      parseStructuredTranslationDraftOutput(JSON.stringify({ ...validOutput(), unexpected: true })),
+    ).toThrow(/unexpected/);
+
+    const parsed = parseStructuredTranslationDraftOutput(
+      JSON.stringify({
+        ...validOutput(),
+        drafts: [validDraft({ citationRefs: ["terminology-candidate:≬チュートリアル≭"] })],
+      }),
+    );
+    expect(parsed.drafts[0]?.citationRefs).toEqual(["terminology-candidate:≬チュートリアル≭"]);
+  });
+
   it("confidence-floor enum matches the JSON schema constants", () => {
     const confidenceEnum = (
       STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA.properties.drafts.items.properties

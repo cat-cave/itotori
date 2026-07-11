@@ -36,7 +36,10 @@ const SYSTEM_INSTRUCTIONS = [
   "Use kind='narration' for stage directions, scene descriptors, and ambient text with no spoken voice.",
   "evidenceRefs cites prior-line bridgeUnitIds, scene-summary ids, character-bio ids, or 'parser-hint'; never raw quotes.",
   "agentRationale explains the reasoning in one sentence.",
-  `Emit ONLY a JSON object that conforms to the schema with schemaVersion '${SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION}'. Do NOT emit prose or markdown.`,
+  `The schemaVersion field MUST equal EXACTLY the string "${SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION}". Copy it verbatim.`,
+  `The only allowed speakerId.kind values are EXACTLY: ${SPEAKER_IDENTITY_KINDS.join(", ")}. Do NOT invent any other kind (e.g. "unnamed_character", "unknown", "character"). If a line is spoken by a real but un-named character, use kind="unknown_to_parser" with reason="no_signal". If it is a masked/hidden character, use kind="unknown_to_reader".`,
+  'Emit ONLY the allowed top-level properties: "schemaVersion" and "labels". Do NOT include a "$schema" property, an "$id", a "title", or ANY other top-level key. The embedded schema below is a SPEC to conform to, NOT a template to echo back.',
+  "Emit ONLY a JSON object that conforms to the schema. Do NOT emit prose or markdown.",
 ].join("\n");
 
 export function buildSpeakerLabelPrompt(

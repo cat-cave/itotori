@@ -217,6 +217,28 @@ export class SpeakerLabelResponseValidationError extends Error {
   }
 }
 
+const SPEAKER_LABEL_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS = new Set(["$schema", "$id", "title"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Strip only JSON-schema metadata echoed alongside the payload. Deliberately
+ * do not coerce `speakerId.kind`: `unnamed_character` has no unambiguous
+ * target, and mapping it would hide a real modeling error from the retry.
+ */
+function coerceSpeakerLabelOutput(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const normalized: Record<string, unknown> = { ...value };
+  for (const key of SPEAKER_LABEL_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS) {
+    delete normalized[key];
+  }
+  return normalized;
+}
+
 /**
  * Validates a parsed JSON value against the SpeakerLabelOutput schema.
  * Throws `SpeakerLabelResponseValidationError` on the first failure.
@@ -404,12 +426,14 @@ export function parseSpeakerLabelOutput(raw: string): SpeakerLabelOutput {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+    // Intentional: malformed JSON is exactly what the corrective re-ask recovers.
     throw new SpeakerLabelResponseValidationError(
       "",
       "json",
       `provider response is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  assertSpeakerLabelOutput(parsed);
-  return parsed;
+  const coerced = coerceSpeakerLabelOutput(parsed);
+  assertSpeakerLabelOutput(coerced);
+  return coerced;
 }

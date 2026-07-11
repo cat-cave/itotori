@@ -45,12 +45,16 @@ import {
   type SpeakerLabelOutput,
   type SpeakerLabelUnknownReason,
 } from "@itotori/localization-bridge-schema";
-import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
+import {
+  buildStructuredRetryMessages,
+  invokeWithBoundedStructuredRetry,
+} from "../bounded-structured-retry.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   StructuredOutputRequest,
@@ -122,40 +126,37 @@ export class SpeakerLabelAgent {
           : { maxOutputTokens: input.modelMetadata.maxOutputTokens },
     };
 
-    const invocation = await this.options.provider.invoke(request);
+    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
+      provider: this.options.provider,
+      request,
+      parse: parseSpeakerLabelOutput,
+      isSchemaValidationError: (error) => error instanceof SpeakerLabelResponseValidationError,
+      buildCorrectiveMessages: buildStructuredRetryMessages,
+      validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+      validateParsed: (candidate) => {
+        this.assertCitationsResolve(candidate, input);
+        this.assertHiddenIdentityNotLeaked(candidate, input);
+        this.assertHiddenMaskConsistency(candidate, input);
+        if (input.confidenceFloor !== undefined) {
+          this.assertConfidenceFloor(candidate, input.confidenceFloor);
+        }
+      },
+    });
     const providerRun = invocation.providerRun;
-    const finishReason = invocation.finishReason;
-    const rawContent = invocation.content;
-
-    if (rawContent === null || rawContent.trim().length === 0) {
-      throw new SpeakerLabelPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "provider returned no content",
-      );
-    }
-    if (!isCleanStopReason(finishReason)) {
-      throw new SpeakerLabelPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "finish reason is not a clean stop",
-      );
-    }
-
-    const parsed = parseWithBoundedRepair(rawContent, parseSpeakerLabelOutput);
-    this.assertCitationsResolve(parsed, input);
-    this.assertHiddenIdentityNotLeaked(parsed, input);
-    this.assertHiddenMaskConsistency(parsed, input);
-    if (input.confidenceFloor !== undefined) {
-      this.assertConfidenceFloor(parsed, input.confidenceFloor);
-    }
+    const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
     // PROJECT LAW: real provider token counts only — throw on absence
     // rather than substitute a char/4 estimate (mirror of assertBilledCost).
-    const { tokensIn, tokensOut } = assertReportedTokenUsage(
-      providerRun.tokenUsage,
-      providerRun.runId,
-    );
+    let tokensIn = 0;
+    let tokensOut = 0;
+    for (const attempt of [...priorAttempts, invocation]) {
+      const usage = assertReportedTokenUsage(
+        attempt.providerRun.tokenUsage,
+        attempt.providerRun.runId,
+      );
+      tokensIn += usage.tokensIn;
+      tokensOut += usage.tokensOut;
+    }
 
     const result: SpeakerLabelInvocationResult = {
       labels: parsed.labels,
@@ -165,6 +166,7 @@ export class SpeakerLabelAgent {
         modelProfile: input.modelMetadata,
         providerIdentity: providerRun.provider,
         providerRun,
+        retryProviderRuns,
       },
       tokensIn,
       tokensOut,
@@ -199,6 +201,28 @@ export class SpeakerLabelAgent {
         }
       }
     }
+  }
+
+  private assertCompleteInvocation(invocation: ModelInvocationResult): string {
+    const providerRun = invocation.providerRun;
+    const finishReason = invocation.finishReason;
+    const rawContent = invocation.content;
+
+    if (rawContent === null || rawContent.trim().length === 0) {
+      throw new SpeakerLabelPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "provider returned no content",
+      );
+    }
+    if (!isCleanStopReason(finishReason)) {
+      throw new SpeakerLabelPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "finish reason is not a clean stop",
+      );
+    }
+    return rawContent;
   }
 
   /**

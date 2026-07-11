@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "itotori-78-qa-reliability-evidence/v0",
+  "node": "PR-78",
+  "title": "flash QA reliability \u2014 post-fix failure taxonomy on a live Sweetie HD after-slice",
+  "capturedAt": "2026-07-11T22:22:16Z",
+  "redactionContract": {
+    "policy": "ZDR / no-game-bytes. This artifact carries ONLY counts, cost, the zdr flag, and MECHANICAL failure signatures normalized to remove every uuid, character offset, and game string. No source text, no draft text.",
+    "verify": "rg -P '[\\p{Han}\\p{Hiragana}\\p{Katakana}]' docs/openrouter-integration-evidence/2026-07-11-pr78-qa-reliability.json  (must return 0)"
+  },
+  "run": {
+    "pair": {
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "fireworks"
+    },
+    "engineProfile": "reallive",
+    "translationScope": "dialogue-only",
+    "targetLocale": "en-US",
+    "maxUnitsCap": 40,
+    "branchHeadSha": "902bb2e56fe85eedbcba03c85fd35c874d893522",
+    "rebasedOnto": "origin/main incl. #79 (reviewer-queue deferral FK fix) + #75",
+    "zdrConfirmed": true
+  },
+  "outcome": {
+    "unitsEnumerated": 27407,
+    "unitsInScope": 27159,
+    "unitsRun": 37,
+    "acceptedDraftCount": 25,
+    "deferredCount": 12,
+    "failureCount": 3,
+    "reviewerQueueItemCount": 21,
+    "patchExportCount": 1,
+    "totalUsageCostUsd": 0.068981,
+    "budgetStopped": false
+  },
+  "failuresBySignature": [
+    {
+      "signature": "StructuredQaFindingOutput.findings[0].draftSpan failed rule 'type': expected object",
+      "count": 3,
+      "class": "MECHANICAL",
+      "followUp": "QA model emits draftSpan as a non-object shape the coercer does not cover; survives the bounded retry. Follow-up: live-capture the exact shape -> targeted coercion."
+    }
+  ],
+  "notes": [
+    "All remaining failure signatures are MECHANICAL (bugs to drive to 0 per the 0%-mechanical-error standard); none are legitimate 'hard-line' content deferrals. Tracked as follow-ups in the PR body for a dedicated drive-to-0 wave.",
+    "QA-span out-of-bounds was driven from 7 processed units (pre-prompt-fix slice) to 1 (with the prompt fix) to 0 in this post-#79 run by the span-indexing prompt hardening (lever #1); the only remaining signature is the malformed-shape 'expected object' case.",
+    "The out-of-bounds hard-fail (QaSpanOutOfBoundsError) is the no-masking backstop: a QA finding pointing past the real unit text is rejected loud, never silently accepted."
+  ]
+}

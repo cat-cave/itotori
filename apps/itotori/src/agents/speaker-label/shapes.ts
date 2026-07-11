@@ -137,6 +137,7 @@ export type SpeakerLabelInvocationModelMetadata = {
   modelProfile: SpeakerLabelModelProfile;
   providerIdentity: ProviderRunIdentity;
   providerRun: ProviderRunRecord;
+  retryProviderRuns: ProviderRunRecord[];
 };
 
 // ---------------------------------------------------------------------------

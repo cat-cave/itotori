@@ -1420,6 +1420,10 @@ function providerTelemetryFromSemanticRun(
   };
 }
 
+function sumBilledCostDecimal(runs: ReadonlyArray<ProviderRunRecord>): string {
+  return runs.reduce((acc, run) => addDecimalUsd(acc, assertBilledCostDecimal(run.cost)), "0");
+}
+
 // ---------------------------------------------------------------------------
 // Speaker-label stage
 // ---------------------------------------------------------------------------
@@ -1466,7 +1470,10 @@ function providerTelemetryFromSpeakerLabel(
     pair: pairPolicy.preTranslation.speakerLabel,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
+    costUsd: sumBilledCostDecimal([
+      result.modelMetadata.providerRun,
+      ...result.modelMetadata.retryProviderRuns,
+    ]),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     seed: pairPolicy.preTranslation.speakerLabel.seed,
@@ -1689,7 +1696,10 @@ function providerTelemetryFromTranslation(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
+    costUsd: sumBilledCostDecimal([
+      result.modelMetadata.providerRun,
+      ...result.modelMetadata.retryProviderRuns,
+    ]),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     // ITOTORI-234 — repair invocations pass `pair.seed + attempt`
@@ -1848,7 +1858,10 @@ function providerTelemetryFromQa(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costUsd: assertBilledCostDecimal(result.modelMetadata.providerRun.cost),
+    costUsd: sumBilledCostDecimal([
+      result.modelMetadata.providerRun,
+      ...result.modelMetadata.retryProviderRuns,
+    ]),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
     seed: pair.seed,

@@ -44,13 +44,17 @@ import {
   type StructuredTranslationDraftOutput,
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
-import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
+import {
+  buildStructuredRetryMessages,
+  invokeWithBoundedStructuredRetry,
+} from "../bounded-structured-retry.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   StructuredOutputRequest,
@@ -128,45 +132,37 @@ export class TranslationAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const invocation = await this.options.provider.invoke(request);
+    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
+      provider: this.options.provider,
+      request,
+      parse: parseStructuredTranslationDraftOutput,
+      isSchemaValidationError: (error) => error instanceof TranslationDraftResponseValidationError,
+      buildCorrectiveMessages: buildStructuredRetryMessages,
+      validateResponse: (candidate) => this.assertCompleteInvocation(candidate, input),
+      validateParsed: (candidate) => {
+        this.assertBridgeUnitsResolve(candidate, input);
+        this.assertLocaleConsistency(candidate, input);
+        this.assertCitationsResolve(candidate, input);
+        this.assertProtectedSpansPreserved(candidate, input);
+      },
+    });
     const providerRun = invocation.providerRun;
-    const finishReason = invocation.finishReason;
-    const rawContent = invocation.content;
-
-    if (rawContent === null || rawContent.trim().length === 0) {
-      throw new TranslationPartialResultError(
-        providerRun.runId,
-        input.draftJobAttemptId,
-        finishReason,
-        "provider returned no content",
-      );
-    }
-    // Stop-reason vocabularies vary across providers. We treat
-    // anything other than a clean stop / end_turn as partial;
-    // recorded provider responses always normalize to `stop`.
-    if (!isCleanStopReason(finishReason)) {
-      throw new TranslationPartialResultError(
-        providerRun.runId,
-        input.draftJobAttemptId,
-        finishReason,
-        "finish reason is not a clean stop",
-      );
-    }
-
-    const parsed = parseWithBoundedRepair(rawContent, parseStructuredTranslationDraftOutput);
-    this.assertBridgeUnitsResolve(parsed, input);
-    this.assertLocaleConsistency(parsed, input);
-    this.assertCitationsResolve(parsed, input);
-    this.assertProtectedSpansPreserved(parsed, input);
+    const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
     // PROJECT LAW: token counts come ONLY from real provider output. A
     // missing count is a real failure (mirror of assertBilledCost), never a
     // char/4 estimate that would land in the ledger indistinguishable from a
     // provider-reported count.
-    const { tokensIn, tokensOut } = assertReportedTokenUsage(
-      providerRun.tokenUsage,
-      providerRun.runId,
-    );
+    let tokensIn = 0;
+    let tokensOut = 0;
+    for (const attempt of [...priorAttempts, invocation]) {
+      const usage = assertReportedTokenUsage(
+        attempt.providerRun.tokenUsage,
+        attempt.providerRun.runId,
+      );
+      tokensIn += usage.tokensIn;
+      tokensOut += usage.tokensOut;
+    }
 
     const result: TranslationInvocationResult = {
       drafts: parsed.drafts,
@@ -176,6 +172,7 @@ export class TranslationAgent {
         modelProfile: input.modelProfile,
         providerIdentity: providerRun.provider,
         providerRun,
+        retryProviderRuns,
       },
       tokensIn,
       tokensOut,
@@ -215,6 +212,36 @@ export class TranslationAgent {
         `must differ from sourceLocale '${input.sourceLocale}'`,
       );
     }
+  }
+
+  private assertCompleteInvocation(
+    invocation: ModelInvocationResult,
+    input: TranslationInvocationInput,
+  ): string {
+    const providerRun = invocation.providerRun;
+    const finishReason = invocation.finishReason;
+    const rawContent = invocation.content;
+
+    if (rawContent === null || rawContent.trim().length === 0) {
+      throw new TranslationPartialResultError(
+        providerRun.runId,
+        input.draftJobAttemptId,
+        finishReason,
+        "provider returned no content",
+      );
+    }
+    // Stop-reason vocabularies vary across providers. We treat
+    // anything other than a clean stop / end_turn as partial;
+    // recorded provider responses always normalize to `stop`.
+    if (!isCleanStopReason(finishReason)) {
+      throw new TranslationPartialResultError(
+        providerRun.runId,
+        input.draftJobAttemptId,
+        finishReason,
+        "finish reason is not a clean stop",
+      );
+    }
+    return rawContent;
   }
 
   /**

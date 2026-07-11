@@ -138,6 +138,7 @@ function fixtureModelMetadata(providerRun: ProviderRunRecord): TranslationInvoca
     modelProfile: fixtureModelProfile(),
     providerIdentity: providerRun.provider,
     providerRun,
+    retryProviderRuns: [],
   };
 }
 

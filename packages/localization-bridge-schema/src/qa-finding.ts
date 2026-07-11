@@ -159,6 +159,64 @@ export class QaResponseValidationError extends Error {
   }
 }
 
+const QA_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS = new Set(["$schema", "$id", "title"]);
+const QA_SCHEMA_VERSION_COERCIONS: Record<string, string> = {
+  "itotori.structural-qa-finding-output.v1": STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Normalize only provider echoes that are unambiguous and payload-neutral.
+ * A two-integer span array has one obvious object representation; strings and
+ * numbers do not, so they deliberately remain strict validation failures.
+ */
+function coerceStructuredQaFindingOutput(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const normalized: Record<string, unknown> = { ...value };
+  for (const key of QA_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS) {
+    delete normalized[key];
+  }
+
+  if (
+    typeof normalized.schemaVersion === "string" &&
+    Object.prototype.hasOwnProperty.call(QA_SCHEMA_VERSION_COERCIONS, normalized.schemaVersion)
+  ) {
+    normalized.schemaVersion = QA_SCHEMA_VERSION_COERCIONS[normalized.schemaVersion];
+  }
+
+  if (Array.isArray(normalized.findings)) {
+    normalized.findings = normalized.findings.map((entry) => {
+      if (!isRecord(entry)) {
+        return entry;
+      }
+      const finding: Record<string, unknown> = { ...entry };
+      for (const field of ["sourceSpan", "draftSpan"] as const) {
+        const span = finding[field];
+        if (!Array.isArray(span) || span.length !== 2) {
+          continue;
+        }
+        const [start, end] = span;
+        if (isNonNegativeInteger(start) && isNonNegativeInteger(end)) {
+          finding[field] = { start, end };
+        }
+      }
+      return finding;
+    });
+  }
+
+  return normalized;
+}
+
 /**
  * Validates a parsed JSON value against the StructuredQaFindingOutput
  * schema. Throws `QaResponseValidationError` on the first failure. Returns
@@ -312,12 +370,14 @@ export function parseStructuredQaFindingOutput(raw: string): StructuredQaFinding
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+    // Intentional: malformed JSON is exactly what the corrective re-ask recovers.
     throw new QaResponseValidationError(
       "",
       "json",
       `provider response is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  assertStructuredQaFindingOutput(parsed);
-  return parsed;
+  const coerced = coerceStructuredQaFindingOutput(parsed);
+  assertStructuredQaFindingOutput(coerced);
+  return coerced;
 }

@@ -211,6 +211,17 @@ describe("Speaker-label prompt template", () => {
     );
   });
 
+  it("states the exact schema version, allowed kinds, and metadata prohibition", () => {
+    const rendered = buildSpeakerLabelPrompt(inputFixture());
+    expect(rendered.systemText).toContain(
+      `The schemaVersion field MUST equal EXACTLY the string "${SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION}"`,
+    );
+    expect(rendered.systemText).toContain(
+      "The only allowed speakerId.kind values are EXACTLY: named, unknown_to_reader, unknown_to_parser, narration.",
+    );
+    expect(rendered.systemText).toContain('Do NOT include a "$schema" property');
+  });
+
   it("declares the output schema version and every identity kind", () => {
     const rendered = buildSpeakerLabelPrompt(inputFixture());
     expect(rendered.systemText).toContain(SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION);
@@ -250,6 +261,7 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel happy path", () => {
     expect(result.tokensIn).toBeGreaterThan(0);
     expect(result.tokensOut).toBeGreaterThan(0);
     expect(result.modelMetadata.modelProfile).toEqual(input.modelMetadata);
+    expect(result.modelMetadata.retryProviderRuns).toEqual([]);
     expect(result.recordedArtifactId).toBeUndefined();
   });
 

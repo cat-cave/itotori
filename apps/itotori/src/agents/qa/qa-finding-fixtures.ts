@@ -113,7 +113,7 @@ export function representativeQaFindingsFixture(): QaFinding[] {
       severity: "critical",
       category: "protected-span-violation",
       sourceSpan: { start: 6, end: 14 },
-      draftSpan: { start: 5, end: 13 },
+      draftSpan: { start: 0, end: 5 },
       evidenceRefs: ["style-guide:protectedSpans"],
       recommendation: "Restore the dropped placeholder before exporting the patch.",
       agentRationale: "Source carries {player}; draft drops the placeholder entirely.",
