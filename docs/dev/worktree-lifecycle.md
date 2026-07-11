@@ -1,9 +1,9 @@
 # Agent Worktree Lifecycle
 
 We use **qdcli** for orchestration. The branch/claim/plan/implement/audit/
-repair/merge/complete/blocked/cleanup lifecycle and the worktree helpers
-(`qd worktree create|env|status`, `qd claim`, `qd diff`) are documented in
-qdcli's own `docs/llms.md` (worktree section) and `docs/agents.md`. Do not
+repair/merge/complete/blocked/cleanup lifecycle and worktree discipline are
+documented in the orchestrator playbook
+([`docs/orchestration.md`](../orchestration.md), especially §B and §D). Do not
 duplicate that generic lifecycle here.
 
 This page keeps only the itotori-specific worktree facts that qd does not

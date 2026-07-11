@@ -5,18 +5,19 @@ orchestration. qd is the live orchestration ledger and quality gate; the
 committed source of truth is `roadmap/spec-dag.json` (qd export shape, must pass
 `just roadmap-validate`).
 
-**For how to use qd, read qdcli's own docs — do not duplicate qd mechanics
-here:**
+**For how to run the orchestrator + qd loop, read the in-repo playbook — do
+not duplicate those mechanics here:**
 
-- `docs/llms.md` — orchestrator bootstrap and the full delegate → audit → CI →
-  merge loop.
-- `docs/agents.md` — the 16-step agent protocol.
+- [`docs/orchestration.md`](../orchestration.md) — authoritative orchestrator
+  playbook (landing flow, qd node lifecycle, subagent/shell-agent delegation,
+  worktree discipline, wave cadence, real-bytes honesty, external PR ingest,
+  shell-out cookbook, qd gotchas). `qd method show` points here.
 
 Generic qd mechanics (the orchestrator loop, `qd claim`/`audit`/`check`/`ci`/
 `merge`, assignments, waves, worktree/branch lifecycle, P0–P3 severity policy,
-gate and policy evaluation) live in those docs and are authoritative. This
-document keeps ONLY the itotori-specific operating rules that qd does not
-encode.
+gate and policy evaluation) live in that playbook and are authoritative. This
+document keeps ONLY the itotori-specific operating rules that the playbook
+does not encode.
 
 ## Milestone Framework
 

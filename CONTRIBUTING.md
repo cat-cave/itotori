@@ -27,7 +27,9 @@ when you are going to change code.
    [`docs/dev/architecture.md`](docs/dev/architecture.md) and the
    [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md) /
    [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)
-   pair if you are picking up a qd-driven work item.
+   pair if you are picking up a qd-driven work item. **Orchestrators** start
+   at [`docs/orchestration.md`](docs/orchestration.md) (the playbook
+   `qd method show` points at).
 4. **For "how do I run a single test or a single gate"**, read
    [`docs/dev/testing-standard.md`](docs/dev/testing-standard.md) and
    [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md).
@@ -42,8 +44,9 @@ when you are going to change code.
 - A fresh worktree has no `node_modules`; run `just worktree-setup` once
   before `pnpm exec vp check` or `just fixtures-validate`.
 - Orchestration goes through qd; see
+  [`docs/orchestration.md`](docs/orchestration.md) (playbook),
   [`docs/dev/orchestration-operating-model.md`](docs/dev/orchestration-operating-model.md)
-  and [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md).
+  (itotori-only rules), and [`docs/dev/spec-dag.md`](docs/dev/spec-dag.md).
 - Before opening a PR, run `just check`; the full lane is `just ci`. Lanes
   and which tests run where are mapped in
   [`docs/dev/ci-lanes.md`](docs/dev/ci-lanes.md).
