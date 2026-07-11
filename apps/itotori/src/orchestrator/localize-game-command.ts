@@ -58,6 +58,10 @@ import {
   type NativeCliRunner,
   type NativeCliProcessResult,
 } from "../native-bin/cli-bin-resolver.js";
+import {
+  resolveRealliveSourcePaths,
+  type RealliveSourceFsProbe,
+} from "./reallive-source-resolver.js";
 
 /** The four stages of the whole-game vertical, in dispatch order. */
 export const LOCALIZE_GAME_STAGES = Object.freeze([
@@ -136,11 +140,20 @@ export type RunLocalizeGameArgs = {
   gameRoot?: string;
   /**
    * Paths (inside the source tree) to Gameexe.ini + Seen.txt the structure
-   * stage reads. When omitted they default to
-   * `<sourceRoot>/REALLIVEDATA/{Gameexe.ini,Seen.txt}`.
+   * stage reads. When omitted they are RESOLVED from `sourceRoot` the SAME way
+   * the extract stage resolves its game root — descending a bounded single-child
+   * chain to the directory that directly contains `REALLIVEDATA/` (issue #64 E2)
+   * — so a `--source` that wraps a nested game folder works for both stages. A
+   * source with no `REALLIVEDATA/` resolves to `<sourceRoot>/REALLIVEDATA/*`
+   * (loud downstream failure, identical to extract on the same input).
    */
   gameexePath?: string;
   seenPath?: string;
+  /**
+   * Filesystem probe the game-root resolver reads through. Injected for tests;
+   * defaults to real `node:fs`.
+   */
+  sourceFsProbe?: RealliveSourceFsProbe;
   /** Optional entry scene override for the structure dispatch-order walk. */
   entryScene?: number;
   /** Scene id the validate stage replays + renders. */
@@ -206,8 +219,15 @@ export async function runLocalizeGameCommand(
 
   const gameRoot =
     args.gameRoot ?? (args.vaultCanonicalId === undefined ? args.sourceRoot : undefined);
-  const gameexePath = args.gameexePath ?? join(args.sourceRoot, "REALLIVEDATA", "Gameexe.ini");
-  const seenPath = args.seenPath ?? join(args.sourceRoot, "REALLIVEDATA", "Seen.txt");
+  // Resolve the structure/validate inputs the SAME way the extract stage
+  // resolves its game root (kaifuu's `resolve_reallive_game_root` descent), so a
+  // `--source` pointing at a staging parent that wraps a nested game folder
+  // works for BOTH stages (issue #64 E2). Explicit `--gameexe`/`--seen` still
+  // win. When no REALLIVEDATA is found the resolver falls back to
+  // `<sourceRoot>/REALLIVEDATA/*` — the prior default.
+  const resolvedSource = resolveRealliveSourcePaths(args.sourceRoot, args.sourceFsProbe);
+  const gameexePath = args.gameexePath ?? resolvedSource.gameexePath;
+  const seenPath = args.seenPath ?? resolvedSource.seenPath;
   const redaction = args.redaction ?? "on";
 
   // -------- Stage 1: EXTRACT the whole-Seen bridge (kaifuu extract seam) -----

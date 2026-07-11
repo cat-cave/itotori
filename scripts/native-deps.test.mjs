@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   chromiumCandidates,
+  contractProbeHonored,
+  defaultProbe,
   formatReport,
   nodeSatisfies,
   parsePinnedNodeVersion,
@@ -13,28 +15,42 @@ import {
   RUST_BINS,
 } from "./native-deps.mjs";
 
-// Default --help text that includes each RUST_BINS compatMarker so green-path
-// tests pass the CLI-surface handshake without per-test boilerplate.
-const DEFAULT_HELP_BY_BIN = Object.fromEntries(
-  RUST_BINS.map((b) => [b.name, `usage: ${b.name}\n  ${b.compatMarker}\n`]),
-);
+// Synthetic contract-probe outputs for the LOGIC tests (they exercise the
+// doctor's honored/not-honored decision, NOT the real binary — the real binary
+// is spawned by the real-bin test below, which is the anti-drift guard). A
+// CURRENT bin's probe output satisfies its `contractProbe.requireAll` and
+// carries none of `rejectAny`; a STALE bin's output trips a reject / drops a
+// required token. These are deliberately minimal, not copied banners.
+const HONORED_PROBE_OUTPUT = {
+  // whole-seen probe reaches the (redaction-safe) game-root error: no --scene/--output.
+  "kaifuu-cli": "kaifuu.reallive.extract: game root not found under <redacted>\n",
+  // render-validate --help carries every required contract token.
+  "utsushi-cli":
+    "utsushi render-validate\n  --engine reallive\n  --artifact-root <DIR>\n" +
+    "  --require-semantic-reached-path\n",
+};
+const STALE_PROBE_OUTPUT = {
+  // Stale kaifuu: no whole-seen support, so it demands --scene (a rejectAny token).
+  "kaifuu-cli": "missing flag --scene\n",
+  // Stale utsushi: an older render-validate help missing the gate flag.
+  "utsushi-cli": "utsushi render-validate\n  --engine reallive\n  --artifact-root <DIR>\n",
+};
 
 // A fully in-memory probe: the doctor never touches the real filesystem,
 // network, or child processes in these tests.
 // `existing` / `runnable` entries match by path SUFFIX so tests need not know
 // the absolute REPO_ROOT the doctor resolves against (e.g. "kaifuu-cli"
 // matches "<repo>/target/release/kaifuu-cli").
-// `helpText` maps bin-name suffix → --help body (default includes compatMarkers).
-// `helpOk: false` forces helpOf to fail; `staleBins` omits the compatMarker.
+// `staleBins` (suffixes) makes `probeOf` return the STALE output for that bin;
+// `probeOk: false` forces `probeOf` to report a spawn failure.
 function fakeProbe({
   nodeVersionFile = "24.14.0\n",
   nodeVersion = "v24.14.0",
   existing = [],
   onPath = new Set(),
   runnable = null, // suffixes of runnable bin paths; null => everything runs
-  helpText = null, // optional map suffix -> help string; null => DEFAULT_HELP_BY_BIN
-  staleBins = [], // suffixes whose --help LACKS the current compatMarker
-  helpOk = true,
+  staleBins = [], // suffixes whose contract probe does NOT honor the current contract
+  probeOk = true, // false => probeOf reports a spawn failure
   globHit = null,
   tcpOpen = new Set(),
   commands = {},
@@ -55,17 +71,11 @@ function fakeProbe({
     which: (name) => (onPath.has(name) ? `/usr/bin/${name}` : null),
     glob: () => globHit,
     versionOf: (p) => (canRun(p) ? { ok: true, version: "x 1.0" } : { ok: false, error: "boom" }),
-    helpOf: (p) => {
-      if (!helpOk) return { ok: false, error: "no help", text: "" };
+    probeOf: (p) => {
+      if (!probeOk) return { ok: false, error: "spawn failed", text: "" };
       const name = binNameOf(p);
-      if (suffixMatch(staleBins, p)) {
-        // Runnable but missing the current CLI surface marker.
-        return { ok: true, text: `usage: ${name}\n  (stale surface)\n` };
-      }
-      if (helpText && (helpText[name] !== undefined || helpText[p] !== undefined)) {
-        return { ok: true, text: helpText[name] ?? helpText[p] };
-      }
-      return { ok: true, text: DEFAULT_HELP_BY_BIN[name] || `usage: ${name}\n` };
+      const table = suffixMatch(staleBins, p) ? STALE_PROBE_OUTPUT : HONORED_PROBE_OUTPUT;
+      return { ok: true, text: table[name] || `usage: ${name}\n` };
     },
     tcp: (host, port) => tcpOpen.has(`${host}:${port}`),
     commands: () => commands,
@@ -176,7 +186,7 @@ test("doctor fails when a bin is present but NOT runnable (wrong platform)", () 
   assert.match(rust.message, /not runnable/);
 });
 
-test("doctor passes when bin --help contains the current CLI surface marker", () => {
+test("doctor passes when each bin's subcommand contract probe is honored", () => {
   const kaifuu = "kaifuu-cli";
   const utsushi = "utsushi-cli";
   const report = runDoctor({
@@ -184,14 +194,6 @@ test("doctor passes when bin --help contains the current CLI surface marker", ()
     profile: "core",
     probe: fakeProbe({
       existing: [kaifuu, utsushi],
-      // Real top-level usage banners (the actual `<bin> --help` output shape):
-      // kaifuu prints the subcommand list, utsushi prints its multi-line USAGE.
-      // Each must carry its RUST_BINS.compatMarker top-level token.
-      helpText: {
-        "kaifuu-cli":
-          "usage: kaifuu <detect|extract|patch|...|compat-evidence|asset-ocr|vault> ...\n",
-        "utsushi-cli": "usage: utsushi ...\n       utsushi render-validate --engine reallive ...\n",
-      },
       tcpOpen: new Set(["127.0.0.1:56000"]),
     }),
   });
@@ -202,7 +204,7 @@ test("doctor passes when bin --help contains the current CLI surface marker", ()
   assert.equal(u.status, "ok");
 });
 
-test("doctor fails when a bin runs but --help LACKS the current CLI surface (stale)", () => {
+test("doctor fails when a bin runs but does NOT honor the current subcommand contract (stale)", () => {
   const kaifuu = "kaifuu-cli";
   const utsushi = "utsushi-cli";
   const report = runDoctor({
@@ -210,7 +212,8 @@ test("doctor fails when a bin runs but --help LACKS the current CLI surface (sta
     profile: "core",
     probe: fakeProbe({
       existing: [kaifuu, utsushi],
-      // kaifuu still executes but its --help lacks the current surface marker.
+      // kaifuu still executes but its extract subcommand demands --scene under
+      // --whole-seen (a stale contract that no longer matches the pipeline).
       staleBins: [kaifuu],
       tcpOpen: new Set(["127.0.0.1:56000"]),
     }),
@@ -219,55 +222,59 @@ test("doctor fails when a bin runs but --help LACKS the current CLI surface (sta
   const rust = report.deps.find((d) => d.id === "rust:kaifuu-cli");
   assert.equal(rust.status, "fail");
   assert.match(rust.message, /STALE\/incompatible/);
-  assert.match(rust.message, /compat-evidence/);
+  assert.match(rust.message, /does NOT honor the current CLI contract/);
   assert.match(rust.fix, /cargo build --release -p kaifuu-cli/);
-  // utsushi still has a current surface and must remain ok.
+  // utsushi still honors its contract and must remain ok.
   const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
   assert.equal(u.status, "ok");
 });
 
-// Regression guard for the marker-not-in-real-help class of bug: each
-// RUST_BINS.compatMarker MUST be a token the bin's ACTUAL top-level `--help`
-// banner prints. These banners are copied verbatim from the CLI sources
-// (crates/{kaifuu,utsushi}-cli/src/main.rs). A per-subcommand flag as a marker
-// would NOT appear here and would false-fail a freshly-built current bin.
-const REAL_TOP_LEVEL_HELP = {
-  "kaifuu-cli":
-    "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|" +
-    "offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|" +
-    "rpg-maker|xp3|wolf|bgi|profile|readiness|capabilities|binary-patch-smoke|" +
-    "compat-evidence|asset-ocr|vault> ...",
-  "utsushi-cli":
-    "usage: utsushi capabilities --output <path>\n" +
-    "       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> ...\n" +
-    "       utsushi render-validate --engine reallive --seen <PATH> --scene <N> ...\n" +
-    "       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> ...",
-};
-
-test("every RUST_BINS compatMarker appears in the bin's REAL top-level --help banner", () => {
-  for (const bin of RUST_BINS) {
-    if (!bin.compatMarker) continue;
-    const banner = REAL_TOP_LEVEL_HELP[bin.name];
-    assert.ok(banner, `no real --help banner captured for ${bin.name}`);
-    assert.ok(
-      banner.includes(bin.compatMarker),
-      `compatMarker "${bin.compatMarker}" for ${bin.name} is NOT in its real top-level --help ` +
-        `banner — the doctor would false-fail a current bin. Pick a top-level token.`,
-    );
-  }
-});
-
-test("doctor OKs bins whose --help is the REAL top-level banner (not synthetic)", () => {
+test("doctor fails a bin whose contract probe cannot even spawn", () => {
   const report = runDoctor({
     env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
     profile: "core",
     probe: fakeProbe({
       existing: ["kaifuu-cli", "utsushi-cli"],
-      helpText: REAL_TOP_LEVEL_HELP,
+      probeOk: false, // subcommand probe cannot run
       tcpOpen: new Set(["127.0.0.1:56000"]),
     }),
   });
-  assert.equal(report.ok, true, formatReport(report));
+  assert.equal(report.ok, false);
+  assert.equal(report.deps.find((d) => d.id === "rust:kaifuu-cli").status, "fail");
+});
+
+// contractProbeHonored: the pure decision logic behind the handshake.
+test("contractProbeHonored requires all tokens and rejects any stale token", () => {
+  const probe = { requireAll: ["--engine reallive"], rejectAny: ["--scene"] };
+  assert.equal(contractProbeHonored(probe, { ok: true, text: "... --engine reallive ..." }), true);
+  // missing a required token
+  assert.equal(contractProbeHonored(probe, { ok: true, text: "no engine here" }), false);
+  // carries a rejected token
+  assert.equal(
+    contractProbeHonored(probe, { ok: true, text: "--engine reallive missing flag --scene" }),
+    false,
+  );
+  // spawn failure is never honored
+  assert.equal(contractProbeHonored(probe, { ok: false, text: "" }), false);
+});
+
+// Guard the probe descriptors themselves: every bin declares a real contract
+// probe with a subcommand invocation (not a bare `--help`) so the doctor can
+// exercise the actual contract, and the rejectAny tokens can't be trivially
+// satisfied by an empty output.
+test("every RUST_BIN declares a subcommand contract probe", () => {
+  for (const bin of RUST_BINS) {
+    assert.ok(bin.contractProbe, `${bin.name} must declare a contractProbe`);
+    assert.ok(Array.isArray(bin.contractProbe.args) && bin.contractProbe.args.length >= 1);
+    assert.ok(
+      Array.isArray(bin.contractProbe.requireAll) && Array.isArray(bin.contractProbe.rejectAny),
+    );
+    assert.ok(
+      bin.contractProbe.requireAll.length + bin.contractProbe.rejectAny.length >= 1,
+      `${bin.name} contractProbe must assert at least one token`,
+    );
+    assert.equal(typeof bin.contractProbe.description, "string");
+  }
 });
 
 test("doctor fails when DATABASE_URL is set but unreachable", () => {
@@ -328,3 +335,52 @@ test("provisionPlan degrades to a manual note when toolchains are absent", () =>
   assert.equal(byId.postgres.cmd, null);
   assert.match(byId.postgres.note, /DATABASE_URL|portable/);
 });
+
+// ---------------------------------------------------------------------------
+// REAL-BINARY contract probe (anti-drift): spawn the ACTUAL freshly-built bin
+// and run its real contract probe through the real `defaultProbe`, so the test
+// can never silently drift from the binary (the earlier hand-copied banner
+// could). This proves a CURRENT bin PASSES the strengthened handshake. It is
+// SKIPPED when the bin is not built (e.g. a docs-only CI lane); the synthetic
+// tests above still cover the decision logic.
+function resolveRealBinPath(bin) {
+  const probe = defaultProbe();
+  for (const c of rustBinCandidates(bin, process.env)) {
+    if (c.source === "path") {
+      const abs = probe.which(c.path);
+      if (abs) return abs;
+      continue;
+    }
+    if (probe.exists(c.path)) return c.path;
+  }
+  return null;
+}
+
+for (const bin of RUST_BINS) {
+  const realPath = resolveRealBinPath(bin);
+  test(
+    `REAL ${bin.name}: freshly-built bin HONORS its subcommand contract probe`,
+    { skip: realPath === null ? `${bin.name} not built` : false },
+    () => {
+      const probe = defaultProbe();
+      const probeResult = probe.probeOf(realPath, bin.contractProbe.args);
+      assert.ok(
+        probeResult.ok,
+        `${bin.name} contract probe could not spawn ${realPath}: ${probeResult.error}`,
+      );
+      assert.ok(
+        contractProbeHonored(bin.contractProbe, probeResult),
+        `current ${bin.name} at ${realPath} must PASS the contract handshake ` +
+          `(${bin.contractProbe.description}); real probe output was:\n${probeResult.text}`,
+      );
+      // And the full doctor rust-bin check reports OK for this real bin.
+      const report = runDoctor({
+        env: { ...process.env, DATABASE_URL: "postgres://x@127.0.0.1:1/x" },
+        profile: "core",
+        probe,
+      });
+      const dep = report.deps.find((d) => d.id === `rust:${bin.name}`);
+      assert.equal(dep.status, "ok", `real ${bin.name} doctor status: ${JSON.stringify(dep)}`);
+    },
+  );
+}

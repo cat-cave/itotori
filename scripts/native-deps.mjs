@@ -31,7 +31,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { connect } from "node:net";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -111,29 +111,93 @@ function scrubLiveProviderSecretsFromEnv(env) {
 }
 const NATIVE_CHILD_ENV = scrubLiveProviderSecretsFromEnv(process.env);
 
+// A sentinel path that is guaranteed NOT to exist, used as a --game-root for the
+// kaifuu contract probe so the bin fails at game-root resolution WITHOUT decoding
+// or writing anything. Both the root and the bundle-output live under this
+// nonexistent directory, so even the write path (never reached) could not
+// touch a real file.
+const DOCTOR_PROBE_MISSING_DIR = path.join(
+  tmpdir(),
+  "itotori-doctor-probe-nonexistent-DO-NOT-CREATE",
+);
+const DOCTOR_PROBE_MISSING_ROOT = path.join(DOCTOR_PROBE_MISSING_DIR, "game-root");
+const DOCTOR_PROBE_MISSING_BUNDLE = path.join(DOCTOR_PROBE_MISSING_DIR, "bundle.json");
+
 // The kaifuu/utsushi CLI binaries the localize + render pipeline drive. Bin
 // names are the crate names (default cargo bin target).
-// `compatMarker` is a token that MUST appear in the binary's TOP-LEVEL `--help`
-// output (the usage banner the CLI prints for a bare/unknown first arg). A
-// stale/prebuilt bin predating this surface will lack the marker and fail the
-// doctor handshake. NOTE: the marker must be a top-level token (a subcommand
-// name or a token in the top-level usage banner), NOT a subcommand-specific
-// flag — `kaifuu-cli --help` prints only the subcommand list, so a per-command
-// flag such as `--whole-seen` never appears there and would false-fail a
-// current bin. `compat-evidence` / `render-validate` are current top-level
-// surfaces (see crates/{kaifuu,utsushi}-cli/src/main.rs usage banners).
+//
+// `contractProbe` is a BEHAVIORAL subcommand-contract handshake, not a mere
+// help-banner substring: the doctor INVOKES the real subcommand (in a safe
+// no-real-work mode) and asserts the bin honors the CURRENT flag contract the
+// pipeline depends on. A mid-age bin that still prints a plausible top-level
+// banner but no longer honors the subcommand contract FAILS here — which a
+// top-level `--help` substring could not catch. Each probe:
+//   - args        the subcommand invocation to spawn (safe: no real inputs)
+//   - requireAll  tokens that MUST appear in the combined output of a CURRENT bin
+//   - rejectAny   tokens whose presence proves a STALE/incompatible contract
+//   - description human-readable contract summary for the fail message
 export const RUST_BINS = [
   {
     name: "kaifuu-cli",
     envVar: "ITOTORI_KAIFUU_BIN",
     role: "decode / patch driver",
-    compatMarker: "compat-evidence",
+    // CONTRACT: `kaifuu extract --whole-seen` makes `--scene` OPTIONAL (the
+    // whole-Seen bridge covers every scene). kaifuu-cli has no per-subcommand
+    // `--help` (a bare `extract` just reports the first missing required flag),
+    // so we exercise the arg parser directly: with `--whole-seen` present and NO
+    // `--scene`, a CURRENT bin accepts it and proceeds to game-root resolution
+    // (failing there, since the root is a nonexistent sentinel — no decode, no
+    // write). A STALE bin either (a) requires `--scene` because it lacks
+    // whole-seen support -> "missing flag --scene", or (b) has a stale `--engine
+    // reallive` extract route and falls to the generic path -> "missing flag
+    // --output". Either stale signal contains a rejected token; a current bin
+    // reaches the (redaction-safe) game-root error and prints neither.
+    contractProbe: {
+      description: "extract --whole-seen accepts an OPTIONAL --scene",
+      args: [
+        "extract",
+        "--engine",
+        "reallive",
+        "--whole-seen",
+        "--game-id",
+        "doctor-probe",
+        "--game-version",
+        "doctor-probe",
+        "--source-profile-id",
+        "doctor-probe",
+        "--source-locale",
+        "doctor-probe",
+        "--bundle-output",
+        DOCTOR_PROBE_MISSING_BUNDLE,
+        "--game-root",
+        DOCTOR_PROBE_MISSING_ROOT,
+      ],
+      requireAll: [],
+      rejectAny: ["--scene", "--output"],
+    },
   },
   {
     name: "utsushi-cli",
     envVar: "ITOTORI_UTSUSHI_BIN",
     role: "render / conformance driver",
-    compatMarker: "render-validate",
+    // CONTRACT: utsushi-cli DOES expose per-subcommand `--help`; `render-validate
+    // --help` runs the real subcommand parser and prints its CURRENT flag
+    // contract. A CURRENT bin's help lists the engine + the required
+    // artifact/game surface + the recent `--require-semantic-reached-path` gate
+    // flag; a stale render-validate (older contract) is missing at least one of
+    // these and FAILS. This is a genuine subcommand invocation, not a top-level
+    // banner substring.
+    contractProbe: {
+      description: "render-validate exposes the current flag contract",
+      args: ["render-validate", "--help"],
+      requireAll: [
+        "render-validate",
+        "--engine reallive",
+        "--artifact-root",
+        "--require-semantic-reached-path",
+      ],
+      rejectAny: [],
+    },
   },
 ];
 
@@ -329,23 +393,39 @@ function checkRustBins(env, probe) {
         `Rebuild it for this platform: \`cargo build --release -p ${bin.name}\`.`,
       );
     }
-    // Stale bins often still execute (any --help/exit code) but no longer match
-    // the current CLI contract. Require a surface marker in --help.
-    if (bin.compatMarker) {
-      const help = probe.helpOf(found.path);
-      const text = help.ok ? help.text || "" : "";
-      if (!help.ok || !text.includes(bin.compatMarker)) {
+    // Stale bins often still execute (any --help/exit code) but no longer honor
+    // the current CLI CONTRACT. A top-level `--help` substring can't prove that
+    // — so INVOKE the real subcommand (safe, no-real-work) and assert the bin
+    // honors the current flag contract; a bin lacking it FAILS.
+    if (bin.contractProbe) {
+      const honored = contractProbeHonored(
+        bin.contractProbe,
+        probe.probeOf(found.path, bin.contractProbe.args),
+      );
+      if (!honored) {
         return result(
           "rust:" + bin.name,
           "fail",
-          `${bin.name} resolved at ${found.path} (${found.source}) but is STALE/incompatible ` +
-            `(its --help is missing the current CLI surface \`${bin.compatMarker}\`)`,
+          `${bin.name} resolved at ${found.path} (${found.source}) but does NOT honor the ` +
+            `current CLI contract (${bin.contractProbe.description}) — STALE/incompatible`,
           `Rebuild it: \`cargo build --release -p ${bin.name}\`.`,
         );
       }
     }
     return result("rust:" + bin.name, "ok", `${bin.name} <- ${found.path} (${found.source})`);
   });
+}
+
+// A contract probe is HONORED iff the subcommand actually RAN (spawn ok) and its
+// combined output contains every `requireAll` token and none of the `rejectAny`
+// tokens. A spawn failure (missing/wrong-arch bin) is NOT honored. Exported for
+// the doctor unit tests.
+export function contractProbeHonored(contractProbe, probeResult) {
+  if (!probeResult || !probeResult.ok) return false;
+  const text = probeResult.text || "";
+  const hasAll = (contractProbe.requireAll || []).every((token) => text.includes(token));
+  const hasNoneRejected = !(contractProbe.rejectAny || []).some((token) => text.includes(token));
+  return hasAll && hasNoneRejected;
 }
 
 function checkChromium(env, probe) {
@@ -517,11 +597,13 @@ export function defaultProbe() {
       }
       return { ok: false, error: "binary did not execute on this platform" };
     },
-    helpOf: (bin) => {
-      // Capture --help text for the CLI-surface compat handshake. Same
-      // "executed = ok" semantics as versionOf: non-zero exit with usage
-      // text is fine; only spawn failures mean we could not read help.
-      const r = spawnSync(bin, ["--help"], {
+    probeOf: (bin, args) => {
+      // Run a subcommand CONTRACT probe and capture its combined output. Same
+      // "executed = ok" semantics as versionOf: a non-zero exit with usage /
+      // diagnostic text is fine (the probe deliberately fails downstream on a
+      // nonexistent input); only a spawn failure means we could not run the
+      // contract check.
+      const r = spawnSync(bin, args, {
         encoding: "utf8",
         timeout: 15_000,
         env: NATIVE_CHILD_ENV,
@@ -536,7 +618,7 @@ export function defaultProbe() {
       if (text.trim().length > 0 || r.status !== null) {
         return { ok: true, text };
       }
-      return { ok: false, error: "binary produced no --help output", text: "" };
+      return { ok: false, error: "binary produced no probe output", text: "" };
     },
     tcp: (host, port) => tcpReachableSync(host, port),
     commands: () => ({
