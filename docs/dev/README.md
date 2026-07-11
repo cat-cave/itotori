@@ -30,11 +30,15 @@ concern.
 
 ### qd DAG / orchestration workflow
 
+- [`docs/orchestration.md`](../orchestration.md) — **orchestrator playbook**
+  (authoritative on-ramp; `qd method show` points here): landing flow, qd
+  lifecycle, delegation, worktrees, waves, real-bytes honesty, external PRs,
+  shell-out cookbook.
 - [`spec-dag.md`](spec-dag.md) — the committed `roadmap/spec-dag.json` export,
   validation, and the qd-import contract.
-- [`orchestration-operating-model.md`](orchestration-operating-model.md) — the
-  orchestrator + delegate loop, milestones, severity policy, and itotori-
-  specific operating rules.
+- [`orchestration-operating-model.md`](orchestration-operating-model.md) —
+  itotori-specific operating rules (milestones, provider/cost policy, DAG
+  anti-patterns) that the playbook does not encode.
 
 ### Worktree + workflow
 

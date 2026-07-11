@@ -2,9 +2,9 @@
 
 We use **qdcli** for the implementation roadmap. The DAG concepts (node shape,
 edges, status/priority, the qd export JSON schema, claim/check/ci/merge
-lifecycle, finding promotion) are documented in qdcli's own `docs/llms.md`,
-`docs/agents.md`, and its schema/import docs (`docs/import.md`). The
-orchestrator operating contract and itotori's DAG quality bars live in
+lifecycle, finding promotion) are documented in the orchestrator playbook
+([`docs/orchestration.md`](../orchestration.md)). The orchestrator operating
+contract and itotori's DAG quality bars live in
 [`orchestration-operating-model.md`](orchestration-operating-model.md). This
 page keeps only the itotori-specific roadmap facts.
 
