@@ -89,6 +89,13 @@
       "role": "RPG Maker MV/MZ readiness merge matrix"
     },
     {
+      "sourceId": "rpg-maker-mv-mz-data-text-patchback",
+      "path": "fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json",
+      "category": "validation_artifact",
+      "kind": "validation_artifact",
+      "role": "RPG Maker MV/MZ www/data text patchback + .kaifuu delta round-trip validation"
+    },
+    {
       "sourceId": "rpg-maker-mv-mz-encrypted-suffixes-detection",
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
       "category": "fixture_output",
@@ -507,6 +514,57 @@
       ]
     },
     {
+      "rowId": "rpg-maker-mv-mz-data-text-patchback",
+      "engineFamily": "rpg_maker_mv_mz",
+      "scenario": "data-text-patchback",
+      "adapterId": "kaifuu.rpg-maker-mv-mz",
+      "evidencePosture": "readiness_only",
+      "levels": {
+        "identify": {
+          "status": "supported",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#status"
+        },
+        "inventory": {
+          "status": "unsupported",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#surface",
+          "note": "www/data text units are surfaced via extract, not a separate asset-inventory parser"
+        },
+        "extract": {
+          "status": "partial",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#surfacedUnitCount",
+          "note": "www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter"
+        },
+        "patch": {
+          "status": "partial",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#deltaRoundTrip",
+          "note": "byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry"
+        },
+        "helper": {
+          "status": "not_applicable",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#corpus",
+          "note": "plaintext www/data JSON text surface; no key material or helper is required"
+        },
+        "runtime": {
+          "status": "unsupported",
+          "derivedFrom": "rpg-maker-mv-mz-data-text-patchback#schema",
+          "note": "MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact"
+        }
+      },
+      "evidence": [
+        {
+          "sourceId": "rpg-maker-mv-mz-data-text-patchback",
+          "category": "validation_artifact",
+          "kind": "validation_artifact"
+        }
+      ],
+      "limitations": [
+        "inventory: www/data text units are surfaced via extract, not a separate asset-inventory parser",
+        "extract: www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter",
+        "patch: byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry",
+        "runtime: MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact"
+      ]
+    },
+    {
       "rowId": "wolf-rpg-editor-encrypted-archive-smoke",
       "engineFamily": "wolf_rpg_editor",
       "scenario": "encrypted-archive-smoke",
@@ -688,6 +746,10 @@
     "[rpg-maker-mv-mz-encrypted-media] patch: no decrypt/patch is claimed from media-key detection alone",
     "[rpg-maker-mv-mz-encrypted-media] helper: key evidence is validated against System.json; no key material is resolved or decrypted",
     "[rpg-maker-mv-mz-encrypted-media] runtime: no runtime evidence is claimed for MV/MZ readiness",
+    "[rpg-maker-mv-mz-data-text-patchback] inventory: www/data text units are surfaced via extract, not a separate asset-inventory parser",
+    "[rpg-maker-mv-mz-data-text-patchback] extract: www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter",
+    "[rpg-maker-mv-mz-data-text-patchback] patch: byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry",
+    "[rpg-maker-mv-mz-data-text-patchback] runtime: MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact",
     "[wolf-rpg-editor-encrypted-archive-smoke] inventory: detection summary provides identify-only readiness; no inventory parser is claimed",
     "[wolf-rpg-editor-encrypted-archive-smoke] extract: no extraction is claimed; detector/profile readiness evidence only",
     "[wolf-rpg-editor-encrypted-archive-smoke] patch: no parser or patch support is claimed",

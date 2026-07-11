@@ -784,9 +784,11 @@ fn read_json(path: &Path) -> Result<(String, Value), DatabaseExtractError> {
         Err(source) => return Err(DatabaseExtractError::Io { file, source }),
     };
     let value =
-        serde_json::from_slice(&bytes).map_err(|source| DatabaseExtractError::MalformedJson {
-            file: file.clone(),
-            source,
+        serde_json::from_slice(crate::json_locate::strip_utf8_bom(&bytes)).map_err(|source| {
+            DatabaseExtractError::MalformedJson {
+                file: file.clone(),
+                source,
+            }
         })?;
     Ok((file, value))
 }

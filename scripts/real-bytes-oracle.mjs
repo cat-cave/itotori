@@ -17,9 +17,11 @@
 //
 //   (A) GROUND TRUTH — re-run the FULL real-bytes suite (`just ci-real-bytes`)
 //       against the real corpora under /scratch/itotori-research + the live
-//       read-only vault (Sweetie HD + Kanon RealLive, LustMemory RPG Maker
-//       MV/MZ, the vault-materialized Siglus installs). Read-only; never copies
-//       copyrighted bytes. This proves the source-of-truth catalogues
+//       read-only vault (Sweetie HD + Kanon RealLive, LustMemory + Countryside
+//       Life RPG Maker MV/MZ, the vault-materialized Siglus installs). Read-only;
+//       never copies copyrighted bytes. The ci-real-bytes recipe also runs the
+//       app-level MV/MZ patch/apply byte-round-trip against both titles. This
+//       proves the source-of-truth catalogues
 //       (REAL_CATALOG, NamedOpcode, classify(), the g00 type matrix, …) still
 //       match the real bytes — the 100%-decompilation / 0-unknown-opcode bar.
 //
@@ -93,8 +95,10 @@ function banner(text) {
 }
 
 // Stage A: full real-bytes ground-truth suite. `just ci-real-bytes` sets its
-// own corpus-root env defaults and PRE-CHECKS every root up front, so a missing
-// corpus fails cleanly (nonzero) rather than passing with zero real bytes.
+// own corpus-root env defaults, PRE-CHECKS every root up front, builds the
+// kaifuu binary used by the app-level MV/MZ proof, and runs both real titles.
+// A missing corpus fails cleanly (nonzero) rather than passing with zero real
+// bytes.
 function runGroundTruth() {
   banner("stage A — real-bytes GROUND TRUTH (full suite, ~30-45 min)");
   const result = spawnSync("just", ["ci-real-bytes"], { cwd: repoRoot, stdio: "inherit" });

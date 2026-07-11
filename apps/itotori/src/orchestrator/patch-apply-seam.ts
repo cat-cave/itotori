@@ -71,7 +71,11 @@ import type {
   SourceBridgeUnit,
   SourceBridgeView,
 } from "../patch-export/source-bridge-view.js";
-import type { DrivenPatchReport, TranslationScope } from "./project-driven-executor.js";
+import type {
+  DrivenEngineProfile,
+  DrivenPatchReport,
+  TranslationScope,
+} from "./project-driven-executor.js";
 import {
   admitWholeGameRuntimeValidation,
   runWholeGameReplayRenderValidate,
@@ -338,8 +342,25 @@ function microsToDecimalString(micros: bigint): string {
 }
 
 // ---------------------------------------------------------------------------
-// (2) The apply step — kaifuu patch --engine reallive --bundle translated-bridge
+// (2) The apply step — kaifuu patch, dispatched per engine:
+//   - reallive:        --engine reallive --source <src> --target <out>
+//                      --bundle translated-bridge.json --scope <scope> --force
+//   - rpg-maker-mv-mz: --engine rpgmaker --source <www>
+//                      --bundle translated-bridge.json --delta-output <delta>
+//                      --patched-data-output <patched-data-tree>
 // ---------------------------------------------------------------------------
+
+/**
+ * The result of ANY `kaifuu patch` apply invocation (reallive or rpgmaker):
+ * the resolved command, its argv, exit status, and captured output.
+ */
+export type KaifuuPatchApplyResult = {
+  command: string;
+  args: string[];
+  status: number;
+  stdout: string;
+  stderr: string;
+};
 
 export type ApplyKaifuuRealLivePatchArgs = {
   /** Read-only source game root (contains REALLIVEDATA/Seen.txt). */
@@ -364,13 +385,7 @@ export type KaifuuProcessResult = {
   stderr: string;
 };
 
-export type ApplyKaifuuRealLivePatchResult = {
-  command: string;
-  args: string[];
-  status: number;
-  stdout: string;
-  stderr: string;
-};
+export type ApplyKaifuuRealLivePatchResult = KaifuuPatchApplyResult;
 
 export class KaifuuPatchApplyError extends Error {
   constructor(
@@ -413,13 +428,83 @@ export function applyKaifuuRealLivePatch(
     patchArgs.push("--force");
   }
   args.log?.(`patch-apply: ${command} ${patchArgs.join(" ")}`);
-  const runProcess = args.runProcess ?? defaultRunProcess;
+  const runProcess = args.runProcess ?? defaultRunProcessFor("reallive");
   const res = runProcess(command, patchArgs, env);
   if (res.status !== 0) {
     throw new KaifuuPatchApplyError(
       res.status,
       res.stderr,
       `kaifuu patch (reallive) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+    );
+  }
+  return {
+    command,
+    args: patchArgs,
+    status: res.status,
+    stdout: res.stdout,
+    stderr: res.stderr,
+  };
+}
+
+export type ApplyKaifuuRpgMakerPatchArgs = {
+  /** Read-only source game root — the RPG Maker `www` dir (contains `data/`). */
+  sourceRoot: string;
+  /**
+   * Writable output dir the byte-surgically patched `data` tree is
+   * materialized under. Must NOT already exist (kaifuu-rpgmaker refuses to
+   * overwrite so a stale patched tree is never silently reused).
+   */
+  patchedDataOutputPath: string;
+  /** Path the `.kaifuu` delta package (source-vs-patched diff) is written to. */
+  deltaOutputPath: string;
+  /** Path to the executor's `translated-bridge.json` (translated v0.2 bundle). */
+  translatedBundlePath: string;
+  env?: NodeJS.ProcessEnv;
+  /** Injection seam for tests. Defaults to a real sanitized spawn. */
+  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => KaifuuProcessResult;
+  log?: (message: string) => void;
+};
+
+/**
+ * Apply the whole-game translated bridge to the RPG Maker MV/MZ `www/data`
+ * tree, producing the byte-surgically patched `data` tree under
+ * `patchedDataOutputPath` + the `.kaifuu` delta package at `deltaOutputPath`.
+ * Mirrors `kaifuu patch --engine rpgmaker --source <www> --bundle
+ * translated-bridge.json --delta-output <delta> --patched-data-output <dir>`
+ * (`run_patch_rpgmaker_bundle` → `kaifuu_rpgmaker::produce_delta_package`).
+ *
+ * The source `www/data` tree is treated strictly read-only; the delta + patched
+ * tree are reproduced byte-for-byte by `kaifuu-delta apply`. `translated-bridge`
+ * is the SAME translated v0.2 bundle the reallive apply consumes — the executor
+ * writes ONE bundle regardless of engine.
+ */
+export function applyKaifuuRpgMakerPatch(
+  args: ApplyKaifuuRpgMakerPatchArgs,
+): KaifuuPatchApplyResult {
+  const env = args.env ?? process.env;
+  const { command, prefixArgs } = resolveKaifuuCli(env);
+  const patchArgs = [
+    ...prefixArgs,
+    "patch",
+    "--engine",
+    "rpgmaker",
+    "--source",
+    args.sourceRoot,
+    "--bundle",
+    args.translatedBundlePath,
+    "--delta-output",
+    args.deltaOutputPath,
+    "--patched-data-output",
+    args.patchedDataOutputPath,
+  ];
+  args.log?.(`patch-apply: ${command} ${patchArgs.join(" ")}`);
+  const runProcess = args.runProcess ?? defaultRunProcessFor("rpgmaker");
+  const res = runProcess(command, patchArgs, env);
+  if (res.status !== 0) {
+    throw new KaifuuPatchApplyError(
+      res.status,
+      res.stderr,
+      `kaifuu patch (rpgmaker) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
     );
   }
   return {
@@ -461,26 +546,26 @@ export function resolveKaifuuCli(env: NodeJS.ProcessEnv): {
   );
 }
 
-function defaultRunProcess(
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-): KaifuuProcessResult {
-  // Route through the ONE sanitized native-CLI spawn boundary so the
-  // live-provider secrets are scrubbed from the child env (patch-apply is a
-  // byte tool — it never needs OpenRouter creds).
-  const res = spawnNativeCliProcess(command, args, env);
-  if (res.error !== undefined) {
-    throw new KaifuuPatchApplyError(
-      null,
-      res.error.message,
-      `kaifuu patch (reallive) could not be spawned (${command}): ${res.error.message}`,
-    );
-  }
-  return {
-    status: res.status,
-    stdout: res.stdout,
-    stderr: res.stderr,
+function defaultRunProcessFor(
+  engineLabel: string,
+): (command: string, args: string[], env: NodeJS.ProcessEnv) => KaifuuProcessResult {
+  return (command, args, env) => {
+    // Route through the ONE sanitized native-CLI spawn boundary so the
+    // live-provider secrets are scrubbed from the child env (patch-apply is a
+    // byte tool — it never needs OpenRouter creds).
+    const res = spawnNativeCliProcess(command, args, env);
+    if (res.error !== undefined) {
+      throw new KaifuuPatchApplyError(
+        null,
+        res.error.message,
+        `kaifuu patch (${engineLabel}) could not be spawned (${command}): ${res.error.message}`,
+      );
+    }
+    return {
+      status: res.status,
+      stdout: res.stdout,
+      stderr: res.stderr,
+    };
   };
 }
 
@@ -500,16 +585,40 @@ export type SeamAssetDecisionLoader = (
 
 export type RunWholeGamePatchExportAndApplyArgs = {
   actor: AuthorizationActor;
+  /**
+   * Which engine's byte-surgical patchback applies the translated bundle. The
+   * export-patch preflight (real drafts, protected spans, asset decisions,
+   * source-bridge integrity) is engine-AGNOSTIC and runs identically for both;
+   * only the apply step dispatches:
+   *   - `reallive`:        `kaifuu patch --engine reallive` (Seen.txt) + utsushi
+   *                        replay/render validation.
+   *   - `rpg-maker-mv-mz`: `kaifuu patch --engine rpgmaker` (www/data/*.json
+   *                        literals → `.kaifuu` delta + patched tree). No utsushi
+   *                        render validation — MV/MZ is a delegation runtime.
+   */
+  engineProfile: DrivenEngineProfile;
   draftJobs: ItotoriDraftJobRepositoryPort;
   ledger: ItotoriDraftAttemptProviderLedgerRepositoryPort;
   /** The executor run's patch report (identity + accepted bodies + scope). */
   patchReport: DrivenPatchReport;
   /** The raw v0.2 bridge the run drafted against (drives the source view + hash). */
   rawBridge: unknown;
-  /** Read-only source game root (contains REALLIVEDATA/Seen.txt). */
+  /**
+   * Read-only source game root. RealLive: the game root (contains
+   * REALLIVEDATA/Seen.txt). RPG Maker MV/MZ: the `www` dir (contains `data/`).
+   */
   sourceRoot: string;
-  /** Writable target the patched archive lands under. */
+  /**
+   * Writable target the patched output lands under. RealLive: the patched game
+   * root. RPG Maker MV/MZ: the materialized patched `data` tree (must not
+   * pre-exist).
+   */
   targetRoot: string;
+  /**
+   * RPG Maker MV/MZ only: path the `.kaifuu` delta package is written to.
+   * Defaults to `<targetRoot>.delta.kaifuu`. Ignored for RealLive.
+   */
+  rpgMakerDeltaOutputPath?: string;
   /** The executor's `translated-bridge.json` (translated v0.2 bundle). */
   translatedBundlePath: string;
   requestedBy: string;
@@ -529,7 +638,7 @@ export type WholeGamePatchExportAndApplyResult = {
   /** The v0.2 patch-export bundle produced from REAL executor drafts. */
   patchExportBundle: PatchExportBundle;
   /** The kaifuu-patch apply result (byte-correct patched output written). */
-  apply: ApplyKaifuuRealLivePatchResult;
+  apply: KaifuuPatchApplyResult;
   /** The reconstructed draft-artifact bundle id (deterministic per run). */
   draftArtifactBundleId: string;
   /** Present when the caller requested post-apply replay/render validation. */
@@ -557,8 +666,10 @@ export class WholeGamePatchExportPreflightError extends Error {
  *      asset decisions resolved through the live repository, protected-span
  *      coverage checked per accepted draft). A blocking preflight failure
  *      throws — no patch is applied on a failed preflight.
- *   3. Apply `kaifuu patch --engine reallive --bundle translated-bridge.json`
- *      to produce the final applyable, byte-correct patched output.
+ *   3. Apply the translated bundle via `kaifuu patch`, dispatched on
+ *      `engineProfile`: `--engine reallive` (Seen.txt) or `--engine rpgmaker`
+ *      (www/data/*.json literals → `.kaifuu` delta + patched tree), to produce
+ *      the final applyable, byte-correct patched output.
  */
 export async function runWholeGamePatchExportAndApply(
   args: RunWholeGamePatchExportAndApplyArgs,
@@ -648,22 +759,38 @@ export async function runWholeGamePatchExportAndApply(
   assertPatchExportBundle(result);
 
   args.log?.(
-    `patch-export: ${result.drafts.length} real draft(s) passed preflight; applying via kaifuu patch`,
+    `patch-export: ${result.drafts.length} real draft(s) passed preflight; applying via kaifuu patch (engine=${args.engineProfile})`,
   );
 
-  const apply = applyKaifuuRealLivePatch({
-    sourceRoot: args.sourceRoot,
-    targetRoot: args.targetRoot,
-    translatedBundlePath: args.translatedBundlePath,
-    translationScope: args.patchReport.translationScope,
-    ...(args.force !== undefined ? { force: args.force } : {}),
-    ...(args.env !== undefined ? { env: args.env } : {}),
-    ...(args.runProcess !== undefined ? { runProcess: args.runProcess } : {}),
-    ...(args.log !== undefined ? { log: args.log } : {}),
-  });
+  // Apply step dispatches on the engine. The preflight above was engine-agnostic;
+  // only the byte-surgical writer differs (Seen.txt vs www/data/*.json literals).
+  const apply =
+    args.engineProfile === "rpg-maker-mv-mz"
+      ? applyKaifuuRpgMakerPatch({
+          sourceRoot: args.sourceRoot,
+          patchedDataOutputPath: args.targetRoot,
+          deltaOutputPath: args.rpgMakerDeltaOutputPath ?? `${args.targetRoot}.delta.kaifuu`,
+          translatedBundlePath: args.translatedBundlePath,
+          ...(args.env !== undefined ? { env: args.env } : {}),
+          ...(args.runProcess !== undefined ? { runProcess: args.runProcess } : {}),
+          ...(args.log !== undefined ? { log: args.log } : {}),
+        })
+      : applyKaifuuRealLivePatch({
+          sourceRoot: args.sourceRoot,
+          targetRoot: args.targetRoot,
+          translatedBundlePath: args.translatedBundlePath,
+          translationScope: args.patchReport.translationScope,
+          ...(args.force !== undefined ? { force: args.force } : {}),
+          ...(args.env !== undefined ? { env: args.env } : {}),
+          ...(args.runProcess !== undefined ? { runProcess: args.runProcess } : {}),
+          ...(args.log !== undefined ? { log: args.log } : {}),
+        });
 
+  // Post-apply utsushi replay/render validation is RealLive-only (from-scratch
+  // VM + rasterizer oracle). MV/MZ is a delegation runtime with no such seam
+  // wired, so a render-validation request is ignored for it.
   const renderValidation =
-    args.renderValidation === undefined
+    args.renderValidation === undefined || args.engineProfile !== "reallive"
       ? undefined
       : runWholeGameReplayRenderValidate({
           rawBridge: args.rawBridge,

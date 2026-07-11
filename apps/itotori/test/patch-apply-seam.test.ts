@@ -58,6 +58,7 @@ import { DbPassLedger } from "../src/orchestrator/pass-ledger-db-adapter.js";
 import { runLocalizeFullProjectCommand } from "../src/orchestrator/localize-fullproject-command.js";
 import {
   applyKaifuuRealLivePatch,
+  applyKaifuuRpgMakerPatch,
   buildDraftArtifactBundleFromExecutorRun,
   kaifuuScopeToken,
   runWholeGamePatchExportAndApply,
@@ -150,6 +151,59 @@ describe("applyKaifuuRealLivePatch (invocation shape mirrors run.mjs phase 3)", 
         runProcess,
       }),
     ).toThrow(/status 3.*patchback_target_nonempty/su);
+  });
+});
+
+describe("applyKaifuuRpgMakerPatch (invocation shape mirrors kaifuu rpgmaker patch)", () => {
+  it("invokes kaifuu patch --engine rpgmaker with source www + bundle + delta + patched-data outputs", () => {
+    let captured: { command: string; args: string[] } | undefined;
+    const runProcess = (command: string, args: string[]): KaifuuProcessResult => {
+      captured = { command, args };
+      return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
+    };
+    const res = applyKaifuuRpgMakerPatch({
+      sourceRoot: "/src/game/www",
+      patchedDataOutputPath: "/out/patched-data",
+      deltaOutputPath: "/run/rpgmaker-delta.kaifuu",
+      translatedBundlePath: "/run/translated-bridge.json",
+      env: {},
+      runProcess,
+    });
+    expect(res.status).toBe(0);
+    const a = captured!.args;
+    const patchIdx = a.indexOf("patch");
+    expect(patchIdx).toBeGreaterThanOrEqual(0);
+    expect(a.slice(patchIdx)).toEqual([
+      "patch",
+      "--engine",
+      "rpgmaker",
+      "--source",
+      "/src/game/www",
+      "--bundle",
+      "/run/translated-bridge.json",
+      "--delta-output",
+      "/run/rpgmaker-delta.kaifuu",
+      "--patched-data-output",
+      "/out/patched-data",
+    ]);
+  });
+
+  it("throws a KaifuuPatchApplyError on a non-zero exit", () => {
+    const runProcess = (): KaifuuProcessResult => ({
+      status: 4,
+      stdout: "",
+      stderr: "kaifuu.rpgmaker.stale_source: boom",
+    });
+    expect(() =>
+      applyKaifuuRpgMakerPatch({
+        sourceRoot: "/src/www",
+        patchedDataOutputPath: "/out/patched-data",
+        deltaOutputPath: "/run/rpgmaker-delta.kaifuu",
+        translatedBundlePath: "/run/translated-bridge.json",
+        env: {},
+        runProcess,
+      }),
+    ).toThrow(/rpgmaker.*status 4.*stale_source/su);
   });
 });
 
@@ -370,6 +424,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
+        engineProfile: "reallive",
         actor: SEAM_ACTOR,
         draftJobs,
         ledger,
@@ -405,6 +460,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
     await expect(
       runWholeGamePatchExportAndApply({
+        engineProfile: "reallive",
         actor: SEAM_ACTOR,
         draftJobs,
         ledger,
@@ -447,6 +503,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
+        engineProfile: "reallive",
         actor: SEAM_ACTOR,
         draftJobs,
         ledger,
@@ -488,6 +545,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     const hash = hashDraftedAgainstBridge(bridge);
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
     const seam = await runWholeGamePatchExportAndApply({
+      engineProfile: "reallive",
       actor: SEAM_ACTOR,
       draftJobs,
       ledger,
@@ -522,6 +580,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
     let capturedArgs: string[] | undefined;
     const seam = await runWholeGamePatchExportAndApply({
+      engineProfile: "reallive",
       actor: SEAM_ACTOR,
       draftJobs,
       ledger,
@@ -540,6 +599,68 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     expect(seam.apply.status).toBe(0);
     expect(seam.patchExportBundle.drafts).toHaveLength(1);
     expect(capturedArgs?.includes("patch")).toBe(true);
+  });
+
+  // engineProfile dispatch: the SAME engine-agnostic preflight runs, but a
+  // `rpg-maker-mv-mz` run applies via `kaifuu patch --engine rpgmaker`
+  // (delta + patched-data outputs, NO --engine reallive / --scope / --force) and
+  // SKIPS utsushi render validation even when one is requested (MV/MZ is a
+  // delegation runtime with no VM oracle seam).
+  it("dispatches rpg-maker-mv-mz to kaifuu patch --engine rpgmaker and skips render validation", async () => {
+    const bridge = seamBridge([
+      {
+        bridgeUnitId: UNIT_A,
+        sourceText: "Hello [ICON].",
+        spans: [{ spanId: "s1", spanKind: "variable_placeholder", raw: "[ICON]" }],
+      },
+    ]);
+    const hash = hashDraftedAgainstBridge(bridge);
+    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    let capturedArgs: string[] | undefined;
+    const seam = await runWholeGamePatchExportAndApply({
+      engineProfile: "rpg-maker-mv-mz",
+      actor: SEAM_ACTOR,
+      draftJobs,
+      ledger,
+      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, finalDraftText: "Hi [ICON]!" }], hash),
+      rawBridge: bridge,
+      sourceRoot: "/src/www",
+      targetRoot: "/out/patched-data",
+      rpgMakerDeltaOutputPath: "/run/rpgmaker-delta.kaifuu",
+      translatedBundlePath: "/run/translated-bridge.json",
+      requestedBy: localUserId,
+      loadActiveDecisions: async () => [],
+      // A render-validation request is present but MUST be ignored for MV/MZ.
+      renderValidation: { artifactRoot: "/run/rv" },
+      runProcess: (_c, a) => {
+        capturedArgs = a;
+        return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
+      },
+    });
+    expect(seam.apply.status).toBe(0);
+    expect(seam.patchExportBundle.drafts).toHaveLength(1);
+    const a = capturedArgs!;
+    const patchIdx = a.indexOf("patch");
+    expect(a.slice(patchIdx)).toEqual([
+      "patch",
+      "--engine",
+      "rpgmaker",
+      "--source",
+      "/src/www",
+      "--bundle",
+      "/run/translated-bridge.json",
+      "--delta-output",
+      "/run/rpgmaker-delta.kaifuu",
+      "--patched-data-output",
+      "/out/patched-data",
+    ]);
+    // No reallive-only flags leaked in.
+    expect(a).not.toContain("reallive");
+    expect(a).not.toContain("--scope");
+    expect(a).not.toContain("--force");
+    // Render validation skipped despite the request.
+    expect(seam.renderValidation).toBeUndefined();
+    expect(seam.runtimeValidationAdmission).toBeUndefined();
   });
 
   // (b) — P1 #2: an accepted unit with NO persisted attempt/ledger fails LOUD in
@@ -617,6 +738,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
+        engineProfile: "reallive",
         actor: SEAM_ACTOR,
         draftJobs,
         ledger,
@@ -895,6 +1017,7 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         // --- The seam: production loader + preflight + kaifuu apply ---
         let captured: { command: string; args: string[] } | undefined;
         const seam = await runWholeGamePatchExportAndApply({
+          engineProfile: "reallive",
           actor,
           draftJobs: draftJobRepo,
           ledger: ledgerRepo,
@@ -1040,6 +1163,7 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
         });
 
         const seam = await runWholeGamePatchExportAndApply({
+          engineProfile: "reallive",
           actor,
           draftJobs: draftJobRepo,
           ledger: ledgerRepo,

@@ -112,6 +112,13 @@ export const INPUT_SOURCES = [
     role: "RPG Maker MV/MZ readiness merge matrix",
   },
   {
+    id: "rpg-maker-mv-mz-data-text-patchback",
+    path: "fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json",
+    category: "validation_artifact",
+    kind: "validation_artifact",
+    role: "RPG Maker MV/MZ www/data text patchback + .kaifuu delta round-trip validation",
+  },
+  {
     id: "rpg-maker-mv-mz-encrypted-suffixes-detection",
     path: "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
     category: "fixture_output",
@@ -553,6 +560,62 @@ function buildRpgMakerEncryptedMediaRow(inputs) {
   });
 }
 
+// The MV/MZ TEXT surface (www/data/*.json script + database literals), distinct
+// from the encrypted-MEDIA row above. `kaifuu patch --engine rpgmaker`
+// (kaifuu-rpgmaker `produce_delta_package`) byte-surgically patches these
+// literals + emits a `.kaifuu` delta that round-trips byte-for-byte — the apply
+// step the `localize-live --engine rpg-maker-mv-mz` pipeline now dispatches to.
+// Evidence is a validation artifact (captured on a synthetic www tree; also
+// exercised on real LustMemory bytes out-of-band), NOT a positive kaifuu
+// EngineAdapter registry claim, so the row stays `readiness_only` and extract/
+// patch are `partial` (demonstrated, not registry-exposed) — never `supported`.
+function buildRpgMakerDataTextPatchbackRow(inputs) {
+  const v = requireInput(inputs, "rpg-maker-mv-mz-data-text-patchback");
+  const sourceId = "rpg-maker-mv-mz-data-text-patchback";
+  const passed = v.status === "passed" && v.outcome === "byte_surgical_patchback_round_trip";
+  const roundTrip = v.deltaRoundTrip === "passed";
+  const surfaced = typeof v.surfacedUnitCount === "number" && v.surfacedUnitCount > 0;
+  const changed = typeof v.changedFileCount === "number" && v.changedFileCount > 0;
+  const registryExposed = v.adapterRegistryExposed === true;
+  const levels = {
+    identify: cell(passed ? "supported" : "unsupported", `${sourceId}#status`),
+    inventory: cell(
+      "unsupported",
+      `${sourceId}#surface`,
+      "www/data text units are surfaced via extract, not a separate asset-inventory parser",
+    ),
+    extract: cell(
+      passed && surfaced ? "partial" : "unsupported",
+      `${sourceId}#surfacedUnitCount`,
+      "www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter",
+    ),
+    patch: cell(
+      passed && roundTrip && changed ? (registryExposed ? "supported" : "partial") : "unsupported",
+      `${sourceId}#deltaRoundTrip`,
+      "byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry",
+    ),
+    helper: cell(
+      "not_applicable",
+      `${sourceId}#corpus`,
+      "plaintext www/data JSON text surface; no key material or helper is required",
+    ),
+    runtime: cell(
+      "unsupported",
+      `${sourceId}#schema`,
+      "MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact",
+    ),
+  };
+  return makeRow({
+    rowId: "rpg-maker-mv-mz-data-text-patchback",
+    engineFamily: "rpg_maker_mv_mz",
+    scenario: "data-text-patchback",
+    adapterId: v.adapterId ?? "kaifuu.rpg-maker-mv-mz",
+    levels,
+    sourceKind: "validation_artifact",
+    evidenceSourceIds: ["rpg-maker-mv-mz-data-text-patchback"],
+  });
+}
+
 function detectionSummaryHelperCell(signals, sourceId, engineFamily) {
   const has = (signal) => (signals ?? []).includes(signal);
   if (has("helper_required")) {
@@ -660,6 +723,7 @@ export function generateEngineCapabilityMatrix(inputs) {
     buildSiglusDetectorReadinessRow(inputs),
     buildSiglusKnownKeyRow(inputs),
     buildRpgMakerEncryptedMediaRow(inputs),
+    buildRpgMakerDataTextPatchbackRow(inputs),
     buildDetectionSummaryReadinessRow(inputs, {
       engineFamily: "wolf_rpg_editor",
       rowId: "wolf-rpg-editor-encrypted-archive-smoke",

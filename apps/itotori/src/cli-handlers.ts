@@ -1044,14 +1044,17 @@ async function runLocalizeProjectStage(
  *                         artifacts + run summary
  * Optional:
  *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
- *   --source <PATH>       read-only source game root (REALLIVEDATA/Seen.txt)
+ *   --source <PATH>       read-only source game root. RealLive: the game root
+ *                         (REALLIVEDATA/Seen.txt). RPG Maker MV/MZ: the `www`
+ *                         dir (contains `data/`).
  *   --patch-target <PATH> writable output the patched archive lands under
  *
  * m1-wholegame-localize-to-patch-seam: pass BOTH --source and --patch-target to
  * reach an APPLYABLE, byte-correct patch — the run's real drafts pass the
- * export-patch preflight (production loader) then `kaifuu patch --engine
- * reallive --bundle translated-bridge.json` writes the patched output. Omit
- * both to stop at translated-bridge.json. (RealLive engine only.)
+ * export-patch preflight (production loader) then `kaifuu patch` (dispatched on
+ * the config engineProfile: `--engine reallive` for Seen.txt, `--engine
+ * rpgmaker` for www/data/*.json → `.kaifuu` delta + patched tree) writes the
+ * patched output. Omit both to stop at translated-bridge.json.
  */
 async function runLocalizeFullProject(
   args: string[],

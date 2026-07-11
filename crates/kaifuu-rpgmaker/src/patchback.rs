@@ -43,7 +43,7 @@ use thiserror::Error;
 use kaifuu_core::{BridgeBundleV02, BridgeContractValidationError, sha256_hash_bytes};
 use kaifuu_delta::{SourceProvenance, create_delta};
 
-use crate::json_locate::{Scanner, encode_json_string_ascii_safe};
+use crate::json_locate::{Scanner, encode_json_string_ascii_safe, strip_utf8_bom};
 
 /// Stable patchback error codes (published, mirroring the RealLive
 /// `kaifuu.reallive.patchback_*` contract).
@@ -379,9 +379,11 @@ pub(crate) fn patch_file_bytes(
     // Self-check: the patched bytes must still parse as JSON, and every
     // patched surface must decode back to its target. A locator/splice
     // defect surfaces a typed error here rather than corrupt output.
-    serde_json::from_slice::<Value>(&output).map_err(|err| PatchbackError::VerificationFailed {
-        file: file.to_string(),
-        reason: format!("patched bytes failed to re-parse as JSON: {err}"),
+    serde_json::from_slice::<Value>(strip_utf8_bom(&output)).map_err(|err| {
+        PatchbackError::VerificationFailed {
+            file: file.to_string(),
+            reason: format!("patched bytes failed to re-parse as JSON: {err}"),
+        }
     })?;
     for (.., source_unit_key) in &splices {
         let edit = edits

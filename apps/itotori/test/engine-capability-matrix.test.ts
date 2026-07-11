@@ -87,6 +87,27 @@ describe("generated engine capability matrix (typed)", () => {
     }
   });
 
+  it("records the MV/MZ www/data text patchback as a demonstrated (readiness) capability", () => {
+    // The localize-live `--engine rpg-maker-mv-mz` pipeline now dispatches to
+    // `kaifuu patch --engine rpgmaker` (byte-surgical www/data patchback +
+    // `.kaifuu` delta round-trip). The matrix reflects this as a validation-
+    // artifact row: extract/patch = partial (demonstrated, not registry-exposed),
+    // never promoted to a positive adapter or patch=supported.
+    const row = matrix.rows.find((r) => r.rowId === "rpg-maker-mv-mz-data-text-patchback");
+    expect(row).toBeDefined();
+    expect(row?.engineFamily).toBe("rpg_maker_mv_mz");
+    expect(row?.scenario).toBe("data-text-patchback");
+    expect(row?.evidencePosture).toBe("readiness_only");
+    expect(row?.levels.extract.status).toBe("partial");
+    expect(row?.levels.patch.status).toBe("partial");
+    // It is a SEPARATE surface from the encrypted-media row.
+    const mvmzRows = matrix.rows.filter((r) => r.engineFamily === "rpg_maker_mv_mz");
+    expect(mvmzRows.map((r) => r.scenario).sort()).toEqual([
+      "data-text-patchback",
+      "encrypted-media",
+    ]);
+  });
+
   it("rejects a hand-broken document", () => {
     const broken = structuredClone(matrix) as unknown as Record<string, unknown>;
     (broken.rows as EngineCapabilityMatrixDocument["rows"])[0].levels.identify.status =

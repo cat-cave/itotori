@@ -1,0 +1,15 @@
+{
+  "schema": "kaifuu.rpgmaker.data-text-patchback-validation.v0.1",
+  "engineFamily": "rpg_maker_mv_mz",
+  "adapterId": "kaifuu.rpg-maker-mv-mz",
+  "corpus": "synthetic",
+  "status": "passed",
+  "outcome": "byte_surgical_patchback_round_trip",
+  "surface": "www/data/*.json script + database text literals",
+  "surfacedUnitCount": 14,
+  "referencedFileCount": 4,
+  "changedFileCount": 1,
+  "deltaRoundTrip": "passed",
+  "adapterRegistryExposed": false,
+  "note": "kaifuu-rpgmaker byte-surgically patches the www/data JSON text literals and emits a .kaifuu delta that kaifuu-delta apply reproduces byte-for-byte. Demonstrated here on a synthetic (non-retail) www tree and, out-of-band, on the real LustMemory corpus (test/rpgmaker-patch-apply-real-bytes.test.ts). Not exposed through the kaifuu EngineAdapter registry, so this is validation-artifact (readiness_only) evidence, not a positive-adapter claim."
+}

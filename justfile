@@ -243,7 +243,8 @@ ci-full: ci
 #
 # Coverage spans five engine/source families across the corpus roots below:
 #   - RealLive        Sweetie HD + Kanon   ITOTORI_REAL_GAME_ROOT{,_2}
-#   - RPG Maker MV/MZ LustMemory           ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ
+#   - RPG Maker MV/MZ LustMemory + Countryside Life
+#                                      ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ{,_2}
 #   - vault source    live read-only vault ITOTORI_VAULT_ROOT
 #   - Siglus          Karetoshi + Gamekoi  ITOTORI_VAULT_ROOT (vault-materialized)
 #
@@ -269,8 +270,15 @@ ci-real-bytes:
     export ITOTORI_REAL_GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:-/scratch/itotori-research/sweetie-hd}"
     export ITOTORI_REAL_GAME_ROOT_2="${ITOTORI_REAL_GAME_ROOT_2:-/scratch/itotori-research/kanon}"
     export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ="${ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ:-/scratch/itotori-research/rpg-maker-mv-mz}"
+    if [ -n "${ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2:-}" ]; then
+      export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2
+    elif [ -d /scratch/itotori-research/rpg-maker-mv-mz/extracted/countryside-life ]; then
+      export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2=/scratch/itotori-research/rpg-maker-mv-mz/extracted/countryside-life
+    else
+      export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2=/scratch/itotori-research/rpg-maker-mv-mz/countryside-life
+    fi
     export ITOTORI_VAULT_ROOT="${ITOTORI_VAULT_ROOT:-/archive/vault}"
-    for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2 ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ ITOTORI_VAULT_ROOT; do
+    for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2 ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2 ITOTORI_VAULT_ROOT; do
       dir="${!var}"
       if [ ! -d "$dir" ]; then
         echo "ci-real-bytes: required real-bytes corpus $var=$dir is missing (dir not found);" >&2
@@ -281,9 +289,26 @@ ci-real-bytes:
     echo "ci-real-bytes: RealLive corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
     echo "ci-real-bytes: RealLive corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
     echo "ci-real-bytes: RPG Maker MV/MZ (LustMemory)   = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ"
+    echo "ci-real-bytes: RPG Maker MV/MZ (Countryside)  = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2"
     echo "ci-real-bytes: vault source (live vault)      = $ITOTORI_VAULT_ROOT"
     echo "ci-real-bytes: Siglus (Karetoshi + Gamekoi)   = $ITOTORI_VAULT_ROOT (vault-materialized)"
     echo "ci-real-bytes: strict (missing corpus hard-fails, no opt-out); running real-bytes suites"
+    # The app-level MV/MZ proof drives the production TS seam plus the real
+    # kaifuu apply binary. Build that binary in this lane so the proof cannot
+    # accidentally use a stale or absent native dependency.
+    if [ -z "${ITOTORI_KAIFUU_BIN:-}" ]; then
+      cargo build --release -p kaifuu-cli
+      export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/release/kaifuu-cli"
+    fi
+    if [ ! -x "$ITOTORI_KAIFUU_BIN" ]; then
+      echo "ci-real-bytes: ITOTORI_KAIFUU_BIN=$ITOTORI_KAIFUU_BIN is not executable; refusing to skip MV/MZ patch-apply proof" >&2
+      exit 1
+    fi
+    # The seam imports workspace packages through their published dist entry
+    # points, so provision the normal TypeScript build before invoking Vitest
+    # in a fresh checkout.
+    pnpm exec vp run ts:build
+    pnpm --filter @itotori/app exec vitest run test/rpgmaker-patch-apply-real-bytes.test.ts --exclude '**/.direnv/**'
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
     cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).

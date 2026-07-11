@@ -66,13 +66,18 @@ export type RunLocalizeFullProjectLiveArgs = {
   /** Per-process USD cost cap for the OpenRouter provider. Defaults to $0.50. */
   costCapUsd?: number;
   /**
-   * m1-wholegame-localize-to-patch-seam — the read-only source game root
-   * (contains REALLIVEDATA/Seen.txt) + the writable target root. When BOTH are
-   * present the run reaches an APPLYABLE, byte-correct patch: the executor's
-   * real drafts pass the export-patch preflight (production loader), then
-   * `kaifuu patch --engine reallive --bundle translated-bridge.json` writes the
-   * patched output under `patchTargetRoot`. Omit both to stop at
-   * `translated-bridge.json` (e.g. a decode-only dry check).
+   * m1-wholegame-localize-to-patch-seam — the read-only source game root +
+   * the writable target root. When BOTH are present the run reaches an
+   * APPLYABLE, byte-correct patch: the executor's real drafts pass the
+   * export-patch preflight (production loader), then `kaifuu patch` (dispatched
+   * on the config `engineProfile`) writes the patched output under
+   * `patchTargetRoot`:
+   *   - RealLive (`sourceRoot` = game root w/ REALLIVEDATA/Seen.txt):
+   *     `kaifuu patch --engine reallive` patches Seen.txt into `patchTargetRoot`.
+   *   - RPG Maker MV/MZ (`sourceRoot` = `www` dir w/ `data/`):
+   *     `kaifuu patch --engine rpgmaker` byte-surgically patches the
+   *     `www/data/*.json` literals into `patchTargetRoot` + a `.kaifuu` delta.
+   * Omit both to stop at `translated-bridge.json` (e.g. a decode-only dry check).
    */
   sourceRoot?: string;
   patchTargetRoot?: string;
@@ -254,14 +259,16 @@ export async function runLocalizeFullProjectLive(
             args.patchTargetRoot.length > 0
               ? {
                   afterExecutor: async (result) => {
-                    if (config.engineProfile !== "reallive") {
-                      throw new Error(
-                        `localize-live: patch-apply seam is wired for --engine reallive only; config engineProfile is '${config.engineProfile}'. Omit --source/--patch-target to stop at translated-bridge.json.`,
-                      );
-                    }
                     const sourceRoot = args.sourceRoot!;
                     const patchTargetRoot = args.patchTargetRoot!;
                     const rawBridge = args.io.readJson(config.bridgePath);
+                    // The export-patch preflight is engine-agnostic; the apply
+                    // step dispatches on engineProfile inside the seam. RealLive
+                    // additionally runs utsushi replay/render validation (a
+                    // from-scratch VM oracle); RPG Maker MV/MZ is a delegation
+                    // runtime with no such seam, so it emits the `.kaifuu` delta
+                    // + patched `data` tree and skips render validation.
+                    const isRealLive = config.engineProfile === "reallive";
                     patchApply = await runPipelineStepWithDiagnostic({
                       step: "localize.apply-patch",
                       code: "unknown",
@@ -271,6 +278,7 @@ export async function runLocalizeFullProjectLive(
                         runDir: args.runDir,
                         projectId: config.projectId,
                         localeBranchId: config.localeBranchId,
+                        engineProfile: config.engineProfile,
                       },
                       repro: {
                         configPath: args.configPath,
@@ -280,6 +288,7 @@ export async function runLocalizeFullProjectLive(
                       run: () =>
                         runWholeGamePatchExportAndApply({
                           actor,
+                          engineProfile: config.engineProfile,
                           draftJobs: draftJobRepo,
                           ledger: ledgerRepo,
                           patchReport: result.patchReport,
@@ -290,12 +299,23 @@ export async function runLocalizeFullProjectLive(
                           requestedBy: localUserId,
                           loadActiveDecisions: (a, projectId, localeBranchId) =>
                             assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
-                          renderValidation: {
-                            artifactRoot: join(args.runDir, "wholegame-render-validation"),
-                            redaction: "on",
-                            ...(args.nativeCli !== undefined ? { nativeCli: args.nativeCli } : {}),
-                            ...(args.log !== undefined ? { log: args.log } : {}),
-                          },
+                          ...(isRealLive
+                            ? {}
+                            : {
+                                rpgMakerDeltaOutputPath: join(args.runDir, "rpgmaker-delta.kaifuu"),
+                              }),
+                          ...(isRealLive
+                            ? {
+                                renderValidation: {
+                                  artifactRoot: join(args.runDir, "wholegame-render-validation"),
+                                  redaction: "on",
+                                  ...(args.nativeCli !== undefined
+                                    ? { nativeCli: args.nativeCli }
+                                    : {}),
+                                  ...(args.log !== undefined ? { log: args.log } : {}),
+                                },
+                              }
+                            : {}),
                           ...(args.log !== undefined ? { log: args.log } : {}),
                         }),
                     });

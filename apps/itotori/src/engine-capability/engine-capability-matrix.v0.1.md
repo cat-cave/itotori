@@ -19,6 +19,7 @@
 | siglus-scene-pck-detector-readiness | siglus | readiness_only | yes | yes | no | no | partial | no |
 | siglus-known-key-scene-gameexe-smoke | siglus | readiness_only | yes | yes | partial | no | partial | no |
 | rpg-maker-mv-mz-encrypted-media | rpg_maker_mv_mz | readiness_only | yes | no | no | no | partial | no |
+| rpg-maker-mv-mz-data-text-patchback | rpg_maker_mv_mz | readiness_only | yes | no | partial | partial | n/a | no |
 | wolf-rpg-editor-encrypted-archive-smoke | wolf_rpg_editor | readiness_only | yes | no | no | no | partial | no |
 | bgi-ethornell-container-readiness | bgi_ethornell | readiness_only | yes | no | no | no | no | no |
 | reallive-seen-txt-detector-readiness | reallive | readiness_only | yes | yes | no | no | no | no |
@@ -38,6 +39,7 @@
 - `siglus-known-key-parser-boundary-smoke` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-encrypted-matrix/expected/siglus-parser-boundary-smoke-v0.1.json
 - `rpg-maker-mv-mz-key-validation` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json
 - `rpg-maker-mv-mz-readiness-merge` (readiness_profile/readiness_profile) — fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-merge-v0.1.json
+- `rpg-maker-mv-mz-data-text-patchback` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json
 - `rpg-maker-mv-mz-encrypted-suffixes-detection` (fixture_output/detection_report) — fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json
 - `encrypted-matrix-detection-summary` (readiness_profile/detection_summary) — fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json
 - `tyranoscript-null-key-readiness` (readiness_profile/detector_profile) — fixtures/kaifuu/tyranoscript/null-key-readiness-profile.json
@@ -65,6 +67,10 @@
 - [rpg-maker-mv-mz-encrypted-media] patch: no decrypt/patch is claimed from media-key detection alone
 - [rpg-maker-mv-mz-encrypted-media] helper: key evidence is validated against System.json; no key material is resolved or decrypted
 - [rpg-maker-mv-mz-encrypted-media] runtime: no runtime evidence is claimed for MV/MZ readiness
+- [rpg-maker-mv-mz-data-text-patchback] inventory: www/data text units are surfaced via extract, not a separate asset-inventory parser
+- [rpg-maker-mv-mz-data-text-patchback] extract: www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter
+- [rpg-maker-mv-mz-data-text-patchback] patch: byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry
+- [rpg-maker-mv-mz-data-text-patchback] runtime: MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact
 - [wolf-rpg-editor-encrypted-archive-smoke] inventory: detection summary provides identify-only readiness; no inventory parser is claimed
 - [wolf-rpg-editor-encrypted-archive-smoke] extract: no extraction is claimed; detector/profile readiness evidence only
 - [wolf-rpg-editor-encrypted-archive-smoke] patch: no parser or patch support is claimed
