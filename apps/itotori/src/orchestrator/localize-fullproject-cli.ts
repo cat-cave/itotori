@@ -58,6 +58,7 @@ import {
   runPipelineStepWithDiagnostic,
 } from "./pipeline-failure-diagnostic.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import type { DrivenPatchReport } from "./project-driven-executor.js";
 
 export type RunLocalizeFullProjectLiveArgs = {
   configPath: string;
@@ -90,6 +91,8 @@ export type RunLocalizeFullProjectLiveArgs = {
   patchTargetRoot?: string;
   /** Injected native runner for post-patch Utsushi replay/render validation. */
   nativeCli?: NativeCliRunner;
+  /** Allow a bounded / incomplete run to produce a byte-preserving preview patch. */
+  allowPartialPatch?: boolean;
   log?: (message: string) => void;
 };
 
@@ -113,6 +116,55 @@ export class RuntimeValidationIncompleteError extends Error {
         `retryUnits=${String(admission.retryUnitIds.length)}`,
     );
     this.name = "RuntimeValidationIncompleteError";
+  }
+}
+
+export type WholeGamePatchCoverage = Pick<
+  DrivenPatchReport,
+  "unitsInScope" | "unitsRun" | "acceptedDraftCount" | "deferredCount" | "failureCount"
+>;
+
+export class WholeGamePatchCoverageRefusedError extends Error {
+  public readonly unitsInScope: number;
+  public readonly unitsRun: number;
+  public readonly acceptedDraftCount: number;
+  public readonly deferredCount: number;
+  public readonly failureCount: number;
+
+  constructor(public readonly coverage: WholeGamePatchCoverage) {
+    super(
+      `whole-game patch-export refused: partial draft coverage ` +
+        `(drafted ${coverage.unitsRun}/${coverage.unitsInScope} in-scope units; ` +
+        `deferred=${coverage.deferredCount} failed=${coverage.failureCount}). ` +
+        `Re-run with --allow-partial-patch to produce a preview patch ` +
+        `(undrafted units pass through byte-identical), or draft the whole corpus ` +
+        `for a release patch.`,
+    );
+    this.name = "WholeGamePatchCoverageRefusedError";
+    this.unitsInScope = coverage.unitsInScope;
+    this.unitsRun = coverage.unitsRun;
+    this.acceptedDraftCount = coverage.acceptedDraftCount;
+    this.deferredCount = coverage.deferredCount;
+    this.failureCount = coverage.failureCount;
+  }
+}
+
+export function assertWholeGamePatchCoverage(
+  patchReport: WholeGamePatchCoverage,
+  allowPartialPatch: boolean,
+): void {
+  const partial =
+    patchReport.unitsRun < patchReport.unitsInScope ||
+    patchReport.deferredCount > 0 ||
+    patchReport.failureCount > 0;
+  if (partial && !allowPartialPatch) {
+    throw new WholeGamePatchCoverageRefusedError({
+      unitsInScope: patchReport.unitsInScope,
+      unitsRun: patchReport.unitsRun,
+      acceptedDraftCount: patchReport.acceptedDraftCount,
+      deferredCount: patchReport.deferredCount,
+      failureCount: patchReport.failureCount,
+    });
   }
 }
 
@@ -249,6 +301,7 @@ export async function runLocalizeFullProjectLive(
         localeBranchId: config.localeBranchId,
         pair,
       },
+      preserveError: (error) => error instanceof WholeGamePatchCoverageRefusedError,
       repro: {
         configPath: args.configPath,
         bridgePath: config.bridgePath,
@@ -277,6 +330,8 @@ export async function runLocalizeFullProjectLive(
             args.patchTargetRoot.length > 0
               ? {
                   afterExecutor: async (result) => {
+                    const allowPartialPatch = args.allowPartialPatch ?? false;
+                    assertWholeGamePatchCoverage(result.patchReport, allowPartialPatch);
                     const sourceRoot = args.sourceRoot!;
                     const patchTargetRoot = args.patchTargetRoot!;
                     const rawBridge = args.io.readJson(config.bridgePath);
@@ -359,7 +414,8 @@ export async function runLocalizeFullProjectLive(
     // more specific step + context).
     if (
       error instanceof PipelineFailureDiagnosticError ||
-      error instanceof RuntimeValidationIncompleteError
+      error instanceof RuntimeValidationIncompleteError ||
+      error instanceof WholeGamePatchCoverageRefusedError
     ) {
       throw error;
     }

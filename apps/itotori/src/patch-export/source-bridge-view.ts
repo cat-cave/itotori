@@ -25,6 +25,12 @@ export type SourceBridgeProtectedSpan = {
   kind: PatchExportProtectedSpanKind;
   preservationRule: PatchExportProtectedSpanPreservationRule;
   /**
+   * When true, this span is carried structurally (re-emitted from
+   * opcodes/headers), NOT spliced into the body; the draft is not expected to
+   * contain it, so the coverage/mapping checks skip it.
+   */
+  outOfBand?: boolean;
+  /**
    * For `glossary` spans, the documented target-form the draft is
    * expected to use (e.g. "Hero" for 勇者). When set, the preflight
    * `protectedSpanCoverage` check accepts this form in the draft as

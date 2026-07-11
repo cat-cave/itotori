@@ -296,6 +296,7 @@ function buildDraftEntries(
 function buildSpanMappings(unit: SourceBridgeUnit, draftText: string): ProtectedSpanMapping[] {
   const mappings: ProtectedSpanMapping[] = [];
   for (const span of unit.protectedSpans) {
+    if (span.outOfBand) continue;
     const needle = expectedDraftTextForSpan(span);
     const draftStart = draftText.indexOf(needle);
     if (draftStart < 0) {

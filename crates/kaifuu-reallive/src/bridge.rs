@@ -304,6 +304,8 @@ struct ProtoUnit {
 struct ProtoSpan {
     /// Parsed name on the v0.2 span (e.g. `"reallive.kidoku"`).
     parsed_name: &'static str,
+    /// True when the span is carried structurally rather than spliced into the body.
+    out_of_band: bool,
     /// Raw byte range within the wrapped UTF-8 sourceText.
     start_byte: u64,
     /// End byte (exclusive).
@@ -339,6 +341,7 @@ fn collect_units(
             RealLiveOpcode::MetaKidoku { mark } => {
                 pending_markers.push(PendingMarker {
                     parsed_name: "reallive.kidoku",
+                    out_of_band: true,
                     label: format!("<reallive.kidoku {mark}>"),
                 });
                 inline_kidoku_seen = true;
@@ -551,6 +554,7 @@ fn collect_units(
             0,
             ProtoSpan {
                 parsed_name: "reallive.kidoku",
+                out_of_band: true,
                 start_byte: start,
                 end_byte: end,
                 raw: marker,
@@ -565,6 +569,7 @@ fn collect_units(
 #[derive(Debug, Clone)]
 struct PendingMarker {
     parsed_name: &'static str,
+    out_of_band: bool,
     label: String,
 }
 
@@ -583,6 +588,7 @@ fn build_control_prefix(
         let end = prefix.len() as u64;
         spans.push(ProtoSpan {
             parsed_name: marker.parsed_name,
+            out_of_band: marker.out_of_band,
             start_byte: start,
             end_byte: end,
             raw: marker.label,
@@ -618,6 +624,7 @@ fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String
             let raw_bracketed = decoded[open_pos..close_pos].to_string();
             let span = ProtoSpan {
                 parsed_name: "reallive.name_token",
+                out_of_band: false,
                 start_byte: prefix_offset + open_pos as u64,
                 end_byte: prefix_offset + close_pos as u64,
                 raw: raw_bracketed,
@@ -652,6 +659,7 @@ fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> 
             let raw = decoded[tag_start..tag_end].to_string();
             spans.push(ProtoSpan {
                 parsed_name: "reallive.asset_ref",
+                out_of_band: false,
                 start_byte: prefix_offset + tag_start as u64,
                 end_byte: prefix_offset + tag_end as u64,
                 raw,
@@ -684,6 +692,7 @@ fn extract_font_tone_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> 
             let raw = decoded[tag_start..tag_end].to_string();
             spans.push(ProtoSpan {
                 parsed_name: "reallive.font_tone",
+                out_of_band: false,
                 start_byte: prefix_offset + tag_start as u64,
                 end_byte: prefix_offset + tag_end as u64,
                 raw,
@@ -716,6 +725,7 @@ fn extract_choice_marker_spans(
         {
             spans.push(ProtoSpan {
                 parsed_name: "reallive.choice_marker",
+                out_of_band: false,
                 start_byte: prefix_offset + pos as u64,
                 end_byte: prefix_offset + pos as u64 + 1,
                 raw: ch.to_string(),
@@ -1102,7 +1112,7 @@ fn build_unit_json(
                 ),
             });
         }
-        spans_json.push(json!({
+        let mut span_json = json!({
             "spanId": deterministic_uuid7(namespace, &format!("span-{}-{}", unit.occurrence_index, idx)),
             "spanKind": "control_markup",
             "raw": span.raw,
@@ -1110,7 +1120,13 @@ fn build_unit_json(
             "endByte": span.end_byte,
             "preserveMode": "exact",
             "parsedName": span.parsed_name,
-        }));
+        });
+        // This flag mirrors `REALLIVE_OUT_OF_BAND_MARKER_OPEN` in patchback:
+        // the extractor knows which synthetic spans are re-emitted structurally.
+        if span.out_of_band {
+            span_json["outOfBand"] = json!(true);
+        }
+        spans_json.push(span_json);
     }
 
     // `range` is a DECOMPRESSED-bytecode-stream interval — the only
@@ -1353,11 +1369,31 @@ mod tests {
         let unit_json = &produced.json["units"][0];
         let spans = unit_json["spans"].as_array().expect("spans array present");
         assert!(
-            spans
-                .iter()
-                .any(|span| span["parsedName"] == "reallive.kidoku"),
+            spans.iter().any(|span| {
+                span["parsedName"] == "reallive.kidoku" && span["outOfBand"] == true
+            }),
             "at least one span with parsedName=reallive.kidoku must be emitted; got {spans:?}"
         );
+    }
+
+    #[test]
+    fn table_kidoku_synthesis_marks_span_out_of_band() {
+        // No inline MetaKidoku; the scene header's table count synthesises the
+        // structural marker on the first readable text unit.
+        let bytecode = &[0x83, 0x6E, 0x0a, 0x05, 0x00];
+        let report = parse_gameexe_inventory(b"");
+        let mut opts = opts_for_test();
+        opts.scene_kidoku_count = 3;
+        let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts)
+            .expect("table-driven kidoku synthesis must produce a unit");
+        let unit = &produced.json["units"][0];
+        let spans = unit["spans"].as_array().expect("spans array present");
+        let kidoku = spans
+            .iter()
+            .find(|span| span["parsedName"] == "reallive.kidoku")
+            .expect("synthesised kidoku span present");
+        assert_eq!(kidoku["outOfBand"], true);
+        assert_eq!(unit["sourceText"], "<reallive.kidoku table:3>ハ");
     }
 
     #[test]
@@ -1471,6 +1507,7 @@ mod tests {
         // sourceText bytes there are the decoded dialogue.
         let mismatch = base_unit(vec![ProtoSpan {
             parsed_name: "reallive.asset_ref",
+            out_of_band: false,
             start_byte: 0,
             end_byte: 5,
             raw: "#FACE".to_string(),
@@ -1492,6 +1529,7 @@ mod tests {
         // Out-of-range: end_byte past sourceText length.
         let oob = base_unit(vec![ProtoSpan {
             parsed_name: "reallive.font_tone",
+            out_of_band: false,
             start_byte: 0,
             end_byte: 999,
             raw: "x".to_string(),

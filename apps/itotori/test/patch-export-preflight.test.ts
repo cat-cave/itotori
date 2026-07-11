@@ -197,6 +197,103 @@ describe("PatchExportPreflight", () => {
       expect(result.status).toBe("pass");
     });
 
+    it("passes when an out-of-band span is omitted from the draft", () => {
+      const view = makeSourceBridgeView([
+        makeSourceBridgeUnit({
+          sourceText: "<synthetic-control>こんにちは。",
+          protectedSpans: [
+            {
+              spanRef: "span-oob",
+              sourceStart: 0,
+              sourceEnd: "<synthetic-control>".length,
+              sourceText: "<synthetic-control>",
+              kind: "markup",
+              preservationRule: "markup_well_formed",
+              outOfBand: true,
+            },
+          ],
+        }),
+      ]);
+      const bundle = makeDraftBundle({
+        drafts: [
+          {
+            sourceUnitId: "unit-001",
+            draftId: "draft-001",
+            providerProofId: "proof-001",
+            protectedSpanValidationResult: { accepted: true },
+            retryFallbackState: "success",
+            costLedgerEntryRef: "ledger-001",
+            draftText: "Hello.",
+          },
+        ],
+      });
+      const result = new PatchExportPreflight().protectedSpanCoverage(
+        baseInput({ sourceBridgeView: view, draftArtifactBundle: bundle }),
+      );
+      expect(result.status).toBe("pass");
+    });
+
+    it("passes when a missing draft has only out-of-band spans", () => {
+      const view = makeSourceBridgeView([
+        makeSourceBridgeUnit({
+          protectedSpans: [
+            {
+              spanRef: "span-oob",
+              sourceStart: 0,
+              sourceEnd: "<control>".length,
+              sourceText: "<control>",
+              kind: "markup",
+              preservationRule: "markup_well_formed",
+              outOfBand: true,
+            },
+          ],
+        }),
+      ]);
+      const result = new PatchExportPreflight().protectedSpanCoverage(
+        baseInput({
+          sourceBridgeView: view,
+          draftArtifactBundle: makeDraftBundle({ drafts: [] }),
+        }),
+      );
+      expect(result.status).toBe("pass");
+    });
+
+    it("still blocks when a non-out-of-band control markup span is dropped", () => {
+      const view = makeSourceBridgeView([
+        makeSourceBridgeUnit({
+          sourceText: "<control>こんにちは。",
+          protectedSpans: [
+            {
+              spanRef: "span-control",
+              sourceStart: 0,
+              sourceEnd: "<control>".length,
+              sourceText: "<control>",
+              kind: "markup",
+              preservationRule: "markup_well_formed",
+            },
+          ],
+        }),
+      ]);
+      const bundle = makeDraftBundle({
+        drafts: [
+          {
+            sourceUnitId: "unit-001",
+            draftId: "draft-001",
+            providerProofId: "proof-001",
+            protectedSpanValidationResult: { accepted: true },
+            retryFallbackState: "success",
+            costLedgerEntryRef: "ledger-001",
+            draftText: "Hello.",
+          },
+        ],
+      });
+      const result = new PatchExportPreflight().protectedSpanCoverage(
+        baseInput({ sourceBridgeView: view, draftArtifactBundle: bundle }),
+      );
+      expect(result.status).toBe("fail");
+      expect(result.detail).toContain("unit-001:span-control");
+    });
+
     it("blocks export when a protected span is missing from the draft", () => {
       const preflight = new PatchExportPreflight();
       const bundle = makeDraftBundle({

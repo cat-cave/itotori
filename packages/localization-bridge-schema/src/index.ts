@@ -944,6 +944,7 @@ export type BridgeSpanV02 = {
   endByte: number;
   preserveMode: PreserveModeV02;
   parsedName?: string;
+  outOfBand?: boolean;
   arguments?: string[];
   variableName?: string;
   formatHint?: string;
@@ -5589,6 +5590,7 @@ function assertBridgeSpanV02(
   const [startByte, endByte] = asByteRangeNumbers(span.startByte, span.endByte, label);
   assertEnum(span.preserveMode, PRESERVE_MODES, `${label}.preserveMode`);
   assertOptionalString(span.parsedName, `${label}.parsedName`);
+  assertOptionalBoolean(span.outOfBand, `${label}.outOfBand`);
   if (span.arguments !== undefined) {
     assertStringArray(span.arguments, `${label}.arguments`);
   }

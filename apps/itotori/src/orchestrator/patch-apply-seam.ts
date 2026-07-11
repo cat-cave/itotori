@@ -1061,6 +1061,9 @@ function readExplicitProtectedSpan(entry: unknown, index: number): SourceBridgeP
   if (typeof r.expectedTargetForm === "string") {
     span.expectedTargetForm = r.expectedTargetForm;
   }
+  if (typeof r.outOfBand === "boolean") {
+    span.outOfBand = r.outOfBand;
+  }
   return span;
 }
 
@@ -1071,7 +1074,7 @@ function readExplicitProtectedSpan(entry: unknown, index: number): SourceBridgeP
  * `sourceText` carries `raw` and the preservation rule is verbatim for
  * variables and markup-well-formed for markup / ruby.
  */
-function mapV02SpanToProtectedSpan(
+export function mapV02SpanToProtectedSpan(
   entry: unknown,
   index: number,
   sourceText: string,
@@ -1093,6 +1096,7 @@ function mapV02SpanToProtectedSpan(
     sourceText: raw,
     kind: isVariable ? "variable" : "markup",
     preservationRule: isVariable ? "verbatim" : "markup_well_formed",
+    outOfBand: r.outOfBand === true,
   };
 }
 

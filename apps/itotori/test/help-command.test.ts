@@ -88,6 +88,7 @@ describe("itotori --help / help", () => {
     expect(text).toContain("validate");
     expect(text).toContain("db-migrate");
     expect(text).toContain("db-reset");
+    expect(text).toContain("--allow-partial-patch");
   });
 
   it("--help takes precedence over --version", async () => {
