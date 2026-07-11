@@ -184,10 +184,13 @@ test("doctor passes when bin --help contains the current CLI surface marker", ()
     profile: "core",
     probe: fakeProbe({
       existing: [kaifuu, utsushi],
-      // Explicit help text that includes each RUST_BINS.compatMarker.
+      // Real top-level usage banners (the actual `<bin> --help` output shape):
+      // kaifuu prints the subcommand list, utsushi prints its multi-line USAGE.
+      // Each must carry its RUST_BINS.compatMarker top-level token.
       helpText: {
-        "kaifuu-cli": "kaifuu-cli extract --whole-seen ...\n",
-        "utsushi-cli": "utsushi-cli render-validate --engine reallive ...\n",
+        "kaifuu-cli":
+          "usage: kaifuu <detect|extract|patch|...|compat-evidence|asset-ocr|vault> ...\n",
+        "utsushi-cli": "usage: utsushi ...\n       utsushi render-validate --engine reallive ...\n",
       },
       tcpOpen: new Set(["127.0.0.1:56000"]),
     }),
@@ -207,7 +210,7 @@ test("doctor fails when a bin runs but --help LACKS the current CLI surface (sta
     profile: "core",
     probe: fakeProbe({
       existing: [kaifuu, utsushi],
-      // kaifuu still executes but its --help is missing --whole-seen.
+      // kaifuu still executes but its --help lacks the current surface marker.
       staleBins: [kaifuu],
       tcpOpen: new Set(["127.0.0.1:56000"]),
     }),
@@ -216,11 +219,55 @@ test("doctor fails when a bin runs but --help LACKS the current CLI surface (sta
   const rust = report.deps.find((d) => d.id === "rust:kaifuu-cli");
   assert.equal(rust.status, "fail");
   assert.match(rust.message, /STALE\/incompatible/);
-  assert.match(rust.message, /--whole-seen/);
+  assert.match(rust.message, /compat-evidence/);
   assert.match(rust.fix, /cargo build --release -p kaifuu-cli/);
   // utsushi still has a current surface and must remain ok.
   const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
   assert.equal(u.status, "ok");
+});
+
+// Regression guard for the marker-not-in-real-help class of bug: each
+// RUST_BINS.compatMarker MUST be a token the bin's ACTUAL top-level `--help`
+// banner prints. These banners are copied verbatim from the CLI sources
+// (crates/{kaifuu,utsushi}-cli/src/main.rs). A per-subcommand flag as a marker
+// would NOT appear here and would false-fail a freshly-built current bin.
+const REAL_TOP_LEVEL_HELP = {
+  "kaifuu-cli":
+    "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|" +
+    "offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|" +
+    "rpg-maker|xp3|wolf|bgi|profile|readiness|capabilities|binary-patch-smoke|" +
+    "compat-evidence|asset-ocr|vault> ...",
+  "utsushi-cli":
+    "usage: utsushi capabilities --output <path>\n" +
+    "       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> ...\n" +
+    "       utsushi render-validate --engine reallive --seen <PATH> --scene <N> ...\n" +
+    "       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> ...",
+};
+
+test("every RUST_BINS compatMarker appears in the bin's REAL top-level --help banner", () => {
+  for (const bin of RUST_BINS) {
+    if (!bin.compatMarker) continue;
+    const banner = REAL_TOP_LEVEL_HELP[bin.name];
+    assert.ok(banner, `no real --help banner captured for ${bin.name}`);
+    assert.ok(
+      banner.includes(bin.compatMarker),
+      `compatMarker "${bin.compatMarker}" for ${bin.name} is NOT in its real top-level --help ` +
+        `banner — the doctor would false-fail a current bin. Pick a top-level token.`,
+    );
+  }
+});
+
+test("doctor OKs bins whose --help is the REAL top-level banner (not synthetic)", () => {
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: ["kaifuu-cli", "utsushi-cli"],
+      helpText: REAL_TOP_LEVEL_HELP,
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, true, formatReport(report));
 });
 
 test("doctor fails when DATABASE_URL is set but unreachable", () => {

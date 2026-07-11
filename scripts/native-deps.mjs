@@ -113,15 +113,21 @@ const NATIVE_CHILD_ENV = scrubLiveProviderSecretsFromEnv(process.env);
 
 // The kaifuu/utsushi CLI binaries the localize + render pipeline drive. Bin
 // names are the crate names (default cargo bin target).
-// `compatMarker` is a token that MUST appear in the binary's current `--help`
-// output. A stale/prebuilt bin that still executes but no longer matches the
-// current CLI surface will lack the marker and fail the doctor handshake.
+// `compatMarker` is a token that MUST appear in the binary's TOP-LEVEL `--help`
+// output (the usage banner the CLI prints for a bare/unknown first arg). A
+// stale/prebuilt bin predating this surface will lack the marker and fail the
+// doctor handshake. NOTE: the marker must be a top-level token (a subcommand
+// name or a token in the top-level usage banner), NOT a subcommand-specific
+// flag — `kaifuu-cli --help` prints only the subcommand list, so a per-command
+// flag such as `--whole-seen` never appears there and would false-fail a
+// current bin. `compat-evidence` / `render-validate` are current top-level
+// surfaces (see crates/{kaifuu,utsushi}-cli/src/main.rs usage banners).
 export const RUST_BINS = [
   {
     name: "kaifuu-cli",
     envVar: "ITOTORI_KAIFUU_BIN",
     role: "decode / patch driver",
-    compatMarker: "--whole-seen",
+    compatMarker: "compat-evidence",
   },
   {
     name: "utsushi-cli",
