@@ -33,7 +33,12 @@ const authorizationMatrixPath = path.join(
   "packages/itotori-db/test/authorization-matrix.test.ts",
 );
 
-const tmpDir = path.join(repoRoot, ".tmp/itotori-db");
+// Artifact dir is overridable (ITOTORI_DB_TMP_DIR) so concurrent gate
+// invocations - e.g. sibling tests under `node --test` - each read/write their
+// OWN isolated skip/proof artifacts instead of racing on a shared path.
+const tmpDir = process.env.ITOTORI_DB_TMP_DIR
+  ? path.resolve(process.env.ITOTORI_DB_TMP_DIR)
+  : path.join(repoRoot, ".tmp/itotori-db");
 const skipArtifactPath = path.join(tmpDir, "permission-denial-skipped.json");
 const proofArtifactPath = path.join(tmpDir, "permission-denial-proof.json");
 const resultsPath = path.join(tmpDir, "permission-denial-results.json");

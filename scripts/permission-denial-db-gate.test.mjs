@@ -6,7 +6,8 @@
 // success path is exercised by `just permission-denial-db-strict` against a real
 // Postgres.)
 import assert from "node:assert/strict";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -14,12 +15,19 @@ import test from "node:test";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const gatePath = path.join(repoRoot, "scripts/permission-denial-db-gate.mjs");
-const skipArtifactPath = path.join(repoRoot, ".tmp/itotori-db/permission-denial-skipped.json");
-const proofArtifactPath = path.join(repoRoot, ".tmp/itotori-db/permission-denial-proof.json");
 
-function runGateWithoutDb() {
+// Each test runs the gate in its OWN isolated artifact dir (passed to the gate
+// via ITOTORI_DB_TMP_DIR) so concurrent invocations can't race on a shared
+// skip/proof artifact path.
+async function makeIsolatedTmpDir() {
+  const dir = await mkdtemp(path.join(tmpdir(), "itotori-db-gate-"));
+  return dir;
+}
+
+function runGateWithoutDb(tmpDir) {
   const env = { ...process.env };
   delete env.DATABASE_URL;
+  env.ITOTORI_DB_TMP_DIR = tmpDir;
   return spawnSync(process.execPath, [gatePath], {
     cwd: repoRoot,
     env,
@@ -27,10 +35,11 @@ function runGateWithoutDb() {
   });
 }
 
-test("no-DATABASE_URL run fails loudly and never green-on-skip", async () => {
-  await rm(skipArtifactPath, { force: true });
-  await rm(proofArtifactPath, { force: true });
-  const result = runGateWithoutDb();
+test("no-DATABASE_URL run fails loudly and never green-on-skip", async (t) => {
+  const tmpDir = await makeIsolatedTmpDir();
+  t.after(() => rm(tmpDir, { recursive: true, force: true }));
+  const skipArtifactPath = path.join(tmpDir, "permission-denial-skipped.json");
+  const result = runGateWithoutDb(tmpDir);
 
   assert.equal(
     result.status,
@@ -52,12 +61,17 @@ test("no-DATABASE_URL run fails loudly and never green-on-skip", async () => {
   assert.ok(Number.isInteger(marker.expectedMatrixEntries) && marker.expectedMatrixEntries > 0);
   assert.deepEqual(marker.skippedSuites, ["authorization-matrix.test.ts"]);
   assert.equal(marker.skippedSuiteCount, marker.skippedSuites.length);
+  // The isolated skip artifact must exist and match the marker.
+  const artifact = JSON.parse(await readFile(skipArtifactPath, "utf8"));
+  assert.equal(artifact.status, "skipped");
 });
 
-test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proof", async () => {
-  await rm(skipArtifactPath, { force: true });
-  await rm(proofArtifactPath, { force: true });
-  runGateWithoutDb();
+test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proof", async (t) => {
+  const tmpDir = await makeIsolatedTmpDir();
+  t.after(() => rm(tmpDir, { recursive: true, force: true }));
+  const skipArtifactPath = path.join(tmpDir, "permission-denial-skipped.json");
+  const proofArtifactPath = path.join(tmpDir, "permission-denial-proof.json");
+  runGateWithoutDb(tmpDir);
 
   const artifact = JSON.parse(await readFile(skipArtifactPath, "utf8"));
   assert.equal(artifact.status, "skipped");
