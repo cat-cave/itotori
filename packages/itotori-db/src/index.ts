@@ -204,6 +204,7 @@ export type {
   ItotoriProjectRepositoryPort,
   LocaleBranchIdentity,
   LocaleBranchStatus,
+  LocalizationRunProjectScope,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "./repositories/project-repository.js";

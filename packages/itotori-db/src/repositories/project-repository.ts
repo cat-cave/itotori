@@ -94,6 +94,24 @@ export type ItotoriProjectRecord = {
   runtimeReport?: RuntimeVerificationReport | RuntimeEvidenceReportV02;
 };
 
+/**
+ * The run-identity a whole-project localize run declares in its config
+ * (`projectId` / `localeBranchId` / `sourceRevisionId` + the target/source
+ * locales). {@link ItotoriProjectRepository.ensureRunProjectScope} upserts the
+ * parent workspace -> project -> source-revision -> source-bundle -> locale-branch
+ * graph these ids imply, so the FKs the draft-job / pass-ledger writes require
+ * are satisfied before the first live persist. Game-agnostic: every field is a
+ * config value, never a hardcoded id.
+ */
+export type LocalizationRunProjectScope = {
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  targetLocale: string;
+  /** BCP-47 source locale (read from the run's bridge bundle). */
+  sourceLocale: string;
+};
+
 export type BridgeImportFutureReferences = {
   catalogWorkId: string | null;
   localCorpusEntryId: string | null;
@@ -379,6 +397,10 @@ export interface ItotoriProjectRepositoryPort {
     actor: AuthorizationActor,
     project: ItotoriProjectRecord,
   ): Promise<BridgeImportStatus>;
+  ensureRunProjectScope(
+    actor: AuthorizationActor,
+    scope: LocalizationRunProjectScope,
+  ): Promise<void>;
   saveDrafts(actor: AuthorizationActor, project: ItotoriProjectRecord): Promise<void>;
   savePatchExport(
     actor: AuthorizationActor,
@@ -789,6 +811,94 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         });
 
       return importStatus;
+    });
+  }
+
+  /**
+   * Idempotently provision the parent project graph a whole-project localize run
+   * requires BEFORE it persists any draft job / pass-ledger row. The whole-game
+   * `localize-game` driver (and `localize`) writes into `itotori_draft_jobs`
+   * (FK -> projects + locale_branches) and `itotori_localization_pass_ledger`
+   * (FK -> projects + locale_branches + source_revisions) using the run identity
+   * from its config, but never created those parent rows — so the first live
+   * persist violated the FK. This upserts, in FK order, the
+   * workspace -> project -> source_revision -> source_bundle -> locale_branch
+   * chain those ids imply.
+   *
+   * Every insert is `onConflictDoNothing`, so it is safe to re-run and NEVER
+   * clobbers a richer graph a real `importSourceBundle` already wrote (a prior
+   * real import keeps its own source bundle + locale-branch pointer; this only
+   * fills in whatever parent rows are still missing — in particular the
+   * config's `sourceRevisionId`, which the pass-ledger FK restricts to). The
+   * synthesized source bundle is a minimal run-scope placeholder (0 units/0
+   * assets) that exists only to satisfy the locale-branch's `restrict` FK; the
+   * real source units land later via the normal bridge-import path when a run
+   * needs them.
+   */
+  async ensureRunProjectScope(
+    actor: AuthorizationActor,
+    scope: LocalizationRunProjectScope,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.projectImport);
+    const runScopeBundleId = `${scope.projectId}:${scope.sourceRevisionId}:run-scope`;
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(workspaces)
+        .values({ workspaceId: defaultWorkspaceId, name: defaultWorkspaceName })
+        .onConflictDoNothing();
+
+      await tx
+        .insert(projects)
+        .values({
+          projectId: scope.projectId,
+          workspaceId: defaultWorkspaceId,
+          projectKey: scope.projectId,
+          name: scope.projectId,
+          sourceLocale: scope.sourceLocale,
+          status: projectStatusValues.imported,
+          createdByUserId: actor.userId,
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .insert(sourceRevisions)
+        .values({
+          sourceRevisionId: scope.sourceRevisionId,
+          projectId: scope.projectId,
+          revisionKind: "bridge_revision",
+          value: scope.sourceRevisionId,
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .insert(sourceBundles)
+        .values({
+          sourceBundleId: runScopeBundleId,
+          projectId: scope.projectId,
+          sourceBundleRevisionId: scope.sourceRevisionId,
+          bridgeId: `${scope.projectId}:run-scope`,
+          schemaVersion: BRIDGE_SCHEMA_VERSION_V02,
+          sourceBundleHash: `run-scope:${scope.sourceRevisionId}`,
+          sourceLocale: scope.sourceLocale,
+          extractorName: "localize-run-scope",
+          extractorVersion: "0",
+          unitCount: 0,
+          assetCount: 0,
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .insert(localeBranches)
+        .values({
+          localeBranchId: scope.localeBranchId,
+          projectId: scope.projectId,
+          sourceBundleId: runScopeBundleId,
+          targetLocale: scope.targetLocale,
+          branchName: scope.targetLocale,
+          status: localeBranchStatusValues.active,
+          createdByUserId: actor.userId,
+        })
+        .onConflictDoNothing();
     });
   }
 

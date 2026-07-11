@@ -84,6 +84,12 @@ const repositoryPermissionGateMatrix = [
   projectGate("importSourceBundle", "projectImport", "repository.test.ts import coverage", (repo) =>
     repo.importSourceBundle(deniedActor, undefined as never),
   ),
+  projectGate(
+    "ensureRunProjectScope",
+    "projectImport",
+    "project-run-scope-provisioning.test.ts run scope provisioning coverage",
+    (repo) => repo.ensureRunProjectScope(deniedActor, undefined as never),
+  ),
   projectGate("saveDrafts", "draftWrite", "repository.test.ts draft persistence coverage", (repo) =>
     repo.saveDrafts(deniedActor, undefined as never),
   ),
@@ -1329,6 +1335,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriProjectRepository.importSourceBundle",
           "requiredPermission": "project.import",
           "successFixture": "repository.test.ts import coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriProjectRepository.ensureRunProjectScope",
+          "requiredPermission": "project.import",
+          "successFixture": "project-run-scope-provisioning.test.ts run scope provisioning coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
