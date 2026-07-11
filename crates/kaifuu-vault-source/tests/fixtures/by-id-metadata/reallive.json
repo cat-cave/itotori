@@ -1,0 +1,100 @@
+{
+  "canonical_id": "synthetic-reallive.v1.en",
+  "identifiers": [
+    {
+      "source": "vndb",
+      "kind": "v",
+      "value": "v-synthetic-reallive"
+    },
+    {
+      "source": "dlsite",
+      "kind": "rj",
+      "value": "RJ-SYNTHETIC-REALLIVE"
+    }
+  ],
+  "engine": "reallive",
+  "engine_evidence": {
+    "evidence": "direct_observation",
+    "observed_at": "2026-01-02 03:04:05",
+    "source": "file_tree",
+    "value": "reallive"
+  },
+  "engine_source": "file_tree",
+  "work": {
+    "age_rating": "all",
+    "canonical_title": "Synthetic RealLive Fixture",
+    "original_title": "Synthetic RealLive Fixture (original)",
+    "series_id": "SYNTHETIC-SERIES-1",
+    "series_name": "Synthetic Series",
+    "work_kind": "vn"
+  },
+  "release": {
+    "drm_model": "drm-free",
+    "edition_name": "Synthetic Edition",
+    "edition_year": 2025,
+    "is_portable": true,
+    "release_date": "2025-01-02",
+    "store": "synthetic-store"
+  },
+  "languages": [
+    {
+      "evidence_path": null,
+      "is_mtl": false,
+      "kind": "full",
+      "language_code": "ja",
+      "source": "file_tree"
+    },
+    {
+      "evidence_path": "synthetic/evidence/language.json",
+      "is_mtl": true,
+      "kind": "partial",
+      "language_code": "en",
+      "source": "synthetic_fixture"
+    }
+  ],
+  "install_manifest": null,
+  "containers_json": [
+    {
+      "classified": "archive",
+      "exit": 0,
+      "magic": "sevenz",
+      "note": "",
+      "produced": ["synthetic-reallive/game.exe", "synthetic-reallive/_vault/metadata.json"],
+      "source": "synthetic-reallive/source.7z",
+      "stderr": "",
+      "tool": "synthetic-7zz"
+    },
+    {
+      "classified": "opaque",
+      "exit": 70,
+      "magic": "mz",
+      "note": "synthetic opaque executable",
+      "produced": [],
+      "stderr": "synthetic decoder error",
+      "tool": null
+    }
+  ],
+  "runnable_from_tree": 1,
+  "original_filename": "synthetic-reallive-source.7z",
+  "original_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "size_bytes": 123456,
+  "source_fetches": [
+    {
+      "fetched_at": "2026-01-02 03:00:00",
+      "http_status": 200,
+      "ok": true,
+      "request_hash": "synthetic-request-reallive",
+      "source": "synthetic_catalog"
+    },
+    {
+      "fetched_at": "2026-01-02 03:01:00",
+      "http_status": null,
+      "ok": false,
+      "request_hash": "synthetic-request-reallive-failed",
+      "source": "synthetic_catalog"
+    }
+  ],
+  "state": "vaulted",
+  "version": "v1.0",
+  "version_norm": [1, 0]
+}

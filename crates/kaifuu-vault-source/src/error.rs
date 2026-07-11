@@ -152,8 +152,8 @@ pub enum VaultSourceError {
         canonical_id: String,
     },
 
-    /// `_vault/metadata.json` is present but cannot be parsed / is missing the
-    /// identity fields the by-id cross-check requires.
+    /// `_vault/metadata.json` is present but cannot be parsed or fails the
+    /// authoritative by-id sidecar schema.
     #[error("_vault/metadata.json invalid under {tree_root:?}")]
     EmbeddedMetadataInvalid {
         /// Per-run extracted tree root.

@@ -10,6 +10,7 @@ description = "Read-only itotori vault-source localCorpus adapter. Implements do
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+jsonschema.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
 sevenz-rust2.workspace = true

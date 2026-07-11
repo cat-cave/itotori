@@ -225,10 +225,9 @@ impl VaultSource {
     /// Open a [`VaultSource`] against the resolved vault + scratch roots.
     ///
     /// Validates the vault root (`catalog.db` + `artifacts/by-id/`) and probes
-    /// the catalog schema version. No embedded-metadata JSON-Schema is
-    /// compiled: the by-id era embeds the canonical metadata document (not the
-    /// legacy v1.0 `releases[]` shape), and identity is cross-checked
-    /// field-by-field at materialize time.
+    /// the catalog schema version. The embedded by-id metadata is validated
+    /// against the repository's compiled-in canonical sidecar schema when it
+    /// is read during materialization, before identity is cross-checked.
     pub fn open(
         vault_cfg: &VaultConfig,
         scratch_cfg: &ScratchConfig,

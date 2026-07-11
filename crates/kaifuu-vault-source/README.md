@@ -42,8 +42,9 @@ See _Out of Scope_ in the contract for the authoritative list.
 ## Owner / support boundary
 
 Owner: itotori orchestrator (this crate is a downstream consumer of the
-vault-curation project's `catalog.db` schema; vault-curation owns
-`schema.sql` and `embedded-metadata.schema.json`).
+vault-curation project's `catalog.db` schema and canonical metadata producer;
+the consumer contract is documented in
+`docs/itotori-vault-by-id-metadata.schema.json`).
 
 Support boundary: this crate stops at the
 `<scratch_root>/<game-id>/<run-id>/extracted/` directory. Anything

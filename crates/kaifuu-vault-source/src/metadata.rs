@@ -3,10 +3,9 @@
 //! The by-id content store embeds the vault-curation *canonical* metadata
 //! document at `<canonical_id>/_vault/metadata.json` (top-level
 //! `canonical_id`, `identifiers`, `engine`, `work`, `release`, ...). This is
-//! the by-id-era shape produced by vault-curation's stage-2 repack; it is NOT
-//! the legacy "Vault Embedded Artifact Metadata v1.0" `releases[]` /
-//! `vault_artifact` shape (that schema is from the prior sha-addressed era and
-//! has been dropped along with the legacy resolution path).
+//! the by-id-era shape produced by vault-curation's stage-2 repack. It is
+//! validated against `docs/itotori-vault-by-id-metadata.schema.json` before
+//! any identity fields are consumed.
 //!
 //! Identity is established by:
 //!
@@ -22,6 +21,7 @@
 //! concern (e.g. the extracted `Seen.txt` sha256), never the archive sha.
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
@@ -29,6 +29,14 @@ use crate::discovery::ReleaseCandidate;
 use crate::error::VaultSourceError;
 use crate::findings::CrossCheckFinding;
 use crate::paths::ExternalId;
+
+/// Repository-relative location of the authoritative by-id sidecar schema.
+pub const BY_ID_METADATA_SCHEMA_PATH: &str = "docs/itotori-vault-by-id-metadata.schema.json";
+
+const BY_ID_METADATA_SCHEMA_JSON: &str =
+    include_str!("../../../docs/itotori-vault-by-id-metadata.schema.json");
+
+static BY_ID_METADATA_VALIDATOR: OnceLock<Result<jsonschema::Validator, String>> = OnceLock::new();
 
 /// Caller-facing tolerance for cross-check disagreements.
 /// Contract default: reject mismatched identity (`canonical_id`, work
@@ -69,7 +77,7 @@ pub struct EmbeddedMetadata {
     pub canonical_title: Option<String>,
     /// `identifiers[]` as `(source, kind, value)` tuples.
     pub identifiers: Vec<(String, String, String)>,
-    /// `languages[]`.
+    /// `languages[].language_code` values.
     pub languages: Vec<String>,
     /// Raw parsed JSON for downstream inspection.
     pub raw: Value,
@@ -96,6 +104,14 @@ pub fn read_embedded_metadata(
             canonical_id: canonical_id.to_string(),
             errors: vec![format!("json parse: {e}")],
         })?;
+
+    if let Err(errors) = validate_by_id_metadata(&value) {
+        return Err(VaultSourceError::EmbeddedMetadataInvalid {
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            errors,
+        });
+    }
 
     let embedded_canonical_id = value
         .get("canonical_id")
@@ -129,7 +145,11 @@ pub fn read_embedded_metadata(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(std::string::ToString::to_string))
+                .filter_map(|item| {
+                    item.get("language_code")
+                        .and_then(|v| v.as_str())
+                        .map(std::string::ToString::to_string)
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -152,6 +172,28 @@ pub fn read_embedded_metadata(
         languages,
         raw: value,
     })
+}
+
+fn validate_by_id_metadata(value: &Value) -> Result<(), Vec<String>> {
+    let validator = match BY_ID_METADATA_VALIDATOR.get_or_init(|| {
+        let schema: Value = serde_json::from_str(BY_ID_METADATA_SCHEMA_JSON)
+            .map_err(|error| format!("parse {BY_ID_METADATA_SCHEMA_PATH}: {error}"))?;
+        jsonschema::draft202012::new(&schema)
+            .map_err(|error| format!("compile {BY_ID_METADATA_SCHEMA_PATH}: {error}"))
+    }) {
+        Ok(validator) => validator,
+        Err(error) => return Err(vec![error.clone()]),
+    };
+
+    let errors: Vec<String> = validator
+        .iter_errors(value)
+        .map(|error| format!("{}: {error}", error.instance_path()))
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Cross-check the embedded by-id metadata's identity against the catalog.

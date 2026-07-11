@@ -15,8 +15,8 @@
 //! directory — mirroring the real by-id repack layout, where the game tree
 //! and `_vault/metadata.json` live under that wrapper. The embedded
 //! `_vault/metadata.json` is the by-id *canonical* shape (top-level
-//! `canonical_id`, `identifiers`, `engine`, `work`, `languages`), NOT the
-//! legacy v1.0 `releases[]` shape.
+//! `canonical_id`, `identifiers`, `engine`, `work`, `languages`, and the
+//! remaining fields required by the sidecar schema).
 
 // reason: shared vault integration-test helpers; not every test module uses every helper.
 #![allow(dead_code)]
@@ -217,60 +217,108 @@ fn sha256_hex(bytes: &[u8]) -> String {
 // Embedded by-id metadata (canonical shape)
 // ====================================================================
 
-fn embedded_metadata_good() -> Vec<u8> {
+fn synthetic_metadata(
+    canonical_id: &str,
+    canonical_title: &str,
+    identifiers: &[(&str, &str, &str)],
+) -> Vec<u8> {
+    let identifiers: Vec<_> = identifiers
+        .iter()
+        .map(|(source, kind, value)| {
+            serde_json::json!({
+                "source": source,
+                "kind": kind,
+                "value": value,
+            })
+        })
+        .collect();
+
     serde_json::to_vec_pretty(&serde_json::json!({
-        "canonical_id": CID_GOOD_PRIMARY,
+        "canonical_id": canonical_id,
+        "identifiers": identifiers,
         "engine": "kirikiri",
-        "languages": ["ja"],
-        "work": { "canonical_title": "Hello Galaxy", "work_kind": "vn" },
-        "identifiers": [
-            { "source": "vndb", "kind": "v", "value": "v1234" },
-            { "source": "dlsite", "kind": "rj", "value": "RJ123456" }
-        ]
+        "engine_evidence": {
+            "evidence": "direct_observation",
+            "observed_at": "2026-01-01 00:00:00",
+            "source": "synthetic_fixture",
+            "value": "kirikiri"
+        },
+        "engine_source": "synthetic_fixture",
+        "work": {
+            "age_rating": "all",
+            "canonical_title": canonical_title,
+            "original_title": null,
+            "series_id": null,
+            "series_name": null,
+            "work_kind": "vn"
+        },
+        "release": {
+            "drm_model": null,
+            "edition_name": null,
+            "edition_year": null,
+            "is_portable": null,
+            "release_date": null,
+            "store": null
+        },
+        "languages": [{
+            "evidence_path": null,
+            "is_mtl": false,
+            "kind": "full",
+            "language_code": "ja",
+            "source": "synthetic_fixture"
+        }],
+        "install_manifest": null,
+        "containers_json": [{
+            "classified": "archive",
+            "exit": 0,
+            "magic": "sevenz",
+            "note": "",
+            "produced": ["synthetic-game/start.exe"],
+            "stderr": "",
+            "tool": "synthetic-7zz"
+        }],
+        "runnable_from_tree": 1,
+        "original_filename": "synthetic-source.7z",
+        "original_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 1,
+        "source_fetches": [{
+            "fetched_at": "2026-01-01 00:00:00",
+            "http_status": 200,
+            "ok": true,
+            "request_hash": "synthetic-request",
+            "source": "synthetic_fixture"
+        }],
+        "state": "vaulted",
+        "version": "v1.0",
+        "version_norm": [1, 0]
     }))
     .unwrap()
+}
+
+fn embedded_metadata_good() -> Vec<u8> {
+    synthetic_metadata(
+        CID_GOOD_PRIMARY,
+        "Hello Galaxy",
+        &[("vndb", "v", "v1234"), ("dlsite", "rj", "RJ123456")],
+    )
 }
 
 fn embedded_metadata_subpath() -> Vec<u8> {
-    serde_json::to_vec_pretty(&serde_json::json!({
-        "canonical_id": CID_SUBPATH,
-        "engine": "kirikiri",
-        "languages": ["ja"],
-        "work": { "canonical_title": "Hello Galaxy", "work_kind": "vn" },
-        "identifiers": [
-            { "source": "vndb", "kind": "v", "value": "v1234" }
-        ]
-    }))
-    .unwrap()
+    synthetic_metadata(CID_SUBPATH, "Hello Galaxy", &[("vndb", "v", "v1234")])
 }
 
 fn embedded_metadata_patch() -> Vec<u8> {
-    serde_json::to_vec_pretty(&serde_json::json!({
-        "canonical_id": CID_GOOD_PATCH,
-        "engine": "kirikiri",
-        "languages": ["ja"],
-        "work": { "canonical_title": "Hello Galaxy", "work_kind": "vn" },
-        "identifiers": [
-            { "source": "vndb", "kind": "v", "value": "v1234" }
-        ]
-    }))
-    .unwrap()
+    synthetic_metadata(CID_GOOD_PATCH, "Hello Galaxy", &[("vndb", "v", "v1234")])
 }
 
 fn embedded_metadata_disjoint_ids() -> Vec<u8> {
     // canonical_id MATCHES the catalog (identity gate 1 passes), but the work
     // identifiers are disjoint from the catalog (identity gate 2 fails).
-    serde_json::to_vec_pretty(&serde_json::json!({
-        "canonical_id": CID_EMBEDDED_MISMATCH,
-        "engine": "kirikiri",
-        "languages": ["ja"],
-        "work": { "canonical_title": "Mistaken Identity", "work_kind": "vn" },
-        "identifiers": [
-            { "source": "vndb", "kind": "v", "value": "v9999" },
-            { "source": "dlsite", "kind": "rj", "value": "RJ999999" }
-        ]
-    }))
-    .unwrap()
+    synthetic_metadata(
+        CID_EMBEDDED_MISMATCH,
+        "Mistaken Identity",
+        &[("vndb", "v", "v9999"), ("dlsite", "rj", "RJ999999")],
+    )
 }
 
 // ====================================================================

@@ -5,6 +5,9 @@
 
 mod common;
 
+use std::collections::BTreeSet;
+
+use kaifuu_vault_source::metadata::read_embedded_metadata;
 use kaifuu_vault_source::{
     ClaimQuery, CrossCheckTolerance, LocalCorpusSource, MaterializeOptions, ScratchConfig,
     VaultConfig, VaultSource, VaultSourceError,
@@ -20,6 +23,98 @@ fn open_source(v: &common::SyntheticVault) -> VaultSource {
         },
     )
     .unwrap()
+}
+
+#[test]
+fn parses_and_validates_synthetic_by_id_sidecars_across_engine_families() {
+    let expected_top_level_keys: BTreeSet<&str> = [
+        "canonical_id",
+        "identifiers",
+        "engine",
+        "engine_evidence",
+        "engine_source",
+        "work",
+        "release",
+        "languages",
+        "install_manifest",
+        "containers_json",
+        "runnable_from_tree",
+        "original_filename",
+        "original_sha256",
+        "size_bytes",
+        "source_fetches",
+        "state",
+        "version",
+        "version_norm",
+    ]
+    .into_iter()
+    .collect();
+
+    for (fixture_name, expected_engine, expected_languages) in [
+        ("reallive", "reallive", &["ja", "en"][..]),
+        ("unity", "unity", &["en"][..]),
+    ] {
+        let fixture_path = common::test_manifest_dir()
+            .join("tests/fixtures/by-id-metadata")
+            .join(format!("{fixture_name}.json"));
+        let raw = std::fs::read_to_string(&fixture_path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let actual_top_level_keys: BTreeSet<&str> = value
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(actual_top_level_keys, expected_top_level_keys);
+
+        let tree = tempfile::tempdir().unwrap();
+        let metadata_dir = tree.path().join("_vault");
+        std::fs::create_dir_all(&metadata_dir).unwrap();
+        std::fs::write(metadata_dir.join("metadata.json"), raw).unwrap();
+
+        let metadata =
+            read_embedded_metadata(tree.path(), value["canonical_id"].as_str().unwrap()).unwrap();
+        assert_eq!(metadata.engine.as_deref(), Some(expected_engine));
+        assert_eq!(
+            metadata.languages,
+            expected_languages
+                .iter()
+                .map(|language| (*language).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(metadata.raw["identifiers"][0]["source"].as_str().is_some());
+        assert!(metadata.raw["release"].is_object());
+        assert!(metadata.raw["containers_json"].is_array());
+        assert!(metadata.raw["source_fetches"].is_array());
+    }
+}
+
+#[test]
+fn rejects_synthetic_sidecar_when_languages_are_scalar_values() {
+    let mut value: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/by-id-metadata/reallive.json")).unwrap();
+    value["languages"] = serde_json::json!(["ja"]);
+
+    let tree = tempfile::tempdir().unwrap();
+    let metadata_dir = tree.path().join("_vault");
+    std::fs::create_dir_all(&metadata_dir).unwrap();
+    std::fs::write(
+        metadata_dir.join("metadata.json"),
+        serde_json::to_vec(&value).unwrap(),
+    )
+    .unwrap();
+
+    let err = read_embedded_metadata(tree.path(), value["canonical_id"].as_str().unwrap())
+        .expect_err("scalar language entries must fail schema validation");
+    match err {
+        VaultSourceError::EmbeddedMetadataInvalid { errors, .. } => {
+            assert!(
+                errors.iter().any(|error| error.contains("languages")),
+                "schema error should identify languages: {errors:?}"
+            );
+        }
+        other => panic!("expected EmbeddedMetadataInvalid, got {other:?}"),
+    }
 }
 
 #[test]
