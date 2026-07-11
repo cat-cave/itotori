@@ -14,10 +14,10 @@
 //!    physical line inside an `[iscript]`/`@iscript` block is emitted as a
 //!    `dialogue` unit. The block line-set is recomputed by an INDEPENDENT
 //!    reference scanner (not the parser under test), so the assertion is a
-//!    genuine cross-check. Retail scripts that are UTF-16 (KiriKiriZ's common
-//!    encoding, outside this parser's UTF-8/Shift-JIS support) are transcoded to
-//!    UTF-8 first — the bytes remain the real game's TJS content. No retail
-//!    bytes are committed; the gate is a no-op when the env var is unset.
+//!    genuine cross-check. The parser receives the original retail bytes,
+//!    including UTF-16LE BOMs; only the independent reference scanner decodes
+//!    text to compute physical line indices. No retail bytes are committed; the
+//!    gate is a no-op when the env var is unset.
 
 use std::path::PathBuf;
 
@@ -120,19 +120,20 @@ fn swallowed_tjs_is_preserved_byte_identical_in_the_structural_stream() {
 // Real-bytes gate.
 // ---------------------------------------------------------------------------
 
-/// Decode possibly-UTF-16 `.ks` bytes to a UTF-8 byte vector. Retail KiriKiriZ
-/// scripts are frequently UTF-16LE (BOM `FF FE`); this parser natively supports
-/// UTF-8/Shift-JIS, so real UTF-16 scripts are transcoded (their TJS content is
-/// unchanged) before the iscript logic is exercised.
-fn to_utf8(bytes: &[u8]) -> Vec<u8> {
+/// Decode bytes only for the independent line-set oracle. The bytes passed to
+/// `parse_ks` remain the original retail buffer; this helper deliberately does
+/// not transcode the parser's input.
+fn reference_text(bytes: &[u8]) -> String {
     if bytes.starts_with(&[0xFF, 0xFE]) {
         let (cow, _, _) = encoding_rs::UTF_16LE.decode(&bytes[2..]);
-        cow.into_owned().into_bytes()
+        cow.into_owned()
     } else if bytes.starts_with(&[0xFE, 0xFF]) {
         let (cow, _, _) = encoding_rs::UTF_16BE.decode(&bytes[2..]);
-        cow.into_owned().into_bytes()
+        cow.into_owned()
+    } else if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        String::from_utf8_lossy(&bytes[3..]).into_owned()
     } else {
-        bytes.to_vec()
+        String::from_utf8_lossy(bytes).into_owned()
     }
 }
 
@@ -177,6 +178,7 @@ fn real_ks_never_emits_iscript_tjs_as_dialogue() {
     let mut files_with_iscript = 0usize;
     let mut total_blocks = 0usize;
     let mut total_body_lines = 0usize;
+    let mut native_utf16_files = 0usize;
     let mut leaks: Vec<String> = Vec::new();
 
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -189,8 +191,7 @@ fn real_ks_never_emits_iscript_tjs_as_dialogue() {
     for path in &entries {
         files += 1;
         let raw = std::fs::read(path).unwrap();
-        let utf8 = to_utf8(&raw);
-        let text = String::from_utf8_lossy(&utf8).into_owned();
+        let text = reference_text(&raw);
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
 
         let body_lines = iscript_body_lines(&text);
@@ -202,7 +203,13 @@ fn real_ks_never_emits_iscript_tjs_as_dialogue() {
             total_body_lines += body_lines.len();
         }
 
-        let doc = parse_ks(&name, utf8.as_slice());
+        let doc = parse_ks(&name, &raw);
+        if matches!(
+            doc.encoding,
+            kaifuu_kirikiri::KsEncoding::Utf16Le | kaifuu_kirikiri::KsEncoding::Utf16Be
+        ) {
+            native_utf16_files += 1;
+        }
         for unit in doc.units.iter().filter(|u| u.role == TextRole::Dialogue) {
             if body_lines.contains(&unit.line_index) {
                 leaks.push(format!(
@@ -214,9 +221,9 @@ fn real_ks_never_emits_iscript_tjs_as_dialogue() {
     }
 
     eprintln!(
-        "real-bytes gate: {files} .ks files, {files_with_iscript} contain iscript, \
-         {total_blocks} blocks, {total_body_lines} TJS body lines swallowed, \
-         {} dialogue leaks",
+        "real-bytes gate: {files} .ks files scanned, {native_utf16_files} native UTF-16 files, \
+         {files_with_iscript} contain iscript, {total_blocks} iscript blocks, \
+         {total_body_lines} TJS code lines swallowed, dialogue leaks = {}",
         leaks.len()
     );
     assert!(files > 0, "no .ks files found under {}", dir.display());

@@ -1,7 +1,8 @@
 //! KAG `.ks` plaintext scenario-script parser.
 //!
 //! KAG (KiriKiri Adventure Game system) is KiriKiri's scenario scripting
-//! layer; a `.ks` file is **plaintext** (Shift-JIS or UTF-8). This module
+//! layer; a `.ks` file is **plaintext** (Shift-JIS, UTF-8, or BOM-marked
+//! UTF-16). This module
 //! parses the KAG line dialect into a stable set of translatable
 //! [`KsUnit`]s plus byte-identical structure (tags, commands, comments,
 //! labels). It is deliberately *encoding-aware at the byte level* so a
@@ -60,18 +61,37 @@ pub enum KsEncoding {
     Utf8,
     /// Shift-JIS (classic KiriKiri retail scripts).
     ShiftJis,
+    /// UTF-16 little-endian, identified by an `FF FE` BOM.
+    Utf16Le,
+    /// UTF-16 big-endian, identified by an `FE FF` BOM.
+    Utf16Be,
 }
 
 impl KsEncoding {
-    /// Detect encoding: valid UTF-8 → [`KsEncoding::Utf8`], else
-    /// [`KsEncoding::ShiftJis`]. Callers with out-of-band knowledge should use
+    /// Detect encoding from a KAG file's leading BOM, then fall back to valid
+    /// UTF-8 or Shift-JIS. Callers with out-of-band knowledge should use
     /// [`crate::parse_ks_with_encoding`] to pin the encoding explicitly.
     #[must_use]
     pub fn detect(bytes: &[u8]) -> Self {
-        if std::str::from_utf8(bytes).is_ok() {
+        if bytes.starts_with(&[0xFF, 0xFE]) {
+            Self::Utf16Le
+        } else if bytes.starts_with(&[0xFE, 0xFF]) {
+            Self::Utf16Be
+        } else if std::str::from_utf8(bytes).is_ok() {
             Self::Utf8
         } else {
             Self::ShiftJis
+        }
+    }
+
+    /// Number of leading BOM bytes that belong to the file structure rather
+    /// than to the first parsed line.
+    fn bom_len(self, bytes: &[u8]) -> usize {
+        match self {
+            Self::Utf8 if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) => 3,
+            Self::Utf16Le if bytes.starts_with(&[0xFF, 0xFE]) => 2,
+            Self::Utf16Be if bytes.starts_with(&[0xFE, 0xFF]) => 2,
+            _ => 0,
         }
     }
 
@@ -103,6 +123,44 @@ impl KsEncoding {
                 let is_lead = (0x81..=0x9F).contains(&b) || (0xE0..=0xFC).contains(&b);
                 if is_lead && remaining >= 2 { 2 } else { 1 }
             }
+            Self::Utf16Le | Self::Utf16Be => {
+                if remaining >= 2 {
+                    2
+                } else {
+                    1
+                }
+            }
+        }
+    }
+
+    /// Return an ASCII byte when the character at `i` is a single-byte ASCII
+    /// character in this encoding. UTF-16 controls are recognized only when
+    /// their complete two-byte code unit is present, so a zero high/low byte
+    /// is never mistaken for a delimiter of its own.
+    fn ascii_byte(self, bytes: &[u8], i: usize) -> Option<u8> {
+        match self {
+            Self::Utf8 | Self::ShiftJis => bytes.get(i).copied().filter(u8::is_ascii),
+            Self::Utf16Le => match (bytes.get(i), bytes.get(i + 1)) {
+                (Some(&byte), Some(&0)) if byte.is_ascii() => Some(byte),
+                _ => None,
+            },
+            Self::Utf16Be => match (bytes.get(i), bytes.get(i + 1)) {
+                (Some(&0), Some(&byte)) if byte.is_ascii() => Some(byte),
+                _ => None,
+            },
+        }
+    }
+
+    /// Return the ASCII byte immediately before the character at `i`.
+    fn previous_ascii_byte(self, bytes: &[u8], i: usize) -> Option<u8> {
+        let previous = self.previous_char_start(i)?;
+        self.ascii_byte(bytes, previous)
+    }
+
+    fn previous_char_start(self, i: usize) -> Option<usize> {
+        match self {
+            Self::Utf16Le | Self::Utf16Be => i.checked_sub(2),
+            Self::Utf8 | Self::ShiftJis => i.checked_sub(1),
         }
     }
 }
@@ -113,6 +171,8 @@ pub(crate) fn decode_slice(bytes: &[u8], enc: KsEncoding) -> String {
     let coder = match enc {
         KsEncoding::Utf8 => encoding_rs::UTF_8,
         KsEncoding::ShiftJis => encoding_rs::SHIFT_JIS,
+        KsEncoding::Utf16Le => encoding_rs::UTF_16LE,
+        KsEncoding::Utf16Be => encoding_rs::UTF_16BE,
     };
     coder.decode(bytes).0.into_owned()
 }
@@ -302,18 +362,19 @@ impl Parser<'_> {
             return;
         }
 
-        match self.bytes[ls] {
+        match self.enc.ascii_byte(self.bytes, ls) {
             // comment (`;`) and label (`*`) lines are pure structure.
-            b';' | b'*' => {}
-            b'@' => {
-                let name = self.command_name(ls + 1, le);
+            Some(b';' | b'*') => {}
+            Some(b'@') => {
+                let name_start = ls + self.enc.char_len(self.bytes, ls);
+                let name = self.command_name(name_start, le);
                 self.findings.push(KsFinding {
                     kind: KsFindingKind::LineCommand,
                     line_index,
                     detail: name,
                 });
             }
-            b'#' => self.parse_name_line(ls, le, line_index),
+            Some(b'#') => self.parse_name_line(ls, le, line_index),
             _ => self.parse_text_line(ls, le, line_index),
         }
     }
@@ -325,7 +386,11 @@ impl Parser<'_> {
         let mut i = ls;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i].is_ascii_whitespace() {
+            if self
+                .enc
+                .ascii_byte(self.bytes, i)
+                .is_some_and(|byte| byte.is_ascii_whitespace())
+            {
                 i += cl;
             } else {
                 break;
@@ -340,15 +405,17 @@ impl Parser<'_> {
     /// whitespace-delimited token inside the brackets.
     fn leading_tag_name(&self, ls: usize, le: usize) -> Option<String> {
         let start = self.first_content(ls, le);
-        if start >= le || self.bytes[start] != b'[' {
+        if start >= le || self.enc.ascii_byte(self.bytes, start) != Some(b'[') {
             return None;
         }
         // `[[` literal-bracket escape → this is text, not a tag.
-        if start + 1 < le && self.bytes[start + 1] == b'[' {
+        let next = start + self.enc.char_len(self.bytes, start);
+        if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
             return None;
         }
-        let close = self.find_close_bracket(start + 1, le)?;
-        let name = self.command_name(start + 1, close);
+        let inner_start = next;
+        let close = self.find_close_bracket(inner_start, le)?;
+        let name = self.command_name(inner_start, close);
         if name.is_empty() { None } else { Some(name) }
     }
 
@@ -356,10 +423,11 @@ impl Parser<'_> {
     /// whitespace), or `None` when the line does not begin with `@`.
     fn leading_command_name(&self, ls: usize, le: usize) -> Option<String> {
         let start = self.first_content(ls, le);
-        if start >= le || self.bytes[start] != b'@' {
+        if start >= le || self.enc.ascii_byte(self.bytes, start) != Some(b'@') {
             return None;
         }
-        let name = self.command_name(start + 1, le);
+        let name_start = start + self.enc.char_len(self.bytes, start);
+        let name = self.command_name(name_start, le);
         if name.is_empty() { None } else { Some(name) }
     }
 
@@ -369,7 +437,7 @@ impl Parser<'_> {
         let mut j = start;
         while j < le {
             let cl = self.enc.char_len(self.bytes, j);
-            if cl == 1 && self.bytes[j] == b']' {
+            if self.enc.ascii_byte(self.bytes, j) == Some(b']') {
                 return Some(j);
             }
             j += cl;
@@ -385,17 +453,18 @@ impl Parser<'_> {
         let mut i = ls;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i] == b'[' {
-                if i + 1 < le && self.bytes[i + 1] == b'[' {
-                    i += 2; // `[[` escape
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'[') {
+                let next = i + cl;
+                if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
+                    i = next + self.enc.char_len(self.bytes, next); // `[[` escape
                     continue;
                 }
-                match self.find_close_bracket(i + 1, le) {
+                match self.find_close_bracket(i + cl, le) {
                     Some(close) => {
-                        if self.command_name(i + 1, close).as_bytes() == want {
+                        if self.command_name(i + cl, close).as_bytes() == want {
                             return true;
                         }
-                        i = close + 1;
+                        i = close + self.enc.char_len(self.bytes, close);
                     }
                     None => break,
                 }
@@ -433,7 +502,11 @@ impl Parser<'_> {
         let mut i = start;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i].is_ascii_whitespace() {
+            if self
+                .enc
+                .ascii_byte(self.bytes, i)
+                .is_some_and(|byte| byte.is_ascii_whitespace())
+            {
                 break;
             }
             i += cl;
@@ -443,7 +516,7 @@ impl Parser<'_> {
 
     /// `#display` / `#voice/display` / bare `#`.
     fn parse_name_line(&mut self, ls: usize, le: usize, line_index: usize) {
-        let name_start = ls + 1;
+        let name_start = ls + self.enc.char_len(self.bytes, ls);
         if name_start >= le {
             // bare `#` → clear speaker
             self.current_speaker = None;
@@ -454,13 +527,13 @@ impl Parser<'_> {
         let mut i = name_start;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i] == b'/' {
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'/') {
                 slash = Some(i);
                 break;
             }
             i += cl;
         }
-        let display_start = slash.map_or(name_start, |s| s + 1);
+        let display_start = slash.map_or(name_start, |s| s + self.enc.char_len(self.bytes, s));
         if display_start >= le {
             // `#voice/` with empty display → clear speaker, no unit.
             self.current_speaker = None;
@@ -477,10 +550,11 @@ impl Parser<'_> {
         let mut i = ls;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i] == b'[' {
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'[') {
                 // `[[` — KAG literal-bracket escape; stays inside the run.
-                if i + 1 < le && self.bytes[i + 1] == b'[' {
-                    i += 2;
+                let next = i + cl;
+                if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
+                    i = next + self.enc.char_len(self.bytes, next);
                     continue;
                 }
                 self.emit_run(line_index, &mut segment_index, run_start, i);
@@ -489,8 +563,8 @@ impl Parser<'_> {
                 let mut closed = false;
                 while j < le {
                     let cl2 = self.enc.char_len(self.bytes, j);
-                    if cl2 == 1 && self.bytes[j] == b']' {
-                        j += 1;
+                    if self.enc.ascii_byte(self.bytes, j) == Some(b']') {
+                        j += cl2;
                         closed = true;
                         break;
                     }
@@ -500,7 +574,7 @@ impl Parser<'_> {
                     self.findings.push(KsFinding {
                         kind: KsFindingKind::UnclosedInlineTag,
                         line_index,
-                        detail: self.command_name(i + 1, le),
+                        detail: self.command_name(i + cl, le),
                     });
                     j = le;
                 }
@@ -549,7 +623,7 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         findings: Vec::new(),
     };
 
-    let mut ls = 0usize;
+    let mut ls = enc.bom_len(bytes);
     let mut line_index = 0usize;
     while ls < bytes.len() {
         // Locate the physical line terminator.
@@ -558,13 +632,13 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         let mut next = bytes.len();
         while i < bytes.len() {
             let cl = enc.char_len(bytes, i);
-            if cl == 1 && bytes[i] == b'\n' {
+            if enc.ascii_byte(bytes, i) == Some(b'\n') {
                 let mut ce = i;
-                if ce > ls && bytes[ce - 1] == b'\r' {
-                    ce -= 1;
+                if enc.previous_ascii_byte(bytes, ce) == Some(b'\r') {
+                    ce = enc.previous_char_start(ce).expect("CR precedes LF");
                 }
                 content_end = ce;
-                next = i + 1;
+                next = i + cl;
                 break;
             }
             i += cl;
@@ -572,8 +646,10 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         if i >= bytes.len() {
             // Final line with no trailing newline.
             content_end = bytes.len();
-            if content_end > ls && bytes[content_end - 1] == b'\r' {
-                content_end -= 1;
+            if enc.previous_ascii_byte(bytes, content_end) == Some(b'\r') {
+                content_end = enc
+                    .previous_char_start(content_end)
+                    .expect("final CR has a start offset");
             }
             next = bytes.len();
         }

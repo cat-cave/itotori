@@ -26,8 +26,9 @@
 //! - [`parse_ks`] parses the KAG line dialect (comments `;`, labels `*`,
 //!   `@`-line-commands, `#name` speaker lines, and inline `[tag …]` tags
 //!   interspersed with message text) into stable [`KsUnit`]s. Encoding-aware
-//!   (UTF-8 + Shift-JIS) so a Shift-JIS trailing byte equal to an ASCII
-//!   delimiter is never mistaken for a tag.
+//!   (UTF-8, Shift-JIS, and BOM-marked UTF-16LE/BE) so a Shift-JIS trailing
+//!   byte equal to an ASCII delimiter is never mistaken for a tag and UTF-16
+//!   spans remain patchable.
 //! - Speaker extraction follows the KAG `#name` / `#voice/display` convention;
 //!   each `dialogue` unit records the active speaker.
 //! - [`apply_patch`] rewrites only the translatable spans, byte-preserving
