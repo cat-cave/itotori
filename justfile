@@ -724,12 +724,11 @@ qd-export:
     just roadmap-validate
 
 # =============================================================================
-# SHADOW tiered-CI recipes (Phase 1). Added alongside the existing `check` /
-# `ci` / `test` surface — do NOT remove or rename those. GitHub Actions
-# `.github/workflows/{pr-tiers,_tier0,_tier1}.yml` invoke the same recipe names
-# so local and CI share one command authority. Full run-tier.mjs ownership lands
-# with the parallel scanner stream; until then these recipes wrap the existing
-# gates directly.
+# Tiered-CI recipes — the CI command authority behind the required tier0/tier1
+# workflows (`.github/workflows/{pr-tiers,_tier0,_tier1}.yml`; ci.yml retired).
+# Both local and CI invoke the same recipe names so they share one command
+# authority. Full run-tier.mjs ownership is still pending consolidation; until
+# then these recipes wrap the existing `check` / `ci` / `test` gates directly.
 # =============================================================================
 
 # --- Tier 0: format + static + policy; no DB/browser/private bytes ------------

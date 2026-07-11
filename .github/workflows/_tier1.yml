@@ -1,7 +1,7 @@
 # Reusable Tier-1: portable behavior suite — TS shards, nextest partitions,
 # Postgres 18 service, Playwright Chromium, alpha-proof, mutation-differential.
 # Builds release CLIs once and fans out the small artifact. Target p95 < 10 min.
-# SHADOW: called from pr-tiers.yml; not yet a branch-protection required check.
+# Called from pr-tiers.yml; required via the main-merge-queue ruleset.
 name: reusable tier1
 
 on:

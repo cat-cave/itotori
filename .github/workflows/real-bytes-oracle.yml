@@ -2,8 +2,8 @@ name: Real-Bytes Periodic Oracle
 
 # real-bytes-periodic-ground-truth-oracle (P2) — the strict-proof ANCHOR for the
 # synthetic-CI collapse. This workflow is the SCHEDULING mechanism for the
-# periodic oracle; it is deliberately SEPARATE from ci.yml / the per-gate
-# qd-full-ci path so a per-gate green never pays for (or waits on) it.
+# periodic oracle; it is deliberately SEPARATE from the tiered
+# pr-tiers/_tier0/_tier1 per-gate path so a per-gate green never pays for (or waits on) it.
 #
 # Cadence:
 #   * schedule: nightly cron (00:17 UTC).

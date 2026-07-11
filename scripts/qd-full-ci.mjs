@@ -142,7 +142,7 @@ function runJust(root, env, args) {
 // Choose the lanes to run for this gate. `--all` (or ITOTORI_QD_FULL_CI_ALL=1)
 // forces the complete gate. Otherwise the diff vs the affected base
 // (ITOTORI_QD_AFFECTED_BASE, default `main`, but see computeChangedPaths for the
-// DIRECT-TO-MAIN HEAD~1 default) drives affected-lane selection. Any inability to
+// HEAD == base HEAD~1 default) drives affected-lane selection. Any inability to
 // determine the diff falls back to the full `ci` gate (conservative).
 export function selectLanes(root, env = process.env, argv = process.argv) {
   if (argv.includes("--all") || env.ITOTORI_QD_FULL_CI_ALL === "1") return ["ci"];
@@ -213,12 +213,13 @@ function computeChangedPaths(root, env) {
 // (ITOTORI_QD_AFFECTED_BASE, default `main`) -> `mergeBase...HEAD` is exactly this
 // branch's commits since it diverged from the base.
 //
-// But this repo is DIRECT-TO-MAIN: the orchestrator squash-merges to main and gates
-// ON main, so HEAD == main and that merge-base IS HEAD -> `HEAD...HEAD` is EMPTY and
-// the old conservative fallback ran the FULL `ci` on every gate. When the resolved
-// base is the SAME commit as HEAD (and no explicit override was given), DEFAULT to
-// this commit's own changes: the single parent of HEAD, so `<parent>...HEAD` ==
-// `HEAD~1...HEAD`.
+// But HEAD can equal the resolved base under the current PR + native merge-queue
+// model: the gate runs on a branch/queue ref whose merge-base against the base IS
+// HEAD, or on a push-to-main run right after a queue squash-merge. In both cases
+// `HEAD...HEAD` is EMPTY and the conservative fallback would run the FULL `ci` on
+// every gate. When the resolved base is the SAME commit as HEAD (and no explicit
+// override was given), DEFAULT to this commit's own changes: the single parent of
+// HEAD, so `<parent>...HEAD` == `HEAD~1...HEAD`.
 //
 // Returns a commit-ish string to diff against, `null` (base unavailable -> the
 // committed term is skipped and selection relies on worktree/untracked only), or the
@@ -238,7 +239,7 @@ function resolveCommittedDiffBase(root, env) {
 
   // HEAD == base. An explicit override is taken at face value (the operator asked
   // for exactly that base, even if it yields an empty diff); otherwise this is the
-  // direct-to-main case -> default to HEAD~1.
+  // HEAD == base case -> default to HEAD~1.
   if (explicit) return mergeBaseSha;
   return resolveHeadParentBase(root);
 }

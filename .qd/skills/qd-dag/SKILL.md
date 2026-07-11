@@ -57,13 +57,13 @@ qd milestone register --name "baseline" --rank 10
 2. The orchestrator chooses one or more ready nodes and delegates them to subagents.
 3. Each delegated node is claimed with `qd claim <id> --agent <name>` so ownership is visible.
 4. Implementation subagents receive `qd prompt implement <id>` plus any project-specific context.
-5. The orchestrator records completion with `qd complete <id> --summary "..."`.
+5. The orchestrator records completion with the evidence-first form: `qd complete <id> --from-report <completion-report.json>` (generate the report with `qd template completion-report`). The `--summary` flag was removed in qd 0.4.1.
 6. Audit subagents review the completed node and the orchestrator records structured findings.
 7. P0/P1 findings are resolved before checks. P2/P3 findings are promoted after the current node passes the gate.
 8. The orchestrator runs `qd check run <id>` when a fast local preflight is useful.
 9. The orchestrator runs `qd ci run <id>` for the full merge gate; `qd ci pass` is only for recording an externally completed CI check.
-10. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses `qd merge <id>` only after qd marks the node mergeable.
+10. The orchestrator opens a PR, then `qd merge <id> --enqueue` (or `--via-pr` under `mergeQueueMode=auto`) enters GitHub's native merge queue once qd marks the node mergeable; `qd sync-prs` records the queue-produced squash-merge SHA. qd drives the merge — reserve `qd merge --use-existing-commit` for the narrow ledger-only case (an already-landed commit that must be reconciled into qd state).
 
-`qd merge` records qd state only. It does not run `git merge`, squash commits, rebase, push, or open/merge a GitHub PR.
+Only `qd merge --use-existing-commit` is ledger-only — it records qd state without running `git merge`, squashing, rebasing, pushing, or opening/merging a GitHub PR. `qd merge --enqueue` / `--via-pr` actively enter GitHub's native merge queue and are tracked to completion via `qd sync-prs`.
 
 Never bypass the ready queue. If the graph is wrong, fix the graph.
