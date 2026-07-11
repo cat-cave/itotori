@@ -67,6 +67,7 @@ check:
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     node --test scripts/stale-residue-guard.test.mjs
     node scripts/stale-residue-guard.mjs --mode check
+    node --test scripts/assert-db-app-exclusion-union.test.mjs
     just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
@@ -752,6 +753,7 @@ ci-tier0-meta:
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     node --test scripts/stale-residue-guard.test.mjs
     node scripts/stale-residue-guard.mjs --mode check
+    node --test scripts/assert-db-app-exclusion-union.test.mjs
     just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
@@ -858,20 +860,35 @@ ci-tier1-db:
       export DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)"
     fi
     test -n "${DATABASE_URL:-}"
-    just db-cli-build
-    # Ensure workspace package dist/ exists for vitest entry resolution.
+    # ts:build is the single build authority: it produces every workspace
+    # package dist/ (schema, db, ds, app — including apps/itotori/dist/cli.js
+    # for db-migrate) in one graph. The former `just db-cli-build` fan-out here
+    # was redundant with it; the db-cli-build recipe is retained for local
+    # `just db-migrate`.
     pnpm exec vp run ts:build
     node apps/itotori/dist/cli.js db-migrate
     node apps/itotori/dist/cli.js db-reset
     pnpm --filter @itotori/db typecheck
-    rm -f .tmp/itotori-db/no-database-skipped.json
-    pnpm --filter @itotori/db test:db
+    mkdir -p .tmp/itotori-db
+    DB_RESULTS="$PWD/.tmp/itotori-db/db-suite-results.json"
+    rm -f "$DB_RESULTS" .tmp/itotori-db/no-database-skipped.json
+    # Run the FULL DB suite ONCE with a JSON result file. The three strict
+    # receipt scripts below consume it via --results (verify-only) instead of
+    # each re-spawning a scoped vitest run against the same database.
+    pnpm --filter @itotori/db test:db -- --reporter=default --reporter=json --outputFile="$DB_RESULTS"
     node scripts/assert-db-tests-not-skipped.mjs
-    node scripts/permission-denial-db-gate.mjs
-    node scripts/catalog-replay-db-gate.mjs
-    node scripts/style-guide-fixture-flow-db-gate.mjs
+    node scripts/permission-denial-db-gate.mjs --results "$DB_RESULTS"
+    node scripts/catalog-replay-db-gate.mjs --results "$DB_RESULTS"
+    node scripts/style-guide-fixture-flow-db-gate.mjs --results "$DB_RESULTS"
     pnpm --filter @itotori/app typecheck
-    pnpm --filter @itotori/app test
+    # The DB lane no longer downloads the native artifact (decoupled from the
+    # `native` job). The sole real-binary app test — wholegame-render-
+    # validation-seam — is excluded here because it spawns utsushi-cli; it
+    # remains covered by the portable TS shards (ci-tier1-ts-public-1of2 /
+    # 2of2) where the native artifact IS wired. The lane-union guard asserts
+    # that exclusion can never strand the file (no test runs nowhere).
+    node scripts/assert-db-app-exclusion-union.mjs
+    pnpm --filter @itotori/app exec vitest run --exclude '**/wholegame-render-validation-seam.test.ts' --exclude '**/.direnv/**'
 
 # Playwright Chromium for app + runtime-web-review e2e, plus DS visual oracle.
 # Requires PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts post-run

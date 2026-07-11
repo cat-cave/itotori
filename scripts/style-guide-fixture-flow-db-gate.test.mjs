@@ -5,8 +5,12 @@
 // and never let a skip masquerade as persisted fixture-flow coverage. (The
 // DB-present success path is exercised by
 // `just style-guide-fixture-flow-db-strict` against a real Postgres.)
+//
+// Also covers --results verify-only mode: only status "passed" counts, and a
+// truncated shared result set is a hard failure.
 import assert from "node:assert/strict";
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -22,6 +26,8 @@ const proofArtifactPath = path.join(
   repoRoot,
   ".tmp/itotori-db/style-guide-fixture-flow-proof.json",
 );
+const generalSkipMarkerPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
+const SUITE = "style-guide-fixture-flow.test.ts";
 
 function runGateWithoutDb() {
   const env = { ...process.env };
@@ -77,4 +83,141 @@ test("no-DATABASE_URL run writes a machine-readable skipped artifact and no proo
 
   // A skip must NEVER leave a success proof behind.
   await assert.rejects(readFile(proofArtifactPath, "utf8"), /ENOENT/u);
+});
+
+// --- --results verify-only mode tests ---
+
+function runGateVerifyOnly(reportPath) {
+  const env = { ...process.env, DATABASE_URL: "postgres://dummy:dummy@127.0.0.1:5432/dummy" };
+  return spawnSync(process.execPath, [gatePath, "--results", reportPath], {
+    cwd: repoRoot,
+    env,
+    encoding: "utf8",
+  });
+}
+
+function gateOutput(r) {
+  return `${r.stdout}\n${r.stderr}`;
+}
+
+async function writeTempReport(report) {
+  const file = path.join(
+    tmpdir(),
+    `sg-gate-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+  );
+  await writeFile(file, JSON.stringify(report));
+  return file;
+}
+
+async function listDbTestFiles() {
+  const dir = path.join(repoRoot, "packages/itotori-db/test");
+  return (await readdir(dir)).filter((n) => n.endsWith(".test.ts")).sort();
+}
+
+async function makeCompleteReport(suiteOverrides = {}) {
+  const files = await listDbTestFiles();
+  return {
+    success: true,
+    testResults: files.map((f) => {
+      if (suiteOverrides[f]) return suiteOverrides[f];
+      return {
+        name: `/repo/packages/itotori-db/test/${f}`,
+        status: "passed",
+        assertionResults: [{ fullName: "ok", title: "ok", status: "passed" }],
+      };
+    }),
+  };
+}
+
+test("--results verify-only rejects an absent results file", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const result = runGateVerifyOnly(path.join(tmpdir(), "nonexistent-sg-results.json"));
+  assert.equal(result.status, 1, `must fail on absent results\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /missing\/unreadable shared DB results/u);
+});
+
+test("--results verify-only rejects a truncated result set (6-of-N files)", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const files = await listDbTestFiles();
+  assert.ok(files.length >= 6, "expected a full DB suite on disk");
+  const truncated = {
+    success: true,
+    testResults: files.slice(0, 6).map((f) => ({
+      name: `/repo/packages/itotori-db/test/${f}`,
+      status: "passed",
+      assertionResults: [{ fullName: "flow test", title: "flow", status: "passed" }],
+    })),
+  };
+  const file = await writeTempReport(truncated);
+  const result = runGateVerifyOnly(file);
+  assert.equal(result.status, 1, `must fail on truncated 6-of-N report\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /incomplete|missing \d+\//u);
+  await rm(file, { force: true });
+});
+
+test("--results verify-only rejects a report missing the fixture-flow suite", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const files = await listDbTestFiles();
+  const withoutSuite = files.filter((f) => f !== SUITE);
+  const incomplete = {
+    success: true,
+    testResults: withoutSuite.map((f) => ({
+      name: `/repo/packages/itotori-db/test/${f}`,
+      status: "passed",
+      assertionResults: [{ fullName: "ok", title: "ok", status: "passed" }],
+    })),
+  };
+  const file = await writeTempReport(incomplete);
+  const result = runGateVerifyOnly(file);
+  assert.equal(result.status, 1, `must fail when suite is absent\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /incomplete|missing|did not run/u);
+  await rm(file, { force: true });
+});
+
+test("--results verify-only rejects a suite with zero tests", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const report = await makeCompleteReport({
+    [SUITE]: {
+      name: `/repo/packages/itotori-db/test/${SUITE}`,
+      status: "passed",
+      assertionResults: [],
+    },
+  });
+  const file = await writeTempReport(report);
+  const result = runGateVerifyOnly(file);
+  assert.equal(result.status, 1, `must fail on zero tests\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /ran 0 tests/u);
+  await rm(file, { force: true });
+});
+
+test("--results verify-only rejects a suite with skipped entries", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const report = await makeCompleteReport({
+    [SUITE]: {
+      name: `/repo/packages/itotori-db/test/${SUITE}`,
+      status: "passed",
+      assertionResults: [{ fullName: "flow test", title: "flow", status: "skipped" }],
+    },
+  });
+  const file = await writeTempReport(report);
+  const result = runGateVerifyOnly(file);
+  assert.equal(result.status, 1, `must fail on skipped entries\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /skipped|non-passed/u);
+  await rm(file, { force: true });
+});
+
+test("--results verify-only rejects a suite with todo entries (not coverage)", async () => {
+  await rm(generalSkipMarkerPath, { force: true });
+  const report = await makeCompleteReport({
+    [SUITE]: {
+      name: `/repo/packages/itotori-db/test/${SUITE}`,
+      status: "passed",
+      assertionResults: [{ fullName: "flow test", title: "flow", status: "todo" }],
+    },
+  });
+  const file = await writeTempReport(report);
+  const result = runGateVerifyOnly(file);
+  assert.equal(result.status, 1, `must fail on todo entries\n${gateOutput(result)}`);
+  assert.match(gateOutput(result), /todo|non-passed|only status "passed"/u);
+  await rm(file, { force: true });
 });

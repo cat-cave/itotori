@@ -20,6 +20,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { checkAssertionsAllPassed, checkDbResultsCompleteness } from "./db-results-verify.mjs";
 import { forEachChild, parseTypeScript, unwrapTsTypeAssertions } from "./stable-ts-ast.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,53 +85,92 @@ if (!process.env[requiredEnv]) {
   process.exit(1);
 }
 
-const suiteFilters = permissionDenialSuites.map((name) => name.replace(/\.test\.ts$/u, ""));
-const runnerArgs = [
-  "--filter",
-  packageName,
-  "exec",
-  "node",
-  "scripts/run-tests.mjs",
-  "--require-database",
-  ...suiteFilters,
-  "--reporter=default",
-  "--reporter=json",
-  `--outputFile=${resultsPath}`,
-];
+// --results <file>: verify-only mode. The full DB suite already ran and emitted
+// <file>; assert against it instead of re-spawning a scoped vitest run. This
+// avoids a redundant runner start + DB suite re-execution while keeping every
+// existing assertion (non-skip, missing-suite, failure, count, the full
+// authorization matrix).
+const verifyOnlyResultsPath = parseResultsPath(process.argv.slice(2), repoRoot);
 
-const run = spawnSync("pnpm", runnerArgs, {
-  cwd: repoRoot,
-  stdio: "inherit",
-  env: process.env,
-});
+let report;
+if (verifyOnlyResultsPath) {
+  // Verify-only: the shared results are authoritative; do NOT re-spawn.
+  const generalSkip = await readJsonIfPresent(generalSkipMarkerPath);
+  if (generalSkip) {
+    console.error(
+      `${gateId}: FAILED - @itotori/db reported a no-DATABASE_URL skip; permission denials did NOT run.`,
+    );
+    process.exit(1);
+  }
+  report = await readJsonIfPresent(verifyOnlyResultsPath);
+  if (!report || !Array.isArray(report.testResults)) {
+    console.error(
+      `${gateId}: FAILED - missing/unreadable shared DB results at ${verifyOnlyResultsPath}.`,
+    );
+    process.exit(1);
+  }
+  // Completeness: the shared full-DB JSON must contain EVERY on-disk suite
+  // file. A truncated 6-of-72 receipt is not coverage.
+  const completeness = await checkDbResultsCompleteness(report, repoRoot);
+  if (completeness.problems.length > 0) {
+    printBanner([
+      `${gateId}: PERMISSION-DENIAL DB COVERAGE NOT PROVEN`,
+      ...completeness.problems.map((p) => `- ${p}`),
+      "a truncated / partial shared result set is NOT authorization coverage",
+      `remediation:      ${remediationCommand}`,
+    ]);
+    process.exit(1);
+  }
+} else {
+  // Full mode: run ONLY the authorization-matrix suite against the DB.
+  const suiteFilters = permissionDenialSuites.map((name) => name.replace(/\.test\.ts$/u, ""));
+  const runnerArgs = [
+    "--filter",
+    packageName,
+    "exec",
+    "node",
+    "scripts/run-tests.mjs",
+    "--require-database",
+    ...suiteFilters,
+    "--reporter=default",
+    "--reporter=json",
+    `--outputFile=${resultsPath}`,
+  ];
 
-if (run.error) {
-  console.error(`${gateId}: failed to launch DB test runner: ${run.error.message}`);
-  process.exit(1);
-}
-if (run.signal) {
-  process.kill(process.pid, run.signal);
-}
+  const run = spawnSync("pnpm", runnerArgs, {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: process.env,
+  });
 
-const generalSkip = await readJsonIfPresent(generalSkipMarkerPath);
-if (generalSkip) {
-  console.error(
-    `${gateId}: FAILED - @itotori/db reported a no-DATABASE_URL skip; permission denials did NOT run.`,
-  );
-  process.exit(1);
-}
+  if (run.error) {
+    console.error(`${gateId}: failed to launch DB test runner: ${run.error.message}`);
+    process.exit(1);
+  }
+  if (run.signal) {
+    process.kill(process.pid, run.signal);
+  }
 
-if (run.status !== 0) {
-  console.error(
-    `${gateId}: FAILED - permission-denial DB test run exited ${run.status ?? "null"}.`,
-  );
-  process.exit(run.status ?? 1);
-}
+  const generalSkip = await readJsonIfPresent(generalSkipMarkerPath);
+  if (generalSkip) {
+    console.error(
+      `${gateId}: FAILED - @itotori/db reported a no-DATABASE_URL skip; permission denials did NOT run.`,
+    );
+    process.exit(1);
+  }
 
-const report = await readJsonIfPresent(resultsPath);
-if (!report || !Array.isArray(report.testResults)) {
-  console.error(`${gateId}: FAILED - missing/unreadable vitest report at ${resultsPath}.`);
-  process.exit(1);
+  if (run.status !== 0) {
+    console.error(
+      `${gateId}: FAILED - permission-denial DB test run exited ${run.status ?? "null"}.`,
+    );
+    process.exit(run.status ?? 1);
+  }
+
+  report = await readJsonIfPresent(resultsPath);
+  if (!report || !Array.isArray(report.testResults)) {
+    console.error(`${gateId}: FAILED - missing/unreadable vitest report at ${resultsPath}.`);
+    process.exit(1);
+  }
 }
 
 const perSuite = [];
@@ -147,20 +187,21 @@ for (const suite of permissionDenialSuites) {
   const assertions = suiteResults.flatMap((entry) =>
     Array.isArray(entry.assertionResults) ? entry.assertionResults : [],
   );
-  const passed = assertions.filter((a) => a.status === "passed").length;
+  // Only status "passed" counts as coverage — todo/skipped/pending/failed are
+  // hard failures (green-on-skip closed).
+  const statusCheck = checkAssertionsAllPassed(assertions, suite);
+  problems.push(...statusCheck.problems);
+  const passed = statusCheck.passed;
   const failed = assertions.filter((a) => a.status === "failed").length;
-  const skipped = assertions.filter((a) => a.status === "skipped" || a.status === "pending").length;
-  const denialAssertions = assertions.filter(isRepositoryPermissionDenialAssertion);
+  const skipped = assertions.filter(
+    (a) => a.status === "skipped" || a.status === "pending" || a.status === "todo",
+  ).length;
+  // Count only *passed* denial assertions toward the matrix — a todo-labelled
+  // entry is not coverage.
+  const denialAssertions = assertions.filter(
+    (a) => a.status === "passed" && isRepositoryPermissionDenialAssertion(a),
+  );
 
-  if (assertions.length === 0) {
-    problems.push(`suite ${suite} ran 0 tests - skipped != covered`);
-  }
-  if (skipped > 0) {
-    problems.push(`suite ${suite} has ${skipped} skipped test(s) - skipped != covered`);
-  }
-  if (failed > 0) {
-    problems.push(`suite ${suite} has ${failed} failed test(s)`);
-  }
   if (denialAssertions.length !== expectedMatrixEntries) {
     problems.push(
       `suite ${suite} ran ${denialAssertions.length} permission-denial matrix test(s), expected ${expectedMatrixEntries}`,
@@ -269,6 +310,15 @@ async function readJsonIfPresent(filePath) {
   } catch {
     return null;
   }
+}
+
+function parseResultsPath(argv, repoRoot) {
+  const idx = argv.indexOf("--results");
+  if (idx !== -1 && idx + 1 < argv.length) {
+    const p = argv[idx + 1];
+    return path.isAbsolute(p) ? p : path.resolve(repoRoot, p);
+  }
+  return null;
 }
 
 function printBanner(lines) {
