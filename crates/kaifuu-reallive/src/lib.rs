@@ -173,6 +173,7 @@ pub use opcode::{
     TextEncoding, collect_goto_pointer_sites, decode_dialogue_textout,
     encode_choice_option_next_string_safe, is_recognized_opener, is_shift_jis_textout_lead,
     is_structural_opener, parse_expression, parse_real_bytecode, parse_real_bytecode_spans,
+    unrecognized_opcode_histogram,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};

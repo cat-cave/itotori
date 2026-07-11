@@ -249,35 +249,23 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         }
         for op in &opcodes {
             *report.histogram.entry(op.label()).or_insert(0) += 1;
-            match op {
-                // Un-catalogued generic blob: an in-space tuple no semantic
-                // family covers. Its presence is the semantic-cataloguing
-                // regression the gate forbids.
-                RealLiveOpcode::Command {
-                    module_type,
-                    module_id,
-                    opcode,
-                    ..
-                } => {
-                    report.total_generic_command += 1;
-                    *report
-                        .unrecognised_signatures
-                        .entry((*module_type, *module_id, *opcode))
-                        .or_insert(0) += 1;
+            // The `(module_type, module_id, opcode)` tuple of every
+            // NOT-recognised opcode comes from the SAME shared
+            // `unrecognized_signature` primitive the `kaifuu extract`
+            // decode-honesty gate reports, so the harness and the CLI name
+            // identical tuples. The generic/desync split is retained for the
+            // two catalogue metrics.
+            if let Some(signature) = op.unrecognized_signature() {
+                *report.unrecognised_signatures.entry(signature).or_insert(0) += 1;
+                match op {
+                    // Un-catalogued generic blob: an in-space tuple no semantic
+                    // family covers. Its presence is the semantic-cataloguing
+                    // regression the gate forbids.
+                    RealLiveOpcode::Command { .. } => report.total_generic_command += 1,
+                    // `module_type > 2` desync tripwire (raw header preserved).
+                    RealLiveOpcode::Unknown { .. } => report.total_unknown_desync += 1,
+                    _ => {}
                 }
-                // `module_type > 2` desync tripwire (raw header preserved).
-                RealLiveOpcode::Unknown { opcode, raw_bytes }
-                    if *opcode == 0x23 && raw_bytes.len() >= 5 =>
-                {
-                    report.total_unknown_desync += 1;
-                    let sig = (
-                        raw_bytes[1],
-                        raw_bytes[2],
-                        u16::from_le_bytes([raw_bytes[3], raw_bytes[4]]),
-                    );
-                    *report.unrecognised_signatures.entry(sig).or_insert(0) += 1;
-                }
-                _ => {}
             }
         }
     }

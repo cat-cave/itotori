@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -336,12 +337,92 @@ fn run_with_args_and_registry(
 /// the decompressed bytecode into the v0.2 BridgeBundle via
 /// `kaifuu_reallive::produce_bundle`, and writes the JSON bundle to
 /// `--bundle-output`.
+/// Verdict of the `kaifuu extract` 100%-decode honesty gate.
+#[derive(Debug)]
+enum UnknownOpcodeGate {
+    /// Every opcode decoded to a recognised semantic family (0 unknown).
+    Clean,
+    /// Un-recognised opcodes are present but the caller opted into exploratory
+    /// decode (`--allow-unknown-opcodes` / `--exploratory`): a prominent
+    /// warning is surfaced but the command still succeeds.
+    Warn(String),
+    /// Un-recognised opcodes are present and the caller did NOT opt in: the
+    /// command must fail loud (non-zero exit) with the tuple list.
+    Fail(String),
+}
+
+/// Decide the decode-honesty gate for a completed `--whole-seen` extract.
+///
+/// `unknown_opcodes` is the authoritative `!is_recognized()` occurrence count;
+/// `signatures` is the `(module_type, module_id, opcode) -> count` tuple
+/// histogram. When the count is non-zero the SEEN did NOT fully decode: by
+/// default this is a hard failure (the caller returns the `Fail` message as an
+/// error → non-zero process exit); with `allow_unknown` it downgrades to a
+/// `Warn`. Both non-clean verdicts embed the full tuple list under a clearly
+/// flagged `INCOMPLETE DECODE: N unknown opcode tuples` header so a caller can
+/// triage the exact un-catalogued commands rather than a bare aggregate count.
+fn evaluate_unknown_opcode_gate(
+    unknown_opcodes: usize,
+    signatures: &BTreeMap<(u8, u8, u16), usize>,
+    allow_unknown: bool,
+) -> UnknownOpcodeGate {
+    if unknown_opcodes == 0 {
+        return UnknownOpcodeGate::Clean;
+    }
+    let mut message = format!(
+        "INCOMPLETE DECODE: {} unknown opcode tuples ({} occurrences) — the SEEN did not \
+         decode to zero unknown opcodes.\n(module_type, module_id, opcode) -> count:",
+        signatures.len(),
+        unknown_opcodes,
+    );
+    for ((module_type, module_id, opcode), count) in signatures {
+        use std::fmt::Write as _;
+        let _ = write!(
+            message,
+            "\n    ({module_type:>3}, {module_id:>3}, {opcode:>5}): {count}"
+        );
+    }
+    if allow_unknown {
+        message.push_str(
+            "\nWARNING: continuing despite incomplete decode (--allow-unknown-opcodes / \
+             --exploratory); this bundle does NOT meet the 100%-decode bar and must not be \
+             treated as a faithful decode.",
+        );
+        UnknownOpcodeGate::Warn(message)
+    } else {
+        message.push_str(
+            "\nkaifuu.reallive.incomplete_decode: refusing to emit a green result — pass \
+             --allow-unknown-opcodes (or --exploratory) to continue for exploratory decode.",
+        );
+        UnknownOpcodeGate::Fail(message)
+    }
+}
+
+/// Render the un-recognised-opcode signature histogram as the JSON array
+/// (`[{ moduleType, moduleId, opcode, count }]`) embedded in the decompile
+/// report under `unknownOpcodeTuples`.
+fn unknown_opcode_tuples_json(signatures: &BTreeMap<(u8, u8, u16), usize>) -> serde_json::Value {
+    serde_json::Value::Array(
+        signatures
+            .iter()
+            .map(|((module_type, module_id, opcode), count)| {
+                serde_json::json!({
+                    "moduleType": module_type,
+                    "moduleId": module_id,
+                    "opcode": opcode,
+                    "count": count,
+                })
+            })
+            .collect(),
+    )
+}
+
 fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
         BridgeOpts, BridgeSceneInput, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
         compiler_version_uses_xor2, decompress_archive_scenes, decompress_avg32,
         gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
-        produce_whole_seen_bundle, recover_and_decrypt_archive,
+        produce_whole_seen_bundle, recover_and_decrypt_archive, unrecognized_opcode_histogram,
     };
 
     let game_id = required_reallive_metadata_flag(args, "--game-id")?;
@@ -418,6 +499,11 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         let mut decoded_scenes = Vec::new();
         let mut total_opcodes = 0usize;
         let mut unknown_opcodes = 0usize;
+        // `(module_type, module_id, opcode) -> count` of every opcode that
+        // failed `is_recognized()`, accumulated across the whole SEEN so the
+        // report/gate name the exact un-catalogued tuples rather than a bare
+        // aggregate count.
+        let mut unknown_signatures: BTreeMap<(u8, u8, u16), usize> = BTreeMap::new();
 
         let mut xor2_corpus = if index.entries.iter().any(|entry| {
             let Ok((_, _, header)) = reallive_scene_slices(&seen_bytes, entry.scene_id, &index)
@@ -483,6 +569,9 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
             )?;
             total_opcodes += opcodes.len();
             unknown_opcodes += opcodes.iter().filter(|op| !op.is_recognized()).count();
+            for (signature, count) in unrecognized_opcode_histogram(&opcodes) {
+                *unknown_signatures.entry(signature).or_insert(0) += count;
+            }
             decoded_scenes.push(DecodedRealliveScene {
                 scene_id: entry.scene_id,
                 scene_blob,
@@ -526,10 +615,25 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
                 "totalOpcodes": total_opcodes,
                 "recognizedOpcodes": total_opcodes - unknown_opcodes,
                 "unknownOpcodes": unknown_opcodes,
+                // Full `(module_type, module_id, opcode) -> count` tuple list of
+                // every un-recognised opcode — not just the aggregate above —
+                // so a caller can triage the exact un-catalogued commands.
+                "unknownOpcodeTuples": unknown_opcode_tuples_json(&unknown_signatures),
                 "sourceSeenSha256": source_seen_sha256,
                 "resolvedGameRoot": resolved_game_root.display().to_string(),
             });
             write_json(&PathBuf::from(report_path), &report)?;
+        }
+        // DECODE-HONESTY gate: a non-zero unknown count means the SEEN did NOT
+        // fully decode. Fail loud (non-zero exit) with the tuple list by
+        // default; `--allow-unknown-opcodes` / `--exploratory` downgrades to a
+        // prominent warning for exploratory decode of a new/unseen title.
+        let allow_unknown =
+            flag_present(args, "--allow-unknown-opcodes") || flag_present(args, "--exploratory");
+        match evaluate_unknown_opcode_gate(unknown_opcodes, &unknown_signatures, allow_unknown) {
+            UnknownOpcodeGate::Clean => {}
+            UnknownOpcodeGate::Warn(message) => eprintln!("{message}"),
+            UnknownOpcodeGate::Fail(message) => return Err(message.into()),
         }
         return Ok(());
     }
@@ -4559,8 +4663,199 @@ mod tests {
         assert_eq!(report["scope"], "whole-seen");
         assert_eq!(report["sceneCount"], 2);
         assert_eq!(report["unknownOpcodes"], 0);
+        // A fully-recognised SEEN carries an empty tuple list and passes the
+        // decode-honesty gate cleanly (the command above returned Ok).
+        assert_eq!(report["unknownOpcodeTuples"], serde_json::json!([]));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    /// Frame `bytecode` into a single-scene synthetic Seen.txt (real 10,000-slot
+    /// directory + 0x1d0 scene header + AVG32 literal compression), scene at
+    /// slot 1. Mirrors `binary_patch_smoke::build_synthetic_seen_txt` but takes
+    /// arbitrary decompressed bytecode so a scene can carry an UNCATALOGUED
+    /// command (the decode-honesty gate's failure input).
+    fn build_synthetic_seen_txt_with_bytecode(bytecode: &[u8]) -> Vec<u8> {
+        let compressed = kaifuu_reallive::compress_avg32_literal(bytecode)
+            .expect("synthetic bytecode compresses");
+        let header_len = kaifuu_reallive::SCENE_HEADER_BYTE_LEN;
+        let mut header = vec![0u8; header_len];
+        header[0..4].copy_from_slice(&(header_len as u32).to_le_bytes());
+        // Non-`xor_2` compiler version (110001): a plaintext synthetic scene.
+        header[4..8].copy_from_slice(&110_001u32.to_le_bytes());
+        header[0x20..0x24].copy_from_slice(&(header_len as u32).to_le_bytes());
+        header[0x24..0x28].copy_from_slice(&(bytecode.len() as u32).to_le_bytes());
+        header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+        let mut blob = header;
+        blob.extend_from_slice(&compressed);
+
+        let directory_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let mut archive = vec![0u8; directory_len + blob.len()];
+        let slot1 = 8usize;
+        archive[slot1..slot1 + 4].copy_from_slice(&(directory_len as u32).to_le_bytes());
+        archive[slot1 + 4..slot1 + 8].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+        archive[directory_len..].copy_from_slice(&blob);
+        archive
+    }
+
+    /// One synthetic scene whose bytecode carries an UNCATALOGUED in-space
+    /// command (`module_type 1, module_id 99, opcode 999`) — the generic
+    /// `Command` blob that fails `is_recognized()` — alongside ordinary
+    /// recognised elements. This is the decode-honesty gate's failure fixture.
+    fn synthetic_seen_with_unknown_command() -> Vec<u8> {
+        fn command_header(module_type: u8, module_id: u8, opcode: u16, argc: u8) -> [u8; 8] {
+            let [lo, hi] = opcode.to_le_bytes();
+            [0x23, module_type, module_id, lo, hi, argc, 0x00, 0x00]
+        }
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&[0x0A, 0x02, 0x00]); // MetaLine(2)
+        bytecode.extend_from_slice(&[0x21, 0x00, 0x00]); // MetaEntrypoint(0)
+        bytecode.extend_from_slice(&[0x40, 0x01, 0x00]); // MetaKidoku(1)
+        bytecode.extend_from_slice(&command_header(1, 3, 3, 0)); // CharacterTextDisplay
+        bytecode.extend_from_slice(&[0x82, 0xA0, 0x82, 0xA2]); // Textout "あい"
+        bytecode.extend_from_slice(&command_header(1, 99, 999, 0)); // UNCATALOGUED command
+        bytecode.extend_from_slice(&command_header(1, 4, 17, 0)); // End (module_sys op 17)
+        build_synthetic_seen_txt_with_bytecode(&bytecode)
+    }
+
+    fn stage_synthetic_reallive_game(name: &str, seen_bytes: &[u8]) -> (PathBuf, PathBuf) {
+        let root = temp_dir(name);
+        let game_root = root.join("game");
+        let data_root = game_root.join("REALLIVEDATA");
+        fs::create_dir_all(&data_root).unwrap();
+        fs::write(data_root.join("Seen.txt"), seen_bytes).unwrap();
+        fs::write(data_root.join("Gameexe.ini"), b"#SEEN_START=1\n").unwrap();
+        (root, game_root)
+    }
+
+    fn whole_seen_extract_args(
+        game_root: &Path,
+        bridge_path: &Path,
+        report_path: &Path,
+        extra: &[&str],
+    ) -> Vec<String> {
+        let mut args = vec![
+            "extract",
+            "--engine",
+            "reallive",
+            "--game-root",
+            game_root.to_str().unwrap(),
+            "--game-id",
+            "kaifuu-reallive-synthetic",
+            "--game-version",
+            "1.0.0",
+            "--source-profile-id",
+            "kaifuu-reallive-synthetic",
+            "--source-locale",
+            "ja-JP",
+            "--whole-seen",
+            "--bundle-output",
+            bridge_path.to_str().unwrap(),
+            "--decompile-report-output",
+            report_path.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        args.iter().map(std::string::ToString::to_string).collect()
+    }
+
+    #[test]
+    fn whole_seen_extract_fails_loud_on_unknown_opcode_and_emits_tuple_list() {
+        // A SEEN with an uncatalogued command must (a) surface the full
+        // `(module_type, module_id, opcode)` tuple list in the report, and
+        // (b) FAIL LOUD by default — non-zero exit (Err) with a clearly-flagged
+        // INCOMPLETE DECODE message naming the tuple — never a silent green.
+        let (root, game_root) = stage_synthetic_reallive_game(
+            "whole-seen-unknown",
+            &synthetic_seen_with_unknown_command(),
+        );
+        let bridge_path = root.join("whole-bridge.json");
+        let report_path = root.join("whole-decompile-report.json");
+
+        let err = run_extract_reallive_bundle(&whole_seen_extract_args(
+            &game_root,
+            &bridge_path,
+            &report_path,
+            &[],
+        ))
+        .expect_err("nonzero unknown opcodes must fail loud by default");
+        let message = err.to_string();
+        assert!(
+            message.contains("INCOMPLETE DECODE"),
+            "fail message must be clearly flagged: {message}"
+        );
+        assert!(
+            message.contains("99") && message.contains("999"),
+            "fail message must name the uncatalogued tuple: {message}"
+        );
+
+        // The report artifact is still written so the failure is triageable,
+        // and it carries the full tuple list, not just the aggregate count.
+        let report: serde_json::Value = read_json(&report_path).unwrap();
+        assert_eq!(report["unknownOpcodes"], 1);
+        assert_eq!(
+            report["unknownOpcodeTuples"],
+            serde_json::json!([{ "moduleType": 1, "moduleId": 99, "opcode": 999, "count": 1 }])
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn whole_seen_extract_allow_unknown_downgrades_to_warning() {
+        // The explicit opt-in flag downgrades the hard failure to a warning:
+        // the command SUCCEEDS (Ok) but the report still carries the tuple
+        // list so the incomplete decode is never hidden.
+        let (root, game_root) = stage_synthetic_reallive_game(
+            "whole-seen-unknown-allow",
+            &synthetic_seen_with_unknown_command(),
+        );
+        let bridge_path = root.join("whole-bridge.json");
+        let report_path = root.join("whole-decompile-report.json");
+
+        run_extract_reallive_bundle(&whole_seen_extract_args(
+            &game_root,
+            &bridge_path,
+            &report_path,
+            &["--allow-unknown-opcodes"],
+        ))
+        .expect("--allow-unknown-opcodes downgrades the gate to a warning (Ok)");
+
+        let report: serde_json::Value = read_json(&report_path).unwrap();
+        assert_eq!(report["unknownOpcodes"], 1);
+        assert_eq!(
+            report["unknownOpcodeTuples"],
+            serde_json::json!([{ "moduleType": 1, "moduleId": 99, "opcode": 999, "count": 1 }])
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn evaluate_unknown_opcode_gate_verdicts() {
+        let mut signatures: BTreeMap<(u8, u8, u16), usize> = BTreeMap::new();
+        signatures.insert((1, 99, 999), 2);
+
+        // Zero unknown → clean regardless of the opt-in flag.
+        assert!(matches!(
+            evaluate_unknown_opcode_gate(0, &BTreeMap::new(), false),
+            UnknownOpcodeGate::Clean
+        ));
+        // Nonzero unknown, default → fail with the tuple in the message.
+        match evaluate_unknown_opcode_gate(2, &signatures, false) {
+            UnknownOpcodeGate::Fail(message) => {
+                assert!(message.contains("INCOMPLETE DECODE"));
+                assert!(message.contains("999"));
+            }
+            other => panic!("expected Fail by default, got {other:?}"),
+        }
+        // Nonzero unknown, opt-in → warn (still surfaces the tuple).
+        match evaluate_unknown_opcode_gate(2, &signatures, true) {
+            UnknownOpcodeGate::Warn(message) => {
+                assert!(message.contains("WARNING"));
+                assert!(message.contains("999"));
+            }
+            other => panic!("expected Warn with opt-in, got {other:?}"),
+        }
     }
 
     /// Fixture generator (run manually) — regenerates the committed
