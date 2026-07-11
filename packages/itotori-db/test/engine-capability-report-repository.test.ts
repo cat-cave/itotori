@@ -197,6 +197,36 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
     ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
   });
 
+  it("rejects /private rooted values that follow a key=value or key:value delimiter (CATALOG-007)", async () => {
+    // CATALOG-007 (e3badaa2-3335-4f01-a0d3-73f68e52c953): the leakage guard
+    // originally only caught private roots at string starts, whitespace
+    // boundaries, and quoted boundaries — a private path glued directly
+    // after a `key=`/`key:` delimiter (no separating whitespace) slipped
+    // through. These cases assert the `=`/`:` boundary is now caught too.
+    const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
+    const keyValueLeakageCases: Record<string, unknown>[] = [
+      { limitations: ["source=/private/corpus"] },
+      { limitations: ["path:/private/corpus/mv/System.json"] },
+      { schemaVersion: "source=/private/corpus" },
+      { aggregateCounts: { "source=/private/corpus": 1 } },
+    ];
+
+    for (const makeInput of sourceInputs) {
+      for (const overrides of keyValueLeakageCases) {
+        await expect(
+          repositoryWithAuthorizedStub().recordCapabilityEvidence(localActor, makeInput(overrides)),
+        ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      }
+    }
+
+    await expect(
+      repositoryWithAuthorizedStub().recordCapabilityEvidence(
+        localActor,
+        publicFixtureEvidenceInput({ publicFixtureId: "source=/private/corpus" }),
+      ),
+    ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+  });
+
   it("rejects path-hash-shaped aggregate keys for public and private evidence", async () => {
     const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
     const leakageCases: Record<string, number>[] = [
