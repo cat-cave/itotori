@@ -13,17 +13,28 @@ import {
   RUST_BINS,
 } from "./native-deps.mjs";
 
+// Default --help text that includes each RUST_BINS compatMarker so green-path
+// tests pass the CLI-surface handshake without per-test boilerplate.
+const DEFAULT_HELP_BY_BIN = Object.fromEntries(
+  RUST_BINS.map((b) => [b.name, `usage: ${b.name}\n  ${b.compatMarker}\n`]),
+);
+
 // A fully in-memory probe: the doctor never touches the real filesystem,
 // network, or child processes in these tests.
 // `existing` / `runnable` entries match by path SUFFIX so tests need not know
 // the absolute REPO_ROOT the doctor resolves against (e.g. "kaifuu-cli"
 // matches "<repo>/target/release/kaifuu-cli").
+// `helpText` maps bin-name suffix → --help body (default includes compatMarkers).
+// `helpOk: false` forces helpOf to fail; `staleBins` omits the compatMarker.
 function fakeProbe({
   nodeVersionFile = "24.14.0\n",
   nodeVersion = "v24.14.0",
   existing = [],
   onPath = new Set(),
   runnable = null, // suffixes of runnable bin paths; null => everything runs
+  helpText = null, // optional map suffix -> help string; null => DEFAULT_HELP_BY_BIN
+  staleBins = [], // suffixes whose --help LACKS the current compatMarker
+  helpOk = true,
   globHit = null,
   tcpOpen = new Set(),
   commands = {},
@@ -31,6 +42,12 @@ function fakeProbe({
   const suffixMatch = (list, p) =>
     list.some((s) => p === s || p.endsWith(`/${s}`) || p.endsWith(s));
   const canRun = (p) => runnable === null || suffixMatch(runnable, p);
+  const binNameOf = (p) => {
+    for (const b of RUST_BINS) {
+      if (p === b.name || p.endsWith(`/${b.name}`) || p.endsWith(b.name)) return b.name;
+    }
+    return pathBasename(p);
+  };
   return {
     readNodeVersion: () => nodeVersionFile,
     nodeVersion: () => nodeVersion,
@@ -38,9 +55,26 @@ function fakeProbe({
     which: (name) => (onPath.has(name) ? `/usr/bin/${name}` : null),
     glob: () => globHit,
     versionOf: (p) => (canRun(p) ? { ok: true, version: "x 1.0" } : { ok: false, error: "boom" }),
+    helpOf: (p) => {
+      if (!helpOk) return { ok: false, error: "no help", text: "" };
+      const name = binNameOf(p);
+      if (suffixMatch(staleBins, p)) {
+        // Runnable but missing the current CLI surface marker.
+        return { ok: true, text: `usage: ${name}\n  (stale surface)\n` };
+      }
+      if (helpText && (helpText[name] !== undefined || helpText[p] !== undefined)) {
+        return { ok: true, text: helpText[name] ?? helpText[p] };
+      }
+      return { ok: true, text: DEFAULT_HELP_BY_BIN[name] || `usage: ${name}\n` };
+    },
     tcp: (host, port) => tcpOpen.has(`${host}:${port}`),
     commands: () => commands,
   };
+}
+
+function pathBasename(p) {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
 }
 
 test("parsePinnedNodeVersion accepts a bare semver and rejects junk", () => {
@@ -140,6 +174,53 @@ test("doctor fails when a bin is present but NOT runnable (wrong platform)", () 
   const rust = report.deps.find((d) => d.id === "rust:kaifuu-cli");
   assert.equal(rust.status, "fail");
   assert.match(rust.message, /not runnable/);
+});
+
+test("doctor passes when bin --help contains the current CLI surface marker", () => {
+  const kaifuu = "kaifuu-cli";
+  const utsushi = "utsushi-cli";
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: [kaifuu, utsushi],
+      // Explicit help text that includes each RUST_BINS.compatMarker.
+      helpText: {
+        "kaifuu-cli": "kaifuu-cli extract --whole-seen ...\n",
+        "utsushi-cli": "utsushi-cli render-validate --engine reallive ...\n",
+      },
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, true, formatReport(report));
+  const k = report.deps.find((d) => d.id === "rust:kaifuu-cli");
+  const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
+  assert.equal(k.status, "ok");
+  assert.equal(u.status, "ok");
+});
+
+test("doctor fails when a bin runs but --help LACKS the current CLI surface (stale)", () => {
+  const kaifuu = "kaifuu-cli";
+  const utsushi = "utsushi-cli";
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: [kaifuu, utsushi],
+      // kaifuu still executes but its --help is missing --whole-seen.
+      staleBins: [kaifuu],
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, false);
+  const rust = report.deps.find((d) => d.id === "rust:kaifuu-cli");
+  assert.equal(rust.status, "fail");
+  assert.match(rust.message, /STALE\/incompatible/);
+  assert.match(rust.message, /--whole-seen/);
+  assert.match(rust.fix, /cargo build --release -p kaifuu-cli/);
+  // utsushi still has a current surface and must remain ok.
+  const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
+  assert.equal(u.status, "ok");
 });
 
 test("doctor fails when DATABASE_URL is set but unreachable", () => {

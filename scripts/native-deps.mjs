@@ -113,9 +113,22 @@ const NATIVE_CHILD_ENV = scrubLiveProviderSecretsFromEnv(process.env);
 
 // The kaifuu/utsushi CLI binaries the localize + render pipeline drive. Bin
 // names are the crate names (default cargo bin target).
+// `compatMarker` is a token that MUST appear in the binary's current `--help`
+// output. A stale/prebuilt bin that still executes but no longer matches the
+// current CLI surface will lack the marker and fail the doctor handshake.
 export const RUST_BINS = [
-  { name: "kaifuu-cli", envVar: "ITOTORI_KAIFUU_BIN", role: "decode / patch driver" },
-  { name: "utsushi-cli", envVar: "ITOTORI_UTSUSHI_BIN", role: "render / conformance driver" },
+  {
+    name: "kaifuu-cli",
+    envVar: "ITOTORI_KAIFUU_BIN",
+    role: "decode / patch driver",
+    compatMarker: "--whole-seen",
+  },
+  {
+    name: "utsushi-cli",
+    envVar: "ITOTORI_UTSUSHI_BIN",
+    role: "render / conformance driver",
+    compatMarker: "render-validate",
+  },
 ];
 
 // Chromium-family executables to look for on PATH, mirroring the Rust
@@ -310,6 +323,21 @@ function checkRustBins(env, probe) {
         `Rebuild it for this platform: \`cargo build --release -p ${bin.name}\`.`,
       );
     }
+    // Stale bins often still execute (any --help/exit code) but no longer match
+    // the current CLI contract. Require a surface marker in --help.
+    if (bin.compatMarker) {
+      const help = probe.helpOf(found.path);
+      const text = help.ok ? help.text || "" : "";
+      if (!help.ok || !text.includes(bin.compatMarker)) {
+        return result(
+          "rust:" + bin.name,
+          "fail",
+          `${bin.name} resolved at ${found.path} (${found.source}) but is STALE/incompatible ` +
+            `(its --help is missing the current CLI surface \`${bin.compatMarker}\`)`,
+          `Rebuild it: \`cargo build --release -p ${bin.name}\`.`,
+        );
+      }
+    }
     return result("rust:" + bin.name, "ok", `${bin.name} <- ${found.path} (${found.source})`);
   });
 }
@@ -482,6 +510,27 @@ export function defaultProbe() {
         }
       }
       return { ok: false, error: "binary did not execute on this platform" };
+    },
+    helpOf: (bin) => {
+      // Capture --help text for the CLI-surface compat handshake. Same
+      // "executed = ok" semantics as versionOf: non-zero exit with usage
+      // text is fine; only spawn failures mean we could not read help.
+      const r = spawnSync(bin, ["--help"], {
+        encoding: "utf8",
+        timeout: 15_000,
+        env: NATIVE_CHILD_ENV,
+      });
+      if (r.error) {
+        if (r.error.code === "ENOENT") return { ok: false, error: "not found (ENOENT)", text: "" };
+        if (r.error.code === "ENOEXEC")
+          return { ok: false, error: "exec format error (wrong arch?)", text: "" };
+        return { ok: false, error: r.error.message || "spawn failed", text: "" };
+      }
+      const text = `${r.stdout || ""}${r.stderr || ""}`;
+      if (text.trim().length > 0 || r.status !== null) {
+        return { ok: true, text };
+      }
+      return { ok: false, error: "binary produced no --help output", text: "" };
     },
     tcp: (host, port) => tcpReachableSync(host, port),
     commands: () => ({
