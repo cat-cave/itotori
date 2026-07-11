@@ -29,6 +29,21 @@
 //!   between inline tags becomes a `dialogue` [`KsUnit`]; `[[` is the KAG
 //!   escape for a literal `[` and stays inside the text run.
 //!
+//! ## `[iscript]…[endscript]` TJS blocks
+//!
+//! KAG allows raw TJS (KiriKiri's scripting language) to be embedded between
+//! an `[iscript]` open and an `[endscript]` close — or the `@iscript` /
+//! `@endscript` line-command spelling of the same pair. The body is **TJS
+//! source, not KAG message text**, so it MUST NOT be emitted as translatable
+//! `dialogue` (doing so ships code to the LLM and splices the translation back
+//! over real source on patch). This parser recognises both spellings and
+//! **swallows** every physical line of the block body: no [`KsUnit`] is
+//! emitted for it, so its bytes stay in the immutable structural stream and
+//! patchback leaves the code byte-identical. The block open is recorded as a
+//! [`KsFindingKind::IScriptBlock`] finding so the construct is visible, never
+//! silently dropped. This mirrors the swallow-until-`endscript` behaviour of
+//! the sibling `utsushi-kirikiri` replay parser.
+//!
 //! Every [`KsUnit`] carries a stable extraction identity: source file,
 //! physical line index, in-line segment index, text role, an exact
 //! `[start_byte, end_byte)` span, and a deterministic `bridge_unit_id`.
@@ -170,6 +185,11 @@ pub enum KsFindingKind {
     /// A recognised `@`-line command (recorded so the command vocabulary is
     /// visible, not silently skipped). The line is preserved byte-identical.
     LineCommand,
+    /// An `[iscript]…[endscript]` (or `@iscript…@endscript`) TJS block was
+    /// recognised and its body swallowed. Recorded at the block's opening line
+    /// so the embedded-TJS construct is visible, not silently dropped. The
+    /// body emits no translatable unit and is preserved byte-identical.
+    IScriptBlock,
 }
 
 /// Parsed KAG `.ks` document.
@@ -206,6 +226,10 @@ struct Parser<'a> {
     bytes: &'a [u8],
     enc: KsEncoding,
     current_speaker: Option<String>,
+    /// While `true`, physical lines are the body of an open
+    /// `[iscript]…[endscript]` TJS block and are swallowed (no unit emitted)
+    /// until the closing `[endscript]` / `@endscript` line.
+    open_iscript: bool,
     units: Vec<KsUnit>,
     findings: Vec<KsFinding>,
 }
@@ -248,9 +272,36 @@ impl Parser<'_> {
     /// Parse one physical line whose content bytes are `[ls, le)` (trailing
     /// `\r`/`\n` already excluded).
     fn parse_line(&mut self, ls: usize, le: usize, line_index: usize) {
+        // 1. Inside an open `[iscript]` block: swallow every physical line
+        //    (including blanks) as TJS body — never emit a unit — until the
+        //    closing `[endscript]` / `@endscript` line, which is swallowed too.
+        if self.open_iscript {
+            if self.line_closes_iscript(ls, le) {
+                self.open_iscript = false;
+            }
+            return;
+        }
+
         if ls >= le {
             return; // empty line
         }
+
+        // 2. A line that OPENS an `[iscript]` / `@iscript` TJS block. Recorded
+        //    as a finding; body lines are swallowed by branch 1 above. A
+        //    single-line `[iscript]…[endscript]` closes on the same line and
+        //    never opens the swallow state.
+        if let Some(closes_same_line) = self.line_opens_iscript(ls, le) {
+            self.findings.push(KsFinding {
+                kind: KsFindingKind::IScriptBlock,
+                line_index,
+                detail: "iscript".to_string(),
+            });
+            if !closes_same_line {
+                self.open_iscript = true;
+            }
+            return;
+        }
+
         match self.bytes[ls] {
             // comment (`;`) and label (`*`) lines are pure structure.
             b';' | b'*' => {}
@@ -265,6 +316,116 @@ impl Parser<'_> {
             b'#' => self.parse_name_line(ls, le, line_index),
             _ => self.parse_text_line(ls, le, line_index),
         }
+    }
+
+    /// Index of the first non-ASCII-whitespace byte in `[ls, le)` (encoding
+    /// safe: a multi-byte char is stepped whole, so its trailing byte is never
+    /// read as a whitespace control byte).
+    fn first_content(&self, ls: usize, le: usize) -> usize {
+        let mut i = ls;
+        while i < le {
+            let cl = self.enc.char_len(self.bytes, i);
+            if cl == 1 && self.bytes[i].is_ascii_whitespace() {
+                i += cl;
+            } else {
+                break;
+            }
+        }
+        i
+    }
+
+    /// Name of the leading inline `[name …]` tag (after any leading ASCII
+    /// whitespace), or `None` when the line does not begin with a real tag
+    /// (`[[` is the literal-bracket escape, not a tag). The name is the first
+    /// whitespace-delimited token inside the brackets.
+    fn leading_tag_name(&self, ls: usize, le: usize) -> Option<String> {
+        let start = self.first_content(ls, le);
+        if start >= le || self.bytes[start] != b'[' {
+            return None;
+        }
+        // `[[` literal-bracket escape → this is text, not a tag.
+        if start + 1 < le && self.bytes[start + 1] == b'[' {
+            return None;
+        }
+        let close = self.find_close_bracket(start + 1, le)?;
+        let name = self.command_name(start + 1, close);
+        if name.is_empty() { None } else { Some(name) }
+    }
+
+    /// Name of the leading `@name …` line command (after any leading ASCII
+    /// whitespace), or `None` when the line does not begin with `@`.
+    fn leading_command_name(&self, ls: usize, le: usize) -> Option<String> {
+        let start = self.first_content(ls, le);
+        if start >= le || self.bytes[start] != b'@' {
+            return None;
+        }
+        let name = self.command_name(start + 1, le);
+        if name.is_empty() { None } else { Some(name) }
+    }
+
+    /// Byte index of the closing `]` for a tag whose inner text starts at
+    /// `start`, scanning encoding-safely within `[start, le)`.
+    fn find_close_bracket(&self, start: usize, le: usize) -> Option<usize> {
+        let mut j = start;
+        while j < le {
+            let cl = self.enc.char_len(self.bytes, j);
+            if cl == 1 && self.bytes[j] == b']' {
+                return Some(j);
+            }
+            j += cl;
+        }
+        None
+    }
+
+    /// Whether any inline `[tag …]` in `[ls, le)` names `want` (used to detect
+    /// an `[endscript]` close, which may trail body text on the same physical
+    /// line). Respects the `[[` literal-bracket escape and steps multi-byte
+    /// characters whole.
+    fn contains_tag(&self, ls: usize, le: usize, want: &[u8]) -> bool {
+        let mut i = ls;
+        while i < le {
+            let cl = self.enc.char_len(self.bytes, i);
+            if cl == 1 && self.bytes[i] == b'[' {
+                if i + 1 < le && self.bytes[i + 1] == b'[' {
+                    i += 2; // `[[` escape
+                    continue;
+                }
+                match self.find_close_bracket(i + 1, le) {
+                    Some(close) => {
+                        if self.command_name(i + 1, close).as_bytes() == want {
+                            return true;
+                        }
+                        i = close + 1;
+                    }
+                    None => break,
+                }
+                continue;
+            }
+            i += cl;
+        }
+        false
+    }
+
+    /// If the line opens an `[iscript]` / `@iscript` TJS block, return
+    /// `Some(closes_same_line)`: `true` for a single-line
+    /// `[iscript]…[endscript]` (which never opens the swallow state), `false`
+    /// for a multi-line block. Returns `None` when the line opens no block.
+    fn line_opens_iscript(&self, ls: usize, le: usize) -> Option<bool> {
+        let opens = self.leading_tag_name(ls, le).as_deref() == Some("iscript")
+            || self.leading_command_name(ls, le).as_deref() == Some("iscript");
+        if !opens {
+            return None;
+        }
+        // Only the bracket form can close on the same physical line; the
+        // `@iscript` line-command form is closed by a later `@endscript` line.
+        Some(self.contains_tag(ls, le, b"endscript"))
+    }
+
+    /// Whether a line inside an open block closes it — an `[endscript]` inline
+    /// tag anywhere on the line, or a leading `@endscript` line command.
+    fn line_closes_iscript(&self, ls: usize, le: usize) -> bool {
+        self.contains_tag(ls, le, b"endscript")
+            || self.leading_command_name(ls, le).as_deref() == Some("endscript")
     }
 
     /// `@commandname …` → the command name (ASCII up to whitespace or EOL).
@@ -383,6 +544,7 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         bytes,
         enc,
         current_speaker: None,
+        open_iscript: false,
         units: Vec::new(),
         findings: Vec::new(),
     };
