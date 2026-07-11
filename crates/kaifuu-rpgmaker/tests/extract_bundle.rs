@@ -257,14 +257,25 @@ fn real_bytes_lustmemory_extracts_non_trivial_unit_count() {
         result.bundle.bundle.assets.len()
     );
 
-    // Plugin/script/unknown surfaces that no recognizer claims are recorded
-    // as findings, not dropped.
-    assert!(
+    // Every observed plugin/script command is now either a D_TEXT unit or a
+    // typed opaque occurrence. The closed-set proof in the companion
+    // multi-title test checks the command names and reasons; this legacy
+    // LustMemory smoke keeps the no-generic-bucket invariant local too.
+    assert_eq!(
         result
             .findings
             .iter()
-            .any(|f| f.kind == FindingKind::PluginCommandText),
-        "unrecognized 356 plugin commands in the corpus must surface as findings"
+            .filter(|f| {
+                matches!(
+                    f.kind,
+                    FindingKind::PluginCommandText
+                        | FindingKind::ScriptCommandText
+                        | FindingKind::ControlVariableScriptString
+                )
+            })
+            .count(),
+        0,
+        "LustMemory plugin/script commands must be typed or translatable"
     );
 
     // Recognized message-bearing plugin commands (e.g. D_TEXT) extract their

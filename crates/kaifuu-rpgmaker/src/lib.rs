@@ -29,14 +29,15 @@
 //!   text surface → `control_markup` protected spans (`preserveMode =
 //!   exact`).
 //!
-//! # 100% / no-silent-skip
+//! # Typed command coverage
 //!
 //! An event-command code that is recognised-but-non-text is skipped
 //! silently (it carries no translatable text). A `Script` (355/655),
 //! `Plugin Command` (356/357), or script-operand `Control Variables`
-//! (122) entry — which *may* render text via a project plugin — and any
-//! **unrecognised** command code are recorded as structured
-//! [`Finding`]s, never silently dropped. Findings carry only structural
+//! (122) entry is classified by the closed command tables in
+//! [`recognize`]. Known opaque commands are retained in the typed opaque
+//! census; message-bearing commands become units; only an unrecognised
+//! command becomes a structured [`Finding`]. Findings carry only structural
 //! description (file, JSON-pointer, code) — never retail string content.
 //!
 //! # Determinism / no shell-outs
@@ -89,8 +90,9 @@ pub use encrypted_asset_slice::{
 };
 pub use escape::{EscapeSpan, scan_escape_spans};
 pub use extract::{
-    ExtractAcc, Finding, FindingKind, ProtoUnit, SurfaceKind, is_database_file, walk_common_events,
-    walk_database, walk_map, walk_system, walk_troops,
+    ExtractAcc, Finding, FindingKind, OpaqueCommandFamily, OpaqueCommandOccurrence, ProtoUnit,
+    SurfaceKind, is_database_file, walk_common_events, walk_database, walk_map, walk_system,
+    walk_troops,
 };
 pub use integration::{
     CapabilityLevel, CapabilityScope, ChangedFile, FindingRecord, FullSurfaceError,
@@ -130,7 +132,11 @@ pub use plugin_profile::{
     StablePluginTextUnit, extract_plugins as extract_plugin_units, extract_plugins_file,
     patch_file as patch_plugins_file,
 };
-pub use recognize::{RecognizedCommand, recognize_plugin_command};
+pub use recognize::{
+    OPAQUE_PLUGIN_COMMANDS, OPAQUE_SCRIPT_COMMANDS, OpaqueCommandSpec, PluginCommandRecognition,
+    RecognizedCommand, ScriptCommandRecognition, classify_plugin_command, classify_script_command,
+    recognize_plugin_command,
+};
 
 /// Full result of the canonical game-directory extraction.
 ///
@@ -144,9 +150,13 @@ pub use recognize::{RecognizedCommand, recognize_plugin_command};
 pub struct RpgMakerExtraction {
     /// The validated localization-bridge bundle (typed + raw JSON).
     pub bundle: ProducedBundle,
-    /// Structured no-silent-skip findings (unknown / script / plugin
-    /// surfaces requiring review). Empty if every surface was handled.
+    /// Structured no-silent-skip findings for unknown event codes or command
+    /// shapes. Empty if every surface was handled.
     pub findings: Vec<Finding>,
+    /// Exact typed opaque plugin/script occurrences. These are controls, not
+    /// translatable units; retaining them makes the closed-set real-byte
+    /// proof reportable without placing them in a generic finding bucket.
+    pub opaque_commands: Vec<OpaqueCommandOccurrence>,
 }
 
 /// Fatal errors raised by [`extract_game_dir`].
@@ -259,6 +269,7 @@ pub fn extract_game_dir(
     Ok(RpgMakerExtraction {
         bundle,
         findings: acc.findings,
+        opaque_commands: acc.opaque_commands,
     })
 }
 
