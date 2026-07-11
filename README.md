@@ -85,6 +85,10 @@ You can also run the stages individually (`itotori extract`, `itotori localize`,
 run requires the OpenRouter key + ZDR assertion configured in step 2; without
 them itotori fails loudly rather than downgrading.
 
+For a step-by-step RealLive walkthrough (Sweetie HD), including the exact flags,
+env vars, and honest signposts, see the
+[RealLive localizer runbook](docs/localize-reallive.md).
+
 ### 4. Review the results
 
 The run writes its artifacts into `--run-dir`: the extracted bridge bundle, the
