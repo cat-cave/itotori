@@ -31,6 +31,26 @@ fn fixture_bytes() -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn utf16_bytes(text: &str, enc: KsEncoding) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    match enc {
+        KsEncoding::Utf16Le => bytes.extend_from_slice(&[0xFF, 0xFE]),
+        KsEncoding::Utf16Be => bytes.extend_from_slice(&[0xFE, 0xFF]),
+        KsEncoding::Utf8 | KsEncoding::ShiftJis => {
+            panic!("UTF-16 test helper called with {enc:?}")
+        }
+    }
+    for code_unit in text.encode_utf16() {
+        let encoded = match enc {
+            KsEncoding::Utf16Le => code_unit.to_le_bytes(),
+            KsEncoding::Utf16Be => code_unit.to_be_bytes(),
+            KsEncoding::Utf8 | KsEncoding::ShiftJis => unreachable!(),
+        };
+        bytes.extend_from_slice(&encoded);
+    }
+    bytes
+}
+
 fn dialogue_texts(bytes: &[u8]) -> Vec<String> {
     parse_ks(FIXTURE_FILE, bytes)
         .dialogue_units()
@@ -141,6 +161,118 @@ fn identity_patch_reproduces_source_bytes_exactly() {
 
     let patched = apply_patch(&bytes, &doc.units, doc.encoding, &translations).unwrap();
     assert_eq!(patched, bytes, "identity patch must reproduce source bytes");
+}
+
+#[test]
+fn utf8_bom_is_preserved_as_structure_while_text_still_parses() {
+    let source = b"\xEF\xBB\xBFhello [p]world\n";
+    let doc = parse_ks("utf8-bom.ks", source);
+
+    assert_eq!(doc.encoding, KsEncoding::Utf8);
+    assert_eq!(
+        doc.dialogue_units()
+            .map(|unit| unit.source_text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["hello ", "world"],
+    );
+    assert_eq!(doc.dialogue_units().next().unwrap().start_byte, 3);
+
+    let identity: BTreeMap<String, String> = doc
+        .units
+        .iter()
+        .map(|unit| (unit.source_unit_key.clone(), unit.source_text.clone()))
+        .collect();
+    assert_eq!(
+        apply_patch(source, &doc.units, doc.encoding, &identity).unwrap(),
+        source
+    );
+}
+
+#[test]
+fn bom_marked_utf16_parses_and_patches_without_losing_original_bytes() {
+    let source_text = "; UTF-16 KAG round-trip\r\n\
+#アリス\n\
+[iscript]\n\
+var n = 1;\n\
+[endscript]\n\
+こんにちは[p]世界。\r\n\
+@wait time=1\n\
+#voice/ボブ\n\
+次の台詞。\n";
+
+    for enc in [KsEncoding::Utf16Le, KsEncoding::Utf16Be] {
+        let source = utf16_bytes(source_text, enc);
+        assert_eq!(KsEncoding::detect(&source), enc);
+
+        let doc = parse_ks("utf16.ks", &source);
+        assert_eq!(doc.encoding, enc);
+        assert_eq!(doc.source_len, source.len());
+        assert_eq!(
+            doc.dialogue_units()
+                .map(|unit| unit.source_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["こんにちは", "世界。", "次の台詞。"],
+        );
+        assert_eq!(
+            doc.speaker_units()
+                .map(|unit| unit.source_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["アリス", "ボブ"],
+        );
+        assert_eq!(
+            doc.dialogue_units()
+                .map(|unit| unit.speaker.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("アリス".to_string()),
+                Some("アリス".to_string()),
+                Some("ボブ".to_string())
+            ],
+        );
+        assert_eq!(
+            doc.findings
+                .iter()
+                .filter(|finding| finding.kind == kaifuu_kirikiri::KsFindingKind::IScriptBlock)
+                .count(),
+            1,
+        );
+        assert!(doc.units.iter().all(|unit| {
+            unit.start_byte >= 2
+                && unit.start_byte.is_multiple_of(2)
+                && unit.end_byte.is_multiple_of(2)
+        }));
+
+        let identity: BTreeMap<String, String> = doc
+            .units
+            .iter()
+            .map(|unit| (unit.source_unit_key.clone(), unit.source_text.clone()))
+            .collect();
+        assert_eq!(
+            apply_patch(&source, &doc.units, enc, &identity).unwrap(),
+            source
+        );
+
+        let translations: BTreeMap<String, String> = doc
+            .units
+            .iter()
+            .map(|unit| {
+                (
+                    unit.source_unit_key.clone(),
+                    match unit.role {
+                        TextRole::Dialogue => format!("<translated-{}>", unit.segment_index),
+                        TextRole::SpeakerName => "Speaker".to_string(),
+                    },
+                )
+            })
+            .collect();
+        let patched = apply_patch(&source, &doc.units, enc, &translations).unwrap();
+        verify_byte_preserving(&source, &patched, "utf16.ks", enc).unwrap();
+        let patched_doc = parse_ks("utf16.ks", &patched);
+        assert_eq!(
+            structural_bytes(&source, &doc),
+            structural_bytes(&patched, &patched_doc),
+        );
+    }
 }
 
 #[test]

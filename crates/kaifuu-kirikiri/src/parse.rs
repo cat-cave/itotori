@@ -1,7 +1,8 @@
 //! KAG `.ks` plaintext scenario-script parser.
 //!
 //! KAG (KiriKiri Adventure Game system) is KiriKiri's scenario scripting
-//! layer; a `.ks` file is **plaintext** (Shift-JIS or UTF-8). This module
+//! layer; a `.ks` file is **plaintext** (Shift-JIS, UTF-8, or BOM-marked
+//! UTF-16). This module
 //! parses the KAG line dialect into a stable set of translatable
 //! [`KsUnit`]s plus byte-identical structure (tags, commands, comments,
 //! labels). It is deliberately *encoding-aware at the byte level* so a
@@ -29,6 +30,21 @@
 //!   between inline tags becomes a `dialogue` [`KsUnit`]; `[[` is the KAG
 //!   escape for a literal `[` and stays inside the text run.
 //!
+//! ## `[iscript]…[endscript]` TJS blocks
+//!
+//! KAG allows raw TJS (KiriKiri's scripting language) to be embedded between
+//! an `[iscript]` open and an `[endscript]` close — or the `@iscript` /
+//! `@endscript` line-command spelling of the same pair. The body is **TJS
+//! source, not KAG message text**, so it MUST NOT be emitted as translatable
+//! `dialogue` (doing so ships code to the LLM and splices the translation back
+//! over real source on patch). This parser recognises both spellings and
+//! **swallows** every physical line of the block body: no [`KsUnit`] is
+//! emitted for it, so its bytes stay in the immutable structural stream and
+//! patchback leaves the code byte-identical. The block open is recorded as a
+//! [`KsFindingKind::IScriptBlock`] finding so the construct is visible, never
+//! silently dropped. This mirrors the swallow-until-`endscript` behaviour of
+//! the sibling `utsushi-kirikiri` replay parser.
+//!
 //! Every [`KsUnit`] carries a stable extraction identity: source file,
 //! physical line index, in-line segment index, text role, an exact
 //! `[start_byte, end_byte)` span, and a deterministic `bridge_unit_id`.
@@ -45,18 +61,37 @@ pub enum KsEncoding {
     Utf8,
     /// Shift-JIS (classic KiriKiri retail scripts).
     ShiftJis,
+    /// UTF-16 little-endian, identified by an `FF FE` BOM.
+    Utf16Le,
+    /// UTF-16 big-endian, identified by an `FE FF` BOM.
+    Utf16Be,
 }
 
 impl KsEncoding {
-    /// Detect encoding: valid UTF-8 → [`KsEncoding::Utf8`], else
-    /// [`KsEncoding::ShiftJis`]. Callers with out-of-band knowledge should use
+    /// Detect encoding from a KAG file's leading BOM, then fall back to valid
+    /// UTF-8 or Shift-JIS. Callers with out-of-band knowledge should use
     /// [`crate::parse_ks_with_encoding`] to pin the encoding explicitly.
     #[must_use]
     pub fn detect(bytes: &[u8]) -> Self {
-        if std::str::from_utf8(bytes).is_ok() {
+        if bytes.starts_with(&[0xFF, 0xFE]) {
+            Self::Utf16Le
+        } else if bytes.starts_with(&[0xFE, 0xFF]) {
+            Self::Utf16Be
+        } else if std::str::from_utf8(bytes).is_ok() {
             Self::Utf8
         } else {
             Self::ShiftJis
+        }
+    }
+
+    /// Number of leading BOM bytes that belong to the file structure rather
+    /// than to the first parsed line.
+    fn bom_len(self, bytes: &[u8]) -> usize {
+        match self {
+            Self::Utf8 if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) => 3,
+            Self::Utf16Le if bytes.starts_with(&[0xFF, 0xFE]) => 2,
+            Self::Utf16Be if bytes.starts_with(&[0xFE, 0xFF]) => 2,
+            _ => 0,
         }
     }
 
@@ -88,6 +123,44 @@ impl KsEncoding {
                 let is_lead = (0x81..=0x9F).contains(&b) || (0xE0..=0xFC).contains(&b);
                 if is_lead && remaining >= 2 { 2 } else { 1 }
             }
+            Self::Utf16Le | Self::Utf16Be => {
+                if remaining >= 2 {
+                    2
+                } else {
+                    1
+                }
+            }
+        }
+    }
+
+    /// Return an ASCII byte when the character at `i` is a single-byte ASCII
+    /// character in this encoding. UTF-16 controls are recognized only when
+    /// their complete two-byte code unit is present, so a zero high/low byte
+    /// is never mistaken for a delimiter of its own.
+    fn ascii_byte(self, bytes: &[u8], i: usize) -> Option<u8> {
+        match self {
+            Self::Utf8 | Self::ShiftJis => bytes.get(i).copied().filter(u8::is_ascii),
+            Self::Utf16Le => match (bytes.get(i), bytes.get(i + 1)) {
+                (Some(&byte), Some(&0)) if byte.is_ascii() => Some(byte),
+                _ => None,
+            },
+            Self::Utf16Be => match (bytes.get(i), bytes.get(i + 1)) {
+                (Some(&0), Some(&byte)) if byte.is_ascii() => Some(byte),
+                _ => None,
+            },
+        }
+    }
+
+    /// Return the ASCII byte immediately before the character at `i`.
+    fn previous_ascii_byte(self, bytes: &[u8], i: usize) -> Option<u8> {
+        let previous = self.previous_char_start(i)?;
+        self.ascii_byte(bytes, previous)
+    }
+
+    fn previous_char_start(self, i: usize) -> Option<usize> {
+        match self {
+            Self::Utf16Le | Self::Utf16Be => i.checked_sub(2),
+            Self::Utf8 | Self::ShiftJis => i.checked_sub(1),
         }
     }
 }
@@ -98,6 +171,8 @@ pub(crate) fn decode_slice(bytes: &[u8], enc: KsEncoding) -> String {
     let coder = match enc {
         KsEncoding::Utf8 => encoding_rs::UTF_8,
         KsEncoding::ShiftJis => encoding_rs::SHIFT_JIS,
+        KsEncoding::Utf16Le => encoding_rs::UTF_16LE,
+        KsEncoding::Utf16Be => encoding_rs::UTF_16BE,
     };
     coder.decode(bytes).0.into_owned()
 }
@@ -170,6 +245,11 @@ pub enum KsFindingKind {
     /// A recognised `@`-line command (recorded so the command vocabulary is
     /// visible, not silently skipped). The line is preserved byte-identical.
     LineCommand,
+    /// An `[iscript]…[endscript]` (or `@iscript…@endscript`) TJS block was
+    /// recognised and its body swallowed. Recorded at the block's opening line
+    /// so the embedded-TJS construct is visible, not silently dropped. The
+    /// body emits no translatable unit and is preserved byte-identical.
+    IScriptBlock,
 }
 
 /// Parsed KAG `.ks` document.
@@ -206,6 +286,10 @@ struct Parser<'a> {
     bytes: &'a [u8],
     enc: KsEncoding,
     current_speaker: Option<String>,
+    /// While `true`, physical lines are the body of an open
+    /// `[iscript]…[endscript]` TJS block and are swallowed (no unit emitted)
+    /// until the closing `[endscript]` / `@endscript` line.
+    open_iscript: bool,
     units: Vec<KsUnit>,
     findings: Vec<KsFinding>,
 }
@@ -248,23 +332,169 @@ impl Parser<'_> {
     /// Parse one physical line whose content bytes are `[ls, le)` (trailing
     /// `\r`/`\n` already excluded).
     fn parse_line(&mut self, ls: usize, le: usize, line_index: usize) {
+        // 1. Inside an open `[iscript]` block: swallow every physical line
+        //    (including blanks) as TJS body — never emit a unit — until the
+        //    closing `[endscript]` / `@endscript` line, which is swallowed too.
+        if self.open_iscript {
+            if self.line_closes_iscript(ls, le) {
+                self.open_iscript = false;
+            }
+            return;
+        }
+
         if ls >= le {
             return; // empty line
         }
-        match self.bytes[ls] {
+
+        // 2. A line that OPENS an `[iscript]` / `@iscript` TJS block. Recorded
+        //    as a finding; body lines are swallowed by branch 1 above. A
+        //    single-line `[iscript]…[endscript]` closes on the same line and
+        //    never opens the swallow state.
+        if let Some(closes_same_line) = self.line_opens_iscript(ls, le) {
+            self.findings.push(KsFinding {
+                kind: KsFindingKind::IScriptBlock,
+                line_index,
+                detail: "iscript".to_string(),
+            });
+            if !closes_same_line {
+                self.open_iscript = true;
+            }
+            return;
+        }
+
+        match self.enc.ascii_byte(self.bytes, ls) {
             // comment (`;`) and label (`*`) lines are pure structure.
-            b';' | b'*' => {}
-            b'@' => {
-                let name = self.command_name(ls + 1, le);
+            Some(b';' | b'*') => {}
+            Some(b'@') => {
+                let name_start = ls + self.enc.char_len(self.bytes, ls);
+                let name = self.command_name(name_start, le);
                 self.findings.push(KsFinding {
                     kind: KsFindingKind::LineCommand,
                     line_index,
                     detail: name,
                 });
             }
-            b'#' => self.parse_name_line(ls, le, line_index),
+            Some(b'#') => self.parse_name_line(ls, le, line_index),
             _ => self.parse_text_line(ls, le, line_index),
         }
+    }
+
+    /// Index of the first non-ASCII-whitespace byte in `[ls, le)` (encoding
+    /// safe: a multi-byte char is stepped whole, so its trailing byte is never
+    /// read as a whitespace control byte).
+    fn first_content(&self, ls: usize, le: usize) -> usize {
+        let mut i = ls;
+        while i < le {
+            let cl = self.enc.char_len(self.bytes, i);
+            if self
+                .enc
+                .ascii_byte(self.bytes, i)
+                .is_some_and(|byte| byte.is_ascii_whitespace())
+            {
+                i += cl;
+            } else {
+                break;
+            }
+        }
+        i
+    }
+
+    /// Name of the leading inline `[name …]` tag (after any leading ASCII
+    /// whitespace), or `None` when the line does not begin with a real tag
+    /// (`[[` is the literal-bracket escape, not a tag). The name is the first
+    /// whitespace-delimited token inside the brackets.
+    fn leading_tag_name(&self, ls: usize, le: usize) -> Option<String> {
+        let start = self.first_content(ls, le);
+        if start >= le || self.enc.ascii_byte(self.bytes, start) != Some(b'[') {
+            return None;
+        }
+        // `[[` literal-bracket escape → this is text, not a tag.
+        let next = start + self.enc.char_len(self.bytes, start);
+        if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
+            return None;
+        }
+        let inner_start = next;
+        let close = self.find_close_bracket(inner_start, le)?;
+        let name = self.command_name(inner_start, close);
+        if name.is_empty() { None } else { Some(name) }
+    }
+
+    /// Name of the leading `@name …` line command (after any leading ASCII
+    /// whitespace), or `None` when the line does not begin with `@`.
+    fn leading_command_name(&self, ls: usize, le: usize) -> Option<String> {
+        let start = self.first_content(ls, le);
+        if start >= le || self.enc.ascii_byte(self.bytes, start) != Some(b'@') {
+            return None;
+        }
+        let name_start = start + self.enc.char_len(self.bytes, start);
+        let name = self.command_name(name_start, le);
+        if name.is_empty() { None } else { Some(name) }
+    }
+
+    /// Byte index of the closing `]` for a tag whose inner text starts at
+    /// `start`, scanning encoding-safely within `[start, le)`.
+    fn find_close_bracket(&self, start: usize, le: usize) -> Option<usize> {
+        let mut j = start;
+        while j < le {
+            let cl = self.enc.char_len(self.bytes, j);
+            if self.enc.ascii_byte(self.bytes, j) == Some(b']') {
+                return Some(j);
+            }
+            j += cl;
+        }
+        None
+    }
+
+    /// Whether any inline `[tag …]` in `[ls, le)` names `want` (used to detect
+    /// an `[endscript]` close, which may trail body text on the same physical
+    /// line). Respects the `[[` literal-bracket escape and steps multi-byte
+    /// characters whole.
+    fn contains_tag(&self, ls: usize, le: usize, want: &[u8]) -> bool {
+        let mut i = ls;
+        while i < le {
+            let cl = self.enc.char_len(self.bytes, i);
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'[') {
+                let next = i + cl;
+                if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
+                    i = next + self.enc.char_len(self.bytes, next); // `[[` escape
+                    continue;
+                }
+                match self.find_close_bracket(i + cl, le) {
+                    Some(close) => {
+                        if self.command_name(i + cl, close).as_bytes() == want {
+                            return true;
+                        }
+                        i = close + self.enc.char_len(self.bytes, close);
+                    }
+                    None => break,
+                }
+                continue;
+            }
+            i += cl;
+        }
+        false
+    }
+
+    /// If the line opens an `[iscript]` / `@iscript` TJS block, return
+    /// `Some(closes_same_line)`: `true` for a single-line
+    /// `[iscript]…[endscript]` (which never opens the swallow state), `false`
+    /// for a multi-line block. Returns `None` when the line opens no block.
+    fn line_opens_iscript(&self, ls: usize, le: usize) -> Option<bool> {
+        let opens = self.leading_tag_name(ls, le).as_deref() == Some("iscript")
+            || self.leading_command_name(ls, le).as_deref() == Some("iscript");
+        if !opens {
+            return None;
+        }
+        // Only the bracket form can close on the same physical line; the
+        // `@iscript` line-command form is closed by a later `@endscript` line.
+        Some(self.contains_tag(ls, le, b"endscript"))
+    }
+
+    /// Whether a line inside an open block closes it — an `[endscript]` inline
+    /// tag anywhere on the line, or a leading `@endscript` line command.
+    fn line_closes_iscript(&self, ls: usize, le: usize) -> bool {
+        self.contains_tag(ls, le, b"endscript")
+            || self.leading_command_name(ls, le).as_deref() == Some("endscript")
     }
 
     /// `@commandname …` → the command name (ASCII up to whitespace or EOL).
@@ -272,7 +502,11 @@ impl Parser<'_> {
         let mut i = start;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i].is_ascii_whitespace() {
+            if self
+                .enc
+                .ascii_byte(self.bytes, i)
+                .is_some_and(|byte| byte.is_ascii_whitespace())
+            {
                 break;
             }
             i += cl;
@@ -282,7 +516,7 @@ impl Parser<'_> {
 
     /// `#display` / `#voice/display` / bare `#`.
     fn parse_name_line(&mut self, ls: usize, le: usize, line_index: usize) {
-        let name_start = ls + 1;
+        let name_start = ls + self.enc.char_len(self.bytes, ls);
         if name_start >= le {
             // bare `#` → clear speaker
             self.current_speaker = None;
@@ -293,13 +527,13 @@ impl Parser<'_> {
         let mut i = name_start;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i] == b'/' {
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'/') {
                 slash = Some(i);
                 break;
             }
             i += cl;
         }
-        let display_start = slash.map_or(name_start, |s| s + 1);
+        let display_start = slash.map_or(name_start, |s| s + self.enc.char_len(self.bytes, s));
         if display_start >= le {
             // `#voice/` with empty display → clear speaker, no unit.
             self.current_speaker = None;
@@ -316,10 +550,11 @@ impl Parser<'_> {
         let mut i = ls;
         while i < le {
             let cl = self.enc.char_len(self.bytes, i);
-            if cl == 1 && self.bytes[i] == b'[' {
+            if self.enc.ascii_byte(self.bytes, i) == Some(b'[') {
                 // `[[` — KAG literal-bracket escape; stays inside the run.
-                if i + 1 < le && self.bytes[i + 1] == b'[' {
-                    i += 2;
+                let next = i + cl;
+                if self.enc.ascii_byte(self.bytes, next) == Some(b'[') {
+                    i = next + self.enc.char_len(self.bytes, next);
                     continue;
                 }
                 self.emit_run(line_index, &mut segment_index, run_start, i);
@@ -328,8 +563,8 @@ impl Parser<'_> {
                 let mut closed = false;
                 while j < le {
                     let cl2 = self.enc.char_len(self.bytes, j);
-                    if cl2 == 1 && self.bytes[j] == b']' {
-                        j += 1;
+                    if self.enc.ascii_byte(self.bytes, j) == Some(b']') {
+                        j += cl2;
                         closed = true;
                         break;
                     }
@@ -339,7 +574,7 @@ impl Parser<'_> {
                     self.findings.push(KsFinding {
                         kind: KsFindingKind::UnclosedInlineTag,
                         line_index,
-                        detail: self.command_name(i + 1, le),
+                        detail: self.command_name(i + cl, le),
                     });
                     j = le;
                 }
@@ -383,11 +618,12 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         bytes,
         enc,
         current_speaker: None,
+        open_iscript: false,
         units: Vec::new(),
         findings: Vec::new(),
     };
 
-    let mut ls = 0usize;
+    let mut ls = enc.bom_len(bytes);
     let mut line_index = 0usize;
     while ls < bytes.len() {
         // Locate the physical line terminator.
@@ -396,13 +632,13 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         let mut next = bytes.len();
         while i < bytes.len() {
             let cl = enc.char_len(bytes, i);
-            if cl == 1 && bytes[i] == b'\n' {
+            if enc.ascii_byte(bytes, i) == Some(b'\n') {
                 let mut ce = i;
-                if ce > ls && bytes[ce - 1] == b'\r' {
-                    ce -= 1;
+                if enc.previous_ascii_byte(bytes, ce) == Some(b'\r') {
+                    ce = enc.previous_char_start(ce).expect("CR precedes LF");
                 }
                 content_end = ce;
-                next = i + 1;
+                next = i + cl;
                 break;
             }
             i += cl;
@@ -410,8 +646,10 @@ pub fn parse_ks_with_encoding(source_file: &str, bytes: &[u8], enc: KsEncoding) 
         if i >= bytes.len() {
             // Final line with no trailing newline.
             content_end = bytes.len();
-            if content_end > ls && bytes[content_end - 1] == b'\r' {
-                content_end -= 1;
+            if enc.previous_ascii_byte(bytes, content_end) == Some(b'\r') {
+                content_end = enc
+                    .previous_char_start(content_end)
+                    .expect("final CR has a start offset");
             }
             next = bytes.len();
         }

@@ -62,6 +62,18 @@ fn encode_translation(key: &str, text: &str, enc: KsEncoding) -> Result<Vec<u8>,
                 Ok(cow.into_owned())
             }
         }
+        KsEncoding::Utf16Le | KsEncoding::Utf16Be => {
+            let mut encoded = Vec::with_capacity(text.encode_utf16().count() * 2);
+            for code_unit in text.encode_utf16() {
+                let bytes = match enc {
+                    KsEncoding::Utf16Le => code_unit.to_le_bytes(),
+                    KsEncoding::Utf16Be => code_unit.to_be_bytes(),
+                    KsEncoding::Utf8 | KsEncoding::ShiftJis => unreachable!(),
+                };
+                encoded.extend_from_slice(&bytes);
+            }
+            Ok(encoded)
+        }
     }
 }
 
@@ -93,7 +105,7 @@ pub fn apply_patch(
             .iter()
             .find(|u| &u.source_unit_key == key)
             .ok_or_else(|| PatchError::UnknownUnit { key: key.clone() })?;
-        if text.bytes().any(|b| b == b'\n' || b == b'\r') {
+        if text.contains('\n') || text.contains('\r') {
             return Err(PatchError::NewlineInTranslation { key: key.clone() });
         }
         if unit.end_byte > source.len() {
