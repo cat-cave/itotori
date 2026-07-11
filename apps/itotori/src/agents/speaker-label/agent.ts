@@ -45,12 +45,16 @@ import {
   type SpeakerLabelOutput,
   type SpeakerLabelUnknownReason,
 } from "@itotori/localization-bridge-schema";
-import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
+import {
+  buildStructuredRetryMessages,
+  invokeWithBoundedStructuredRetry,
+} from "../bounded-structured-retry.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   StructuredOutputRequest,
@@ -122,27 +126,15 @@ export class SpeakerLabelAgent {
           : { maxOutputTokens: input.modelMetadata.maxOutputTokens },
     };
 
-    const invocation = await this.options.provider.invoke(request);
+    const { invocation, parsed } = await invokeWithBoundedStructuredRetry({
+      provider: this.options.provider,
+      request,
+      parse: parseSpeakerLabelOutput,
+      isSchemaValidationError: (error) => error instanceof SpeakerLabelResponseValidationError,
+      buildCorrectiveMessages: buildStructuredRetryMessages,
+      validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+    });
     const providerRun = invocation.providerRun;
-    const finishReason = invocation.finishReason;
-    const rawContent = invocation.content;
-
-    if (rawContent === null || rawContent.trim().length === 0) {
-      throw new SpeakerLabelPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "provider returned no content",
-      );
-    }
-    if (!isCleanStopReason(finishReason)) {
-      throw new SpeakerLabelPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "finish reason is not a clean stop",
-      );
-    }
-
-    const parsed = parseWithBoundedRepair(rawContent, parseSpeakerLabelOutput);
     this.assertCitationsResolve(parsed, input);
     this.assertHiddenIdentityNotLeaked(parsed, input);
     this.assertHiddenMaskConsistency(parsed, input);
@@ -199,6 +191,28 @@ export class SpeakerLabelAgent {
         }
       }
     }
+  }
+
+  private assertCompleteInvocation(invocation: ModelInvocationResult): string {
+    const providerRun = invocation.providerRun;
+    const finishReason = invocation.finishReason;
+    const rawContent = invocation.content;
+
+    if (rawContent === null || rawContent.trim().length === 0) {
+      throw new SpeakerLabelPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "provider returned no content",
+      );
+    }
+    if (!isCleanStopReason(finishReason)) {
+      throw new SpeakerLabelPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "finish reason is not a clean stop",
+      );
+    }
+    return rawContent;
   }
 
   /**

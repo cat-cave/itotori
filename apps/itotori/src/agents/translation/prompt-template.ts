@@ -37,8 +37,10 @@ const SYSTEM_INSTRUCTIONS = [
   "draftText MUST contain ONLY the target-language rendering of the source line.",
   "Do NOT append translator's notes, TL notes, meta-commentary, or any parenthetical annotation intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)'). All commentary belongs in `agentRationale`, never in `draftText`.",
   `confidenceFloor MUST be one of: ${TRANSLATION_DRAFT_CONFIDENCE_FLOORS.join(", ")}.`,
-  `Emit ONLY a JSON object that conforms to the schema with schemaVersion '${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}'.`,
-  "Do NOT emit prose, markdown, or trailing commas. RFC 8259 JSON only.",
+  `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}". Copy it verbatim.`,
+  'Emit ONLY the allowed top-level properties: "schemaVersion" and "drafts". Do NOT include a "$schema" property, an "$id", a "title", or ANY other top-level key. The embedded schema below is a SPEC to conform to, NOT a template to echo back.',
+  'citationRefs MUST contain ONLY the exact ids shown in the Glossary block (termId=...) or the "Context artifacts available for citation" block. Cite the id VERBATIM. Do NOT prefix an id (e.g. never "terminology-candidate:<term>"), do NOT cite a raw source term, and do NOT cite anything not listed. If you consulted nothing citable, emit an empty citationRefs array.',
+  "Emit ONLY a JSON object that conforms to the schema. Do NOT emit prose, markdown, or trailing commas. RFC 8259 JSON only.",
 ].join("\n");
 
 export function buildTranslationPrompt(

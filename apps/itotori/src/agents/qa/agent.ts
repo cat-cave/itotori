@@ -34,12 +34,16 @@ import {
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   type StructuredQaFindingOutput,
 } from "@itotori/localization-bridge-schema";
-import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
+import {
+  buildStructuredRetryMessages,
+  invokeWithBoundedStructuredRetry,
+} from "../bounded-structured-retry.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   StructuredOutputRequest,
@@ -114,30 +118,15 @@ export class QaAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const invocation = await this.options.provider.invoke(request);
+    const { invocation, parsed } = await invokeWithBoundedStructuredRetry({
+      provider: this.options.provider,
+      request,
+      parse: parseStructuredQaFindingOutput,
+      isSchemaValidationError: (error) => error instanceof QaResponseValidationError,
+      buildCorrectiveMessages: buildStructuredRetryMessages,
+      validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+    });
     const providerRun = invocation.providerRun;
-    const finishReason = invocation.finishReason;
-    const rawContent = invocation.content;
-
-    if (rawContent === null || rawContent.trim().length === 0) {
-      throw new QaPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "provider returned no content",
-      );
-    }
-    // Stop-reason vocabularies vary across providers. We treat anything
-    // other than a clean stop / end_turn as partial; recorded provider
-    // responses always normalize to `stop`.
-    if (!isCleanStopReason(finishReason)) {
-      throw new QaPartialResultError(
-        providerRun.runId,
-        finishReason,
-        "finish reason is not a clean stop",
-      );
-    }
-
-    const parsed = parseWithBoundedRepair(rawContent, parseStructuredQaFindingOutput);
     this.assertCitationsResolve(parsed, input);
 
     // PROJECT LAW: real provider token counts only — throw on absence
@@ -179,6 +168,31 @@ export class QaAgent {
     if (!input.targetLocale || input.targetLocale.trim().length === 0) {
       throw new QaLocaleMismatchError("targetLocale", input.targetLocale ?? "");
     }
+  }
+
+  private assertCompleteInvocation(invocation: ModelInvocationResult): string {
+    const providerRun = invocation.providerRun;
+    const finishReason = invocation.finishReason;
+    const rawContent = invocation.content;
+
+    if (rawContent === null || rawContent.trim().length === 0) {
+      throw new QaPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "provider returned no content",
+      );
+    }
+    // Stop-reason vocabularies vary across providers. We treat anything
+    // other than a clean stop / end_turn as partial; recorded provider
+    // responses always normalize to `stop`.
+    if (!isCleanStopReason(finishReason)) {
+      throw new QaPartialResultError(
+        providerRun.runId,
+        finishReason,
+        "finish reason is not a clean stop",
+      );
+    }
+    return rawContent;
   }
 
   /**

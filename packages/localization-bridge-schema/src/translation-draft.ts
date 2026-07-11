@@ -154,6 +154,41 @@ export class TranslationDraftResponseValidationError extends Error {
   }
 }
 
+const TRANSLATION_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS = new Set(["$schema", "$id", "title"]);
+const TRANSLATION_SCHEMA_VERSION_COERCIONS: Record<string, string> = {
+  "itotori.structural-translation-draft-output.v1":
+    STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Strip only payload-neutral JSON-schema metadata and the explicit known
+ * schema-version typo. Deliberately do not coerce citationRefs: changing an
+ * unknown citation into a guessed id would change the translation's meaning.
+ */
+function coerceStructuredTranslationDraftOutput(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const normalized: Record<string, unknown> = { ...value };
+  for (const key of TRANSLATION_TOP_LEVEL_JSON_SCHEMA_METADATA_KEYS) {
+    delete normalized[key];
+  }
+  if (
+    typeof normalized.schemaVersion === "string" &&
+    Object.prototype.hasOwnProperty.call(
+      TRANSLATION_SCHEMA_VERSION_COERCIONS,
+      normalized.schemaVersion,
+    )
+  ) {
+    normalized.schemaVersion = TRANSLATION_SCHEMA_VERSION_COERCIONS[normalized.schemaVersion];
+  }
+  return normalized;
+}
+
 /**
  * Validates a parsed JSON value against the
  * `StructuredTranslationDraftOutput` schema. Throws
@@ -366,6 +401,7 @@ export function parseStructuredTranslationDraftOutput(
       `provider response is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  assertStructuredTranslationDraftOutput(parsed);
-  return parsed;
+  const coerced = coerceStructuredTranslationDraftOutput(parsed);
+  assertStructuredTranslationDraftOutput(coerced);
+  return coerced;
 }

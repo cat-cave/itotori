@@ -35,7 +35,9 @@ const SYSTEM_INSTRUCTIONS = [
   "recommendation is a free-text remediation suggestion; do NOT include rewritten output.",
   "agentRationale explains why you flagged the finding.",
   "Flag any draft whose `draftText` contains a parenthetical translator-note or meta-commentary intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)', '(meta-commentary: ...)'); emit such cases as `category: 'other'` findings with `draftSpan` covering the offending parenthetical, and recommend removing the parenthetical.",
-  `Emit ONLY a JSON object that conforms to the schema with schemaVersion '${STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION}'.`,
+  `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION}" — note it is "structured", NOT "structural". Copy it verbatim.`,
+  'Emit ONLY the allowed top-level properties: "schemaVersion" and "findings". Do NOT include a "$schema" property, an "$id", a "title", or ANY other top-level key. The embedded schema below is a SPEC to conform to, NOT a template to echo back.',
+  'sourceSpan and draftSpan, when present, MUST each be a JSON OBJECT of the exact shape {"start": <int>, "end": <int>} with integer character offsets. NEVER emit a span as an array, a string, or a number.',
   "If you find no issues, emit an empty findings array. Do NOT emit prose or markdown.",
 ].join("\n");
 

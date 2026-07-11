@@ -213,6 +213,38 @@ describe("SpeakerLabelOutput", () => {
     expect(parsed.labels[0]!.speakerId.kind).toBe("named");
   });
 
+  it("strips echoed JSON-schema metadata without accepting another top-level key", () => {
+    const parsed = parseSpeakerLabelOutput(
+      JSON.stringify({
+        $schema: "http://json-schema.org/draft-07/schema#",
+        $id: "itotori://fixture",
+        title: "SpeakerLabelOutput",
+        ...validOutput(),
+      }),
+    );
+    expect(parsed.schemaVersion).toBe(SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION);
+    expect(Object.keys(parsed)).toEqual(["schemaVersion", "labels"]);
+
+    expect(() =>
+      parseSpeakerLabelOutput(JSON.stringify({ ...validOutput(), unexpected: true })),
+    ).toThrow(/unexpected/);
+  });
+
+  it("does not coerce the unknown speaker kind unnamed_character", () => {
+    expect(() =>
+      parseSpeakerLabelOutput(
+        JSON.stringify({
+          ...validOutput(),
+          labels: [
+            validLabel({
+              speakerId: { kind: "unnamed_character" } as unknown as SpeakerIdentity,
+            }),
+          ],
+        }),
+      ),
+    ).toThrow(/kind/);
+  });
+
   it("identity kind / confidence / reason enums match the JSON schema constants", () => {
     const confidenceEnum = (
       SPEAKER_LABEL_OUTPUT_JSON_SCHEMA.properties.labels.items.properties.confidence as {

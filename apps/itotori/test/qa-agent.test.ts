@@ -172,6 +172,13 @@ describe("QA prompt template", () => {
   it("declares the output schema version", () => {
     const rendered = buildQaPrompt(inputFixture());
     expect(rendered.systemText).toContain(STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION);
+    expect(rendered.systemText).toContain(
+      `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION}"`,
+    );
+    expect(rendered.systemText).toContain('Do NOT include a "$schema" property');
+    expect(rendered.systemText).toContain(
+      "sourceSpan and draftSpan, when present, MUST each be a JSON OBJECT",
+    );
   });
 });
 

@@ -44,13 +44,17 @@ import {
   type StructuredTranslationDraftOutput,
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
-import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
+import {
+  buildStructuredRetryMessages,
+  invokeWithBoundedStructuredRetry,
+} from "../bounded-structured-retry.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   StructuredOutputRequest,
@@ -128,32 +132,15 @@ export class TranslationAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const invocation = await this.options.provider.invoke(request);
+    const { invocation, parsed } = await invokeWithBoundedStructuredRetry({
+      provider: this.options.provider,
+      request,
+      parse: parseStructuredTranslationDraftOutput,
+      isSchemaValidationError: (error) => error instanceof TranslationDraftResponseValidationError,
+      buildCorrectiveMessages: buildStructuredRetryMessages,
+      validateResponse: (candidate) => this.assertCompleteInvocation(candidate, input),
+    });
     const providerRun = invocation.providerRun;
-    const finishReason = invocation.finishReason;
-    const rawContent = invocation.content;
-
-    if (rawContent === null || rawContent.trim().length === 0) {
-      throw new TranslationPartialResultError(
-        providerRun.runId,
-        input.draftJobAttemptId,
-        finishReason,
-        "provider returned no content",
-      );
-    }
-    // Stop-reason vocabularies vary across providers. We treat
-    // anything other than a clean stop / end_turn as partial;
-    // recorded provider responses always normalize to `stop`.
-    if (!isCleanStopReason(finishReason)) {
-      throw new TranslationPartialResultError(
-        providerRun.runId,
-        input.draftJobAttemptId,
-        finishReason,
-        "finish reason is not a clean stop",
-      );
-    }
-
-    const parsed = parseWithBoundedRepair(rawContent, parseStructuredTranslationDraftOutput);
     this.assertBridgeUnitsResolve(parsed, input);
     this.assertLocaleConsistency(parsed, input);
     this.assertCitationsResolve(parsed, input);
@@ -215,6 +202,36 @@ export class TranslationAgent {
         `must differ from sourceLocale '${input.sourceLocale}'`,
       );
     }
+  }
+
+  private assertCompleteInvocation(
+    invocation: ModelInvocationResult,
+    input: TranslationInvocationInput,
+  ): string {
+    const providerRun = invocation.providerRun;
+    const finishReason = invocation.finishReason;
+    const rawContent = invocation.content;
+
+    if (rawContent === null || rawContent.trim().length === 0) {
+      throw new TranslationPartialResultError(
+        providerRun.runId,
+        input.draftJobAttemptId,
+        finishReason,
+        "provider returned no content",
+      );
+    }
+    // Stop-reason vocabularies vary across providers. We treat
+    // anything other than a clean stop / end_turn as partial;
+    // recorded provider responses always normalize to `stop`.
+    if (!isCleanStopReason(finishReason)) {
+      throw new TranslationPartialResultError(
+        providerRun.runId,
+        input.draftJobAttemptId,
+        finishReason,
+        "finish reason is not a clean stop",
+      );
+    }
+    return rawContent;
   }
 
   /**

@@ -116,6 +116,39 @@ describe("StructuredQaFindingOutput", () => {
     expect(() => parseStructuredQaFindingOutput("not-json")).toThrow(QaResponseValidationError);
   });
 
+  it("coerces JSON-schema metadata, the known version typo, and two-integer spans", () => {
+    const parsed = parseStructuredQaFindingOutput(
+      JSON.stringify({
+        $schema: "http://json-schema.org/draft-07/schema#",
+        $id: "itotori://fixture",
+        title: "StructuredQaFindingOutput",
+        schemaVersion: "itotori.structural-qa-finding-output.v1",
+        findings: [
+          validFinding({
+            sourceSpan: [2, 5],
+            draftSpan: [0, 0],
+          }),
+        ],
+      }),
+    );
+
+    expect(parsed.schemaVersion).toBe(STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION);
+    expect(parsed.findings[0]?.sourceSpan).toEqual({ start: 2, end: 5 });
+    expect(parsed.findings[0]?.draftSpan).toEqual({ start: 0, end: 0 });
+  });
+
+  it("does not coerce unknown keys or ambiguous span values", () => {
+    expect(() =>
+      parseStructuredQaFindingOutput(JSON.stringify(validOutput({ unexpected: true }))),
+    ).toThrow(/unexpected/);
+
+    expect(() =>
+      parseStructuredQaFindingOutput(
+        JSON.stringify(validOutput({ findings: [validFinding({ sourceSpan: "2,5" })] })),
+      ),
+    ).toThrow(/sourceSpan/);
+  });
+
   it("severity and category enums match the JSON schema constants", () => {
     const severityEnum = (
       STRUCTURED_QA_FINDING_OUTPUT_JSON_SCHEMA.properties.findings.items.properties.severity as {
