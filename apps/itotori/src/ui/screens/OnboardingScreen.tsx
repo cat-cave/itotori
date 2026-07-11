@@ -158,6 +158,10 @@ export function OnboardingScreen(): ReactNode {
         setBootstrap(stepFromResult(branchResult, "Project bootstrapped."));
         return;
       }
+      if (branchResult.data.outcome === "refused") {
+        setBootstrap({ state: "error", message: branchResult.data.refusalMessage });
+        return;
+      }
       if (!isBranchReady(branchReadyProject, branchResult.data.project)) {
         setBootstrap({
           state: "error",

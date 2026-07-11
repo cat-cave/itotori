@@ -705,15 +705,47 @@
       "ApiDraftBranchResponse": {
         "additionalProperties": true,
         "properties": {
+          "outcome": {
+            "enum": [
+              "drafted",
+              "refused"
+            ]
+          },
           "project": {
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refusalMessage": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
+          "outcome",
           "project",
+          "refusalMessage",
           "status"
         ],
         "type": "object"
