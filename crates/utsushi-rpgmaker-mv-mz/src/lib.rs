@@ -199,6 +199,11 @@ impl RpgMakerMvMzEnginePort {
                 stance: CapabilityStance::Pending,
                 note: "dev: deterministic replay is driven by the delegated browser/NW.js runtime, not yet wired through this scaffold.",
             },
+            CapabilityDeclaration {
+                capability: PortCapability::ReplayReview,
+                stance: CapabilityStance::Pending,
+                note: "dev: replay-review evidence is driven by the delegated browser/NW.js runtime, not yet wired through this scaffold.",
+            },
         ],
     };
 

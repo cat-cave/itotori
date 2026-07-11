@@ -390,6 +390,11 @@ impl FixtureEnginePort {
                 stance: CapabilityStance::Pending,
                 note: "dev: the synthetic fixture does not yet drive the substrate deterministic-replay primitives.",
             },
+            CapabilityDeclaration {
+                capability: PortCapability::ReplayReview,
+                stance: CapabilityStance::Pending,
+                note: "dev: replay-review evidence is not yet wired through the synthetic fixture port.",
+            },
         ],
     };
 
@@ -495,6 +500,8 @@ impl EnginePort for FixtureEnginePort {
                 }),
                 source_asset: AssetId::parse(&format!("vfs://fixture/units/unit-{index:03}.json"))
                     .ok(),
+                byte_offset_in_scene: None,
+                body_shift_jis: None,
             });
         }
 

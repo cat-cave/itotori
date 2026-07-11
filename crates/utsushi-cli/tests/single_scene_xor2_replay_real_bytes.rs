@@ -243,6 +243,8 @@ fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
     };
     let seen_bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
+    let gameexe_path = real_corpus::gameexe_ini_path().expect("Gameexe.ini path");
+    let g00_dir = real_corpus::reallivedata_subdir("g00").expect("g00 directory path");
 
     // Confirm the corpus is genuinely a `use_xor_2` title (else this test
     // would be vacuous).
@@ -259,9 +261,7 @@ fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
         first_header.compiler_version
     );
 
-    let gameexe_bytes = real_corpus::gameexe_ini_path()
-        .and_then(|path| fs::read(path).ok())
-        .unwrap_or_default();
+    let gameexe_bytes = fs::read(&gameexe_path).expect("read Gameexe.ini");
 
     // 1. Patch a real dialogue scene with the known en-US translation. The
     //    patchback re-encrypts the edited scene's xor2 segment.
@@ -288,6 +288,10 @@ fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
             &patched_seen.display().to_string(),
             "--scene",
             &DIALOGUE_SCENE_ID.to_string(),
+            "--gameexe",
+            &gameexe_path.display().to_string(),
+            "--g00-dir",
+            &g00_dir.display().to_string(),
             "--print-replay-log",
             &replay_log_path.display().to_string(),
             "--print-textlines",

@@ -234,6 +234,7 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
         .parent()
         .expect("Seen.txt has a parent directory")
         .to_path_buf();
+    let g00_dir = real_corpus::reallivedata_subdir("g00").expect("g00 directory path");
 
     let seen_bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
@@ -272,6 +273,10 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
             &patched_seen.display().to_string(),
             "--scene",
             &DIALOGUE_SCENE_ID.to_string(),
+            "--gameexe",
+            &gameexe_path.display().to_string(),
+            "--g00-dir",
+            &g00_dir.display().to_string(),
             "--print-replay-log",
             &replay_log_path.display().to_string(),
             "--print-textlines",

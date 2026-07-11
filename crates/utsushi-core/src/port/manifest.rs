@@ -41,6 +41,10 @@ pub enum PortCapability {
     /// (UTSUSHI-021 `ReplayLog`) and self-verifies determinism within its
     /// own lifecycle.
     DeterministicReplay,
+    /// Port-driven: the port exposes deterministic replay-review evidence
+    /// through the runtime-adapter bridge. The runner drives the normal
+    /// launch/observe lifecycle while the port supplies its review artifact.
+    ReplayReview,
 }
 
 impl PortCapability {
@@ -53,6 +57,7 @@ impl PortCapability {
             Self::Jump => "jump",
             Self::Snapshot => "snapshot",
             Self::DeterministicReplay => "deterministic_replay",
+            Self::ReplayReview => "replay_review",
         }
     }
 
@@ -65,7 +70,7 @@ impl PortCapability {
             Self::Capture => Some(LifecycleStage::Capture),
             Self::Shutdown => Some(LifecycleStage::Shutdown),
             Self::Jump => Some(LifecycleStage::Jump),
-            Self::Snapshot | Self::DeterministicReplay => None,
+            Self::Snapshot | Self::DeterministicReplay | Self::ReplayReview => None,
         }
     }
 }

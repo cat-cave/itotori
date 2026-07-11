@@ -24,7 +24,7 @@ use utsushi_reallive::{
     OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR,
     OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK,
     OPCODE_PAUSE, OPCODE_TEXT_WINDOW, PauseLongOp, RlopKey, RlopRegistry, Scene, StepOutcome, Vm,
-    VmEvent, dispatch_textout, register_text_rlops, text_module_msg_keys,
+    VmEvent, dispatch_textout, dispatch_textout_at, register_text_rlops, text_module_msg_keys,
 };
 
 // ---------------------------------------------------------------------
@@ -187,6 +187,31 @@ fn text_out_appends_to_runtime_pending_body_no_emission_yet() {
     // No emission until a control opcode flushes — substrate-honesty:
     // the line is not "observed" until a logical boundary fires.
     assert!(sink.snapshot().is_empty());
+}
+
+#[test]
+fn port_textout_metadata_preserves_offset_and_shift_jis_bytes() {
+    let sink = Arc::new(CollectingSink::new());
+    let runtime = Arc::new(MsgRuntime::with_sink(sink.clone()));
+    let body = vec![0x82, 0xa0]; // "あ"
+    dispatch_textout_at(&runtime, 0x1234, &body);
+
+    let mut registry = RlopRegistry::new();
+    register_text_rlops(&mut registry, Arc::clone(&runtime));
+    let line_break = registry
+        .get(RlopKey::new(
+            MSG_MODULE_TYPE,
+            MSG_MODULE_ID,
+            OPCODE_LINE_BREAK,
+        ))
+        .expect("line_break registered");
+    let mut vm = Vm::new(1, 0);
+    line_break.dispatch(&mut vm, &[]);
+
+    let lines = sink.drain();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].byte_offset_in_scene, Some(0x1234));
+    assert_eq!(lines[0].body_shift_jis, Some(body));
 }
 
 // ---------------------------------------------------------------------

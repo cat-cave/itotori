@@ -293,6 +293,8 @@ impl StrRuntime {
             text_surface: Some(text_surface.to_string()),
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         };
         self.sink.emit_line(line).map_err(|err| err.to_string())
     }

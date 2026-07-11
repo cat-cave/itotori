@@ -51,12 +51,14 @@ use utsushi_core::substrate::{
 };
 // `RuntimeArtifactRoot`, `RuntimeArtifactKind`, and `runtime_artifact_uri`
 // remain public crate-root helpers used to materialize managed artifacts.
-use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri};
+use utsushi_core::{
+    RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeOperation, runtime_artifact_uri,
+};
 
 use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventPayload};
 use crate::gameexe::MessageWindowConfig;
 use crate::render_pipeline::{RecordingFrameArtifactSink, RenderPass, SceneEmit, TextLayer};
-use crate::replay::{ReplayEngine, ReplayOpts, SceneObservation};
+use crate::replay::{ReplayEngine, ReplayLog, ReplayOpts, SceneObservation};
 use crate::rlop::HeadlessChoicePolicy;
 use crate::vm::SceneId;
 
@@ -271,6 +273,11 @@ pub struct UtsushiReallivePort {
     deterministic_replay_verified: bool,
     observation_steps: u32,
     reached_natural_terminus: bool,
+    /// The single-scene deterministic replay-review log produced during a
+    /// `ReplayReview` lifecycle. It is retained after shutdown so the CLI
+    /// adapter can publish the legacy replay-log JSON surface without
+    /// driving a second free-standing runtime path.
+    replay_log: Option<ReplayLog>,
 }
 
 impl std::fmt::Debug for UtsushiReallivePort {
@@ -311,6 +318,10 @@ impl UtsushiReallivePort {
             // every tick boundary, and byte-deterministic replay.
             PortCapability::Snapshot,
             PortCapability::DeterministicReplay,
+            // The same launch/observe lifecycle also produces the
+            // scene-scoped deterministic replay-review log consumed by the
+            // CLI adapter.
+            PortCapability::ReplayReview,
         ],
         required_methods: REQUIRED_LIFECYCLE_STAGES,
         optional_methods: &[],
@@ -385,6 +396,7 @@ impl UtsushiReallivePort {
             deterministic_replay_verified: false,
             observation_steps: 0,
             reached_natural_terminus: false,
+            replay_log: None,
         }
     }
 
@@ -456,6 +468,13 @@ impl UtsushiReallivePort {
     /// when the driven scene produced no message).
     pub fn frame_text_lines(&self) -> &[String] {
         &self.frame_text_lines
+    }
+
+    /// Replay-review evidence captured by the port during its last
+    /// `ReplayReview` lifecycle. The log is scene-scoped even though normal
+    /// capture/trace lifecycles may follow a bounded multi-scene playthrough.
+    pub fn replay_log(&self) -> Option<&ReplayLog> {
+        self.replay_log.as_ref()
     }
 
     /// Render the terminal graphics stack into BOTH a full-fidelity
@@ -551,8 +570,26 @@ impl EnginePort for UtsushiReallivePort {
         let playthrough = self.engine.observe_playthrough(
             self.entry_scene,
             &observe_opts,
-            PLAYTHROUGH_MAX_SCENES,
+            if request.operation == RuntimeOperation::ReplayReview {
+                // Replay-review preserves the historical single-scene
+                // evidence contract. Normal trace/capture lifecycles retain
+                // the bounded multi-scene playthrough.
+                1
+            } else {
+                PLAYTHROUGH_MAX_SCENES
+            },
         );
+
+        if request.operation == RuntimeOperation::ReplayReview {
+            // This is the port-owned equivalent of the old CLI replay log.
+            // `ReplayEngine::replay_from` is an instance method over the
+            // already-staged store, so no free-function driver bypasses the
+            // EnginePort/Runner lifecycle.
+            self.replay_log = Some(
+                self.engine
+                    .replay_from(self.entry_scene, &ReplayOpts::default()),
+            );
+        }
 
         // Entry-scene drive diagnostics (the capability the manifest advertises
         // is the entry scene's; step total is aggregated across the chain).

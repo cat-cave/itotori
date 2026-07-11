@@ -40,6 +40,8 @@ USAGE:
     --engine reallive \
     --seen <PATH> \
     --scene <N> \
+    --gameexe <PATH> \
+    --g00-dir <DIR> \
     --print-replay-log <PATH> \
     [--print-textlines] \
     [--dispatch-report <PATH>] \
@@ -49,6 +51,8 @@ FLAGS:
   --engine reallive           Replay engine. Only `reallive` is supported.
   --seen <PATH>               Path to a RealLive Seen.txt envelope.
   --scene <N>                 Scene id (u16) to drive through the VM.
+  --gameexe <PATH>            Path to the RealLive Gameexe.ini configuration.
+  --g00-dir <DIR>             Directory containing the RealLive g00 assets.
   --print-replay-log <PATH>   Write the ReplayLog (deterministic JSON) to <PATH>.
                               This is the OBSERVED-OUTPUT evidence the caller
                               validates against the real translated text.
@@ -78,6 +82,8 @@ VALIDATION CONTRACT:
 ///   --engine reallive \
 ///   --seen <PATH> \
 ///   --scene <N> \
+///   --gameexe <PATH> \
+///   --g00-dir <DIR> \
 ///   --print-replay-log <PATH> \
 ///   [--print-textlines]
 /// ```
@@ -99,6 +105,8 @@ pub fn run_replay_validate_command(
     let scene_id: u16 = required_flag(args, "--scene")?.parse().map_err(|err| {
         format!("utsushi.cli.replay_validate.scene_parse: --scene must be a u16: {err}")
     })?;
+    let gameexe_path = PathBuf::from(required_flag(args, "--gameexe")?);
+    let g00_dir = PathBuf::from(required_flag(args, "--g00-dir")?);
     let print_replay_log = PathBuf::from(required_flag(args, "--print-replay-log")?);
     let print_textlines = args.iter().any(|arg| arg == "--print-textlines");
     let dispatch_report_path = optional_flag(args, "--dispatch-report").map(PathBuf::from);
@@ -113,7 +121,7 @@ pub fn run_replay_validate_command(
         registry,
         engine,
         &seen_path,
-        replay_validate_parameters(scene_id),
+        replay_validate_parameters(scene_id, &gameexe_path, &g00_dir),
     )?;
 
     if print_textlines {
@@ -227,6 +235,10 @@ mod tests {
             "/tmp/nothing".into(),
             "--scene".into(),
             "1".into(),
+            "--gameexe".into(),
+            "/tmp/missing-gameexe.ini".into(),
+            "--g00-dir".into(),
+            "/tmp/missing-g00".into(),
             "--print-replay-log".into(),
             "/tmp/replay-log.json".into(),
         ];
@@ -277,6 +289,10 @@ mod tests {
             "/tmp/nothing".into(),
             "--scene".into(),
             "1".into(),
+            "--gameexe".into(),
+            "/tmp/missing-gameexe.ini".into(),
+            "--g00-dir".into(),
+            "/tmp/missing-g00".into(),
         ];
         let registry = replay_registry();
         let err =
@@ -288,6 +304,8 @@ mod tests {
     fn help_documents_observed_output_contract() {
         assert!(HELP.contains("utsushi replay-validate"));
         assert!(HELP.contains("--engine reallive"));
+        assert!(HELP.contains("--gameexe <PATH>"));
+        assert!(HELP.contains("--g00-dir <DIR>"));
         assert!(HELP.contains("OBSERVED-OUTPUT evidence"));
         assert!(!HELP.contains("expect-textline-contains"));
         assert!(HELP.contains("--require-semantic-reached-path"));
@@ -314,6 +332,10 @@ mod tests {
             missing_seen_path.display().to_string(),
             "--scene".into(),
             "1".into(),
+            "--gameexe".into(),
+            "/tmp/missing-gameexe.ini".into(),
+            "--g00-dir".into(),
+            "/tmp/missing-g00".into(),
             "--print-replay-log".into(),
             missing_seen_path
                 .with_extension("json")

@@ -69,6 +69,73 @@ pub struct TextLine {
     /// shape, so it is engine-neutral and host-path-free by construction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_asset: Option<AssetId>,
+    /// Optional byte offset of the source text run inside the decoded scene.
+    /// RealLive supplies this so patch validation can correlate observed text
+    /// with the byte-precise source unit; engines without byte-addressed text
+    /// leave it absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub byte_offset_in_scene: Option<u32>,
+    /// Optional raw Shift-JIS bytes for the observed text run. The wire shape
+    /// intentionally matches the legacy replay-log evidence contract
+    /// (`bodyShiftJisHex`) while keeping the in-memory value byte-oriented.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "bodyShiftJisHex",
+        with = "optional_hex_bytes"
+    )]
+    pub body_shift_jis: Option<Vec<u8>>,
+}
+
+mod optional_hex_bytes {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(bytes) => serializer.serialize_some(&bytes_to_hex(bytes)),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Option::<String>::deserialize(deserializer)?;
+        value
+            .map(|hex| decode_hex(&hex).map_err(serde::de::Error::custom))
+            .transpose()
+    }
+
+    fn bytes_to_hex(bytes: &[u8]) -> String {
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            use std::fmt::Write;
+            let _ = write!(out, "{byte:02x}");
+        }
+        out
+    }
+
+    fn decode_hex(hex: &str) -> Result<Vec<u8>, &'static str> {
+        if !hex.len().is_multiple_of(2) {
+            return Err("hex byte evidence must contain an even number of digits");
+        }
+        let bytes = hex.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len() / 2);
+        for pair in bytes.chunks_exact(2) {
+            let high = (pair[0] as char)
+                .to_digit(16)
+                .ok_or("hex byte evidence contains a non-hex digit")?;
+            let low = (pair[1] as char)
+                .to_digit(16)
+                .ok_or("hex byte evidence contains a non-hex digit")?;
+            out.push(((high << 4) | low) as u8);
+        }
+        Ok(out)
+    }
 }
 
 impl TextLine {
@@ -160,6 +227,8 @@ mod tests {
             source_asset: Some(
                 AssetId::parse("vfs://www/data/Map001.json").expect("valid asset id"),
             ),
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 

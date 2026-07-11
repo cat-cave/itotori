@@ -700,6 +700,8 @@ impl SelRuntime {
             text_surface: Some(text_surface),
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         };
         match self.sink.emit_line(line) {
             Ok(()) => Some(line_id),

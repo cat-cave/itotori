@@ -1030,6 +1030,8 @@ mod tests {
             text_surface: None,
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 

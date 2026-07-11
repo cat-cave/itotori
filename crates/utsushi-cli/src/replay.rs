@@ -2,8 +2,8 @@
 //!
 //! Routes replay through the CLI runtime adapter registry's replay-review
 //! capability and writes the selected engine's deterministic replay-log JSON.
-//! Optional `--snapshot-output` writes a captured snapshot when the selected
-//! adapter supports that replay mode.
+//! The RealLive port requires Gameexe and a g00 directory even when the
+//! caller only requests text evidence, because those are typed port inputs.
 
 use std::error::Error;
 use std::fs;
@@ -14,20 +14,19 @@ use utsushi_core::{
     RuntimeAdapter, RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
 };
 
-use crate::replay_registry::{
-    replay_log_json, replay_parameters, replay_snapshot_parameters, snapshot_json,
-};
+use crate::replay_registry::{replay_log_json, replay_parameters};
 
 /// Execute the `replay` subcommand. The argv layout is:
 ///
 /// ```text
 /// utsushi-cli replay --engine reallive --seen <PATH> --scene <N>
-///                    --output <PATH> [--snapshot-output <PATH>]
+///                    --gameexe <PATH> --g00-dir <DIR> --output <PATH>
+///                    [--snapshot-output <PATH>]
 /// ```
 ///
-/// Every flag is required except `--snapshot-output`. The function
-/// returns a typed error so the caller can render it through the
-/// existing `Box<dyn Error>` discipline.
+/// `--snapshot-output` is retained as a parsed compatibility flag, but is
+/// rejected explicitly: the EnginePort replay-review surface self-verifies
+/// snapshots and does not publish a snapshot payload.
 pub fn run_replay_command(
     args: &[String],
     registry: &RuntimeAdapterRegistry<'_>,
@@ -37,33 +36,26 @@ pub fn run_replay_command(
     let scene_id: u16 = required_flag(args, "--scene")?
         .parse()
         .map_err(|err| format!("utsushi.cli.replay.scene_parse: --scene must be a u16: {err}"))?;
+    let gameexe_path = PathBuf::from(required_flag(args, "--gameexe")?);
+    let g00_dir = PathBuf::from(required_flag(args, "--g00-dir")?);
     let output_path = PathBuf::from(required_flag(args, "--output")?);
-    let snapshot_output_path = optional_flag(args, "--snapshot-output").map(PathBuf::from);
-
-    if let Some(snapshot_path) = snapshot_output_path.as_deref() {
-        let result = run_registry_replay(
-            registry,
-            engine,
-            &seen_path,
-            replay_snapshot_parameters(scene_id),
-        )?;
-        let replay_json = replay_log_json(&result, "utsushi.cli.replay")?;
-        fs::write(&output_path, replay_json)
-            .map_err(|err| format!("utsushi.cli.replay.write: {err}"))?;
-        let snapshot_json = snapshot_json(&result, "utsushi.cli.replay")?.ok_or(
-            "utsushi.cli.replay.registry_result: replay adapter did not return snapshotJson",
-        )?;
-        fs::write(snapshot_path, snapshot_json)
-            .map_err(|err| format!("utsushi.cli.replay.snapshot_write: {err}"))?;
-        Ok(())
-    } else {
-        let result =
-            run_registry_replay(registry, engine, &seen_path, replay_parameters(scene_id))?;
-        let replay_json = replay_log_json(&result, "utsushi.cli.replay")?;
-        fs::write(&output_path, replay_json)
-            .map_err(|err| format!("utsushi.cli.replay.write: {err}"))?;
-        Ok(())
+    if args.iter().any(|arg| arg == "--snapshot-output") {
+        return Err(
+            "utsushi.cli.replay.snapshot_output_unsupported: EnginePort replay-review does not publish snapshot JSON; omit --snapshot-output"
+                .into(),
+        );
     }
+
+    let result = run_registry_replay(
+        registry,
+        engine,
+        &seen_path,
+        replay_parameters(scene_id, &gameexe_path, &g00_dir),
+    )?;
+    let replay_json = replay_log_json(&result, "utsushi.cli.replay")?;
+    fs::write(&output_path, replay_json)
+        .map_err(|err| format!("utsushi.cli.replay.write: {err}"))?;
+    Ok(())
 }
 
 fn run_registry_replay(
@@ -156,6 +148,10 @@ mod tests {
             "/tmp/nothing".to_string(),
             "--scene".to_string(),
             "1".to_string(),
+            "--gameexe".to_string(),
+            "/tmp/missing-gameexe.ini".to_string(),
+            "--g00-dir".to_string(),
+            "/tmp/missing-g00".to_string(),
             "--output".to_string(),
             "/tmp/out.json".to_string(),
         ];
@@ -197,6 +193,30 @@ mod tests {
     }
 
     #[test]
+    fn run_replay_command_rejects_unpublished_snapshot_output_explicitly() {
+        let args: Vec<String> = vec![
+            "--engine".into(),
+            "reallive".into(),
+            "--seen".into(),
+            "/tmp/nothing".into(),
+            "--scene".into(),
+            "1".into(),
+            "--gameexe".into(),
+            "/tmp/missing-gameexe.ini".into(),
+            "--g00-dir".into(),
+            "/tmp/missing-g00".into(),
+            "--output".into(),
+            "/tmp/out.json".into(),
+            "--snapshot-output".into(),
+            "/tmp/snapshot.json".into(),
+        ];
+        let registry = replay_registry();
+        let err = run_replay_command(&args, &registry)
+            .expect_err("snapshot JSON is not published by replay-review");
+        assert!(err.to_string().contains("snapshot_output_unsupported"));
+    }
+
+    #[test]
     fn canonical_invocation_reaches_registry_dispatched_reallive_driver() {
         let missing_seen_path = std::env::temp_dir().join(format!(
             "utsushi-cli-replay-missing-seen-{}",
@@ -209,6 +229,10 @@ mod tests {
             missing_seen_path.display().to_string(),
             "--scene".into(),
             "1".into(),
+            "--gameexe".into(),
+            "/tmp/missing-gameexe.ini".into(),
+            "--g00-dir".into(),
+            "/tmp/missing-g00".into(),
             "--output".into(),
             missing_seen_path
                 .with_extension("json")

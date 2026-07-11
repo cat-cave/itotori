@@ -6,9 +6,8 @@
 //!
 //! # Why this exists
 //!
-//! [`utsushi_reallive::replay_scene`] drives the pure-`utsushi-reallive`
-//! decode path, which owns the first-level AVG32 inflate but NOT the
-//! second-level `use_xor_2` segment cipher over `[256, 513)`. That cipher's
+//! The pure `utsushi-reallive` decode path owns the first-level AVG32 inflate
+//! but NOT the second-level `use_xor_2` segment cipher over `[256, 513)`. That cipher's
 //! per-game key recovery is a dev-only `kaifuu-reallive` concern (no key
 //! material is committed). For a `use_xor_2` title the pure path therefore
 //! replays the still-ciphered segment as mojibake, and any
@@ -34,8 +33,8 @@
 //! only inside the module-private, zeroize-on-drop `Xor2Key`); this seam
 //! sees only the decrypted bytecode and a sanitized `Xor2Report`.
 //!
-//! Non-`use_xor_2` titles fall straight through to
-//! [`utsushi_reallive::replay_scene`] and behave exactly as before.
+//! Non-`use_xor_2` titles use the same staged-store construction with no
+//! decryption changes.
 
 use std::error::Error;
 use std::fmt;
@@ -44,8 +43,7 @@ use std::path::Path;
 
 use kaifuu_reallive::{Xor2DecScene, Xor2Report, recover_and_decrypt_archive};
 use utsushi_reallive::{
-    RealSceneIndex, ReplayEngine, ReplayLog, ReplayOpts, build_scene_store_from_decompressed,
-    decompress_all_scenes, replay_scene,
+    RealSceneIndex, ReplayEngine, build_scene_store_from_decompressed, decompress_all_scenes,
 };
 
 /// Typed error surfaced when an archive is `use_xor_2`-eligible
@@ -84,83 +82,8 @@ impl fmt::Display for Xor2ValidationFailed {
 
 impl Error for Xor2ValidationFailed {}
 
-/// Replay one scene of a Seen.txt envelope, staging the dev-only
-/// `use_xor_2` segment-cipher recovery for xor2 titles so the emitted
-/// [`ReplayLog`] carries REAL decoded text.
-///
-/// For a non-`use_xor_2` archive this is byte-for-byte the pre-staging
-/// behaviour ([`utsushi_reallive::replay_scene`]).
-///
-/// # Errors
-///
-/// Returns a typed error when the envelope cannot be read, the archive
-/// cannot be inflated / indexed / staged, or the requested scene did not
-/// survive decompress + decode into the staged store.
-pub fn replay_scene_staged(
-    seen_path: &Path,
-    scene_id: u16,
-    opts: &ReplayOpts,
-) -> Result<ReplayLog, Box<dyn Error>> {
-    let bytes = fs::read(seen_path).map_err(|err| {
-        format!(
-            "utsushi.cli.staged_replay.read: {}: {err}",
-            seen_path.display()
-        )
-    })?;
-
-    // First-level AVG32 inflate of every populated scene.
-    let mut decompressed = decompress_all_scenes(&bytes)
-        .map_err(|err| format!("utsushi.cli.staged_replay.decompress: {err}"))?;
-
-    // Stage the dev-only `kaifuu-reallive` `use_xor_2` recovery on the
-    // decompressed bytecode. `scenes_eligible == 0` means a non-xor2 title
-    // (nothing to recover); the recovered key never crosses this boundary.
-    let mut xor2: Vec<Xor2DecScene> = decompressed
-        .iter()
-        .map(|scene| Xor2DecScene {
-            compiler_version: scene.compiler_version,
-            bytecode: scene.bytecode.clone(),
-        })
-        .collect();
-    let report = recover_and_decrypt_archive(&mut xor2);
-
-    if report.scenes_eligible == 0 {
-        // Non-`use_xor_2` title: behave exactly as the pre-staging path.
-        return replay_scene(seen_path, scene_id, opts)
-            .map_err(|err| format!("utsushi.cli.staged_replay.driver: {err}").into());
-    }
-
-    // xor2-eligible but key recovery FAILED (`validated == false`): the
-    // `[256, 513)` segments are still ciphered; folding them back and
-    // replaying would return an `Ok` ReplayLog of mojibake. Fail typed
-    // instead — the seam must not present ciphertext as decoded text.
-    xor2_staging_guard(&report)?;
-
-    // xor2 title: fold the decrypted segments back and rebuild a store from
-    // the plaintext bytecode, then replay the requested scene against it.
-    for (scene, dec) in decompressed.iter_mut().zip(xor2) {
-        scene.bytecode = dec.bytecode;
-    }
-    let index_len = RealSceneIndex::parse(&bytes)
-        .map_err(|err| format!("utsushi.cli.staged_replay.index: {err}"))?
-        .entries
-        .len();
-    let (store, shift_jis, _stats) = build_scene_store_from_decompressed(&decompressed, index_len)
-        .map_err(|err| format!("utsushi.cli.staged_replay.store: {err}"))?;
-    let engine = ReplayEngine::from_store(store, shift_jis);
-    if !engine.scene_ids().contains(&scene_id) {
-        return Err(format!(
-            "utsushi.cli.staged_replay.scene_not_found: scene {scene_id} did not decode/stage \
-             into the store (xor2 eligible={} decrypted={} validated={})",
-            report.scenes_eligible, report.scenes_decrypted, report.validated,
-        )
-        .into());
-    }
-    Ok(engine.replay_from(scene_id, opts))
-}
-
 /// Build a [`ReplayEngine`] from a Seen.txt envelope with the SAME
-/// `use_xor_2` staging as [`replay_scene_staged`], but hand back the
+/// `use_xor_2` staging used by the RealLive port, but hand back the
 /// engine itself instead of a single-scene [`ReplayLog`]. This is the
 /// entry the render surface uses so it can drive
 /// [`ReplayEngine::observe_for_port`] (the real play-order message
@@ -171,8 +94,7 @@ pub fn replay_scene_staged(
 /// Non-`use_xor_2` titles (`scenes_eligible == 0`) build the store
 /// straight from the first-level-inflated bytecode; `use_xor_2` titles
 /// fold the recovered plaintext segments back first (and fail typed via
-/// [`Xor2ValidationFailed`] when eligible-but-unvalidated, exactly like
-/// [`replay_scene_staged`]).
+/// [`Xor2ValidationFailed`] when eligible-but-unvalidated.
 pub fn staged_engine(seen_path: &Path) -> Result<ReplayEngine, Box<dyn Error>> {
     let bytes = fs::read(seen_path).map_err(|err| {
         format!(

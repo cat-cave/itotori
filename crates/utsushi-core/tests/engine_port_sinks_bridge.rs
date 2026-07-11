@@ -143,6 +143,8 @@ impl EnginePort for SmokePort {
                 text_surface: None,
                 bridge_ref: None,
                 source_asset: None,
+                byte_offset_in_scene: None,
+                body_shift_jis: None,
             })
             .expect("text emit");
         let artifact_id = format!("smoke-shot-{tick:02}");

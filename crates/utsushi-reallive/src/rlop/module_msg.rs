@@ -288,6 +288,8 @@ struct MsgRuntimeInner {
     /// logical line into multiple emissions before the user-visible
     /// break (`msg.line_break` / `msg.paragraph_break` / `msg.page`).
     pending_body: Vec<u8>,
+    /// Byte offset of the first textout contributing to `pending_body`.
+    pending_byte_offset: Option<u32>,
     /// Fail-soft warnings the runtime records when an opcode's arg
     /// shape does not match the declared contract. Drained via
     /// [`MsgRuntime::take_warnings`].
@@ -463,7 +465,7 @@ impl MsgRuntime {
     /// single [`TextLine`]. Returns whether a line was actually
     /// emitted — an empty pending body produces no emission.
     fn flush_pending_line(&self, opcode: MsgOpcode) -> bool {
-        let (body_bytes, mut speaker, text_window, resolver) = {
+        let (body_bytes, byte_offset_in_scene, mut speaker, text_window, resolver) = {
             let mut guard = self
                 .inner
                 .lock()
@@ -471,6 +473,7 @@ impl MsgRuntime {
             let body = std::mem::take(&mut guard.pending_body);
             (
                 body,
+                guard.pending_byte_offset.take(),
                 guard.pending_speaker.clone(),
                 guard.current_text_window,
                 guard.speaker_resolver.clone(),
@@ -527,6 +530,8 @@ impl MsgRuntime {
             text_surface: Some(text_window_label(text_window)),
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene,
+            body_shift_jis: Some(body_bytes),
         };
         self.emit(opcode, line);
         true
@@ -569,6 +574,20 @@ impl MsgRuntime {
         self.append_body(raw_bytes);
     }
 
+    /// Handle a top-level textout while retaining the decoded-scene byte
+    /// offset that began the logical line. This is the evidence-preserving
+    /// entry used by the port observation path.
+    pub fn handle_textout_at(&self, byte_offset_in_scene: u32, raw_bytes: &[u8]) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if guard.pending_body.is_empty() {
+            guard.pending_byte_offset = Some(byte_offset_in_scene);
+        }
+        guard.pending_body.extend_from_slice(raw_bytes);
+    }
+
     /// Open the speaker bracket. The text accumulated until
     /// [`OPCODE_NAME_CLOSE`] becomes the speaker label of the next
     /// emission.
@@ -580,6 +599,7 @@ impl MsgRuntime {
         // Stash the current pending body as the speaker label and
         // reset the body accumulator.
         let raw = std::mem::take(&mut guard.pending_body);
+        guard.pending_byte_offset = None;
         let label =
             decode_shift_jis(&raw).unwrap_or_else(|| String::from_utf8_lossy(&raw).into_owned());
         guard.pending_speaker = Some(label);
@@ -681,6 +701,12 @@ fn longest_clean_shift_jis_prefix(bytes: &[u8]) -> usize {
 /// emits a [`TextLine`].
 pub fn dispatch_textout(runtime: &MsgRuntime, raw_bytes: &[u8]) {
     runtime.handle_textout(raw_bytes);
+}
+
+/// Dispatch a top-level textout while retaining its decoded-scene byte
+/// offset for the substrate evidence line.
+pub fn dispatch_textout_at(runtime: &MsgRuntime, byte_offset_in_scene: u32, raw_bytes: &[u8]) {
+    runtime.handle_textout_at(byte_offset_in_scene, raw_bytes);
 }
 
 // --- Per-opcode RLOperation implementations --------------------------

@@ -1,11 +1,13 @@
-//! Registry-routed replay capability for `utsushi-cli replay*`.
+//! Registry-routed replay capability for the CLI replay commands.
 //!
-//! The CLI owns this adapter because RealLive replay validation currently needs
-//! the CLI-local staging seam for xor2 archives. The command modules dispatch
-//! through `RuntimeAdapterRegistry`; this module is the only place that knows
-//! how the RealLive replay driver is invoked.
+//! The registry name remains the stable CLI-facing reallive adapter name,
+//! but the implementation now constructs a request-bound
+//! EnginePortAdapter<UtsushiReallivePort>. The generic adapter owns the
+//! Runner lifecycle; this module only translates the port's retained review
+//! log into the legacy CLI result envelope.
 
 use std::error::Error;
+use std::path::Path;
 
 use serde_json::{Value, json};
 use utsushi_core::{
@@ -13,17 +15,16 @@ use utsushi_core::{
     RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
-use utsushi_reallive::{
-    ReplayEvent, ReplayLog, ReplayOpts, replay_scene, replay_until_first_pause,
-};
+use utsushi_reallive::{ReplayEvent, ReplayLog};
 
-use crate::staged_replay::replay_scene_staged;
+use crate::reallive_port::build_adapter;
 
 pub const REALLIVE_REPLAY_ADAPTER_NAME: &str = "reallive";
 const REPLAY_REVIEW_RESULT_SCHEMA_VERSION: &str = "utsushi.cli.replay-review-result/0.1.0";
 const PARAM_SCENE: &str = "scene";
 const PARAM_DRIVER: &str = "driver";
-const PARAM_SNAPSHOT: &str = "snapshot";
+const PARAM_GAMEEXE: &str = "gameexe";
+const PARAM_G00_DIR: &str = "g00Dir";
 const DRIVER_DIRECT: &str = "direct";
 const DRIVER_STAGED: &str = "staged";
 
@@ -50,17 +51,17 @@ impl RuntimeAdapter for RealLiveReplayAdapter {
                     RuntimeFeatureSupport::supported(
                         RuntimePlaybackFeature::TextTrace,
                         EvidenceTier::E3,
-                        "RealLive replay emits deterministic decoded TextLine evidence.",
+                        "RealLive replay emits deterministic decoded TextLine evidence through the engine port.",
                     ),
                     RuntimeFeatureSupport::supported(
                         RuntimePlaybackFeature::Recording,
                         EvidenceTier::E3,
-                        "RealLive replay is available through the CLI runtime registry.",
+                        "RealLive replay-review is driven by EnginePortAdapter and Runner.",
                     ),
                     RuntimeFeatureSupport::supported(
                         RuntimePlaybackFeature::Snapshot,
                         EvidenceTier::E3,
-                        "RealLive replay can stop at the first pause and emit a snapshot.",
+                        "RealLive replay self-verifies snapshot identity inside the EnginePort lifecycle; the CLI does not publish snapshot JSON.",
                     ),
                 ],
                 vec![
@@ -73,6 +74,8 @@ impl RuntimeAdapter for RealLiveReplayAdapter {
             diagnostics: Vec::new(),
             limitations: vec![
                 "RealLive replay is limited to the implemented VM subset.".to_string(),
+                "Snapshot JSON output is not exposed by the EnginePort replay-review surface."
+                    .to_string(),
             ],
         }
     }
@@ -91,89 +94,61 @@ impl RuntimeAdapter for RealLiveReplayAdapter {
             .get(PARAM_DRIVER)
             .and_then(Value::as_str)
             .unwrap_or(DRIVER_DIRECT);
-        let snapshot = params
-            .get(PARAM_SNAPSHOT)
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        if !matches!(driver, DRIVER_DIRECT | DRIVER_STAGED) {
+            return Err(format!(
+                "utsushi.cli.replay.registry.invalid_parameters: unsupported replay driver {driver}"
+            )
+            .into());
+        }
 
-        let opts = ReplayOpts::default();
-        let (log, snapshot_json) = if snapshot {
-            if driver != DRIVER_DIRECT {
-                return Err(format!(
-                    "utsushi.cli.replay.registry.invalid_parameters: snapshot replay requires \
-                     driver={DRIVER_DIRECT}, got {driver}"
-                )
-                .into());
-            }
-            let (log, snapshot) = replay_until_first_pause(request.input_root, scene_id)
-                .map_err(|err| format!("utsushi.cli.replay.driver: {err}"))?;
-            let snapshot_value = snapshot
-                .to_json_value()
-                .map_err(|err| format!("utsushi.cli.replay.snapshot_serialise: {err}"))?;
-            let snapshot_json = serde_json::to_string_pretty(&snapshot_value)
-                .map_err(|err| format!("utsushi.cli.replay.snapshot_json: {err}"))?;
-            (log, Some(snapshot_json))
-        } else {
-            let log = match driver {
-                DRIVER_DIRECT => replay_scene(request.input_root, scene_id, &opts)
-                    .map_err(|err| format!("utsushi.cli.replay.driver: {err}"))?,
-                DRIVER_STAGED => replay_scene_staged(request.input_root, scene_id, &opts)
-                    .map_err(|err| format!("utsushi.cli.replay_validate.driver: {err}"))?,
-                _ => {
-                    return Err(format!(
-                        "utsushi.cli.replay.registry.invalid_parameters: unsupported replay \
-                         driver {driver}"
-                    )
-                    .into());
-                }
-            };
-            (log, None)
-        };
+        let gameexe_path = required_path_param(params, PARAM_GAMEEXE)?;
+        let g00_dir = required_path_param(params, PARAM_G00_DIR)?;
+        let adapter = build_adapter(request.input_root, scene_id, &gameexe_path, &g00_dir)
+            .map_err(|error| {
+                let prefix = if driver == DRIVER_STAGED {
+                    "utsushi.cli.replay_validate.driver"
+                } else {
+                    "utsushi.cli.replay.driver"
+                };
+                format!("{prefix}: {error}")
+            })?;
 
-        replay_result_value(scene_id, driver, &log, snapshot_json)
+        // The review operation is fully driven by the generic adapter. The
+        // returned runtime evidence report is intentionally not substituted
+        // for the legacy replay-log envelope; the latter is read from the
+        // same concrete port after Runner has completed the lifecycle.
+        adapter.replay_review(request)?;
+        let log = adapter
+            .with_port(|port| port.replay_log().cloned())?
+            .ok_or("utsushi.cli.replay.registry_result: port did not produce replay log")?;
+        replay_result_value(scene_id, driver, &log)
     }
 }
 
-pub fn replay_parameters(scene_id: u16) -> Value {
-    json!({
-        PARAM_SCENE: scene_id,
-        PARAM_DRIVER: DRIVER_DIRECT,
-        PARAM_SNAPSHOT: false,
-    })
+pub fn replay_parameters(scene_id: u16, gameexe: &Path, g00_dir: &Path) -> Value {
+    replay_parameters_with_driver(scene_id, DRIVER_DIRECT, gameexe, g00_dir)
 }
 
-pub fn replay_snapshot_parameters(scene_id: u16) -> Value {
-    json!({
-        PARAM_SCENE: scene_id,
-        PARAM_DRIVER: DRIVER_DIRECT,
-        PARAM_SNAPSHOT: true,
-    })
+pub fn replay_validate_parameters(scene_id: u16, gameexe: &Path, g00_dir: &Path) -> Value {
+    replay_parameters_with_driver(scene_id, DRIVER_STAGED, gameexe, g00_dir)
 }
 
-pub fn replay_validate_parameters(scene_id: u16) -> Value {
+fn replay_parameters_with_driver(
+    scene_id: u16,
+    driver: &str,
+    gameexe: &Path,
+    g00_dir: &Path,
+) -> Value {
     json!({
         PARAM_SCENE: scene_id,
-        PARAM_DRIVER: DRIVER_STAGED,
-        PARAM_SNAPSHOT: false,
+        PARAM_DRIVER: driver,
+        PARAM_GAMEEXE: gameexe.display().to_string(),
+        PARAM_G00_DIR: g00_dir.display().to_string(),
     })
 }
 
 pub fn replay_log_json(result: &Value, diagnostic_prefix: &str) -> Result<String, Box<dyn Error>> {
     required_string(result, "replayLogJson", diagnostic_prefix)
-}
-
-pub fn snapshot_json(
-    result: &Value,
-    diagnostic_prefix: &str,
-) -> Result<Option<String>, Box<dyn Error>> {
-    match result.get("snapshotJson") {
-        Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(format!(
-            "{diagnostic_prefix}.registry_result: snapshotJson must be a string"
-        )
-        .into()),
-        None => Ok(None),
-    }
 }
 
 pub fn text_line_count(result: &Value, diagnostic_prefix: &str) -> Result<u64, Box<dyn Error>> {
@@ -213,12 +188,7 @@ pub fn emit_textlines_from_result(
     Ok(())
 }
 
-fn replay_result_value(
-    scene_id: u16,
-    driver: &str,
-    log: &ReplayLog,
-    snapshot_json: Option<String>,
-) -> UtsushiResult<Value> {
+fn replay_result_value(scene_id: u16, driver: &str, log: &ReplayLog) -> UtsushiResult<Value> {
     let serialise_prefix = if driver == DRIVER_STAGED {
         "utsushi.cli.replay_validate.serialise"
     } else {
@@ -227,7 +197,7 @@ fn replay_result_value(
     let replay_log_json = log
         .to_deterministic_json()
         .map_err(|err| format!("{serialise_prefix}: {err}"))?;
-    let mut value = json!({
+    Ok(json!({
         "schemaVersion": REPLAY_REVIEW_RESULT_SCHEMA_VERSION,
         "adapterName": REALLIVE_REPLAY_ADAPTER_NAME,
         "engine": REALLIVE_REPLAY_ADAPTER_NAME,
@@ -236,11 +206,7 @@ fn replay_result_value(
         "replayLogJson": replay_log_json,
         "textLineCount": log.text_line_count(),
         "textLines": text_lines(log),
-    });
-    if let Some(snapshot_json) = snapshot_json {
-        value["snapshotJson"] = Value::String(snapshot_json);
-    }
-    Ok(value)
+    }))
 }
 
 fn text_lines(log: &ReplayLog) -> Value {
@@ -270,6 +236,14 @@ fn required_u16_param(params: &Value, key: &str) -> UtsushiResult<u16> {
     u16::try_from(value).map_err(|_| {
         format!("utsushi.cli.replay.registry.invalid_parameter: {key} must be a u16").into()
     })
+}
+
+fn required_path_param(params: &Value, key: &str) -> UtsushiResult<std::path::PathBuf> {
+    params
+        .get(key)
+        .and_then(Value::as_str)
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| format!("utsushi.cli.replay.registry.missing_parameter: {key}").into())
 }
 
 fn required_string(
@@ -304,14 +278,18 @@ mod tests {
     }
 
     #[test]
-    fn missing_seen_reaches_registry_dispatched_reallive_driver() {
+    fn missing_seen_reaches_registry_dispatched_reallive_port() {
         let adapter = RealLiveReplayAdapter::new();
-        let request = RuntimeRequest::new(std::path::Path::new("/tmp/utsushi-missing-seen.txt"))
-            .with_parameters(replay_parameters(1));
+        let request = RuntimeRequest::new(Path::new("/tmp/utsushi-missing-seen.txt"))
+            .with_parameters(replay_parameters(
+                1,
+                Path::new("/tmp/utsushi-missing-gameexe.ini"),
+                Path::new("/tmp/utsushi-missing-g00"),
+            ));
 
         let err = adapter
             .replay_review(&request)
-            .expect_err("missing Seen.txt should fail in RealLive driver");
+            .expect_err("missing Seen.txt should fail in the RealLive port");
         assert!(err.to_string().contains("utsushi.cli.replay.driver"));
     }
 }
