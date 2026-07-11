@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "itotori.localize-fullproject.config.v0",
+  "notes": "Whole-project localize config consumed by `itotori localize-game --config` (and the lower-level `itotori localize` whole-project driver). This is the shape `parseLocalizeFullProjectConfig` validates (apps/itotori/src/orchestrator/localize-fullproject-command.ts). It is DISTINCT from presets/localize-project.alpha-target-data.json, which is the higher-level target-catalogue shape (itotori.localize-project.alpha-target-data.v0) and is NOT accepted here. This example targets the Sweetie HD RealLive vertical; swap the identity fields + engineProfile to localize a different project with the same driver. When driven via `localize-game`, the `bridgePath` and `structureJsonPath` below are OVERRIDDEN by that run's fresh stage-1 (extract) and stage-2 (structure) artifacts under --run-dir, so the placeholders here are provenance only; set them to real paths only when invoking the whole-project `localize` driver directly.",
+  "projectId": "sweetie-hd-alpha-1",
+  "localeBranchId": "sweetie-hd-en-alpha",
+  "sourceRevisionId": "alpha-1",
+  "engineProfile": "reallive",
+  "translationScope": "dialogue-only",
+  "targetLocale": "en-US",
+  "pairPolicyPath": "presets/localize-project.pair-policy.json",
+  "bridgePath": "run-dir/bridge-bundle.json",
+  "structureJsonPath": "run-dir/structure.json",
+  "budgetCapUsd": 5,
+  "maxUnits": 40
+}
