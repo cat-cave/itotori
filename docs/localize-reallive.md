@@ -12,7 +12,7 @@ byte-correct length-changing patchback, live-LLM drafting, and an E2 replay/rend
 runtime all work on real Sweetie HD bytes.
 
 > **You are not expected to produce a perfect localization on the first run.**
-> Engine/coverage gaps are your *workload*. The pipeline is built to fail LOUD
+> Engine/coverage gaps are your _workload_. The pipeline is built to fail LOUD
 > with triage signal (structured per-stage diagnostics, unknown-opcode
 > histograms, `refused:` errors) rather than lie green. When something breaks,
 > file a GitHub issue and fix it generically — see
@@ -101,27 +101,27 @@ pipeline diagnostic.
 
 Required:
 
-| Flag | Meaning |
-| --- | --- |
-| `--config <PATH>` | Base localize-fullproject config (v0) JSON. Carries project/locale identity, `translationScope`, and `pairPolicyPath`. Its `bridgePath` / `structureJsonPath` are OVERRIDDEN by this run's fresh stage-1/stage-2 artifacts. |
-| `--source <PATH>` | Read-only source game root (contains `REALLIVEDATA/Seen.txt`). Never mutated. |
-| `--target <PATH>` | Writable output root the byte-correct patched game lands in. Must be OUTSIDE `--source`. |
-| `--run-dir <PATH>` | Per-run artifact directory (bridge bundle, structure, drafts, QA findings, patch report, replay log, render evidence). |
-| `--game-id <ID>` `--game-version <VER>` | RealLive identity for the whole-Seen extract. |
-| `--source-profile-id <ID>` `--source-locale <LOC>` | Source profile + locale (e.g. `ja-JP`). |
-| `--scene <N>` | Scene the validate stage replays + renders. |
+| Flag                                               | Meaning                                                                                                                                                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--config <PATH>`                                  | Base localize-fullproject config (v0) JSON. Carries project/locale identity, `translationScope`, and `pairPolicyPath`. Its `bridgePath` / `structureJsonPath` are OVERRIDDEN by this run's fresh stage-1/stage-2 artifacts. |
+| `--source <PATH>`                                  | Read-only source game root (contains `REALLIVEDATA/Seen.txt`). Never mutated.                                                                                                                                               |
+| `--target <PATH>`                                  | Writable output root the byte-correct patched game lands in. Must be OUTSIDE `--source`.                                                                                                                                    |
+| `--run-dir <PATH>`                                 | Per-run artifact directory (bridge bundle, structure, drafts, QA findings, patch report, replay log, render evidence).                                                                                                      |
+| `--game-id <ID>` `--game-version <VER>`            | RealLive identity for the whole-Seen extract.                                                                                                                                                                               |
+| `--source-profile-id <ID>` `--source-locale <LOC>` | Source profile + locale (e.g. `ja-JP`).                                                                                                                                                                                     |
+| `--scene <N>`                                      | Scene the validate stage replays + renders.                                                                                                                                                                                 |
 
 Optional:
 
-| Flag | Meaning |
-| --- | --- |
-| `--vault-canonical-id <ID>` | Source by-id through the read-only vault instead of `--source`. |
-| `--game-root <PATH>` | Raw extract source root (defaults to `--source`). |
-| `--gameexe <PATH>` / `--seen <PATH>` | Structure inputs (default `<source>/REALLIVEDATA/Gameexe.ini` + `Seen.txt`). |
-| `--entry-scene <N>` | Structure dispatch-order entry-scene override. **Gotcha:** the narrative-structure export keys off the entry scene; if the structure comes back thin, set this to the game's real entry scene (it is not always `1`). |
-| `--expect-text <TEXT>` | Localized text the render frame must contain (render assertion). |
-| `--redaction on\|off` | Render-frame redaction posture (default `on`; committed proof stays redacted, `off` is for authorized local review). |
-| `--cost-cap-usd <decimal>` | Per-process OpenRouter budget cap. |
+| Flag                                 | Meaning                                                                                                                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--vault-canonical-id <ID>`          | Source by-id through the read-only vault instead of `--source`.                                                                                                                                                       |
+| `--game-root <PATH>`                 | Raw extract source root (defaults to `--source`).                                                                                                                                                                     |
+| `--gameexe <PATH>` / `--seen <PATH>` | Structure inputs (default `<source>/REALLIVEDATA/Gameexe.ini` + `Seen.txt`).                                                                                                                                          |
+| `--entry-scene <N>`                  | Structure dispatch-order entry-scene override. **Gotcha:** the narrative-structure export keys off the entry scene; if the structure comes back thin, set this to the game's real entry scene (it is not always `1`). |
+| `--expect-text <TEXT>`               | Localized text the render frame must contain (render assertion).                                                                                                                                                      |
+| `--redaction on\|off`                | Render-frame redaction posture (default `on`; committed proof stays redacted, `off` is for authorized local review).                                                                                                  |
+| `--cost-cap-usd <decimal>`           | Per-process OpenRouter budget cap.                                                                                                                                                                                    |
 
 ### 2.2 Where the Sweetie HD parameters come from (don't guess)
 
@@ -167,18 +167,18 @@ export ITOTORI_CLI_REAL_LGAME_SCENE=1            # optional, default "1"
 `itotori localize-game` runs all of these for you; the individual subcommands
 below let you run a single stage or reproduce a failure in isolation.
 
-| # | Stage | What happens on real bytes | Subcommand |
-| --- | --- | --- | --- |
-| 1 | **Extract + decrypt** | Unpacks the whole `Seen.txt`, reverses Sweetie HD `xor_2`, emits one v0.2 `BridgeBundle`. | `kaifuu-cli extract --engine reallive` (via `itotori extract`) |
-| 2 | **Decode / decompile** | Every populated scene decodes to typed `BytecodeElement`s — **0 unknown opcodes** on Sweetie HD + Kanon. Any unrecognised `(module_type, module_id, opcode)` is emitted as a histogram (your triage signal). | part of extract / `kaifuu-reallive` |
-| 3 | **Structure context** | Deterministic `utsushi.narrative-structure.v1` (scenes/routes/speakers/choices) the drafter consumes as per-unit context. | `utsushi-cli structure` (via `itotori structure-export`) |
-| 4 | **Live-LLM draft** | Every in-scope unit drafted against **live OpenRouter** with the pinned pair + structure-informed context. | `itotori localize` / `localize-project-stage` |
-| 5 | **Deterministic QA** | Protected-span integrity, Shift-JIS validity, length/overflow, bracket/markup balance — run on the REAL draft, fail-closed. | (in the localize driver) |
-| 6 | **Agentic self-correct** | Bounded repair loop: call → deterministic checks → 4 live QA judges → route → bounded re-QA. Cost-bounded, no unbounded recursion. | (in the localize driver) |
-| 7 | **Human review queue** | Decisions needing judgment become real Postgres `reviewerQueueItems` (`needs_context` vs `ready_for_human`), browsable in the Studio dashboard. | Studio dashboard / reviewer API |
-| 8 | **Patchback** | Length-CHANGING byte-correct patch: rewrites the 10,000-slot offset table and recalcs every goto-family jump pointer. A jump landing inside an edited body fails loud (`kaifuu.reallive.patchback_goto_target_unresolvable`). | `kaifuu-cli patch --engine reallive` (via `itotori patch`) |
-| 9 | **Replay-validate** | Replays the patched `Seen.txt` and emits the engine's ACTUALLY-decoded `TextLine` bodies (no planted sentinel). | `utsushi-cli replay-validate --engine reallive` (via `itotori validate`) |
-| 10 | **Render-validate** | Rasterizes the message stream to a frame (real VM + `render_pipeline.rs` + swash) at evidence tier **E2**; optional `--expect-text-contains` assertion. | `utsushi-cli render-validate --engine reallive` (via `itotori validate`) |
+| #   | Stage                    | What happens on real bytes                                                                                                                                                                                                    | Subcommand                                                               |
+| --- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1   | **Extract + decrypt**    | Unpacks the whole `Seen.txt`, reverses Sweetie HD `xor_2`, emits one v0.2 `BridgeBundle`.                                                                                                                                     | `kaifuu-cli extract --engine reallive` (via `itotori extract`)           |
+| 2   | **Decode / decompile**   | Every populated scene decodes to typed `BytecodeElement`s — **0 unknown opcodes** on Sweetie HD + Kanon. Any unrecognised `(module_type, module_id, opcode)` is emitted as a histogram (your triage signal).                  | part of extract / `kaifuu-reallive`                                      |
+| 3   | **Structure context**    | Deterministic `utsushi.narrative-structure.v1` (scenes/routes/speakers/choices) the drafter consumes as per-unit context.                                                                                                     | `utsushi-cli structure` (via `itotori structure-export`)                 |
+| 4   | **Live-LLM draft**       | Every in-scope unit drafted against **live OpenRouter** with the pinned pair + structure-informed context.                                                                                                                    | `itotori localize` / `localize-project-stage`                            |
+| 5   | **Deterministic QA**     | Protected-span integrity, Shift-JIS validity, length/overflow, bracket/markup balance — run on the REAL draft, fail-closed.                                                                                                   | (in the localize driver)                                                 |
+| 6   | **Agentic self-correct** | Bounded repair loop: call → deterministic checks → 4 live QA judges → route → bounded re-QA. Cost-bounded, no unbounded recursion.                                                                                            | (in the localize driver)                                                 |
+| 7   | **Human review queue**   | Decisions needing judgment become real Postgres `reviewerQueueItems` (`needs_context` vs `ready_for_human`), browsable in the Studio dashboard.                                                                               | Studio dashboard / reviewer API                                          |
+| 8   | **Patchback**            | Length-CHANGING byte-correct patch: rewrites the 10,000-slot offset table and recalcs every goto-family jump pointer. A jump landing inside an edited body fails loud (`kaifuu.reallive.patchback_goto_target_unresolvable`). | `kaifuu-cli patch --engine reallive` (via `itotori patch`)               |
+| 9   | **Replay-validate**      | Replays the patched `Seen.txt` and emits the engine's ACTUALLY-decoded `TextLine` bodies (no planted sentinel).                                                                                                               | `utsushi-cli replay-validate --engine reallive` (via `itotori validate`) |
+| 10  | **Render-validate**      | Rasterizes the message stream to a frame (real VM + `render_pipeline.rs` + swash) at evidence tier **E2**; optional `--expect-text-contains` assertion.                                                                       | `utsushi-cli render-validate --engine reallive` (via `itotori validate`) |
 
 Verified subcommand surfaces:
 
