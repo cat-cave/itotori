@@ -63,9 +63,10 @@ const requiredNodeFields = [
 
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
-// qd 0.1.16 emits schema_version 2; earlier exports and test fixtures use 1.
-// Both share the same node/edge/registry/run shape this validator checks.
-const qdExportSchemaVersions = new Set([1, 2]);
+// qd 0.4.0 emits schema_version 3; qd 0.1.16 emits 2; earlier exports and test
+// fixtures use 1. All share the same top-level node/edge/registry/run shape this
+// validator checks (v3 = migration 010 merge-queue lifecycle, no structural change).
+const qdExportSchemaVersions = new Set([1, 2, 3]);
 const legacyLifecycleApplyCommands = new Set(["claim", "worktree", "ingest-audit", "complete"]);
 const qdExportLifecycleRefusal =
   "legacy spec-dag lifecycle --apply is disabled for qd export state; use qd claim/complete/gate/check/ci/merge and re-export roadmap/spec-dag.json";
