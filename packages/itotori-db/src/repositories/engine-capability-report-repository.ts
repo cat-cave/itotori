@@ -189,8 +189,12 @@ const privateLocalEvidenceLabels = new Set<string>(
 
 const evidenceLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
   {
+    // Boundary class covers string-start, whitespace, quotes, and the
+    // key=value / key:value delimiters (`=`, `:`) so a private root that
+    // follows a key (e.g. `source=/private/corpus`, `path:/private/x`) is
+    // caught the same as one at a string start or after whitespace.
     pattern:
-      /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes|private)\b|~\/|[a-z]:[\\/]|file:)/i,
+      /(^|[\s"'`=:])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes|private)\b|~\/|[a-z]:[\\/]|file:)/i,
     label: "local path",
   },
   {
