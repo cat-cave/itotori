@@ -223,11 +223,22 @@ Subagents never touch qd. Worktrees must not become a second ledger (see
 
 ### Canonical shell-out pattern
 
-1. Write the **full markdown brief** to a temp **prompt file**.
-2. Invoke the agent with a **tiny** "read the instructions at `<path>` and
-   follow them completely" (or `--prompt-file`).
-3. **Do not use stdin** for the prompt — redirect from `/dev/null` where the
-   CLI would otherwise hang on stdin.
+**The prompt ALWAYS goes in a file; the invocation only ever passes a reference
+to that file; stdin is never used.** This is a hard rule for every shell-out —
+implementation _and_ audit, no exceptions. Concretely:
+
+1. Write the **full markdown brief** to a temp **prompt file** (e.g.
+   `/tmp/<task>/brief.md`). All task detail — context, constraints, finish
+   criteria — lives in the file, never in the command line.
+2. Invoke the agent so it **reads the brief from that file**: either
+   `--prompt-file <path>` (grok), or a **tiny** argv message that says nothing
+   but "read the instructions at `<path>` and follow them completely" (opencode /
+   codex). The argv stays one line; the file carries everything.
+3. **Never pipe the prompt via stdin.** Redirect stdin from `/dev/null`
+   (`... < /dev/null`) on any CLI that would otherwise block on
+   "Reading additional input from stdin" (codex does exactly this and hangs
+   forever without it). Passing prompts on stdin also makes runs
+   non-reproducible and unloggable — the file is the durable record.
 4. Point `--cwd` / `cd` at the **single** worktree for that agent.
 5. Wrap every backgrounded shell-agent in a **soft watchdog** that wakes on
    done-or-stall. **Never** hard-kill a slow run. **Never** `& wait` on a hung
@@ -241,6 +252,33 @@ See §H for copy-pasteable invocations.
 - Scope every resume tightly (one node / one finding / one file set).
 - On shell-agent exit (reaped or done): check the worktree for uncommitted
   work / an opened PR and finalize git if the agent died mid-task.
+
+### Pre-commit hygiene (a recurring failure — instruct it AND assume it was skipped)
+
+New `.md`/`.ts` files that aren't formatted make the **Tier-0 `ts` lane fail**
+(`vp check` reports "Formatting issues found", exit 1). It's easy to misread as a
+flake; it is not. Handle it on **both** sides:
+
+1. **Every delegate brief must explicitly instruct the worker to run
+   `pnpm exec vp check --fix` (and re-run `vp check` to confirm 0 errors) before
+   it commits.** State it as a hard step, not a suggestion — don't assume the
+   agent knows the repo's format gate exists.
+2. **Assume they skipped it anyway** — verify post-hoc regardless. Subagents and
+   shell-agents skip this step often enough that the orchestrator should treat
+   every incoming delegate PR as unformatted until proven otherwise: as part of
+   the audit/enqueue step, run `vp check` against the worktree yourself and
+   `--fix` + commit + push if it's dirty. Do not wait for CI to tell you.
+
+```bash
+pnpm exec vp check --fix   # auto-formats; then `vp check` must report 0 errors
+```
+
+Warnings are non-blocking (the repo carries ~45 pre-existing ones); only **errors**
+fail the lane. If a delegate already pushed and the `ts` lane went red on a
+docs-only PR, the fix is almost always: `pnpm exec vp check --fix` in its
+worktree, commit, push (auto-merge re-runs CI). A fresh worktree needs
+`pnpm install --frozen-lockfile` first (fast via the shared pnpm store) before
+`vp` resolves.
 
 ---
 
