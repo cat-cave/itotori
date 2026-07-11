@@ -238,11 +238,18 @@
 
 - The reviewer decision record persists decoded `structuredContext` text when it was supplied, but remaining semantic refs render as generic ID-derived descriptions rather than resolved stored artifacts. Whether another review surface resolves them is **unknown / needs deeper trace**. `apps/itotori/src/orchestrator/reviewer-queue-bridge.ts:245-257` `apps/itotori/src/reviewer/structure-context-feed.ts:283-312`
 
+## Tracking issues (raised, not fixed)
+
+The two P0 gaps below have tracking issues filed for orchestrator triage:
+
+- P0 #1 → [itotori#86](https://github.com/cat-cave/itotori/issues/86) (reviewer-queue records omit `metadata.contextRefs`)
+- P0 #2 → [itotori#87](https://github.com/cat-cave/itotori/issues/87) (default reviewer evidence loader returns no draft/source/policy/QA)
+
 ## Summary ranking of the biggest gaps
 
-1. **Principles 2, 3, 5, and 6 — P0:** Loop-created reviewer-queue records omit the `metadata.contextRefs` required by every action path, so the intended human confirmation/review route is refused before a decision can be applied. `apps/itotori/src/orchestrator/reviewer-queue-bridge.ts:339-363` `apps/itotori/src/reviewer/batch-execute.ts:307-354`
+1. **Principles 2, 3, 5, and 6 — P0** ([itotori#86](https://github.com/cat-cave/itotori/issues/86))**:** Loop-created reviewer-queue records omit the `metadata.contextRefs` required by every action path, so the intended human confirmation/review route is refused before a decision can be applied. `apps/itotori/src/orchestrator/reviewer-queue-bridge.ts:339-363` `apps/itotori/src/reviewer/batch-execute.ts:307-354`
 
-2. **Principles 5 and 6 — P0:** The default production reviewer evidence loader returns no draft, source, policy, or QA findings, leaving the human-facing review screen without target text to judge or the QA evidence to understand it. `apps/itotori/src/services/database-services.ts:712-721` `apps/itotori/src/reviewer/api-service.ts:451-486`
+2. **Principles 5 and 6 — P0** ([itotori#87](https://github.com/cat-cave/itotori/issues/87))**:** The default production reviewer evidence loader returns no draft, source, policy, or QA findings, leaving the human-facing review screen without target text to judge or the QA evidence to understand it. `apps/itotori/src/services/database-services.ts:712-721` `apps/itotori/src/reviewer/api-service.ts:451-486`
 
 3. **Principles 1, 2, and 4 — P1:** QA/repair can erase a real primary draft, and the project exporter turns deferred/failed work into source-text no-ops rather than a complete best-effort translation patch. `apps/itotori/src/orchestrator/agentic-loop.ts:672-700` `apps/itotori/src/orchestrator/agentic-loop.ts:823-867` `apps/itotori/src/orchestrator/project-driven-executor.ts:1221-1264`
 
