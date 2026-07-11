@@ -1,0 +1,262 @@
+import {
+  localUserId,
+  type AuthorizationActor,
+  type ItotoriProjectRepositoryPort,
+  type LocaleBranchIdentity,
+} from "@itotori/db";
+import type { BridgeBundle } from "@itotori/localization-bridge-schema";
+import { describe, expect, it, vi } from "vitest";
+import { AccountZdrAssertionError } from "../src/providers/account-zdr.js";
+import { DEV_PAIR, type ProviderRunArtifact } from "../src/providers/index.js";
+import {
+  DraftProviderNotConfiguredError,
+  ItotoriProjectWorkflowService,
+  LocalizationPassDriverNotConfiguredError,
+  type ProjectState,
+} from "../src/services/project-workflow.js";
+import {
+  createDbBackedDraftModelProvider,
+  createDbBackedLocalizationPassDriver,
+  type DbBackedPassRunConfig,
+} from "../src/services/db-live-workflow-ports.js";
+
+const actor: AuthorizationActor = { userId: localUserId };
+
+// A no-op run-scoped recorder stand-in — the wiring proof only needs a recorder
+// present; it never reaches the recorder because the ZDR assertion fires first.
+function noopRecorder(): { recordProviderRun(a: ProviderRunArtifact): Promise<void> } {
+  return { recordProviderRun: async (_a: ProviderRunArtifact) => {} };
+}
+
+// itotori-db-draft-route-provider-not-wired +
+// p3-wire-or-explicitly-retire-localizationpassdriverport — these tests exercise
+// the REAL constructor wiring the DB-backed service factory now performs. They
+// do NOT mock the workflow method under test: `draftProject` runs for real and
+// reaches the injected live provider port, and `launchNextLocalizationPass` runs
+// for real and reaches the injected pass driver.
+describe("DB-backed workflow live ports — real constructor wiring", () => {
+  describe("draft provider (itotori-db-draft-route-provider-not-wired)", () => {
+    it("pins the request to the ZDR DEV_PAIR (concrete model, never the multi-model sentinel)", () => {
+      const provider = createDbBackedDraftModelProvider({
+        env: {},
+        artifactRecorder: noopRecorder(),
+      });
+      expect(provider.descriptor.family).toBe("openrouter");
+      expect(provider.descriptor.defaultModelId).toBe(DEV_PAIR.modelId);
+      expect(provider.descriptor.providerName).toBe(DEV_PAIR.providerId);
+    });
+
+    it("draftProject REACHES the real live provider port (ZDR-gated), never DraftProviderNotConfiguredError", async () => {
+      // The injected provider is the SAME one the DB service factory wires. With
+      // the account-wide ZDR posture unasserted (env: {}), the deferred real
+      // OpenRouterModelProvider constructed on first invoke throws
+      // AccountZdrAssertionError — proving draftProject reached the REAL live
+      // provider (fail-closed), NOT the old dead-button
+      // DraftProviderNotConfiguredError and NOT a fake, zero-cost draft.
+      const provider = createDbBackedDraftModelProvider({
+        env: {},
+        artifactRecorder: noopRecorder(),
+      });
+      const service = new ItotoriProjectWorkflowService(stubRepository(), actor, provider);
+
+      await expect(service.draftProject(projectFixture(), "fr-FR")).rejects.toBeInstanceOf(
+        AccountZdrAssertionError,
+      );
+      await expect(service.draftProject(projectFixture(), "fr-FR")).rejects.not.toBeInstanceOf(
+        DraftProviderNotConfiguredError,
+      );
+    });
+  });
+
+  describe("pass driver (p3-wire-or-explicitly-retire-localizationpassdriverport)", () => {
+    it("launchNextLocalizationPass REACHES the real driver and returns an in-band domain refusal (never LocalizationPassDriverNotConfiguredError)", async () => {
+      // The driver is constructed exactly as the DB service factory wires it (no
+      // game-bytes run-config resolver). A launch does a real branch-ownership
+      // read, then returns an in-band `refused` outcome — proving the Overview
+      // "Launch pass" action reaches the REAL pass driver rather than throwing
+      // the old dead-button LocalizationPassDriverNotConfiguredError.
+      const passDriver = createDbBackedLocalizationPassDriver({
+        actor,
+        projectRepository: {
+          listLocaleBranchIdentities: async () => [branchIdentity("locale-en-us", "project-test")],
+        },
+      });
+      const service = new ItotoriProjectWorkflowService(
+        stubRepository(),
+        actor,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        passDriver,
+      );
+
+      const result = await service.launchNextLocalizationPass({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+      });
+      expect(result.outcome).toBe("refused");
+      if (result.outcome === "refused") {
+        expect(result.refusalMessage).toContain("itotori localize");
+      }
+    });
+
+    it("does NOT throw LocalizationPassDriverNotConfiguredError once wired", async () => {
+      const passDriver = createDbBackedLocalizationPassDriver({
+        actor,
+        projectRepository: {
+          listLocaleBranchIdentities: async () => [branchIdentity("locale-en-us", "project-test")],
+        },
+      });
+      const service = new ItotoriProjectWorkflowService(
+        stubRepository(),
+        actor,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        passDriver,
+      );
+      await expect(
+        service.launchNextLocalizationPass({
+          projectId: "project-test",
+          localeBranchId: "locale-en-us",
+        }),
+      ).resolves.not.toBeInstanceOf(LocalizationPassDriverNotConfiguredError);
+    });
+
+    it("DRIVES a real pass when a run config resolves (genuine dispatch, not a stub)", async () => {
+      // Proves the driver is not scaffolding: given a resolvable run config it
+      // dispatches to the injected whole-project runner and surfaces its
+      // `started` outcome. The runner double stands in for
+      // `runLocalizeFullProjectLive` (separately tested) — the driver's dispatch
+      // is the unit under test, not the downstream live CLI.
+      const runLive = vi.fn(
+        async (
+          _config: DbBackedPassRunConfig,
+        ): Promise<{ outcome: "started"; passNumber: number; startedAt: Date }> => ({
+          outcome: "started",
+          passNumber: 2,
+          startedAt: new Date("2026-07-11T00:00:00.000Z"),
+        }),
+      );
+      const passDriver = createDbBackedLocalizationPassDriver({
+        actor,
+        projectRepository: {
+          listLocaleBranchIdentities: async () => [branchIdentity("locale-en-us", "project-test")],
+        },
+        resolveRunConfig: async () => ({
+          configPath: "/runs/project.localize.json",
+          runDir: "/runs",
+        }),
+        runLive,
+      });
+
+      const result = await passDriver.launchNextPass({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        actor,
+      });
+      expect(result).toEqual({
+        outcome: "started",
+        passNumber: 2,
+        startedAt: new Date("2026-07-11T00:00:00.000Z"),
+      });
+      expect(runLive).toHaveBeenCalledTimes(1);
+      expect(runLive.mock.calls[0]?.[0]).toEqual({
+        configPath: "/runs/project.localize.json",
+        runDir: "/runs",
+      });
+    });
+
+    it("refuses in-band when the branch does not belong to the project", async () => {
+      const passDriver = createDbBackedLocalizationPassDriver({
+        actor,
+        projectRepository: { listLocaleBranchIdentities: async () => [] },
+      });
+      const result = await passDriver.launchNextPass({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        actor,
+      });
+      expect(result.outcome).toBe("refused");
+      if (result.outcome === "refused") {
+        expect(result.refusalMessage).toContain("does not belong to project");
+      }
+    });
+  });
+});
+
+function branchIdentity(localeBranchId: string, projectId: string): LocaleBranchIdentity {
+  return {
+    localeBranchId,
+    projectId,
+    sourceBundleId: "bundle-test",
+    sourceBundleRevisionId: "rev-test",
+    sourceLocale: "ja-JP",
+    targetLocale: "en-US",
+    branchName: "en-US",
+    status: "active",
+  };
+}
+
+function stubRepository(): ItotoriProjectRepositoryPort {
+  return {
+    reset: vi.fn(async () => {}),
+    importSourceBundle: vi.fn(async () => ({ state: "imported" }) as never),
+    saveDrafts: vi.fn(async () => {}),
+    savePatchExport: vi.fn(async () => {}),
+    saveRuntimeReport: vi.fn(async () => ({}) as never),
+    appendEvent: vi.fn(async () => {}),
+    recordFinding: vi.fn(async () => {}),
+    linkArtifact: vi.fn(async () => {}),
+    recordBenchmarkArtifactWithProviderLedger: vi.fn(async () => {}),
+    listLocaleBranchIdentities: vi.fn(async () => []),
+    listBenchmarkReports: vi.fn(async () => []),
+    getDashboardStatus: vi.fn(async () => ({}) as never),
+    getRuntimeStatus: vi.fn(async () => ({}) as never),
+    getDashboardDecisions: vi.fn(async () => ({}) as never),
+  } as unknown as ItotoriProjectRepositoryPort;
+}
+
+function projectFixture(): ProjectState {
+  return {
+    projectId: "project-test",
+    localeBranchId: "locale-en-us",
+    targetLocale: "en-US",
+    bridge: bridgeFixture(),
+    drafts: {},
+  };
+}
+
+function bridgeFixture(): BridgeBundle {
+  return {
+    schemaVersion: "0.1.0",
+    bridgeId: "bridge-test",
+    sourceBundleHash: "hash-test",
+    sourceLocale: "ja-JP",
+    extractorName: "kaifuu-fixture",
+    extractorVersion: "0.0.0",
+    units: [
+      {
+        bridgeUnitId: "bridge-unit-test",
+        sourceUnitKey: "hello.scene.001.line.001",
+        occurrenceId: "occurrence-1",
+        sourceHash: "source-hash",
+        sourceLocale: "ja-JP",
+        sourceText: "こんにちは、{player}。",
+        textSurface: "dialogue",
+        protectedSpans: [
+          { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+        ],
+        patchRef: {
+          assetId: "source.json",
+          writeMode: "replace",
+          sourceUnitKey: "hello.scene.001.line.001",
+        },
+      },
+    ],
+  };
+}

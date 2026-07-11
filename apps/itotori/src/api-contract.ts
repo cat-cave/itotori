@@ -1027,8 +1027,13 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
   ApiDraftBranchResponse: () =>
     object({
-      required: ["project", "status"],
-      properties: { project: obj, status: obj },
+      required: ["outcome", "project", "status", "refusalMessage"],
+      properties: {
+        outcome: { enum: ["drafted", "refused"] },
+        project: { oneOf: [obj, { type: "null" }] },
+        status: { oneOf: [obj, { type: "null" }] },
+        refusalMessage: { oneOf: [str, { type: "null" }] },
+      },
       additionalProperties: true,
     }),
   ApiRecordFindingResponse: () =>

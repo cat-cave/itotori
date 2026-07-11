@@ -1588,8 +1588,10 @@ export const draftBranchRequestFixture: ApiDraftBranchRequest = {
 };
 
 export const draftBranchResponseFixture: ApiDraftBranchResponse = {
+  outcome: "drafted",
   project: projectFixture,
   status: dashboardStatusFixture,
+  refusalMessage: null,
 };
 
 export const recordFindingRequestFixture: ApiRecordFindingRequest = {

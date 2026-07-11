@@ -846,10 +846,21 @@ export type ApiDraftBranchRequest = {
   targetLocale: string;
 };
 
-export type ApiDraftBranchResponse = {
-  project: ProjectState;
-  status: ProjectDashboardStatus;
-};
+export type ApiDraftBranchResponse =
+  | {
+      /** The draft workflow completed. */
+      outcome: "drafted";
+      project: ProjectState;
+      status: ProjectDashboardStatus;
+      refusalMessage: null;
+    }
+  | {
+      /** The provider refused before producing a draft. */
+      outcome: "refused";
+      project: null;
+      status: null;
+      refusalMessage: string;
+    };
 
 export type ApiRecordFindingRequest = {
   localeBranchId?: string;
@@ -6264,8 +6275,16 @@ function assertProjectImportResponse(value: unknown): asserts value is ApiProjec
 
 function assertDraftBranchResponse(value: unknown): asserts value is ApiDraftBranchResponse {
   const response = asRecord(value, "ApiDraftBranchResponse");
-  assertProjectState(response.project, "ApiDraftBranchResponse.project");
-  assertProjectDashboardStatus(response.status, "ApiDraftBranchResponse.status");
+  assertEnum(response.outcome, ["drafted", "refused"] as const, "ApiDraftBranchResponse.outcome");
+  if (response.outcome === "drafted") {
+    assertProjectState(response.project, "ApiDraftBranchResponse.project");
+    assertProjectDashboardStatus(response.status, "ApiDraftBranchResponse.status");
+    assertNull(response.refusalMessage, "ApiDraftBranchResponse.refusalMessage");
+    return;
+  }
+  assertNull(response.project, "ApiDraftBranchResponse.project");
+  assertNull(response.status, "ApiDraftBranchResponse.status");
+  assertString(response.refusalMessage, "ApiDraftBranchResponse.refusalMessage");
 }
 
 function assertRecordFindingResponse(value: unknown): asserts value is ApiRecordFindingResponse {

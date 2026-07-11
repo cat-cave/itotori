@@ -477,6 +477,9 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
             }),
           },
         ],
+        // Keep the single-shot route bounded: a draft unit only needs a short
+        // target string, and the live provider still enforces its USD cap.
+        generation: { temperature: 0, maxOutputTokens: 128 },
       };
       let result: ModelInvocationResult;
       const invocationStartedAt = new Date();

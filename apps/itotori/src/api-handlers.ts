@@ -147,19 +147,22 @@ import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
 } from "./project-overview-read-model.js";
-import type {
-  BenchmarkRecordResult,
-  DecisionRecordResult,
-  FindingRecordResult,
-  ItotoriProjectWorkflowPort,
-  LaunchLocalizationPassResult,
-  RuntimeIngestResult,
+import {
+  DraftProviderNotConfiguredError,
+  type BenchmarkRecordResult,
+  type DecisionRecordResult,
+  type FindingRecordResult,
+  type ItotoriProjectWorkflowPort,
+  type LaunchLocalizationPassResult,
+  type RuntimeIngestResult,
 } from "./services/project-workflow.js";
 import {
   ProjectMutationScopeError,
   requireOwnedBranchScope,
   resolveProjectMutationScope,
 } from "./services/project-mutation-scope.js";
+import { AccountZdrAssertionError } from "./providers/account-zdr.js";
+import { OpenRouterMissingApiKeyError } from "./providers/openrouter.js";
 import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.js";
 import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
@@ -551,6 +554,10 @@ export async function handleItotoriApiRequest(
   try {
     return await routeItotoriApiRequest(request, services);
   } catch (error) {
+    const draftRefusal = draftProviderConfigurationResponse(request, error);
+    if (draftRefusal !== null) {
+      return draftRefusal;
+    }
     return errorResponse(error);
   }
 }
@@ -1012,8 +1019,10 @@ async function routeItotoriApiRequest(
       // stripped for a non-holder).
       const canReadStatus = await resolveProjectReadPermission(services);
       return ok("branches.draft", {
+        outcome: "drafted",
         project,
         status: canReadStatus ? status : redactProjectDashboardStatus(status),
+        refusalMessage: null,
       });
     }
     case "findings": {
@@ -3289,6 +3298,42 @@ function notFound(pathname: string): ApiJsonResponse {
 
 function methodNotAllowed(allowedMethods: string[]): ApiJsonResponse {
   return errorBody(405, "method_not_allowed", `method must be ${allowedMethods.join(" or ")}`);
+}
+
+/**
+ * The live draft provider is deferred until the first invocation, so these
+ * configuration failures can surface from either the workflow's missing-port
+ * guard or the real provider constructor. They are all actionable domain
+ * refusals for `branches.draft`, not malformed requests or server faults.
+ */
+function draftProviderConfigurationResponse(
+  request: ItotoriApiRequest,
+  error: unknown,
+): ApiJsonResponse | null {
+  if (request.method !== "POST" || parseProjectRoute(request.pathname)?.resource !== "branches") {
+    return null;
+  }
+  const refusalMessage = draftProviderConfigurationRefusal(error);
+  if (refusalMessage === null) {
+    return null;
+  }
+  return ok("branches.draft", {
+    outcome: "refused",
+    project: null,
+    status: null,
+    refusalMessage,
+  });
+}
+
+function draftProviderConfigurationRefusal(error: unknown): string | null {
+  if (
+    error instanceof DraftProviderNotConfiguredError ||
+    error instanceof AccountZdrAssertionError ||
+    error instanceof OpenRouterMissingApiKeyError
+  ) {
+    return error.message;
+  }
+  return null;
 }
 
 function errorResponse(error: unknown): ApiJsonResponse {

@@ -141,6 +141,10 @@ import {
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
 import {
+  createDbBackedDraftModelProvider,
+  createDbBackedLocalizationPassDriver,
+} from "./db-live-workflow-ports.js";
+import {
   composeBmkCockpitReadModel,
   loadBmkCockpitRunHistory,
   type BmkCockpitReadModel,
@@ -753,23 +757,30 @@ export async function withDatabaseItotoriServices<T>(
       projectWorkflow: new ItotoriProjectWorkflowService(
         projectRepository,
         localUserActor,
-        // itotori-purge-fakemodelprovider-from-production — the draft
-        // model provider slot. The old wiring left this `undefined`, which
-        // silently defaulted to a zero-cost FakeModelProvider so the shipped
-        // `projects.draft` route + CLI `draft` drafted REAL translations with
-        // a FAKE at zero cost. The fake default is gone: when no real
-        // provider is configured, `draftProject` now refuses LOUDLY with a
-        // typed `DraftProviderNotConfiguredError` (never a fake draft). A
-        // live draft requires injecting an `OpenRouterModelProvider` here
-        // (real call, real cost); that live wiring — API key + provider-run
-        // artifact recorder + cost cap threaded through `withServices` — is
-        // not yet built for the DB-backed single-shot draft path, so the
-        // honest shipped behavior is the typed refusal.
-        undefined,
+        // itotori-db-draft-route-provider-not-wired — the draft model provider
+        // is now WIRED LIVE (no longer `undefined`, which made `projects.draft`
+        // throw `DraftProviderNotConfiguredError` against the live DB-backed
+        // server). This is a DEFERRED, pinned-pair OpenRouter provider: the real
+        // `OpenRouterModelProvider` (account-wide ZDR assertion + missing-key
+        // refusal in its constructor, cost from real `usage.cost`) is built
+        // LAZILY on the first draft, so opening these services for a read route
+        // never requires an LLM key.
+        createDbBackedDraftModelProvider(),
         modelLedgerRepository,
         translationMemoryService,
         undefined,
         passLedgerRepository,
+        // p3-wire-or-explicitly-retire-localizationpassdriverport — the pass
+        // driver is now WIRED (no longer `undefined`, which made the Overview
+        // "Launch pass" action throw `LocalizationPassDriverNotConfiguredError`).
+        // It does a real DB branch-ownership read and returns an in-band DOMAIN
+        // refusal for the pure-HTTP install (which carries no game bytes), rather
+        // than a thrown misconfiguration; an install that registers a project's
+        // data-root + pair-policy drives a real whole-project pass through it.
+        createDbBackedLocalizationPassDriver({
+          actor: localUserActor,
+          projectRepository,
+        }),
       ),
       manualFeedback: manualFeedbackService,
       draftFeedbackBatch: new DraftFeedbackBatchService(manualFeedbackService),
