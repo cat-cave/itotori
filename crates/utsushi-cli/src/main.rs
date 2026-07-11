@@ -1,5 +1,6 @@
 mod conform;
 mod coverage_export;
+mod dispatch_gate;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
 mod patch_render;
