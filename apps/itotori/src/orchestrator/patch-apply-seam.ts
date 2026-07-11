@@ -1061,6 +1061,11 @@ function readExplicitProtectedSpan(entry: unknown, index: number): SourceBridgeP
   if (typeof r.expectedTargetForm === "string") {
     span.expectedTargetForm = r.expectedTargetForm;
   }
+  // Out-of-band exemption is control-markup-only (see mapV02SpanToProtectedSpan):
+  // never let a `variable` span (a real in-body variable/name run) be vacated.
+  if (r.outOfBand === true && span.kind === "markup") {
+    span.outOfBand = true;
+  }
   return span;
 }
 
@@ -1071,7 +1076,7 @@ function readExplicitProtectedSpan(entry: unknown, index: number): SourceBridgeP
  * `sourceText` carries `raw` and the preservation rule is verbatim for
  * variables and markup-well-formed for markup / ruby.
  */
-function mapV02SpanToProtectedSpan(
+export function mapV02SpanToProtectedSpan(
   entry: unknown,
   index: number,
   sourceText: string,
@@ -1093,6 +1098,11 @@ function mapV02SpanToProtectedSpan(
     sourceText: raw,
     kind: isVariable ? "variable" : "markup",
     preservationRule: isVariable ? "verbatim" : "markup_well_formed",
+    // Out-of-band (structurally re-emitted, not spliced) is ONLY valid for
+    // control-markup spans (e.g. reallive.kidoku). A variable/name/ruby span has
+    // real bytes in the Textout body and MUST be covered by the draft; a crafted
+    // bridge cannot vacate its protection by asserting outOfBand.
+    outOfBand: r.outOfBand === true && spanKind === "control_markup",
   };
 }
 

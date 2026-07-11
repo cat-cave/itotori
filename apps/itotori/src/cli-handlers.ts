@@ -1067,6 +1067,7 @@ async function runLocalizeFullProject(
   const runDir = requiredFlag(args, "--run-dir");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const concurrency = parseConcurrencyFlag(args);
+  const allowPartialPatch = args.includes("--allow-partial-patch");
   // m1-wholegame-localize-to-patch-seam: --source (read-only game root) +
   // --patch-target (writable output) reach an APPLYABLE patch. Both or neither.
   const sourceRoot = optionalFlag(args, "--source");
@@ -1095,6 +1096,7 @@ async function runLocalizeFullProject(
     },
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
     ...(concurrency !== undefined ? { concurrency } : {}),
+    ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
     ...(sourceRoot !== undefined ? { sourceRoot } : {}),
     ...(patchTargetRoot !== undefined ? { patchTargetRoot } : {}),
     ...(dependencies.nativeCli !== undefined ? { nativeCli: dependencies.nativeCli } : {}),
@@ -1193,6 +1195,7 @@ async function runLocalizeGame(
   const redactionRaw = optionalFlag(args, "--redaction") ?? "on";
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const concurrency = parseConcurrencyFlag(args);
+  const allowPartialPatch = args.includes("--allow-partial-patch");
 
   if (redactionRaw !== "on" && redactionRaw !== "off") {
     throw new Error(`localize-game: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
@@ -1233,6 +1236,7 @@ async function runLocalizeGame(
     ...(expectTextContains !== undefined ? { expectTextContains } : {}),
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
     ...(concurrency !== undefined ? { concurrency } : {}),
+    ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
   };
   if (dependencies.nativeCli !== undefined) {
     const nativeCli = dependencies.nativeCli;
@@ -1241,7 +1245,14 @@ async function runLocalizeGame(
     callArgs.stages = {
       extract: (extractArgs) => runKaifuuRealliveExtract(extractArgs),
       structure: (structureArgs) => runUtsushiStructureExport(structureArgs),
-      localize: (localizeArgs) => runLocalizeFullProjectLive({ ...localizeArgs, nativeCli }),
+      localize: (localizeArgs) =>
+        runLocalizeFullProjectLive({
+          ...localizeArgs,
+          ...(localizeArgs.allowPartialPatch !== undefined
+            ? { allowPartialPatch: localizeArgs.allowPartialPatch }
+            : {}),
+          nativeCli,
+        }),
       runNative: (bin, nativeArgs) => runNativeCli(bin, nativeArgs, nativeCli),
     };
   }

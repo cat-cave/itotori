@@ -553,6 +553,8 @@ export async function runPipelineStepWithDiagnostic<T>(args: {
   actor?: AuthorizationActor;
   includeStack?: boolean;
   knownGameTextLiterals?: ReadonlyArray<string>;
+  /** Preserve a caller-owned typed error instead of converting it. */
+  preserveError?: (error: unknown) => boolean;
   now?: (() => Date) | undefined;
   run: () => Promise<T> | T;
 }): Promise<T> {
@@ -561,7 +563,7 @@ export async function runPipelineStepWithDiagnostic<T>(args: {
   } catch (error) {
     // If the step already threw a structured diagnostic, propagate it
     // untouched — the upstream surface has the more specific context.
-    if (error instanceof PipelineFailureDiagnosticError) {
+    if (error instanceof PipelineFailureDiagnosticError || args.preserveError?.(error) === true) {
       throw error;
     }
     const code = args.code ?? "unknown";

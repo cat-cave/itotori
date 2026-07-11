@@ -154,6 +154,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
       identity: IDENTITY,
       validateScene: "1",
       expectTextContains: "Hello",
+      allowPartialPatch: true,
       io,
       stages: fakeStages(order, capture),
     });
@@ -184,6 +185,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     // Source + target are threaded so the patch-apply seam runs.
     expect(localizeArgs.sourceRoot).toBe("/games/sweetie");
     expect(localizeArgs.patchTargetRoot).toBe("/out/patched");
+    expect((localizeArgs as { allowPartialPatch?: boolean }).allowPartialPatch).toBe(true);
 
     // Validate stage hit the PATCHED target (target tree, not source).
     const replay = capture.nativeCalls[0];

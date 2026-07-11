@@ -28,9 +28,15 @@ export function buildHelpText(allCommands = false): string {
   lines.push("LOCALIZATION:");
   lines.push("  localize-game           Localize a whole game end-to-end");
   lines.push("                          (extract → structure → localize → patch → validate).");
+  lines.push(
+    "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
+  );
   lines.push("  extract                 Extract a bridge bundle from a game.");
   lines.push("  structure-export        Export narrative structure from a game.");
   lines.push("  localize                Run the whole-project localization driver.");
+  lines.push(
+    "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
+  );
   lines.push("  patch                   Apply a translation patch to a game.");
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");

@@ -170,6 +170,8 @@ export type RunLocalizeGameArgs = {
    * the executor default.
    */
   concurrency?: number;
+  /** Produce a byte-preserving preview patch when draft coverage is partial. */
+  allowPartialPatch?: boolean;
   io: LocalizeGameIo;
   /** Stage seams (default: the production seams). Injected for the CI test. */
   stages?: LocalizeGameStageSeams;
@@ -196,6 +198,9 @@ export function defaultLocalizeGameStages(nativeCli?: NativeCliRunner): Localize
     localize: (args) =>
       runLocalizeFullProjectLive({
         ...args,
+        ...(args.allowPartialPatch !== undefined
+          ? { allowPartialPatch: args.allowPartialPatch }
+          : {}),
         ...(nativeCli !== undefined ? { nativeCli } : {}),
       }),
     runNative: (bin, args) => runNativeCli(bin, args, nativeCli),
@@ -298,6 +303,9 @@ export async function runLocalizeGameCommand(
       patchTargetRoot: args.targetRoot,
       ...(args.costCapUsd !== undefined ? { costCapUsd: args.costCapUsd } : {}),
       ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
+      ...(args.allowPartialPatch !== undefined
+        ? { allowPartialPatch: args.allowPartialPatch }
+        : {}),
       ...(args.log !== undefined ? { log: args.log } : {}),
     }),
   );

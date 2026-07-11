@@ -61,6 +61,7 @@ import {
   applyKaifuuRpgMakerPatch,
   buildDraftArtifactBundleFromExecutorRun,
   kaifuuScopeToken,
+  mapV02SpanToProtectedSpan,
   runWholeGamePatchExportAndApply,
   WholeGamePatchExportPreflightError,
   WholeGamePatchLoaderReconciliationError,
@@ -95,6 +96,41 @@ describe("kaifuuScopeToken (config scope -> kaifuu --scope)", () => {
     expect(kaifuuScopeToken("dialogue-and-choices")).toBe("dialogue+choices");
     expect(kaifuuScopeToken("dialogue-choices-ui")).toBe("dialogue+choices");
     expect(kaifuuScopeToken("all")).toBe("dialogue+choices");
+  });
+});
+
+describe("mapV02SpanToProtectedSpan", () => {
+  it("honors outOfBand for control-markup spans", () => {
+    const span = mapV02SpanToProtectedSpan(
+      {
+        spanId: "span-oob",
+        spanKind: "control_markup",
+        raw: "<synthetic-control>",
+        startByte: 0,
+        endByte: "<synthetic-control>".length,
+        outOfBand: true,
+      },
+      0,
+      "<synthetic-control>本文",
+    );
+    expect(span.outOfBand).toBe(true);
+  });
+
+  it("does not let outOfBand vacate a variable-placeholder span", () => {
+    const span = mapV02SpanToProtectedSpan(
+      {
+        spanId: "span-variable-oob",
+        spanKind: "variable_placeholder",
+        raw: "[name]",
+        startByte: 0,
+        endByte: "[name]".length,
+        outOfBand: true,
+      },
+      0,
+      "[name]本文",
+    );
+    expect(span.outOfBand).not.toBe(true);
+    expect(span.kind).toBe("variable");
   });
 });
 

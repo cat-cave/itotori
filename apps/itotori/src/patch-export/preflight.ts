@@ -158,12 +158,14 @@ export class PatchExportPreflight {
         // draft is terminal). We surface it explicitly so the operator
         // sees both signals.
         for (const span of unit.protectedSpans) {
+          if (span.outOfBand) continue;
           missing.push(`${unit.sourceUnitId}:${span.spanRef}:no_draft`);
         }
         continue;
       }
       const draftText = draft.draftText ?? "";
       for (const span of unit.protectedSpans) {
+        if (span.outOfBand) continue;
         if (!spanIsCovered(span, draftText)) {
           missing.push(`${unit.sourceUnitId}:${span.spanRef}`);
         }

@@ -130,6 +130,7 @@
       "spans": [
         {
           "endByte": 19,
+          "outOfBand": true,
           "parsedName": "reallive.kidoku",
           "preserveMode": "exact",
           "raw": "<reallive.kidoku 1>",
@@ -303,6 +304,7 @@
       "spans": [
         {
           "endByte": 19,
+          "outOfBand": true,
           "parsedName": "reallive.kidoku",
           "preserveMode": "exact",
           "raw": "<reallive.kidoku 1>",

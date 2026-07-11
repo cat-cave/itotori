@@ -328,6 +328,88 @@ describe("PatchExporter", () => {
     expect(result.failingChecks.map((entry) => entry.check)).toContain("protectedSpanCoverage");
   });
 
+  it("exports successfully when an out-of-band span is absent from the draft", async () => {
+    const view = makeView([
+      makeUnit({
+        sourceText: "<synthetic-control>こんにちは。",
+        protectedSpans: [
+          {
+            spanRef: "span-oob",
+            sourceStart: 0,
+            sourceEnd: "<synthetic-control>".length,
+            sourceText: "<synthetic-control>",
+            kind: "markup",
+            preservationRule: "markup_well_formed",
+            outOfBand: true,
+          },
+        ],
+      }),
+    ]);
+    const bundle = makeBundle({
+      drafts: [
+        {
+          sourceUnitId: "unit-001",
+          draftId: "draft-001",
+          providerProofId: "proof-001",
+          protectedSpanValidationResult: { accepted: true },
+          retryFallbackState: "success",
+          costLedgerEntryRef: "ledger-001",
+          draftText: "Hello.",
+        },
+      ],
+    });
+    const exporter = makeExporter({ view, bundle });
+    const result = await exporter.export(ACTOR, {
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+      draftArtifactBundleId: DRAFT_JOB_ID,
+      requestedBy: "exporter-test-actor",
+    });
+    if ("kind" in result && result.kind === "preflight_failure") {
+      throw new Error(`unexpected preflight failure: ${JSON.stringify(result.failingChecks)}`);
+    }
+    expect(result.drafts[0]?.protectedSpanMappings).toEqual([]);
+  });
+
+  it("still rejects export when a non-out-of-band control markup span is dropped", async () => {
+    const view = makeView([
+      makeUnit({
+        sourceText: "<control>こんにちは。",
+        protectedSpans: [
+          {
+            spanRef: "span-control",
+            sourceStart: 0,
+            sourceEnd: "<control>".length,
+            sourceText: "<control>",
+            kind: "markup",
+            preservationRule: "markup_well_formed",
+          },
+        ],
+      }),
+    ]);
+    const bundle = makeBundle({
+      drafts: [
+        {
+          sourceUnitId: "unit-001",
+          draftId: "draft-001",
+          providerProofId: "proof-001",
+          protectedSpanValidationResult: { accepted: true },
+          retryFallbackState: "success",
+          costLedgerEntryRef: "ledger-001",
+          draftText: "Hello.",
+        },
+      ],
+    });
+    const result = await makeExporter({ view, bundle }).export(ACTOR, {
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+      draftArtifactBundleId: DRAFT_JOB_ID,
+      requestedBy: "exporter-test-actor",
+    });
+    expectFailure(result);
+    expect(result.failingChecks.map((entry) => entry.check)).toContain("protectedSpanCoverage");
+  });
+
   it("preserves bundle integrity when all checks pass; Kaifuu handoff mirrors the bundle", async () => {
     const exporter = makeExporter();
     const result = await exporter.export(ACTOR, {

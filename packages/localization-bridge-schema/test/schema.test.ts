@@ -1128,6 +1128,17 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBridgeBundleV02(exampleFixture(path))).toThrow(semanticError);
   });
 
+  it("accepts and validates the optional v0.2 out-of-band span flag", () => {
+    const bridge = bridgeV02Example();
+    const units = bridge.units as Array<Record<string, unknown>>;
+    const spans = units[0]!.spans as Array<Record<string, unknown>>;
+    spans[0]!.outOfBand = true;
+    expect(() => assertBridgeBundleV02(bridge)).not.toThrow();
+
+    spans[0]!.outOfBand = "true";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/outOfBand must be a boolean/);
+  });
+
   it("accepts minimal valid bridge bundles", () => {
     expect(() =>
       assertBridgeBundle({
