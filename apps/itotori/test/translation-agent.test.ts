@@ -207,6 +207,7 @@ describe("TranslationAgent.invokeTranslation happy path", () => {
     expect(result.tokensOut).toBeGreaterThan(0);
     expect(result.modelMetadata.modelProfile).toEqual(input.modelProfile);
     expect(result.modelMetadata.providerRun.taskKind).toBe("draft_translation");
+    expect(result.modelMetadata.retryProviderRuns).toEqual([]);
     expect(result.recordedArtifactId).toBeUndefined();
   });
 

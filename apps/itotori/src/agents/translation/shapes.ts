@@ -238,6 +238,7 @@ export type TranslationInvocationModelMetadata = {
   modelProfile: TranslationModelProfile;
   providerIdentity: ProviderRunIdentity;
   providerRun: ProviderRunRecord;
+  retryProviderRuns: ProviderRunRecord[];
 };
 
 // ---------------------------------------------------------------------------

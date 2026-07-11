@@ -24,6 +24,7 @@ import {
   QaLocaleMismatchError,
   QaPartialResultError,
   QaProviderCapabilityError,
+  QaSpanOutOfBoundsError,
   QaUnknownCitationError,
   qaPromptHash,
   representativeQaFindingsFixture,
@@ -200,7 +201,36 @@ describe("QaAgent.invokeQa happy path", () => {
     expect(result.tokensOut).toBeGreaterThan(0);
     expect(result.modelMetadata.modelProfile).toEqual(input.modelProfile);
     expect(result.modelMetadata.providerRun.taskKind).toBe("llm_qa");
+    expect(result.modelMetadata.retryProviderRuns).toEqual([]);
     expect(result.recordedArtifactId).toBeUndefined();
+  });
+
+  it("aggregates reported prompt tokens across a schema retry", async () => {
+    const input = inputFixture();
+    let invocationCount = 0;
+    const provider = buildFakeQaProvider(() => {
+      invocationCount += 1;
+      if (invocationCount === 1) {
+        return JSON.stringify({
+          schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+          findings: [],
+          unexpected: true,
+        });
+      }
+      return JSON.stringify(makeStructuredQaFindingOutputFixture([]));
+    });
+    const result = await new QaAgent({ provider }).invokeQa(FIXED_ACTOR, input);
+
+    expect(result.modelMetadata.retryProviderRuns).toHaveLength(1);
+    const attempts = [...result.modelMetadata.retryProviderRuns, result.modelMetadata.providerRun];
+    const expectedTokensIn = attempts
+      .map((attempt) => attempt.tokenUsage.promptTokens!)
+      .reduce((total, tokens) => total + tokens, 0);
+    const expectedTokensOut = attempts
+      .map((attempt) => attempt.tokenUsage.completionTokens!)
+      .reduce((total, tokens) => total + tokens, 0);
+    expect(result.tokensIn).toBe(expectedTokensIn);
+    expect(result.tokensOut).toBe(expectedTokensOut);
   });
 
   it("accepts a zero-finding response without throwing (empty array is valid)", async () => {
@@ -488,6 +518,93 @@ describe("QaAgent.invokeQa malformed responses", () => {
     const agent = new QaAgent({ provider });
     const error = await agent.invokeQa(FIXED_ACTOR, input).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(QaUnknownCitationError);
+  });
+
+  it("rejects an in-input finding whose sourceSpan exceeds the source text", async () => {
+    const input = inputFixture();
+    const finding = makeQaFindingFixture({
+      findingId: "019ed079-0000-7000-8000-100000000010",
+      bridgeUnitId: input.units[0]!.bridgeUnitId,
+      sourceSpan: { start: 0, end: 999999 },
+    });
+    const provider = buildFakeQaProvider(() =>
+      JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
+    );
+    const error = await new QaAgent({ provider })
+      .invokeQa(FIXED_ACTOR, input)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(QaSpanOutOfBoundsError);
+    if (error instanceof QaSpanOutOfBoundsError) {
+      expect(error.bridgeUnitId).toBe(input.units[0]!.bridgeUnitId);
+      expect(error.findingId).toBe(finding.findingId);
+      expect(error.span).toBe("sourceSpan");
+      expect(error.end).toBe(999999);
+      expect(error.textLength).toBe(input.units[0]!.sourceText.length);
+    }
+  });
+
+  it("rejects an in-input finding whose draftSpan exceeds the draft text", async () => {
+    const input = inputFixture();
+    const finding = makeQaFindingFixture({
+      findingId: "019ed079-0000-7000-8000-100000000011",
+      bridgeUnitId: input.units[0]!.bridgeUnitId,
+      draftSpan: { start: 0, end: 999999 },
+    });
+    const provider = buildFakeQaProvider(() =>
+      JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
+    );
+    const error = await new QaAgent({ provider })
+      .invokeQa(FIXED_ACTOR, input)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(QaSpanOutOfBoundsError);
+    if (error instanceof QaSpanOutOfBoundsError) {
+      expect(error.bridgeUnitId).toBe(input.units[0]!.bridgeUnitId);
+      expect(error.findingId).toBe(finding.findingId);
+      expect(error.span).toBe("draftSpan");
+      expect(error.end).toBe(999999);
+      expect(error.textLength).toBe(input.units[0]!.draftText.length);
+    }
+  });
+
+  it("accepts a span whose end equals the source text length", async () => {
+    const input = inputFixture();
+    const finding = makeQaFindingFixture({
+      findingId: "019ed079-0000-7000-8000-100000000012",
+      bridgeUnitId: input.units[0]!.bridgeUnitId,
+      sourceSpan: { start: 0, end: input.units[0]!.sourceText.length },
+    });
+    const provider = buildFakeQaProvider(() =>
+      JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
+    );
+
+    await expect(new QaAgent({ provider }).invokeQa(FIXED_ACTOR, input)).resolves.toMatchObject({
+      findings: [finding],
+    });
+  });
+
+  it("rejects a span whose end is exactly one past the source text length (off-by-one)", async () => {
+    const input = inputFixture();
+    const overshoot = input.units[0]!.sourceText.length + 1;
+    const finding = makeQaFindingFixture({
+      findingId: "019ed079-0000-7000-8000-100000000013",
+      bridgeUnitId: input.units[0]!.bridgeUnitId,
+      sourceSpan: { start: 0, end: overshoot },
+    });
+    const provider = buildFakeQaProvider(() =>
+      JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
+    );
+
+    const error = await new QaAgent({ provider })
+      .invokeQa(FIXED_ACTOR, input)
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(QaSpanOutOfBoundsError);
+    if (error instanceof QaSpanOutOfBoundsError) {
+      expect(error.span).toBe("sourceSpan");
+      expect(error.end).toBe(overshoot);
+      expect(error.textLength).toBe(input.units[0]!.sourceText.length);
+    }
   });
 });
 

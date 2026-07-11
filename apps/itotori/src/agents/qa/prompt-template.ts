@@ -30,7 +30,8 @@ const SYSTEM_INSTRUCTIONS = [
   "Each finding MUST cite a bridgeUnitId from the input units block.",
   `Severity MUST be one of: ${QA_FINDING_SEVERITIES.join(", ")}.`,
   `Category MUST be one of: ${QA_FINDING_CATEGORIES.join(", ")}.`,
-  "Optional sourceSpan / draftSpan use character offsets (Unicode code units) into the respective text.",
+  "sourceSpan and draftSpan are OPTIONAL. When present they are 0-based Unicode code-unit (JavaScript string.length) character offsets: sourceSpan indexes ONLY into that unit's `source` text and draftSpan indexes ONLY into that unit's `draft` text — never cross-index (a draftSpan must NOT be measured against the source).",
+  "Each span MUST satisfy 0 <= start <= end <= the length of the text it indexes. Each unit block gives the exact character length of its source and draft; a draftSpan.end may not exceed the draft length and a sourceSpan.end may not exceed the source length. If you cannot cite an exact in-bounds offset, OMIT the span entirely rather than guess — an out-of-bounds span is rejected.",
   "evidenceRefs cites glossary term ids, style guide rule ids, or context-artifact ids; never raw quotes.",
   "recommendation is a free-text remediation suggestion; do NOT include rewritten output.",
   "agentRationale explains why you flagged the finding.",
@@ -79,7 +80,7 @@ export function buildQaPrompt(input: QaInvocationInput): RenderedQaPrompt {
   for (const unit of units) {
     const speaker = unit.speaker && unit.speaker.trim().length > 0 ? unit.speaker : "narration";
     lines.push(
-      `[#${index}] unitId=${unit.bridgeUnitId} speaker=${speaker}\n  source: ${unit.sourceText}\n  draft : ${unit.draftText}`,
+      `[#${index}] unitId=${unit.bridgeUnitId} speaker=${speaker}\n  source (${unit.sourceText.length} chars): ${unit.sourceText}\n  draft (${unit.draftText.length} chars): ${unit.draftText}`,
     );
     index += 1;
   }

@@ -52,6 +52,7 @@ function validSpeakerOutput(): string {
 function invokeOptions(
   provider: FakeModelProvider,
   requestToUse: ModelInvocationRequest,
+  validateParsed: (parsed: SpeakerLabelOutput) => void = () => {},
 ): BoundedStructuredRetryOptions<SpeakerLabelOutput> {
   return {
     provider,
@@ -65,6 +66,7 @@ function invokeOptions(
       }
       return invocation.content;
     },
+    validateParsed,
   };
 }
 
@@ -86,6 +88,12 @@ describe("bounded structured-output retry", () => {
 
     expect(invocationCount).toBe(2);
     expect(result.parsed.labels).toEqual([]);
+    expect(result.priorAttempts).toHaveLength(1);
+    expect(result.priorAttempts[0]?.content).toBe(invalidSpeakerOutput());
+    expect(requests[1]?.messages).toContainEqual({
+      role: "assistant",
+      content: invalidSpeakerOutput(),
+    });
     expect(requests[1]?.messages.at(-1)?.content).toContain(
       "unexpected top-level property unexpected",
     );
@@ -134,5 +142,63 @@ describe("bounded structured-output retry", () => {
 
     expect(error).toBeInstanceOf(SpeakerLabelResponseValidationError);
     expect(invocationCount).toBe(2);
+  });
+
+  it("does not accept a schema-valid retry that fails semantic validation", async () => {
+    let invocationCount = 0;
+    const semanticError = new Error("semantic validation failed");
+    const provider = new FakeModelProvider({
+      providerName: "retry-fixture-provider",
+      modelId: "retry-fixture-model",
+      generate: () => {
+        invocationCount += 1;
+        return invocationCount === 1 ? invalidSpeakerOutput() : validSpeakerOutput();
+      },
+    });
+    const validateParsed = (parsed: SpeakerLabelOutput): void => {
+      expect(parsed.labels).toEqual([]);
+      if (invocationCount === 2) {
+        throw semanticError;
+      }
+    };
+
+    await expect(
+      invokeWithBoundedStructuredRetry(invokeOptions(provider, request(), validateParsed)),
+    ).rejects.toBe(semanticError);
+    expect(invocationCount).toBe(2);
+  });
+
+  it("does not retry when the first schema-valid attempt fails semantic validation", async () => {
+    let invocationCount = 0;
+    const semanticError = new Error("first-attempt semantic validation failed");
+    const provider = new FakeModelProvider({
+      providerName: "retry-fixture-provider",
+      modelId: "retry-fixture-model",
+      generate: () => {
+        invocationCount += 1;
+        return validSpeakerOutput();
+      },
+    });
+
+    await expect(
+      invokeWithBoundedStructuredRetry(
+        invokeOptions(provider, request(), () => {
+          throw semanticError;
+        }),
+      ),
+    ).rejects.toBe(semanticError);
+    expect(invocationCount).toBe(1);
+  });
+
+  it("reports no prior attempts when the first attempt succeeds", async () => {
+    const provider = new FakeModelProvider({
+      providerName: "retry-fixture-provider",
+      modelId: "retry-fixture-model",
+      generate: () => validSpeakerOutput(),
+    });
+
+    const result = await invokeWithBoundedStructuredRetry(invokeOptions(provider, request()));
+
+    expect(result.priorAttempts).toHaveLength(0);
   });
 });

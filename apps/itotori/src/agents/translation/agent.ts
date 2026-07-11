@@ -132,28 +132,37 @@ export class TranslationAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const { invocation, parsed } = await invokeWithBoundedStructuredRetry({
+    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
       provider: this.options.provider,
       request,
       parse: parseStructuredTranslationDraftOutput,
       isSchemaValidationError: (error) => error instanceof TranslationDraftResponseValidationError,
       buildCorrectiveMessages: buildStructuredRetryMessages,
       validateResponse: (candidate) => this.assertCompleteInvocation(candidate, input),
+      validateParsed: (candidate) => {
+        this.assertBridgeUnitsResolve(candidate, input);
+        this.assertLocaleConsistency(candidate, input);
+        this.assertCitationsResolve(candidate, input);
+        this.assertProtectedSpansPreserved(candidate, input);
+      },
     });
     const providerRun = invocation.providerRun;
-    this.assertBridgeUnitsResolve(parsed, input);
-    this.assertLocaleConsistency(parsed, input);
-    this.assertCitationsResolve(parsed, input);
-    this.assertProtectedSpansPreserved(parsed, input);
+    const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
     // PROJECT LAW: token counts come ONLY from real provider output. A
     // missing count is a real failure (mirror of assertBilledCost), never a
     // char/4 estimate that would land in the ledger indistinguishable from a
     // provider-reported count.
-    const { tokensIn, tokensOut } = assertReportedTokenUsage(
-      providerRun.tokenUsage,
-      providerRun.runId,
-    );
+    let tokensIn = 0;
+    let tokensOut = 0;
+    for (const attempt of [...priorAttempts, invocation]) {
+      const usage = assertReportedTokenUsage(
+        attempt.providerRun.tokenUsage,
+        attempt.providerRun.runId,
+      );
+      tokensIn += usage.tokensIn;
+      tokensOut += usage.tokensOut;
+    }
 
     const result: TranslationInvocationResult = {
       drafts: parsed.drafts,
@@ -163,6 +172,7 @@ export class TranslationAgent {
         modelProfile: input.modelProfile,
         providerIdentity: providerRun.provider,
         providerRun,
+        retryProviderRuns,
       },
       tokensIn,
       tokensOut,

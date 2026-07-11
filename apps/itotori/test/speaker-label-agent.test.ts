@@ -261,6 +261,7 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel happy path", () => {
     expect(result.tokensIn).toBeGreaterThan(0);
     expect(result.tokensOut).toBeGreaterThan(0);
     expect(result.modelMetadata.modelProfile).toEqual(input.modelMetadata);
+    expect(result.modelMetadata.retryProviderRuns).toEqual([]);
     expect(result.recordedArtifactId).toBeUndefined();
   });
 

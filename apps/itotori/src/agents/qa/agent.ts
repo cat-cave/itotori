@@ -56,6 +56,7 @@ import {
   QaLocaleMismatchError,
   QaPartialResultError,
   QaProviderCapabilityError,
+  QaSpanOutOfBoundsError,
   QaUnknownCitationError,
   type QaInvocationInput,
   type QaInvocationResult,
@@ -118,23 +119,33 @@ export class QaAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const { invocation, parsed } = await invokeWithBoundedStructuredRetry({
+    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
       provider: this.options.provider,
       request,
       parse: parseStructuredQaFindingOutput,
       isSchemaValidationError: (error) => error instanceof QaResponseValidationError,
       buildCorrectiveMessages: buildStructuredRetryMessages,
       validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+      validateParsed: (candidate) => {
+        this.assertCitationsResolve(candidate, input);
+        this.assertSpansWithinBounds(candidate, input);
+      },
     });
     const providerRun = invocation.providerRun;
-    this.assertCitationsResolve(parsed, input);
+    const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
     // PROJECT LAW: real provider token counts only — throw on absence
     // rather than substitute a char/4 estimate (mirror of assertBilledCost).
-    const { tokensIn, tokensOut } = assertReportedTokenUsage(
-      providerRun.tokenUsage,
-      providerRun.runId,
-    );
+    let tokensIn = 0;
+    let tokensOut = 0;
+    for (const attempt of [...priorAttempts, invocation]) {
+      const usage = assertReportedTokenUsage(
+        attempt.providerRun.tokenUsage,
+        attempt.providerRun.runId,
+      );
+      tokensIn += usage.tokensIn;
+      tokensOut += usage.tokensOut;
+    }
 
     const result: QaInvocationResult = {
       findings: parsed.findings,
@@ -144,6 +155,7 @@ export class QaAgent {
         modelProfile: input.modelProfile,
         providerIdentity: providerRun.provider,
         providerRun,
+        retryProviderRuns,
       },
       tokensIn,
       tokensOut,
@@ -227,6 +239,37 @@ export class QaAgent {
     for (const finding of parsed.findings) {
       if (!known.has(finding.bridgeUnitId)) {
         throw new QaUnknownCitationError(finding.bridgeUnitId, finding.findingId);
+      }
+    }
+  }
+
+  private assertSpansWithinBounds(
+    parsed: StructuredQaFindingOutput,
+    input: QaInvocationInput,
+  ): void {
+    const unitsById = new Map(input.units.map((unit) => [unit.bridgeUnitId, unit]));
+    for (const finding of parsed.findings) {
+      const unit = unitsById.get(finding.bridgeUnitId);
+      if (unit === undefined) {
+        throw new QaUnknownCitationError(finding.bridgeUnitId, finding.findingId);
+      }
+      if (finding.sourceSpan !== undefined && finding.sourceSpan.end > unit.sourceText.length) {
+        throw new QaSpanOutOfBoundsError(
+          finding.bridgeUnitId,
+          finding.findingId,
+          "sourceSpan",
+          finding.sourceSpan.end,
+          unit.sourceText.length,
+        );
+      }
+      if (finding.draftSpan !== undefined && finding.draftSpan.end > unit.draftText.length) {
+        throw new QaSpanOutOfBoundsError(
+          finding.bridgeUnitId,
+          finding.findingId,
+          "draftSpan",
+          finding.draftSpan.end,
+          unit.draftText.length,
+        );
       }
     }
   }

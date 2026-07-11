@@ -20,6 +20,7 @@ export {
   QaLocaleMismatchError,
   QaPartialResultError,
   QaProviderCapabilityError,
+  QaSpanOutOfBoundsError,
   QaUnknownCitationError,
   type QaBridgeUnit,
   type QaFinding,

@@ -14,13 +14,16 @@ export type BoundedStructuredRetryOptions<T> = {
   buildCorrectiveMessages: (
     messages: ReadonlyArray<ModelMessage>,
     error: unknown,
+    failedRawContent: string | null,
   ) => ModelMessage[];
   validateResponse: (invocation: ModelInvocationResult) => string;
+  validateParsed: (parsed: T) => void;
 };
 
 export type BoundedStructuredRetryResult<T> = {
   invocation: ModelInvocationResult;
   parsed: T;
+  priorAttempts: ModelInvocationResult[];
 };
 
 /**
@@ -30,10 +33,14 @@ export type BoundedStructuredRetryResult<T> = {
 export function buildStructuredRetryMessages(
   messages: ReadonlyArray<ModelMessage>,
   error: unknown,
+  failedRawContent: string | null,
 ): ModelMessage[] {
   const detail = error instanceof Error ? error.message : String(error);
   return [
     ...messages,
+    ...(failedRawContent === null
+      ? []
+      : [{ role: "assistant" as const, content: failedRawContent }]),
     {
       role: "user",
       content:
@@ -53,13 +60,21 @@ export function buildStructuredRetryMessages(
 export async function invokeWithBoundedStructuredRetry<T>(
   options: BoundedStructuredRetryOptions<T>,
 ): Promise<BoundedStructuredRetryResult<T>> {
+  const attemptOnce = (invocation: ModelInvocationResult): T => {
+    const raw = options.validateResponse(invocation);
+    const parsed = parseWithBoundedRepair(raw, options.parse);
+    options.validateParsed(parsed);
+    return parsed;
+  };
+
   const firstInvocation = await options.provider.invoke(options.request);
-  const firstRawContent = options.validateResponse(firstInvocation);
 
   try {
+    const parsed = attemptOnce(firstInvocation);
     return {
       invocation: firstInvocation,
-      parsed: parseWithBoundedRepair(firstRawContent, options.parse),
+      parsed,
+      priorAttempts: [],
     };
   } catch (error) {
     if (!options.isSchemaValidationError(error)) {
@@ -68,13 +83,18 @@ export async function invokeWithBoundedStructuredRetry<T>(
 
     const retryRequest: ModelInvocationRequest = {
       ...options.request,
-      messages: options.buildCorrectiveMessages(options.request.messages, error),
+      messages: options.buildCorrectiveMessages(
+        options.request.messages,
+        error,
+        firstInvocation.content,
+      ),
     };
     const retryInvocation = await options.provider.invoke(retryRequest);
-    const retryRawContent = options.validateResponse(retryInvocation);
+    const parsed = attemptOnce(retryInvocation);
     return {
       invocation: retryInvocation,
-      parsed: parseWithBoundedRepair(retryRawContent, options.parse),
+      parsed,
+      priorAttempts: [firstInvocation],
     };
   }
 }

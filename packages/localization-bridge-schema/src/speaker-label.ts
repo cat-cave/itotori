@@ -426,6 +426,7 @@ export function parseSpeakerLabelOutput(raw: string): SpeakerLabelOutput {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+    // Intentional: malformed JSON is exactly what the corrective re-ask recovers.
     throw new SpeakerLabelResponseValidationError(
       "",
       "json",

@@ -370,6 +370,7 @@ export function parseStructuredQaFindingOutput(raw: string): StructuredQaFinding
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+    // Intentional: malformed JSON is exactly what the corrective re-ask recovers.
     throw new QaResponseValidationError(
       "",
       "json",
