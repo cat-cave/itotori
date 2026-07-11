@@ -392,6 +392,19 @@ pub fn apply_translated_bundle(
             // Out-of-scope surface: carried byte-identical (no splice).
             continue;
         }
+        // Source-identical target: the driver emits target.text == sourceText for
+        // every undrafted / deferred / out-of-scope / not-in-this-bounded-slice unit
+        // as an explicit byte no-op. Skip it so its owning scene is never
+        // decompressed/recompressed — the re-packer copies the original scene blob
+        // BYTE-IDENTICAL. Only a genuinely-changed (drafted) unit resolves an edit,
+        // so only scenes that contain such a unit are re-emitted. The comparison is
+        // on the OUT-OF-BAND-STRIPPED forms (the producer prepends a synthetic
+        // <reallive.kidoku N> marker to BOTH sourceText and the reproduced target;
+        // that marker is re-emitted structurally regardless, so a target that differs
+        // ONLY in the marker is still a body no-op).
+        if is_source_identical_target(target, unit) {
+            continue;
+        }
         let resolved = resolve_edit(target, unit, &scene_index, *opts)?;
         edits_by_scene_index
             .entry(resolved.scene_entry_index)
@@ -790,6 +803,19 @@ pub fn strip_out_of_band_control_markup(text: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// True when the translated `target.text` carries NO body change versus the
+/// source unit's `sourceText` — i.e. after removing the OUT-OF-BAND control
+/// markup (`<reallive.kidoku …>`) from BOTH, the remaining translatable body is
+/// byte-equal. Such a unit is a byte no-op: skipping it lets the re-packer carry
+/// the owning scene's original blob byte-identical (no decompress/recompress).
+fn is_source_identical_target(
+    target: &TranslatedUnitTarget,
+    unit: &kaifuu_core::LocalizationUnitV02,
+) -> bool {
+    strip_out_of_band_control_markup(&target.target_text)
+        == strip_out_of_band_control_markup(&unit.source_text)
 }
 
 /// Re-emit a scene blob with the given edits applied.
@@ -1568,6 +1594,79 @@ mod tests {
     }
 
     #[test]
+    fn source_identical_target_is_a_noop_scene_stays_byte_identical() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        let source_blob = scene_blob(&archive, 1).to_vec();
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0,
+            2,
+            "Synthetic source text",
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("source-identical target must be a no-op");
+
+        assert_eq!(
+            scene_blob(&patched, 1),
+            source_blob.as_slice(),
+            "a source-identical target must carry the original scene blob verbatim"
+        );
+    }
+
+    #[test]
+    fn changed_target_still_re_emits_scene() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        let source_blob = scene_blob(&archive, 1).to_vec();
+        let bundle_json = make_bundle_json(REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, 0, 2, "Hi");
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("changed target must re-emit the scene");
+
+        assert_ne!(
+            scene_blob(&patched, 1),
+            source_blob.as_slice(),
+            "a changed target must cause its owning scene to be re-emitted"
+        );
+    }
+
+    #[test]
+    fn target_differing_only_in_kidoku_marker_is_noop() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        let source_blob = scene_blob(&archive, 1).to_vec();
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0,
+            2,
+            "<reallive.kidoku 1>Synthetic source text",
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("marker-only difference must be a no-op");
+
+        assert_eq!(
+            scene_blob(&patched, 1),
+            source_blob.as_slice(),
+            "a target differing only by an out-of-band marker must carry the original scene blob verbatim"
+        );
+    }
+
+    #[test]
     fn apply_strips_out_of_band_kidoku_marker_and_splices_only_the_body() {
         // A target carrying the producer's synthetic `<reallive.kidoku N>`
         // marker (as the translation prompt reproduces it inline) must have
@@ -1702,6 +1801,18 @@ mod tests {
             header.bytecode_uncompressed_size as usize,
         )
         .expect("decompress")
+    }
+
+    /// Return a scene blob using the parsed archive directory's offset/length.
+    fn scene_blob(archive: &[u8], scene_id: u16) -> &[u8] {
+        let index = parse_archive(archive).expect("archive parses");
+        let entry = index
+            .entries
+            .iter()
+            .find(|e| e.scene_id == scene_id)
+            .expect("scene present");
+        &archive
+            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize]
     }
 
     #[test]

@@ -100,7 +100,7 @@ describe("kaifuuScopeToken (config scope -> kaifuu --scope)", () => {
 });
 
 describe("mapV02SpanToProtectedSpan", () => {
-  it("propagates the extractor-owned outOfBand flag", () => {
+  it("honors outOfBand for control-markup spans", () => {
     const span = mapV02SpanToProtectedSpan(
       {
         spanId: "span-oob",
@@ -114,6 +114,23 @@ describe("mapV02SpanToProtectedSpan", () => {
       "<synthetic-control>本文",
     );
     expect(span.outOfBand).toBe(true);
+  });
+
+  it("does not let outOfBand vacate a variable-placeholder span", () => {
+    const span = mapV02SpanToProtectedSpan(
+      {
+        spanId: "span-variable-oob",
+        spanKind: "variable_placeholder",
+        raw: "[name]",
+        startByte: 0,
+        endByte: "[name]".length,
+        outOfBand: true,
+      },
+      0,
+      "[name]本文",
+    );
+    expect(span.outOfBand).not.toBe(true);
+    expect(span.kind).toBe("variable");
   });
 });
 
