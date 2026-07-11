@@ -76,6 +76,7 @@ import {
   type ApiInviteMemberRequest,
   type ApiSaveModelRoutingSettingsRequest,
   type ApiSaveTranslationScopeSettingsRequest,
+  type ApiSaveLocalizationRunConfigRequest,
   type ApiRemoveMemberRequest,
   type ApiRevokeAuthSessionRequest,
 } from "../src/api-schema.js";
@@ -117,6 +118,7 @@ import {
   decisionEventFixture,
   findingRecordFixture,
   modelRoutingSettingsFixture,
+  localizationRunConfigFixture,
   translationScopeSettingsFixture,
   nonJapaneseTargetProjectFixture,
   projectOverviewFixture,
@@ -172,6 +174,7 @@ type ApiMutationService =
   | { surface: "modelRouting"; method: "loadSettings" | "saveRoute" }
   | { surface: "branchPolicy"; method: "loadSettings" | "saveSettings" }
   | { surface: "translationScope"; method: "loadSettings" | "saveSettings" }
+  | { surface: "localizationRunConfig"; method: "saveRunConfig" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | {
@@ -300,6 +303,17 @@ const saveTranslationScopeRequestFixture = {
   localeBranchId: "locale-1",
   scope: "dialogue-and-choices",
 } satisfies ApiSaveTranslationScopeSettingsRequest;
+
+const saveLocalizationRunConfigRequestFixture = {
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  configPath: "/operator/runs/project.localize.json",
+  dataRoot: "/operator/game",
+  pairPolicyPath: "/operator/policies/pair-policy.json",
+  modelId: "deepseek/deepseek-v4-flash",
+  providerId: "fireworks",
+  runDir: "/operator/runs/project-pass",
+} satisfies ApiSaveLocalizationRunConfigRequest;
 
 const inviteMemberRequestFixture = {
   accountId: "account-local",
@@ -442,6 +456,14 @@ const apiMutationPermissionMatrix = [
       saveTranslationScopeRequestFixture,
     ),
     { surface: "translationScope", method: "saveSettings" },
+  ),
+  apiGateForService(
+    "localizationRunConfigSave",
+    post(
+      "/api/projects/project-1/locale-branches/locale-1/settings/localization-run-config",
+      saveLocalizationRunConfigRequestFixture,
+    ),
+    { surface: "localizationRunConfig", method: "saveRunConfig" },
   ),
   apiGateForService(
     "membersList",
@@ -3291,6 +3313,42 @@ describe("Itotori API handlers", () => {
     expect(services.translationScope.saveSettings).not.toHaveBeenCalled();
   });
 
+  it("registers an operator-local launch-pass run config through the scoped settings mutation", async () => {
+    const services = serviceFixture();
+
+    const saved = await handleItotoriApiRequest(
+      post(
+        "/api/projects/project-1/locale-branches/locale-1/settings/localization-run-config",
+        saveLocalizationRunConfigRequestFixture,
+      ),
+      services,
+    );
+
+    expect(saved.statusCode).toBe(200);
+    expect(saved.body).toMatchObject(localizationRunConfigFixture);
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.localizationRunConfig.saveRunConfig).toHaveBeenCalledWith(
+      saveLocalizationRunConfigRequestFixture,
+    );
+  });
+
+  it("rejects a launch-pass run config whose body scope does not match the path scope", async () => {
+    const services = serviceFixture();
+
+    const mismatched = await handleItotoriApiRequest(
+      post("/api/projects/project-1/locale-branches/locale-1/settings/localization-run-config", {
+        ...saveLocalizationRunConfigRequestFixture,
+        projectId: "project-other",
+      }),
+      services,
+    );
+
+    expect(mismatched.statusCode).toBe(400);
+    expect(services.localizationRunConfig.saveRunConfig).not.toHaveBeenCalled();
+  });
+
   it("routes member invite, billing seat usage, accept, list, and remove through typed auth handlers", async () => {
     const services = serviceFixture();
 
@@ -4068,6 +4126,13 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "localization run config save",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/settings/localization-run-config",
+          "successFixture": "api-handlers.test.ts localization run config save success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "members list",
           "requiredPermission": "auth.members.manage",
           "route": "GET /api/auth/members",
@@ -4627,6 +4692,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "translationScope") {
     return services.translationScope[service.method];
   }
+  if (service.surface === "localizationRunConfig") {
+    return services.localizationRunConfig[service.method];
+  }
   if (service.surface === "authPermissions") {
     return services.authPermissions[service.method];
   }
@@ -4653,6 +4721,13 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
   );
   if (request.method === "POST" && flagRoute !== null) {
     return "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags";
+  }
+  const localizationRunConfigRoute =
+    /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/settings\/localization-run-config$/u.exec(
+      request.pathname,
+    );
+  if (request.method === "POST" && localizationRunConfigRoute !== null) {
+    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/settings/localization-run-config";
   }
   const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
   if (request.method === "POST" && projectRoute?.[1]) {
@@ -5227,6 +5302,9 @@ function serviceFixture(): ItotoriApiServices {
         scope: input.scope,
         updatedAt: "2026-07-08T00:00:00.000Z",
       })),
+    },
+    localizationRunConfig: {
+      saveRunConfig: vi.fn(async () => localizationRunConfigFixture),
     },
     authMembers: {
       listMembers: vi.fn(async (accountId: string) => [

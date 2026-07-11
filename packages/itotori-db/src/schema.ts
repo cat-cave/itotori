@@ -2414,6 +2414,32 @@ export const translationScopeSettings = pgTable(
   (table) => [index("itotori_translation_scope_settings_project_idx").on(table.projectId)],
 );
 
+// p3-wire-localization-pass-run-config-registry — one operator-local whole-
+// project run configuration per project/locale branch. The paths are local
+// references only; game bytes never enter this table or a published artifact.
+export const localizationPassRunConfigs = pgTable(
+  "itotori_localization_pass_run_configs",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    configPath: text("config_path").notNull(),
+    dataRoot: text("data_root").notNull(),
+    pairPolicyPath: text("pair_policy_path").notNull(),
+    modelId: text("model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    runDir: text("run_dir").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.localeBranchId] }),
+    index("itotori_localization_pass_run_configs_branch_idx").on(table.localeBranchId),
+  ],
+);
+
 export const providerRuns = pgTable(
   "itotori_provider_runs",
   {

@@ -858,6 +858,54 @@
         ],
         "type": "object"
       },
+      "ApiLocalizationRunConfigResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configPath": {
+            "type": "string"
+          },
+          "dataRoot": {
+            "type": "string"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "pairPolicyPath": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "runDir": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.settings.localization-run-config.v0"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configPath",
+          "dataRoot",
+          "localeBranchId",
+          "modelId",
+          "pairPolicyPath",
+          "projectId",
+          "providerId",
+          "runDir",
+          "schemaVersion",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "ApiMemberInvitationResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2128,6 +2176,46 @@
           "policy",
           "projectId",
           "updateReason"
+        ],
+        "type": "object"
+      },
+      "ApiSaveLocalizationRunConfigRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "configPath": {
+            "type": "string"
+          },
+          "dataRoot": {
+            "type": "string"
+          },
+          "localeBranchId": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "pairPolicyPath": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "runDir": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configPath",
+          "dataRoot",
+          "localeBranchId",
+          "modelId",
+          "pairPolicyPath",
+          "projectId",
+          "providerId",
+          "runDir"
         ],
         "type": "object"
       },
@@ -6833,6 +6921,103 @@
         },
         "summary": "Save editable branch policy for a locale branch and refresh its glossary reference.",
         "x-itotoriRouteId": "settings.branchPolicy.save"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/localization-run-config": {
+      "post": {
+        "operationId": "settingsLocalizationRunConfigSave",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiSaveLocalizationRunConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiLocalizationRunConfigResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Register the operator-local config, data root, pinned model/provider pair, and run directory for launch-pass.",
+        "x-itotoriRouteId": "settings.localizationRunConfig.save"
       }
     },
     "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/translation-scope": {

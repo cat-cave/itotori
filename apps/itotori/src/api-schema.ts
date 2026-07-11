@@ -203,6 +203,7 @@ export type ItotoriApiRouteId =
   | "settings.branchPolicy.save"
   | "settings.translationScope.get"
   | "settings.translationScope.save"
+  | "settings.localizationRunConfig.save"
   | "auth.ssoSettings.configure"
   | "auth.billing.seatUsage"
   | "auth.members.list"
@@ -451,6 +452,28 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "updatedAt",
   ],
   ApiSaveTranslationScopeSettingsRequest: ["projectId", "localeBranchId", "scope"],
+  ApiLocalizationRunConfigResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "configPath",
+    "dataRoot",
+    "pairPolicyPath",
+    "modelId",
+    "providerId",
+    "runDir",
+    "updatedAt",
+  ],
+  ApiSaveLocalizationRunConfigRequest: [
+    "projectId",
+    "localeBranchId",
+    "configPath",
+    "dataRoot",
+    "pairPolicyPath",
+    "modelId",
+    "providerId",
+    "runDir",
+  ],
   ApiSaveBranchPolicySettingsRequest: [
     "projectId",
     "localeBranchId",
@@ -1116,6 +1139,31 @@ export type ApiSaveTranslationScopeSettingsRequest = {
   scope: ApiTranslationScope;
 };
 
+/** Operator-local whole-project inputs used by the Studio launch-pass driver. */
+export type ApiLocalizationRunConfigResponse = {
+  schemaVersion: "itotori.settings.localization-run-config.v0";
+  projectId: string;
+  localeBranchId: string;
+  configPath: string;
+  dataRoot: string;
+  pairPolicyPath: string;
+  modelId: string;
+  providerId: string;
+  runDir: string;
+  updatedAt: string;
+};
+
+export type ApiSaveLocalizationRunConfigRequest = {
+  projectId: string;
+  localeBranchId: string;
+  configPath: string;
+  dataRoot: string;
+  pairPolicyPath: string;
+  modelId: string;
+  providerId: string;
+  runDir: string;
+};
+
 export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsRequest & {
   schemaVersion: "itotori.auth.sso-settings.v0";
   updatedAt: string;
@@ -1528,6 +1576,7 @@ export type ItotoriApiResponseBody =
   | ApiModelRoutingSettingsResponse
   | ApiBranchPolicySettingsResponse
   | ApiTranslationScopeSettingsResponse
+  | ApiLocalizationRunConfigResponse
   | ApiConfigureAuthSsoSettingsResponse
   | ApiMemberInvitationResponse
   | ApiMemberResponse
@@ -1904,6 +1953,43 @@ export function parseSaveTranslationScopeSettingsRequest(
   });
 }
 
+export function parseSaveLocalizationRunConfigRequest(
+  body: unknown,
+): ApiSaveLocalizationRunConfigRequest {
+  return parseRequest("ApiSaveLocalizationRunConfigRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiSaveLocalizationRunConfigRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
+    );
+    const stringFields = [
+      "projectId",
+      "localeBranchId",
+      "configPath",
+      "dataRoot",
+      "pairPolicyPath",
+      "modelId",
+      "providerId",
+      "runDir",
+    ] as const;
+    const stringField = (field: (typeof stringFields)[number]): string => {
+      const value = request[field];
+      assertString(value, `ApiSaveLocalizationRunConfigRequest.${field}`);
+      return value;
+    };
+    return {
+      projectId: stringField("projectId"),
+      localeBranchId: stringField("localeBranchId"),
+      configPath: stringField("configPath"),
+      dataRoot: stringField("dataRoot"),
+      pairPolicyPath: stringField("pairPolicyPath"),
+      modelId: stringField("modelId"),
+      providerId: stringField("providerId"),
+      runDir: stringField("runDir"),
+    };
+  });
+}
+
 export function parseInviteMemberRequest(body: unknown): ApiInviteMemberRequest {
   return parseRequest("ApiInviteMemberRequest", () => {
     const request = asStrictRecord(
@@ -2272,6 +2358,9 @@ export function assertItotoriApiResponse(
     case "settings.translationScope.get":
     case "settings.translationScope.save":
       assertTranslationScopeSettingsResponse(value);
+      return;
+    case "settings.localizationRunConfig.save":
+      assertLocalizationRunConfigResponse(value);
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
@@ -6630,6 +6719,34 @@ function assertTranslationScopeSettingsResponse(
     "ApiTranslationScopeSettingsResponse.scope",
   );
   assertDateLike(response.updatedAt, "ApiTranslationScopeSettingsResponse.updatedAt");
+}
+
+function assertLocalizationRunConfigResponse(
+  value: unknown,
+): asserts value is ApiLocalizationRunConfigResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiLocalizationRunConfigResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.settings.localization-run-config.v0",
+    "ApiLocalizationRunConfigResponse.schemaVersion",
+  );
+  for (const field of [
+    "projectId",
+    "localeBranchId",
+    "configPath",
+    "dataRoot",
+    "pairPolicyPath",
+    "modelId",
+    "providerId",
+    "runDir",
+  ] as const) {
+    assertString(response[field], `ApiLocalizationRunConfigResponse.${field}`);
+  }
+  assertDateLike(response.updatedAt, "ApiLocalizationRunConfigResponse.updatedAt");
 }
 
 function assertBranchPolicySourceRevision(value: unknown, label: string): void {

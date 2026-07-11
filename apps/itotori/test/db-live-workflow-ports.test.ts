@@ -1,4 +1,9 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
+  ItotoriLocalizationPassRunConfigRepository,
+  ItotoriProjectRepository,
   localUserId,
   type AuthorizationActor,
   type ItotoriProjectRepositoryPort,
@@ -16,9 +21,11 @@ import {
 } from "../src/services/project-workflow.js";
 import {
   createDbBackedDraftModelProvider,
+  createDbBackedLivePassRunner,
   createDbBackedLocalizationPassDriver,
   type DbBackedPassRunConfig,
 } from "../src/services/db-live-workflow-ports.js";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
 
@@ -186,6 +193,85 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
         expect(result.refusalMessage).toContain("does not belong to project");
       }
     });
+
+    const realConfigPath = process.env.ITOTORI_REAL_LOCALIZATION_CONFIG;
+    const realDataRoot = process.env.ITOTORI_REAL_LOCALIZATION_DATA_ROOT;
+    const realPairPolicyPath = process.env.ITOTORI_REAL_LOCALIZATION_PAIR_POLICY;
+    const realProofReady =
+      realConfigPath !== undefined &&
+      realDataRoot !== undefined &&
+      realPairPolicyPath !== undefined &&
+      process.env.DATABASE_URL !== undefined &&
+      existsSync(realConfigPath) &&
+      existsSync(realDataRoot) &&
+      existsSync(realPairPolicyPath);
+
+    it.skipIf(!realProofReady)(
+      "Launch pass reaches the REAL runLocalizeFullProjectLive runner for a registered local data root",
+      async () => {
+        const runDir = mkdtempSync(join(tmpdir(), "itotori-launch-pass-real-wire-"));
+        const context = await isolatedMigratedContext();
+
+        try {
+          const projectRepository = new ItotoriProjectRepository(context.db);
+          await projectRepository.importSourceBundle(actor, projectFixture());
+          const runConfigRepository = new ItotoriLocalizationPassRunConfigRepository(context.db);
+          await runConfigRepository.saveRunConfig(actor, {
+            projectId: "project-test",
+            localeBranchId: "locale-en-us",
+            configPath: realConfigPath!,
+            dataRoot: realDataRoot!,
+            pairPolicyPath: realPairPolicyPath!,
+            modelId: "deepseek/deepseek-v4-flash",
+            providerId: "fireworks",
+            runDir,
+          });
+          const passDriver = createDbBackedLocalizationPassDriver({
+            actor,
+            projectRepository,
+            resolveRunConfig: (input) =>
+              runConfigRepository.resolveRunConfig(input.projectId, input.localeBranchId),
+            // This is the production runner, not a vi.fn replacement. The
+            // default branch below deliberately removes the account assertion so
+            // the real function fails at its live-provider privacy gate without
+            // spending tokens; the registry and branch lookup above are real DB
+            // operations in an isolated schema.
+            runLive: createDbBackedLivePassRunner(),
+          });
+
+          if (process.env.ITOTORI_RUN_LIVE_PASS_PROOF === "1") {
+            const result = await passDriver.launchNextPass({
+              projectId: "project-test",
+              localeBranchId: "locale-en-us",
+              actor,
+            });
+            expect(result.outcome).toBe("started");
+            return;
+          }
+
+          const asserted = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+          delete process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+          try {
+            await expect(
+              passDriver.launchNextPass({
+                projectId: "project-test",
+                localeBranchId: "locale-en-us",
+                actor,
+              }),
+            ).rejects.toBeInstanceOf(AccountZdrAssertionError);
+          } finally {
+            if (asserted === undefined) {
+              delete process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+            } else {
+              process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED = asserted;
+            }
+          }
+        } finally {
+          rmSync(runDir, { recursive: true, force: true });
+          await context.close();
+        }
+      },
+    );
   });
 });
 
@@ -246,10 +332,10 @@ function bridgeFixture(): BridgeBundle {
         occurrenceId: "occurrence-1",
         sourceHash: "source-hash",
         sourceLocale: "ja-JP",
-        sourceText: "こんにちは、{player}。",
+        sourceText: "Hello, {player}.",
         textSurface: "dialogue",
         protectedSpans: [
-          { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+          { kind: "placeholder", raw: "{player}", start: 7, end: 15, preserveMode: "exact" },
         ],
         patchRef: {
           assetId: "source.json",

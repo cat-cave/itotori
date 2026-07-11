@@ -262,6 +262,15 @@ export type {
   TranslationScopeSettingValue,
 } from "./repositories/translation-scope-settings-repository.js";
 export {
+  ItotoriLocalizationPassRunConfigRepository,
+  ItotoriLocalizationPassRunConfigRepositoryError,
+} from "./repositories/localization-pass-run-config-repository.js";
+export type {
+  ItotoriLocalizationPassRunConfigRepositoryPort,
+  LocalizationPassRunConfigRecord,
+  SaveLocalizationPassRunConfigInput,
+} from "./repositories/localization-pass-run-config-repository.js";
+export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,
   feedbackReportStatusValues,

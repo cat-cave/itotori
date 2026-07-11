@@ -17,6 +17,7 @@ import {
   ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
   ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationPassRunConfigRepository,
   ItotoriModelLedgerRepository,
   ItotoriModelRoutingSettingsRepository,
   ItotoriTranslationScopeSettingsRepository,
@@ -61,6 +62,7 @@ import {
   type ModelRoutingSettingsRecord,
   type SaveModelRoutingSettingsInput,
   type TranslationScopeSettingsRecord,
+  type LocalizationPassRunConfigRecord,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type AuthAccountSeatUsageRecord,
@@ -100,6 +102,8 @@ import type {
   ApiSaveBranchPolicySettingsRequest,
   ApiTranslationScopeSettingsResponse,
   ApiSaveTranslationScopeSettingsRequest,
+  ApiLocalizationRunConfigResponse,
+  ApiSaveLocalizationRunConfigRequest,
 } from "../api-schema.js";
 import {
   EngineCapabilityReportService,
@@ -147,6 +151,7 @@ import {
 import { createDecodeExtractRunner } from "../extract/decode-extract-runner.js";
 import {
   createDbBackedDraftModelProvider,
+  createDbBackedLivePassRunner,
   createDbBackedLocalizationPassDriver,
 } from "./db-live-workflow-ports.js";
 import {
@@ -297,6 +302,11 @@ export type ItotoriApplicationServices = {
     saveSettings(
       input: ApiSaveTranslationScopeSettingsRequest,
     ): Promise<ApiTranslationScopeSettingsResponse>;
+  };
+  localizationRunConfig: {
+    saveRunConfig(
+      input: ApiSaveLocalizationRunConfigRequest,
+    ): Promise<ApiLocalizationRunConfigResponse>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<MemberRecord[]>;
@@ -546,6 +556,23 @@ function translationScopeSettingsResponseBody(
   };
 }
 
+function localizationRunConfigResponseBody(
+  record: LocalizationPassRunConfigRecord,
+): ApiLocalizationRunConfigResponse {
+  return {
+    schemaVersion: "itotori.settings.localization-run-config.v0",
+    projectId: record.projectId,
+    localeBranchId: record.localeBranchId,
+    configPath: record.configPath,
+    dataRoot: record.dataRoot,
+    pairPolicyPath: record.pairPolicyPath,
+    modelId: record.modelId,
+    providerId: record.providerId,
+    runDir: record.runDir,
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
 function branchPolicyVersionBody(
   version: StyleGuideVersionRecord | null,
 ): ApiBranchPolicyVersion | null {
@@ -659,6 +686,9 @@ export async function withDatabaseItotoriServices<T>(
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const modelRoutingSettingsRepository = new ItotoriModelRoutingSettingsRepository(context.db);
     const translationScopeSettingsRepository = new ItotoriTranslationScopeSettingsRepository(
+      context.db,
+    );
+    const localizationPassRunConfigRepository = new ItotoriLocalizationPassRunConfigRepository(
       context.db,
     );
     const passLedgerRepository = new ItotoriLocalizationPassLedgerRepository(context.db);
@@ -809,6 +839,12 @@ export async function withDatabaseItotoriServices<T>(
         createDbBackedLocalizationPassDriver({
           actor: localUserActor,
           projectRepository,
+          resolveRunConfig: (input) =>
+            localizationPassRunConfigRepository.resolveRunConfig(
+              input.projectId,
+              input.localeBranchId,
+            ),
+          runLive: createDbBackedLivePassRunner(),
         }),
         // p3-in-studio-decode-extract-trigger — the decode/extract runner is
         // WIRED (no longer omitted, which made `projects.decodeExtract` throw
@@ -1016,6 +1052,12 @@ export async function withDatabaseItotoriServices<T>(
               localeBranchId: input.localeBranchId,
               scope: input.scope,
             }),
+          ),
+      },
+      localizationRunConfig: {
+        saveRunConfig: async (input) =>
+          localizationRunConfigResponseBody(
+            await localizationPassRunConfigRepository.saveRunConfig(localUserActor, input),
           ),
       },
       authMembers: {

@@ -17,6 +17,7 @@ import type {
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   ApiAuthIdentityResponse,
+  ApiLocalizationRunConfigResponse,
   ApiBranchPolicySettingsResponse,
   ApiDraftBranchRequest,
   ApiDraftBranchResponse,
@@ -365,6 +366,19 @@ export const translationScopeSettingsFixture: ApiTranslationScopeSettingsRespons
   projectId: "project-1",
   localeBranchId: "locale-1",
   scope: "dialogue-only",
+  updatedAt: "2026-07-08T00:00:00.000Z",
+};
+
+export const localizationRunConfigFixture: ApiLocalizationRunConfigResponse = {
+  schemaVersion: "itotori.settings.localization-run-config.v0",
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  configPath: "/operator/runs/project.localize.json",
+  dataRoot: "/operator/game",
+  pairPolicyPath: "/operator/policies/pair-policy.json",
+  modelId: "deepseek/deepseek-v4-flash",
+  providerId: "fireworks",
+  runDir: "/operator/runs/project-pass",
   updatedAt: "2026-07-08T00:00:00.000Z",
 };
 

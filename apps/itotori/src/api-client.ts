@@ -86,6 +86,8 @@ import type {
   ApiSaveModelRoutingSettingsRequest,
   ApiTranslationScopeSettingsResponse,
   ApiSaveTranslationScopeSettingsRequest,
+  ApiLocalizationRunConfigResponse,
+  ApiSaveLocalizationRunConfigRequest,
   ApiAcceptMemberInvitationRequest,
   ApiConfigureAuthSsoSettingsRequest,
   ApiConfigureAuthSsoSettingsResponse,
@@ -317,6 +319,11 @@ interface ItotoriApiRouteTypeMap {
     response: ApiTranslationScopeSettingsResponse;
     pathParams: { projectId: string; localeBranchId: string };
     request: ApiSaveTranslationScopeSettingsRequest;
+  };
+  "settings.localizationRunConfig.save": {
+    response: ApiLocalizationRunConfigResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    request: ApiSaveLocalizationRunConfigRequest;
   };
   "auth.ssoSettings.configure": {
     response: ApiConfigureAuthSsoSettingsResponse;

@@ -356,6 +356,10 @@ export const migrations = [
     id: "0074_translation_scope_settings",
     file: "0074_translation_scope_settings.sql",
   },
+  {
+    id: "0075_localization_pass_run_configs",
+    file: "0075_localization_pass_run_configs.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
