@@ -63,12 +63,12 @@ landed commit). Reserve it for that narrow case.
 
 Check **membership in the merge queue**, not the auto-merge flag:
 
-| Signal | Meaning |
-| ------ | ------- |
-| GraphQL `pullRequest { isInMergeQueue mergeQueueEntry { position state } }` | **Authoritative** queue membership + position |
-| `merge_group` check runs on the PR | Queue is rebuilding/testing the merge group |
-| `autoMergeRequest` | **Only** the auto-merge *flag*. Often **null even when queued**. A non-null value does **not** prove queue membership or failure |
-| `mergeStateStatus: BEHIND` | Main advanced under the PR. **Normal.** The queue rebuilds the `merge_group` off current `main` and merges. **Do not panic-rebase.** |
+| Signal                                                                      | Meaning                                                                                                                              |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| GraphQL `pullRequest { isInMergeQueue mergeQueueEntry { position state } }` | **Authoritative** queue membership + position                                                                                        |
+| `merge_group` check runs on the PR                                          | Queue is rebuilding/testing the merge group                                                                                          |
+| `autoMergeRequest`                                                          | **Only** the auto-merge _flag_. Often **null even when queued**. A non-null value does **not** prove queue membership or failure     |
+| `mergeStateStatus: BEHIND`                                                  | Main advanced under the PR. **Normal.** The queue rebuilds the `merge_group` off current `main` and merges. **Do not panic-rebase.** |
 
 Example membership probe:
 
@@ -92,7 +92,7 @@ gh api graphql -f query='
 
 **qd is a STATE LEDGER.** The real git merge happens through GitHub's merge
 queue, separately. qd records claims, completion evidence, audits, CI, and
-mergeability; `qd merge --enqueue` / `--via-pr` *drive* the queue and
+mergeability; `qd merge --enqueue` / `--via-pr` _drive_ the queue and
 `qd sync-prs` records the result.
 
 ### Session start
@@ -125,7 +125,7 @@ active method hash is acknowledged for this session.
    ```
 
    Use **`--from-report`**, not `--summary` (`--summary` was removed in 0.4.1).
-   Completion means *ready for audit*, not *done*.
+   Completion means _ready for audit_, not _done_.
 
 5. **Audit** — independent review (different model than implementer when
    shell-agents are used):
@@ -207,19 +207,19 @@ Subagents never touch qd. Worktrees must not become a second ledger (see
 
 ### Two kinds of workers
 
-| Kind | Examples | Properties |
-| ---- | -------- | ---------- |
-| **Harness Claude subagents** | Claude Code Task / isolated agent worktrees | Reaper-immune; run in isolated worktrees |
-| **Shell-agents** | `codex`, `grok`, `opencode` / GLM-5.2 | Fine for authorship; **reaped after ~15–22 min** → need a soft watchdog |
+| Kind                         | Examples                                    | Properties                                                              |
+| ---------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| **Harness Claude subagents** | Claude Code Task / isolated agent worktrees | Reaper-immune; run in isolated worktrees                                |
+| **Shell-agents**             | `codex`, `grok`, `opencode` / GLM-5.2       | Fine for authorship; **reaped after ~15–22 min** → need a soft watchdog |
 
 ### Model routing
 
-| Work | Prefer | Avoid / constraint |
-| ---- | ------ | ------------------ |
-| Mechanical implementation, tooling, docs | GLM (`opencode` / `zai-coding-plan/glm-5.2`) or `grok` | — |
-| Audits | `codex` **or a different model than the implementer** | Same model that wrote the code |
-| Byte-touching / correctness-critical / gate work | **Claude-native** (harness subagent) | GLM under-wires correctness |
-| Oracle-grade runtime-semantics proofs | Claude-native + human/orchestrator spot-check | **grok fabricates** these proofs — always audit with a different model |
+| Work                                             | Prefer                                                 | Avoid / constraint                                                     |
+| ------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Mechanical implementation, tooling, docs         | GLM (`opencode` / `zai-coding-plan/glm-5.2`) or `grok` | —                                                                      |
+| Audits                                           | `codex` **or a different model than the implementer**  | Same model that wrote the code                                         |
+| Byte-touching / correctness-critical / gate work | **Claude-native** (harness subagent)                   | GLM under-wires correctness                                            |
+| Oracle-grade runtime-semantics proofs            | Claude-native + human/orchestrator spot-check          | **grok fabricates** these proofs — always audit with a different model |
 
 ### Canonical shell-out pattern
 
@@ -422,17 +422,17 @@ grok --prompt-file "$BRIEF" \
 
 Notes:
 
-| Flag | Role |
-| ---- | ---- |
-| `--prompt-file <PATH>` | Read prompt from file (stdin unused) |
-| `-p, --single <PROMPT>` | Inline single-turn prompt instead |
-| `--prompt-json <JSON>` | Content blocks |
-| `--always-approve` | Auto-approve tool executions (headless) |
-| `--output-format plain\|json\|streaming-json` | Headless output |
-| `--cwd <DIR>` | Working directory → point at the worktree |
-| `--worktree[=name]` / `--worktree-ref <ref>` | Start in a fresh git worktree instead |
-| `--json-schema <SCHEMA>` | Constrain output to JSON |
-| `--max-turns <N>` | Bound the agent loop |
+| Flag                                          | Role                                      |
+| --------------------------------------------- | ----------------------------------------- |
+| `--prompt-file <PATH>`                        | Read prompt from file (stdin unused)      |
+| `-p, --single <PROMPT>`                       | Inline single-turn prompt instead         |
+| `--prompt-json <JSON>`                        | Content blocks                            |
+| `--always-approve`                            | Auto-approve tool executions (headless)   |
+| `--output-format plain\|json\|streaming-json` | Headless output                           |
+| `--cwd <DIR>`                                 | Working directory → point at the worktree |
+| `--worktree[=name]` / `--worktree-ref <ref>`  | Start in a fresh git worktree instead     |
+| `--json-schema <SCHEMA>`                      | Constrain output to JSON                  |
+| `--max-turns <N>`                             | Bound the agent loop                      |
 
 Default model is **grok-4.5**. Strong on full-stack self-correction; **weak on
 oracle-grade runtime-semantics proof (fabricates)** → always audit grok with a
@@ -459,8 +459,8 @@ opencode run --auto -m zai-coding-plan/glm-5.2 \
 codex exec "Read the instructions at $BRIEF and follow them completely." < /dev/null
 ```
 
-- **`< /dev/null` is MANDATORY.** Without it, codex hangs on *"Reading
-  additional input from stdin"*.
+- **`< /dev/null` is MANDATORY.** Without it, codex hangs on _"Reading
+  additional input from stdin"_.
 - To stop a runaway codex:
 
   ```sh
