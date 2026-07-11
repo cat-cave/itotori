@@ -33,7 +33,9 @@ upstream-pinned duplicates that cannot be aligned from itotori's own manifests:
 | crate       | skipped version | why it is accepted                                                                                                                                                                                                                         |
 | ----------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `getrandom` | `=0.2.17`       | Pulled only by `redox_users` (a Redox-OS-target-only transitive dep of `dirs` -> `dirs-sys`); never builds on our Linux/macOS targets. The live graph otherwise resolves a single `getrandom` 0.4 via `uuid`. No upstream dedup available. |
-| `hashbrown` | `=0.16.1`       | Pinned by `jsonschema` 0.46 -> `referencing` (a dev-dep); `rusqlite` 0.40 -> `hashlink` pulls `hashbrown` 0.17. Neither is bumpable without an upstream release aligning the two.                                                          |
+| `getrandom` | `=0.3.4`        | Pinned by `jsonschema` 0.46 -> `ahash`, while `uuid` and `tempfile` resolve `getrandom` 0.4.3. The third-party requirements cannot be aligned from itotori's manifests.                                                                    |
+| `hashbrown` | `=0.16.1`       | Pinned by `jsonschema` 0.46 -> `referencing`; `rusqlite` 0.40 -> `hashlink` pulls `hashbrown` 0.17. Neither is bumpable without an upstream release aligning the two.                                                                      |
+| `r-efi`     | `=5.3.0`        | Pinned by `getrandom` 0.3.4 through `jsonschema` 0.46, while `uuid`'s `getrandom` 0.4.3 pins `r-efi` 6.0.0. Both are EFI-target-only transitive requirements with no aligned upstream release.                                             |
 
 ## Rules of the road
 

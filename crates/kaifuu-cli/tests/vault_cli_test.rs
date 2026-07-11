@@ -58,13 +58,65 @@ fn sha256_hex(bytes: &[u8]) -> String {
 fn build_by_id_archive() -> Vec<u8> {
     let metadata = serde_json::to_vec_pretty(&serde_json::json!({
         "canonical_id": CID,
-        "engine": "kirikiri",
-        "languages": ["ja"],
-        "work": { "canonical_title": "Hello Galaxy", "work_kind": "vn" },
         "identifiers": [
             { "source": "vndb", "kind": "v", "value": "v1234" },
             { "source": "dlsite", "kind": "rj", "value": "RJ123456" }
-        ]
+        ],
+        "engine": "kirikiri",
+        "engine_evidence": {
+            "evidence": "direct_observation",
+            "observed_at": "2026-01-01 00:00:00",
+            "source": "synthetic_fixture",
+            "value": "kirikiri"
+        },
+        "engine_source": "synthetic_fixture",
+        "work": {
+            "age_rating": "all",
+            "canonical_title": "Hello Galaxy",
+            "original_title": null,
+            "series_id": null,
+            "series_name": null,
+            "work_kind": "vn"
+        },
+        "release": {
+            "drm_model": null,
+            "edition_name": null,
+            "edition_year": null,
+            "is_portable": null,
+            "release_date": null,
+            "store": null
+        },
+        "languages": [{
+            "evidence_path": null,
+            "is_mtl": false,
+            "kind": "full",
+            "language_code": "ja",
+            "source": "synthetic_fixture"
+        }],
+        "install_manifest": null,
+        "containers_json": [{
+            "classified": "archive",
+            "exit": 0,
+            "magic": "sevenz",
+            "note": "",
+            "produced": ["game/start.exe", "_vault/metadata.json"],
+            "stderr": "",
+            "tool": "synthetic-7zz"
+        }],
+        "runnable_from_tree": 1,
+        "original_filename": "synthetic-cli-source.7z",
+        "original_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 1,
+        "source_fetches": [{
+            "fetched_at": "2026-01-01 00:00:00",
+            "http_status": 200,
+            "ok": true,
+            "request_hash": "synthetic-cli-request",
+            "source": "synthetic_fixture"
+        }],
+        "state": "vaulted",
+        "version": "v1.0",
+        "version_norm": [1, 0]
     }))
     .unwrap();
 

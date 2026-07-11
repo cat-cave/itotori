@@ -209,12 +209,52 @@ after extraction.
 
 Every by-id artifact carries `_vault/metadata.json` under its
 `<canonical_id>/` wrapper. This is the vault-curation _canonical_ document —
-top-level `canonical_id`, `identifiers[]` (`{source, kind, value}`), `engine`,
-`work`, `release`, `languages`, ... — produced by the stage-2 repack. (It is
-NOT the legacy "Vault Embedded Artifact Metadata v1.0" `releases[]` /
-`vault_artifact` shape; that schema described the prior sha-addressed era and
-is not used for by-id resolution.) The adapter parses it and cross-checks its
-identity against the catalog:
+the 18 required top-level fields are `canonical_id`, `identifiers`, `engine`,
+`engine_evidence`, `engine_source`, `work`, `release`, `languages`,
+`install_manifest`, `containers_json`, `runnable_from_tree`,
+`original_filename`, `original_sha256`, `size_bytes`, `source_fetches`,
+`state`, `version`, and `version_norm`. The authoritative Draft 2020-12
+schema is [`docs/itotori-vault-by-id-metadata.schema.json`](itotori-vault-by-id-metadata.schema.json).
+
+The reconciled nested shapes are:
+
+- `identifiers` is a non-empty array of objects with exactly `source`, `kind`,
+  and `value` string fields.
+- `engine_evidence` is an object with string fields `evidence`, `observed_at`,
+  `source`, and `value`.
+- `work` is an object with `age_rating`, `original_title`, `series_id`, and
+  `series_name` nullable strings, plus non-empty string `canonical_title` and
+  `work_kind`.
+- `release` is an object with nullable `drm_model`, `edition_name`,
+  `release_date`, and `store` strings, nullable integer `edition_year`, and
+  nullable boolean `is_portable`.
+- `languages` is a non-empty array of objects with `evidence_path` as a
+  nullable string, boolean `is_mtl`, and non-empty string `kind`,
+  `language_code`, and `source` fields.
+- `install_manifest` is currently required to be `null`; all 380 observed
+  sidecars have that value.
+- `containers_json` is a non-empty array of observations with
+  `classified`, `magic`, and `tool` (the latter nullable) strings, integer
+  `exit`, string `note`/`stderr`, and a string array `produced`; `source` is
+  an optional non-empty string.
+- `source_fetches` is a non-empty array with string `fetched_at`,
+  `request_hash`, and `source`, boolean `ok`, and nullable integer
+  `http_status`.
+- `engine`, `engine_source`, `version`, and `version_norm` are nullable;
+  `version_norm` is otherwise a non-empty array of non-negative integers.
+  `runnable_from_tree` is a nullable 0/1 integer. `original_sha256` is a
+  lowercase 64-character SHA-256, and `size_bytes` is a non-negative integer.
+
+The adapter parses this document, validates it against the checked-in schema,
+and only then cross-checks its identity against the catalog:
+
+### Validation
+
+`serde_json` parsing and Draft 2020-12 validation happen when the first
+post-extraction metadata file is read. The Rust validator is compiled once
+from the checked-in schema and reused; the adapter does not read a schema from
+the vault. A shape or schema failure returns
+`EmbeddedMetadataInvalid { errors: Vec<String> }`.
 
 - **`canonical_id` (hard identity gate).** The embedded top-level
   `canonical_id` must equal the catalog `artifacts.canonical_id` the by-id

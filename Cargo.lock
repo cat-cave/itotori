@@ -702,6 +702,7 @@ name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [
  "dirs",
+ "jsonschema",
  "kaifuu-core",
  "kaifuu-engine-fixture",
  "kaifuu-reallive",

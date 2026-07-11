@@ -24,7 +24,7 @@ multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
 
-# Both skips below are transitive, upstream-pinned duplicates that cannot be
+# All skips below are transitive, upstream-pinned duplicates that cannot be
 # aligned from itotori's manifests (they come from third-party crates' own
 # version requirements). They are narrow (exact-version) skips, NOT a blanket
 # `multiple-versions = "allow"`. Each `[[bans.skip]]` is preceded on the line
@@ -36,7 +36,17 @@ allow-wildcard-paths = true
 name = "getrandom"
 version = "=0.2.17"
 
-# reason: hashbrown 0.16.1 is pinned by jsonschema 0.46 -> referencing (a dev-dep) while rusqlite 0.40 -> hashlink pulls hashbrown 0.17; neither is bumpable without an upstream release aligning the two — no dedup available.
+# reason: getrandom 0.3.4 is pinned by jsonschema 0.46 -> ahash, while uuid and tempfile resolve getrandom 0.4.3; the third-party requirements cannot be aligned from itotori's manifests.
+[[bans.skip]]
+name = "getrandom"
+version = "=0.3.4"
+
+# reason: hashbrown 0.16.1 is pinned by jsonschema 0.46 -> referencing while rusqlite 0.40 -> hashlink pulls hashbrown 0.17; neither is bumpable without an upstream release aligning the two — no dedup available.
 [[bans.skip]]
 name = "hashbrown"
 version = "=0.16.1"
+
+# reason: r-efi 5.3.0 is pinned by getrandom 0.3.4 (jsonschema 0.46), while uuid's getrandom 0.4.3 pins r-efi 6.0.0; both are EFI-target-only transitive requirements with no aligned upstream release.
+[[bans.skip]]
+name = "r-efi"
+version = "=5.3.0"

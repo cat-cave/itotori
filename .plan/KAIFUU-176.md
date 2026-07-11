@@ -70,11 +70,11 @@ crates/kaifuu-vault-source/
     retention.rs      // retention-policy state machine; per-run + per-game cleanup
   tests/
     fixtures/
+      by-id-metadata/*.json                  // synthetic sidecar shape fixtures
       synthetic-vault/
         catalog.db                          // built at test-time via build.rs from .sql seed
         seed.sql                            // committed; deterministic INSERTs
-        artifacts/by-sha/<aa>/<bb>/<hash>.7z // small synthetic archives
-        embedded-metadata.schema.json       // copy of upstream contract (versioned)
+        artifacts/by-id/<canonical_id>/<canonical_id>.7z // small synthetic archives
     discovery_test.rs
     resolution_test.rs
     extraction_test.rs
@@ -322,23 +322,20 @@ Secret Custody — "still verifies the artifact sha256 each run")_.
 - Parse via `serde_json`. Missing → `EmbeddedMetadataMissing { extracted_root,
 artifact_sha256 }`.
 - Validate against
-  `<vault-root>/embedded-metadata.schema.json` using `jsonschema` crate
-  (draft 2020-12). Schema is loaded once per `VaultSource` and cached in
-  memory (the schema file is read at vault-validation time alongside
-  `catalog.db`/`artifacts/by-sha/`). Failure →
-  `EmbeddedMetadataInvalid { errors: Vec<String>, schema_version }`.
+  `docs/itotori-vault-by-id-metadata.schema.json` using the `jsonschema` crate
+  (draft 2020-12). The checked-in schema is compiled once and reused. Failure
+  → `EmbeddedMetadataInvalid { errors: Vec<String> }`.
 
 ### Field-by-field cross-check
 
 For the artifact selected:
 
-| Embedded field                                                           | Catalog field                                    | Default disposition on mismatch                                                |
-| ------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `vault_artifact.original_sha256`                                         | `artifacts.original_sha256` (when both non-null) | Finding                                                                        |
-| `releases[].work.identifiers` (any ∈ catalog `identifiers` for the work) | `identifiers` table                              | **Error** `CatalogEmbeddedMismatch` (work identity) when intersection is empty |
-| `releases[].platforms`                                                   | `release_platforms`                              | Finding (catalog wins)                                                         |
-| `releases[].languages`                                                   | `release_languages`                              | Finding (catalog wins)                                                         |
-| `releases[].role`                                                        | `release_artifacts.role`                         | Finding                                                                        |
+| Embedded field                                   | Catalog field            | Default disposition on mismatch                                |
+| ------------------------------------------------ | ------------------------ | -------------------------------------------------------------- |
+| `canonical_id`                                   | `artifacts.canonical_id` | **Error** `CatalogEmbeddedMismatch` when values differ         |
+| `identifiers` (any tuple in catalog identifiers) | `identifiers` table      | **Error** `CatalogEmbeddedMismatch` when intersection is empty |
+| `languages[].language_code`                      | `release_languages`      | Finding (catalog wins)                                         |
+| `engine`                                         | current engine fact      | Finding (catalog wins)                                         |
 
 The default tolerance is exactly the contract default _(Contract: §Cross-checking
 via Embedded Metadata — "default threshold rejects mismatched work identity and

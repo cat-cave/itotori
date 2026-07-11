@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:itotori:vault-by-id-metadata",
+  "title": "Itotori vault by-id sidecar metadata",
+  "description": "The canonical metadata document stored as <canonical_id>.json beside each by-id vault artifact and embedded at <canonical_id>/_vault/metadata.json. This contract is reconciled from the 380 live by-id sidecars observed on 2026-06-24 and 2026-06-25.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "canonical_id",
+    "identifiers",
+    "engine",
+    "engine_evidence",
+    "engine_source",
+    "work",
+    "release",
+    "languages",
+    "install_manifest",
+    "containers_json",
+    "runnable_from_tree",
+    "original_filename",
+    "original_sha256",
+    "size_bytes",
+    "source_fetches",
+    "state",
+    "version",
+    "version_norm"
+  ],
+  "properties": {
+    "canonical_id": {
+      "$ref": "#/$defs/non_empty_string",
+      "description": "Stable by-id identity and wrapper directory name."
+    },
+    "identifiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      },
+      "description": "One or more external work identifiers used for the identity cross-check."
+    },
+    "engine": {
+      "$ref": "#/$defs/nullable_string",
+      "description": "Observed engine name, or null when the file tree did not identify one."
+    },
+    "engine_evidence": {
+      "$ref": "#/$defs/engine_evidence"
+    },
+    "engine_source": {
+      "$ref": "#/$defs/nullable_string",
+      "description": "Source that supplied engine, or null when engine is unknown."
+    },
+    "work": {
+      "$ref": "#/$defs/work"
+    },
+    "release": {
+      "$ref": "#/$defs/release"
+    },
+    "languages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/language"
+      },
+      "description": "Language facts. These are objects, not bare language-code strings."
+    },
+    "install_manifest": {
+      "type": "null",
+      "description": "Reserved install-manifest slot; all reconciled sidecars currently contain null."
+    },
+    "containers_json": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/container_observation"
+      },
+      "description": "Container/file inspection observations."
+    },
+    "runnable_from_tree": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Numeric runnable flag (1 or null in the reconciled sidecars)."
+    },
+    "original_filename": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "original_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase SHA-256 of the original source artifact."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_fetches": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source_fetch"
+      }
+    },
+    "state": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "version": {
+      "$ref": "#/$defs/nullable_string"
+    },
+    "version_norm": {
+      "type": ["array", "null"],
+      "minItems": 1,
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "Normalized numeric version components, or null when unavailable."
+    }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullable_string": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "identifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "kind", "value"],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "kind": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "value": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "engine_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "observed_at", "source", "value"],
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "value": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "age_rating",
+        "canonical_title",
+        "original_title",
+        "series_id",
+        "series_name",
+        "work_kind"
+      ],
+      "properties": {
+        "age_rating": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "canonical_title": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "original_title": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "series_id": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "series_name": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "work_kind": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drm_model",
+        "edition_name",
+        "edition_year",
+        "is_portable",
+        "release_date",
+        "store"
+      ],
+      "properties": {
+        "drm_model": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "edition_name": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "edition_year": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "is_portable": {
+          "type": ["boolean", "null"]
+        },
+        "release_date": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "store": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "language": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_path", "is_mtl", "kind", "language_code", "source"],
+      "properties": {
+        "evidence_path": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "is_mtl": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "language_code": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "container_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classified", "exit", "magic", "note", "produced", "stderr", "tool"],
+      "properties": {
+        "classified": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "exit": {
+          "type": "integer"
+        },
+        "magic": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "produced": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/nullable_string"
+        }
+      }
+    },
+    "source_fetch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fetched_at", "http_status", "ok", "request_hash", "source"],
+      "properties": {
+        "fetched_at": {
+          "$ref": "#/$defs/non_empty_string",
+          "description": "Producer timestamp; live sidecars use a space-separated timestamp rather than RFC 3339."
+        },
+        "http_status": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "request_hash": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    }
+  }
+}
