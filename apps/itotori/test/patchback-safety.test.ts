@@ -265,6 +265,21 @@ describe("repairJsonObject", () => {
   it("removes trailing commas", () => {
     expect(repairJsonObject('{"t":[{"id":0,"en":"a"},]}')).toEqual({ t: [{ id: 0, en: "a" }] });
   });
+  it("preserves structural-looking punctuation inside string values", () => {
+    const input = String.raw`{"note":"preserve ,} exactly","arr":"also ,] here","escaped":"quote \" and ,}"}`;
+    expect(repairJsonObject(input)).toEqual({
+      note: "preserve ,} exactly",
+      arr: "also ,] here",
+      escaped: 'quote " and ,}',
+    });
+  });
+  it("preserves structural-looking punctuation inside strings during truncation repair", () => {
+    const input = String.raw`{"note":"preserve ,} and \"quoted\" exactly","arr":[{"id":1}`;
+    expect(repairJsonObject(input)).toEqual({
+      note: 'preserve ,} and "quoted" exactly',
+      arr: [{ id: 1 }],
+    });
+  });
   it("closes a truncated object, keeping complete entries", () => {
     const out = repairJsonObject('{"t":[{"id":0,"en":"hello"},{"id":1,"en":"wor');
     expect(out).toHaveProperty("t");
@@ -317,6 +332,14 @@ describe("parseWithBoundedRepair", () => {
     const raw = JSON.stringify(validSpeakerLabel).replace(/}$/, ",}");
     const parsed = parseWithBoundedRepair(raw, parseSpeakerLabelOutput);
     expect(parsed).toEqual(validSpeakerLabel);
+  });
+
+  it("rejects a [- prefixed envelope instead of salvaging its inner object", () => {
+    const raw = "[" + JSON.stringify(validSpeakerLabel);
+    expect(repairJsonObject(raw)).toBeNull();
+    expect(() => parseWithBoundedRepair(raw, parseSpeakerLabelOutput)).toThrow(
+      SpeakerLabelResponseValidationError,
+    );
   });
 
   it("still throws SpeakerLabelResponseValidationError on an invalid shape", () => {
