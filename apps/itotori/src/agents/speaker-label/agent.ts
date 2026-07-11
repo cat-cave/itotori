@@ -45,6 +45,7 @@ import {
   type SpeakerLabelOutput,
   type SpeakerLabelUnknownReason,
 } from "@itotori/localization-bridge-schema";
+import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
@@ -141,7 +142,7 @@ export class SpeakerLabelAgent {
       );
     }
 
-    const parsed = parseSpeakerLabelOutput(rawContent);
+    const parsed = parseWithBoundedRepair(rawContent, parseSpeakerLabelOutput);
     this.assertCitationsResolve(parsed, input);
     this.assertHiddenIdentityNotLeaked(parsed, input);
     this.assertHiddenMaskConsistency(parsed, input);

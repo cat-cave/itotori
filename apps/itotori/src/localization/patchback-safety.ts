@@ -465,3 +465,22 @@ export function repairJsonObject(content: string | null | undefined): unknown {
     return null;
   }
 }
+
+/**
+ * Run a strict structured-output parser, and on failure deterministically
+ * salvage the raw content via `repairJsonObject` (markdown-fence stripping +
+ * bounded json-repair, provider-agnostic) and re-run the SAME strict parser
+ * on the salvaged object. Re-throws the ORIGINAL error when nothing is
+ * salvageable, so a genuinely-invalid response still surfaces the typed error.
+ */
+export function parseWithBoundedRepair<T>(raw: string, strictParse: (input: string) => T): T {
+  try {
+    return strictParse(raw);
+  } catch (originalError) {
+    const repaired = repairJsonObject(raw);
+    if (repaired === null || typeof repaired !== "object") {
+      throw originalError;
+    }
+    return strictParse(JSON.stringify(repaired));
+  }
+}
