@@ -1044,6 +1044,8 @@ async function runLocalizeProjectStage(
  *                         artifacts + run summary
  * Optional:
  *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
+ *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
+ *                         over the config's `concurrency`)
  *   --source <PATH>       read-only source game root. RealLive: the game root
  *                         (REALLIVEDATA/Seen.txt). RPG Maker MV/MZ: the `www`
  *                         dir (contains `data/`).
@@ -1063,6 +1065,7 @@ async function runLocalizeFullProject(
   const configPath = requiredFlag(args, "--config");
   const runDir = requiredFlag(args, "--run-dir");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+  const concurrency = parseConcurrencyFlag(args);
   // m1-wholegame-localize-to-patch-seam: --source (read-only game root) +
   // --patch-target (writable output) reach an APPLYABLE patch. Both or neither.
   const sourceRoot = optionalFlag(args, "--source");
@@ -1090,6 +1093,7 @@ async function runLocalizeFullProject(
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+    ...(concurrency !== undefined ? { concurrency } : {}),
     ...(sourceRoot !== undefined ? { sourceRoot } : {}),
     ...(patchTargetRoot !== undefined ? { patchTargetRoot } : {}),
     ...(dependencies.nativeCli !== undefined ? { nativeCli: dependencies.nativeCli } : {}),
@@ -1161,6 +1165,8 @@ async function runLocalizeFullProject(
  *   --expect-text <TEXT>         localized text the render frame must contain
  *   --redaction on|off           render-frame redaction posture (default on)
  *   --cost-cap-usd <decimal>     per-process OpenRouter budget cap
+ *   --concurrency <N>            client-side bounded-concurrency cap (default 8;
+ *                                wins over the config's `concurrency`)
  */
 async function runLocalizeGame(
   args: string[],
@@ -1185,6 +1191,7 @@ async function runLocalizeGame(
   const expectTextContains = optionalFlag(args, "--expect-text");
   const redactionRaw = optionalFlag(args, "--redaction") ?? "on";
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+  const concurrency = parseConcurrencyFlag(args);
 
   if (redactionRaw !== "on" && redactionRaw !== "off") {
     throw new Error(`localize-game: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
@@ -1224,6 +1231,7 @@ async function runLocalizeGame(
     ...(entryScene !== undefined ? { entryScene } : {}),
     ...(expectTextContains !== undefined ? { expectTextContains } : {}),
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+    ...(concurrency !== undefined ? { concurrency } : {}),
   };
   if (dependencies.nativeCli !== undefined) {
     const nativeCli = dependencies.nativeCli;
@@ -2262,6 +2270,24 @@ function parseNonNegativeInteger(value: string, name: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== value) {
     throw new Error(`${name} must be a non-negative integer`);
+  }
+  return parsed;
+}
+
+/**
+ * Parse the optional `--concurrency <N>` flag: a client-side bounded-concurrency
+ * override for the whole-game localize driver. Returns undefined when absent (the
+ * driver falls back to the config value, then DEFAULT_DRIVEN_CONCURRENCY).
+ * Must be a positive integer — `0` would stall the driver, so it is refused loudly.
+ */
+function parseConcurrencyFlag(args: string[]): number | undefined {
+  const raw = optionalFlag(args, "--concurrency");
+  if (raw === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(`--concurrency '${raw}' must be a positive integer (>= 1)`);
   }
   return parsed;
 }

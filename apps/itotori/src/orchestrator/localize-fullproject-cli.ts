@@ -67,6 +67,12 @@ export type RunLocalizeFullProjectLiveArgs = {
   /** Per-process USD cost cap for the OpenRouter provider. Defaults to $0.50. */
   costCapUsd?: number;
   /**
+   * Optional client-side bounded-concurrency override (from `--concurrency`).
+   * When present it WINS over the config's `concurrency` and the executor
+   * default. Raises whole-game throughput without editing the checked-in config.
+   */
+  concurrency?: number;
+  /**
    * m1-wholegame-localize-to-patch-seam — the read-only source game root +
    * the writable target root. When BOTH are present the run reaches an
    * APPLYABLE, byte-correct patch: the executor's real drafts pass the
@@ -253,6 +259,7 @@ export async function runLocalizeFullProjectLive(
         runLocalizeFullProjectCommand({
           configPath: args.configPath,
           runSummaryPath: join(args.runDir, "run-summary.json"),
+          ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
           deps: {
             io: args.io,
             actor,
