@@ -69,6 +69,7 @@ import {
   assertRedactedRuntimeDashboardStatus,
   parseDraftBranchRequest,
   parseProjectImportRequest,
+  parseProjectDecodeExtractRequest,
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
   parseRecordFindingRequest,
@@ -109,6 +110,7 @@ import {
   type ApiInviteMemberRequest,
   type ApiProjectOverviewResponse,
   type ApiProjectImportResponse,
+  type ApiProjectDecodeExtractResponse,
   type ApiProjectsResponse,
   type ApiJobsRunTableResponse,
   type ApiQueueHealthResponse,
@@ -196,6 +198,10 @@ export type ApiMutationPermissionGate = {
 
 export const apiMutationPermissionGates = {
   bridgeImport: apiMutationGate("bridge import", "projectImport"),
+  // p3-in-studio-decode-extract-trigger — the in-studio decode/extract produces
+  // the SAME import artifact (a bridge bundle) the manual upload did, so it
+  // carries the SAME `project.import` authority as `bridgeImport`.
+  decodeExtract: apiMutationGate("decode extract", "projectImport"),
   branchDraft: apiMutationGate("branch draft", "draftWrite"),
   findingRecord: apiMutationGate("finding record", "runtimeIngest"),
   decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
@@ -385,6 +391,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "getCostDrilldown"
     | "getBenchmarkReports"
     | "importBridge"
+    | "decodeExtract"
     | "draftProject"
     | "recordFinding"
     | "recordDecision"
@@ -825,6 +832,23 @@ async function routeItotoriApiRequest(
     reviewerSingleActionRoute !== null
   ) {
     return methodNotAllowed(["POST"]);
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/projects/decode-extract") {
+    // p3-in-studio-decode-extract-trigger — run the REAL identify -> inventory ->
+    // extract decode pipeline from a game source path/handle and return the
+    // produced v0.2 bridge. Same `project.import` gate as the bridge upload it
+    // replaces (it produces the same import artifact). No status echo here — the
+    // decode is pure (touches no project/cost ledger), so there is nothing to
+    // redact; the returned bridge feeds the sibling `imports.bridge` route.
+    const body = parseProjectDecodeExtractRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.decodeExtract);
+    const outcome = await services.projectWorkflow.decodeExtract(body);
+    return ok("projects.decodeExtract", {
+      bridge: outcome.bridge,
+      mode: outcome.mode,
+      command: outcome.command,
+    });
   }
 
   if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
@@ -3315,6 +3339,10 @@ function ok(routeId: "projects.bmkCockpitHistory", body: BmkCockpitRunHistoryPag
 function ok(routeId: "jobs.runTable", body: ApiJobsRunTableResponse): ApiJsonResponse;
 function ok(routeId: "queue.health", body: ApiQueueHealthResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
+function ok(
+  routeId: "projects.decodeExtract",
+  body: ApiProjectDecodeExtractResponse,
+): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
 function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;
 function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonResponse;

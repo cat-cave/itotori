@@ -59,6 +59,8 @@ import type {
   ApiProjectOverviewResponse,
   ApiProjectImportRequest,
   ApiProjectImportResponse,
+  ApiProjectDecodeExtractRequest,
+  ApiProjectDecodeExtractResponse,
   ApiProjectsResponse,
   ApiJobsRunTableResponse,
   ApiQueueHealthResponse,
@@ -257,6 +259,10 @@ interface ItotoriApiRouteTypeMap {
   };
   "queue.health": {
     response: ApiQueueHealthResponse;
+  };
+  "projects.decodeExtract": {
+    response: ApiProjectDecodeExtractResponse;
+    request: ApiProjectDecodeExtractRequest;
   };
   "imports.bridge": {
     response: ApiProjectImportResponse;

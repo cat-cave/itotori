@@ -246,8 +246,9 @@ describe("SPA shell — Workbench dashboard", () => {
 });
 
 describe("SPA shell — guided first run", () => {
-  it("walks setup, candidate bootstrap, bridge import, locale branch creation, and workspace handoff through typed APIs", async () => {
+  it("walks setup, in-studio decode/extract, candidate bootstrap, locale branch creation, and workspace handoff through typed APIs", async () => {
     const ssoPosts: unknown[] = [];
+    const decodePosts: unknown[] = [];
     const projectPosts: unknown[] = [];
     const branchPosts: unknown[] = [];
     server.use(
@@ -259,6 +260,18 @@ describe("SPA shell — guided first run", () => {
           ...(body as object),
           schemaVersion: "itotori.auth.sso-settings.v0",
           updatedAt: "2026-07-09T00:00:00.000Z",
+        });
+      }),
+      // p3-in-studio-decode-extract-trigger — the in-studio decode/extract
+      // endpoint returns the bridge the REAL decode pipeline produced (here the
+      // canonical fixture stands in for the real kaifuu output).
+      http.post("*/api/projects/decode-extract", async ({ request }) => {
+        const body = await request.json();
+        decodePosts.push(body);
+        return apiJson("projects.decodeExtract", {
+          bridge: bridgeFixture,
+          mode: "whole-seen",
+          command: "kaifuu-cli extract --engine reallive --whole-seen",
         });
       }),
       http.post("*/api/imports/bridge", async ({ request }) => {
@@ -282,7 +295,7 @@ describe("SPA shell — guided first run", () => {
     const bootstrapButton = screen.getByRole("button", { name: "Bootstrap project" });
     expect(bootstrapButton).toBeDisabled();
     expect(
-      screen.getAllByText("Choose a bridge JSON export for the selected candidate.").length,
+      screen.getAllByText("Decode a game source into a bridge for the selected candidate.").length,
     ).toBeGreaterThan(0);
     expect(screen.getByLabelText("Candidate")).toHaveValue("work-opportunity");
     expect(screen.getByText(/Selected Opportunity API Fixture/u)).toBeInTheDocument();
@@ -294,16 +307,37 @@ describe("SPA shell — guided first run", () => {
     await waitFor(() => expect(ssoPosts).toHaveLength(1));
     expect(await screen.findByText("Security setup saved.")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Target locale"), { target: { value: "fr-FR" } });
-    fireEvent.change(screen.getByLabelText("Bridge export"), {
-      target: {
-        files: [
-          new File([JSON.stringify(bridgeFixture)], "opportunity-api-fixture-bridge.json", {
-            type: "application/json",
-          }),
-        ],
-      },
+    // p3-in-studio-decode-extract-trigger — run the decode/extract trigger: point
+    // the Studio at a game root + identity, then decode (identify/inventory/
+    // extract) into a bridge — REPLACING the removed manual bridge-JSON upload.
+    const decodeButton = screen.getByRole("button", { name: "Decode & extract" });
+    expect(decodeButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Game root path"), {
+      target: { value: "/games/sweetie" },
     });
+    fireEvent.change(screen.getByLabelText("Game id"), { target: { value: "sweetie" } });
+    fireEvent.change(screen.getByLabelText("Source profile id"), {
+      target: { value: "sweetie-hd-real" },
+    });
+    expect(decodeButton).toBeEnabled();
+    fireEvent.click(decodeButton);
+
+    await waitFor(() => expect(decodePosts).toHaveLength(1));
+    expect(decodePosts[0]).toMatchObject({
+      gameRoot: "/games/sweetie",
+      gameId: "sweetie",
+      gameVersion: "1.0",
+      sourceProfileId: "sweetie-hd-real",
+      sourceLocale: "ja-JP",
+      wholeSeen: true,
+    });
+    expect(
+      await screen.findByText(
+        `Decoded ${String(bridgeFixture.units.length)} unit(s) (whole-seen).`,
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Target locale"), { target: { value: "fr-FR" } });
     expect(bootstrapButton).toBeEnabled();
     fireEvent.click(bootstrapButton);
 
@@ -342,10 +376,19 @@ describe("SPA shell — guided first run", () => {
     );
   });
 
-  it("does not fabricate a bridge when candidate bootstrap has no bridge export", async () => {
+  it("does not fabricate a bridge when candidate bootstrap has no decoded bridge", async () => {
+    const decodePosts: unknown[] = [];
     const projectPosts: unknown[] = [];
     const branchPosts: unknown[] = [];
     server.use(
+      http.post("*/api/projects/decode-extract", async ({ request }) => {
+        decodePosts.push(await request.json());
+        return apiJson("projects.decodeExtract", {
+          bridge: bridgeFixture,
+          mode: "whole-seen",
+          command: "kaifuu-cli extract --engine reallive --whole-seen",
+        });
+      }),
       http.post("*/api/imports/bridge", async ({ request }) => {
         projectPosts.push(await request.json());
         return apiJson("imports.bridge", bridgeImportResponseFixture);
@@ -363,11 +406,13 @@ describe("SPA shell — guided first run", () => {
     const bootstrapButton = screen.getByRole("button", { name: "Bootstrap project" });
     expect(bootstrapButton).toBeDisabled();
     expect(
-      screen.getAllByText("Choose a bridge JSON export for the selected candidate.").length,
+      screen.getAllByText("Decode a game source into a bridge for the selected candidate.").length,
     ).toBeGreaterThan(0);
 
+    // No decode was run — the bootstrap must not fabricate a bridge or import.
     fireEvent.change(screen.getByLabelText("Target locale"), { target: { value: "fr-FR" } });
     fireEvent.click(bootstrapButton);
+    expect(decodePosts).toHaveLength(0);
     expect(projectPosts).toHaveLength(0);
     expect(branchPosts).toHaveLength(0);
   });

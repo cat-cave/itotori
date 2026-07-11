@@ -144,6 +144,7 @@ import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
+import { createDecodeExtractRunner } from "../extract/decode-extract-runner.js";
 import {
   createDbBackedDraftModelProvider,
   createDbBackedLocalizationPassDriver,
@@ -809,6 +810,16 @@ export async function withDatabaseItotoriServices<T>(
           actor: localUserActor,
           projectRepository,
         }),
+        // p3-in-studio-decode-extract-trigger — the decode/extract runner is
+        // WIRED (no longer omitted, which made `projects.decodeExtract` throw
+        // `DecodeExtractNotConfiguredError`). It drives the REAL `kaifuu-cli
+        // extract --engine reallive` decode path (identify -> inventory ->
+        // extract, resolved + spawned through the ONE sanitized native-CLI
+        // boundary) and hands the produced v0.2 bridge back for ingestion, so the
+        // Studio "decode from game path" trigger replaces the manual bridge
+        // upload. On an install with no native kaifuu-cli / game bytes the spawn
+        // itself refuses LOUDLY (never a fabricated bridge).
+        createDecodeExtractRunner(),
       ),
       manualFeedback: manualFeedbackService,
       draftFeedbackBatch: new DraftFeedbackBatchService(manualFeedbackService),

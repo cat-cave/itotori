@@ -304,6 +304,15 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId", "localeBranchId"],
     responseSchema: "ApiCandidateAssetsResponse",
   },
+  "projects.decodeExtract": {
+    method: "POST",
+    pathTemplate: "/api/projects/decode-extract",
+    operationId: "projectsDecodeExtract",
+    summary: "Decode a game source (identify/inventory/extract) into a bridge bundle.",
+    pathParams: [],
+    requestSchema: "ApiProjectDecodeExtractRequest",
+    responseSchema: "ApiProjectDecodeExtractResponse",
+  },
   "imports.bridge": {
     method: "POST",
     pathTemplate: "/api/imports/bridge",

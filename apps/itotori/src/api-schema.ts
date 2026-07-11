@@ -185,6 +185,12 @@ export type ItotoriApiRouteId =
   | "jobs.runTable"
   | "runtime.status"
   | "queue.health"
+  // p3-in-studio-decode-extract-trigger — run the REAL identify -> inventory ->
+  // extract decode pipeline from a game source path/handle and return the
+  // produced v0.2 bridge (replaces the manual bridge-JSON upload as the primary
+  // Studio on-ramp). Gated on `project.import` — the same authority `imports.bridge`
+  // carries, since it produces the same import artifact.
+  | "projects.decodeExtract"
   | "imports.bridge"
   | "branches.draft"
   | "findings.record"
@@ -827,6 +833,34 @@ export type ApiCandidateAssetsResponse = {
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
   bootstrapSelection?: ApiBootstrapCatalogSelection;
+};
+
+/**
+ * p3-in-studio-decode-extract-trigger — point the Studio at a game source and
+ * run the REAL identify -> inventory -> extract decode pipeline. Sourcing is
+ * EITHER a by-id vault handle OR a raw game root; identity is the four RealLive
+ * metadata fields; mode is per-scene (`scene`) XOR whole-Seen (`wholeSeen`).
+ */
+export type ApiProjectDecodeExtractRequest = {
+  vaultCanonicalId?: string;
+  gameRoot?: string;
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceLocale: string;
+  scene?: number;
+  wholeSeen?: boolean;
+};
+
+/**
+ * The produced v0.2 BridgeBundle (read back from the file kaifuu wrote), the
+ * resolved decode mode, and the exact kaifuu-cli invocation. The bridge feeds
+ * the SAME `imports.bridge` ingestion path the manual upload used.
+ */
+export type ApiProjectDecodeExtractResponse = {
+  bridge: BridgeBundleV02;
+  mode: "per-scene" | "whole-seen";
+  command: string;
 };
 
 export type ApiBootstrapCatalogSourceId = {
@@ -1484,6 +1518,7 @@ export type ItotoriApiResponseBody =
   | ApiJobsRunTableResponse
   | ApiQueueHealthResponse
   | RuntimeDashboardStatus
+  | ApiProjectDecodeExtractResponse
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
   | ApiRecordFindingResponse
@@ -1530,6 +1565,58 @@ export function parseProjectImportRequest(body: unknown): ApiProjectImportReques
     return {
       bridge: request.bridge,
       ...(bootstrapSelection === undefined ? {} : { bootstrapSelection }),
+    };
+  });
+}
+
+export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecodeExtractRequest {
+  return parseRequest("ApiProjectDecodeExtractRequest", () => {
+    const request = asRecord(body, "ApiProjectDecodeExtractRequest");
+    // Identity — the four required RealLive metadata fields.
+    assertString(request.gameId, "ApiProjectDecodeExtractRequest.gameId");
+    assertString(request.gameVersion, "ApiProjectDecodeExtractRequest.gameVersion");
+    assertString(request.sourceProfileId, "ApiProjectDecodeExtractRequest.sourceProfileId");
+    assertString(request.sourceLocale, "ApiProjectDecodeExtractRequest.sourceLocale");
+    // Sourcing — exactly one of vaultCanonicalId / gameRoot must be provided.
+    if (request.vaultCanonicalId !== undefined) {
+      assertString(request.vaultCanonicalId, "ApiProjectDecodeExtractRequest.vaultCanonicalId");
+    }
+    if (request.gameRoot !== undefined) {
+      assertString(request.gameRoot, "ApiProjectDecodeExtractRequest.gameRoot");
+    }
+    const hasVault =
+      typeof request.vaultCanonicalId === "string" && request.vaultCanonicalId.length > 0;
+    const hasGameRoot = typeof request.gameRoot === "string" && request.gameRoot.length > 0;
+    if (hasVault === hasGameRoot) {
+      throw new Error(
+        "ApiProjectDecodeExtractRequest sourcing requires EXACTLY ONE of vaultCanonicalId or gameRoot",
+      );
+    }
+    // Mode — exactly one of scene (u16) / wholeSeen must be selected.
+    const wholeSeen = request.wholeSeen === true;
+    const hasScene = request.scene !== undefined;
+    if (wholeSeen === hasScene) {
+      throw new Error(
+        "ApiProjectDecodeExtractRequest requires EXACTLY ONE decode mode: scene (u16) or wholeSeen",
+      );
+    }
+    let scene: number | undefined;
+    if (hasScene) {
+      const value = request.scene;
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 65_535) {
+        throw new Error("ApiProjectDecodeExtractRequest.scene must be a u16 (0..65535)");
+      }
+      scene = value;
+    }
+    return {
+      gameId: request.gameId,
+      gameVersion: request.gameVersion,
+      sourceProfileId: request.sourceProfileId,
+      sourceLocale: request.sourceLocale,
+      ...(hasVault ? { vaultCanonicalId: request.vaultCanonicalId as string } : {}),
+      ...(hasGameRoot ? { gameRoot: request.gameRoot as string } : {}),
+      ...(scene !== undefined ? { scene } : {}),
+      ...(wholeSeen ? { wholeSeen: true } : {}),
     };
   });
 }
@@ -2152,6 +2239,9 @@ export function assertItotoriApiResponse(
       return;
     case "runtime.status":
       assertRuntimeDashboardStatus(value);
+      return;
+    case "projects.decodeExtract":
+      assertProjectDecodeExtractResponse(value);
       return;
     case "imports.bridge":
       assertProjectImportResponse(value);
@@ -6333,6 +6423,23 @@ function assertProjectImportResponse(value: unknown): asserts value is ApiProjec
   const response = asRecord(value, "ApiProjectImportResponse");
   assertProjectState(response.project, "ApiProjectImportResponse.project");
   assertProjectDashboardStatus(response.status, "ApiProjectImportResponse.status");
+}
+
+function assertProjectDecodeExtractResponse(
+  value: unknown,
+): asserts value is ApiProjectDecodeExtractResponse {
+  const response = asRecord(value, "ApiProjectDecodeExtractResponse");
+  // The bridge is the real decode artifact — validate it through the SAME
+  // `assertBridgeInput` the import route uses (the decode runner already
+  // narrowed it to v0.2 via `assertBridgeBundleV02`), so the wire body cannot
+  // fork from the bridge contract.
+  assertBridgeInput(response.bridge);
+  assertEnum(
+    response.mode,
+    ["per-scene", "whole-seen"] as const,
+    "ApiProjectDecodeExtractResponse.mode",
+  );
+  assertString(response.command, "ApiProjectDecodeExtractResponse.command");
 }
 
 function assertDraftBranchResponse(value: unknown): asserts value is ApiDraftBranchResponse {

@@ -223,6 +223,74 @@ export class LocalizationPassDriverNotConfiguredError extends Error {
   }
 }
 
+/**
+ * p3-in-studio-decode-extract-trigger — the sourcing + identity + mode inputs a
+ * single in-studio decode/extract needs. Mirrors the CLI `itotori extract`
+ * surface (`KaifuuExtractArgs`): sourcing is EITHER a by-id vault handle OR a
+ * raw game root; identity is the four RealLive metadata fields; mode is
+ * per-scene OR whole-Seen. The Studio's "decode from game path" trigger passes
+ * exactly this to run the REAL identify -> inventory -> extract pipeline (the
+ * same `kaifuu-cli extract --engine reallive` the CLI drives) and receive the
+ * produced v0.2 BridgeBundle back for ingestion.
+ */
+export type DecodeExtractInput = {
+  /** Sourcing (alpha production): resolve the corpus by-id through the vault. */
+  vaultCanonicalId?: string;
+  /** Sourcing (raw-path helper): a game root containing REALLIVEDATA/Seen.txt. */
+  gameRoot?: string;
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceLocale: string;
+  /** Per-scene mode: the RealLive scene id (u16). Mutually exclusive with wholeSeen. */
+  scene?: number;
+  /** Whole-game mode: one bridge over the entire Seen.txt. */
+  wholeSeen?: boolean;
+};
+
+/**
+ * The outcome of a real in-studio decode/extract: the v0.2 BridgeBundle kaifuu
+ * produced (read back from the file kaifuu wrote), plus the resolved mode and
+ * the exact command the runner spawned (surfaced for operator diagnostics).
+ */
+export type DecodeExtractOutcome = {
+  bridge: BridgeBundleV02;
+  mode: "per-scene" | "whole-seen";
+  /** The resolved kaifuu-cli invocation (binary + argv), for diagnostics. */
+  command: string;
+};
+
+/**
+ * p3-in-studio-decode-extract-trigger — the injection seam that drives the REAL
+ * `kaifuu-cli extract` decode path and hands back the produced bridge. Production
+ * binds it to the real runner (`../extract/decode-extract-runner.js`); a test
+ * binds a double (no game bytes, no subprocess). The extract binary itself is
+ * unchanged — this is the thin adapter the workflow is invoked behind.
+ */
+export interface DecodeExtractPort {
+  runDecodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome>;
+}
+
+/**
+ * p3-in-studio-decode-extract-trigger — thrown when the decode/extract workflow
+ * is invoked but no real decode runner is wired (a pure-HTTP install with no
+ * native kaifuu-cli / game-bytes access). Mirrors
+ * {@link DraftProviderNotConfiguredError}: the workflow refuses LOUDLY rather
+ * than fabricating a fake bridge. A deployment with the runner wired drives a
+ * real decode through the SAME handler seam; a test injects an explicit double.
+ */
+export class DecodeExtractNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "decodeExtract refused: no decode/extract runner is configured for this workflow. The " +
+        "production decode path must inject a real runner (driving `kaifuu-cli extract --engine " +
+        "reallive` over real game bytes); refusing to fabricate a fake bridge. Tests must inject " +
+        "an explicit runner double.",
+    );
+    this.name = "DecodeExtractNotConfiguredError";
+  }
+}
+
 export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   /**
@@ -241,6 +309,15 @@ export interface ItotoriProjectWorkflowPort {
   getCostDrilldown(filter?: CostDrilldownFilter): Promise<CostDrilldownPage>;
   getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
+  /**
+   * p3-in-studio-decode-extract-trigger — run the REAL identify -> inventory ->
+   * extract pipeline (driving `kaifuu-cli extract --engine reallive`) from a game
+   * source path/handle and return the produced v0.2 BridgeBundle. Refuses LOUDLY
+   * with {@link DecodeExtractNotConfiguredError} when no real decode runner is
+   * wired (never a fake bridge). The returned bridge feeds the SAME
+   * `importBridge` ingestion path the manual upload used.
+   */
+  decodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
   ingestRuntimeReport(
     project: ProjectState,
@@ -305,6 +382,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     // `launchNextLocalizationPass` refuses LOUDLY (no fake pass) rather than
     // fabricating one. Tests inject an explicit driver double.
     private readonly passDriver?: LocalizationPassDriverPort,
+    // p3-in-studio-decode-extract-trigger — the real decode/extract runner. Left
+    // undefined on a pure-HTTP install (no native kaifuu-cli / game bytes), in
+    // which case `decodeExtract` refuses LOUDLY rather than fabricating a fake
+    // bridge. Production injects the real runner; tests inject a double.
+    private readonly decodeExtractRunner?: DecodeExtractPort,
   ) {}
 
   async reset(): Promise<void> {
@@ -420,6 +502,18 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     };
     const importStatus = await this.repository.importSourceBundle(this.actor, project);
     return { ...project, importStatus };
+  }
+
+  async decodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome> {
+    // p3-in-studio-decode-extract-trigger — refuse LOUDLY when no real decode
+    // runner is wired rather than silently returning a fabricated bridge. The
+    // runner drives the SAME `kaifuu-cli extract --engine reallive` decode path
+    // the CLI `itotori extract` command uses.
+    const runner = this.decodeExtractRunner;
+    if (runner === undefined) {
+      throw new DecodeExtractNotConfiguredError();
+    }
+    return await runner.runDecodeExtract(input);
   }
 
   async draftProject(project: ProjectState, locale: string): Promise<ProjectState> {
