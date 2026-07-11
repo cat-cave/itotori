@@ -59,7 +59,7 @@ use crate::rlop::module_ctrl::{
 };
 use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
-    MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout,
+    MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout_at,
     register_text_rlops,
 };
 use crate::rlop::module_obj::GraphicsRuntime;
@@ -1642,7 +1642,7 @@ impl ReplayEngine {
                     if let VmEvent::Textout { raw_bytes } = &event
                         && self.shift_jis.contains(&(scene_before, pc_before))
                     {
-                        dispatch_textout(&runtime, raw_bytes);
+                        dispatch_textout_at(&runtime, pc_before, raw_bytes);
                         if let Some(op) = handles.registry.get(RlopKey::new(
                             MSG_MODULE_TYPE,
                             MSG_MODULE_ID,
@@ -1935,7 +1935,7 @@ impl ReplayEngine {
                     if let VmEvent::Textout { raw_bytes } = &event
                         && self.shift_jis.contains(&(scene_before, pc_before))
                     {
-                        dispatch_textout(&runtime, raw_bytes);
+                        dispatch_textout_at(&runtime, pc_before, raw_bytes);
                         if let Some(op) = handles.registry.get(RlopKey::new(
                             MSG_MODULE_TYPE,
                             MSG_MODULE_ID,
@@ -2259,7 +2259,7 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
                     VmEvent::Textout { raw_bytes }
                         if refs.shift_jis.contains(&(scene_before, pc_before)) =>
                     {
-                        dispatch_textout(refs.runtime, &raw_bytes);
+                        dispatch_textout_at(refs.runtime, pc_before, &raw_bytes);
                         // Flush immediately via OPCODE_LINE_BREAK so
                         // each Shift-JIS run surfaces as a distinct
                         // TextLine before any control opcode lands.
@@ -2813,7 +2813,7 @@ fn drive_branch_following(
                     VmEvent::Textout { raw_bytes }
                         if refs.shift_jis.contains(&(scene_before, pc_before)) =>
                     {
-                        dispatch_textout(refs.runtime, raw_bytes);
+                        dispatch_textout_at(refs.runtime, pc_before, raw_bytes);
                         if let Some(op) = refs.registry.get(RlopKey::new(
                             MSG_MODULE_TYPE,
                             MSG_MODULE_ID,
@@ -3061,6 +3061,8 @@ mod tests {
             text_surface: None,
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 

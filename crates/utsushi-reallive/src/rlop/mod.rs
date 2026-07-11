@@ -77,7 +77,7 @@ pub use module_msg::{
     MsgTextWindowOp, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER,
     OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE,
     OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_TEXT_OUT, OPCODE_TEXT_WINDOW, dispatch_textout,
-    register_text_rlops, text_module_msg_keys,
+    dispatch_textout_at, register_text_rlops, text_module_msg_keys,
 };
 pub use module_sel::{
     ChoiceInputScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT as SEL_OPCODE_SELECT,

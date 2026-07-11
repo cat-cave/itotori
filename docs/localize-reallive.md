@@ -200,9 +200,14 @@ Verified subcommand surfaces:
 
 ```
 kaifuu-cli extract  --engine reallive ...      kaifuu-cli patch --engine reallive --source <ro> --target <rw> --bundle <translated.json>
-utsushi-cli replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]
+utsushi-cli replay-validate --engine reallive --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]
 utsushi-cli render-validate --engine reallive --seen <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --artifact-root <DIR> [--redaction on|off] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>]
 ```
+
+The `replay` command also requires `--gameexe` and `--g00-dir`. Its historical
+`--snapshot-output` flag is rejected explicitly: replay-review self-verifies
+snapshot identity inside the EnginePort lifecycle but does not publish a
+snapshot JSON artifact.
 
 `itotori --help` lists the user surface; `itotori help --all` adds the advanced
 stage commands.

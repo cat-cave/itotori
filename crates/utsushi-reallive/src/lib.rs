@@ -319,8 +319,8 @@ pub use rlop::{
     SelectLongOpDecodeError, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp,
     SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
     SelectionControlSignal, SelectionPrompt, SelectionPromptKind, dispatch_textout,
-    register_sel_rlops, register_text_rlops, select_modality, selection_control_signal,
-    text_module_msg_keys,
+    dispatch_textout_at, register_sel_rlops, register_text_rlops, select_modality,
+    selection_control_signal, text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{

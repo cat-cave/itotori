@@ -240,6 +240,11 @@ impl UtsushiRpgmakerMvPort {
                 stance: CapabilityStance::Pending,
                 note: "dev: deterministic replay awaits a live playback loop; the static walk drives no clock/input replay yet.",
             },
+            CapabilityDeclaration {
+                capability: PortCapability::ReplayReview,
+                stance: CapabilityStance::Pending,
+                note: "dev: replay-review evidence awaits a live playback loop; the static event stream does not expose it yet.",
+            },
         ],
     };
 
@@ -300,6 +305,8 @@ impl UtsushiRpgmakerMvPort {
                 runtime_object_id: None,
             }),
             source_asset,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 }

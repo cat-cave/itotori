@@ -221,6 +221,10 @@ describe("runWholeGameReplayRenderValidate", () => {
       join("/patched-game", "REALLIVEDATA", "Seen.txt"),
       "--scene",
       "6010",
+      "--gameexe",
+      join("/source-game", "REALLIVEDATA", "Gameexe.ini"),
+      "--g00-dir",
+      join("/source-game", "REALLIVEDATA", "g00"),
       "--print-replay-log",
       join(artifactRoot, "scene-6010", `unit-${UNIT_A}`, "replay-log.json"),
       "--dispatch-report",
@@ -386,6 +390,7 @@ describe("runWholeGameReplayRenderValidate", () => {
         "bridge-inventory-001",
       );
       mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+      mkdirSync(join(sourceRoot, "REALLIVEDATA", "g00"), { recursive: true });
       mkdirSync(join(targetRoot, "REALLIVEDATA"), { recursive: true });
       writeFileSync(
         join(sourceRoot, "REALLIVEDATA", "Gameexe.ini"),

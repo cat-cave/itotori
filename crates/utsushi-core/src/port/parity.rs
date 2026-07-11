@@ -55,12 +55,13 @@ pub const CAPABILITY_CONTRACT: &[PortCapability] = &[
     PortCapability::Jump,
     PortCapability::Snapshot,
     PortCapability::DeterministicReplay,
+    PortCapability::ReplayReview,
 ];
 
 /// Number of `PortCapability` variants. Guarded to equal both
 /// `CAPABILITY_CONTRACT.len()` and the exhaustive match in
 /// [`capability_ordinal`], so the contract cannot drift from the enum.
-const CONTRACT_LEN: usize = 7;
+const CONTRACT_LEN: usize = 8;
 
 /// Const-eval ordinal for a capability. The exhaustive `match` is the load
 /// bearing part: adding a `PortCapability` variant makes this fail to compile
@@ -75,6 +76,7 @@ const fn capability_ordinal(capability: PortCapability) -> usize {
         PortCapability::Jump => 4,
         PortCapability::Snapshot => 5,
         PortCapability::DeterministicReplay => 6,
+        PortCapability::ReplayReview => 7,
     }
 }
 

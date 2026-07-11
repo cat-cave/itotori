@@ -155,6 +155,18 @@ impl Runner {
         self.run_lifecycle(port, request, /*capture =*/ true)
     }
 
+    /// Drive a port through the replay-review observation lifecycle. Replay
+    /// review is a port-driven capability, but execution still uses the same
+    /// validated launch/observe/shutdown path as trace; the operation on
+    /// `PortRequest` lets the port select its review evidence.
+    pub fn run_replay_review<P: EnginePort>(
+        &self,
+        port: &mut P,
+        request: &PortRequest<'_>,
+    ) -> Result<RunnerOutcome, EnginePortError> {
+        self.run_lifecycle(port, request, /*capture =*/ false)
+    }
+
     /// Drive a port through `jump` to the given moment. Validates
     /// capability declaration before invoking the trait method.
     pub fn run_jump<P: EnginePort>(

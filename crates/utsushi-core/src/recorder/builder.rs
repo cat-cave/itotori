@@ -160,6 +160,8 @@ mod tests {
             source_asset: Some(
                 AssetId::parse("vfs://www/data/Map001.json").expect("valid asset id"),
             ),
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 

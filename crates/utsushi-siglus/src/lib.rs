@@ -271,6 +271,11 @@ impl UtsushiSiglusPort {
                 stance: CapabilityStance::Pending,
                 note: "dev: byte-deterministic Siglus replay awaits the behavioural VM; the scaffold drives no runtime yet.",
             },
+            CapabilityDeclaration {
+                capability: PortCapability::ReplayReview,
+                stance: CapabilityStance::Pending,
+                note: "dev: replay-review evidence awaits the behavioural Siglus VM; the scaffold drives no runtime yet.",
+            },
         ],
     };
 

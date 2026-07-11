@@ -360,6 +360,8 @@ fn emit_text_audio_frame_sink_events_through_the_facade() {
         text_surface: Some("ADV".to_string()),
         bridge_ref: None,
         source_asset: None,
+        byte_offset_in_scene: None,
+        body_shift_jis: None,
     };
     text_sink.emit_line(line.clone()).expect("emit text");
     let audio_event = AudioEvent {
@@ -492,6 +494,8 @@ fn record_a_reference_trace_through_the_facade() {
             text_surface: Some("ADV".to_string()),
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         });
     }
     let capabilities = vec![

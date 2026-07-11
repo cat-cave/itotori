@@ -91,6 +91,17 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
         &P::MANIFEST
     }
 
+    /// Inspect the concrete port after a lifecycle run without exposing the
+    /// adapter's mutex or allowing callers to bypass the runner. Operation
+    /// adapters use this to retrieve evidence produced by the validated run.
+    pub fn with_port<R>(&self, inspect: impl FnOnce(&P) -> R) -> UtsushiResult<R> {
+        let port = self
+            .port
+            .lock()
+            .map_err(|error| format!("engine port lock poisoned: {error}"))?;
+        Ok(inspect(&*port))
+    }
+
     fn run_lifecycle(
         &self,
         request: &RuntimeRequest<'_>,
@@ -133,7 +144,20 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
             RuntimeOperation::Trace => self.runner.run_trace(&mut *port, &port_request),
             RuntimeOperation::Capture => self.runner.run_capture(&mut *port, &port_request),
             RuntimeOperation::SmokeValidation => self.runner.run_smoke(&mut *port, &port_request),
-            RuntimeOperation::BranchDiscovery | RuntimeOperation::ReplayReview => {
+            RuntimeOperation::ReplayReview => {
+                if !P::MANIFEST
+                    .capabilities
+                    .contains(&PortCapability::ReplayReview)
+                {
+                    return Err(EnginePortError::CapabilityUnsupported {
+                        capability: PortCapability::ReplayReview,
+                        reason: CapabilityReason::NotYetSupported,
+                    }
+                    .into());
+                }
+                self.runner.run_replay_review(&mut *port, &port_request)
+            }
+            RuntimeOperation::BranchDiscovery => {
                 return Err(EnginePortError::AdapterOperationUnsupported { operation }.into());
             }
         }?;
@@ -162,6 +186,10 @@ impl<P: EnginePort + 'static> RuntimeAdapter for EnginePortAdapter<P> {
     fn smoke_validate(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         self.run_lifecycle(request, RuntimeOperation::SmokeValidation)
     }
+
+    fn replay_review(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        self.run_lifecycle(request, RuntimeOperation::ReplayReview)
+    }
 }
 
 fn descriptor_from_manifest(manifest: &PortManifest) -> RuntimeAdapterDescriptor {
@@ -173,8 +201,9 @@ fn descriptor_from_manifest(manifest: &PortManifest) -> RuntimeAdapterDescriptor
                 capabilities.push(RuntimeCapability::FrameCapture);
                 capabilities.push(RuntimeCapability::SmokeValidation);
             }
-            PortCapability::Jump => capabilities.push(RuntimeCapability::ReplayReview),
-            PortCapability::Launch
+            PortCapability::ReplayReview => capabilities.push(RuntimeCapability::ReplayReview),
+            PortCapability::Jump
+            | PortCapability::Launch
             | PortCapability::Shutdown
             | PortCapability::Snapshot
             | PortCapability::DeterministicReplay => {}
@@ -240,6 +269,16 @@ fn derive_capability_contract(
             RuntimePlaybackFeature::FrameCapture,
             manifest.evidence_tier_max,
             "Engine port produces capture artifacts under the managed runtime root.",
+        ));
+    }
+    if manifest
+        .capabilities
+        .contains(&PortCapability::ReplayReview)
+    {
+        features.push(RuntimeFeatureSupport::supported(
+            RuntimePlaybackFeature::Recording,
+            manifest.evidence_tier_max,
+            "Engine port exposes deterministic replay-review evidence through the runner bridge.",
         ));
     }
     if !manifest.capabilities.contains(&PortCapability::Jump) {
@@ -632,6 +671,8 @@ mod tests {
             text_surface: None,
             bridge_ref: None,
             source_asset: None,
+            byte_offset_in_scene: None,
+            body_shift_jis: None,
         }
     }
 

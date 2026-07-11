@@ -442,6 +442,8 @@ impl SiglusTraceVm {
                         text_surface: Some("adv".to_string()),
                         bridge_ref: None,
                         source_asset: None,
+                        byte_offset_in_scene: None,
+                        body_shift_jis: None,
                     };
                     text_sink
                         .emit_line(line)

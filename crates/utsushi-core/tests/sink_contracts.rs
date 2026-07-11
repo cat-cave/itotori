@@ -139,6 +139,8 @@ fn sink_output_passes_reject_unredacted_local_paths() {
             runtime_object_id: None,
         }),
         source_asset: Some(AssetId::parse("vfs://www/data/Map001.json").unwrap()),
+        byte_offset_in_scene: None,
+        body_shift_jis: None,
     };
     set.text().unwrap().emit_line(line).expect("text accepted");
 

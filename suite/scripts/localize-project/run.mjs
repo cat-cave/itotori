@@ -2300,7 +2300,7 @@ async function main() {
         `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath} --decompile-report-output ${decompileReportPath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --scope ${projectMetadata.translationScope} --force`,
-        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath} --dispatch-report ${dispatchReportPath} --require-semantic-reached-path`,
+        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --gameexe <TARGET>/REALLIVEDATA/Gameexe.ini --g00-dir <TARGET>/REALLIVEDATA/g00 --print-replay-log ${replayLogPath} --dispatch-report ${dispatchReportPath} --require-semantic-reached-path`,
         `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --gameexe <TARGET>/REALLIVEDATA/Gameexe.ini --game-dir <TARGET>/REALLIVEDATA --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
       ],
       flattenPostures(policy),
@@ -2508,6 +2508,8 @@ async function main() {
     // --------------- Phase 4: replay-validate ----------------------
     currentPhase = "replay-validate";
     const targetSeenPath = resolveReallivedataSeen(targetRoot);
+    const targetReallivedataDir = dirname(targetSeenPath);
+    const targetGameexePath = join(targetReallivedataDir, "Gameexe.ini");
     const liveReplayRedactor = buildPathRedactor([
       { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
       { path: targetSeenPath, replacement: `${targetPlaceholder}/REALLIVEDATA/Seen.txt` },
@@ -2529,6 +2531,10 @@ async function main() {
         targetSeenPath,
         "--scene",
         String(sceneId),
+        "--gameexe",
+        targetGameexePath,
+        "--g00-dir",
+        targetReallivedataDir,
         "--print-replay-log",
         replayLogPath,
         "--dispatch-report",
@@ -2564,8 +2570,6 @@ async function main() {
     // real decoded g00 stack. Both live in the patched TARGET tree
     // alongside the localized Seen.txt (dialogue-only scope leaves them
     // byte-identical to source): REALLIVEDATA/{Gameexe.ini,g00}.
-    const targetReallivedataDir = dirname(targetSeenPath);
-    const targetGameexePath = join(targetReallivedataDir, "Gameexe.ini");
     // A headless drive of the pinned dialogue scene inherits its
     // background from a prior scene, so its own terminal graphics stack
     // can be empty; the render composites this REAL g00 background stem's
