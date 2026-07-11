@@ -44,6 +44,10 @@ use utsushi_reallive::{
     WipeColour, decode_g00, sha256_hex,
 };
 
+use crate::dispatch_gate::{
+    DispatchReport, dispatch_report_from_engine, require_semantic_reached_path,
+    write_dispatch_report,
+};
 use crate::staged_replay::staged_engine;
 
 /// Only `reallive` is supported (no silent fallback).
@@ -70,6 +74,7 @@ USAGE:
     [--run-id <ID>] \
     [--expect-text-contains <SUBSTR>] [--message-index <N>] \
     [--width <N>] [--height <N>] \
+    [--dispatch-report <PATH>] [--require-semantic-reached-path] \
     [--output <PATH>]
 
 FLAGS:
@@ -104,6 +109,15 @@ FLAGS:
   --message-index <N>           Zero-based play-order message index within the scene. Selects
                                 that exact message before applying --expect-text-contains.
   --width <N> / --height <N>    Framebuffer size override (default: the Gameexe screen size).
+  --dispatch-report <PATH>      Write the machine-readable opcode-coverage report
+                                (`missingKeys[]`) for the rendered scene to <PATH>.
+  --require-semantic-reached-path
+                                Fail non-zero (AFTER writing the frame + reports)
+                                unless the rendered scene reached a natural terminus
+                                through a fully-semantic branch-following path — no
+                                unimplemented opcode, no catalog gap fill, no linear
+                                fallback. Without this a scene that skipped a missing
+                                opcode could still emit an E2 frame that hides the gap.
   --output <PATH>               Write the deterministic JSON report to <PATH>.
   -h, --help                    Print this message and exit.
 
@@ -113,6 +127,11 @@ decoded g00 stack; the private PNG carries the g00 art verbatim while the
 public frame (announced through the substrate FrameArtifactSink at
 EvidenceTier::E2 as a `screenshot`) is redacted by default so no
 copyrighted art is published — the translated English glyphs stay legible.
+
+The rendered scene's opcode-coverage is ALWAYS folded into the JSON report
+(`coverage.missingKeys[]`) so a rendered frame never silently hides an
+unimplemented opcode; `--require-semantic-reached-path` turns a coverage gap
+into a non-zero exit.
 ";
 
 /// Execute the `render-validate` subcommand.
@@ -140,6 +159,10 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let width = parse_dimension_override(args, "--width")?;
     let height = parse_dimension_override(args, "--height")?;
     let output = optional_flag(args, "--output").map(PathBuf::from);
+    let dispatch_report_path = optional_flag(args, "--dispatch-report").map(PathBuf::from);
+    let require_semantic_path = args
+        .iter()
+        .any(|arg| arg == "--require-semantic-reached-path");
     let gameexe_path = PathBuf::from(required_flag(args, "--gameexe")?);
     let game_dir = PathBuf::from(required_flag(args, "--game-dir")?);
     let source_seen = optional_flag(args, "--source-seen").map(PathBuf::from);
@@ -157,7 +180,7 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         }
     };
 
-    let report = drive(Params {
+    let (report, coverage) = drive(Params {
         seen_path: &seen_path,
         scene_id,
         artifact_root: &artifact_root,
@@ -174,11 +197,23 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         public_redact,
     })?;
 
+    // Write the machine-readable coverage evidence + the JSON report BEFORE
+    // the strict gate can fail, so the `missingKeys[]` gap is always
+    // inspectable even on a non-zero exit.
+    if let Some(path) = dispatch_report_path.as_deref() {
+        write_dispatch_report(path, &coverage)?;
+    }
     if let Some(path) = output.as_deref() {
         let serialized = serde_json::to_string_pretty(&report)
             .map_err(|err| format!("utsushi.cli.render_validate.serialise: {err}"))?;
         std::fs::write(path, serialized)
             .map_err(|err| format!("utsushi.cli.render_validate.write: {err}"))?;
+    }
+
+    // Strict opcode-coverage gate LAST: a scene that skipped an unimplemented
+    // opcode fails loud (non-zero) instead of passing on the emitted E2 frame.
+    if require_semantic_path {
+        require_semantic_reached_path(&coverage)?;
     }
     Ok(())
 }
@@ -225,7 +260,15 @@ pub(crate) struct Params<'a> {
 /// substrate frame sink at E2 as a side effect; the report is redaction
 /// aware but carries the artifact filesystem paths for the standalone CLI
 /// (the composed `patch-render` command re-projects a path-free subset).
-pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Error>> {
+///
+/// Returns the JSON evidence report PLUS the rendered scene's
+/// [`DispatchReport`] opcode-coverage. The coverage is also folded into the
+/// JSON report (`coverage.missingKeys[]`) so a rendered frame never silently
+/// hides an unimplemented opcode; the caller applies the strict
+/// `--require-semantic-reached-path` gate on the returned coverage.
+pub(crate) fn drive(
+    params: Params<'_>,
+) -> Result<(serde_json::Value, DispatchReport), Box<dyn Error>> {
     // 1. Parse the real Gameexe.ini → the #WINDOW.000 message-box config,
     //    the game's declared virtual screen size the config coordinates
     //    live in, and the #NAMAE → #COLOR_TABLE speaker/colour resolver.
@@ -419,6 +462,13 @@ pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Err
         .artifact_path(&artifact.artifact_ref.uri)
         .map_err(|err| format!("utsushi.cli.render_validate.artifact_path: {err}"))?;
 
+    // Re-run the opcode/dispatch COVERAGE gate over the SAME branch-following
+    // pass the play-order observation drove (same engine, same step budget),
+    // so a scene that skipped an unimplemented opcode is surfaced rather than
+    // hidden behind the emitted E2 frame. Folded into the report below and
+    // gated on by the caller's `--require-semantic-reached-path`.
+    let coverage = dispatch_report_from_engine(&engine, params.scene_id, &opts);
+
     // One real play-order message rendered per frame; the speaker + colour
     // presence is recorded (never the raw speaker/text) so the evidence
     // shows the message-window subsystem exercised the NAME box + colour.
@@ -453,11 +503,13 @@ pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Err
         "redaction": if shots.redaction == RedactionPolicy::Redact { "on" } else { "off" },
         "privateArtifactPath": shots.private_png_path.display().to_string(),
         "privateArtifactSha256": shots.private_png_sha256,
+        "coverage": coverage.to_json(),
     });
 
     println!(
         "{RENDER_OK_CODE}: scene={} artifact_id={} uri={} evidence_tier={} \
-         play_order_messages={} name_box={} color={} redaction={} private={}",
+         play_order_messages={} name_box={} color={} redaction={} private={} \
+         coverage_terminus={} missing_opcodes={}",
         params.scene_id,
         artifact.artifact_ref.artifact_id,
         artifact.artifact_ref.uri,
@@ -471,8 +523,10 @@ pub(crate) fn drive(params: Params<'_>) -> Result<serde_json::Value, Box<dyn Err
             "off"
         },
         shots.private_png_path.display(),
+        coverage.terminus,
+        coverage.missing_count,
     );
-    Ok(report)
+    Ok((report, coverage))
 }
 
 /// Parse an optional `--width` / `--height` dimension override. Absent →
@@ -841,6 +895,10 @@ mod tests {
         assert!(HELP.contains("--private-artifact-root"));
         assert!(HELP.contains("--message-index"));
         assert!(HELP.contains("redacted by default"));
+        // The opcode-coverage gate surface is documented.
+        assert!(HELP.contains("--require-semantic-reached-path"));
+        assert!(HELP.contains("--dispatch-report"));
+        assert!(HELP.contains("missingKeys"));
     }
 
     #[test]
@@ -973,5 +1031,111 @@ mod tests {
             bridge_ref: None,
             source_asset: None,
         }
+    }
+
+    // --- Opcode-coverage gate (the green-against-mock gap closure) ---
+    //
+    // `render-validate`'s `drive` computes coverage over the SAME
+    // branch-following pass through `dispatch_report_from_engine`, and the
+    // command applies `require_semantic_reached_path` as its
+    // `--require-semantic-reached-path` gate. These tests exercise that exact
+    // seam on synthetic in-memory scenes (no on-disk archive / Gameexe / g00
+    // needed): a scene referencing an unimplemented opcode still reaches a
+    // natural terminus and emits text, but the gate must FAIL loud with the
+    // machine-readable `missingKeys[]`; a fully-covered scene must PASS.
+
+    use std::collections::HashSet;
+    use utsushi_reallive::{
+        BytecodeElement, InMemorySceneStore, MSG_MODULE_ID, MSG_MODULE_TYPE, OPCODE_LINE_BREAK,
+        ReplayEngine, ReplayOpts, Scene,
+    };
+
+    use crate::dispatch_gate::{dispatch_report_from_engine, require_semantic_reached_path};
+
+    /// A single 8-byte RealLive `Command` element for `(module_type,
+    /// module_id, opcode)` at `byte_offset`. Mirrors the reallive replay
+    /// helper: branch-following dispatches on the decoded header fields.
+    fn command_element(
+        module_type: u8,
+        module_id: u8,
+        opcode: u16,
+        byte_offset: usize,
+    ) -> BytecodeElement {
+        let mut raw_bytes = vec![0, module_type, module_id];
+        raw_bytes.extend_from_slice(&opcode.to_le_bytes());
+        raw_bytes.extend_from_slice(&[0, 0, 0]);
+        BytecodeElement::Command {
+            module_type,
+            module_id,
+            opcode,
+            arg_count: 0,
+            overload: 0,
+            goto_targets: Vec::new(),
+            goto_case_exprs: Vec::new(),
+            raw_bytes,
+            byte_offset,
+            byte_len: 8,
+        }
+    }
+
+    fn engine_with_single_command(module_type: u8, module_id: u8, opcode: u16) -> ReplayEngine {
+        let scene = Scene::new(1, vec![command_element(module_type, module_id, opcode, 0)])
+            .expect("synthetic single-command scene");
+        let mut store = InMemorySceneStore::new();
+        store.insert(scene);
+        ReplayEngine::from_store(store, HashSet::new())
+    }
+
+    #[test]
+    fn coverage_gate_fails_on_scene_with_missing_opcode() {
+        // (2, 250, 9) is not an implemented RealLive opcode — it surfaces as a
+        // `MissingRlop` and folds into `unknown_opcode_keys`.
+        let engine = engine_with_single_command(2, 250, 9);
+        let coverage = dispatch_report_from_engine(&engine, 1, &ReplayOpts::default());
+
+        assert_eq!(
+            coverage.missing_keys,
+            vec![(2, 250, 9)],
+            "the unimplemented opcode must be reported as a missing key",
+        );
+        // The rendered frame would still emit (natural terminus), so a naive
+        // check would pass — the gate must catch the gap.
+        let error = require_semantic_reached_path(&coverage)
+            .expect_err("a scene with a missing opcode must fail the coverage gate");
+        let message = error.to_string();
+        assert!(
+            message.contains("missing_keys=[(2, 250, 9)]"),
+            "the gate failure must carry the machine-readable missing key: {message}",
+        );
+        assert!(
+            message.contains("missing_count=1"),
+            "the gate failure must report the missing-opcode count: {message}",
+        );
+    }
+
+    #[test]
+    fn coverage_gate_passes_on_fully_covered_scene() {
+        // A single recognised message line-break: dispatches semantically, no
+        // missing opcode, no catalog gap fill, natural terminus.
+        let engine = engine_with_single_command(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_LINE_BREAK);
+        let coverage = dispatch_report_from_engine(&engine, 1, &ReplayOpts::default());
+
+        assert!(
+            coverage.missing_keys.is_empty(),
+            "a fully-covered scene has no missing opcodes: {:?}",
+            coverage.missing_keys,
+        );
+        assert!(
+            coverage.catalog_fallback_keys.is_empty(),
+            "a fully-covered scene has no catalog gap fills: {:?}",
+            coverage.catalog_fallback_keys,
+        );
+        require_semantic_reached_path(&coverage)
+            .expect("a fully-covered scene must pass the coverage gate cleanly");
+
+        // Coverage is folded into the JSON evidence report (honest by default).
+        let json = coverage.to_json();
+        assert_eq!(json["missingCount"], 0);
+        assert_eq!(json["missingKeys"].as_array().unwrap().len(), 0);
     }
 }

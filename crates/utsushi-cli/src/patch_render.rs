@@ -249,7 +249,10 @@ pub(crate) fn drive(config: Config<'_>) -> Result<Value, Box<dyn Error>> {
     // 4. Utsushi render-validate over the PATCHED bytes. The pristine source
     //    seen recovers the real per-speaker #NAMAE colour when a
     //    dialogue-only translation rewrote the inline name.
-    let render_report = render_validate::drive(Params {
+    // The composed patch-render surface renders the patched scene; the
+    // returned dispatch-coverage is available but not re-projected here (the
+    // standalone `render-validate` command owns the strict coverage gate).
+    let (render_report, _coverage) = render_validate::drive(Params {
         seen_path: config.patched_seen_output,
         scene_id: config.scene_id,
         artifact_root: config.artifact_root,
