@@ -1,0 +1,96 @@
+.translation-scope-settings {
+  display: grid;
+  gap: var(--ito-space-18);
+}
+
+.translation-scope-settings__body {
+  display: grid;
+  gap: var(--ito-space-18);
+}
+
+.translation-scope-settings__intro {
+  margin: 0 0 var(--ito-space-14);
+  color: var(--ito-color-text-muted);
+  line-height: 1.5;
+}
+
+.translation-scope-settings__tiers {
+  display: grid;
+  gap: var(--ito-space-10);
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.translation-scope-settings__tier {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ito-space-10);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+  padding: var(--ito-space-10) var(--ito-space-12);
+  cursor: pointer;
+}
+
+.translation-scope-settings__tier[data-checked="true"] {
+  border-color: var(--ito-color-amber);
+}
+
+.translation-scope-settings__tier[data-baseline="true"] {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.translation-scope-settings__tier input[type="checkbox"] {
+  margin-top: var(--ito-space-4);
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--ito-color-amber);
+}
+
+.translation-scope-settings__tier-body {
+  display: grid;
+  gap: var(--ito-space-4);
+}
+
+.translation-scope-settings__tier-label {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text);
+  text-transform: uppercase;
+}
+
+.translation-scope-settings__tier-description {
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-small);
+  line-height: 1.45;
+}
+
+.translation-scope-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-10);
+  align-items: center;
+  margin-top: var(--ito-space-14);
+}
+
+.translation-scope-settings__actions button {
+  min-height: 2.25rem;
+  border: 1px solid var(--ito-color-amber);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-amber);
+  color: var(--ito-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0 var(--ito-space-12);
+}
+
+.translation-scope-settings__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

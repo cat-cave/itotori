@@ -2111,6 +2111,31 @@
         ],
         "type": "object"
       },
+      "ApiSaveTranslationScopeSettingsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "localeBranchId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "dialogue-only",
+              "dialogue-and-choices",
+              "dialogue-choices-ui",
+              "all"
+            ]
+          }
+        },
+        "required": [
+          "localeBranchId",
+          "projectId",
+          "scope"
+        ],
+        "type": "object"
+      },
       "ApiStudioCapabilityDenials": {
         "additionalProperties": false,
         "properties": {
@@ -2182,6 +2207,39 @@
           "queueRead",
           "reveal",
           "steer"
+        ],
+        "type": "object"
+      },
+      "ApiTranslationScopeSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "localeBranchId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.settings.translation-scope.v0"
+          },
+          "scope": {
+            "enum": [
+              "dialogue-only",
+              "dialogue-and-choices",
+              "dialogue-choices-ui",
+              "all"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "localeBranchId",
+          "projectId",
+          "schemaVersion",
+          "scope",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -6637,6 +6695,188 @@
         },
         "summary": "Save editable branch policy for a locale branch and refresh its glossary reference.",
         "x-itotoriRouteId": "settings.branchPolicy.save"
+      }
+    },
+    "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/translation-scope": {
+      "get": {
+        "operationId": "settingsTranslationScopeGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTranslationScopeSettingsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load the config-driven translation scope (dialogue / +choices / +UI-text / +images) for a locale branch.",
+        "x-itotoriRouteId": "settings.translationScope.get"
+      },
+      "post": {
+        "operationId": "settingsTranslationScopeSave",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiSaveTranslationScopeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTranslationScopeSettingsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Save the config-driven translation scope for a locale branch. Read by the localize-fullproject command.",
+        "x-itotoriRouteId": "settings.translationScope.save"
       }
     },
     "/api/projects/{projectId}/runtime-evidence": {

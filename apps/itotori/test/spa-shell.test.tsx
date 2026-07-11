@@ -42,6 +42,7 @@ import {
   modelRoutingSettingsFixture,
   projectOverviewFixture,
   runtimeStatusFixture,
+  translationScopeSettingsFixture,
 } from "./api-fixtures.js";
 import {
   apiJson,
@@ -90,6 +91,10 @@ const server = setupServer(
   ),
   http.get("*/api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy", () =>
     apiJson("settings.branchPolicy.get", branchPolicySettingsFixture),
+  ),
+  http.get(
+    "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/translation-scope",
+    () => apiJson("settings.translationScope.get", translationScopeSettingsFixture),
   ),
   http.get("*/api/runtime/v0.2/status", () => apiJson("runtime.status", runtimeStatusFixture)),
 );
@@ -385,7 +390,7 @@ describe("SPA shell — reviewer detail", () => {
 });
 
 describe("SPA shell — settings", () => {
-  it("routes privacy, model routing, and branch policy settings screens", async () => {
+  it("routes privacy, model routing, branch policy, and translation scope settings screens", async () => {
     render(<App location={{ pathname: "/settings/privacy", search: "" }} />);
 
     expect(await screen.findByRole("heading", { name: "Privacy posture" })).toBeInTheDocument();
@@ -428,6 +433,41 @@ describe("SPA shell — settings", () => {
     expect(screen.getByLabelText("Ruby")).toHaveValue("Preserve ruby annotations on proper nouns.");
     const referenceTable = screen.getByRole("table", { name: "Branch policy reference state" });
     expect(within(referenceTable).getByText("branch-policy-reference-1")).toBeInTheDocument();
+
+    cleanup();
+
+    render(<App location={{ pathname: "/settings/translation-scope", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Translation scope" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Translation scope" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const scopeMain = screen.getByRole("main");
+    expect(scopeMain).toHaveAttribute("data-screen", "settings-translation-scope");
+    expect(scopeMain).toHaveAttribute("data-state", "ready");
+    expect(
+      await screen.findByRole("heading", { name: "Config-driven translation scope" }),
+    ).toBeInTheDocument();
+    // All four cumulative tiers render as toggles. Only Dialogue and
+    // +Choices are honored end-to-end today; +UI text and +Images are
+    // beta-labeled so the UI is honest about backend scope support.
+    expect(screen.getByLabelText("Dialogue")).toBeInTheDocument();
+    expect(screen.getByLabelText("+ Choices")).toBeInTheDocument();
+    expect(screen.getByLabelText("+ UI text (beta)")).toBeInTheDocument();
+    expect(screen.getByLabelText("+ Images (beta)")).toBeInTheDocument();
+    // Both beta tiers carry the same honesty helper note.
+    expect(
+      screen.getAllByText(/not yet honored end-to-end; currently applies dialogue\+choices/i)
+        .length,
+    ).toBe(2);
+    // The persisted fixture scope is "dialogue-only": the baseline is
+    // checked+disabled (always on), every higher tier unchecked.
+    expect(screen.getByLabelText("Dialogue")).toBeChecked();
+    expect(screen.getByLabelText("Dialogue")).toBeDisabled();
+    expect(screen.getByLabelText("+ Choices")).not.toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
+    expect(screen.getByLabelText("+ Images (beta)")).not.toBeChecked();
   });
 
   it("saves a model-routing task route through the typed settings API", async () => {
@@ -534,6 +574,68 @@ describe("SPA shell — settings", () => {
       },
     });
     expect(await screen.findByText("Saved style-guide-version-saved")).toBeInTheDocument();
+  });
+
+  it("persists a translation-scope tier selection through the typed project/branch settings API", async () => {
+    const posts: unknown[] = [];
+    server.use(
+      http.post(
+        "*/api/projects/:projectId/locale-branches/:localeBranchId/settings/translation-scope",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            projectId: string;
+            localeBranchId: string;
+            scope: string;
+          };
+          posts.push(body);
+          return apiJson("settings.translationScope.save", {
+            ...translationScopeSettingsFixture,
+            scope: body.scope,
+            updatedAt: "2026-07-09T00:00:00.000Z",
+          });
+        },
+      ),
+    );
+
+    render(<App location={{ pathname: "/settings/translation-scope", search: "" }} />);
+
+    expect(await screen.findByRole("heading", { name: "Translation scope" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Config-driven translation scope" }),
+    ).toBeInTheDocument();
+
+    // The fixture persists "dialogue-only"; enabling "+ UI text (beta)" must
+    // also imply "+ Choices" (the cumulative-tier affordance) — this is a REAL
+    // user interaction (a checkbox click), not a pre-seeded form value.
+    // Beta tiers remain selectable/savable; the label is honesty-only.
+    fireEvent.click(screen.getByLabelText("+ UI text (beta)"));
+    expect(screen.getByLabelText("+ Choices")).toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).toBeChecked();
+    expect(screen.getByLabelText("+ Images (beta)")).not.toBeChecked();
+
+    // Unchecking "+ Choices" cascades "+ UI text (beta)" back off too (a lower
+    // tier can never stay enabled once a surface below it is disabled).
+    fireEvent.click(screen.getByLabelText("+ Choices"));
+    expect(screen.getByLabelText("+ Choices")).not.toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
+
+    // Re-enable "+ Choices" only (one tier above the always-on baseline) and save.
+    fireEvent.click(screen.getByLabelText("+ Choices"));
+    expect(screen.getByLabelText("+ Choices")).toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save translation scope" }));
+
+    await waitFor(() => expect(posts).toHaveLength(1));
+    // Wire-verbatim proof: the EXACT scope token the backend
+    // (`TranslationScope`/`crates/kaifuu-reallive/src/scope.rs`) expects went
+    // over the typed client, through the REAL route path — not a mock state.
+    expect(posts[0]).toMatchObject({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      scope: "dialogue-and-choices",
+    });
+    expect(await screen.findByText("Saved dialogue-and-choices")).toBeInTheDocument();
   });
 
   it("reloads branch policy editor state before saving after locale branch selection changes", async () => {

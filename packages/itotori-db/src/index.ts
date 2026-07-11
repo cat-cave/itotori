@@ -250,6 +250,18 @@ export type {
   SaveModelRoutingSettingsInput,
 } from "./repositories/model-routing-settings-repository.js";
 export {
+  DEFAULT_TRANSLATION_SCOPE,
+  ItotoriTranslationScopeSettingsRepository,
+  ItotoriTranslationScopeSettingsRepositoryError,
+  translationScopeValues,
+} from "./repositories/translation-scope-settings-repository.js";
+export type {
+  ItotoriTranslationScopeSettingsRepositoryPort,
+  SaveTranslationScopeSettingsInput,
+  TranslationScopeSettingsRecord,
+  TranslationScopeSettingValue,
+} from "./repositories/translation-scope-settings-repository.js";
+export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,
   feedbackReportStatusValues,

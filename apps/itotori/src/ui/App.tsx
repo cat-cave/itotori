@@ -58,6 +58,10 @@ import {
   parseBranchPolicySettingsRoute,
 } from "./screens/BranchPolicySettingsScreen.js";
 import {
+  TranslationScopeSettingsScreen,
+  parseTranslationScopeSettingsRoute,
+} from "./screens/TranslationScopeSettingsScreen.js";
+import {
   WikiEntryScreen,
   parseWikiRoute,
   wikiRouteFromAddressable,
@@ -272,6 +276,11 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const branchPolicyRoute = parseBranchPolicySettingsRoute(location.pathname);
   if (branchPolicyRoute !== null) {
     return <BranchPolicySettingsScreen />;
+  }
+
+  const translationScopeRoute = parseTranslationScopeSettingsRoute(location.pathname);
+  if (translationScopeRoute !== null) {
+    return <TranslationScopeSettingsScreen />;
   }
 
   // `/wiki` — the Wiki entry surface (character + term profiles with CrossRef

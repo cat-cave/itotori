@@ -59,6 +59,7 @@ import {
   reviewerQueueActionList,
   reviewerQueueItemKindList,
   reviewerQueueItemStateList,
+  translationScopeValues,
   wikiEntryKindValues,
 } from "./api-enum-values.js";
 import type { FeedbackType } from "@itotori/db";
@@ -194,6 +195,8 @@ export type ItotoriApiRouteId =
   | "settings.modelRouting.save"
   | "settings.branchPolicy.get"
   | "settings.branchPolicy.save"
+  | "settings.translationScope.get"
+  | "settings.translationScope.save"
   | "auth.ssoSettings.configure"
   | "auth.billing.seatUsage"
   | "auth.members.list"
@@ -434,6 +437,14 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "branchReference",
     "policy",
   ],
+  ApiTranslationScopeSettingsResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "scope",
+    "updatedAt",
+  ],
+  ApiSaveTranslationScopeSettingsRequest: ["projectId", "localeBranchId", "scope"],
   ApiSaveBranchPolicySettingsRequest: [
     "projectId",
     "localeBranchId",
@@ -1049,6 +1060,28 @@ export type ApiSaveBranchPolicySettingsRequest = {
   policy: ApiBranchPolicyPolicy;
 };
 
+// itotori-translation-scope-settings — config-driven translation scope
+// (dialogue / +choices / +UI-text / +images) the whole-project localize
+// command reads. See `apps/itotori/src/orchestrator/localize-fullproject-command.ts`
+// (`LocalizeFullProjectConfig.translationScope`) and
+// `crates/kaifuu-reallive/src/scope.rs` for the tiers this mirrors.
+export type ApiTranslationScope =
+  (typeof translationScopeValues)[keyof typeof translationScopeValues];
+
+export type ApiTranslationScopeSettingsResponse = {
+  schemaVersion: "itotori.settings.translation-scope.v0";
+  projectId: string;
+  localeBranchId: string;
+  scope: ApiTranslationScope;
+  updatedAt: string;
+};
+
+export type ApiSaveTranslationScopeSettingsRequest = {
+  projectId: string;
+  localeBranchId: string;
+  scope: ApiTranslationScope;
+};
+
 export type ApiConfigureAuthSsoSettingsResponse = ApiConfigureAuthSsoSettingsRequest & {
   schemaVersion: "itotori.auth.sso-settings.v0";
   updatedAt: string;
@@ -1459,6 +1492,7 @@ export type ItotoriApiResponseBody =
   | ApiRuntimeEvidenceResponse
   | ApiModelRoutingSettingsResponse
   | ApiBranchPolicySettingsResponse
+  | ApiTranslationScopeSettingsResponse
   | ApiConfigureAuthSsoSettingsResponse
   | ApiMemberInvitationResponse
   | ApiMemberResponse
@@ -1755,6 +1789,30 @@ export function parseSaveBranchPolicySettingsRequest(
       expectedPreviousVersionId: request.expectedPreviousVersionId,
       updateReason: request.updateReason,
       policy: parseBranchPolicyPolicy(request.policy, "ApiSaveBranchPolicySettingsRequest.policy"),
+    };
+  });
+}
+
+export function parseSaveTranslationScopeSettingsRequest(
+  body: unknown,
+): ApiSaveTranslationScopeSettingsRequest {
+  return parseRequest("ApiSaveTranslationScopeSettingsRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiSaveTranslationScopeSettingsRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
+    );
+    assertString(request.projectId, "ApiSaveTranslationScopeSettingsRequest.projectId");
+    assertString(request.localeBranchId, "ApiSaveTranslationScopeSettingsRequest.localeBranchId");
+    assertEnum(
+      request.scope,
+      Object.values(translationScopeValues) as ApiTranslationScope[],
+      "ApiSaveTranslationScopeSettingsRequest.scope",
+    );
+    return {
+      projectId: request.projectId,
+      localeBranchId: request.localeBranchId,
+      scope: request.scope,
     };
   });
 }
@@ -2120,6 +2178,10 @@ export function assertItotoriApiResponse(
     case "settings.branchPolicy.get":
     case "settings.branchPolicy.save":
       assertBranchPolicySettingsResponse(value);
+      return;
+    case "settings.translationScope.get":
+    case "settings.translationScope.save":
+      assertTranslationScopeSettingsResponse(value);
       return;
     case "auth.ssoSettings.configure":
       assertConfigureAuthSsoSettingsResponse(value);
@@ -6438,6 +6500,29 @@ function assertBranchPolicySettingsResponse(
     "ApiBranchPolicySettingsResponse.branchReference",
   );
   parseBranchPolicyPolicy(response.policy, "ApiBranchPolicySettingsResponse.policy");
+}
+
+function assertTranslationScopeSettingsResponse(
+  value: unknown,
+): asserts value is ApiTranslationScopeSettingsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiTranslationScopeSettingsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.settings.translation-scope.v0",
+    "ApiTranslationScopeSettingsResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiTranslationScopeSettingsResponse.projectId");
+  assertString(response.localeBranchId, "ApiTranslationScopeSettingsResponse.localeBranchId");
+  assertEnum(
+    response.scope,
+    Object.values(translationScopeValues) as ApiTranslationScope[],
+    "ApiTranslationScopeSettingsResponse.scope",
+  );
+  assertDateLike(response.updatedAt, "ApiTranslationScopeSettingsResponse.updatedAt");
 }
 
 function assertBranchPolicySourceRevision(value: unknown, label: string): void {

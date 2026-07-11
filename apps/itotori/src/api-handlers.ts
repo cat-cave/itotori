@@ -78,6 +78,7 @@ import {
   parseRuntimeEvidenceRequest,
   parseSaveBranchPolicySettingsRequest,
   parseSaveModelRoutingSettingsRequest,
+  parseSaveTranslationScopeSettingsRequest,
   parseConfigureAuthSsoSettingsRequest,
   parseAcceptMemberInvitationRequest,
   parseInviteMemberRequest,
@@ -128,6 +129,8 @@ import {
   type ApiModelRoutingSettingsResponse,
   type ApiBranchPolicySettingsResponse,
   type ApiSaveBranchPolicySettingsRequest,
+  type ApiTranslationScopeSettingsResponse,
+  type ApiSaveTranslationScopeSettingsRequest,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerSingleActionResponse,
@@ -207,6 +210,8 @@ export const apiMutationPermissionGates = {
   modelRoutingSave: apiMutationGate("model routing save", "draftWrite"),
   branchPolicyRead: apiMutationGate("branch policy read", "catalogRead"),
   branchPolicySave: apiMutationGate("branch policy save", "draftWrite"),
+  translationScopeRead: apiMutationGate("translation scope read", "catalogRead"),
+  translationScopeSave: apiMutationGate("translation scope save", "draftWrite"),
   membersList: apiMutationGate("members list", "authMembersManage"),
   billingSeatUsage: apiMutationGate("billing seat usage", "authMembersManage"),
   membersInvite: apiMutationGate("members invite", "authMembersManage"),
@@ -336,6 +341,12 @@ export type ItotoriReadOnlyApiServices = {
       localeBranchId: string;
     }): Promise<ApiBranchPolicySettingsResponse>;
   };
+  translationScope: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiTranslationScopeSettingsResponse>;
+  };
   authBilling: {
     loadSeatUsage(accountId: string): Promise<AuthAccountSeatUsageRecord>;
   };
@@ -402,6 +413,15 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     saveSettings(
       input: ApiSaveBranchPolicySettingsRequest,
     ): Promise<ApiBranchPolicySettingsResponse>;
+  };
+  translationScope: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiTranslationScopeSettingsResponse>;
+    saveSettings(
+      input: ApiSaveTranslationScopeSettingsRequest,
+    ): Promise<ApiTranslationScopeSettingsResponse>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<readonly MemberRecord[]>;
@@ -516,6 +536,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     branchPolicy: {
       loadSettings: (input) => services.branchPolicy.loadSettings(input),
     },
+    translationScope: {
+      loadSettings: (input) => services.translationScope.loadSettings(input),
+    },
     authBilling: {
       loadSeatUsage: (accountId) => services.authBilling.loadSeatUsage(accountId),
     },
@@ -619,6 +642,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     return methodNotAllowed(["GET", "POST"]);
   }
   if (parseBranchPolicySettingsApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["GET", "POST"]);
+  }
+  if (parseTranslationScopeSettingsApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["GET", "POST"]);
   }
   if (
@@ -859,6 +885,30 @@ async function routeItotoriApiRequest(
     );
   }
 
+  const translationScopePostRoute = parseTranslationScopeSettingsApiRoute(request.pathname);
+  if (request.method === "POST" && translationScopePostRoute !== null) {
+    const body = parseSaveTranslationScopeSettingsRequest(request.body);
+    if (
+      body.projectId !== translationScopePostRoute.projectId ||
+      body.localeBranchId !== translationScopePostRoute.localeBranchId
+    ) {
+      throw new ApiValidationError("translation scope path and body scope must match");
+    }
+    await requireApiPermission(services, apiMutationPermissionGates.translationScopeSave);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: translationScopePostRoute.projectId,
+      localeBranchId: translationScopePostRoute.localeBranchId,
+    });
+    return ok(
+      "settings.translationScope.save",
+      await services.translationScope.saveSettings({
+        ...body,
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+      }),
+    );
+  }
+
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
   }
@@ -866,6 +916,9 @@ async function routeItotoriApiRequest(
     return methodNotAllowed(["GET", "POST"]);
   }
   if (branchPolicyRoute !== null) {
+    return methodNotAllowed(["GET", "POST"]);
+  }
+  if (translationScopePostRoute !== null) {
     return methodNotAllowed(["GET", "POST"]);
   }
 
@@ -1425,6 +1478,22 @@ async function routeReadOnlyItotoriApiRequest(
     return ok(
       "settings.branchPolicy.get",
       await services.branchPolicy.loadSettings({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+      }),
+    );
+  }
+
+  const translationScopeRoute = parseTranslationScopeSettingsApiRoute(request.pathname);
+  if (request.method === "GET" && translationScopeRoute !== null) {
+    await requireApiPermission(services, apiMutationPermissionGates.translationScopeRead);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: translationScopeRoute.projectId,
+      localeBranchId: translationScopeRoute.localeBranchId,
+    });
+    return ok(
+      "settings.translationScope.get",
+      await services.translationScope.loadSettings({
         projectId: scope.projectId,
         localeBranchId: scope.localeBranchId,
       }),
@@ -2752,6 +2821,23 @@ function parseBranchPolicySettingsApiRoute(pathname: string): {
   };
 }
 
+function parseTranslationScopeSettingsApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/settings\/translation-scope\/?$/u.exec(
+      pathname,
+    );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
 function decodeApiPathSegment(raw: string, label: string): string {
   let decoded: string;
   try {
@@ -3250,6 +3336,14 @@ function ok(
 function ok(
   routeId: "settings.branchPolicy.save",
   body: ApiBranchPolicySettingsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "settings.translationScope.get",
+  body: ApiTranslationScopeSettingsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "settings.translationScope.save",
+  body: ApiTranslationScopeSettingsResponse,
 ): ApiJsonResponse;
 function ok(
   routeId: "auth.ssoSettings.configure",
