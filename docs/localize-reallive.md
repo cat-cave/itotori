@@ -31,8 +31,8 @@ itotori db-migrate                 # apply DB schema (needs DATABASE_URL)
 
 # localize the whole game in one command (extract -> structure -> localize -> patch -> validate)
 itotori localize-game \
-  --config      <project-config.json> \
-  --source      /scratch/itotori-research/sweetie-hd \
+  --config      presets/localize-fullproject.config.v0.json \
+  --source      "/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版" \
   --target      /scratch/out/sweetie-hd-en \
   --run-dir     /scratch/out/sweetie-hd-run \
   --game-id     sweetie-hd --game-version alpha-1 \
@@ -129,10 +129,16 @@ The exact identity params and the environment a real run needs are documented by
 the env-gated proof test **`apps/itotori/test/localize-game-real.test.ts`** (see
 its header, lines 10-20). Copy-paste templates:
 
-- **Config + pair-policy**: `presets/localize-project.alpha-target-data.json`
-  and `presets/localize-project.pair-policy.json` (the `(modelId, providerId)`
+- **Config + pair-policy**: `presets/localize-fullproject.config.v0.json`
+  (the `--config` for `localize-game`; schema
+  `itotori.localize-fullproject.config.v0`) and
+  `presets/localize-project.pair-policy.json` (the `(modelId, providerId)`
   pair is pinned in the pair-policy — it is REQUIRED; a missing/malformed
-  pair-policy halts the run).
+  pair-policy halts the run). Do NOT pass
+  `presets/localize-project.alpha-target-data.json` as `--config`: that is the
+  higher-level target-catalogue shape
+  (`itotori.localize-project.alpha-target-data.v0`) and `localize-game` refuses
+  it at the `localize.parse-config` stage.
 - **Prior real runs**: `artifacts/localize-sweetie-hd/*` holds ten timestamped
   `sweetie-hd-alpha-1` runs whose `bridge-bundle.json` is a concrete example of
   the stage-1 output shape.
@@ -150,8 +156,8 @@ the `ITOTORI_CLI_REAL_LGAME_*` vars (from the test header) and run it — it is
 `it.skipIf(gated)` so it SKIPS LOUD (never fake-passes) when the vars are unset:
 
 ```sh
-export ITOTORI_CLI_REAL_LGAME_CONFIG=presets/localize-project.alpha-target-data.json
-export ITOTORI_CLI_REAL_LGAME_SOURCE=/scratch/itotori-research/sweetie-hd
+export ITOTORI_CLI_REAL_LGAME_CONFIG=presets/localize-fullproject.config.v0.json
+export ITOTORI_CLI_REAL_LGAME_SOURCE="/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
 export ITOTORI_CLI_REAL_LGAME_GAME_ID=sweetie-hd
 export ITOTORI_CLI_REAL_LGAME_GAME_VERSION=alpha-1
 export ITOTORI_CLI_REAL_LGAME_SOURCE_PROFILE_ID=reallive-sweetie-hd
