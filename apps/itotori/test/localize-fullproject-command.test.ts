@@ -65,6 +65,14 @@ import type { WholeGameRenderValidationResult } from "../src/orchestrator/wholeg
 const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
 const LOCALE_BRANCH_ID = "019ed0dd-0000-7000-8000-000000000002";
 const REVISION_ID = "019ed0dd-0000-7000-8000-000000000003";
+// Per-unit content-hash revision — DELIBERATELY distinct from the run/bundle
+// REVISION_ID and DELIBERATELY never seeded into itotori_source_revisions. This
+// is what makes the reviewer-queue deferral a genuine FK regression guard
+// (issue #76): the OLD bridge FK'd this unregistered per-unit id -> FK
+// violation on UNIT_B's deferral; the fix FKs the run-level REVISION_ID that
+// seedProjectScope registers. If the two ids were equal (as before) the test
+// would pass with OR without the fix.
+const UNIT_CONTENT_HASH_REVISION_ID = "019ed0dd-0000-7000-8000-0000000000c0";
 const ASSET_ID = "019ed0dd-0000-7000-8000-000000000004";
 const SPEAKER_ID = "019ed0dd-0000-7000-8000-000000000005";
 const SOURCE_BUNDLE_ID = "019ed0dd-0000-7000-8000-000000000006";
@@ -243,7 +251,11 @@ function makeUnit(
     sourceLocale: "ja-JP",
     sourceText,
     sourceHash: `src-hash-${bridgeUnitId}`,
-    sourceRevision: { revisionId: REVISION_ID, revisionKind: "content_hash", value: "rev" },
+    sourceRevision: {
+      revisionId: UNIT_CONTENT_HASH_REVISION_ID,
+      revisionKind: "content_hash",
+      value: "rev",
+    },
     sourceAssetRef: { assetId: ASSET_ID, assetKey: "asset" },
     sourceLocation: { containerKey: "asset" },
     speaker: { knowledgeState: "known", speakerId: SPEAKER_ID, displayName: SPEAKER_NAME },
@@ -253,7 +265,11 @@ function makeUnit(
       assetId: ASSET_ID,
       writeMode: "replace",
       sourceUnitKey: key,
-      sourceRevision: { revisionId: REVISION_ID, revisionKind: "content_hash", value: "rev" },
+      sourceRevision: {
+        revisionId: UNIT_CONTENT_HASH_REVISION_ID,
+        revisionKind: "content_hash",
+        value: "rev",
+      },
     },
     runtimeExpectation: { expectationKind: "metadata_only" },
   };
@@ -589,6 +605,13 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         );
         expect(queueAfter1).toBe(p1.result.reviewerQueueItemCount);
         expect(queueAfter1).toBeGreaterThanOrEqual(1); // the deferred UNIT_B
+        const queueRevisionsAfter1 = await context.pool.query(
+          "select distinct source_revision_id from itotori_reviewer_queue_items where project_id = $1",
+          [PROJECT_ID],
+        );
+        expect(queueRevisionsAfter1.rows.map((row) => row.source_revision_id)).toEqual([
+          REVISION_ID,
+        ]);
 
         // The pass record persisted (NODE 2): one row, passNumber 1.
         const ledgerAfter1 = await context.pool.query(

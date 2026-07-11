@@ -222,6 +222,10 @@ export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Er
 }
 
 const DEFAULT_UNIT_INDEX = 0;
+// This single-unit command has no run-scope provisioning or reviewer-queue
+// sink. Keep the required loop input explicit without using the unit's
+// content-hash revision as a queue FK candidate.
+const LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID = "localize-project-stage-bundle-revision";
 
 // Re-export so the test surface and any external integrators get the
 // version-mismatch error from the same place they used to import the
@@ -393,6 +397,7 @@ export async function runLocalizeProjectStageCommand(
 
   const input: AgenticLoopUnitInput = {
     unit,
+    sourceRevisionId: LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID,
     sceneUnits: [],
     // itotori-live-loop-style-glossary-injection — feed the caller-resolved
     // ACTIVE glossary + style-guide into the live loop (empty when unset).

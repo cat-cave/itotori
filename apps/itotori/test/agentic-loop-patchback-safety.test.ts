@@ -78,6 +78,7 @@ function makeInput(
   overrides: Partial<AgenticLoopUnitInput> & { unit: LocalizationUnitV02 },
 ): AgenticLoopUnitInput {
   return {
+    sourceRevisionId: REVISION_ID,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],

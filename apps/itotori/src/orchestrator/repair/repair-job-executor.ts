@@ -93,6 +93,8 @@ export interface RepairRerunUnitResolver {
 export type RepairJobExecutorDeps = {
   actor: AuthorizationActor;
   resolveUnits: RepairRerunUnitResolver;
+  /** Run/bundle-level source revision registered for this repair rerun. */
+  sourceRevisionId: string;
   /** Parsed pair-policy — every stage's (modelId, providerId) + posture. */
   pairPolicy: PairPolicy;
   /** The loop's tunables (project / locale / repair cap). */
@@ -228,10 +230,13 @@ export async function executeRepairJob(
   const reviewerQueue = deps.reviewerQueue;
 
   for (const resolvedInput of unitInputs) {
-    const unitInput: AgenticLoopUnitInput =
-      reviewerQueue !== undefined && resolvedInput.reviewerQueue === undefined
-        ? { ...resolvedInput, reviewerQueue }
-        : resolvedInput;
+    const unitInput: AgenticLoopUnitInput = {
+      ...resolvedInput,
+      sourceRevisionId: deps.sourceRevisionId,
+      ...(reviewerQueue !== undefined && resolvedInput.reviewerQueue === undefined
+        ? { reviewerQueue }
+        : {}),
+    };
     const result = await runRepairUnit(unitInput, job, deps, log);
     if (result.status === "failed") {
       // Per-unit isolation: the loop threw; the unit's draft stays untouched.

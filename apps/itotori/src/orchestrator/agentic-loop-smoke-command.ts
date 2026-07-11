@@ -45,6 +45,10 @@ import {
   type PairPolicy,
 } from "./agentic-loop.js";
 
+// The smoke command has no run registration or reviewer-queue sink. Keep its
+// required loop input explicit without reusing the unit's content-hash id.
+const SMOKE_BUNDLE_SOURCE_REVISION_ID = "agentic-loop-smoke-bundle-revision";
+
 export type AgenticLoopSmokeIo = {
   readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
@@ -150,6 +154,7 @@ export async function runAgenticLoopSmokeCommand(
   const factory = smokeProviderFactory(unit, policy);
   const input: AgenticLoopUnitInput = {
     unit,
+    sourceRevisionId: SMOKE_BUNDLE_SOURCE_REVISION_ID,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],

@@ -50,6 +50,7 @@ const BRIDGE_UNIT_ID = "019ed079-0000-7000-8000-00000000bc01";
 const PROJECT_ID = "019ed079-0000-7000-8000-000000000001";
 const LOCALE_BRANCH_ID = "019ed079-0000-7000-8000-000000000002";
 const REVISION_ID = "019ed079-0000-7000-8000-000000000003";
+const RUN_SOURCE_REVISION_ID = "019ed079-0000-7000-8000-0000000000b3";
 const ASSET_ID = "019ed079-0000-7000-8000-000000000004";
 
 const SOURCE_TEXT = "ありがとう。";
@@ -156,6 +157,7 @@ function makeUnit(): LocalizationUnitV02 {
 function makeInput(queue?: InMemoryReviewerQueue): AgenticLoopUnitInput {
   return {
     unit: makeUnit(),
+    sourceRevisionId: RUN_SOURCE_REVISION_ID,
     sceneUnits: [],
     glossary: [
       {
@@ -332,7 +334,8 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     const item = queue.items[0]!;
     expect(item.itemKind).toBe(reviewerQueueItemKindValues.qa);
     expect(item.sourceItemRef).toBe(`agentic-loop:${BRIDGE_UNIT_ID}`);
-    expect(item.sourceRevisionId).toBe(REVISION_ID);
+    expect(item.sourceRevisionId).toBe(RUN_SOURCE_REVISION_ID);
+    expect(item.sourceRevisionId).not.toBe(REVISION_ID);
     expect(item.state).toBe(reviewerQueueItemStateValues.pending);
     expect(item.createdByUserId).toBe(ACTOR.userId);
 
