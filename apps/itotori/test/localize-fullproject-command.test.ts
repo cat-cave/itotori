@@ -31,6 +31,7 @@ import {
   ItotoriDraftJobRepository,
   ItotoriLocalizationPassLedgerRepository,
   ItotoriReviewerQueueRepository,
+  ItotoriTranslationScopeSettingsRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   localUserId,
@@ -758,6 +759,202 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         expect(pass2.out.prior?.passNumber).toBe(1);
         expect(pass2.out.record.passNumber).toBe(2);
         expect(pass2.capture.priorFeedbackSeen.get(UNIT_A)).toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    120_000,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// itotori-translation-scope-configuration-ui — proves the DB-backed
+// translation-scope DEFAULT (the Studio "Translation scope" settings screen
+// persists via `settings.translationScope.save` ->
+// `ItotoriTranslationScopeSettingsRepository.saveSettings`) is the SAME value
+// `runLocalizeFullProjectCommand` reads when a run's config JSON omits
+// `translationScope` — through the REAL repository (real Postgres), not a
+// fake double standing in for persistence.
+// ---------------------------------------------------------------------------
+
+describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope default", () => {
+  it.skipIf(!process.env.DATABASE_URL)(
+    "a scope saved via the settings repository is the SAME scope the localize command resolves and drives with",
+    async () => {
+      const databaseUrl = process.env.DATABASE_URL as string;
+      await migrate(databaseUrl);
+      const context = createDatabaseContext(databaseUrl);
+      const actor: AuthorizationActor = { userId: localUserId };
+
+      try {
+        await bootstrapLocalUser(context.db);
+        await seedProjectScope(context.pool);
+
+        // This is the EXACT repository the `settings.translationScope.save`
+        // API route persists through (packages/itotori-db/src/repositories/
+        // translation-scope-settings-repository.ts) and the live CLI
+        // (localize-fullproject-cli.ts) resolves through.
+        const translationScopeSettingsRepo = new ItotoriTranslationScopeSettingsRepository(
+          context.db,
+        );
+
+        // A project/branch owner configured the "+ UI text" tier via the
+        // Studio settings screen (write path proven independently by
+        // packages/itotori-db/test/translation-scope-settings-repository.test.ts
+        // and apps/itotori/test/api-handlers.test.ts).
+        const saved = await translationScopeSettingsRepo.saveSettings(actor, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          scope: "dialogue-choices-ui",
+        });
+        expect(saved.scope).toBe("dialogue-choices-ui");
+
+        const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
+        const passLedger = new DbPassLedger(passLedgerRepo);
+
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-scope-default-"));
+        const { configPath } = materializeProject(workDir);
+        // Strip the explicit `translationScope` the fixture config normally
+        // pins, so the command must fall back to the DB-backed default —
+        // exactly what a Studio-configured run (no explicit scope override in
+        // its generated config) looks like.
+        const rawConfig = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+        delete rawConfig.translationScope;
+        writeFileSync(configPath, JSON.stringify(rawConfig));
+        const io = fsIo();
+
+        const capture = makeCaptureFactory();
+        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
+        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          actor,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+        });
+        const runDir = join(workDir, "pass-1");
+        mkdirSync(runDir, { recursive: true });
+        const patchSink = new FsDrivenPatchExportSink(runDir);
+
+        const out = await runLocalizeFullProjectCommand({
+          configPath,
+          runSummaryPath: join(runDir, "run-summary.json"),
+          deps: {
+            io,
+            actor,
+            providerFactory: capture.factory,
+            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            passLedger,
+            reviewerQueue: { repository: reviewerQueueRepo },
+            // The REAL production port: reads through the SAME repository
+            // instance the save above just wrote through.
+            translationScopeSettings: {
+              resolveScope: (projectId, localeBranchId) =>
+                translationScopeSettingsRepo.resolveScope(projectId, localeBranchId),
+            },
+            now: deterministicClock(),
+          },
+        });
+
+        // The persisted "dialogue-choices-ui" scope is what the command
+        // resolved and recorded on the pass.
+        expect(out.record.inputs.translationScope).toBe("dialogue-choices-ui");
+
+        // Behavior proof, not just a label: the ui_label unit (UNIT_UI, out of
+        // scope under the "dialogue-only" default proven in the sibling
+        // describe block above) is now IN SCOPE because "dialogue-choices-ui"
+        // includes the UI tier.
+        expect(out.result.unitsEnumerated).toBe(4);
+        expect(out.result.unitsInScope).toBe(4);
+        expect(out.result.unitsRun).toBe(4);
+
+        // The written run-summary artifact — the durable, inspectable record
+        // of what a run actually did — carries the SAME resolved scope.
+        const runSummary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as {
+          translationScope: string;
+        };
+        expect(runSummary.translationScope).toBe("dialogue-choices-ui");
+
+        // Re-reading the setting directly (the same read a second run, or the
+        // Studio GET route, would perform) confirms it is durably persisted,
+        // not an artifact of this one process's cache.
+        const reread = await translationScopeSettingsRepo.resolveScope(
+          PROJECT_ID,
+          LOCALE_BRANCH_ID,
+        );
+        expect(reread).toBe("dialogue-choices-ui");
+      } finally {
+        await context.close();
+      }
+    },
+    120_000,
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "an EXPLICIT config.translationScope still wins over the persisted DB default",
+    async () => {
+      const databaseUrl = process.env.DATABASE_URL as string;
+      await migrate(databaseUrl);
+      const context = createDatabaseContext(databaseUrl);
+      const actor: AuthorizationActor = { userId: localUserId };
+
+      try {
+        await bootstrapLocalUser(context.db);
+        await seedProjectScope(context.pool);
+
+        const translationScopeSettingsRepo = new ItotoriTranslationScopeSettingsRepository(
+          context.db,
+        );
+        // Persist "all" in the DB, but the run config below pins
+        // "dialogue-only" explicitly — the explicit config value must win.
+        await translationScopeSettingsRepo.saveSettings(actor, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          scope: "all",
+        });
+
+        const passLedger = new DbPassLedger(
+          new ItotoriLocalizationPassLedgerRepository(context.db),
+        );
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-scope-override-"));
+        const { configPath } = materializeProject(workDir); // pins "dialogue-only"
+        const io = fsIo();
+
+        const capture = makeCaptureFactory();
+        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
+        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          actor,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+        });
+        const runDir = join(workDir, "pass-1");
+        mkdirSync(runDir, { recursive: true });
+        const patchSink = new FsDrivenPatchExportSink(runDir);
+
+        const out = await runLocalizeFullProjectCommand({
+          configPath,
+          runSummaryPath: join(runDir, "run-summary.json"),
+          deps: {
+            io,
+            actor,
+            providerFactory: capture.factory,
+            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            passLedger,
+            reviewerQueue: { repository: reviewerQueueRepo },
+            translationScopeSettings: {
+              resolveScope: (projectId, localeBranchId) =>
+                translationScopeSettingsRepo.resolveScope(projectId, localeBranchId),
+            },
+            now: deterministicClock(),
+          },
+        });
+
+        expect(out.record.inputs.translationScope).toBe("dialogue-only");
+        expect(out.result.unitsInScope).toBe(3); // UNIT_UI stays out of scope
       } finally {
         await context.close();
       }

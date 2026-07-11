@@ -19,6 +19,7 @@ import {
   ItotoriLocalizationPassLedgerRepository,
   ItotoriModelLedgerRepository,
   ItotoriModelRoutingSettingsRepository,
+  ItotoriTranslationScopeSettingsRepository,
   ItotoriPrincipalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
@@ -59,6 +60,7 @@ import {
   type JobsRunTableReadModel,
   type ModelRoutingSettingsRecord,
   type SaveModelRoutingSettingsInput,
+  type TranslationScopeSettingsRecord,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type AuthAccountSeatUsageRecord,
@@ -96,6 +98,8 @@ import type {
   ApiRemoveMemberRequest,
   ApiRevokeAuthSessionRequest,
   ApiSaveBranchPolicySettingsRequest,
+  ApiTranslationScopeSettingsResponse,
+  ApiSaveTranslationScopeSettingsRequest,
 } from "../api-schema.js";
 import {
   EngineCapabilityReportService,
@@ -283,6 +287,15 @@ export type ItotoriApplicationServices = {
     saveSettings(
       input: ApiSaveBranchPolicySettingsRequest,
     ): Promise<ApiBranchPolicySettingsResponse>;
+  };
+  translationScope: {
+    loadSettings(input: {
+      projectId: string;
+      localeBranchId: string;
+    }): Promise<ApiTranslationScopeSettingsResponse>;
+    saveSettings(
+      input: ApiSaveTranslationScopeSettingsRequest,
+    ): Promise<ApiTranslationScopeSettingsResponse>;
   };
   authMembers: {
     listMembers(accountId: string): Promise<MemberRecord[]>;
@@ -520,6 +533,18 @@ async function loadBranchPolicySettings(input: {
   };
 }
 
+function translationScopeSettingsResponseBody(
+  record: TranslationScopeSettingsRecord,
+): ApiTranslationScopeSettingsResponse {
+  return {
+    schemaVersion: "itotori.settings.translation-scope.v0",
+    projectId: record.projectId,
+    localeBranchId: record.localeBranchId,
+    scope: record.scope,
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
 function branchPolicyVersionBody(
   version: StyleGuideVersionRecord | null,
 ): ApiBranchPolicyVersion | null {
@@ -632,6 +657,9 @@ export async function withDatabaseItotoriServices<T>(
     const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const modelRoutingSettingsRepository = new ItotoriModelRoutingSettingsRepository(context.db);
+    const translationScopeSettingsRepository = new ItotoriTranslationScopeSettingsRepository(
+      context.db,
+    );
     const passLedgerRepository = new ItotoriLocalizationPassLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
@@ -964,6 +992,20 @@ export async function withDatabaseItotoriServices<T>(
             localeBranchId: input.localeBranchId,
           });
         },
+      },
+      translationScope: {
+        loadSettings: async (input) =>
+          translationScopeSettingsResponseBody(
+            await translationScopeSettingsRepository.loadSettings(localUserActor, input),
+          ),
+        saveSettings: async (input) =>
+          translationScopeSettingsResponseBody(
+            await translationScopeSettingsRepository.saveSettings(localUserActor, {
+              projectId: input.projectId,
+              localeBranchId: input.localeBranchId,
+              scope: input.scope,
+            }),
+          ),
       },
       authMembers: {
         listMembers: (accountId) =>

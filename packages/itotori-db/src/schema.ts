@@ -2393,6 +2393,27 @@ export const modelRoutingSettings = pgTable(
   ],
 );
 
+// itotori-translation-scope-settings — config-driven translation scope
+// (dialogue-only -> dialogue-and-choices -> dialogue-choices-ui -> all), one
+// row per locale branch. This is the DB-backed default the whole-project
+// localize command (`runLocalizeFullProjectCommand`) consults when its run
+// config JSON omits `translationScope` — see
+// `apps/itotori/src/orchestrator/localize-fullproject-command.ts`.
+export const translationScopeSettings = pgTable(
+  "itotori_translation_scope_settings",
+  {
+    localeBranchId: text("locale_branch_id")
+      .primaryKey()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("itotori_translation_scope_settings_project_idx").on(table.projectId)],
+);
+
 export const providerRuns = pgTable(
   "itotori_provider_runs",
   {

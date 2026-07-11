@@ -75,6 +75,7 @@ import {
   type ApiSaveBranchPolicySettingsRequest,
   type ApiInviteMemberRequest,
   type ApiSaveModelRoutingSettingsRequest,
+  type ApiSaveTranslationScopeSettingsRequest,
   type ApiRemoveMemberRequest,
   type ApiRevokeAuthSessionRequest,
 } from "../src/api-schema.js";
@@ -116,6 +117,7 @@ import {
   decisionEventFixture,
   findingRecordFixture,
   modelRoutingSettingsFixture,
+  translationScopeSettingsFixture,
   nonJapaneseTargetProjectFixture,
   projectOverviewFixture,
   projectFixture,
@@ -169,6 +171,7 @@ type ApiMutationService =
   | { surface: "authSsoSettings"; method: "configureSettings" }
   | { surface: "modelRouting"; method: "loadSettings" | "saveRoute" }
   | { surface: "branchPolicy"; method: "loadSettings" | "saveSettings" }
+  | { surface: "translationScope"; method: "loadSettings" | "saveSettings" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | {
@@ -292,6 +295,12 @@ const saveBranchPolicyRequestFixture = {
   },
 } satisfies ApiSaveBranchPolicySettingsRequest;
 
+const saveTranslationScopeRequestFixture = {
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  scope: "dialogue-and-choices",
+} satisfies ApiSaveTranslationScopeSettingsRequest;
+
 const inviteMemberRequestFixture = {
   accountId: "account-local",
   email: "member@example.test",
@@ -403,6 +412,22 @@ const apiMutationPermissionMatrix = [
       saveBranchPolicyRequestFixture,
     ),
     { surface: "branchPolicy", method: "saveSettings" },
+  ),
+  apiGateForService(
+    "translationScopeRead",
+    {
+      method: "GET",
+      pathname: "/api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+    },
+    { surface: "translationScope", method: "loadSettings" },
+  ),
+  apiGateForService(
+    "translationScopeSave",
+    post(
+      "/api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+      saveTranslationScopeRequestFixture,
+    ),
+    { surface: "translationScope", method: "saveSettings" },
   ),
   apiGateForService(
     "membersList",
@@ -3190,6 +3215,68 @@ describe("Itotori API handlers", () => {
     expect(services.branchPolicy.saveSettings).toHaveBeenCalledWith(saveBranchPolicyRequestFixture);
   });
 
+  it("loads and saves translation scope through the project/branch settings route", async () => {
+    const services = serviceFixture();
+
+    const loaded = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+      },
+      services,
+    );
+    const saved = await handleItotoriApiRequest(
+      post(
+        "/api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+        saveTranslationScopeRequestFixture,
+      ),
+      services,
+    );
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.body).toMatchObject({
+      schemaVersion: "itotori.settings.translation-scope.v0",
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      scope: "dialogue-only",
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.body).toMatchObject({
+      schemaVersion: "itotori.settings.translation-scope.v0",
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      scope: "dialogue-and-choices",
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.catalogRead,
+    );
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.translationScope.loadSettings).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+    });
+    expect(services.translationScope.saveSettings).toHaveBeenCalledWith(
+      saveTranslationScopeRequestFixture,
+    );
+  });
+
+  it("rejects a translation-scope save whose body scope does not match the path scope", async () => {
+    const services = serviceFixture();
+
+    const mismatched = await handleItotoriApiRequest(
+      post("/api/projects/project-1/locale-branches/locale-1/settings/translation-scope", {
+        ...saveTranslationScopeRequestFixture,
+        localeBranchId: "locale-other",
+      }),
+      services,
+    );
+
+    expect(mismatched.statusCode).toBe(400);
+    expect(services.translationScope.saveSettings).not.toHaveBeenCalled();
+  });
+
   it("routes member invite, billing seat usage, accept, list, and remove through typed auth handlers", async () => {
     const services = serviceFixture();
 
@@ -3946,6 +4033,20 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "translation scope read",
+          "requiredPermission": "catalog.read",
+          "route": "GET /api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+          "successFixture": "api-handlers.test.ts translation scope read success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "translation scope save",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/projects/project-1/locale-branches/locale-1/settings/translation-scope",
+          "successFixture": "api-handlers.test.ts translation scope save success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "members list",
           "requiredPermission": "auth.members.manage",
           "route": "GET /api/auth/members",
@@ -4501,6 +4602,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   }
   if (service.surface === "branchPolicy") {
     return services.branchPolicy[service.method];
+  }
+  if (service.surface === "translationScope") {
+    return services.translationScope[service.method];
   }
   if (service.surface === "authPermissions") {
     return services.authPermissions[service.method];
@@ -5082,6 +5186,20 @@ function serviceFixture(): ItotoriApiServices {
           updateReason: input.updateReason,
         },
         policy: input.policy,
+      })),
+    },
+    translationScope: {
+      loadSettings: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({
+        ...translationScopeSettingsFixture,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+      })),
+      saveSettings: vi.fn(async (input: ApiSaveTranslationScopeSettingsRequest) => ({
+        ...translationScopeSettingsFixture,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        scope: input.scope,
+        updatedAt: "2026-07-08T00:00:00.000Z",
       })),
     },
     authMembers: {

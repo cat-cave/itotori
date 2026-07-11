@@ -352,6 +352,10 @@ export const migrations = [
     id: "0073_model_routing_settings",
     file: "0073_model_routing_settings.sql",
   },
+  {
+    id: "0074_translation_scope_settings",
+    file: "0074_translation_scope_settings.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

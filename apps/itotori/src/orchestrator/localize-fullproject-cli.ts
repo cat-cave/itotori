@@ -23,6 +23,7 @@ import {
   ItotoriLocalizationPassLedgerRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
+  ItotoriTranslationScopeSettingsRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -206,6 +207,12 @@ export async function runLocalizeFullProjectLive(
     const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
     const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
     const assetDecisionRepo = new ItotoriAssetLocalizationDecisionRepository(context.db);
+    // itotori-translation-scope-configuration-ui — the SAME repository the
+    // `settings.translationScope.save` API route persists through, so a
+    // project/branch owner's Studio scope selection is the real DB-backed
+    // default this live run resolves when its config JSON omits
+    // `translationScope`.
+    const translationScopeSettingsRepo = new ItotoriTranslationScopeSettingsRepository(context.db);
 
     const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
       projectId: config.projectId,
@@ -253,6 +260,10 @@ export async function runLocalizeFullProjectLive(
             sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger: new DbPassLedger(passLedgerRepo),
             reviewerQueue: { repository: reviewerQueueRepo },
+            translationScopeSettings: {
+              resolveScope: (projectId, localeBranchId) =>
+                translationScopeSettingsRepo.resolveScope(projectId, localeBranchId),
+            },
             ...(args.sourceRoot !== undefined &&
             args.sourceRoot.length > 0 &&
             args.patchTargetRoot !== undefined &&

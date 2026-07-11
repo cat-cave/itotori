@@ -123,6 +123,23 @@ export type LocalizeFullProjectIo = {
 };
 
 /**
+ * itotori-translation-scope-configuration-ui — the config-driven translation
+ * scope DEFAULT source. A run config JSON may declare `translationScope`
+ * explicitly (highest precedence); when it omits the field, this port is
+ * consulted for the DB-backed default a project/branch owner configured via
+ * the Studio "Translation scope" settings screen
+ * (`settings.translationScope.save`, `packages/itotori-db/src/repositories/translation-scope-settings-repository.ts`).
+ * Returning `undefined` means no scope has been saved for the branch, and the
+ * command falls back to `dialogue-only`. This is real production wiring, not
+ * a mock: the live CLI (`localize-fullproject-cli.ts`) binds it to
+ * `ItotoriTranslationScopeSettingsRepository.resolveScope`, the SAME
+ * repository the API route persists through.
+ */
+export type TranslationScopeSettingsPort = {
+  resolveScope(projectId: string, localeBranchId: string): Promise<TranslationScope | undefined>;
+};
+
+/**
  * Injected dependencies. The persistence sinks + reviewer queue + pass ledger
  * are ports so production binds them to real DB/fs adapters while a test binds
  * a real-Postgres ledger + a fake provider (no live cost). The provider factory
@@ -142,6 +159,11 @@ export type LocalizeFullProjectDeps = {
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide?: StyleGuidePolicyV0Draft;
+  /**
+   * Optional DB-backed translation-scope default. Consulted ONLY when the run
+   * config JSON omits `translationScope` — see {@link TranslationScopeSettingsPort}.
+   */
+  translationScopeSettings?: TranslationScopeSettingsPort;
   /**
    * Optional caller-resolved per-unit context extension. The command composes
    * this with its decoded-structure resolver so full-project callers can feed
@@ -203,7 +225,15 @@ export async function runLocalizeFullProjectCommand(
     run: () => parseLocalizeFullProjectConfig(deps.io.readJson(args.configPath)),
   });
   const targetLocale = config.targetLocale ?? "en-US";
-  const translationScope = config.translationScope ?? "dialogue-only";
+  // itotori-translation-scope-configuration-ui — precedence: an EXPLICIT
+  // config.translationScope always wins; otherwise consult the DB-backed
+  // default a project/branch owner configured (Studio "Translation scope"
+  // settings screen), falling back to `dialogue-only` only when neither is
+  // set.
+  const translationScope =
+    config.translationScope ??
+    (await deps.translationScopeSettings?.resolveScope(config.projectId, config.localeBranchId)) ??
+    "dialogue-only";
 
   const rawBridge = await runPipelineStepWithDiagnostic({
     step: "localize.read-bridge",

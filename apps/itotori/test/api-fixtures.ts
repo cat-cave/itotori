@@ -32,6 +32,7 @@ import type {
   ApiRuntimeEvidenceRequest,
   ApiRuntimeEvidenceResponse,
   ApiModelRoutingSettingsResponse,
+  ApiTranslationScopeSettingsResponse,
   ItotoriApiRouteId,
 } from "../src/api-schema.js";
 import type {
@@ -357,6 +358,14 @@ export const branchPolicySettingsFixture: ApiBranchPolicySettingsResponse = {
       ],
     },
   },
+};
+
+export const translationScopeSettingsFixture: ApiTranslationScopeSettingsResponse = {
+  schemaVersion: "itotori.settings.translation-scope.v0",
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  scope: "dialogue-only",
+  updatedAt: "2026-07-08T00:00:00.000Z",
 };
 
 // ITOTORI-053 — cost drilldown fixture. Carries all three DISTINCT cost

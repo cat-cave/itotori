@@ -2112,6 +2112,31 @@
       ],
       "type": "object"
     },
+    "ApiSaveTranslationScopeSettingsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "localeBranchId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "dialogue-only",
+            "dialogue-and-choices",
+            "dialogue-choices-ui",
+            "all"
+          ]
+        }
+      },
+      "required": [
+        "localeBranchId",
+        "projectId",
+        "scope"
+      ],
+      "type": "object"
+    },
     "ApiStudioCapabilityDenials": {
       "additionalProperties": false,
       "properties": {
@@ -2183,6 +2208,39 @@
         "queueRead",
         "reveal",
         "steer"
+      ],
+      "type": "object"
+    },
+    "ApiTranslationScopeSettingsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "localeBranchId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.settings.translation-scope.v0"
+        },
+        "scope": {
+          "enum": [
+            "dialogue-only",
+            "dialogue-and-choices",
+            "dialogue-choices-ui",
+            "all"
+          ]
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "localeBranchId",
+        "projectId",
+        "schemaVersion",
+        "scope",
+        "updatedAt"
       ],
       "type": "object"
     },

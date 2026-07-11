@@ -741,6 +741,32 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: false,
     }),
+  ApiTranslationScopeSettingsResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiTranslationScopeSettingsResponse,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        scope: {
+          enum: ["dialogue-only", "dialogue-and-choices", "dialogue-choices-ui", "all"],
+        },
+        updatedAt: str,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.settings.translation-scope.v0",
+    }),
+  ApiSaveTranslationScopeSettingsRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveTranslationScopeSettingsRequest,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        scope: {
+          enum: ["dialogue-only", "dialogue-and-choices", "dialogue-choices-ui", "all"],
+        },
+      },
+      additionalProperties: false,
+    }),
   ApiConfigureAuthSsoSettingsRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,

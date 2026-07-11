@@ -394,6 +394,27 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiSaveBranchPolicySettingsRequest",
     responseSchema: "ApiBranchPolicySettingsResponse",
   },
+  "settings.translationScope.get": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/translation-scope",
+    operationId: "settingsTranslationScopeGet",
+    summary:
+      "Load the config-driven translation scope (dialogue / +choices / +UI-text / +images) for a locale branch.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiTranslationScopeSettingsResponse",
+  },
+  "settings.translationScope.save": {
+    method: "POST",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/translation-scope",
+    operationId: "settingsTranslationScopeSave",
+    summary:
+      "Save the config-driven translation scope for a locale branch. Read by the localize-fullproject command.",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiSaveTranslationScopeSettingsRequest",
+    responseSchema: "ApiTranslationScopeSettingsResponse",
+  },
   "auth.ssoSettings.configure": {
     method: "POST",
     pathTemplate: "/api/settings/security/sso",

@@ -43,6 +43,8 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "catalog.benchmarkSeeds": ["rows"],
   "catalog.contextPanel": ["params", "row", "releases", "projectState"],
   "catalog.opportunities": ["rows"],
+  "settings.translationScope.get": ["projectId", "localeBranchId", "scope"],
+  "settings.translationScope.save": ["projectId", "localeBranchId", "scope"],
 };
 
 /**
