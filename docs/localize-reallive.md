@@ -30,6 +30,10 @@ just provision-native-deps         # obtain anything doctor reports missing (add
 itotori db-migrate                 # apply DB schema (needs DATABASE_URL)
 
 # localize the whole game in one command (extract -> structure -> localize -> patch -> validate)
+# --source may be the game root (the dir that DIRECTLY contains REALLIVEDATA/) OR
+# a staging parent that wraps it: BOTH the extract AND structure stages descend
+# into a nested game folder the same way, so either resolves. (You can point at
+# the game root directly to skip the descent.)
 itotori localize-game \
   --config      presets/localize-fullproject.config.v0.json \
   --source      "/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版" \
@@ -101,27 +105,27 @@ pipeline diagnostic.
 
 Required:
 
-| Flag                                               | Meaning                                                                                                                                                                                                                     |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--config <PATH>`                                  | Base localize-fullproject config (v0) JSON. Carries project/locale identity, `translationScope`, and `pairPolicyPath`. Its `bridgePath` / `structureJsonPath` are OVERRIDDEN by this run's fresh stage-1/stage-2 artifacts. |
-| `--source <PATH>`                                  | Read-only source game root (contains `REALLIVEDATA/Seen.txt`). Never mutated.                                                                                                                                               |
-| `--target <PATH>`                                  | Writable output root the byte-correct patched game lands in. Must be OUTSIDE `--source`.                                                                                                                                    |
-| `--run-dir <PATH>`                                 | Per-run artifact directory (bridge bundle, structure, drafts, QA findings, patch report, replay log, render evidence).                                                                                                      |
-| `--game-id <ID>` `--game-version <VER>`            | RealLive identity for the whole-Seen extract.                                                                                                                                                                               |
-| `--source-profile-id <ID>` `--source-locale <LOC>` | Source profile + locale (e.g. `ja-JP`).                                                                                                                                                                                     |
-| `--scene <N>`                                      | Scene the validate stage replays + renders.                                                                                                                                                                                 |
+| Flag                                               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--config <PATH>`                                  | Base localize-fullproject config (v0) JSON. Carries project/locale identity, `translationScope`, and `pairPolicyPath`. Its `bridgePath` / `structureJsonPath` are OVERRIDDEN by this run's fresh stage-1/stage-2 artifacts.                                                                                                                                                                                  |
+| `--source <PATH>`                                  | Read-only game tree. May be the **game root** (the dir that directly contains `REALLIVEDATA/` with `Seen.txt` + `Gameexe.ini` inside) OR a staging parent that wraps a nested game folder — both the extract AND structure stages descend into the nested game dir the same way, so either resolves. Never mutated. See [`--source` resolution](#note---source-descends-into-a-nested-game-dir-both-stages). |
+| `--target <PATH>`                                  | Writable output root the byte-correct patched game lands in. Must be OUTSIDE `--source`.                                                                                                                                                                                                                                                                                                                     |
+| `--run-dir <PATH>`                                 | Per-run artifact directory (bridge bundle, structure, drafts, QA findings, patch report, replay log, render evidence).                                                                                                                                                                                                                                                                                       |
+| `--game-id <ID>` `--game-version <VER>`            | RealLive identity for the whole-Seen extract.                                                                                                                                                                                                                                                                                                                                                                |
+| `--source-profile-id <ID>` `--source-locale <LOC>` | Source profile + locale (e.g. `ja-JP`).                                                                                                                                                                                                                                                                                                                                                                      |
+| `--scene <N>`                                      | Scene the validate stage replays + renders.                                                                                                                                                                                                                                                                                                                                                                  |
 
 Optional:
 
-| Flag                                 | Meaning                                                                                                                                                                                                               |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--vault-canonical-id <ID>`          | Source by-id through the read-only vault instead of `--source`.                                                                                                                                                       |
-| `--game-root <PATH>`                 | Raw extract source root (defaults to `--source`).                                                                                                                                                                     |
-| `--gameexe <PATH>` / `--seen <PATH>` | Structure inputs (default `<source>/REALLIVEDATA/Gameexe.ini` + `Seen.txt`).                                                                                                                                          |
-| `--entry-scene <N>`                  | Structure dispatch-order entry-scene override. **Gotcha:** the narrative-structure export keys off the entry scene; if the structure comes back thin, set this to the game's real entry scene (it is not always `1`). |
-| `--expect-text <TEXT>`               | Localized text the render frame must contain (render assertion).                                                                                                                                                      |
-| `--redaction on\|off`                | Render-frame redaction posture (default `on`; committed proof stays redacted, `off` is for authorized local review).                                                                                                  |
-| `--cost-cap-usd <decimal>`           | Per-process OpenRouter budget cap.                                                                                                                                                                                    |
+| Flag                                 | Meaning                                                                                                                                                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--vault-canonical-id <ID>`          | Source by-id through the read-only vault instead of `--source`.                                                                                                                                                                            |
+| `--game-root <PATH>`                 | Raw extract source root (defaults to `--source`). Descends into a nested game folder that holds `REALLIVEDATA/` if you point it at a staging parent.                                                                                       |
+| `--gameexe <PATH>` / `--seen <PATH>` | Structure inputs. Default: resolved from `--source` the SAME way extract resolves its game root (descending into a nested game folder that contains `REALLIVEDATA/`), so you rarely need to set them. Override to point at explicit files. |
+| `--entry-scene <N>`                  | Structure dispatch-order entry-scene override. **Gotcha:** the narrative-structure export keys off the entry scene; if the structure comes back thin, set this to the game's real entry scene (it is not always `1`).                      |
+| `--expect-text <TEXT>`               | Localized text the render frame must contain (render assertion).                                                                                                                                                                           |
+| `--redaction on\|off`                | Render-frame redaction posture (default `on`; committed proof stays redacted, `off` is for authorized local review).                                                                                                                       |
+| `--cost-cap-usd <decimal>`           | Per-process OpenRouter budget cap.                                                                                                                                                                                                         |
 
 ### 2.2 Where the Sweetie HD parameters come from (don't guess)
 
@@ -139,10 +143,16 @@ its header, lines 10-20). Copy-paste templates:
   higher-level target-catalogue shape
   (`itotori.localize-project.alpha-target-data.v0`) and `localize-game` refuses
   it at the `localize.parse-config` stage.
-- **Prior real runs**: `artifacts/localize-sweetie-hd/*` holds ten timestamped
-  `sweetie-hd-alpha-1` runs whose `bridge-bundle.json` is a concrete example of
-  the stage-1 output shape.
-- **The corpus itself**: `/scratch/itotori-research/sweetie-hd` (read-only).
+- **Stage-1 output shape**: the env-gated proof test
+  `apps/itotori/test/localize-game-real.test.ts` is the concrete example of how
+  stage-1 artifacts are produced and asserted (no committed real-run tree is
+  kept in-repo — real live output stays out by the ZDR / no-game-bytes policy).
+- **The corpus game root** (read-only; the dir that directly contains
+  `REALLIVEDATA/`):
+  `"/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"`.
+  A parent staging path such as `…/min-root` also works as `--source` — both
+  stages descend into the nested game folder (see the note below); pointing at
+  the game root directly just skips the descent.
 
 **`xor_2` decryption is automatic.** Sweetie HD's scene bytecode carries a
 second-level per-game XOR over a bounded `[256, 513)` segment; the
@@ -200,6 +210,34 @@ stage commands.
 ---
 
 ## 4. Honest signposts (read before you trust a green result)
+
+### Note: `--source` descends into a nested game dir (both stages)
+
+`--source` may be the game root (the dir that DIRECTLY contains `REALLIVEDATA/`)
+**or** a staging parent that wraps a nested game folder. Both stages resolve it
+the same way: stage-1 `extract` forwards `--source` to `kaifuu extract
+--game-root`, whose resolver descends a bounded single-child chain to the folder
+that holds `REALLIVEDATA/`; stage-2 `structure`'s default `--gameexe` / `--seen`
+now use the **identical** resolution (`apps/itotori/src/orchestrator/
+reallive-source-resolver.ts`, mirroring the Rust `resolve_reallive_game_root` +
+`game_root_gameexe_path`). So a `--source` at the staging parent resolves for
+both stages — the earlier "passes extract, fails structure" footgun is gone.
+
+For Sweetie HD either of these works:
+
+```sh
+# the game root directly (skips the descent):
+"/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
+# or the staging parent (both stages descend into the nested game folder):
+"/scratch/itotori-research/sweetie-hd/min-root"
+```
+
+(quote it — the game folder name has a space and non-ASCII.) When a `--source`
+genuinely has no `REALLIVEDATA/` anywhere in the descent bound, both stages fail
+loud on the same missing `REALLIVEDATA/…` path (they stay in lockstep). A title
+with the classic pre-`REALLIVEDATA/` layout (asset files directly in the root,
+e.g. old Kanon) is not supported by the extract stage — and therefore not by
+structure either — so this is a real, aligned limit, not a per-stage mismatch.
 
 ### Trap: `FIXTURE-ALPHA` artifacts are NOT live output
 

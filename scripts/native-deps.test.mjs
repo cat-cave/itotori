@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   chromiumCandidates,
+  contractProbeHonored,
+  defaultProbe,
   formatReport,
   nodeSatisfies,
   parsePinnedNodeVersion,
@@ -13,17 +15,42 @@ import {
   RUST_BINS,
 } from "./native-deps.mjs";
 
+// Synthetic contract-probe outputs for the LOGIC tests (they exercise the
+// doctor's honored/not-honored decision, NOT the real binary — the real binary
+// is spawned by the real-bin test below, which is the anti-drift guard). A
+// CURRENT bin's probe output satisfies its `contractProbe.requireAll` and
+// carries none of `rejectAny`; a STALE bin's output trips a reject / drops a
+// required token. These are deliberately minimal, not copied banners.
+const HONORED_PROBE_OUTPUT = {
+  // whole-seen probe reaches the (redaction-safe) game-root error: no --scene/--output.
+  "kaifuu-cli": "kaifuu.reallive.extract: game root not found under <redacted>\n",
+  // render-validate --help carries every required contract token.
+  "utsushi-cli":
+    "utsushi render-validate\n  --engine reallive\n  --artifact-root <DIR>\n" +
+    "  --require-semantic-reached-path\n",
+};
+const STALE_PROBE_OUTPUT = {
+  // Stale kaifuu: no whole-seen support, so it demands --scene (a rejectAny token).
+  "kaifuu-cli": "missing flag --scene\n",
+  // Stale utsushi: an older render-validate help missing the gate flag.
+  "utsushi-cli": "utsushi render-validate\n  --engine reallive\n  --artifact-root <DIR>\n",
+};
+
 // A fully in-memory probe: the doctor never touches the real filesystem,
 // network, or child processes in these tests.
 // `existing` / `runnable` entries match by path SUFFIX so tests need not know
 // the absolute REPO_ROOT the doctor resolves against (e.g. "kaifuu-cli"
 // matches "<repo>/target/release/kaifuu-cli").
+// `staleBins` (suffixes) makes `probeOf` return the STALE output for that bin;
+// `probeOk: false` forces `probeOf` to report a spawn failure.
 function fakeProbe({
   nodeVersionFile = "24.14.0\n",
   nodeVersion = "v24.14.0",
   existing = [],
   onPath = new Set(),
   runnable = null, // suffixes of runnable bin paths; null => everything runs
+  staleBins = [], // suffixes whose contract probe does NOT honor the current contract
+  probeOk = true, // false => probeOf reports a spawn failure
   globHit = null,
   tcpOpen = new Set(),
   commands = {},
@@ -31,6 +58,12 @@ function fakeProbe({
   const suffixMatch = (list, p) =>
     list.some((s) => p === s || p.endsWith(`/${s}`) || p.endsWith(s));
   const canRun = (p) => runnable === null || suffixMatch(runnable, p);
+  const binNameOf = (p) => {
+    for (const b of RUST_BINS) {
+      if (p === b.name || p.endsWith(`/${b.name}`) || p.endsWith(b.name)) return b.name;
+    }
+    return pathBasename(p);
+  };
   return {
     readNodeVersion: () => nodeVersionFile,
     nodeVersion: () => nodeVersion,
@@ -38,9 +71,20 @@ function fakeProbe({
     which: (name) => (onPath.has(name) ? `/usr/bin/${name}` : null),
     glob: () => globHit,
     versionOf: (p) => (canRun(p) ? { ok: true, version: "x 1.0" } : { ok: false, error: "boom" }),
+    probeOf: (p) => {
+      if (!probeOk) return { ok: false, error: "spawn failed", text: "" };
+      const name = binNameOf(p);
+      const table = suffixMatch(staleBins, p) ? STALE_PROBE_OUTPUT : HONORED_PROBE_OUTPUT;
+      return { ok: true, text: table[name] || `usage: ${name}\n` };
+    },
     tcp: (host, port) => tcpOpen.has(`${host}:${port}`),
     commands: () => commands,
   };
+}
+
+function pathBasename(p) {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
 }
 
 test("parsePinnedNodeVersion accepts a bare semver and rejects junk", () => {
@@ -142,6 +186,97 @@ test("doctor fails when a bin is present but NOT runnable (wrong platform)", () 
   assert.match(rust.message, /not runnable/);
 });
 
+test("doctor passes when each bin's subcommand contract probe is honored", () => {
+  const kaifuu = "kaifuu-cli";
+  const utsushi = "utsushi-cli";
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: [kaifuu, utsushi],
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, true, formatReport(report));
+  const k = report.deps.find((d) => d.id === "rust:kaifuu-cli");
+  const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
+  assert.equal(k.status, "ok");
+  assert.equal(u.status, "ok");
+});
+
+test("doctor fails when a bin runs but does NOT honor the current subcommand contract (stale)", () => {
+  const kaifuu = "kaifuu-cli";
+  const utsushi = "utsushi-cli";
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: [kaifuu, utsushi],
+      // kaifuu still executes but its extract subcommand demands --scene under
+      // --whole-seen (a stale contract that no longer matches the pipeline).
+      staleBins: [kaifuu],
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, false);
+  const rust = report.deps.find((d) => d.id === "rust:kaifuu-cli");
+  assert.equal(rust.status, "fail");
+  assert.match(rust.message, /STALE\/incompatible/);
+  assert.match(rust.message, /does NOT honor the current CLI contract/);
+  assert.match(rust.fix, /cargo build --release -p kaifuu-cli/);
+  // utsushi still honors its contract and must remain ok.
+  const u = report.deps.find((d) => d.id === "rust:utsushi-cli");
+  assert.equal(u.status, "ok");
+});
+
+test("doctor fails a bin whose contract probe cannot even spawn", () => {
+  const report = runDoctor({
+    env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
+    profile: "core",
+    probe: fakeProbe({
+      existing: ["kaifuu-cli", "utsushi-cli"],
+      probeOk: false, // subcommand probe cannot run
+      tcpOpen: new Set(["127.0.0.1:56000"]),
+    }),
+  });
+  assert.equal(report.ok, false);
+  assert.equal(report.deps.find((d) => d.id === "rust:kaifuu-cli").status, "fail");
+});
+
+// contractProbeHonored: the pure decision logic behind the handshake.
+test("contractProbeHonored requires all tokens and rejects any stale token", () => {
+  const probe = { requireAll: ["--engine reallive"], rejectAny: ["--scene"] };
+  assert.equal(contractProbeHonored(probe, { ok: true, text: "... --engine reallive ..." }), true);
+  // missing a required token
+  assert.equal(contractProbeHonored(probe, { ok: true, text: "no engine here" }), false);
+  // carries a rejected token
+  assert.equal(
+    contractProbeHonored(probe, { ok: true, text: "--engine reallive missing flag --scene" }),
+    false,
+  );
+  // spawn failure is never honored
+  assert.equal(contractProbeHonored(probe, { ok: false, text: "" }), false);
+});
+
+// Guard the probe descriptors themselves: every bin declares a real contract
+// probe with a subcommand invocation (not a bare `--help`) so the doctor can
+// exercise the actual contract, and the rejectAny tokens can't be trivially
+// satisfied by an empty output.
+test("every RUST_BIN declares a subcommand contract probe", () => {
+  for (const bin of RUST_BINS) {
+    assert.ok(bin.contractProbe, `${bin.name} must declare a contractProbe`);
+    assert.ok(Array.isArray(bin.contractProbe.args) && bin.contractProbe.args.length >= 1);
+    assert.ok(
+      Array.isArray(bin.contractProbe.requireAll) && Array.isArray(bin.contractProbe.rejectAny),
+    );
+    assert.ok(
+      bin.contractProbe.requireAll.length + bin.contractProbe.rejectAny.length >= 1,
+      `${bin.name} contractProbe must assert at least one token`,
+    );
+    assert.equal(typeof bin.contractProbe.description, "string");
+  }
+});
+
 test("doctor fails when DATABASE_URL is set but unreachable", () => {
   const report = runDoctor({
     env: { DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:56000/itotori" },
@@ -200,3 +335,52 @@ test("provisionPlan degrades to a manual note when toolchains are absent", () =>
   assert.equal(byId.postgres.cmd, null);
   assert.match(byId.postgres.note, /DATABASE_URL|portable/);
 });
+
+// ---------------------------------------------------------------------------
+// REAL-BINARY contract probe (anti-drift): spawn the ACTUAL freshly-built bin
+// and run its real contract probe through the real `defaultProbe`, so the test
+// can never silently drift from the binary (the earlier hand-copied banner
+// could). This proves a CURRENT bin PASSES the strengthened handshake. It is
+// SKIPPED when the bin is not built (e.g. a docs-only CI lane); the synthetic
+// tests above still cover the decision logic.
+function resolveRealBinPath(bin) {
+  const probe = defaultProbe();
+  for (const c of rustBinCandidates(bin, process.env)) {
+    if (c.source === "path") {
+      const abs = probe.which(c.path);
+      if (abs) return abs;
+      continue;
+    }
+    if (probe.exists(c.path)) return c.path;
+  }
+  return null;
+}
+
+for (const bin of RUST_BINS) {
+  const realPath = resolveRealBinPath(bin);
+  test(
+    `REAL ${bin.name}: freshly-built bin HONORS its subcommand contract probe`,
+    { skip: realPath === null ? `${bin.name} not built` : false },
+    () => {
+      const probe = defaultProbe();
+      const probeResult = probe.probeOf(realPath, bin.contractProbe.args);
+      assert.ok(
+        probeResult.ok,
+        `${bin.name} contract probe could not spawn ${realPath}: ${probeResult.error}`,
+      );
+      assert.ok(
+        contractProbeHonored(bin.contractProbe, probeResult),
+        `current ${bin.name} at ${realPath} must PASS the contract handshake ` +
+          `(${bin.contractProbe.description}); real probe output was:\n${probeResult.text}`,
+      );
+      // And the full doctor rust-bin check reports OK for this real bin.
+      const report = runDoctor({
+        env: { ...process.env, DATABASE_URL: "postgres://x@127.0.0.1:1/x" },
+        profile: "core",
+        probe,
+      });
+      const dep = report.deps.find((d) => d.id === `rust:${bin.name}`);
+      assert.equal(dep.status, "ok", `real ${bin.name} doctor status: ${JSON.stringify(dep)}`);
+    },
+  );
+}
