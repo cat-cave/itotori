@@ -1766,9 +1766,11 @@ impl ReplayEngine {
     ///    into (e.g. Kanon's `#SEEN_START` title scene branch-follows into
     ///    a spin before any message). The byte-order catalogue surfaces
     ///    each message ONCE, so it is still a faithful single-pass stream —
-    ///    it is used for `play_order_lines` ONLY when the branch pass
-    ///    reached no dialogue. It is NEVER added to the branch stream (that
-    ///    union was the ~2× inflation defect).
+    ///    it supplies `play_order_lines` when the branch pass reached no
+    ///    dialogue, OR when the branch pass SPUN (did not reach a natural
+    ///    terminus while the linear pass did) and the linear catalogue has
+    ///    dialogue. It is NEVER added to the branch stream (that union was the
+    ///    ~2× inflation defect).
     ///
     /// Graphics + audio are taken from the executed (branch) path, backfilled
     /// from the linear catalogue only when the branch path composited/played
@@ -1805,10 +1807,11 @@ impl ReplayEngine {
         let linear = linear_pass.scene;
         let linear_lines = linear_sink.take_lines();
 
-        // Choose the play order: branch when it reached dialogue, else the
-        // single-pass byte-order catalogue. Prompts follow that exact same
-        // choice: they identify the text lines in their own pass, never a
-        // cross-pass mixture. NEVER combine passes (no doubling).
+        // Choose the play order: retain branch unless it reached no dialogue,
+        // or it SPUN while a nonempty linear pass reached a natural terminus;
+        // then use the single-pass byte-order catalogue. Prompts follow that
+        // exact same choice: they identify the text lines in their own pass,
+        // never a cross-pass mixture. NEVER combine passes (no doubling).
         let (play_order_lines, selection_prompts) = select_port_pass(
             branch_lines,
             branch_prompts,

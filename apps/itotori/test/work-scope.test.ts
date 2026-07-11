@@ -36,7 +36,7 @@ import {
 const ARCHIVE = "sweetie-hd";
 
 // The archive-level decode: the FIRST screen is the game-select. This mirrors
-// the exact JSON shape `structure_export.rs` emits — a `button-object`
+// the exact JSON shape `utsushi structure` emits — a `button-object`
 // game-select (the real Sweetie HD marker: a `select_objbtn` graphical pick)
 // whose two options each dispatch (decoded `branchEntryScene`) into a DISTINCT
 // work subtree: option 0 → the base game (root scene 100), option 1 → the
@@ -77,7 +77,7 @@ const GAME_SELECT_DECODE: NarrativeStructure = {
   ],
 };
 
-// The BASE game's own decoded structure (a separate structure_export rooted at
+// The BASE game's own decoded structure (a separate `utsushi structure` export rooted at
 // the option-0 branchEntryScene = 100).
 const BASE_WORK_STRUCTURE: NarrativeStructure = {
   schemaVersion: "utsushi.narrative-structure.v1",
@@ -916,7 +916,7 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
 // Columns: scene,parse_ok,objbtn_init,select_objbtn,objbtn_cancel,choice_blocks,goto_on_if
 //
 // It maps each real scene's decoded sel-family counts to the SAME
-// `selectionControl` signal `structure_export.rs` emits (button-object iff any
+// `selectionControl` signal `utsushi structure` emits (button-object iff any
 // objbtn/select_objbtn/cancel op; else text-window iff any text Choice block;
 // else none), then proves:
 //   * the real first-screen game-select (scene 2) decodes to `button-object`
@@ -959,7 +959,7 @@ function parseScanCsv(text: string): Map<number, ScanRow> {
   return rows;
 }
 
-/** The SAME mapping `structure_export.rs::selection_control_signal` applies. */
+/** The SAME mapping `utsushi structure`'s `selection_control_signal` applies. */
 function signalOf(row: ScanRow): SelectionControlSignal {
   if (row.objbtnInit + row.selectObjbtn + row.objbtnCancel > 0) {
     return "button-object";

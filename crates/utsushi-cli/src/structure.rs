@@ -237,6 +237,19 @@ pub fn build_narrative_structure(
         }
     }
 
+    let has_unvisited_archive_roots = all_scene_ids
+        .iter()
+        .any(|scene_id| !visited.contains(scene_id));
+    if scenes.len() >= max_scenes && has_unvisited_archive_roots {
+        let emitted = scenes.len();
+        let total = all_scene_ids.len();
+        eprintln!(
+            "utsushi.structure.truncated: emitted {emitted} scenes but the archive \
+             has {total} scenes; --max-scenes={max_scenes} truncated whole-archive \
+             coverage. Raise --max-scenes to cover the full archive.",
+        );
+    }
+
     Ok(json!({
         "schemaVersion": "utsushi.narrative-structure.v1",
         "entryScene": entry,
@@ -250,6 +263,16 @@ pub fn build_narrative_structure(
 /// SPEAKERS + CHOICES (each option's branch-following walk), the statically
 /// decoded `selectionControl` signal, the resolved `nextScene`, and the static
 /// `dispatchFanoutScenes`. Every field is read verbatim from the decode APIs.
+///
+/// # Route-graph fidelity is PARTIAL
+///
+/// Play-order message and speaker coverage is faithful for every reached scene.
+/// But when a scene is observed COLD (seeded directly rather than reached from
+/// its real caller), the headless drive cannot resolve store-relative dispatch
+/// with the caller's store state. Its `branchEntryScene` and `nextScene` edges
+/// can therefore resolve to a launcher or terminator instead of the true
+/// narrative destination. Downstream consumers MUST NOT treat these edges as a
+/// complete route map.
 fn scene_value(
     engine: &ReplayEngine,
     opts: &ReplayOpts,

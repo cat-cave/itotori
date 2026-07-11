@@ -37,13 +37,13 @@ export type WorkScopedContext = {
  * Build the WORK-SCOPED context for `workId`: reduce the work's own decoded
  * structure into the three context artifacts and resolve its effective
  * (inherited + overridden) scope. Requires the work scope to carry its
- * `structure` (its per-work `structure_export`).
+ * `structure` (its per-work `utsushi structure` export).
  */
 export function buildWorkScopedContext(graph: ScopeGraph, workId: string): WorkScopedContext {
   const work = requireWorkScope(graph, workId);
   if (work.structure === undefined) {
     throw new ScopeGraphError(
-      `work ${workId} has no decoded structure: run its per-work structure_export (rooted at its branchEntryScene) before building work-scoped context`,
+      `work ${workId} has no decoded structure: run its per-work utsushi structure export (rooted at its branchEntryScene) before building work-scoped context`,
     );
   }
   const artifacts = buildStructureContextArtifacts(work.structure);

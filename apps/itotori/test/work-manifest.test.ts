@@ -38,7 +38,7 @@ const ARCHIVE = "synthetic-multiwork";
 
 // The SYNTHETIC multi-work archive decode.
 //
-// This mirrors the SHAPE `structure_export.rs` emits for a real multi-work
+// This mirrors the SHAPE `utsushi structure` emits for a real multi-work
 // archive whose game-select the decode CANNOT enumerate (the
 // `game-select-unresolved-options` case in `carve.ts` — the real Sweetie HD
 // scene-2 title MENU). Here the archive's first screen (scene 2) is a

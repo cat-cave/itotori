@@ -84,7 +84,7 @@ function parseScene(value: unknown, index: number): NarrativeScene {
   }
   // `selectionControl` is optional for backward compatibility with
   // pre-enrichment exporter JSON (absent → "none"); the enriched
-  // `structure_export.rs` always emits it.
+  // `utsushi structure` producer always emits it.
   if (
     record.selectionControl !== undefined &&
     record.selectionControl !== "button-object" &&

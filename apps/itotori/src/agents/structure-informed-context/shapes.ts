@@ -9,8 +9,8 @@
 // per-scene summaries, a route/branch map, and character-arc tracking —
 // which are injected into the translate stage.
 //
-// `NarrativeStructure` is the exact JSON shape emitted by the Rust exporter
-// `utsushi-reallive/examples/structure_export.rs`
+// `NarrativeStructure` is the exact JSON shape emitted by the `utsushi
+// structure` subcommand (`crates/utsushi-cli/src/structure.rs`)
 // (schemaVersion `utsushi.narrative-structure.v1`). Every field below is a
 // verbatim decode observation, NOT an LLM guess.
 
@@ -40,8 +40,13 @@ export type NarrativeChoice = {
    * of the work the option selects — the decode signal the work-scope carve
    * reads to root a per-WORK narrative structure (NOT a hardcoded work list).
    *
+   * This edge is derived from a headless cold drive. When store-relative
+   * dispatch needs caller state, it may resolve to a launcher/terminator rather
+   * than the true narrative root. Route-graph fidelity is partial; message and
+   * speaker coverage is full for every reached scene.
+   *
    * Optional in the parse for backward compatibility with pre-enrichment
-   * exporter JSON (absent → null); the enriched `structure_export.rs` always
+   * exporter JSON (absent → null); the `utsushi structure` producer always
    * emits it.
    */
   branchEntryScene: number | null;
@@ -51,7 +56,7 @@ export type NarrativeChoice = {
 
 /**
  * The scene's decoded `module_sel` SelectionControl signal — the REAL-bytes
- * marker (from `structure_export.rs`, statically decoded per scene) of WHAT
+ * marker (from `utsushi structure`, statically decoded per scene) of WHAT
  * KIND of select the scene carries:
  *   - `button-object`: a GRAPHICAL button-object select (`select_objbtn`
  *     (0,2,4) / `objbtn_init` (0,2,20) — Sweetie HD's base-vs-fandisk
@@ -74,7 +79,10 @@ export type NarrativeScene = {
   /**
    * The first cross-scene dispatch target this scene's branch-following walk
    * followed (a real `jump`/`farcall`/entrypoint resolution), or null when
-   * play stayed within the scene. This IS the scene-dispatch graph edge.
+   * play stayed within the scene. For scenes observed cold, the headless drive
+   * may resolve store-relative dispatch to a launcher/terminator rather than
+   * the true narrative destination. Route-graph fidelity is partial; message
+   * and speaker coverage is full for every reached scene.
    */
   nextScene: number | null;
   /**
@@ -95,12 +103,10 @@ export type NarrativeStructure = {
   schemaVersion: "utsushi.narrative-structure.v1";
   entryScene: number;
   /**
-   * The distinct scene ids in dispatch order: the order the play-loop first
-   * reaches each scene, walking the scene-dispatch graph from `entryScene`
-   * (fallthrough successor, then choice branches), first-visit wins — NOT
-   * archive slot order. Any archive scenes never reached from the entry are
-   * appended afterward in slot order (unreachable ≠ dropped) so this stays a
-   * complete listing of every scene.
+   * The distinct scene ids in first-observation order: the `entryScene`
+   * play-loop first, then observations seeded from archive scene roots not
+   * reached earlier. First-visit wins; this is deterministic, not archive slot
+   * order.
    */
   sceneDispatchOrder: number[];
   scenes: NarrativeScene[];
@@ -152,7 +158,8 @@ export type RouteBranchEdge = {
  * (b) Route/branch map — built from the scene-dispatch graph + the choice
  * graph (which choice leads where). `dispatch` edges are the real
  * cross-scene `jump`/`farcall` targets; `choice` edges name each option's
- * branch node so a translator knows a line sits behind choice K.
+ * branch node so a translator knows a line sits behind choice K. Cold-headless
+ * edges are partial route evidence, not a complete route map.
  */
 export type RouteBranchMap = {
   artifactRef: string;

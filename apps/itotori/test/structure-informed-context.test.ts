@@ -25,7 +25,7 @@ import { TRANSLATION_PROMPT_TEMPLATE_VERSION_V1 } from "../src/agents/translatio
 import type { TranslationInvocationInput } from "../src/agents/translation/shapes.js";
 
 // A synthetic decode fixture. Its SHAPE is exactly what
-// `utsushi-reallive/examples/structure_export.rs` emits for a real Sweetie
+// `utsushi structure` emits for a real Sweetie
 // playthrough (two scenes, a real cross-scene dispatch edge, `#NAMAE`
 // speakers, and a 2-option choice per scene) — but the text is invented, so
 // no copyrighted bytes live in the repo. The builders consume this KNOWN
