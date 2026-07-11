@@ -39,13 +39,21 @@ use kaifuu_reallive::{RealLiveOpcode, parse_scene};
 use serde_json::{Map, Value, json};
 use utsushi_core::{TextLine, write_json};
 use utsushi_reallive::{
-    BytecodeElement, Gameexe, HeadlessChoicePolicy, ReplayOpts, SceneId, decode_bytecode_stream,
-    decompress_all_scenes,
+    BytecodeElement, Gameexe, HeadlessChoicePolicy, ReplayEngine, ReplayOpts, SceneId,
+    ScenePlaySegment, decode_bytecode_stream, decompress_all_scenes,
 };
 
 use crate::staged_replay::staged_engine;
 
 const CHOICE_SURFACE_PREFIX: &str = "choice:";
+
+/// Deterministic cap on a choice's `branchMessages` PREVIEW. The option's
+/// dispatch target (`branchEntryScene`) is a first-class scene entry with its
+/// own full message stream, so the branch preview only needs enough lines to
+/// characterise where the option leads — never the whole (route-length)
+/// branch. This also bounds the export against a branch that crosses into a
+/// headless-unsatisfiable select and spins.
+const BRANCH_PREVIEW_MESSAGES: usize = 40;
 
 // `module_sel` (module_type=0, module_id=2) SelectionControl button-object
 // setup opcodes — the real-bytes marker that a scene's select is a GRAPHICAL
@@ -82,11 +90,29 @@ pub fn run_structure_command(tail: &[String]) -> Result<(), Box<dyn std::error::
 
 /// Build the `utsushi.narrative-structure.v1` value for a Seen.txt archive.
 ///
-/// The real dispatch order is the order [`ReplayEngine::observe_playthrough`]
-/// crosses scenes from the entry scene — not archive slot order. Every unreached
-/// archive scene the walk did not cross is intentionally NOT invented here (the
-/// structure is the driven playthrough); the whole-game driver graceful-degrades
-/// a unit whose scene isn't in the structure.
+/// # Why coverage cannot be a single chain from the Gameexe entry scene
+///
+/// A RealLive title's `#SEEN_START` scene is a LAUNCHER: it draws the title /
+/// game-select and then dispatches into the chosen work with a jump/farcall
+/// whose target scene id is a STORE-RELATIVE expression (the value the player's
+/// menu pick wrote), not a literal. Headless replay cannot know that runtime
+/// value, so `observe_playthrough` from the entry scene records no cross-scene
+/// transfer (or crosses only into a `SeenEnd` terminator) and the chain ends —
+/// the real narrative (which the bridge decodes in full) is never reached. This
+/// is the same store-gated unreachability documented on the `game_select_scan`
+/// example, and it is engine-family behaviour, NOT a per-title quirk.
+///
+/// # Coverage strategy (generic, deterministic)
+///
+/// The structure therefore seeds an [`ReplayEngine::observe_playthrough`] from
+/// EVERY scene present in the archive — the Gameexe entry scene first (so its
+/// dynamic dispatch chain leads), then every remaining scene in ascending id
+/// order — deduplicating scenes already covered by an earlier chain. Each
+/// scene's messages / speakers / choices / dispatch edges are still read
+/// verbatim from its own driven observation (in real dispatch order within each
+/// chain); only the SET of roots is broadened so the store-gated narrative is
+/// reached. `sceneDispatchOrder` is the order scenes were first observed:
+/// deterministic and independent of archive-slot layout.
 pub fn build_narrative_structure(
     gameexe_path: &Path,
     seen_path: &Path,
@@ -147,89 +173,156 @@ pub fn build_narrative_structure(
     };
 
     let entry = entry_override.unwrap_or(seen_start);
+    let max_scenes = max_scenes.max(1);
 
-    // Scene-dispatch GRAPH + per-scene MESSAGE STREAM (play order, single pass)
-    // + SPEAKERS — all read verbatim from observe_playthrough. `scene_ids()` IS
-    // the real dispatch order.
-    let playthrough = engine.observe_playthrough(entry, &opts, max_scenes);
+    // All archive scene ids, ascending — the coverage root set (dedup + sorted
+    // for determinism, independent of `decompress_all_scenes` iteration order).
+    let all_scene_ids: Vec<SceneId> = {
+        let mut ids: Vec<SceneId> = decompressed.iter().map(|scene| scene.scene_id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
 
-    let mut scenes: Vec<Value> = Vec::new();
-    for i in 0..playthrough.segments.len() {
-        let segment = &playthrough.segments[i];
-        let scene_id = segment.scene_id;
-        let next_scene = segment
-            .observation
-            .first_cross_scene
-            .or_else(|| playthrough.segments.get(i + 1).map(|next| next.scene_id));
-
-        let messages: Vec<Value> = segment
-            .observation
-            .play_order_lines
+    // Roots: the Gameexe entry scene FIRST (its dynamic dispatch chain leads),
+    // then every remaining archive scene ascending. Seeding an observation from
+    // every scene — deduping scenes an earlier chain already crossed — reaches
+    // the store-gated narrative a single chain from `#SEEN_START` cannot (see
+    // the doc comment above). `sceneDispatchOrder` is the first-observed order.
+    let roots = std::iter::once(entry).chain(
+        all_scene_ids
             .iter()
-            .enumerate()
-            .map(|(order, line)| message_json(order, line))
-            .collect();
+            .copied()
+            .filter(|scene| *scene != entry),
+    );
 
-        let choice_indices = choice_option_indices(&segment.observation.play_order_lines);
-        let mut choices: Vec<Value> = Vec::new();
-        for idx in &choice_indices {
-            let label = choice_label(&segment.observation.play_order_lines, *idx);
-            let branch = engine.branch_following_observation(
-                scene_id,
-                &opts,
-                HeadlessChoicePolicy::Fixed(*idx),
-            );
-            let branch_messages: Vec<Value> = branch
-                .lines
-                .iter()
-                .filter(|line| !is_choice_line(line))
-                .enumerate()
-                .map(|(order, line)| message_json(order, line))
-                .collect();
-            choices.push(json!({
-                "optionIndex": idx,
-                "label": label,
-                "branchEntryScene": match branch.first_cross_scene {
-                    Some(id) => json!(id),
-                    None => Value::Null,
-                },
-                "branchMessages": branch_messages,
-            }));
+    // Scene-dispatch GRAPH + per-scene MESSAGE STREAM (play order) + SPEAKERS +
+    // CHOICES — all read verbatim from each root's observe_playthrough.
+    let mut scenes: Vec<Value> = Vec::new();
+    let mut dispatch_order: Vec<SceneId> = Vec::new();
+    let mut visited: BTreeSet<SceneId> = BTreeSet::new();
+    for root in roots {
+        if scenes.len() >= max_scenes {
+            break;
         }
-
-        let mut scene = Map::new();
-        scene.insert("sceneId".into(), json!(scene_id));
-        scene.insert(
-            "selectionControl".into(),
-            json!(selection_control.get(&scene_id).copied().unwrap_or("none")),
-        );
-        scene.insert(
-            "nextScene".into(),
-            match next_scene {
-                Some(id) => json!(id),
-                None => Value::Null,
-            },
-        );
-        scene.insert(
-            "dispatchFanoutScenes".into(),
-            json!(
-                bytecode_by_scene
-                    .get(&scene_id)
-                    .map(|bytecode| dispatch_fanout_scenes(bytecode))
-                    .unwrap_or_default()
-            ),
-        );
-        scene.insert("messages".into(), Value::Array(messages));
-        scene.insert("choices".into(), Value::Array(choices));
-        scenes.push(Value::Object(scene));
+        if visited.contains(&root) {
+            continue;
+        }
+        let playthrough = engine.observe_playthrough(root, &opts, max_scenes);
+        for i in 0..playthrough.segments.len() {
+            if scenes.len() >= max_scenes {
+                break;
+            }
+            let segment = &playthrough.segments[i];
+            let scene_id = segment.scene_id;
+            // Global dedup across roots: a scene an earlier chain already
+            // crossed is not re-emitted (its first observation stands).
+            if !visited.insert(scene_id) {
+                continue;
+            }
+            let next_scene = segment
+                .observation
+                .first_cross_scene
+                .or_else(|| playthrough.segments.get(i + 1).map(|next| next.scene_id));
+            let scene = scene_value(
+                &engine,
+                &opts,
+                segment,
+                next_scene,
+                &selection_control,
+                &bytecode_by_scene,
+            );
+            dispatch_order.push(scene_id);
+            scenes.push(scene);
+        }
     }
 
     Ok(json!({
         "schemaVersion": "utsushi.narrative-structure.v1",
         "entryScene": entry,
-        "sceneDispatchOrder": playthrough.scene_ids(),
+        "sceneDispatchOrder": dispatch_order,
         "scenes": scenes,
     }))
+}
+
+/// Build one scene's `utsushi.narrative-structure.v1` object from its driven
+/// [`ScenePlaySegment`] observation: per-scene play-order MESSAGE STREAM +
+/// SPEAKERS + CHOICES (each option's branch-following walk), the statically
+/// decoded `selectionControl` signal, the resolved `nextScene`, and the static
+/// `dispatchFanoutScenes`. Every field is read verbatim from the decode APIs.
+fn scene_value(
+    engine: &ReplayEngine,
+    opts: &ReplayOpts,
+    segment: &ScenePlaySegment,
+    next_scene: Option<SceneId>,
+    selection_control: &HashMap<SceneId, &'static str>,
+    bytecode_by_scene: &HashMap<SceneId, &[u8]>,
+) -> Value {
+    let scene_id = segment.scene_id;
+    let messages: Vec<Value> = segment
+        .observation
+        .play_order_lines
+        .iter()
+        .enumerate()
+        .map(|(order, line)| message_json(order, line))
+        .collect();
+
+    let choice_indices = choice_option_indices(&segment.observation.play_order_lines);
+    let mut choices: Vec<Value> = Vec::new();
+    for idx in &choice_indices {
+        let label = choice_label(&segment.observation.play_order_lines, *idx);
+        let branch =
+            engine.branch_following_observation(scene_id, opts, HeadlessChoicePolicy::Fixed(*idx));
+        // `branchMessages` is a bounded PREVIEW of where an option leads — the
+        // option's dispatch target is `branchEntryScene`, whose full content is
+        // captured as its own scene entry, so the whole (often route-length,
+        // and — when the branch crosses into a select the headless drive cannot
+        // satisfy — spinning) branch stream must NOT be inlined here. Dedup
+        // consecutive identical lines (kills any spin repetition) then cap to a
+        // short deterministic preview.
+        let branch_messages: Vec<Value> =
+            dedup_consecutive(branch.lines.iter().filter(|line| !is_choice_line(line)))
+                .into_iter()
+                .take(BRANCH_PREVIEW_MESSAGES)
+                .enumerate()
+                .map(|(order, line)| message_json(order, line))
+                .collect();
+        choices.push(json!({
+            "optionIndex": idx,
+            "label": label,
+            "branchEntryScene": match branch.first_cross_scene {
+                Some(id) => json!(id),
+                None => Value::Null,
+            },
+            "branchMessages": branch_messages,
+        }));
+    }
+
+    let mut scene = Map::new();
+    scene.insert("sceneId".into(), json!(scene_id));
+    scene.insert(
+        "selectionControl".into(),
+        json!(selection_control.get(&scene_id).copied().unwrap_or("none")),
+    );
+    scene.insert(
+        "nextScene".into(),
+        match next_scene {
+            Some(id) => json!(id),
+            None => Value::Null,
+        },
+    );
+    scene.insert(
+        "dispatchFanoutScenes".into(),
+        json!(
+            bytecode_by_scene
+                .get(&scene_id)
+                .map(|bytecode| dispatch_fanout_scenes(bytecode))
+                .unwrap_or_default()
+        ),
+    );
+    scene.insert("messages".into(), Value::Array(messages));
+    scene.insert("choices".into(), Value::Array(choices));
+    Value::Object(scene)
 }
 
 /// Resolve raw `goto_on` / `goto_case` table arms to the first explicit
@@ -395,6 +488,27 @@ fn message_json(order: usize, line: &TextLine) -> Value {
         None => msg.insert("textSurface".into(), Value::Null),
     };
     Value::Object(msg)
+}
+
+/// Collapse runs of consecutive identical lines (same speaker + text) to a
+/// single line. A headless branch that crosses into a select it cannot satisfy
+/// re-emits the same prompt line until the step budget; deduping the run turns
+/// that spin into one line while leaving genuine repeated-but-interleaved
+/// dialogue untouched.
+fn dedup_consecutive<'a, I>(lines: I) -> Vec<&'a TextLine>
+where
+    I: Iterator<Item = &'a TextLine>,
+{
+    let mut out: Vec<&'a TextLine> = Vec::new();
+    for line in lines {
+        let dup = out
+            .last()
+            .is_some_and(|prev| prev.speaker == line.speaker && prev.text == line.text);
+        if !dup {
+            out.push(line);
+        }
+    }
+    out
 }
 
 fn is_choice_line(line: &TextLine) -> bool {

@@ -19,6 +19,10 @@ use std::process::Command;
 
 use serde_json::Value;
 
+/// The `SeenEnd` terminator sentinel every launcher/terminator scene emits —
+/// a structure of ONLY these messages is the #62 regression.
+const SEEN_END_SENTINEL: &str = "ＳｅｅｎＥｎｄ";
+
 fn test_manifest_dir() -> PathBuf {
     std::env::var_os("CARGO_MANIFEST_DIR")
         .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
@@ -90,11 +94,50 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
         .map(|scene| scene.as_u64().expect("scene id"))
         .collect();
 
-    // The real driven playthrough crosses many scenes.
+    // The structure covers many scenes (entry chain + whole-archive coverage
+    // reaches the store-gated narrative a single #SEEN_START chain cannot).
     assert!(
         scene_ids.len() >= 10,
-        "expected the Sweetie playthrough to cross ≥10 scenes; got {}",
+        "expected the Sweetie structure to span ≥10 scenes; got {}",
         scene_ids.len()
+    );
+
+    // REGRESSION GUARD for #62: the export must reach the REAL narrative, not
+    // dead-end at the launcher's `SeenEnd` terminator. Assert a large body of
+    // real (non-`SeenEnd`) dialogue, plus real choices and speakers — the
+    // structure-informed context the drafter depends on.
+    let scenes = structure["scenes"].as_array().expect("scenes array");
+    let mut real_messages = 0usize;
+    let mut seen_end_messages = 0usize;
+    let mut total_choices = 0usize;
+    let mut speakers: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for scene in scenes {
+        for message in scene["messages"].as_array().expect("messages array") {
+            let text = message["text"].as_str().unwrap_or_default();
+            if text == SEEN_END_SENTINEL {
+                seen_end_messages += 1;
+            } else if !text.is_empty() {
+                real_messages += 1;
+            }
+            if let Some(speaker) = message["speaker"].as_str() {
+                speakers.insert(speaker.to_string());
+            }
+        }
+        total_choices += scene["choices"].as_array().expect("choices array").len();
+    }
+    assert!(
+        real_messages >= 5_000,
+        "expected ≥5000 real (non-SeenEnd) narrative messages; got {real_messages} \
+         (seenEnd={seen_end_messages}) — the walk did not reach the real narrative"
+    );
+    assert!(
+        total_choices >= 10,
+        "expected ≥10 decoded choice prompts across the narrative; got {total_choices}"
+    );
+    assert!(
+        speakers.len() >= 3,
+        "expected ≥3 distinct decoded speakers (#NAMAE); got {}",
+        speakers.len()
     );
     // sceneDispatchOrder is exactly the crossed scenes, once each (no doubling,
     // no dropped scene), and leads with the entry scene — the REAL dispatch
@@ -114,8 +157,11 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
     );
 
     eprintln!(
-        "M1 utsushi structure real bytes: crossedScenes={}, dispatchOrder[0]={}",
+        "M1 utsushi structure real bytes: scenes={}, dispatchOrder[0]={}, \
+         realMessages={real_messages}, seenEndMessages={seen_end_messages}, \
+         choices={total_choices}, speakers={}",
         scene_ids.len(),
         dispatch_order.first().copied().unwrap_or_default(),
+        speakers.len(),
     );
 }

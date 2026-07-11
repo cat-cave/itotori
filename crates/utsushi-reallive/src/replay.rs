@@ -1809,8 +1809,14 @@ impl ReplayEngine {
         // single-pass byte-order catalogue. Prompts follow that exact same
         // choice: they identify the text lines in their own pass, never a
         // cross-pass mixture. NEVER combine passes (no doubling).
-        let (play_order_lines, selection_prompts) =
-            select_port_pass(branch_lines, branch_prompts, linear_lines, linear_prompts);
+        let (play_order_lines, selection_prompts) = select_port_pass(
+            branch_lines,
+            branch_prompts,
+            branch.reached_natural_terminus,
+            linear_lines,
+            linear_prompts,
+            linear.reached_natural_terminus,
+        );
 
         let mut audio_events = branch.audio_events;
         audio_events.extend(linear.audio_events);
@@ -2561,10 +2567,24 @@ pub struct PortObservation {
 fn select_port_pass(
     branch_lines: Vec<TextLine>,
     branch_prompts: Vec<SelectionPrompt>,
+    branch_reached_terminus: bool,
     linear_lines: Vec<TextLine>,
     linear_prompts: Vec<SelectionPrompt>,
+    linear_reached_terminus: bool,
 ) -> (Vec<TextLine>, Vec<SelectionPrompt>) {
-    if branch_lines.is_empty() {
+    // The branch-following pass is the REAL play order — but a headless
+    // `AlwaysFirst` drive can SPIN on a scene whose select / redraw loop the
+    // input provider cannot satisfy (a title or game-select menu, or any select
+    // entered without the caller state it expects), re-emitting the same prompt
+    // line until `step_budget` cuts the pass off. That spin is signalled by the
+    // branch pass NOT reaching a natural terminus while the byte-order linear
+    // pass — which visits each command once and always completes — DID. In that
+    // case the branch "play order" is a runaway repetition, not a faithful
+    // stream, so fall back to the linear catalogue (each message ONCE). This is
+    // what lets whole-archive structure coverage observe select-gated narrative
+    // roots without emitting tens of thousands of duplicated prompt lines.
+    let branch_spun = !branch_reached_terminus && linear_reached_terminus;
+    if branch_lines.is_empty() || (branch_spun && !linear_lines.is_empty()) {
         (linear_lines, linear_prompts)
     } else {
         (branch_lines, branch_prompts)
@@ -3010,23 +3030,69 @@ mod tests {
     fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
         let branch_prompt = prompt(1, "branch-line");
         let linear_prompt = prompt(2, "linear-line");
+        // Branch reached a terminus → its play order is authoritative.
         let (lines, prompts) = select_port_pass(
             vec![line("branch-line")],
             vec![branch_prompt.clone()],
+            true,
             vec![line("linear-line")],
             vec![linear_prompt.clone()],
+            true,
         );
         assert_eq!(lines[0].line_id, "branch-line");
         assert_eq!(prompts, vec![branch_prompt]);
 
+        // Branch reached no dialogue → linear catalogue fallback (existing).
         let (lines, prompts) = select_port_pass(
             vec![],
             vec![prompt(3, "unused-branch-prompt")],
+            true,
             vec![line("linear-line")],
             vec![linear_prompt.clone()],
+            true,
         );
         assert_eq!(lines[0].line_id, "linear-line");
         assert_eq!(prompts, vec![linear_prompt]);
+    }
+
+    #[test]
+    fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
+        // A headless select/redraw SPIN: the branch pass emitted many
+        // (duplicated) prompt lines but never reached a natural terminus,
+        // while the byte-order linear pass surfaced each message once and DID
+        // complete. The linear catalogue must win — the runaway branch stream
+        // is a repetition, not a faithful play order.
+        let branch_prompt = prompt(1, "spin-line");
+        let linear_prompt = prompt(2, "catalogue-line");
+        let spun_branch: Vec<TextLine> = (0..5_000).map(|_| line("spin-line")).collect();
+        let (lines, prompts) = select_port_pass(
+            spun_branch,
+            vec![branch_prompt],
+            false, // branch did NOT reach terminus (cut off at step budget)
+            vec![line("catalogue-line")],
+            vec![linear_prompt.clone()],
+            true, // linear completed
+        );
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].line_id, "catalogue-line");
+        assert_eq!(prompts, vec![linear_prompt]);
+    }
+
+    #[test]
+    fn selected_port_pass_keeps_branch_when_neither_reaches_terminus() {
+        // If even the linear pass did not complete there is no better stream to
+        // fall back to, so the branch play order is retained (best available).
+        let branch_prompt = prompt(1, "branch-line");
+        let (lines, prompts) = select_port_pass(
+            vec![line("branch-line")],
+            vec![branch_prompt.clone()],
+            false,
+            vec![line("linear-line")],
+            vec![prompt(2, "linear-line")],
+            false,
+        );
+        assert_eq!(lines[0].line_id, "branch-line");
+        assert_eq!(prompts, vec![branch_prompt]);
     }
 
     #[test]
