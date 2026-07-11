@@ -34,6 +34,7 @@ import {
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   type StructuredQaFindingOutput,
 } from "@itotori/localization-bridge-schema";
+import { parseWithBoundedRepair } from "../../localization/patchback-safety.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
@@ -136,7 +137,7 @@ export class QaAgent {
       );
     }
 
-    const parsed = parseStructuredQaFindingOutput(rawContent);
+    const parsed = parseWithBoundedRepair(rawContent, parseStructuredQaFindingOutput);
     this.assertCitationsResolve(parsed, input);
 
     // PROJECT LAW: real provider token counts only — throw on absence

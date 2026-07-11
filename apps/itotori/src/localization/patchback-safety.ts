@@ -19,7 +19,8 @@
 //       Shift_JIS-representable equivalent while keeping genuine CJK content,
 //       so the patchback encode step never fails.
 //   (c) repairJsonObject — bounded salvage of a truncated / lightly-malformed
-//       structured-output object (fences, prose, trailing commas, truncation).
+//       structured-output object (fences with prose preambles, structural
+//       trailing commas, truncation). Non-object envelopes fail loud.
 //
 // All functions are pure and dependency-free. The kidoku-marker syntax mirrors
 // `kaifuu_reallive::REALLIVE_OUT_OF_BAND_MARKER_OPEN`.
@@ -380,12 +381,49 @@ export function normalizeToSjisSafe(text: string): string {
 // (c) bounded json-repair
 // ---------------------------------------------------------------------------
 
+function stripStructuralTrailingCommas(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i] as string;
+    if (inString) {
+      out += c;
+      if (escaped) {
+        escaped = false;
+      } else if (c === "\\") {
+        escaped = true;
+      } else if (c === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out += c;
+      continue;
+    }
+    if (c === ",") {
+      let next = i + 1;
+      while (next < input.length && /\s/.test(input[next] as string)) {
+        next++;
+      }
+      if (input[next] === "}" || input[next] === "]") {
+        continue;
+      }
+    }
+    out += c;
+  }
+  return out;
+}
+
 /**
  * Bounded, deterministic repair of a truncated / lightly-malformed structured
- * JSON object. Fixes ONLY: markdown fences, prose preamble, trailing commas,
- * and truncation (unterminated string + unclosed `[`/`{` at EOF). Never
- * fabricates values. Returns the parsed value or `null`. Bounded to a single
- * left-to-right pass over the salvaged slice plus at most two reparse attempts.
+ * JSON object. Fixes ONLY: markdown fences with prose preambles, trailing
+ * commas, and truncation (unterminated string + unclosed `[`/`{` at EOF).
+ * Never fabricates values. Returns the parsed value or `null`. Bounded to a
+ * single left-to-right pass over the salvaged slice plus at most two reparse
+ * attempts.
  */
 export function repairJsonObject(content: string | null | undefined): unknown {
   if (content == null) {
@@ -396,11 +434,9 @@ export function repairJsonObject(content: string | null | undefined): unknown {
   if (fence && fence[1] !== undefined) {
     s = fence[1].trim();
   }
-  const start = s.indexOf("{");
-  if (start < 0) {
+  if (!s.startsWith("{")) {
     return null;
   }
-  s = s.slice(start);
   try {
     return JSON.parse(s);
   } catch {
@@ -445,7 +481,7 @@ export function repairJsonObject(content: string | null | undefined): unknown {
   for (let i = stack.length - 1; i >= 0; i--) {
     repaired += stack[i] === "{" ? "}" : "]";
   }
-  repaired = repaired.replace(/,(\s*[}\]])/g, "$1");
+  repaired = stripStructuralTrailingCommas(repaired);
   try {
     return JSON.parse(repaired);
   } catch {
@@ -455,7 +491,7 @@ export function repairJsonObject(content: string | null | undefined): unknown {
       for (let i = stack.length - 1; i >= 0; i--) {
         tail += stack[i] === "{" ? "}" : "]";
       }
-      tail = tail.replace(/,(\s*[}\]])/g, "$1");
+      tail = stripStructuralTrailingCommas(tail);
       try {
         return JSON.parse(tail);
       } catch {
@@ -463,5 +499,24 @@ export function repairJsonObject(content: string | null | undefined): unknown {
       }
     }
     return null;
+  }
+}
+
+/**
+ * Run a strict structured-output parser, and on failure deterministically
+ * salvage the raw content via `repairJsonObject` (markdown-fence stripping +
+ * bounded json-repair, provider-agnostic) and re-run the SAME strict parser
+ * on the salvaged object. Re-throws the ORIGINAL error when nothing is
+ * salvageable, so a genuinely-invalid response still surfaces the typed error.
+ */
+export function parseWithBoundedRepair<T>(raw: string, strictParse: (input: string) => T): T {
+  try {
+    return strictParse(raw);
+  } catch (originalError) {
+    const repaired = repairJsonObject(raw);
+    if (repaired === null || typeof repaired !== "object") {
+      throw originalError;
+    }
+    return strictParse(JSON.stringify(repaired));
   }
 }

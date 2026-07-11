@@ -2,8 +2,17 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  parseSpeakerLabelOutput,
+  parseStructuredQaFindingOutput,
+  QaResponseValidationError,
+  SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+  SpeakerLabelResponseValidationError,
+  STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+} from "@itotori/localization-bridge-schema";
+import {
   listSjisEncodableCodepointsForAudit,
   normalizeToSjisSafe,
+  parseWithBoundedRepair,
   reconstructTarget,
   repairJsonObject,
   splitProtectedSpans,
@@ -256,6 +265,21 @@ describe("repairJsonObject", () => {
   it("removes trailing commas", () => {
     expect(repairJsonObject('{"t":[{"id":0,"en":"a"},]}')).toEqual({ t: [{ id: 0, en: "a" }] });
   });
+  it("preserves structural-looking punctuation inside string values", () => {
+    const input = String.raw`{"note":"preserve ,} exactly","arr":"also ,] here","escaped":"quote \" and ,}"}`;
+    expect(repairJsonObject(input)).toEqual({
+      note: "preserve ,} exactly",
+      arr: "also ,] here",
+      escaped: 'quote " and ,}',
+    });
+  });
+  it("preserves structural-looking punctuation inside strings during truncation repair", () => {
+    const input = String.raw`{"note":"preserve ,} and \"quoted\" exactly","arr":[{"id":1}`;
+    expect(repairJsonObject(input)).toEqual({
+      note: 'preserve ,} and "quoted" exactly',
+      arr: [{ id: 1 }],
+    });
+  });
   it("closes a truncated object, keeping complete entries", () => {
     const out = repairJsonObject('{"t":[{"id":0,"en":"hello"},{"id":1,"en":"wor');
     expect(out).toHaveProperty("t");
@@ -266,5 +290,87 @@ describe("repairJsonObject", () => {
   it("returns null when there is no object at all", () => {
     expect(repairJsonObject("not json")).toBeNull();
     expect(repairJsonObject(null)).toBeNull();
+  });
+});
+
+describe("parseWithBoundedRepair", () => {
+  const validSpeakerLabel = {
+    schemaVersion: SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+    labels: [
+      {
+        bridgeUnitId: "bu-1",
+        speakerId: { kind: "narration" },
+        confidence: "high",
+        evidenceRefs: ["ctx-1"],
+        agentRationale: "line is narration",
+      },
+    ],
+  };
+
+  const validQaFinding = {
+    schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+    findings: [
+      {
+        findingId: "01999999-9999-7999-8999-999999999999",
+        bridgeUnitId: "01999999-9999-7999-8999-999999999998",
+        severity: "minor",
+        category: "tone",
+        evidenceRefs: ["ref-1"],
+        recommendation: "soften wording",
+        agentRationale: "register is off",
+      },
+    ],
+  };
+
+  it("accepts SpeakerLabelOutput wrapped in a ```json fence with preamble", () => {
+    const raw = `Sure, here is the result:\n\`\`\`json\n${JSON.stringify(validSpeakerLabel)}\n\`\`\``;
+    const parsed = parseWithBoundedRepair(raw, parseSpeakerLabelOutput);
+    expect(parsed).toEqual(validSpeakerLabel);
+  });
+
+  it("accepts SpeakerLabelOutput with a trailing comma", () => {
+    const raw = JSON.stringify(validSpeakerLabel).replace(/}$/, ",}");
+    const parsed = parseWithBoundedRepair(raw, parseSpeakerLabelOutput);
+    expect(parsed).toEqual(validSpeakerLabel);
+  });
+
+  it("rejects a [- prefixed envelope instead of salvaging its inner object", () => {
+    const raw = "[" + JSON.stringify(validSpeakerLabel);
+    expect(repairJsonObject(raw)).toBeNull();
+    expect(() => parseWithBoundedRepair(raw, parseSpeakerLabelOutput)).toThrow(
+      SpeakerLabelResponseValidationError,
+    );
+  });
+
+  it("still throws SpeakerLabelResponseValidationError on an invalid shape", () => {
+    const raw = JSON.stringify({
+      schemaVersion: SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+      labels: "nope",
+    });
+    expect(() => parseWithBoundedRepair(raw, parseSpeakerLabelOutput)).toThrow(
+      SpeakerLabelResponseValidationError,
+    );
+  });
+
+  it("accepts StructuredQaFindingOutput wrapped in a ```json fence with preamble", () => {
+    const raw = `Here you go:\n\`\`\`json\n${JSON.stringify(validQaFinding)}\n\`\`\``;
+    const parsed = parseWithBoundedRepair(raw, parseStructuredQaFindingOutput);
+    expect(parsed).toEqual(validQaFinding);
+  });
+
+  it("accepts StructuredQaFindingOutput with a trailing comma", () => {
+    const raw = JSON.stringify(validQaFinding).replace(/}$/, ",}");
+    const parsed = parseWithBoundedRepair(raw, parseStructuredQaFindingOutput);
+    expect(parsed).toEqual(validQaFinding);
+  });
+
+  it("still throws QaResponseValidationError on an invalid shape", () => {
+    const raw = JSON.stringify({
+      schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+      findings: "nope",
+    });
+    expect(() => parseWithBoundedRepair(raw, parseStructuredQaFindingOutput)).toThrow(
+      QaResponseValidationError,
+    );
   });
 });
