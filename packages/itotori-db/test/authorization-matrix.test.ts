@@ -56,6 +56,7 @@ import { ItotoriTranslationBatchRepository } from "../src/repositories/translati
 import { ItotoriSceneCoverageRepository } from "../src/repositories/scene-coverage-repository.js";
 import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
+import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
@@ -1235,6 +1236,27 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "model-routing-settings-repository.test.ts save route coverage",
     (repo) => repo.saveRoute(deniedActor, undefined as never),
+  ),
+  translationScopeSettingsGate(
+    "loadSettings",
+    "catalogRead",
+    "translation-scope-settings-repository.test.ts load settings coverage",
+    (repo) =>
+      repo.loadSettings(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-branch-denied",
+      }),
+  ),
+  translationScopeSettingsGate(
+    "saveSettings",
+    "draftWrite",
+    "translation-scope-settings-repository.test.ts save settings coverage",
+    (repo) =>
+      repo.saveSettings(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-branch-denied",
+        scope: "dialogue-only",
+      }),
   ),
   authSessionServiceGate(
     "listPrincipalSessions",
@@ -2454,6 +2476,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationScopeSettingsRepository.loadSettings",
+          "requiredPermission": "catalog.read",
+          "successFixture": "translation-scope-settings-repository.test.ts load settings coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationScopeSettingsRepository.saveSettings",
+          "requiredPermission": "draft.write",
+          "successFixture": "translation-scope-settings-repository.test.ts save settings coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuthSessionService.listPrincipalSessions",
           "requiredPermission": "auth.sessions.manage",
           "successFixture": "auth-session-service.test.ts list principal sessions coverage",
@@ -3335,6 +3369,22 @@ function modelRoutingSettingsGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriModelRoutingSettingsRepository(db)),
+  });
+}
+
+function translationScopeSettingsGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriTranslationScopeSettingsRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriTranslationScopeSettingsRepository",
+    sourceFile: "translation-scope-settings-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriTranslationScopeSettingsRepository(db)),
   });
 }
 
