@@ -248,6 +248,18 @@ describe("every native-tool seam scrubs live-provider secrets from the child env
     });
     assertLastSpawnHadNoSecrets();
   });
+
+  it("applyKaifuuRpgMakerPatch (live whole-game MV/MZ patch-apply path)", async () => {
+    const { applyKaifuuRpgMakerPatch } = await import("../src/orchestrator/patch-apply-seam.js");
+    applyKaifuuRpgMakerPatch({
+      sourceRoot: "/games/example/www",
+      patchedDataOutputPath: "/tmp/patched-data",
+      deltaOutputPath: "/tmp/rpgmaker-delta.kaifuu",
+      translatedBundlePath: "/tmp/translated-bridge.json",
+      env: parentEnvWithSecrets(),
+    });
+    assertLastSpawnHadNoSecrets();
+  });
 });
 
 // ---------------------------------------------------------------------------
