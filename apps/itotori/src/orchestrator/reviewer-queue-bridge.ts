@@ -26,8 +26,9 @@
 //
 // Idempotency: the reviewer-queue table has a UNIQUE index on
 // (locale_branch_id, source_revision_id, item_kind, source_item_ref). The
-// bridge derives a DETERMINISTIC `sourceItemRef` from the bridge unit, so
-// re-running the SAME unit+revision collapses to the SAME row — a pre-check via
+// bridge keys the row to the run/bundle-level source revision and derives a
+// DETERMINISTIC `sourceItemRef` from the individual bridge unit, so re-running
+// the SAME unit within that revision collapses to the SAME row — a pre-check via
 // `loadItemsByBranch` plus the repository's typed
 // `reviewer_queue_item_duplicate` catch (the race backstop) means a re-run
 // never duplicates. This mirrors `manual-feedback.ts`'s belt-and-suspenders.
@@ -101,6 +102,12 @@ export type AgenticLoopBridgeInput = {
   sink: AgenticLoopReviewerQueueSink;
   bundle: AgenticLoopBundle;
   unit: LocalizationUnitV02;
+  /**
+   * Run/bundle-level source revision id — the id `ensureRunProjectScope`
+   * registers and every other bridge FKs to. This is NOT the per-unit
+   * content-hash id in `unit.sourceRevision.revisionId`.
+   */
+  sourceRevisionId: string;
   /**
    * The current (accepted) or REJECTED draft text. Carried even on a
    * `deferred_to_human` outcome so the reviewer sees what the loop produced and
@@ -332,7 +339,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
   const createInput: CreateReviewerQueueItemInput = {
     projectId: bundle.projectId,
     localeBranchId: bundle.localeBranchId,
-    sourceRevisionId: unit.sourceRevision.revisionId,
+    sourceRevisionId: input.sourceRevisionId,
     itemKind: reviewerQueueItemKindValues.qa,
     sourceItemRef,
     summary,

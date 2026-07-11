@@ -220,6 +220,7 @@ describe("itotori-live-loop-style-glossary-injection", () => {
     const captured: Captured = { translation: [], qa: [] };
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: makeGlossary(),
       styleGuide: makeStyleGuide(),
@@ -261,6 +262,7 @@ describe("itotori-live-loop-style-glossary-injection", () => {
     const captured: Captured = { translation: [], qa: [] };
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: makeGlossary(),
       styleGuide: makeStyleGuide(),
@@ -289,6 +291,7 @@ describe("itotori-live-loop-style-glossary-injection", () => {
     const captured: Captured = { translation: [], qa: [] };
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: [],
       protectedSpans: [],

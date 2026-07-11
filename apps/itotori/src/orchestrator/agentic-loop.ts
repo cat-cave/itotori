@@ -247,6 +247,12 @@ export type AgenticLoopProviderFactory = (input: {
 export type AgenticLoopUnitInput = {
   unit: LocalizationUnitV02;
   /**
+   * Run/bundle-level source revision id targeted by the reviewer-queue FK.
+   * This is the revision registered for the run, not the per-unit
+   * content-hash revision in `unit.sourceRevision`.
+   */
+  sourceRevisionId: string;
+  /**
    * Other units in the same scene the context stage needs as
    * sibling evidence. May be empty for one-shot smoke tests.
    */
@@ -908,6 +914,7 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
     sink,
     bundle: args.bundle,
     unit: args.input.unit,
+    sourceRevisionId: args.input.sourceRevisionId,
     draftText: args.draftText,
     deferredReason: args.deferredReason,
     qaFindings: args.qaFindings,

@@ -237,6 +237,7 @@ function makeUnit(bridgeUnitId: string, sourceText: string, lineNo: number): Loc
 function loopInputFor(unit: LocalizationUnitV02): AgenticLoopUnitInput {
   return {
     unit,
+    sourceRevisionId: REVISION_ID,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],
@@ -384,6 +385,7 @@ function makeDeps(
   return {
     actor: ACTOR,
     resolveUnits: resolver,
+    sourceRevisionId: REVISION_ID,
     pairPolicy: DEV_POLICY,
     policy: makePolicy(),
     providerFactory: repairProviderFactory(),

@@ -225,6 +225,7 @@ function makeFactory(
 function makeInput(unit: LocalizationUnitV02): AgenticLoopUnitInput {
   return {
     unit,
+    sourceRevisionId: REVISION_ID,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],

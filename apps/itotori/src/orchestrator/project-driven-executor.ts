@@ -852,6 +852,7 @@ async function runSingleDrivenUnit(args: {
 
     const unitInput: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: input.sourceRevisionId,
       sceneUnits: [],
       // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
       // glossary + style-guide (caller-resolved) into every unit's loop.

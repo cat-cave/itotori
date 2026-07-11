@@ -128,6 +128,7 @@ function makeUnit(): LocalizationUnitV02 {
 function makeInput(): AgenticLoopUnitInput {
   return {
     unit: makeUnit(),
+    sourceRevisionId: REVISION_ID,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],

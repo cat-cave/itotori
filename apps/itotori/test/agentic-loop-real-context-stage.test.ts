@@ -237,6 +237,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     const captured: string[] = [];
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: [],
       protectedSpans: [],
@@ -291,6 +292,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     const captured: string[] = [];
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: [],
       protectedSpans: [],
@@ -397,6 +399,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
 
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: [],
       protectedSpans: [],
@@ -508,6 +511,7 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
 
     const input: AgenticLoopUnitInput = {
       unit,
+      sourceRevisionId: REVISION_ID,
       sceneUnits: [],
       glossary: [],
       protectedSpans: [],
