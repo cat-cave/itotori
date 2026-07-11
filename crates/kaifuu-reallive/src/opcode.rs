@@ -44,6 +44,8 @@
 //! is an error ([`RealLiveParseError::TruncatedBytecode`]), never a silent
 //! `Ok(vec![])`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -310,6 +312,62 @@ impl RealLiveOpcode {
             Self::Unknown { .. } => "unknown",
         }
     }
+
+    /// The `(module_type, module_id, opcode)` signature of a single
+    /// **un-recognised** opcode, or `None` for a recognised one.
+    ///
+    /// This is the exact tuple a decode-honesty consumer (the `extract`
+    /// 100%-decode gate, the multi-corpus coverage harness) reports so a
+    /// regression names the precise un-catalogued command instead of a bare
+    /// aggregate count. The two un-recognised variants are extracted with the
+    /// SAME rule so the CLI report and the real-bytes gate agree byte-for-byte:
+    /// - [`RealLiveOpcode::Command`] — the un-catalogued in-space tuple, taken
+    ///   directly from its parsed header fields.
+    /// - [`RealLiveOpcode::Unknown`] — the `module_type > 2` desync tripwire,
+    ///   reconstructed from the preserved raw command header (`raw_bytes[1]` =
+    ///   module_type, `raw_bytes[2]` = module_id, `raw_bytes[3..5]` = the
+    ///   little-endian opcode) when the header is intact.
+    ///
+    /// Recognised variants (`is_recognized()` is `true`) return `None`.
+    pub fn unrecognized_signature(&self) -> Option<(u8, u8, u16)> {
+        match self {
+            Self::Command {
+                module_type,
+                module_id,
+                opcode,
+                ..
+            } => Some((*module_type, *module_id, *opcode)),
+            Self::Unknown { opcode, raw_bytes }
+                if *opcode == opener::COMMAND && raw_bytes.len() >= 5 =>
+            {
+                Some((
+                    raw_bytes[1],
+                    raw_bytes[2],
+                    u16::from_le_bytes([raw_bytes[3], raw_bytes[4]]),
+                ))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Aggregate the `(module_type, module_id, opcode) -> count` histogram of every
+/// opcode in `opcodes` that fails [`RealLiveOpcode::is_recognized`].
+///
+/// This is the single shared source of the un-recognised-opcode tuple list: the
+/// `kaifuu extract` decode-honesty gate and the multi-corpus coverage harness
+/// both aggregate over [`RealLiveOpcode::unrecognized_signature`] so a green
+/// CLI exit and a green real-bytes gate mean the identical thing — zero
+/// un-catalogued tuples. An empty map means a fully-recognised (100%-decoded)
+/// opcode stream.
+pub fn unrecognized_opcode_histogram(opcodes: &[RealLiveOpcode]) -> BTreeMap<(u8, u8, u16), usize> {
+    let mut histogram = BTreeMap::new();
+    for op in opcodes {
+        if let Some(signature) = op.unrecognized_signature() {
+            *histogram.entry(signature).or_insert(0) += 1;
+        }
+    }
+    histogram
 }
 
 /// Decoder error surface. Typed; no `unwrap()` clusters in production.
@@ -2612,6 +2670,70 @@ mod tests {
         }
         assert!(opcodes.iter().all(RealLiveOpcode::is_recognized));
         assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }));
+    }
+
+    #[test]
+    fn unrecognized_signature_names_uncatalogued_command_tuple() {
+        // 8-byte CommandElement header + MetaLine terminator. module_type 1
+        // (in-space) with an UNCATALOGUED (module_id 99, opcode 999) → the
+        // generic `Command` blob that fails `is_recognized()`.
+        let bytes = &[
+            opener::COMMAND,
+            1,
+            99,
+            0xE7,
+            0x03, // opcode 999 (0x03E7) little-endian
+            0,
+            0, // argc = 0
+            0, // overload
+            opener::META_LINE,
+            0x05,
+            0x00,
+        ];
+        let opcodes = parse_real_bytecode(bytes).expect("decode must succeed");
+        assert!(matches!(
+            opcodes[0],
+            RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: 99,
+                opcode: 999,
+                ..
+            }
+        ));
+        assert!(!opcodes[0].is_recognized());
+        assert_eq!(opcodes[0].unrecognized_signature(), Some((1, 99, 999)));
+
+        let histogram = unrecognized_opcode_histogram(&opcodes);
+        assert_eq!(histogram.get(&(1, 99, 999)), Some(&1));
+        assert_eq!(histogram.len(), 1);
+    }
+
+    #[test]
+    fn unrecognized_signature_is_empty_for_fully_recognized_stream() {
+        // module_type 1, module_id 4 (sys), opcode 17 → `End` (catalogued),
+        // then a MetaLine. Every element is a recognised family, so the
+        // un-recognised histogram is empty (the 100%-decode property).
+        let bytes = &[
+            opener::COMMAND,
+            1,
+            4,
+            17,
+            0,
+            0,
+            0,
+            0,
+            opener::META_LINE,
+            0x05,
+            0x00,
+        ];
+        let opcodes = parse_real_bytecode(bytes).expect("decode must succeed");
+        assert!(opcodes.iter().all(RealLiveOpcode::is_recognized));
+        assert!(
+            opcodes
+                .iter()
+                .all(|op| op.unrecognized_signature().is_none())
+        );
+        assert!(unrecognized_opcode_histogram(&opcodes).is_empty());
     }
 
     #[test]
