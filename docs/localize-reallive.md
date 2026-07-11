@@ -32,7 +32,7 @@ itotori db-migrate                 # apply DB schema (needs DATABASE_URL)
 # localize the whole game in one command (extract -> structure -> localize -> patch -> validate)
 itotori localize-game \
   --config      presets/localize-fullproject.config.v0.json \
-  --source      /scratch/itotori-research/sweetie-hd \
+  --source      "/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版" \
   --target      /scratch/out/sweetie-hd-en \
   --run-dir     /scratch/out/sweetie-hd-run \
   --game-id     sweetie-hd --game-version alpha-1 \
@@ -157,7 +157,7 @@ the `ITOTORI_CLI_REAL_LGAME_*` vars (from the test header) and run it — it is
 
 ```sh
 export ITOTORI_CLI_REAL_LGAME_CONFIG=presets/localize-fullproject.config.v0.json
-export ITOTORI_CLI_REAL_LGAME_SOURCE=/scratch/itotori-research/sweetie-hd
+export ITOTORI_CLI_REAL_LGAME_SOURCE="/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
 export ITOTORI_CLI_REAL_LGAME_GAME_ID=sweetie-hd
 export ITOTORI_CLI_REAL_LGAME_GAME_VERSION=alpha-1
 export ITOTORI_CLI_REAL_LGAME_SOURCE_PROFILE_ID=reallive-sweetie-hd
