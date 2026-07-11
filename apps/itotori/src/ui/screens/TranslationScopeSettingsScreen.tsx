@@ -28,13 +28,17 @@ export function parseTranslationScopeSettingsRoute(pathname: string): Record<str
 }
 
 // Cumulative tier ladder — index N implies every tier <= N stays in scope.
-// This mirrors `TranslationScope`/`unitSurfaceKindInScope`
-// (apps/itotori/src/orchestrator/project-driven-executor.ts) and
-// `crates/kaifuu-reallive/src/scope.rs`.
+// Persistence accepts all four tokens; the kaifuu-reallive patch-apply seam
+// currently only honors DialogueOnly / DialogueAndChoices
+// (`crates/kaifuu-reallive/src/scope.rs`). Broader tiers are beta — savable
+// for forward-compat, but collapse to dialogue+choices until backend scope
+// support lands. Mark those with `beta: true` so the UI labels them honestly.
 const TRANSLATION_SCOPE_TIERS: readonly {
   scope: ApiTranslationScope;
   label: string;
   description: string;
+  /** Not yet honored end-to-end by the patch-apply backend. */
+  beta?: boolean;
 }[] = [
   {
     scope: "dialogue-only",
@@ -49,14 +53,22 @@ const TRANSLATION_SCOPE_TIERS: readonly {
   {
     scope: "dialogue-choices-ui",
     label: "+ UI text",
-    description: "Adds menu / system / UI label surfaces.",
+    description:
+      "Adds menu / system / UI label surfaces. Beta — not yet honored end-to-end; currently applies dialogue+choices until backend scope support lands.",
+    beta: true,
   },
   {
     scope: "all",
-    label: "+ Images (beta)",
-    description: "Adds image surfaces. Beta — exercised on real bytes before general use.",
+    label: "+ Images",
+    description:
+      "Adds image surfaces. Beta — not yet honored end-to-end; currently applies dialogue+choices until backend scope support lands.",
+    beta: true,
   },
 ];
+
+function tierDisplayLabel(tier: (typeof TRANSLATION_SCOPE_TIERS)[number]): string {
+  return tier.beta === true ? `${tier.label} (beta)` : tier.label;
+}
 
 function tierIndexForScope(scope: ApiTranslationScope): number {
   const index = TRANSLATION_SCOPE_TIERS.findIndex((tier) => tier.scope === scope);
@@ -210,25 +222,27 @@ function TranslationScopeReady({
           {TRANSLATION_SCOPE_TIERS.map((tier, index) => {
             const checked = tierIndex >= index;
             const isBaseline = index === 0;
+            const displayLabel = tierDisplayLabel(tier);
             return (
               <label
                 key={tier.scope}
                 className="translation-scope-settings__tier"
                 data-checked={checked}
                 data-baseline={isBaseline}
+                data-beta={tier.beta === true ? "true" : undefined}
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   disabled={isBaseline || pending}
-                  aria-label={tier.label}
+                  aria-label={displayLabel}
                   onChange={(event) => {
                     setTierIndex(event.currentTarget.checked ? index : index - 1);
                   }}
                 />
                 <span className="translation-scope-settings__tier-body">
                   <span className="translation-scope-settings__tier-label">
-                    {tier.label}
+                    {displayLabel}
                     {isBaseline && <Badge status="always on" tone="neutral" />}
                   </span>
                   <span className="translation-scope-settings__tier-description">

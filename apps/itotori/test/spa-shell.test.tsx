@@ -449,17 +449,24 @@ describe("SPA shell — settings", () => {
     expect(
       await screen.findByRole("heading", { name: "Config-driven translation scope" }),
     ).toBeInTheDocument();
-    // All four cumulative tiers render as toggles.
+    // All four cumulative tiers render as toggles. Only Dialogue and
+    // +Choices are honored end-to-end today; +UI text and +Images are
+    // beta-labeled so the UI is honest about backend scope support.
     expect(screen.getByLabelText("Dialogue")).toBeInTheDocument();
     expect(screen.getByLabelText("+ Choices")).toBeInTheDocument();
-    expect(screen.getByLabelText("+ UI text")).toBeInTheDocument();
+    expect(screen.getByLabelText("+ UI text (beta)")).toBeInTheDocument();
     expect(screen.getByLabelText("+ Images (beta)")).toBeInTheDocument();
+    // Both beta tiers carry the same honesty helper note.
+    expect(
+      screen.getAllByText(/not yet honored end-to-end; currently applies dialogue\+choices/i)
+        .length,
+    ).toBe(2);
     // The persisted fixture scope is "dialogue-only": the baseline is
     // checked+disabled (always on), every higher tier unchecked.
     expect(screen.getByLabelText("Dialogue")).toBeChecked();
     expect(screen.getByLabelText("Dialogue")).toBeDisabled();
     expect(screen.getByLabelText("+ Choices")).not.toBeChecked();
-    expect(screen.getByLabelText("+ UI text")).not.toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
     expect(screen.getByLabelText("+ Images (beta)")).not.toBeChecked();
   });
 
@@ -597,24 +604,25 @@ describe("SPA shell — settings", () => {
       await screen.findByRole("heading", { name: "Config-driven translation scope" }),
     ).toBeInTheDocument();
 
-    // The fixture persists "dialogue-only"; enabling "+ UI text" must also
-    // imply "+ Choices" (the cumulative-tier affordance) — this is a REAL
+    // The fixture persists "dialogue-only"; enabling "+ UI text (beta)" must
+    // also imply "+ Choices" (the cumulative-tier affordance) — this is a REAL
     // user interaction (a checkbox click), not a pre-seeded form value.
-    fireEvent.click(screen.getByLabelText("+ UI text"));
+    // Beta tiers remain selectable/savable; the label is honesty-only.
+    fireEvent.click(screen.getByLabelText("+ UI text (beta)"));
     expect(screen.getByLabelText("+ Choices")).toBeChecked();
-    expect(screen.getByLabelText("+ UI text")).toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).toBeChecked();
     expect(screen.getByLabelText("+ Images (beta)")).not.toBeChecked();
 
-    // Unchecking "+ Choices" cascades "+ UI text" back off too (a lower tier
-    // can never stay enabled once a surface below it is disabled).
+    // Unchecking "+ Choices" cascades "+ UI text (beta)" back off too (a lower
+    // tier can never stay enabled once a surface below it is disabled).
     fireEvent.click(screen.getByLabelText("+ Choices"));
     expect(screen.getByLabelText("+ Choices")).not.toBeChecked();
-    expect(screen.getByLabelText("+ UI text")).not.toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
 
     // Re-enable "+ Choices" only (one tier above the always-on baseline) and save.
     fireEvent.click(screen.getByLabelText("+ Choices"));
     expect(screen.getByLabelText("+ Choices")).toBeChecked();
-    expect(screen.getByLabelText("+ UI text")).not.toBeChecked();
+    expect(screen.getByLabelText("+ UI text (beta)")).not.toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Save translation scope" }));
 
