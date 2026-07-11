@@ -154,6 +154,9 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  * guessing.
  *
  * - `localize.parse-config`        — config JSON parse / validate.
+ * - `localize.provision-project-scope` — idempotently upsert the project /
+ *   locale-branch / source-revision graph the draft-job + pass-ledger FKs
+ *   require, before any live persist.
  * - `localize.read-bridge`         — read + assert the v0.2 bridge bundle.
  * - `localize.read-pair-policy`    — read + parse the v0.3 pair-policy.
  * - `localize.read-structure`      — read + parse the decoded structure JSON.
@@ -181,6 +184,7 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  */
 export type PipelineStep =
   | "localize.parse-config"
+  | "localize.provision-project-scope"
   | "localize.read-bridge"
   | "localize.read-pair-policy"
   | "localize.read-structure"

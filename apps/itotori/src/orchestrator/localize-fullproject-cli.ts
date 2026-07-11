@@ -21,6 +21,7 @@ import {
   ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriDraftJobRepository,
   ItotoriLocalizationPassLedgerRepository,
+  ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
   bootstrapLocalUser,
   createDatabaseContext,
@@ -157,6 +158,43 @@ export async function runLocalizeFullProjectLive(
   try {
     await bootstrapLocalUser(context.db);
     const actor: AuthorizationActor = { userId: localUserId };
+
+    // wholegame-localize-project-provisioning — the driven executor persists
+    // draft jobs (FK -> itotori_projects + itotori_locale_branches) and the
+    // pass ledger persists a row (FK -> ... + itotori_source_revisions) keyed
+    // on this run's config identity. Those parent rows are NOT created anywhere
+    // else in the whole-game path, so the first live draft-job batch violated
+    // the FK. Provision the identity graph idempotently BEFORE any live persist.
+    // The source locale comes from the run's bridge bundle, so this is
+    // game-agnostic (no hardcoded locale / no per-game special-casing).
+    const projectRepo = new ItotoriProjectRepository(context.db);
+    await runPipelineStepWithDiagnostic({
+      step: "localize.provision-project-scope",
+      code: "unknown",
+      message:
+        "localize-live: provision-project-scope failed: could not upsert the project / locale-branch / source-revision graph the draft-job + pass-ledger FKs require",
+      inputs: {
+        configPath: args.configPath,
+        bridgePath: config.bridgePath,
+        projectId: config.projectId,
+        localeBranchId: config.localeBranchId,
+        sourceRevisionId: config.sourceRevisionId,
+        runDir: args.runDir,
+      },
+      repro: { configPath: args.configPath, bridgePath: config.bridgePath },
+      actor,
+      run: () =>
+        projectRepo.ensureRunProjectScope(actor, {
+          projectId: config.projectId,
+          localeBranchId: config.localeBranchId,
+          sourceRevisionId: config.sourceRevisionId,
+          targetLocale: config.targetLocale ?? "en-US",
+          sourceLocale: readBridgeSourceLocale(
+            args.io.readJson(config.bridgePath),
+            config.bridgePath,
+          ),
+        }),
+    });
 
     const draftJobRepo = new ItotoriDraftJobRepository(context.db);
     const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
@@ -313,4 +351,26 @@ export async function runLocalizeFullProjectLive(
   } finally {
     await context.close();
   }
+}
+
+/**
+ * Read the BCP-47 source locale off the run's bridge bundle (a top-level
+ * `sourceLocale` on both the v0.1 and v0.2 BridgeBundle shapes). Used to
+ * provision the project/source-bundle source locale from the real extracted
+ * bytes rather than a hardcoded default — keeping the whole-game path
+ * game-agnostic.
+ */
+function readBridgeSourceLocale(rawBridge: unknown, bridgePath: string): string {
+  if (
+    typeof rawBridge === "object" &&
+    rawBridge !== null &&
+    "sourceLocale" in rawBridge &&
+    typeof (rawBridge as { sourceLocale: unknown }).sourceLocale === "string" &&
+    (rawBridge as { sourceLocale: string }).sourceLocale.length > 0
+  ) {
+    return (rawBridge as { sourceLocale: string }).sourceLocale;
+  }
+  throw new Error(
+    `localize-live: bridge bundle at '${bridgePath}' is missing a non-empty top-level string 'sourceLocale'; cannot provision the project source locale`,
+  );
 }
