@@ -28,6 +28,37 @@ slug format `[a-z0-9]+(-[a-z0-9]+)*`):
 Do not add random suffixes to resolve collisions. If the canonical branch or
 worktree already exists, inspect and reuse or prune it.
 
+## Protected namespaces & parallel-agent safety
+
+Several of these rules exist because **many agents run concurrently in their own
+worktrees** off the same main checkout. The conventions below keep them from
+clobbering one another.
+
+- **Worktree paths live OUTSIDE the repo**, under
+  `/scratch/worktrees/itotori-<slug>` — never in-repo (e.g. never under
+  `.qd/worktrees/...`). Use the canonical `[a-z0-9]+(-[a-z0-9]+)*` slug with no
+  random suffixes; if the path already exists, inspect and reuse or prune it.
+- **Protected namespaces that must NEVER be pruned during a reconcile:**
+  `sweetie-hd-real-*`, and the legacy `reallive` / `xor2` / `sweetie` worktrees.
+  These belong to a live parallel loop; a prune/reconcile pass must skip them.
+- **Each worktree gets an isolated `CARGO_TARGET_DIR` automatically** via the
+  `flake.nix` shell hook (see [`AGENTS.md`](../../AGENTS.md) and
+  [Per-Worktree CARGO_TARGET_DIR](#per-worktree-cargo_target_dir) below). Never
+  point two concurrent worktrees at the same target dir — concurrent writes
+  corrupt the build.
+- **`qd` is used ONLY by the orchestrator from the main checkout; subagents
+  never call `qd`.** The `.envrc` `QD_ROOT` guard points `QD_ROOT` at the main
+  checkout (the git common dir's parent) in every shell, so even a stray `qd`
+  call from inside a worktree resolves against the single shared ledger instead
+  of forking an empty `.qd/qd.db` here (which would make `qd claim` grant
+  exclusivity against nobody).
+- **Staying current:** use [`scripts/sync-main.sh`](../../scripts/sync-main.sh)
+  (run in the main checkout — fast-forward-only, with `main`-branch + clean-tree
+  guards) and [`scripts/sync-worktree.sh`](../../scripts/sync-worktree.sh) (run
+  in a static worktree — rebases or fast-forwards onto `origin/main` and aborts
+  cleanly on conflict). Always confirm local `main` == `origin/main` before
+  branching off it.
+
 ## Provisioning `node_modules` (`just worktree-setup`)
 
 A fresh worktree has **no `node_modules`**, so `pnpm exec vp check`, `just
