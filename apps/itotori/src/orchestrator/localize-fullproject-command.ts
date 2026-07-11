@@ -200,6 +200,13 @@ export type LocalizeFullProjectResult = {
   prior: LocalizationPassRecord | undefined;
 };
 
+export function resolveDrivenConcurrency(
+  cliOverride: number | undefined,
+  configValue: number | undefined,
+): number | undefined {
+  return cliOverride ?? configValue;
+}
+
 /**
  * Run the whole-project localize driver: parse the config, run the full
  * project through `runLocalizationPass` (persisting the pass to the DB ledger
@@ -343,6 +350,7 @@ export async function runLocalizeFullProjectCommand(
     config.feedbackNotesByUnit === undefined
       ? undefined
       : new Map<string, string>(Object.entries(config.feedbackNotesByUnit));
+  const concurrency = resolveDrivenConcurrency(args.concurrency, config.concurrency);
 
   const executorInput: Omit<ProjectDrivenExecutorInput, "priorPass"> = {
     bridge,
@@ -373,9 +381,7 @@ export async function runLocalizeFullProjectCommand(
     ...(config.budgetCapUsd !== undefined ? { budgetCapUsd: config.budgetCapUsd } : {}),
     // `--concurrency` CLI override wins over the config value; falls back to
     // the config's `concurrency`, then the executor's DEFAULT_DRIVEN_CONCURRENCY.
-    ...((args.concurrency ?? config.concurrency) !== undefined
-      ? { concurrency: (args.concurrency ?? config.concurrency)! }
-      : {}),
+    ...(concurrency !== undefined ? { concurrency } : {}),
     ...(config.maxRepairAttempts !== undefined
       ? { maxRepairAttempts: config.maxRepairAttempts }
       : {}),

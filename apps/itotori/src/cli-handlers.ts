@@ -99,6 +99,7 @@ import {
   type LocalizeProjectStageArgs,
 } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
+import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
   runLocalizeGameCommand,
   LocalizeGameStageError,
@@ -2278,16 +2279,40 @@ function parseNonNegativeInteger(value: string, name: string): number {
  * Parse the optional `--concurrency <N>` flag: a client-side bounded-concurrency
  * override for the whole-game localize driver. Returns undefined when absent (the
  * driver falls back to the config value, then DEFAULT_DRIVEN_CONCURRENCY).
- * Must be a positive integer — `0` would stall the driver, so it is refused loudly.
+ * Must be an integer in the safe operator range, so invalid requests are refused
+ * loudly rather than changing the requested concurrency.
  */
-function parseConcurrencyFlag(args: string[]): number | undefined {
-  const raw = optionalFlag(args, "--concurrency");
-  if (raw === undefined) {
+export class ConcurrencyFlagError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConcurrencyFlagError";
+  }
+}
+
+export function parseConcurrencyFlag(args: string[]): number | undefined {
+  const index = args.indexOf("--concurrency");
+  if (index < 0) {
     return undefined;
   }
+
+  const raw = args[index + 1];
+  if (raw === undefined || raw.length === 0 || raw.startsWith("--")) {
+    const receivedValue = raw === undefined ? "<missing>" : `'${raw}'`;
+    throw new ConcurrencyFlagError(
+      `--concurrency requires a positive integer value in the valid range [1, ${MAX_DRIVEN_CONCURRENCY}]; got ${receivedValue}`,
+    );
+  }
+
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
-    throw new Error(`--concurrency '${raw}' must be a positive integer (>= 1)`);
+  if (
+    !Number.isInteger(parsed) ||
+    String(parsed) !== raw ||
+    parsed < 1 ||
+    parsed > MAX_DRIVEN_CONCURRENCY
+  ) {
+    throw new ConcurrencyFlagError(
+      `--concurrency '${raw}' must be a positive integer in the valid range [1, ${MAX_DRIVEN_CONCURRENCY}]`,
+    );
   }
   return parsed;
 }

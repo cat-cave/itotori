@@ -489,6 +489,15 @@ export type ProjectDrivenExecutorInput = {
  */
 export const DEFAULT_DRIVEN_CONCURRENCY = 8;
 
+/**
+ * Single source of truth for the safe operator ceiling. Larger values can spin
+ * up one worker/loop per planned unit: `--concurrency 27000` can create 27,000
+ * concurrent unit loops, causing provider queue thrash, rate-limit churn, and
+ * ZDR cost-cap risk because the provider checks the cost cap before its
+ * rate-limit token. Sixteen is a safe operator ceiling above the default 8.
+ */
+export const MAX_DRIVEN_CONCURRENCY = 16;
+
 export type ProjectDrivenExecutorResult = {
   unitsEnumerated: number;
   unitsInScope: number;
