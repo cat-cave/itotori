@@ -1,5 +1,17 @@
 # UTSUSHI substrate honesty audit
 
+> **⚠️ SUPERSEDED 2026-07-11.** This audit predates the real RealLive engine
+> port. Its "functionally fixture-shaped" / "no engine port crate exists"
+> framing is stale: `crates/utsushi-reallive/` now ships a real VM
+> (`src/vm.rs`, `src/engine_port.rs`), a render pipeline (`src/render_pipeline.rs`,
+> swash rasterization), branch replay, and honest E0/E1/E2 evidence tiers — the
+> RealLive runtime is a real interpreter+rasterizer at **E2**, not a facade. The
+> `#[ignore]`/env-gated real-bytes proofs run under `just ci-real-bytes` /
+> `just real-bytes-oracle`. Retained below as the historical record of the
+> substrate cascade; for current reality see
+> [`../localize-reallive.md`](../localize-reallive.md) and
+> [`../utsushi-fidelity-policy.md`](../utsushi-fidelity-policy.md).
+
 Status: audit, no code changes. Scope: UTSUSHI-020..120 substrate cascade,
 audited against a hypothetical RealLive engine port for
 **オシオキSweetie＋Sweets!! HD_DL版** ("Sweetie HD") under
