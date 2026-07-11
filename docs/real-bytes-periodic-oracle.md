@@ -24,8 +24,9 @@ whole run (nonzero exit):
 
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
 ci-real-bytes`) against the configured real corpora (currently Sweetie HD +
-  Kanon RealLive, LustMemory RPG Maker MV/MZ, and the vault-materialized Siglus
-  installs),
+  Kanon RealLive, LustMemory + Countryside Life RPG Maker MV/MZ, and the
+  vault-materialized Siglus installs). This includes the app-level MV/MZ
+  patch/apply byte-round-trip, with both titles required when the lane runs,
   read-only, never copying copyrighted bytes. Passing proves the
   source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`, `classify()`, the
   g00 type matrix, the cipher cases, the decoder-parity counts, …) still match

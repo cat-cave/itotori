@@ -231,11 +231,13 @@ pub fn extract_game_dir(
             path: path.display().to_string(),
             source,
         })?;
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|source| ExtractError::JsonParse {
-                file: file.clone(),
-                source,
-            })?;
+        let value: serde_json::Value = serde_json::from_slice(crate::json_locate::strip_utf8_bom(
+            &bytes,
+        ))
+        .map_err(|source| ExtractError::JsonParse {
+            file: file.clone(),
+            source,
+        })?;
         let source_hash = sha256_canonical(&bytes);
 
         let units_before = acc.units.len();

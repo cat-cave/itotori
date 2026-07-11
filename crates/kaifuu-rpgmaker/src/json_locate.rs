@@ -19,6 +19,13 @@
 
 use std::fmt;
 
+/// Return JSON bytes without the optional UTF-8 BOM emitted by some RPG
+/// Maker MV projects. The caller still owns the original byte slice, so raw
+/// offsets remain stable when a [`Scanner`] uses the same bytes for patching.
+pub(crate) fn strip_utf8_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)
+}
+
 /// Byte range `[start, end)` covering a complete JSON string literal,
 /// including the opening and closing quote bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +93,10 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, pos: 0 }
+        Self {
+            bytes,
+            pos: bytes.len() - strip_utf8_bom(bytes).len(),
+        }
     }
 
     /// Locate the leaf string literal at the given pointer tokens.
@@ -395,6 +405,16 @@ mod tests {
         let bytes = br#"{"a":[null,{"name":"hi","n":1}],"b":"x"}"#;
         assert_eq!(locate_text(bytes, &["a", "1", "name"]).unwrap(), "hi");
         assert_eq!(locate_text(bytes, &["b"]).unwrap(), "x");
+    }
+
+    #[test]
+    fn locates_string_after_utf8_bom_without_shifting_raw_offsets() {
+        let bytes = b"\xEF\xBB\xBF{\"name\":\"hi\"}";
+        let owned = vec!["name".to_string()];
+        let mut scanner = Scanner::new(bytes);
+        let span = scanner.locate(&owned).unwrap();
+        assert_eq!(&bytes[span.start..span.end], br#""hi""#);
+        assert_eq!(Scanner::decode_span(bytes, span).unwrap(), "hi");
     }
 
     #[test]
