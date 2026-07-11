@@ -1,15 +1,14 @@
-//! Evidence-driven recognizers for message-bearing plugin (356/357) and
+//! Typed recognizers for message-bearing and opaque plugin (356/357) and
 //! script (355/655) commands.
 //!
-//! The MV/MZ extractor surfaces Plugin Command (356/357) and Script
-//! (355/655) entries as structured [`crate::Finding`]s by default: there is
-//! no plugin registry, so blindly extracting `parameters[0]` would grab
-//! engine control (`window.close()`, screen-shake, sound-effect filenames)
-//! as if it were dialogue. This module is the opposite of a blind grab: a
-//! small set of recognizers, each keyed to a KNOWN plugin command whose
-//! text-argument shape was verified against the LustMemory corpus. A
-//! command that no recognizer claims stays a finding — no silent skip, no
-//! engine control mis-extracted as dialogue.
+//! MV/MZ's event command payloads do not carry a plugin registry. A blind
+//! extraction of `parameters[0]` would therefore turn engine control
+//! (`window.close()`, screen shake, sound-effect filenames, and numeric ids)
+//! into dialogue. This module has two deliberately closed paths instead:
+//! `D_TEXT` is a message-bearing command whose display-text argument is
+//! extracted, while every observed control command is named in the exact
+//! opaque tables below. A command outside those tables remains an explicit
+//! unknown finding and is a test failure for the real-byte recognizer lane.
 //!
 //! # The patchback-safe shape
 //!
@@ -24,20 +23,211 @@
 //! patchback rewrites the literal in place with the keyword/size preserved
 //! verbatim.
 //!
-//! # Evidence (LustMemory corpus, real bytes)
+//! # Real-byte evidence
 //!
-//! Of the 356 plugin commands actually present — screen-shake `P_SHAKE` /
-//! `P_STOP_SHAKE`, achievement-by-id (`Achievement`/`実績`), calendar `C_*`,
-//! sound `SSC_*`, movie `MP_*`/`MM_*`, difficulty, `D_TEXT_SETTING`
-//! (font/alignment config), … — only `D_TEXT` (triacontane's DTextPicture
-//! plugin) carries display text; every other command's arguments are
-//! numeric ids, identifiers, or asset filenames and stay findings. The 355
-//! script commands present are all engine control
-//! (`BattleManager._statusWindow.show/hide()`, `window.close()`) with no
-//! string literals, so NO script recognizer is added — adding one with no
-//! corpus evidence would be speculative.
+//! LustMemory contributes 328 plugin-command entries and 22 script entries;
+//! Countryside Life contributes 1,684 plugin-command entries and 4 script
+//! entries. Only `D_TEXT` carries display text (two occurrences in
+//! LustMemory). The other observed plugin commands have documented control
+//! semantics, and every observed script is a state/window operation with no
+//! string literal. The closed tables below are the resulting semantic
+//! census; they are intentionally not a catch-all for future plugins.
 
 use crate::escape::EscapeSpan;
+
+/// One intentionally opaque command family observed in the real MV/MZ
+/// titles. Opaque means that the command's documented arguments are ids,
+/// flags, timing, asset names, or state operations rather than player-facing
+/// text. The reason is part of the allowlist so an opaque classification is
+/// reviewable instead of becoming an untyped skip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpaqueCommandSpec {
+    /// MV command token, or the exact script expression for script entries.
+    pub name: &'static str,
+    /// One-line semantic reason no translatable unit is emitted.
+    pub reason: &'static str,
+}
+
+/// Exact opaque MV/MZ plugin-command set established from the two real title
+/// censuses. Matching is by the first ASCII-space-delimited MV command token,
+/// except for the recorded full-width-space literal, which is its own exact
+/// token under MV's documented `split(" ")` parser.
+pub const OPAQUE_PLUGIN_COMMANDS: &[OpaqueCommandSpec] = &[
+    OpaqueCommandSpec {
+        name: "Achievement",
+        reason: "achievement id selector; the argument is not display text",
+    },
+    OpaqueCommandSpec {
+        name: "Achievment",
+        reason: "misspelled achievement id command; the argument is not display text",
+    },
+    OpaqueCommandSpec {
+        name: "実績",
+        reason: "achievement id selector; the argument is not display text",
+    },
+    OpaqueCommandSpec {
+        name: "C_ADD_DAY",
+        reason: "Chronus advances calendar time by a numeric day count",
+    },
+    OpaqueCommandSpec {
+        name: "C_ADD_TIME",
+        reason: "Chronus advances clock time by a numeric minute count",
+    },
+    OpaqueCommandSpec {
+        name: "C_ADD_TIME　30",
+        reason: "full-width separator leaves a non-text command token under MV parsing",
+    },
+    OpaqueCommandSpec {
+        name: "C_DISABLE_TINT",
+        reason: "Chronus toggles time-of-day tinting; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_DISABLE_WEATHER",
+        reason: "Chronus toggles weather progression; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_HIDE",
+        reason: "Chronus hides the calendar UI; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_SET_DAY",
+        reason: "Chronus sets a numeric year/month/day tuple",
+    },
+    OpaqueCommandSpec {
+        name: "C_SET_TIME",
+        reason: "Chronus sets a numeric hour/minute tuple",
+    },
+    OpaqueCommandSpec {
+        name: "C_SET_TIME_REAL",
+        reason: "Chronus selects real-time clock sourcing; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_SHOW",
+        reason: "Chronus shows the calendar UI; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_START",
+        reason: "Chronus starts time progression; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "C_STOP",
+        reason: "Chronus stops time progression; it has no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "CommonSave",
+        reason: "common-save operation selector; arguments choose persistence state",
+    },
+    OpaqueCommandSpec {
+        name: "CRD_OPEN_CARDGAME",
+        reason: "card-game command opens a configured game scene; no text argument",
+    },
+    OpaqueCommandSpec {
+        name: "CRD_Player",
+        reason: "card-game player setup uses configuration values, not display text",
+    },
+    OpaqueCommandSpec {
+        name: "Difficulty",
+        reason: "difficulty command selects a numeric difficulty id or direction",
+    },
+    OpaqueCommandSpec {
+        name: "D_TEXT_SETTING",
+        reason: "DTextPicture formatting/state command; it does not draw text",
+    },
+    OpaqueCommandSpec {
+        name: "hideHpGauge",
+        reason: "map HP-gauge visibility control; its optional argument is a gauge id",
+    },
+    OpaqueCommandSpec {
+        name: "MM_設定_ループ",
+        reason: "movie-manager loop flag; the argument is a boolean setting",
+    },
+    OpaqueCommandSpec {
+        name: "MP_SET_LOOP",
+        reason: "movie playback loop flag; arguments select a boolean setting",
+    },
+    OpaqueCommandSpec {
+        name: "MP_SET_MOVIE",
+        reason: "movie playback command selects an asset id, not display text",
+    },
+    OpaqueCommandSpec {
+        name: "OnlySellShopCall",
+        reason: "sell-only shop command takes a numeric sell-rate percentage",
+    },
+    OpaqueCommandSpec {
+        name: "P_SHAKE",
+        reason: "screen-shake command takes numeric amplitude/speed/duration values",
+    },
+    OpaqueCommandSpec {
+        name: "P_STOP_SHAKE",
+        reason: "screen-shake stop command takes a numeric channel id",
+    },
+    OpaqueCommandSpec {
+        name: "showHpGauge",
+        reason: "map HP-gauge visibility control; its optional argument is a gauge id",
+    },
+    OpaqueCommandSpec {
+        name: "SSC_CHANGE_SYSTEM_SE",
+        reason: "system sound-effect command selects an id and playback settings",
+    },
+    OpaqueCommandSpec {
+        name: "SSC_RESET_SYSTEM_SE",
+        reason: "system sound-effect reset command selects an id",
+    },
+];
+
+/// Exact opaque script expressions observed in both real title censuses.
+/// These expressions mutate engine/plugin state and contain no string
+/// literal that could be surfaced as player-facing text.
+pub const OPAQUE_SCRIPT_COMMANDS: &[OpaqueCommandSpec] = &[
+    OpaqueCommandSpec {
+        name: "BattleManager._statusWindow.hide();",
+        reason: "engine status-window visibility call contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "BattleManager._statusWindow.show();",
+        reason: "engine status-window visibility call contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "window.close()",
+        reason: "engine window close call contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "$gameVariables.setValue(21, $gameVariables.value(21).clamp(0, 100))",
+        reason: "script clamps a numeric game variable and contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "$gameVariables.setValue(22, $gameVariables.value(22).clamp(0, 100))",
+        reason: "script clamps a numeric game variable and contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "$gameVariables.setValue(23, $gameVariables.value(23).clamp(0, 100))",
+        reason: "script clamps a numeric game variable and contains no string literal",
+    },
+    OpaqueCommandSpec {
+        name: "$gameVariables.setValue(24, $gameVariables.value(24).clamp(0, 100))",
+        reason: "script clamps a numeric game variable and contains no string literal",
+    },
+];
+
+/// Result of applying the closed plugin-command recognizer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluginCommandRecognition {
+    /// A command whose argument contains player-visible text.
+    Translatable(RecognizedCommand),
+    /// A command in [`OPAQUE_PLUGIN_COMMANDS`].
+    Opaque(&'static OpaqueCommandSpec),
+    /// A command outside the exact real-byte census.
+    Unknown,
+}
+
+/// Result of applying the closed script-command recognizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptCommandRecognition {
+    /// A command in [`OPAQUE_SCRIPT_COMMANDS`].
+    Opaque(&'static OpaqueCommandSpec),
+    /// A script expression outside the exact real-byte census.
+    Unknown,
+}
 
 /// A recognized message-bearing plugin/script command.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,8 +241,9 @@ pub struct RecognizedCommand {
 }
 
 /// Try to recognize a Plugin Command (356/357) `parameters[0]` string as
-/// message-bearing. Returns `None` for control commands — which then stay
-/// structured findings — and for any command no recognizer claims.
+/// message-bearing. Returns `None` for opaque control commands and for any
+/// command no recognizer claims. Call [`classify_plugin_command`] when the
+/// caller needs to distinguish those two cases.
 pub fn recognize_plugin_command(param0: &str) -> Option<RecognizedCommand> {
     // MV's `Game_Interpreter.command356` splits `parameters[0]` on single
     // spaces and shifts the first token as the command name.
@@ -61,6 +252,36 @@ pub fn recognize_plugin_command(param0: &str) -> Option<RecognizedCommand> {
         "D_TEXT" => recognize_d_text(param0),
         _ => None,
     }
+}
+
+/// Classify one MV/MZ plugin-command literal without a generic fallback.
+/// `Unknown` is intentionally available so callers and real-byte tests can
+/// fail loudly when a new command appears outside the enumerated semantic set.
+pub fn classify_plugin_command(param0: &str) -> PluginCommandRecognition {
+    if let Some(command) = recognize_plugin_command(param0) {
+        return PluginCommandRecognition::Translatable(command);
+    }
+
+    let command_name = param0.split(' ').next().unwrap_or_default();
+    OPAQUE_PLUGIN_COMMANDS
+        .iter()
+        .find(|spec| spec.name == command_name)
+        .map_or(PluginCommandRecognition::Unknown, |spec| {
+            PluginCommandRecognition::Opaque(spec)
+        })
+}
+
+/// Classify one `Script` (355/655) literal. The real-byte set currently has
+/// no script-call text surface; each observed expression is a typed opaque
+/// state operation. A future text-bearing script shape must be added as a
+/// semantic recognizer rather than admitted by a string-sweep heuristic.
+pub fn classify_script_command(param0: &str) -> ScriptCommandRecognition {
+    OPAQUE_SCRIPT_COMMANDS
+        .iter()
+        .find(|spec| spec.name == param0.trim())
+        .map_or(ScriptCommandRecognition::Unknown, |spec| {
+            ScriptCommandRecognition::Opaque(spec)
+        })
 }
 
 /// Mirror DTextPicture's `isNaN`-based trailing-size test: a token is the
@@ -241,5 +462,48 @@ mod tests {
                 "control command {control:?} must stay a finding"
             );
         }
+    }
+
+    #[test]
+    fn observed_control_families_are_typed_opaque_and_unknowns_stay_unknown() {
+        for control in [
+            "Achievement 5",
+            "C_ADD_TIME 30",
+            "C_ADD_TIME　30",
+            "CRD_Player settings 1345",
+            "OnlySellShopCall 100",
+            "showHpGauge",
+        ] {
+            assert!(
+                matches!(
+                    classify_plugin_command(control),
+                    PluginCommandRecognition::Opaque(_)
+                ),
+                "observed control command {control:?} must be typed opaque"
+            );
+        }
+        assert!(matches!(
+            classify_plugin_command("NewPlugin maybe text"),
+            PluginCommandRecognition::Unknown
+        ));
+    }
+
+    #[test]
+    fn observed_scripts_are_typed_opaque_but_new_script_shapes_are_unknown() {
+        for script in [
+            "BattleManager._statusWindow.hide();",
+            "BattleManager._statusWindow.show();",
+            "window.close()",
+            "$gameVariables.setValue(21, $gameVariables.value(21).clamp(0, 100))",
+        ] {
+            assert!(matches!(
+                classify_script_command(script),
+                ScriptCommandRecognition::Opaque(_)
+            ));
+        }
+        assert!(matches!(
+            classify_script_command("showText('new')"),
+            ScriptCommandRecognition::Unknown
+        ));
     }
 }

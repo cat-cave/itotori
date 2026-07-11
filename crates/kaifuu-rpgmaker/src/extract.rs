@@ -8,7 +8,10 @@ use serde_json::Value;
 
 use crate::codes::{CodeClass, TextRole, classify};
 use crate::escape::{EscapeSpan, scan_escape_spans};
-use crate::recognize::recognize_plugin_command;
+use crate::recognize::{
+    OpaqueCommandSpec, PluginCommandRecognition, ScriptCommandRecognition, classify_plugin_command,
+    classify_script_command,
+};
 
 /// The localization-bridge surface kind a unit maps to, plus the data the
 /// bridge layer needs to build that surface's required context object.
@@ -110,12 +113,36 @@ impl Finding {
 pub enum FindingKind {
     /// Event-command code not in the known table.
     UnknownCommandCode,
-    /// `Script` (355/655) — may render text via project scripts.
+    /// `Script` (355/655) outside the typed text/opaque command tables.
     ScriptCommandText,
-    /// `Plugin Command` (356/357) — may render text via a plugin.
+    /// `Plugin Command` (356/357) outside the typed text/opaque command tables.
     PluginCommandText,
-    /// `Control Variables` (122) with a script-string operand.
+    /// `Control Variables` (122) with an untyped script-string operand.
     ControlVariableScriptString,
+}
+
+/// Which MV/MZ command surface produced an intentionally opaque occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpaqueCommandFamily {
+    /// MV `Plugin Command` (356) or MZ `Plugin Command` (357).
+    Plugin,
+    /// `Script` (355/655).
+    Script,
+    /// `Control Variables` (122) with its script-string operand.
+    ControlVariableScript,
+}
+
+/// One occurrence classified by the closed opaque-command tables. This is
+/// retained beside the bridge bundle for real-byte reporting; it is not a
+/// translatable unit and carries no command arguments or player text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpaqueCommandOccurrence {
+    pub family: OpaqueCommandFamily,
+    pub command: &'static str,
+    pub reason: &'static str,
+    pub file: String,
+    pub pointer: Vec<String>,
+    pub command_code: i64,
 }
 
 /// Accumulates units + findings while walking one game's data files.
@@ -123,6 +150,7 @@ pub enum FindingKind {
 pub struct ExtractAcc {
     pub units: Vec<ProtoUnit>,
     pub findings: Vec<Finding>,
+    pub opaque_commands: Vec<OpaqueCommandOccurrence>,
 }
 
 impl ExtractAcc {
@@ -180,6 +208,24 @@ impl ExtractAcc {
             text: full_text.to_string(),
             spans,
             speaker: None,
+        });
+    }
+
+    fn push_opaque_command(
+        &mut self,
+        file: &str,
+        pointer: Vec<String>,
+        command_code: i64,
+        family: OpaqueCommandFamily,
+        spec: &'static OpaqueCommandSpec,
+    ) {
+        self.opaque_commands.push(OpaqueCommandOccurrence {
+            family,
+            command: spec.name,
+            reason: spec.reason,
+            file: file.to_string(),
+            pointer,
+            command_code,
         });
     }
 }
@@ -263,8 +309,8 @@ pub fn walk_troops(acc: &mut ExtractAcc, file: &str, troops: &Value) {
 /// State carried across the list: the active `Show Text` speaker (MZ 101
 /// param 4) and message-group counter, plus a choice-group counter. Each
 /// entry's code is classified; text codes extract, structural codes skip
-/// silently, and script/plugin/unknown codes record findings — never a
-/// silent drop.
+/// silently, typed opaque commands enter the opaque census, and only unknown
+/// command shapes record findings.
 fn walk_command_list(acc: &mut ExtractAcc, file: &str, base: Vec<String>, list: &[Value]) {
     let mut current_speaker: Option<String> = None;
     let mut message_group: usize = 0;
@@ -382,36 +428,64 @@ fn walk_command_list(acc: &mut ExtractAcc, file: &str, base: Vec<String>, list: 
                 // 122: operand at params[3]; value 4 = script string.
                 let operand = params.and_then(|p| p.get(3)).and_then(Value::as_i64);
                 if operand == Some(4) {
-                    acc.findings.push(Finding {
-                        kind: FindingKind::ControlVariableScriptString,
-                        file: file.to_string(),
-                        pointer: entry_pointer(&["parameters", "4"]),
-                        command_code: Some(code),
-                        detail:
-                            "Control Variables script-string operand may carry display text; manual review"
-                                .to_string(),
-                    });
+                    let script = params.and_then(|p| p.get(4)).and_then(Value::as_str);
+                    match script.map(classify_script_command) {
+                        Some(ScriptCommandRecognition::Opaque(spec)) => {
+                            acc.push_opaque_command(
+                                file,
+                                entry_pointer(&["parameters", "4"]),
+                                code,
+                                OpaqueCommandFamily::ControlVariableScript,
+                                spec,
+                            );
+                        }
+                        _ => {
+                            acc.findings.push(Finding {
+                                kind: FindingKind::ControlVariableScriptString,
+                                file: file.to_string(),
+                                pointer: entry_pointer(&["parameters", "4"]),
+                                command_code: Some(code),
+                                detail: "Control Variables script-string operand is outside the typed script-command set; text semantics are unknown"
+                                    .to_string(),
+                            });
+                        }
+                    }
                 }
             }
             CodeClass::Script => {
-                acc.findings.push(Finding {
-                    kind: FindingKind::ScriptCommandText,
-                    file: file.to_string(),
-                    pointer: entry_pointer(&["parameters", "0"]),
-                    command_code: Some(code),
-                    detail: "Script command may render text via project scripts; manual review"
-                        .to_string(),
-                });
+                let script = params.and_then(|p| p.first()).and_then(Value::as_str);
+                match script.map(classify_script_command) {
+                    Some(ScriptCommandRecognition::Opaque(spec)) => {
+                        acc.push_opaque_command(
+                            file,
+                            entry_pointer(&["parameters", "0"]),
+                            code,
+                            OpaqueCommandFamily::Script,
+                            spec,
+                        );
+                    }
+                    _ => {
+                        acc.findings.push(Finding {
+                            kind: FindingKind::ScriptCommandText,
+                            file: file.to_string(),
+                            pointer: entry_pointer(&["parameters", "0"]),
+                            command_code: Some(code),
+                            detail: "Script command is outside the typed script-command set; text semantics are unknown"
+                                .to_string(),
+                        });
+                    }
+                }
             }
             CodeClass::Plugin => {
-                // Evidence-driven recognizer first: a KNOWN message-bearing
-                // plugin command (e.g. D_TEXT) extracts its display text as a
-                // unit keyed by the same `parameters/0` pointer; everything
-                // else stays a structured finding (no blind grab of engine
-                // control).
+                // Typed recognizer first: a KNOWN message-bearing plugin
+                // command (D_TEXT) extracts its display text as a unit keyed
+                // by the same `parameters/0` pointer. Known controls are
+                // recorded in the exact opaque census; only a command outside
+                // that census becomes a finding.
                 let param0 = params.and_then(|p| p.first()).and_then(Value::as_str);
-                match param0.and_then(|s| recognize_plugin_command(s).map(|rec| (s, rec))) {
-                    Some((text, rec)) => {
+                match param0.map(classify_plugin_command) {
+                    Some(PluginCommandRecognition::Translatable(rec)) => {
+                        let text = param0.expect("classification came from a string parameter");
                         acc.push_recognized_unit(
                             file,
                             entry_pointer(&["parameters", "0"]),
@@ -422,13 +496,22 @@ fn walk_command_list(acc: &mut ExtractAcc, file: &str, base: Vec<String>, list: 
                             rec.control_spans,
                         );
                     }
-                    None => {
+                    Some(PluginCommandRecognition::Opaque(spec)) => {
+                        acc.push_opaque_command(
+                            file,
+                            entry_pointer(&["parameters", "0"]),
+                            code,
+                            OpaqueCommandFamily::Plugin,
+                            spec,
+                        );
+                    }
+                    Some(PluginCommandRecognition::Unknown) | None => {
                         acc.findings.push(Finding {
                             kind: FindingKind::PluginCommandText,
                             file: file.to_string(),
                             pointer: entry_pointer(&["parameters"]),
                             command_code: Some(code),
-                            detail: "Plugin command not recognized as message-bearing; may render display text via an unknown plugin; manual review"
+                            detail: "Plugin command is outside the typed message-bearing and opaque command sets; text semantics are unknown"
                                 .to_string(),
                         });
                     }
@@ -738,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn recognized_d_text_plugin_extracts_unit_control_plugin_stays_finding() {
+    fn recognized_d_text_plugin_extracts_unit_and_typed_controls_leave_no_finding() {
         // Synthetic event list: a recognized D_TEXT (display text + size),
         // a D_TEXT_SETTING control command, and a screen-shake control
         // command. Only the D_TEXT becomes a translatable unit.
@@ -755,7 +838,8 @@ mod tests {
             list.as_array().unwrap(),
         );
 
-        // One recognized plugin-text unit; two control commands stay findings.
+        // One recognized plugin-text unit; two control commands enter the
+        // exact opaque census rather than a generic finding.
         assert_eq!(acc.units.len(), 1, "only D_TEXT extracts a unit");
         let unit = &acc.units[0];
         assert!(matches!(
@@ -786,20 +870,12 @@ mod tests {
             assert_eq!(&unit.text[span.start_byte..span.end_byte], span.raw);
         }
 
-        // Two control plugin commands surfaced as findings, never dropped,
+        // Two control plugin commands are typed opaque, never dropped and
         // never mis-extracted as units.
-        assert_eq!(
-            acc.findings
-                .iter()
-                .filter(|f| f.kind == FindingKind::PluginCommandText)
-                .count(),
-            2,
-        );
-        // Findings carry only structural description, never the command text.
-        for finding in &acc.findings {
-            assert!(!finding.detail.contains("ALIGN"));
-            assert!(!finding.detail.contains("P_SHAKE"));
-        }
+        assert_eq!(acc.opaque_commands.len(), 2);
+        assert!(acc.findings.is_empty());
+        assert_eq!(acc.opaque_commands[0].command, "D_TEXT_SETTING");
+        assert_eq!(acc.opaque_commands[1].command, "P_SHAKE");
     }
 
     #[test]
