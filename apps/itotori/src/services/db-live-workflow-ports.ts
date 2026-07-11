@@ -20,6 +20,8 @@
 //     run config resolves) or returns an in-band DOMAIN refusal (not a thrown
 //     misconfiguration) for the pure-HTTP install that carries no game bytes.
 
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { AuthorizationActor, ItotoriProjectRepositoryPort } from "@itotori/db";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import {
@@ -39,6 +41,8 @@ import type {
   LaunchLocalizationPassResult,
   LocalizationPassDriverPort,
 } from "./project-workflow.js";
+import { runLocalizeFullProjectLive } from "../orchestrator/localize-fullproject-cli.js";
+import type { LocalizeFullProjectIo } from "../orchestrator/localize-fullproject-command.js";
 
 // ---------------------------------------------------------------------------
 // Draft provider — deferred, pinned-pair live OpenRouter.
@@ -142,6 +146,12 @@ export function createDbBackedDraftModelProvider(
 export type DbBackedPassRunConfig = {
   configPath: string;
   runDir: string;
+  /** Registered operator-local extracted game root. */
+  dataRoot?: string;
+  /** Registered pair-policy source and its pinned pair. */
+  pairPolicyPath?: string;
+  modelId?: string;
+  providerId?: string;
   sourceRoot?: string;
   patchTargetRoot?: string;
 };
@@ -222,4 +232,126 @@ export function createDbBackedLocalizationPassDriver(
   deps: DbBackedLocalizationPassDriverDeps,
 ): DbBackedLocalizationPassDriver {
   return new DbBackedLocalizationPassDriver(deps);
+}
+
+/**
+ * The production runLive binding used by `withDatabaseItotoriServices`.
+ * It calls the same live whole-project runner as the `localize-fullproject`
+ * CLI, then adapts its persisted pass record to the launch-pass result. The
+ * registry's pair is materialized into a run-local policy/config copy so a
+ * later edit to an operator's source policy cannot silently change a registered
+ * Studio launch.
+ */
+export function createDbBackedLivePassRunner(): NonNullable<
+  DbBackedLocalizationPassDriverDeps["runLive"]
+> {
+  return async (registered, input) => {
+    const io = nodeJsonFileStore;
+    const prepared = materializeRegisteredRunConfig(registered, input, io);
+    const result = await runLocalizeFullProjectLive({
+      configPath: prepared.configPath,
+      runDir: prepared.runDir,
+      io,
+      ...(prepared.sourceRoot !== undefined ? { sourceRoot: prepared.sourceRoot } : {}),
+      ...(prepared.patchTargetRoot !== undefined
+        ? { patchTargetRoot: prepared.patchTargetRoot }
+        : {}),
+    });
+    return {
+      outcome: "started",
+      passNumber: result.record.passNumber,
+      startedAt: result.record.recordedAt,
+    };
+  };
+}
+
+const nodeJsonFileStore: LocalizeFullProjectIo = {
+  readJson: (path) => JSON.parse(readFileSync(path, "utf8")) as unknown,
+  writeJson: (path, value) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  },
+};
+
+function materializeRegisteredRunConfig(
+  registered: DbBackedPassRunConfig,
+  input: LaunchLocalizationPassInput & { actor: AuthorizationActor },
+  io: LocalizeFullProjectIo,
+): DbBackedPassRunConfig {
+  const hasPinnedPair =
+    registered.pairPolicyPath !== undefined &&
+    registered.modelId !== undefined &&
+    registered.providerId !== undefined &&
+    registered.dataRoot !== undefined;
+  if (!hasPinnedPair) {
+    return registered;
+  }
+  const dataRoot = registered.dataRoot;
+  const pairPolicyPath = registered.pairPolicyPath;
+  const modelId = registered.modelId;
+  const providerId = registered.providerId;
+  if (
+    dataRoot === undefined ||
+    pairPolicyPath === undefined ||
+    modelId === undefined ||
+    providerId === undefined
+  ) {
+    return registered;
+  }
+
+  const rawConfig = asRecord(io.readJson(registered.configPath));
+  const rawPolicy = io.readJson(pairPolicyPath);
+  const pinnedPolicyPath = join(registered.runDir, "launch-pass.pair-policy.json");
+  io.writeJson(
+    pinnedPolicyPath,
+    pinPairPolicy(rawPolicy, {
+      modelId,
+      providerId,
+    }),
+  );
+  const launchConfigPath = join(registered.runDir, "launch-pass.config.json");
+  io.writeJson(launchConfigPath, {
+    ...rawConfig,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    dataRoot,
+    pairPolicyPath: pinnedPolicyPath,
+  });
+  return {
+    ...registered,
+    configPath: launchConfigPath,
+    sourceRoot: dataRoot,
+    // A Studio launch owns its run directory's patch output; the registered
+    // source root stays read-only.
+    patchTargetRoot: registered.patchTargetRoot ?? join(registered.runDir, "patched-game"),
+  };
+}
+
+function pinPairPolicy(
+  value: unknown,
+  pair: { modelId: string; providerId: string },
+  root = true,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => pinPairPolicy(entry, pair, false));
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    result[key] = key === "pair" ? { ...pair } : pinPairPolicy(entry, pair, false);
+  }
+  if (root && !("pair" in result)) {
+    result.pair = { ...pair };
+  }
+  return result;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("registered localization pass config must contain a JSON object");
+  }
+  return value as Record<string, unknown>;
 }

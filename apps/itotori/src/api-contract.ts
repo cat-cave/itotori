@@ -767,6 +767,38 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: false,
     }),
+  ApiLocalizationRunConfigResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLocalizationRunConfigResponse,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        configPath: str,
+        dataRoot: str,
+        pairPolicyPath: str,
+        modelId: str,
+        providerId: str,
+        runDir: str,
+        updatedAt: str,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.settings.localization-run-config.v0",
+    }),
+  ApiSaveLocalizationRunConfigRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiSaveLocalizationRunConfigRequest,
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        configPath: str,
+        dataRoot: str,
+        pairPolicyPath: str,
+        modelId: str,
+        providerId: str,
+        runDir: str,
+      },
+      additionalProperties: false,
+    }),
   ApiConfigureAuthSsoSettingsRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiConfigureAuthSsoSettingsRequest,

@@ -859,6 +859,54 @@
       ],
       "type": "object"
     },
+    "ApiLocalizationRunConfigResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "configPath": {
+          "type": "string"
+        },
+        "dataRoot": {
+          "type": "string"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "pairPolicyPath": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "runDir": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.settings.localization-run-config.v0"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "configPath",
+        "dataRoot",
+        "localeBranchId",
+        "modelId",
+        "pairPolicyPath",
+        "projectId",
+        "providerId",
+        "runDir",
+        "schemaVersion",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
     "ApiMemberInvitationResponse": {
       "additionalProperties": false,
       "properties": {
@@ -2129,6 +2177,46 @@
         "policy",
         "projectId",
         "updateReason"
+      ],
+      "type": "object"
+    },
+    "ApiSaveLocalizationRunConfigRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "configPath": {
+          "type": "string"
+        },
+        "dataRoot": {
+          "type": "string"
+        },
+        "localeBranchId": {
+          "type": "string"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "pairPolicyPath": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "runDir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "configPath",
+        "dataRoot",
+        "localeBranchId",
+        "modelId",
+        "pairPolicyPath",
+        "projectId",
+        "providerId",
+        "runDir"
       ],
       "type": "object"
     },

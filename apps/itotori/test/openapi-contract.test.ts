@@ -43,6 +43,7 @@ import {
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
   catalogOpportunitiesFixture,
+  localizationRunConfigFixture,
   costDrilldownFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -138,6 +139,7 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
     units: [],
     diagnostics: [],
   },
+  "settings.localizationRunConfig.save": localizationRunConfigFixture,
   "imports.bridge": bridgeImportResponseFixture,
   "branches.draft": draftBranchResponseFixture,
   "findings.record": recordFindingResponseFixture,
@@ -383,19 +385,20 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 64 routes (no route left un-teethed)", () => {
-    // 60 routes: each has a response body; the mutation + reviewer/workspace
+  it("covers a body for every one of the 65 routes (no route left un-teethed)", () => {
+    // Every route has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
     // bmk-cockpit contributes two GET read models; play-mark-validated adds
     // the scene coverage GET + POST pair; play-routemap-ui adds routeMap;
     // play-flag-composer adds flagAnnotation; model-routing and branch-policy
     // settings each add a GET + POST settings pair; translation-scope-
-    // configuration-ui adds a third GET + POST settings pair.
+    // configuration-ui adds a third GET + POST settings pair; localization
+    // run-config adds the scoped registration mutation.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(64);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(65);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

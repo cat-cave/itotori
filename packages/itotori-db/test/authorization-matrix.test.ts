@@ -57,6 +57,7 @@ import { ItotoriSceneCoverageRepository } from "../src/repositories/scene-covera
 import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
+import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
 import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
@@ -1257,6 +1258,12 @@ const repositoryPermissionGateMatrix = [
         localeBranchId: "locale-branch-denied",
         scope: "dialogue-only",
       }),
+  ),
+  localizationPassRunConfigGate(
+    "saveRunConfig",
+    "draftWrite",
+    "localization-pass-run-config-repository.test.ts save coverage",
+    (repo) => repo.saveRunConfig(deniedActor, undefined as never),
   ),
   authSessionServiceGate(
     "listPrincipalSessions",
@@ -2488,6 +2495,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationPassRunConfigRepository.saveRunConfig",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-pass-run-config-repository.test.ts save coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuthSessionService.listPrincipalSessions",
           "requiredPermission": "auth.sessions.manage",
           "successFixture": "auth-session-service.test.ts list principal sessions coverage",
@@ -3385,6 +3398,22 @@ function translationScopeSettingsGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTranslationScopeSettingsRepository(db)),
+  });
+}
+
+function localizationPassRunConfigGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriLocalizationPassRunConfigRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriLocalizationPassRunConfigRepository",
+    sourceFile: "localization-pass-run-config-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriLocalizationPassRunConfigRepository(db)),
   });
 }
 

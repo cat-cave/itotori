@@ -424,6 +424,17 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiSaveTranslationScopeSettingsRequest",
     responseSchema: "ApiTranslationScopeSettingsResponse",
   },
+  "settings.localizationRunConfig.save": {
+    method: "POST",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/localization-run-config",
+    operationId: "settingsLocalizationRunConfigSave",
+    summary:
+      "Register the operator-local config, data root, pinned model/provider pair, and run directory for launch-pass.",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiSaveLocalizationRunConfigRequest",
+    responseSchema: "ApiLocalizationRunConfigResponse",
+  },
   "auth.ssoSettings.configure": {
     method: "POST",
     pathTemplate: "/api/settings/security/sso",
