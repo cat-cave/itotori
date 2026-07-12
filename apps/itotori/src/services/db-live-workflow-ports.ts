@@ -237,8 +237,8 @@ export function createDbBackedLocalizationPassDriver(
 /**
  * The production runLive binding used by `withDatabaseItotoriServices`.
  * It calls the same live whole-project runner as the `localize-fullproject`
- * CLI, then adapts its persisted pass record to the launch-pass result. The
- * registry's pair is materialized into a run-local policy/config copy so a
+ * CLI, then adapts its durable journal run to the launch result. The registry's
+ * pair is materialized into a run-local policy/config copy so a
  * later edit to an operator's source policy cannot silently change a registered
  * Studio launch.
  */
@@ -248,6 +248,7 @@ export function createDbBackedLivePassRunner(): NonNullable<
   return async (registered, input) => {
     const io = nodeJsonFileStore;
     const prepared = materializeRegisteredRunConfig(registered, input, io);
+    const startedAt = new Date();
     const result = await runLocalizeFullProjectLive({
       configPath: prepared.configPath,
       runDir: prepared.runDir,
@@ -259,8 +260,8 @@ export function createDbBackedLivePassRunner(): NonNullable<
     });
     return {
       outcome: "started",
-      passNumber: result.record.passNumber,
-      startedAt: result.record.recordedAt,
+      journalRunId: result.result.journalRunId,
+      startedAt,
     };
   };
 }

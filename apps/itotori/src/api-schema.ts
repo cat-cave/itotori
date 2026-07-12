@@ -697,7 +697,13 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   // ovw-launch-pass-action — the typed launch-pass response envelope. The
   // schemaVersion const pins the wire shape; a renamed / leaked field fails a
   // contract test instead of silently drifting.
-  ApiLaunchPassResponse: ["schemaVersion", "outcome", "passNumber", "startedAt", "refusalMessage"],
+  ApiLaunchPassResponse: [
+    "schemaVersion",
+    "outcome",
+    "journalRunId",
+    "startedAt",
+    "refusalMessage",
+  ],
   // play-routemap-ui — route/choice tree envelope.
   ApiPlayRouteMapResponse: [
     "schemaVersion",
@@ -1345,17 +1351,17 @@ export type ApiLaunchPassRequest = {
 /**
  * ovw-launch-pass-action — response body for the launch-pass mutation. A thin,
  * driver-agnostic confirmation the UI can render after a click: a typed
- * `outcome` (`started` / `refused`) plus the launched pass number + start
- * timestamp (on `started`) or a refusal reason (on `refused`). A refused launch
- * is surfaced in-band so the Overview strip renders it like any driver
+ * `outcome` (`started` / `refused`) plus the durable journal run identity +
+ * start timestamp (on `started`) or a refusal reason (on `refused`). A refused
+ * launch is surfaced in-band so the Overview strip renders it like any driver
  * response, never as a silent success.
  */
 export type ApiLaunchPassResponse = {
-  schemaVersion: "itotori.projects.launch-pass.v0";
-  /** The driver outcome: the pass was started, or the driver refused it. */
+  schemaVersion: "itotori.projects.launch-pass.v1";
+  /** The driver outcome: the journal run was started, or the driver refused it. */
   outcome: "started" | "refused";
-  /** The pass number that was launched (> 0) on `started`; `null` on `refused`. */
-  passNumber: number | null;
+  /** The immutable journal run id on `started`; `null` on `refused`. */
+  journalRunId: string | null;
   /** ISO timestamp the pass was started on `started`; `null` on `refused`. */
   startedAt: string | null;
   /** Refusal reason (non-empty) on `refused`; `null` on `started`. */
@@ -7206,9 +7212,9 @@ function assertAuthSessionRecord(
 
 // ovw-launch-pass-action — assert the launch-pass response envelope. The
 // schemaVersion literal pins the wire shape; `outcome` pins to started/refused.
-// A `started` outcome MUST carry a positive pass number + a start timestamp and
+// A `started` outcome MUST carry a journal run identity + start timestamp and
 // no refusal; a `refused` outcome MUST carry a non-empty refusal message and
-// null pass/timestamp — so a refused launch can NEVER masquerade as a started
+// null run/timestamp — so a refused launch can NEVER masquerade as a started
 // one (or as a silent 200 with empty fields).
 function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPassResponse {
   const response = asStrictRecord(
@@ -7218,17 +7224,17 @@ function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPas
   );
   assertLiteral(
     response.schemaVersion,
-    "itotori.projects.launch-pass.v0",
+    "itotori.projects.launch-pass.v1",
     "ApiLaunchPassResponse.schemaVersion",
   );
   assertEnum(response.outcome, ["started", "refused"] as const, "ApiLaunchPassResponse.outcome");
   if (response.outcome === "started") {
-    assertPositiveInteger(response.passNumber, "ApiLaunchPassResponse.passNumber");
+    assertString(response.journalRunId, "ApiLaunchPassResponse.journalRunId");
     assertString(response.startedAt, "ApiLaunchPassResponse.startedAt");
     assertNull(response.refusalMessage, "ApiLaunchPassResponse.refusalMessage");
     return;
   }
-  assertNull(response.passNumber, "ApiLaunchPassResponse.passNumber");
+  assertNull(response.journalRunId, "ApiLaunchPassResponse.journalRunId");
   assertNull(response.startedAt, "ApiLaunchPassResponse.startedAt");
   assertString(response.refusalMessage, "ApiLaunchPassResponse.refusalMessage");
 }

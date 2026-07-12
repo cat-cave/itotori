@@ -320,7 +320,7 @@ export async function runLocalizeGameCommand(
     );
   }
   log(
-    `[localize-game] stage 3/4 localize done (units=${localize.result.unitsRun} written=${localize.result.writtenOutcomeCount} cost=$${localize.result.totalUsageCostUsd} patched=${args.targetRoot})`,
+    `[localize-game] stage 3/4 localize done (units=${localize.result.unitsRun} written=${localize.result.writtenOutcomeCount} cost=$${localize.result.totalUsageCostExactUsd} patched=${args.targetRoot})`,
   );
 
   // -------- Stage 4: VALIDATE the patched target (utsushi replay + render) ----

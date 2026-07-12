@@ -35,9 +35,9 @@ import {
   type NarrativeStructure,
 } from "../src/agents/structure-informed-context/index.js";
 import type {
-  DrivenWrittenOutcomeRecord,
+  DrivenFailedUnitJournalRecord,
   DrivenPatchExportRecord,
-  DrivenProviderRunRecord,
+  DrivenUnitJournalRecord,
   DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
@@ -78,17 +78,15 @@ const PRIOR_FEEDBACK_PROMPT_MARKER = "Prior pass feedback";
 // ---------------------------------------------------------------------------
 
 class InMemorySinks {
-  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
-  readonly providerRuns: DrivenProviderRunRecord[] = [];
+  readonly journalUnits: DrivenUnitJournalRecord[] = [];
+  readonly failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly writtenOutcome = {
-    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
-      this.writtenOutcomes.push(record);
+  readonly journal = {
+    persistUnitJournal: async (record: DrivenUnitJournalRecord): Promise<void> => {
+      this.journalUnits.push(record);
     },
-  };
-  readonly providerRun = {
-    persistProviderRun: async (record: DrivenProviderRunRecord): Promise<void> => {
-      this.providerRuns.push(record);
+    persistFailedUnitAttempts: async (record: DrivenFailedUnitJournalRecord): Promise<void> => {
+      this.failedUnitAttempts.push(record);
     },
   };
   readonly patchExport = {

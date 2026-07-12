@@ -33,17 +33,17 @@ const LAUNCH_PATH = "*/api/projects/:projectId/launch-pass";
 const OVERVIEW_PATH = "*/api/projects/overview";
 
 const startedResponse: ApiLaunchPassResponse = {
-  schemaVersion: "itotori.projects.launch-pass.v0",
+  schemaVersion: "itotori.projects.launch-pass.v1",
   outcome: "started",
-  passNumber: 7,
+  journalRunId: "localization-journal-run-7",
   startedAt: "2026-07-08T00:00:00.000Z",
   refusalMessage: null,
 };
 
 const refusedResponse: ApiLaunchPassResponse = {
-  schemaVersion: "itotori.projects.launch-pass.v0",
+  schemaVersion: "itotori.projects.launch-pass.v1",
   outcome: "refused",
-  passNumber: null,
+  journalRunId: null,
   startedAt: null,
   refusalMessage: "a pass is already running for this branch",
 };
@@ -108,13 +108,13 @@ describe("ovw-launch-pass-action — LaunchPassAction", () => {
     expect(observed.url).toContain("/api/projects/project-1/launch-pass");
     expect(observed.body).toEqual({ localeBranchId: "locale-1" });
     // The started outcome is surfaced in-strip (and as a shell toast). Use
-    // the launch-pass marker so the toast's "Pass 7 started." copy does not
+    // the launch-pass marker so the toast's journal-run copy does not
     // collide with a free-text getByText.
     await waitFor(() => {
       expect(document.querySelector('[data-launch-pass="started"]')).not.toBeNull();
     });
     expect(document.querySelector('[data-launch-pass="started"]')).toHaveTextContent(
-      /Pass 7 started/i,
+      /Journal localization-journal-run-7 started/i,
     );
   });
 

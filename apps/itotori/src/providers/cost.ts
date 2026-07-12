@@ -244,6 +244,27 @@ export function addDecimalUsd(a: string, b: string): string {
 }
 
 /**
+ * Compare two non-negative decimal-USD strings without converting either to a
+ * JavaScript number. This is the companion to {@link addDecimalUsd} for
+ * dispatch gates: provider charges and persisted journal totals stay exact
+ * even when they carry more fractional digits than a floating-point value can
+ * represent safely.
+ */
+export function compareDecimalUsd(a: string, b: string): -1 | 0 | 1 {
+  const av = decimalUsdStringCanonical(a);
+  const bv = decimalUsdStringCanonical(b);
+  const [aWhole, aFrac = ""] = av.split(".");
+  const [bWhole, bFrac = ""] = bv.split(".");
+  const scale = Math.max(aFrac.length, bFrac.length);
+  const aScaled = BigInt(aWhole + aFrac.padEnd(scale, "0"));
+  const bScaled = BigInt(bWhole + bFrac.padEnd(scale, "0"));
+  if (aScaled === bScaled) {
+    return 0;
+  }
+  return aScaled < bScaled ? -1 : 1;
+}
+
+/**
  * Constant for the canonical zero-cost shape. Used by failure paths
  * (failed HTTP, network errors, response validation errors) where no
  * upstream charge occurred.

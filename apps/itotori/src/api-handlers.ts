@@ -1228,23 +1228,23 @@ async function routeItotoriApiRequest(
 
 /**
  * ovw-launch-pass-action — map the driver outcome to the typed wire envelope.
- * A `refused` outcome is surfaced in-band (null pass/timestamp + the reason) so
+ * A `refused` outcome is surfaced in-band (null journal-run/timestamp + the reason) so
  * the Overview strip renders it like any driver response, never a silent 200.
  */
 function launchPassResponseBody(outcome: LaunchLocalizationPassResult): ApiLaunchPassResponse {
   if (outcome.outcome === "started") {
     return {
-      schemaVersion: "itotori.projects.launch-pass.v0",
+      schemaVersion: "itotori.projects.launch-pass.v1",
       outcome: "started",
-      passNumber: outcome.passNumber,
+      journalRunId: outcome.journalRunId,
       startedAt: outcome.startedAt.toISOString(),
       refusalMessage: null,
     };
   }
   return {
-    schemaVersion: "itotori.projects.launch-pass.v0",
+    schemaVersion: "itotori.projects.launch-pass.v1",
     outcome: "refused",
-    passNumber: null,
+    journalRunId: null,
     startedAt: null,
     refusalMessage: outcome.refusalMessage,
   };

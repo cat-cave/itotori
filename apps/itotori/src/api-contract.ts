@@ -1250,7 +1250,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassResponse,
       properties: { outcome: { enum: ["started", "refused"] } },
       additionalProperties: false,
-      schemaVersion: "itotori.projects.launch-pass.v0",
+      schemaVersion: "itotori.projects.launch-pass.v1",
     }),
 
   // play-routemap-ui — route/choice tree envelope -------------------------

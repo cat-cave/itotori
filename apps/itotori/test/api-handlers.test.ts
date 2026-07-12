@@ -4330,9 +4330,9 @@ describe("Itotori API handlers", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.body).toEqual({
-        schemaVersion: "itotori.projects.launch-pass.v0",
+        schemaVersion: "itotori.projects.launch-pass.v1",
         outcome: "started",
-        passNumber: 3,
+        journalRunId: "localization-journal-run-test",
         startedAt: "2026-07-08T00:00:00.000Z",
         refusalMessage: null,
       });
@@ -4360,7 +4360,7 @@ describe("Itotori API handlers", () => {
       expect(services.projectWorkflow.launchNextLocalizationPass).not.toHaveBeenCalled();
     });
 
-    it("surfaces a driver refusal in-band (outcome refused, null pass/timestamp)", async () => {
+    it("surfaces a driver refusal in-band (outcome refused, null journal-run/timestamp)", async () => {
       const services = serviceFixture();
       services.projectWorkflow.launchNextLocalizationPass.mockResolvedValueOnce({
         outcome: "refused",
@@ -4374,9 +4374,9 @@ describe("Itotori API handlers", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.body).toEqual({
-        schemaVersion: "itotori.projects.launch-pass.v0",
+        schemaVersion: "itotori.projects.launch-pass.v1",
         outcome: "refused",
-        passNumber: null,
+        journalRunId: null,
         startedAt: null,
         refusalMessage: "a pass is already running for this branch",
       });
@@ -5060,11 +5060,11 @@ function serviceFixture(): ItotoriApiServices {
         project: projectFixture,
         result: runtimeIngestResultFixture,
       })),
-      // ovw-launch-pass-action — the mocked pass driver returns a `started`
+      // ovw-launch-pass-action — the mocked journal driver returns a `started`
       // outcome so the launch-pass route resolves 200 with a valid envelope.
       launchNextLocalizationPass: vi.fn(async () => ({
         outcome: "started" as const,
-        passNumber: 3,
+        journalRunId: "localization-journal-run-test",
         startedAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },

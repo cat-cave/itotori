@@ -836,22 +836,22 @@
       "ApiLaunchPassResponse": {
         "additionalProperties": false,
         "properties": {
+          "journalRunId": {},
           "outcome": {
             "enum": [
               "started",
               "refused"
             ]
           },
-          "passNumber": {},
           "refusalMessage": {},
           "schemaVersion": {
-            "const": "itotori.projects.launch-pass.v0"
+            "const": "itotori.projects.launch-pass.v1"
           },
           "startedAt": {}
         },
         "required": [
+          "journalRunId",
           "outcome",
-          "passNumber",
           "refusalMessage",
           "schemaVersion",
           "startedAt"

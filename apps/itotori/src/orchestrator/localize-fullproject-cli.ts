@@ -1,9 +1,9 @@
 // itotori-localize-fullproject-cli — LIVE wiring for `itotori localize`.
 //
 // Binds the pure whole-project driver (`runLocalizeFullProjectCommand`) to real
-// production dependencies: a live Postgres context (draft-job + provider-ledger
-// + reviewer-queue + pass-ledger repositories), the DB-backed pass ledger
-// adapter, on-disk patch export, and the LIVE OpenRouter provider (ZDR-routed).
+// production dependencies: a live Postgres context (attempt/outcome journal +
+// reviewer-queue repositories), on-disk patch export, and the LIVE OpenRouter
+// provider (ZDR-routed).
 // This is what the `localize` CLI subcommand invokes.
 //
 // Privacy gate: the OpenRouter account-wide ZDR posture is asserted BEFORE any
@@ -18,9 +18,7 @@
 import { join } from "node:path";
 import {
   ItotoriAssetLocalizationDecisionRepository,
-  ItotoriDraftAttemptProviderLedgerRepository,
-  ItotoriDraftJobRepository,
-  ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
   ItotoriTranslationScopeSettingsRepository,
@@ -38,10 +36,9 @@ import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
 import { liveOpenRouterFactory } from "./localize-project-stage-command.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
 import {
-  DrivenDbPersistenceAdapter,
+  DrivenJournalPersistenceAdapter,
   FsDrivenPatchExportSink,
 } from "./project-driven-executor-sinks.js";
-import { DbPassLedger } from "./pass-ledger-db-adapter.js";
 import {
   parseLocalizeFullProjectConfig,
   runLocalizeFullProjectCommand,
@@ -172,14 +169,14 @@ export function assertWholeGamePatchCoverage(
 /**
  * Run `itotori localize <project>` against LIVE OpenRouter + real Postgres.
  * Asserts the account ZDR posture, stands up the repositories, and drives the
- * whole project through the multi-pass ledger. Tears the DB context down in a
- * `finally` so a failure never leaks a connection.
+ * whole project through its durable attempt/outcome journal. Tears the DB
+ * context down in a `finally` so a failure never leaks a connection.
  *
  * itotori-agent-facing-pipeline-failure-diagnostics — every step failure here
  * is wrapped in a `PipelineFailureDiagnosticError` so the CLI surfaces a
  * structured diagnostic (step + inputs + repro) instead of a bare `Error`. The
  * top-level try/catch rethrows any NON-diagnostic error as a structured
- * diagnostic tagged `localize.run-pass` so a driving agent never sees an
+ * diagnostic tagged `localize.run-journal` so a driving agent never sees an
  * unstructured throw.
  */
 export async function runLocalizeFullProjectLive(
@@ -224,12 +221,10 @@ export async function runLocalizeFullProjectLive(
     await bootstrapLocalUser(context.db);
     const actor: AuthorizationActor = { userId: localUserId };
 
-    // wholegame-localize-project-provisioning — the driven executor persists
-    // draft jobs (FK -> itotori_projects + itotori_locale_branches) and the
-    // pass ledger persists a row (FK -> ... + itotori_source_revisions) keyed
-    // on this run's config identity. Those parent rows are NOT created anywhere
-    // else in the whole-game path, so the first live draft-job batch violated
-    // the FK. Provision the identity graph idempotently BEFORE any live persist.
+    // The durable journal run is FK-bound to the project / locale branch /
+    // source revision identity. Those parent rows are not created elsewhere in
+    // the whole-game path, so provision the graph idempotently before writing
+    // the first physical provider attempt.
     // The source locale comes from the run's bridge bundle, so this is
     // game-agnostic (no hardcoded locale / no per-game special-casing).
     const projectRepo = new ItotoriProjectRepository(context.db);
@@ -237,7 +232,7 @@ export async function runLocalizeFullProjectLive(
       step: "localize.provision-project-scope",
       code: "unknown",
       message:
-        "localize-live: provision-project-scope failed: could not upsert the project / locale-branch / source-revision graph the draft-job + pass-ledger FKs require",
+        "localize-live: provision-project-scope failed: could not upsert the project / locale-branch / source-revision graph the journal FKs require",
       inputs: {
         configPath: args.configPath,
         bridgePath: config.bridgePath,
@@ -261,10 +256,8 @@ export async function runLocalizeFullProjectLive(
         }),
     });
 
-    const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-    const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+    const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
     const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-    const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
     const assetDecisionRepo = new ItotoriAssetLocalizationDecisionRepository(context.db);
     // itotori-translation-scope-configuration-ui — the SAME repository the
     // `settings.translationScope.save` API route persists through, so a
@@ -273,11 +266,8 @@ export async function runLocalizeFullProjectLive(
     // `translationScope`.
     const translationScopeSettingsRepo = new ItotoriTranslationScopeSettingsRepository(context.db);
 
-    const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-      projectId: config.projectId,
-      localeBranchId: config.localeBranchId,
+    const dbAdapter = new DrivenJournalPersistenceAdapter(journalRepo, {
       actor,
-      pair,
     });
     const patchSink = new FsDrivenPatchExportSink(args.runDir);
     const artifactRecorder = new LocalProviderRunArtifactRecorder(
@@ -290,9 +280,9 @@ export async function runLocalizeFullProjectLive(
     let patchApply: WholeGamePatchExportAndApplyResult | undefined;
 
     const passResult = await runPipelineStepWithDiagnostic({
-      step: "localize.run-pass",
+      step: "localize.run-journal",
       code: "unknown",
-      message: `localize-live: run-pass failed: the driven executor / pass-ledger step aborted`,
+      message: `localize-live: run-journal failed: the driven executor / journal step aborted`,
       inputs: {
         configPath: args.configPath,
         bridgePath: config.bridgePath,
@@ -318,8 +308,7 @@ export async function runLocalizeFullProjectLive(
             io: args.io,
             actor,
             providerFactory,
-            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-            passLedger: new DbPassLedger(passLedgerRepo),
+            sinks: { journal: dbAdapter, patchExport: patchSink },
             reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {
               resolveScope: (projectId, localeBranchId) =>
@@ -363,8 +352,7 @@ export async function runLocalizeFullProjectLive(
                         runWholeGamePatchExportAndApply({
                           actor,
                           engineProfile: config.engineProfile,
-                          draftJobs: draftJobRepo,
-                          ledger: ledgerRepo,
+                          journal: journalRepo,
                           patchReport: result.patchReport,
                           rawBridge,
                           sourceRoot,
@@ -427,7 +415,7 @@ export async function runLocalizeFullProjectLive(
             repro: error.diagnostic.repro,
           }
         : {
-            step: "localize.run-pass" as const,
+            step: "localize.run-journal" as const,
             error: redactDiagnosticError(error),
             repro: {
               configPath: args.configPath,
@@ -463,9 +451,9 @@ export async function runLocalizeFullProjectLive(
     // bare `Error`. Step is the most general one — the message preserves the
     // original error class + scrubbed message for triage.
     throw await runPipelineStepWithDiagnostic({
-      step: "localize.run-pass",
+      step: "localize.run-journal",
       code: "unknown",
-      message: `localize-live: run-pass failed: ${error instanceof Error ? error.message : String(error)}`,
+      message: `localize-live: run-journal failed: ${error instanceof Error ? error.message : String(error)}`,
       inputs: {
         configPath: args.configPath,
         bridgePath: config.bridgePath,

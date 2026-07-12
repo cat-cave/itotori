@@ -180,13 +180,12 @@ export type LaunchLocalizationPassInput = {
 
 /**
  * ovw-launch-pass-action — the driver outcome of a launch. `started` carries
- * the launched pass number + the start time; `refused` carries a human reason
- * (e.g. a pass already running, no prior state to fold, a budget cap). A
- * refusal is a DOMAIN outcome (surfaced in-band), distinct from a thrown error
- * (misconfiguration / permission).
+ * the immutable durable journal run identity + start time; `refused` carries a
+ * human reason. A refusal is a DOMAIN outcome (surfaced in-band), distinct
+ * from a thrown error (misconfiguration / permission).
  */
 export type LaunchLocalizationPassResult =
-  | { outcome: "started"; passNumber: number; startedAt: Date }
+  | { outcome: "started"; journalRunId: string; startedAt: Date }
   | { outcome: "refused"; refusalMessage: string };
 
 /**

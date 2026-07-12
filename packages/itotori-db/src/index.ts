@@ -982,6 +982,31 @@ export type {
   RecordLocalizationPassInput,
 } from "./repositories/localization-pass-ledger-repository.js";
 export {
+  ItotoriLocalizationJournalRepository,
+  LocalizationJournalRepositoryError,
+} from "./repositories/localization-journal-repository.js";
+export type {
+  CreateLocalizationJournalRunInput,
+  ItotoriLocalizationJournalRepositoryPort,
+  LocalizationJournalAttemptRecord,
+  LocalizationJournalAttemptRetryDecision,
+  LocalizationJournalAttemptValidationResult,
+  LocalizationJournalOutcomeContextRef,
+  LocalizationJournalOutcomeContextRefInput,
+  LocalizationJournalOutcomeRecord,
+  LocalizationJournalQaDetail,
+  LocalizationJournalQaDetailsByFindingId,
+  LocalizationJournalRunRecord,
+  LocalizationJournalTimestamp,
+  PersistLocalizationJournalAttemptInput,
+  PersistLocalizationJournalAttemptsInput,
+  PersistLocalizationJournalUnitInput,
+} from "./repositories/localization-journal-repository.js";
+export type {
+  LocalizationJournalOutcomeContextRefDetails,
+  LocalizationJournalQaSpan,
+} from "./schema.js";
+export {
   BENCHMARK_RUN_DEFAULT_LIMIT,
   BENCHMARK_RUN_MAX_LIMIT,
   BenchmarkRunRepositoryError,

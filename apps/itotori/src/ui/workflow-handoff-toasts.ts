@@ -15,13 +15,13 @@ import { useToast } from "./toast-host.js";
 
 /**
  * The workflow handoffs that must surface a toast. Game-agnostic: severity /
- * category / pass numbers are data, never a title.
+ * category / journal run identities are data, never a title.
  */
 export type WorkflowHandoff =
   | { kind: "flag-sent"; severity: string; category: string }
   | { kind: "approved" }
   | { kind: "correction-queued"; nextPass?: number }
-  | { kind: "pass-launched"; passNumber: number; unitCount?: number };
+  | { kind: "pass-launched"; journalRunId: string; unitCount?: number };
 
 export type WorkflowHandoffToast = {
   message: string;
@@ -59,10 +59,11 @@ export function describeWorkflowHandoff(handoff: WorkflowHandoff): WorkflowHando
       };
     case "pass-launched": {
       const n = handoff.unitCount;
+      const runLabel = compactJournalRunId(handoff.journalRunId);
       const body =
         n === undefined
-          ? `Pass ${handoff.passNumber} started.`
-          : `Pass ${handoff.passNumber} started — re-drafting ${n} corrected ${n === 1 ? "unit" : "units"}…`;
+          ? `Journal ${runLabel} started.`
+          : `Journal ${runLabel} started — drafting ${n} corrected ${n === 1 ? "unit" : "units"}…`;
       return {
         kind: "pass-launched",
         tone: "neutral",
@@ -70,6 +71,13 @@ export function describeWorkflowHandoff(handoff: WorkflowHandoff): WorkflowHando
       };
     }
   }
+}
+
+function compactJournalRunId(journalRunId: string): string {
+  if (journalRunId.length <= 32) {
+    return journalRunId;
+  }
+  return `${journalRunId.slice(0, 20)}…${journalRunId.slice(-8)}`;
 }
 
 /**

@@ -137,7 +137,7 @@ export function PassLedgerPanelBody({
 // ---------------------------------------------------------------------------
 
 type LaunchPassOutcome =
-  | { kind: "started"; passNumber: number }
+  | { kind: "started"; journalRunId: string }
   | { kind: "refused"; message: string }
   | { kind: "error"; message: string };
 
@@ -208,11 +208,15 @@ function LaunchPassActionBody({
     });
     if (result.state === "ready") {
       if (result.data.outcome === "started") {
-        const passNumber = result.data.passNumber ?? 0;
-        setOutcome({ kind: "started", passNumber });
-        // shell-toasts — a started pass is a workflow handoff; surface it as
+        const journalRunId = result.data.journalRunId;
+        if (journalRunId === null) {
+          setOutcome({ kind: "error", message: "started response omitted journal run id" });
+          return;
+        }
+        setOutcome({ kind: "started", journalRunId });
+        // shell-toasts — a started journal run is a workflow handoff; surface it as
         // a legible toast in addition to the in-strip status.
-        notifyHandoff({ kind: "pass-launched", passNumber });
+        notifyHandoff({ kind: "pass-launched", journalRunId });
       } else {
         setOutcome({ kind: "refused", message: result.data.refusalMessage ?? "refused" });
       }
@@ -245,7 +249,7 @@ function LaunchPassActionBody({
       </button>
       {outcome?.kind === "started" && (
         <p role="status" data-launch-pass="started" className="itotori-launch-pass-action__status">
-          Pass {outcome.passNumber} started
+          Journal {outcome.journalRunId} started
         </p>
       )}
       {(outcome?.kind === "refused" || outcome?.kind === "error") && (

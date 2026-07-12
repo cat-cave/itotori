@@ -26,8 +26,7 @@ import {
   type LocalizationUnitV02,
 } from "@itotori/localization-bridge-schema";
 import {
-  ItotoriDraftAttemptProviderLedgerRepository,
-  ItotoriDraftJobRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriReviewerQueueRepository,
   ReviewerQueueRepositoryError,
   bootstrapLocalUser,
@@ -68,9 +67,9 @@ import {
   runProjectDrivenExecutor,
   synthesiseDrivenTranslatedBridge,
   unitSurfaceKindInScope,
-  type DrivenWrittenOutcomeRecord,
+  type DrivenFailedUnitJournalRecord,
   type DrivenPatchExportRecord,
-  type DrivenProviderRunRecord,
+  type DrivenUnitJournalRecord,
   type DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
@@ -79,7 +78,7 @@ import {
   type WorkCarve,
 } from "../src/agents/work-scope/index.js";
 import {
-  DrivenDbPersistenceAdapter,
+  DrivenJournalPersistenceAdapter,
   FsDrivenPatchExportSink,
 } from "../src/orchestrator/project-driven-executor-sinks.js";
 
@@ -170,17 +169,15 @@ class InMemoryReviewerQueue implements Pick<
 // --- In-memory persistence sinks --------------------------------------------
 
 class InMemorySinks {
-  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
-  readonly providerRuns: DrivenProviderRunRecord[] = [];
+  readonly journalUnits: DrivenUnitJournalRecord[] = [];
+  readonly failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly writtenOutcome = {
-    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
-      this.writtenOutcomes.push(record);
+  readonly journal = {
+    persistUnitJournal: async (record: DrivenUnitJournalRecord): Promise<void> => {
+      this.journalUnits.push(record);
     },
-  };
-  readonly providerRun = {
-    persistProviderRun: async (record: DrivenProviderRunRecord): Promise<void> => {
-      this.providerRuns.push(record);
+    persistFailedUnitAttempts: async (record: DrivenFailedUnitJournalRecord): Promise<void> => {
+      this.failedUnitAttempts.push(record);
     },
   };
   readonly patchExport = {
@@ -506,27 +503,58 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     // draft/deferred state.
     expect(result.writtenOutcomesPersisted).toBe(3);
     expect(result.writtenOutcomeCount).toBe(3);
-    expect(sinks.writtenOutcomes).toHaveLength(3);
-    for (const outcome of sinks.writtenOutcomes) {
+    expect(result.journalUnitsPersisted).toBe(3);
+    expect(sinks.journalUnits).toHaveLength(3);
+    for (const { writtenOutcome: outcome } of sinks.journalUnits) {
       expect(outcome.selectedBody.trim().length).toBeGreaterThan(0);
       const source = makeBridge().units.find(
         (unit) => unit.bridgeUnitId === outcome.bridgeUnitId,
       )!.sourceText;
       expect(outcome.selectedBody).not.toBe(source);
     }
-    const flagged = sinks.writtenOutcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B)!;
+    const flagged = sinks.journalUnits.find(
+      (journal) => journal.writtenOutcome.bridgeUnitId === UNIT_B,
+    )!.writtenOutcome;
     expect(flagged.outcome.findings.some((finding) => finding.severity === "critical")).toBe(true);
     expect(flagged.outcome.qualityFlags.length).toBeGreaterThan(0);
 
-    // Provider runs: one summary per run unit, real zdr:true from the policy.
-    expect(result.providerRunsPersisted).toBe(3);
-    expect(sinks.providerRuns).toHaveLength(3);
-    for (const run of sinks.providerRuns) {
-      expect(run.zdr).toBe(true);
-      expect(run.invocationCount).toBeGreaterThan(0);
-      expect(run.pair.modelId).toBe(DEV_PAIR.modelId);
-      expect(run.pair.providerId).toBe(DEV_PAIR.providerId);
+    // Every physical provider call, including the isolated failure's partial
+    // attempt sequence, reaches the durable journal with its real routing
+    // posture rather than a per-unit aggregate provider-run summary.
+    const persistedAttempts = [
+      ...sinks.journalUnits.flatMap((journal) => journal.attempts),
+      ...sinks.failedUnitAttempts.flatMap((journal) => journal.attempts),
+    ];
+    expect(result.attemptsPersisted).toBe(persistedAttempts.length);
+    expect(result.attemptsPersisted).toBeGreaterThan(result.journalUnitsPersisted);
+    for (const attempt of persistedAttempts) {
+      expect(attempt.zdr).toBe(true);
+      expect(attempt.modelId).toBe(DEV_PAIR.modelId);
+      expect(attempt.providerId).toBe(DEV_PAIR.providerId);
     }
+    const poisonAttempts = sinks.failedUnitAttempts.find(
+      (journal) => journal.bridgeUnitId === UNIT_D,
+    )!.attempts;
+    expect(
+      poisonAttempts
+        .filter((attempt) => attempt.stage === "context" || attempt.stage === "pre_translation")
+        .every(
+          (attempt) =>
+            attempt.validationResult === "accepted" && attempt.retryDecision === "advance",
+        ),
+    ).toBe(true);
+    const poisonTranslationAttempts = poisonAttempts.filter(
+      (attempt) => attempt.stage === "translation",
+    );
+    expect(poisonTranslationAttempts).toHaveLength(2);
+    expect(poisonTranslationAttempts[0]).toMatchObject({
+      validationResult: "schema_invalid",
+      retryDecision: "retry",
+    });
+    expect(poisonTranslationAttempts[1]).toMatchObject({
+      validationResult: "semantic_invalid",
+      retryDecision: "pause",
+    });
     expect(result.zdrConfirmed).toBe(true);
 
     // The legacy queue is not a write gate; its contents do not affect the
@@ -551,6 +579,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     expect(result.unitsRun).toBe(2);
     expect(result.failures).toHaveLength(0);
     expect(result.writtenOutcomesPersisted).toBe(2);
+    expect(result.journalUnitsPersisted).toBe(2);
     expect(result.patchReport.coverageComplete).toBe(false);
     expect(result.patchExportCount).toBe(0);
   });
@@ -558,13 +587,14 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
   it("threads real context per unit: without a wired queue nothing is bridged", async () => {
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor(baseInput(undefined, sinks));
-    // No sink -> no queue items counted; written outcomes + runs still persist.
+    // No sink -> no queue items counted; written outcomes + attempts still persist.
     expect(result.reviewerQueueItemCount).toBe(0);
     expect(result.writtenOutcomesPersisted).toBe(3);
-    expect(result.providerRunsPersisted).toBe(3);
+    expect(result.journalUnitsPersisted).toBe(3);
+    expect(result.attemptsPersisted).toBeGreaterThan(3);
     expect(result.patchExportCount).toBe(0);
     // Every persisted outcome carries the resolved sceneId (real context threaded).
-    for (const outcome of sinks.writtenOutcomes) {
+    for (const { writtenOutcome: outcome } of sinks.journalUnits) {
       expect(outcome.sceneId).toBe(SCENE_ID);
     }
   });
@@ -578,7 +608,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     });
     expect(result.unitsRun).toBe(3);
     expect(result.writtenOutcomesPersisted).toBe(3);
-    for (const outcome of sinks.writtenOutcomes) {
+    for (const { writtenOutcome: outcome } of sinks.journalUnits) {
       expect(outcome.sceneId).toBeUndefined();
     }
   });
@@ -601,9 +631,10 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     expect(result.failures[0]!.diagnostic?.step).toBe("executor.drive-unit");
     expect(result.unitsRun).toBe(0);
     expect(result.writtenOutcomesPersisted).toBe(0);
-    expect(result.providerRunsPersisted).toBe(0);
-    expect(sinks.writtenOutcomes).toHaveLength(0);
-    expect(sinks.providerRuns).toHaveLength(0);
+    expect(result.journalUnitsPersisted).toBe(0);
+    expect(result.attemptsPersisted).toBe(0);
+    expect(sinks.journalUnits).toHaveLength(0);
+    expect(sinks.failedUnitAttempts).toHaveLength(0);
     expect(result.patchExportCount).toBe(0);
   });
 
@@ -924,10 +955,11 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     // All N units ran + persisted written outcomes (all clean).
     expect(result.unitsRun).toBe(UNIT_COUNT);
     expect(result.writtenOutcomesPersisted).toBe(UNIT_COUNT);
-    expect(result.providerRunsPersisted).toBe(UNIT_COUNT);
+    expect(result.journalUnitsPersisted).toBe(UNIT_COUNT);
+    expect(result.attemptsPersisted).toBe(meter.totalCalls);
     expect(result.writtenOutcomeCount).toBe(UNIT_COUNT);
     expect(result.patchExportCount).toBe(1);
-    expect(sinks.writtenOutcomes).toHaveLength(UNIT_COUNT);
+    expect(sinks.journalUnits).toHaveLength(UNIT_COUNT);
     expect(sinks.patchExports).toHaveLength(1);
     const translatedUnits = (
       sinks.patchExports[0]!.translatedBridge as {
@@ -968,20 +1000,20 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(result.failures).toHaveLength(1);
     expect(result.unitsRun).toBe(UNIT_COUNT - 1);
     expect(result.writtenOutcomesPersisted).toBe(UNIT_COUNT - 1);
+    expect(result.journalUnitsPersisted).toBe(UNIT_COUNT - 1);
     expect(result.writtenOutcomeCount).toBe(UNIT_COUNT - 1);
     expect(result.patchReport.coverageComplete).toBe(false);
     expect(result.patchExportCount).toBe(0);
     expect(meter.maxInFlight).toBeGreaterThan(1); // genuinely concurrent.
   });
 
-  it("persists written outcomes and provider runs in CANONICAL order, deterministically", async () => {
+  it("persists journal units in CANONICAL order, deterministically", async () => {
     const UNIT_COUNT = 9;
     // A mix: clean units + a QA-flagged unit + a poison (isolated).
     const markers = { deferAt: 2, poisonAt: 6 };
 
     const runOnce = async (): Promise<{
-      writtenOutcomeOrder: string[];
-      providerRunOrder: string[];
+      journalUnitOrder: string[];
       orderedInScopeIds: string[];
     }> => {
       const meter = new ConcurrencyMeter();
@@ -999,8 +1031,7 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       });
       expect(meter.maxInFlight).toBeGreaterThan(1);
       return {
-        writtenOutcomeOrder: sinks.writtenOutcomes.map((outcome) => outcome.bridgeUnitId),
-        providerRunOrder: sinks.providerRuns.map((r) => r.bridgeUnitId),
+        journalUnitOrder: sinks.journalUnits.map((journal) => journal.writtenOutcome.bridgeUnitId),
         orderedInScopeIds,
       };
     };
@@ -1009,15 +1040,13 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     const second = await runOnce();
 
     // Canonical order == the enumerated in-scope order MINUS the isolated poison.
-    const expectedWrittenOutcomeOrder = first.orderedInScopeIds.filter(
+    const expectedJournalUnitOrder = first.orderedInScopeIds.filter(
       (_id, index) => index !== markers.poisonAt,
     );
-    expect(first.writtenOutcomeOrder).toEqual(expectedWrittenOutcomeOrder);
-    expect(first.providerRunOrder).toEqual(expectedWrittenOutcomeOrder);
+    expect(first.journalUnitOrder).toEqual(expectedJournalUnitOrder);
 
     // DETERMINISM: identical persisted order across independent runs.
-    expect(second.writtenOutcomeOrder).toEqual(first.writtenOutcomeOrder);
-    expect(second.providerRunOrder).toEqual(first.providerRunOrder);
+    expect(second.journalUnitOrder).toEqual(first.journalUnitOrder);
   });
 
   it("budget cap STOPS dispatching before overspend under concurrency (unspent units not run)", async () => {
@@ -1041,8 +1070,9 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(result.unitsRun).toBeGreaterThan(0);
     expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
     // Persisted count matches what actually ran (unspent units never dispatched).
-    expect(sinks.writtenOutcomes).toHaveLength(result.unitsRun);
-    expect(sinks.providerRuns).toHaveLength(result.unitsRun);
+    expect(sinks.journalUnits).toHaveLength(result.unitsRun);
+    expect(result.journalUnitsPersisted).toBe(result.unitsRun);
+    expect(result.attemptsPersisted).toBe(meter.totalCalls);
     // Real spend accumulated, bounded: at most `concurrency - 1` in-flight units
     // can overshoot past the cap (here <= ~1 extra unit's worth).
     expect(result.totalUsageCostUsd).toBeGreaterThan(0);
@@ -1078,15 +1108,16 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
 
 // ---------------------------------------------------------------------------
 // LIVE bounded-slice pilot — real ZDR OpenRouter DEV_PAIR, budget-capped, and
-// PERSISTED TO REAL STORAGE (Postgres draft-jobs + provider-ledger +
-// reviewer_queue + on-disk patch export).
+// PERSISTED TO REAL STORAGE (Postgres attempt/outcome journal + reviewer_queue
+// + on-disk patch export).
 //
 // Drives a BOUNDED set of REAL Sweetie Rin-route units (built from the decoded
 // narrative structure's real per-scene message stream, held out-of-repo)
 // through the executor with the REAL OpenRouter provider + the CONCRETE DB/fs
-// sinks. Post-run it QUERIES Postgres to prove N draft-jobs + N ledger rows +
-// the reviewer_queue rows landed, ≥1 patch export written, real usage.cost in
-// (0, $3], zdr:true on every call. Env-gated so CI never charges/needs a DB.
+// sinks. Post-run it QUERIES Postgres to prove N outcome rows + every physical
+// attempt + reviewer_queue rows landed, ≥1 patch export written, real
+// usage.cost in (0, $3], zdr:true on every call. Env-gated so CI never
+// charges/needs a DB.
 // ---------------------------------------------------------------------------
 
 const LIVE_ENABLED =
@@ -1152,13 +1183,15 @@ function makeLiveUnit(
 }
 
 async function seedLiveProjectScope(pool: DatabaseContext["pool"]): Promise<void> {
+  await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
+    LIVE_PROJECT_ID,
+  ]);
   await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
     LIVE_LOCALE_BRANCH_ID,
   ]);
   await pool.query("delete from itotori_reviewer_queue_items where project_id = $1", [
     LIVE_PROJECT_ID,
   ]);
-  await pool.query("delete from itotori_draft_jobs where project_id = $1", [LIVE_PROJECT_ID]);
   await pool.query("delete from itotori_projects where project_id = $1", [LIVE_PROJECT_ID]);
   await pool.query(
     `insert into itotori_workspaces (workspace_id, name) values ($1, $2)
@@ -1202,7 +1235,7 @@ async function seedLiveProjectScope(pool: DatabaseContext["pool"]): Promise<void
 }
 
 describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", () => {
-  it("drives real Sweetie units, PERSISTING written outcomes + provider runs under ZDR", async () => {
+  it("drives real Sweetie units, PERSISTING journal outcomes + physical attempts under ZDR", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -1253,15 +1286,9 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         units,
       } as unknown as BridgeBundleV02;
 
-      const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-      const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+      const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
       const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-      const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-        projectId: LIVE_PROJECT_ID,
-        localeBranchId: LIVE_LOCALE_BRANCH_ID,
-        actor: liveActor,
-        pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-      });
+      const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor: liveActor });
       const runDir = mkdtempSync(join(tmpdir(), "itotori-driven-live-patch-"));
       const patchSink = new FsDrivenPatchExportSink(runDir);
       const recorder = new LocalProviderRunArtifactRecorder(
@@ -1286,7 +1313,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         resolveUnitContext: () => ({ narrativeStructure: structure, sceneId }),
         translationScope: "dialogue-only",
         engineProfile: "reallive",
-        sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+        sinks: { journal, patchExport: patchSink },
         maxUnits,
         budgetCapUsd: LIVE_BUDGET_CAP_USD,
       });
@@ -1297,35 +1324,25 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
       expect(result.totalUsageCostUsd).toBeLessThanOrEqual(LIVE_BUDGET_CAP_USD);
       expect(result.zdrConfirmed).toBe(true);
 
-      // PERSISTED TO REAL STORAGE — query Postgres to prove the rows landed.
-      const draftJobRows = await context.pool.query(
-        "select count(*)::int as n from itotori_draft_jobs where project_id = $1",
-        [LIVE_PROJECT_ID],
-      );
-      const ledgerRows = await context.pool.query(
-        `select count(*)::int as n, coalesce(sum(cost_amount), 0)::text as total
-           from itotori_draft_attempt_provider_ledger l
-           join itotori_draft_job_attempts a on a.draft_job_attempt_id = l.draft_job_attempt_id
-           join itotori_draft_jobs j on j.draft_job_id = a.draft_job_id
-          where j.project_id = $1`,
-        [LIVE_PROJECT_ID],
+      // PERSISTED TO REAL STORAGE — the journal repository reads the actual
+      // normalized Postgres rows for this immutable run identity.
+      const persistedRun = await journalRepo.loadRun(liveActor, result.journalRunId);
+      const persistedOutcomes = await journalRepo.loadRunOutcomes(liveActor, result.journalRunId);
+      const persistedAttempts = await journalRepo.loadAttemptsForRun(
+        liveActor,
+        result.journalRunId,
       );
       const queueRows = await context.pool.query(
         "select count(*)::int as n from itotori_reviewer_queue_items where project_id = $1",
         [LIVE_PROJECT_ID],
       );
-      const persistedDraftJobs = Number(draftJobRows.rows[0].n);
-      const persistedLedger = Number(ledgerRows.rows[0].n);
       const persistedQueue = Number(queueRows.rows[0].n);
 
-      // N draft-jobs == N ledger rows == unitsRun, all in real Postgres.
-      expect(persistedDraftJobs).toBe(result.unitsRun);
-      expect(persistedLedger).toBe(result.unitsRun);
+      expect(persistedRun?.runId).toBe(result.journalRunId);
+      expect(persistedOutcomes).toHaveLength(result.unitsRun);
+      expect(persistedAttempts).toHaveLength(result.attemptsPersisted);
+      expect(persistedAttempts.every((attempt) => attempt.zdr)).toBe(true);
       expect(persistedQueue).toBe(result.reviewerQueueItemCount);
-      // The ledger's summed real cost matches the executor's summed usage.cost.
-      expect(Math.abs(Number(ledgerRows.rows[0].total) - result.totalUsageCostUsd)).toBeLessThan(
-        1e-6,
-      );
 
       // A patch export exists only after complete configured-scope coverage.
       expect(patchSink.exportCount).toBe(result.patchReport.coverageComplete ? 1 : 0);
@@ -1340,7 +1357,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
       console.warn(
         `[driven-live] scene=${sceneId} unitsRun=${result.unitsRun} written=${result.writtenOutcomeCount} ` +
           `failed=${result.failures.length} coverageComplete=${result.patchReport.coverageComplete} ` +
-          `persisted{draftJobs=${persistedDraftJobs} ledger=${persistedLedger} queue=${persistedQueue}} ` +
+          `persisted{outcomes=${persistedOutcomes.length} attempts=${persistedAttempts.length} queue=${persistedQueue}} ` +
           `totalCost=$${result.totalUsageCostUsd.toFixed(6)} zdr=${result.zdrConfirmed} ` +
           `budgetStopped=${result.budgetStopped} patchDir=${runDir}`,
       );

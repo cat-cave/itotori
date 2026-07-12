@@ -12,11 +12,10 @@
 //   1. A PRODUCTION `DraftArtifactBundleLoader`
 //      (`buildDraftArtifactBundleFromExecutorRun`) that reconstructs the
 //      `DraftArtifactBundle` `export-patch-v2` consumes from the executor's
-//      REAL persisted run — the DB draft-jobs / attempts / provider-ledger
-//      (real providerProofId, costLedgerEntryRef) joined with the executor's
-//      `patch-report.json` written bodies (the DB does
-//      NOT store draftText). This REPLACES the fixture-only `--draft-bundle`
-//      loader on the real path, so preflight runs against real drafts.
+//      REAL persisted journal run: canonical written outcomes (including every
+//      candidate and QA finding) plus every physical provider attempt. The
+//      patch report only identifies the exact run and its declared scope; it is
+//      never used to reconstruct a target body or provenance.
 //
 //   2. The APPLY step (`applyKaifuuRealLivePatch`): after the whole-game
 //      localize writes `translated-bridge.json`, invoke
@@ -36,24 +35,21 @@
 import type {
   AssetDecisionRecord,
   AuthorizationActor,
-  DraftAttemptProviderLedgerEntry,
-  DraftJobAttemptRecord,
-  DraftJobRecord,
-  ItotoriDraftAttemptProviderLedgerRepositoryPort,
-  ItotoriDraftJobRepositoryPort,
+  ItotoriLocalizationJournalRepositoryPort,
+  LocalizationJournalAttemptRecord,
+  LocalizationJournalOutcomeRecord,
 } from "@itotori/db";
 import {
-  asNonBlankTargetText,
   assertDraftArtifactBundle,
   assertPatchExportBundle,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
   type DraftArtifactDraftEntry,
   type PatchExportBundle,
-  type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
 import { createHash } from "node:crypto";
 import { AssetDecisionPolicyResolver } from "../asset-decisions/policy-resolver.js";
+import { addDecimalUsd } from "../providers/cost.js";
 import {
   defaultRepoRoot,
   resolveNativeCliBin,
@@ -91,54 +87,45 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * The subset of the executor's `patch-report.json` this loader consumes. It
- * carries the written units + their selected target body — the DB draft rows
- * do NOT store the draft text, so the selected bodies must come from the run's
- * patch report. `sourceBridgeHash` is the bridge revision the run drafted
- * against (the preflight `sourceBridgeIntegrity` check compares it).
+ * The report identifies an immutable journal run and its patch scope. Target
+ * bodies, candidates, findings, and provider evidence are always loaded from
+ * the journal — not reconstructed from this report.
  */
 export type ExecutorRunPatchReport = Pick<
   DrivenPatchReport,
-  "projectId" | "localeBranchId" | "targetLocale" | "writtenUnits" | "translationScope"
+  | "journalRunId"
+  | "projectId"
+  | "localeBranchId"
+  | "targetLocale"
+  | "writtenUnits"
+  | "translationScope"
 >;
 
 export type BuildDraftArtifactBundleArgs = {
   actor: AuthorizationActor;
-  draftJobs: ItotoriDraftJobRepositoryPort;
-  ledger: ItotoriDraftAttemptProviderLedgerRepositoryPort;
+  journal: ItotoriLocalizationJournalRepositoryPort;
   projectId: string;
   localeBranchId: string;
-  /** Deterministic draftJobId for the reconstructed whole-run bundle. */
+  /** Deterministic bundle identity derived from this exact journal run. */
   draftArtifactBundleId: string;
-  /** The executor run's patch report (selected written bodies + identity). */
   patchReport: ExecutorRunPatchReport;
   /** The bridge hash the run drafted against (preflight integrity). */
   sourceBridgeHash: string;
 };
 
 export type WholeGamePatchLoaderDiscrepancyKind =
-  | "no-persisted-draft-job"
-  | "no-persisted-attempt"
-  | "no-provider-ledger-entry"
-  | "duplicate-written-outcome";
+  | "no-persisted-journal-run"
+  | "journal-run-scope-mismatch"
+  | "duplicate-written-outcome"
+  | "no-persisted-written-outcome"
+  | "persisted-outcome-not-reported"
+  | "patch-report-outcome-mismatch"
+  | "selected-candidate-attempt-missing";
 
 /**
- * The whole-game patch loader can reconstruct the selected candidate from the
- * patch report, but it cannot yet reload candidate-scoped QA annotations from
- * durable state. The availability marker prevents an empty array from being
- * mistaken for a durable "QA found nothing" result.
- */
-export type CandidateFindingsReconstruction = {
-  findings: WrittenUnitOutcome["findings"];
-  availability: "not-durably-persisted";
-};
-
-/**
- * Raised when the written-unit set (per the run's patch report) does NOT
- * reconcile with the persisted draft-job / attempt / provider-ledger rows. An
- * written unit with no real draft evidence must NOT be silently dropped or
- * carried on a fabricated placeholder — the loader fails loud so no patch is
- * ever applied from a report whose written units the DB cannot attest.
+ * Raised when the report and its exact durable run do not reconcile. The
+ * loader never substitutes a report body, omits a candidate/finding, or
+ * fabricates provider evidence.
  */
 export class WholeGamePatchLoaderReconciliationError extends Error {
   constructor(
@@ -147,165 +134,203 @@ export class WholeGamePatchLoaderReconciliationError extends Error {
     detail: string,
   ) {
     super(
-      `whole-game draft loader refused (${discrepancy}): ${detail}; units: ${[...unitIds].sort().join(", ")}`,
+      `whole-game journal loader refused (${discrepancy}): ${detail}; units: ${[...unitIds].sort().join(", ")}`,
     );
     this.name = "WholeGamePatchLoaderReconciliationError";
   }
 }
 
 /**
- * Reconstruct the `DraftArtifactBundle` for a whole-game executor run from its
- * REAL persisted state. The executor persists ONE draft-job per unit; this
- * reads every draft-job the run created for the project/branch, keeps the
- * LATEST job per unit, and joins each WRITTEN unit to its persisted attempt +
- * provider-ledger row — the real providerProofId + costLedgerEntryRef — with
- * its canonical written outcome.
- *
- * (P1 #2 — reconcile or fail loud.) Every unit the report calls WRITTEN MUST
- * have a persisted draft job AND attempt AND provider-ledger row. A unit with no
- * job/attempt/ledger is NOT silently dropped, and NO `no-provider-run` /
- * `no-ledger-entry` placeholder is fabricated — the loader throws a
- * `WholeGamePatchLoaderReconciliationError` naming the offending unit ids so no
- * patch is applied from a report the DB cannot attest.
- *
- * This is the PRODUCTION loader that replaces the fixture-only `--draft-bundle`
- * loader: `export-patch-v2` now consumes real executor drafts through it.
+ * Load a patch bundle from a single persisted journal run. This is deliberately
+ * run-addressed, rather than a "latest rows" query: a later run cannot change
+ * what this report applies. All candidate/finding data is passed through from
+ * the canonical persisted `WrittenUnitOutcome` verbatim.
  */
 export async function buildDraftArtifactBundleFromExecutorRun(
   args: BuildDraftArtifactBundleArgs,
 ): Promise<DraftArtifactBundle> {
-  const writtenUnitById = new Map(
-    args.patchReport.writtenUnits.map((unit) => [unit.bridgeUnitId, unit]),
+  const run = await args.journal.loadRun(args.actor, args.patchReport.journalRunId);
+  if (run === null) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "no-persisted-journal-run",
+      [],
+      `journal run ${args.patchReport.journalRunId} does not exist`,
+    );
+  }
+  if (
+    run.projectId !== args.projectId ||
+    run.localeBranchId !== args.localeBranchId ||
+    run.targetLocale !== args.patchReport.targetLocale
+  ) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "journal-run-scope-mismatch",
+      [],
+      `journal run ${run.runId} scope does not match project/branch/locale in the patch report`,
+    );
+  }
+
+  const [outcomes, attempts] = await Promise.all([
+    args.journal.loadRunOutcomes(args.actor, run.runId),
+    args.journal.loadAttemptsForRun(args.actor, run.runId),
+  ]);
+  const reportUnits = indexReportWrittenUnits(args.patchReport);
+  const outcomesByUnit = indexPersistedOutcomes(outcomes);
+  const missingOutcomes = [...reportUnits.keys()].filter((unitId) => !outcomesByUnit.has(unitId));
+  if (missingOutcomes.length > 0) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "no-persisted-written-outcome",
+      missingOutcomes,
+      "patch report claims written unit(s) with no persisted journal outcome",
+    );
+  }
+  const unreportedOutcomes = [...outcomesByUnit.keys()].filter(
+    (unitId) => !reportUnits.has(unitId),
   );
-  const writtenUnitIds = args.patchReport.writtenUnits.map((unit) => unit.bridgeUnitId).sort();
-  const duplicateWrittenUnitIds = [
-    ...new Set(writtenUnitIds.filter((unitId, index) => writtenUnitIds[index - 1] === unitId)),
-  ];
-  if (duplicateWrittenUnitIds.length > 0) {
+  if (unreportedOutcomes.length > 0) {
     throw new WholeGamePatchLoaderReconciliationError(
-      "duplicate-written-outcome",
-      duplicateWrittenUnitIds,
-      "patch-report contains more than one written outcome for the same unit",
+      "persisted-outcome-not-reported",
+      unreportedOutcomes,
+      "journal contains written outcome(s) absent from the patch report",
     );
   }
 
-  // The executor creates one draft-job per unit (sourceUnitIds: [bridgeUnitId]);
-  // read them all for this project (newest first) and keep the LATEST job per
-  // bridge unit so a multi-pass re-draft of the same unit does not double-count.
-  const jobs = await args.draftJobs.loadDraftJobsByProject(args.actor, args.projectId);
-  const jobsForBranch = jobs.filter((job) => job.localeBranchId === args.localeBranchId);
-  const latestJobByUnit = new Map<string, DraftJobRecord>();
-  for (const job of jobsForBranch) {
-    // loadDraftJobsByProject orders by createdAt desc — the FIRST job seen for
-    // a unit is its most recent one.
-    const unitId = job.bridgeUnitIds[0];
-    if (unitId === undefined) continue;
-    if (!latestJobByUnit.has(unitId)) {
-      latestJobByUnit.set(unitId, job);
-    }
-  }
-
-  let totalTokensIn = 0;
-  let totalTokensOut = 0;
-  let totalCostMicros = 0n;
-  let attemptCount = 0;
-  const providerProofIds: string[] = [];
-
-  // One draft entry per WRITTEN unit, in deterministic (sorted) order so the
-  // bundle is stable across runs (the DB order is time-dependent createdAt).
-  //
-  // A written unit (per the run's patch report) MUST reconcile EXACTLY with a
-  // persisted draft job — silently dropping units with no job, or fabricating a
-  // `no-provider-run` / `no-ledger-entry` placeholder for a unit with no
-  // attempt/ledger, would let the patch splice a written unit that carries no
-  // real provider-ledger evidence. So we fail LOUD on any discrepancy: every
-  // written unit needs a persisted job AND a persisted attempt AND a
-  // provider-ledger row, or the loader throws with the offending unit ids.
-  const missingJob = writtenUnitIds.filter((unitId) => !latestJobByUnit.has(unitId));
-  if (missingJob.length > 0) {
-    throw new WholeGamePatchLoaderReconciliationError(
-      "no-persisted-draft-job",
-      missingJob,
-      `written unit(s) have no persisted draft job for project=${args.projectId} branch=${args.localeBranchId}; ` +
-        "the patch-report claims a written outcome but the loader found no draft — refusing to apply",
-    );
-  }
-
-  const missingAttempt: string[] = [];
-  const missingLedger: string[] = [];
+  const attemptsById = new Map(attempts.map((attempt) => [attempt.attemptId, attempt]));
   const drafts: DraftArtifactDraftEntry[] = [];
-  for (const unitId of writtenUnitIds) {
-    const job = latestJobByUnit.get(unitId)!;
-    const writtenUnit = writtenUnitById.get(unitId)!;
-    const attempts = await args.draftJobs.loadDraftJobAttempts(args.actor, job.draftJobId);
-    const latestAttempt = pickLatestAttempt(attempts);
-    if (latestAttempt === undefined) {
-      missingAttempt.push(unitId);
-      continue;
-    }
-    attemptCount += 1;
-    const entries = await args.ledger.loadEntriesByAttempt(
-      args.actor,
-      latestAttempt.draftJobAttemptId,
+  for (const unitId of [...reportUnits.keys()].sort()) {
+    const reportUnit = reportUnits.get(unitId)!;
+    const persisted = outcomesByUnit.get(unitId)!;
+    assertReportMatchesPersistedOutcome(reportUnit, persisted);
+    const selectedCandidate = persisted.outcome.candidates.find(
+      (candidate) => candidate.id === persisted.outcome.selectedCandidateId,
     );
-    const ledgerEntry: DraftAttemptProviderLedgerEntry | null = entries[entries.length - 1] ?? null;
-    if (ledgerEntry === null) {
-      missingLedger.push(unitId);
-      continue;
+    if (selectedCandidate === undefined) {
+      throw new WholeGamePatchLoaderReconciliationError(
+        "patch-report-outcome-mismatch",
+        [unitId],
+        `persisted outcome ${persisted.outcome.id} has no selected candidate`,
+      );
     }
-    providerProofIds.push(ledgerEntry.providerProofId);
-    totalTokensIn += ledgerEntry.tokensIn ?? 0;
-    totalTokensOut += ledgerEntry.tokensOut ?? 0;
-    totalCostMicros += costToMicros(ledgerEntry.costAmount);
-
+    const selectedAttempt = attemptsById.get(selectedCandidate.attemptId);
+    if (selectedAttempt === undefined || selectedAttempt.bridgeUnitId !== unitId) {
+      throw new WholeGamePatchLoaderReconciliationError(
+        "selected-candidate-attempt-missing",
+        [unitId],
+        `selected candidate ${selectedCandidate.id} is not bound to a physical attempt in run ${run.runId}`,
+      );
+    }
     drafts.push({
       sourceUnitId: unitId,
-      draftId: draftIdFor(job.draftJobId, unitId),
-      providerProofId: ledgerEntry.providerProofId,
-      costLedgerEntryRef: ledgerEntry.ledgerEntryId,
-      writtenOutcome: reconstructWrittenOutcome({
-        unitId,
-        targetLocale: args.patchReport.targetLocale,
-        selectedBody: writtenUnit.selectedBody,
-        qualityFlags: writtenUnit.qualityFlags,
-        draftJobId: job.draftJobId,
-        attempt: latestAttempt,
-        ledgerEntry,
-      }),
+      draftId: persisted.outcome.id,
+      providerProofId: selectedAttempt.providerRunId,
+      costLedgerEntryRef: `llm-attempt:${selectedAttempt.attemptId}`,
+      writtenOutcome: persisted.outcome,
     });
   }
 
-  if (missingAttempt.length > 0) {
-    throw new WholeGamePatchLoaderReconciliationError(
-      "no-persisted-attempt",
-      missingAttempt,
-      "written unit(s) have a draft job but NO persisted attempt — no provider run to attest the draft; refusing to apply",
-    );
-  }
-  if (missingLedger.length > 0) {
-    throw new WholeGamePatchLoaderReconciliationError(
-      "no-provider-ledger-entry",
-      missingLedger,
-      "written unit(s) have a draft attempt but NO provider-ledger entry — no real cost/proof evidence; refusing to apply",
-    );
-  }
-
+  const ledgerSummary = journalLedgerSummary(attempts);
   const bundle: DraftArtifactBundle = {
     schemaVersion: DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
     draftJobId: args.draftArtifactBundleId,
     projectId: args.projectId,
     localeBranchId: args.localeBranchId,
     drafts,
-    ledgerSummary: {
-      totalCost: microsToDecimalString(totalCostMicros),
-      totalTokensIn,
-      totalTokensOut,
-      attemptCount,
-      providerProofIds,
-    },
+    ledgerSummary,
   };
   assertDraftArtifactBundle(bundle);
   return bundle;
+}
+
+function indexReportWrittenUnits(
+  patchReport: ExecutorRunPatchReport,
+): Map<string, ExecutorRunPatchReport["writtenUnits"][number]> {
+  const result = new Map<string, ExecutorRunPatchReport["writtenUnits"][number]>();
+  const duplicates: string[] = [];
+  for (const unit of patchReport.writtenUnits) {
+    if (result.has(unit.bridgeUnitId)) {
+      duplicates.push(unit.bridgeUnitId);
+      continue;
+    }
+    result.set(unit.bridgeUnitId, unit);
+  }
+  if (duplicates.length > 0) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "duplicate-written-outcome",
+      duplicates,
+      "patch report contains more than one written outcome for a unit",
+    );
+  }
+  return result;
+}
+
+function indexPersistedOutcomes(
+  outcomes: readonly LocalizationJournalOutcomeRecord[],
+): Map<string, LocalizationJournalOutcomeRecord> {
+  const result = new Map<string, LocalizationJournalOutcomeRecord>();
+  const duplicates: string[] = [];
+  for (const outcome of outcomes) {
+    if (result.has(outcome.bridgeUnitId)) {
+      duplicates.push(outcome.bridgeUnitId);
+      continue;
+    }
+    result.set(outcome.bridgeUnitId, outcome);
+  }
+  if (duplicates.length > 0) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "duplicate-written-outcome",
+      duplicates,
+      "journal contains more than one persisted written outcome for a unit",
+    );
+  }
+  return result;
+}
+
+function assertReportMatchesPersistedOutcome(
+  reportUnit: ExecutorRunPatchReport["writtenUnits"][number],
+  persisted: LocalizationJournalOutcomeRecord,
+): void {
+  const selectedCandidate = persisted.outcome.candidates.find(
+    (candidate) => candidate.id === persisted.outcome.selectedCandidateId,
+  );
+  const sameFlags =
+    reportUnit.qualityFlags.length === persisted.outcome.qualityFlags.length &&
+    reportUnit.qualityFlags.every((flag, index) => flag === persisted.outcome.qualityFlags[index]);
+  if (
+    persisted.outcome.unitId !== reportUnit.bridgeUnitId ||
+    selectedCandidate?.body !== reportUnit.selectedBody ||
+    !sameFlags
+  ) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "patch-report-outcome-mismatch",
+      [reportUnit.bridgeUnitId],
+      "patch report selected body or quality flags differ from the persisted canonical outcome",
+    );
+  }
+}
+
+function journalLedgerSummary(
+  attempts: readonly LocalizationJournalAttemptRecord[],
+): DraftArtifactBundle["ledgerSummary"] {
+  let totalCost = "0";
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  const providerProofIds: string[] = [];
+  const seenProviderProofIds = new Set<string>();
+  for (const attempt of attempts) {
+    totalCost = addDecimalUsd(totalCost, attempt.costUsd);
+    totalTokensIn += attempt.tokensIn ?? 0;
+    totalTokensOut += attempt.tokensOut ?? 0;
+    if (!seenProviderProofIds.has(attempt.providerRunId)) {
+      seenProviderProofIds.add(attempt.providerRunId);
+      providerProofIds.push(attempt.providerRunId);
+    }
+  }
+  return {
+    totalCost,
+    totalTokensIn,
+    totalTokensOut,
+    attemptCount: attempts.length,
+    providerProofIds,
+  };
 }
 
 /**
@@ -328,92 +353,6 @@ export function executorRunDraftArtifactBundleLoader(
       return { bundle, sourceBridgeHash };
     },
   };
-}
-
-function pickLatestAttempt(
-  attempts: ReadonlyArray<DraftJobAttemptRecord>,
-): DraftJobAttemptRecord | undefined {
-  if (attempts.length === 0) return undefined;
-  // loadDraftJobAttempts orders by attemptIndex asc — the last is the latest.
-  return attempts[attempts.length - 1];
-}
-
-function reconstructWrittenOutcome(args: {
-  unitId: string;
-  targetLocale: string;
-  selectedBody: string;
-  qualityFlags: ReadonlyArray<string>;
-  draftJobId: string;
-  attempt: DraftJobAttemptRecord;
-  ledgerEntry: DraftAttemptProviderLedgerEntry;
-}): WrittenUnitOutcome {
-  const id = `draft-artifact:${args.draftJobId}:${args.unitId}`;
-  const selectedCandidateId = `${id}:selected`;
-  const candidateFindings = reconstructCandidateFindings();
-  const writtenAt = firstRecordedTimestamp(
-    args.attempt.endedAt,
-    args.attempt.createdAt,
-    args.ledgerEntry.createdAt,
-  );
-  return {
-    id,
-    status: "written",
-    unitId: args.unitId,
-    targetLocale: args.targetLocale,
-    selectedCandidateId,
-    candidates: [
-      {
-        id: selectedCandidateId,
-        outcomeId: id,
-        body: asNonBlankTargetText(args.selectedBody),
-        producedBy: {
-          modelId: args.ledgerEntry.modelId ?? "unknown",
-          providerId: args.ledgerEntry.providerId || "unknown",
-        },
-        attemptId: args.attempt.draftJobAttemptId,
-        kind: args.attempt.attemptIndex > 1 ? "repair" : "primary",
-      },
-    ],
-    findings: candidateFindings.findings,
-    qualityFlags: [...new Set(args.qualityFlags)].sort(),
-    provenance: {
-      origin: "patch-report-projection",
-      draftJobId: args.draftJobId,
-      attemptId: args.attempt.draftJobAttemptId,
-      providerProofId: args.ledgerEntry.providerProofId,
-      costLedgerEntryRef: args.ledgerEntry.ledgerEntryId,
-      candidateFindingsAvailability: candidateFindings.availability,
-    },
-    writtenAt,
-  };
-}
-
-function reconstructCandidateFindings(): CandidateFindingsReconstruction {
-  // TODO(p0-core-attempt-and-outcome-journal): persist+reload candidate findings
-  return { findings: [], availability: "not-durably-persisted" };
-}
-
-function firstRecordedTimestamp(...values: ReadonlyArray<Date | null | undefined>): string {
-  const value = values.find((candidate) => candidate instanceof Date);
-  return value?.toISOString() ?? new Date(0).toISOString();
-}
-
-function draftIdFor(draftJobId: string, unitId: string): string {
-  return `${draftJobId}:${unitId}`;
-}
-
-function costToMicros(costAmount: string | null): bigint {
-  if (costAmount === null || costAmount.length === 0) return 0n;
-  const [whole, frac = ""] = costAmount.split(".");
-  const fracPadded = `${frac}000000`.slice(0, 6);
-  const wholeMicros = BigInt(whole || "0") * 1_000_000n;
-  return wholeMicros + BigInt(fracPadded || "0");
-}
-
-function microsToDecimalString(micros: bigint): string {
-  const whole = micros / 1_000_000n;
-  const frac = (micros % 1_000_000n).toString().padStart(6, "0");
-  return `${whole.toString()}.${frac}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -672,9 +611,9 @@ export type RunWholeGamePatchExportAndApplyArgs = {
    *                        render validation — MV/MZ is a delegation runtime.
    */
   engineProfile: DrivenEngineProfile;
-  draftJobs: ItotoriDraftJobRepositoryPort;
-  ledger: ItotoriDraftAttemptProviderLedgerRepositoryPort;
-  /** The executor run's patch report (identity + accepted bodies + scope). */
+  /** The durable journal repository that owns this exact executor run. */
+  journal: ItotoriLocalizationJournalRepositoryPort;
+  /** The executor run's patch report (identity + accepted-unit scope). */
   patchReport: DrivenPatchReport;
   /** The raw v0.2 bridge the run drafted against (drives the source view + hash). */
   rawBridge: unknown;
@@ -734,8 +673,8 @@ export class WholeGamePatchExportPreflightError extends Error {
 
 /**
  * The M1 keystone as ONE shipped call. Given a completed executor run:
- *   1. Reconstruct the `DraftArtifactBundle` from REAL persisted drafts
- *      (production loader — NOT a fixture).
+ *   1. Load the `DraftArtifactBundle` from REAL persisted journal rows
+ *      (production loader — NOT a fixture or report reconstruction).
  *   2. Run the export-patch-v2 preflight + exporter over those real drafts,
  *      with an HONEST source-bridge view (integrity hash from the run's bridge,
  *      asset decisions resolved through the live repository, protected-span
@@ -760,12 +699,11 @@ export async function runWholeGamePatchExportAndApply(
   // self-referential.
   const declaredDraftedAgainstHash = args.patchReport.sourceBridgeHash;
   const applyTimeBridgeHash = hashRawBridge(args.rawBridge);
-  const draftArtifactBundleId = `wholegame-run:${args.patchReport.projectId}:${args.patchReport.localeBranchId}:${declaredDraftedAgainstHash.slice(0, 16)}`;
+  const draftArtifactBundleId = `wholegame-run:${args.patchReport.journalRunId}`;
 
   const bundle = await buildDraftArtifactBundleFromExecutorRun({
     actor: args.actor,
-    draftJobs: args.draftJobs,
-    ledger: args.ledger,
+    journal: args.journal,
     projectId: args.patchReport.projectId,
     localeBranchId: args.patchReport.localeBranchId,
     draftArtifactBundleId,

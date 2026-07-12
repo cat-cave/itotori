@@ -360,6 +360,10 @@ export const migrations = [
     id: "0075_localization_pass_run_configs",
     file: "0075_localization_pass_run_configs.sql",
   },
+  {
+    id: "0076_localization_attempt_outcome_journal",
+    file: "0076_localization_attempt_outcome_journal.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
