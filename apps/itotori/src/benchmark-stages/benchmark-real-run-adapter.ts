@@ -9,7 +9,7 @@
 //   1. The archive-free BOUNDARY (`RealRunArtifactPort`). The adapter operates
 //      over RUN REFS / ARTIFACTS only — it never reads raw game bytes (no
 //      archive unpack, no script decode, no asset extraction). Production wires
-//      a DB-backed port (the pass-ledger / draft / patch-export tables); tests
+//      a DB-backed port (the journal / draft / patch-export tables); tests
 //      wire {@link InMemoryRealRunArtifactPort}. The port resolves a run/data
 //      ref into the per-unit accepted drafts + the source corpus the run
 //      covered, and a comparator-tier ref into the fan/pro tier text. Both are
@@ -48,7 +48,7 @@
 //     opaque id; the corpus carries only generic `unitId/label/sourceText`;
 //     the comparators carry only `kind + per-unit target text`.
 //   - NO RAW GAME BYTES: the port boundary guarantees the adapter never touches
-//     archives; it consumes run artifacts (drafts / pass-ledger / patch-export
+//     archives; it consumes run artifacts (drafts / journal / patch-export
 //     outputs) the orchestrator already produced.
 //   - COST IS REAL: the SELF contestant's cost is the run's recorded provider
 //     run when present (read VERBATIM, never approximated). A recorded-run-less
@@ -121,15 +121,13 @@ export class RealRunBenchmarkAdapterError extends Error {
  * A ref to a REAL localized run's accepted drafts (the SELF contestant). Opaque
  * id(s) the {@link RealRunArtifactPort} resolves; game-agnostic. The adapter
  * never touches raw game bytes — it consumes the run artifacts the orchestrator
- * already produced (drafts / pass-ledger records / patch-export written units).
+ * already produced (drafts / journal records / patch-export written units).
  */
 export type RealRunRef = {
-  /** Opaque run id (e.g. a localization-pass id / patch-export report id). */
+  /** Opaque run id (e.g. a journal-run id / patch-export report id). */
   runId: string;
-  /** Optional locale-branch ref the port may thread (the pass-ledger branch). */
+  /** Optional locale-branch ref the port may thread with the journal run. */
   localeBranchId?: string;
-  /** Optional 1-based pass number on the branch (the pass-ledger pass). */
-  passNumber?: number;
 };
 
 /**
@@ -178,7 +176,7 @@ export type ResolvedComparatorTier = {
 };
 
 /**
- * The archive-free port. Production wires a DB-backed adapter (the pass-ledger
+ * The archive-free port. Production wires a DB-backed adapter (the journal
  * / draft / patch-export tables); tests wire
  * {@link InMemoryRealRunArtifactPort}. Two operations:
  *   - `loadSelfRun`        — resolve a run ref into its accepted drafts + corpus.

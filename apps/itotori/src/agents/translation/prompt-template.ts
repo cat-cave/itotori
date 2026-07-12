@@ -122,7 +122,7 @@ export function buildTranslationPrompt(
     lines.push(...renderWorkScopeContext(input.workScopeContext));
   }
 
-  // itotori-pass-ledger — inject the prior localization pass's feedback for
+  // durable-journal — inject the prior localization pass's feedback for
   // this unit so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
   // units instead of re-running from scratch. STRICTLY ADDITIVE: when
   // `priorPassFeedback` is undefined nothing is emitted, so the no-prior-pass
@@ -256,7 +256,7 @@ function renderWorkScopeContext(context: TranslationWorkScopeContext): string[] 
 }
 
 /**
- * itotori-pass-ledger — render the prior-pass feedback block for the
+ * durable-journal — render the prior-pass feedback block for the
  * translation prompt. Deterministic (fixed key order, no free-text sorting) so
  * two pass N+1 runs over the same prior-pass state emit byte-equal prompts.
  * The block tells the model (a) what the prior pass wrote, (b) its

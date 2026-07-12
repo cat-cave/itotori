@@ -795,7 +795,7 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
     expectRedactionComplete(diag);
   });
 
-  it("passes the per-unit diagnostic through the pass ledger record", async () => {
+  it("keeps the per-unit diagnostic on the durable executor result", async () => {
     const sinks = new InMemorySinks();
     const bridge = makeBridge();
     const result = await runProjectDrivenExecutor({
@@ -815,9 +815,9 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       sinks,
     });
 
-    // The pass ledger's record-build path consumes `result.failures` —
-    // confirm the failure's diagnostic survives the round-trip (a regression
-    // here would silently strip the new field).
+    // The journal persistence path consumes `result.failures`; confirm the
+    // diagnostic stays attached at the executor boundary instead of being
+    // silently stripped before durable capture.
     expect(result.failures).toHaveLength(1);
     const failure = result.failures[0]!;
     expect(failure.diagnostic).toBeDefined();

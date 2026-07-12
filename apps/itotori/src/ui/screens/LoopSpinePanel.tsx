@@ -5,13 +5,13 @@
 //
 //   playtester FLAGS a unit →
 //   reviewer DECIDES each queued item (approve / queue-correction) →
-//   corrections queue for the CORRECT / next pass →
-//   director LAUNCHES the pass →
+//   corrections queue for the CORRECT / next run →
+//   director LAUNCHES the run →
 //   benchmark RE-SCORES →
 //   panel↔human CONFIDENCE moves.
 //
 // Each link already has its own surface (PlayFlagComposer, ReviewerQueue +
-// DecisionsBand, CorrectionScopePanel, LaunchPassAction, PassLedger,
+// DecisionsBand, CorrectionScopePanel, LaunchPassAction, ExecutionJournal,
 // BenchmarkHeadline). This is the CROSS node that composes the whole loop into
 // ONE legible spine so the handoff is visible at a glance — a READ-ONLY
 // legibility view (it re-states the live signal each stage currently carries,
@@ -21,10 +21,9 @@
 //
 // HONESTY / no-fabrication (PROJECT LAW): every signal is a real read-model
 // field or arithmetic over real fields. A dimension with no first-class source
-// renders an honest "—" (the correction stage's "folded" count is the LATEST
-// pass's consumed-feedback notes — the correction throughput — null when no
-// pass is recorded; the rescore stage's score is the latest pass's quality
-// score, null when unscored). Painted with `@itotori/ds` (Panel / Badge);
+// renders an honest "—" when no first-class source exists (the journal does
+// not fabricate a folded-correction count or quality score). Painted with
+// `@itotori/ds` (Panel / Badge);
 // className-based, ds tokens, no literal styles, no game named.
 // [[feedback_behavior_first_code_agnostic_testing]].
 
@@ -55,7 +54,7 @@ export type LoopSpineStage = {
   id: LoopSpineStageId;
   /** Human stage label (game-agnostic). */
   label: string;
-  /** Sourced signal label (e.g. "3 open", "82%", "pass 4"). Honest "—" when no signal. */
+  /** Sourced signal label (e.g. "3 open", "82%", "run 4"). Honest "—" when no signal. */
   signal: string;
   /**
    * The product status the stage currently carries (drives the ds Badge tone),
@@ -79,28 +78,16 @@ export type LoopSpineConfidence = {
 };
 
 /**
- * The latest recorded localization-pass row, or `null` when none is recorded.
- * Pure + deterministic. Exported so a behavior-first test can pin the launch /
- * rescore / correct signals from a mock ledger.
+ * The latest durable journal row, or `null` when none is recorded. Rows are
+ * chronological, so the last one is authoritative.
  */
-export function latestLoopSpinePassRow(
-  rows: readonly ProjectOverviewReadModel["passLedger"]["rows"][number][],
-): ProjectOverviewReadModel["passLedger"]["rows"][number] | null {
+export function latestLoopSpineJournalRow(
+  rows: readonly ProjectOverviewReadModel["journal"]["rows"][number][],
+): ProjectOverviewReadModel["journal"]["rows"][number] | null {
   if (rows.length === 0) {
     return null;
   }
-  let latest = rows[0]!;
-  for (const row of rows) {
-    if (row.passNumber > latest.passNumber) {
-      latest = row;
-    }
-  }
-  return latest;
-}
-
-/** Format a pass quality score (0..5) honestly — "—" when null / unscored. */
-export function formatLoopSpineScore(score: number | null): string {
-  return score === null ? "—" : score.toFixed(1);
+  return rows[rows.length - 1]!;
 }
 
 /**
@@ -120,13 +107,8 @@ export function deriveLoopSpine(
 ): LoopSpineStage[] {
   const findings = overview.progress.findingCount;
   const pending = overview.decisions.counts.pendingDecisionCount;
-  const latestPass =
-    overview.passLedger.latestRow ?? latestLoopSpinePassRow(overview.passLedger.rows);
-  const nextPass = latestPass === null ? 1 : latestPass.passNumber + 1;
-  // The correction stage's signal is the LATEST pass's consumed-feedback notes
-  // — the correction throughput the last pass folded in. `null` (→ "—") when
-  // no pass is recorded yet (the first pass has nothing to fold).
-  const correctionsFolded = latestPass === null ? null : latestPass.feedback;
+  const latestRun = overview.journal.latestRow ?? latestLoopSpineJournalRow(overview.journal.rows);
+  const nextRun = overview.journal.pagination.total + 1;
 
   const stages: LoopSpineStage[] = [
     {
@@ -148,26 +130,29 @@ export function deriveLoopSpine(
     {
       id: "correct",
       label: "Correct",
-      signal: correctionsFolded === null ? "—" : `${correctionsFolded} folded`,
+      signal: "—",
       status: null,
       href: "/reviewer-queue",
-      handoff: `Corrections fold into pass ${nextPass}.`,
+      handoff: `Corrections fold into run ${nextRun}.`,
     },
     {
       id: "launch",
       label: "Launch",
-      signal: `pass ${nextPass}`,
+      signal: `run ${nextRun}`,
       status: null,
       href: "/",
-      handoff: "Director drives the next localization pass (canSteer).",
+      handoff: "Director drives the next localization run (canSteer).",
     },
     {
       id: "rescore",
       label: "Rescore",
-      signal: formatLoopSpineScore(latestPass?.score ?? null),
+      signal: "—",
       status: null,
       href: "/benchmark",
-      handoff: "Benchmark re-scores the new pass.",
+      handoff:
+        latestRun === null
+          ? "Benchmark re-scores the next durable run."
+          : "Benchmark re-scores the latest durable run.",
     },
     {
       id: "confidence",
@@ -175,7 +160,7 @@ export function deriveLoopSpine(
       signal: confidence === null ? "—" : VERDICT_LABELS[confidence.verdict.status],
       status: confidence === null ? null : confidence.verdict.status,
       href: "/benchmark",
-      handoff: "Panel↔human confidence moves with each pass.",
+      handoff: "Panel↔human confidence moves with each durable run.",
     },
   ];
   return stages;

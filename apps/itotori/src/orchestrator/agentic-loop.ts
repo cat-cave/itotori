@@ -260,16 +260,60 @@ export type AgenticLoopAttemptOutcomeObserver = {
 };
 
 /**
+ * Explicit node-6 seam for the context that is resolved today but has not yet
+ * been assigned immutable version identities by a persistent context store.
+ * Keeping this discriminant alongside the empty refs means a reader can tell
+ * the difference between "no context" and "resolved, but not versioned yet".
+ */
+export type ContextVersionReferenceState =
+  | {
+      availability: "versioned";
+      refs: string[];
+    }
+  | {
+      availability: "pending_persistent_context_brain";
+      refs: [];
+    };
+
+/** One resolved context item retained as a normalized journal reference. */
+export type OutcomeJournalContextRef = {
+  refKind: string;
+  refId: string;
+  versionRef?: string;
+  details?: unknown;
+};
+
+/**
+ * Exact resolved context that was available to the current loop. This remains
+ * a packet (rather than a new context-store schema) so the journal preserves
+ * glossary, style, and work-scope provenance before node 6 exists.
+ */
+export type ResolvedOutcomeContextPacket = {
+  structuredContext: StructuredContextInjection | null;
+  artifactRefs: string[];
+  glossary: TranslationGlossaryEntry[];
+  styleGuide: StyleGuidePolicyV0Draft | null;
+  styleGuideRules: TranslationStyleGuideRule[];
+  workScope: TranslationWorkScopeContext | null;
+  priorPassFeedback: PriorPassFeedback | null;
+  priorJournalRunId: string | null;
+  contextVersionReferenceState: ContextVersionReferenceState;
+};
+
+/**
  * Extra execution provenance carried inside the canonical outcome's existing
  * `provenance` slot. `WrittenUnitOutcome` itself remains the node-1 shape; the
  * journal projection reads this typed supplement to retain context, speaker,
  * and raw-QA provenance that the presentation outcome intentionally condenses.
  */
 export type OutcomeJournalProvenance = {
-  resolvedContextPacket: unknown;
+  resolvedContextPacket: ResolvedOutcomeContextPacket | null;
   contextArtifactRefs: string[];
-  /** No context-version store exists until spine node 6, so this is honestly empty today. */
+  /** Flattened for the normalized DB ref rows; see the typed state below. */
   contextVersionRefs: string[];
+  contextVersionReferenceState: ContextVersionReferenceState;
+  /** Resolved glossary/style/work-scope references, separate from artifacts. */
+  resolvedContextRefs: OutcomeJournalContextRef[];
   selectedCandidateCitationRefs: string[];
   speakerLabels: SpeakerLabel[];
   qaFindingDetails: Array<{
@@ -291,10 +335,28 @@ export function readOutcomeJournalProvenance(value: unknown): OutcomeJournalProv
     return emptyOutcomeJournalProvenance();
   }
   const record = journal as Partial<OutcomeJournalProvenance>;
+  const storedContextVersionRefs = stringArray(record.contextVersionRefs);
+  let contextVersionReferenceState = readContextVersionReferenceState(
+    record.contextVersionReferenceState,
+  );
+  // Read older journal-provenance payloads that had refs before the explicit
+  // state discriminator existed as genuinely versioned, never as the node-6
+  // pending seam.
+  if (
+    contextVersionReferenceState.availability === "pending_persistent_context_brain" &&
+    storedContextVersionRefs.length > 0
+  ) {
+    contextVersionReferenceState = {
+      availability: "versioned",
+      refs: storedContextVersionRefs,
+    };
+  }
   return {
     resolvedContextPacket: record.resolvedContextPacket ?? null,
     contextArtifactRefs: stringArray(record.contextArtifactRefs),
-    contextVersionRefs: stringArray(record.contextVersionRefs),
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: outcomeJournalContextRefs(record.resolvedContextRefs),
     selectedCandidateCitationRefs: stringArray(record.selectedCandidateCitationRefs),
     speakerLabels: Array.isArray(record.speakerLabels)
       ? (record.speakerLabels as SpeakerLabel[])
@@ -306,14 +368,58 @@ export function readOutcomeJournalProvenance(value: unknown): OutcomeJournalProv
 }
 
 function emptyOutcomeJournalProvenance(): OutcomeJournalProvenance {
+  const contextVersionReferenceState = pendingContextVersionReferenceState();
   return {
     resolvedContextPacket: null,
     contextArtifactRefs: [],
-    contextVersionRefs: [],
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: [],
     selectedCandidateCitationRefs: [],
     speakerLabels: [],
     qaFindingDetails: [],
   };
+}
+
+function pendingContextVersionReferenceState(): ContextVersionReferenceState {
+  // TODO(p0-core-persistent-context-brain): populate once versioned context exists
+  return { availability: "pending_persistent_context_brain", refs: [] };
+}
+
+function readContextVersionReferenceState(value: unknown): ContextVersionReferenceState {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (record.availability === "versioned") {
+      return { availability: "versioned", refs: stringArray(record.refs) };
+    }
+    if (record.availability === "pending_persistent_context_brain") {
+      return pendingContextVersionReferenceState();
+    }
+  }
+  return pendingContextVersionReferenceState();
+}
+
+function outcomeJournalContextRefs(value: unknown): OutcomeJournalContextRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const refs: OutcomeJournalContextRef[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      continue;
+    }
+    const record = candidate as Record<string, unknown>;
+    if (typeof record.refKind !== "string" || typeof record.refId !== "string") {
+      continue;
+    }
+    refs.push({
+      refKind: record.refKind,
+      refId: record.refId,
+      ...(typeof record.versionRef === "string" ? { versionRef: record.versionRef } : {}),
+      ...(record.details !== undefined ? { details: record.details } : {}),
+    });
+  }
+  return refs;
 }
 
 function stringArray(value: unknown): string[] {
@@ -432,14 +538,16 @@ export type AgenticLoopUnitInput = {
    */
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   /**
-   * itotori-pass-ledger — prior localization pass's feedback for THIS unit,
-   * threaded from the pass ledger so a pass N+1 run consumes pass N's accepted
-   * state + flagged-unit feedback as drafting context. When present the
+   * Prior localization run feedback for THIS unit, threaded from the durable
+   * journal so a pass N+1 run consumes pass N's accepted state + flagged-unit
+   * feedback as drafting context. When present the
    * translation prompt renders a strictly-additive "Prior pass feedback" block
    * (the draft iterates on the prior result); when absent the loop is
    * byte-identical to a blank first pass. Generic — no game-specific fields.
    */
   priorPassFeedback?: PriorPassFeedback;
+  /** Durable prior run that supplied `priorPassFeedback`, when available. */
+  priorJournalRunId?: string;
   /**
    * itotori-crosswork-context-injection — resolved effective scope for the
    * unit's work (shared context inherited, per-work overrides applied). The
@@ -718,6 +826,11 @@ export async function runAgenticLoopForUnit(
           journal: outcomeJournalProvenance({
             contextArtifactRefs: contextResult.contextArtifactRefs,
             structuredContext: contextResult.structuredContext,
+            glossary: input.glossary,
+            styleGuide: input.styleGuide,
+            workScopeContext: input.workScopeContext,
+            priorPassFeedback: input.priorPassFeedback,
+            priorJournalRunId: input.priorJournalRunId,
             speakerLabels: speakerLabelResult.labels,
             qaFindings: [],
             writtenFindings: outcomeFindings,
@@ -873,7 +986,7 @@ export async function runAgenticLoopForUnit(
           structuredContext: contextResult.structuredContext,
           contextArtifactRefs: contextResult.contextArtifactRefs,
           workScopeContext: input.workScopeContext,
-          // itotori-pass-ledger — keep the prior-pass feedback on every repair
+          // Keep the prior-run feedback on every repair
           // attempt so the retry keeps addressing the flagged issue.
           priorPassFeedback: input.priorPassFeedback,
         });
@@ -1029,6 +1142,11 @@ export async function runAgenticLoopForUnit(
         journal: outcomeJournalProvenance({
           contextArtifactRefs: contextResult.contextArtifactRefs,
           structuredContext: contextResult.structuredContext,
+          glossary: input.glossary,
+          styleGuide: input.styleGuide,
+          workScopeContext: input.workScopeContext,
+          priorPassFeedback: input.priorPassFeedback,
+          priorJournalRunId: input.priorJournalRunId,
           speakerLabels: speakerLabelResult.labels,
           qaFindings,
           writtenFindings: outcomeFindings,
@@ -1236,6 +1354,11 @@ function writtenFindingFromQa(
 function outcomeJournalProvenance(args: {
   contextArtifactRefs: ReadonlyArray<string>;
   structuredContext: StructuredContextInjection | undefined;
+  glossary: ReadonlyArray<TranslationGlossaryEntry>;
+  styleGuide: StyleGuidePolicyV0Draft | undefined;
+  workScopeContext: TranslationWorkScopeContext | undefined;
+  priorPassFeedback: PriorPassFeedback | undefined;
+  priorJournalRunId: string | undefined;
   speakerLabels: ReadonlyArray<SpeakerLabel>;
   qaFindings: ReadonlyArray<QaFinding>;
   writtenFindings: ReadonlyArray<WrittenQaFinding>;
@@ -1256,15 +1379,39 @@ function outcomeJournalProvenance(args: {
       ...(rawFinding.draftSpan !== undefined ? { draftSpan: { ...rawFinding.draftSpan } } : {}),
     });
   }
+  const contextVersionReferenceState = pendingContextVersionReferenceState();
+  const artifactRefs = [...new Set(args.contextArtifactRefs)].sort();
+  const glossary = args.glossary.map((entry) => ({ ...entry }));
+  const styleGuide = cloneStyleGuide(args.styleGuide);
+  const styleGuideRules = resolveStyleGuideRules(args.styleGuide).map((rule) => ({ ...rule }));
+  const workScope = cloneWorkScopeContext(args.workScopeContext);
+  const priorPassFeedback = clonePriorPassFeedback(args.priorPassFeedback);
   return {
     // This is the exact immutable context resolved for the unit by the current
-    // loop. Context versions are not fabricated here; node 6 owns the store.
+    // loop. The packet preserves the current glossary/style/scope surface;
+    // version identities remain the explicit node-6 seam below.
     resolvedContextPacket: {
       structuredContext: args.structuredContext ?? null,
-      artifactRefs: [...new Set(args.contextArtifactRefs)].sort(),
+      artifactRefs,
+      glossary,
+      styleGuide,
+      styleGuideRules,
+      workScope,
+      priorPassFeedback,
+      priorJournalRunId: args.priorJournalRunId ?? null,
+      contextVersionReferenceState,
     },
-    contextArtifactRefs: [...new Set(args.contextArtifactRefs)].sort(),
-    contextVersionRefs: [],
+    contextArtifactRefs: artifactRefs,
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: resolvedContextRefs({
+      glossary,
+      styleGuide,
+      styleGuideRules,
+      workScope,
+      priorPassFeedback,
+      priorJournalRunId: args.priorJournalRunId,
+    }),
     selectedCandidateCitationRefs: [...new Set(args.selectedCandidateCitationRefs)].sort(),
     speakerLabels: args.speakerLabels.map((label) => ({
       ...label,
@@ -1272,6 +1419,110 @@ function outcomeJournalProvenance(args: {
     })),
     qaFindingDetails,
   };
+}
+
+function cloneStyleGuide(
+  styleGuide: StyleGuidePolicyV0Draft | undefined,
+): StyleGuidePolicyV0Draft | null {
+  if (styleGuide === undefined) {
+    return null;
+  }
+  return {
+    schemaVersion: styleGuide.schemaVersion,
+    sections: {
+      tone: styleGuide.sections.tone.map((rule) => ({ ...rule })),
+      terminology: styleGuide.sections.terminology.map((rule) => ({ ...rule })),
+      honorifics: styleGuide.sections.honorifics.map((rule) => ({ ...rule })),
+      formatting: styleGuide.sections.formatting.map((rule) => ({ ...rule })),
+      protectedSpans: styleGuide.sections.protectedSpans.map((rule) => ({ ...rule })),
+    },
+  };
+}
+
+function cloneWorkScopeContext(
+  workScope: TranslationWorkScopeContext | undefined,
+): TranslationWorkScopeContext | null {
+  if (workScope === undefined) {
+    return null;
+  }
+  return {
+    workId: workScope.workId,
+    glossary: workScope.glossary.map((entry) => ({ ...entry })),
+    characters: workScope.characters.map((character) => ({ ...character })),
+  };
+}
+
+function clonePriorPassFeedback(
+  priorPassFeedback: PriorPassFeedback | undefined,
+): PriorPassFeedback | null {
+  if (priorPassFeedback === undefined) {
+    return null;
+  }
+  return {
+    passNumber: priorPassFeedback.passNumber,
+    priorDraftText: priorPassFeedback.priorDraftText,
+    qualityFlags: priorPassFeedback.qualityFlags.slice(),
+    ...(priorPassFeedback.feedbackNote !== undefined
+      ? { feedbackNote: priorPassFeedback.feedbackNote }
+      : {}),
+  };
+}
+
+function resolvedContextRefs(args: {
+  glossary: ReadonlyArray<TranslationGlossaryEntry>;
+  styleGuide: StyleGuidePolicyV0Draft | null;
+  styleGuideRules: ReadonlyArray<TranslationStyleGuideRule>;
+  workScope: TranslationWorkScopeContext | null;
+  priorPassFeedback: PriorPassFeedback | null;
+  priorJournalRunId: string | undefined;
+}): OutcomeJournalContextRef[] {
+  const refs: OutcomeJournalContextRef[] = args.glossary.map((entry) => ({
+    refKind: "glossary_term",
+    refId: entry.termId,
+    details: {
+      preferredSourceForm: entry.preferredSourceForm,
+      ...(entry.preferredTargetForm !== undefined
+        ? { preferredTargetForm: entry.preferredTargetForm }
+        : {}),
+      ...(entry.policyAction !== undefined ? { policyAction: entry.policyAction } : {}),
+    },
+  }));
+  for (const rule of args.styleGuideRules) {
+    refs.push({
+      refKind: "style_guide_rule",
+      refId: rule.ruleId,
+      details: {
+        ...(args.styleGuide !== null ? { policySchemaVersion: args.styleGuide.schemaVersion } : {}),
+        section: rule.section,
+        guidance: rule.guidance,
+      },
+    });
+  }
+  if (args.workScope !== null) {
+    refs.push({
+      refKind: "work_scope",
+      refId: args.workScope.workId,
+      details: {
+        glossary: args.workScope.glossary.map((entry) => ({ ...entry })),
+        characters: args.workScope.characters.map((character) => ({ ...character })),
+      },
+    });
+  }
+  if (args.priorPassFeedback !== null) {
+    refs.push({
+      refKind: "prior_pass_feedback",
+      refId: args.priorJournalRunId ?? `journal-pass:${String(args.priorPassFeedback.passNumber)}`,
+      details: {
+        passNumber: args.priorPassFeedback.passNumber,
+        priorDraftText: args.priorPassFeedback.priorDraftText,
+        qualityFlags: args.priorPassFeedback.qualityFlags.slice(),
+        ...(args.priorPassFeedback.feedbackNote !== undefined
+          ? { feedbackNote: args.priorPassFeedback.feedbackNote }
+          : {}),
+      },
+    });
+  }
+  return refs;
 }
 
 function buildWrittenOutcome(args: {
@@ -1839,7 +2090,7 @@ async function invokeTranslationStage(args: {
   contextArtifactRefs?: ReadonlyArray<string>;
   workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
-   * itotori-pass-ledger — prior-pass feedback for this unit, rendered into the
+   * Prior-run feedback for this unit, rendered into the
    * translation prompt so a repair / pass N+1 draft iterates on the prior
    * result. Undefined on a blank first pass (byte-identical prompt).
    */

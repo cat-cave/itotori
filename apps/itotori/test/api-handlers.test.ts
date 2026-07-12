@@ -687,8 +687,8 @@ describe("Itotori API handlers", () => {
     // runtime status reads (/api/hello/status + /api/runtime/v0.2/status)
     // additionally resolve the same catalog.read gate for the detailed
     // evidence report. 4 project reads + 2 runtime reads = 6 catalog.read
-    // checks, plus the overview route's additional draft.write check that
-    // gates the pass ledger = 7 gate checks.
+    // checks, plus the overview route's independent draft.write steering
+    // capability check = 7 gate checks.
     expect(services.authorization.requirePermission).toHaveBeenCalledWith(
       permissionValues.catalogRead,
     );
@@ -820,10 +820,30 @@ describe("Itotori API handlers", () => {
     expect(status.body.unitCount).toBe(dashboardStatusFixture.unitCount);
   });
 
-  it("gates the overview pass ledger on draft.write, not the weaker catalog.read", async () => {
-    // SECURITY (redaction/permission boundary) — the overview embeds the
-    // draft.write-protected pass ledger. A caller who holds catalog.read but
-    // NOT draft.write must NOT receive pass-ledger rows through the overview.
+  it("does not compose durable journal provenance for a caller without catalog.read", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.catalogRead) {
+        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+      }
+    });
+
+    const overview = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/overview" },
+      services,
+    );
+
+    expect(overview.statusCode).toBe(200);
+    expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ includeJournal: false }),
+    );
+    expect(overview.body.journal.rows).toEqual([]);
+    expect(overview.body.journal.latestRow).toBeNull();
+  });
+
+  it("keeps journal provenance readable with catalog.read when steering is denied", async () => {
+    // Journal provenance is a catalog.read surface. draft.write only controls
+    // whether the caller may launch the next run.
     const services = serviceFixture();
     vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
       if (permission === permissionValues.draftWrite) {
@@ -838,19 +858,15 @@ describe("Itotori API handlers", () => {
     );
 
     expect(overview.statusCode).toBe(200);
-    // The pass ledger was composed WITHIN the boundary with includePassLedger
-    // set from the caller's (absent) draft.write permission.
     expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledWith(
-      expect.objectContaining({ includePassLedger: false }),
+      expect.objectContaining({ includeJournal: true, canSteer: false }),
     );
-    // No pass-ledger rows cross the boundary to a caller without draft.write,
-    // even though catalog.read is granted (so the rest of the overview is full).
-    expect(overview.body.passLedger.rows).toEqual([]);
+    expect(overview.body.journal.rows.length).toBeGreaterThan(0);
     expect(overview.body.cost.recentRuns.length).toBeGreaterThan(0);
-    expect(JSON.stringify(overview.body.passLedger.rows)).not.toContain("localization-pass");
+    expect(overview.body.canSteer).toBe(false);
   });
 
-  it("serves the full overview pass ledger to a caller holding draft.write", async () => {
+  it("serves the durable journal and steering capability to a caller holding draft.write", async () => {
     const services = serviceFixture();
 
     const overview = await handleItotoriApiRequest(
@@ -860,9 +876,9 @@ describe("Itotori API handlers", () => {
 
     expect(overview.statusCode).toBe(200);
     expect(services.projectWorkflow.getProjectOverview).toHaveBeenCalledWith(
-      expect.objectContaining({ includePassLedger: true }),
+      expect.objectContaining({ includeJournal: true, canSteer: true }),
     );
-    expect(overview.body.passLedger.rows.length).toBeGreaterThan(0);
+    expect(overview.body.journal.rows.length).toBeGreaterThan(0);
   });
 
   it("serves the cost drilldown with parsed project/system/time filters + pagination", async () => {
@@ -5017,17 +5033,31 @@ function serviceFixture(): ItotoriApiServices {
         ownedLocaleBranchIdentitiesFixture(projectId),
       ),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
-      // Mirror the real service's permission boundary: when the caller is not
-      // permitted to read the draft.write-protected pass ledger the composition
-      // never assembles its rows.
-      getProjectOverview: vi.fn(async (options?: ProjectOverviewReadModelOptions) =>
-        options?.includePassLedger === false
+      // Mirror the real service's permission boundary: an unpermitted caller
+      // never gets journal rows assembled with the trusted service actor.
+      getProjectOverview: vi.fn(async (options?: ProjectOverviewReadModelOptions) => {
+        const overview = {
+          ...projectOverviewFixture,
+          canSteer: options?.canSteer ?? projectOverviewFixture.canSteer,
+        };
+        return options?.includeJournal === false
           ? {
-              ...projectOverviewFixture,
-              passLedger: { ...projectOverviewFixture.passLedger, rows: [] },
+              ...overview,
+              journal: {
+                ...projectOverviewFixture.journal,
+                rows: [],
+                latestRow: null,
+                pagination: {
+                  ...projectOverviewFixture.journal.pagination,
+                  total: 0,
+                  pageCount: 0,
+                  hasMore: false,
+                  nextOffset: null,
+                },
+              },
             }
-          : projectOverviewFixture,
-      ),
+          : overview;
+      }),
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),

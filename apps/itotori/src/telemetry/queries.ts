@@ -3,8 +3,8 @@
 //
 // This module declares the typed surface that the dashboard widget,
 // the `itotori:telemetry-summary` CLI command, and any cost-budgeting
-// caller use to read the draft-attempt provider ledger as per-pair
-// summaries. The aggregation key is exactly (modelId, providerId) per
+// caller use to read durable journal attempts as per-pair summaries. The
+// aggregation key is exactly (modelId, providerId) per
 // the standing model+provider pair rule (KAIFUU-176 / ITOTORI-220);
 // collapsing back to model alone is an MPP violation and is rejected
 // by a contract test in `apps/itotori/test/telemetry-queries.test.ts`.
@@ -13,13 +13,13 @@
 // (queries-impl.ts) so callers can mock the surface in unit tests
 // without reaching the live database. The implementation is a thin
 // wrapper around
-// `ItotoriDraftAttemptProviderLedgerRepository.sumByPairAndDay`.
+// `ItotoriLocalizationJournalRepository.sumAttemptsByPairAndDay`.
 
 import type { AuthorizationActor } from "@itotori/db";
 
 /**
  * Window over which telemetry is aggregated. Both bounds are inclusive
- * at the ledger row's `created_at` column. The query layer rejects a
+ * at the physical journal attempt's `completed_at` column. The query layer rejects a
  * window where `from` is after `to` (delegating that validation to the
  * repository).
  */
@@ -46,6 +46,12 @@ export type TelemetryWindow = {
  * (every live ITOTORI-221 OpenRouter row carries latencyMs).
  */
 export type TelemetryPairSummary = {
+  /**
+   * `partial` means one or more pre-0078 rows used their served pair as the
+   * aggregation fallback. The pair key is then not evidence of the original
+   * requested route.
+   */
+  readonly requestedPairAvailability: "complete" | "partial";
   readonly totalCostUsd: string;
   readonly totalTokensIn: number;
   readonly totalTokensOut: number;
@@ -53,7 +59,14 @@ export type TelemetryPairSummary = {
   readonly p95LatencyMs: number;
   readonly invocationCount: number;
   /**
-   * ITOTORI-233 — number of invocations in the bucket that landed at
+   * Provenance coverage for every cache field below. When `partial`, their
+   * numeric values cover only captured rows and MUST NOT be interpreted as a
+   * claim that the uncaptured calls had zero cache activity.
+   */
+  readonly cacheFactsAvailability: "complete" | "partial";
+  readonly cacheFactsCapturedInvocationCount: number;
+  /**
+   * ITOTORI-233 — number of captured invocations in the bucket that landed at
    * least one prompt token from cache (i.e. `cache_read_tokens > 0`).
    * The miss case (no cache hit) is `invocationCount - cacheHitCount`.
    */
@@ -99,6 +112,10 @@ export const TELEMETRY_UNKNOWN_MODEL_SENTINEL = "unknown-model" as const;
 export type TelemetrySummaryByPair = {
   readonly byPair: Record<TelemetryPairKey, TelemetryPairSummary>;
   readonly totalCostUsd: string;
+  /** See {@link TelemetryPairSummary.cacheFactsAvailability}. */
+  readonly cacheFactsAvailability: "complete" | "partial";
+  /** Number of physical attempts whose cache facts contribute to the total. */
+  readonly cacheFactsCapturedInvocationCount: number;
   /**
    * ITOTORI-233 — total of `cacheSavingsUsd` across every pair in the
    * window. Surfaced as a single line in the CLI dashboard
@@ -186,12 +203,14 @@ export type TelemetryPairRanking = {
  */
 export type TelemetryZdrEnforcedRow = {
   readonly pair: TelemetryPairKey;
+  readonly requestedPairAvailability: "complete" | "partial";
   readonly invocationCount: number;
   readonly zdrEnforcedCount: number;
 };
 
 export type TelemetryCostKindRow = {
   readonly pair: TelemetryPairKey;
+  readonly requestedPairAvailability: "complete" | "partial";
   // ITOTORI-134 — widened to surface provider_estimate cost rows alongside
   // billed / zero in the telemetry cost-kind breakdown.
   readonly costKind: "billed" | "provider_estimate" | "zero";
@@ -212,6 +231,8 @@ export type TelemetryCostKindRow = {
 export type TelemetryCacheRow = {
   readonly pair: TelemetryPairKey;
   readonly invocationCount: number;
+  readonly cacheFactsAvailability: "complete" | "partial";
+  readonly cacheFactsCapturedInvocationCount: number;
   readonly cacheHitCount: number;
   readonly totalCacheReadTokens: number;
   readonly totalCacheWriteTokens: number;

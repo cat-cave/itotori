@@ -43,12 +43,6 @@ export {
   variableSubstitutedDraftFixture,
 } from "./draft-fixtures.js";
 
-export {
-  DraftAttemptRecorder,
-  type DraftAttemptRecorderArgs,
-  type FallbackEntry,
-} from "./draft-attempt-recorder.js";
-
 // ITOTORI-222 — the legacy isolated drafting command was collapsed into
 // `apps/itotori/src/orchestrator/agentic-loop.ts`. Direct callers should
 // import `runAgenticLoopForUnit` (orchestrator entry point) or

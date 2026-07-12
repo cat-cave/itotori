@@ -132,8 +132,8 @@ import type {
 import { workspaceCorrectionScopeKindValues } from "./workspace/correction-service.js";
 import type {
   ProjectOverviewBenchmarkHeadline,
-  ProjectOverviewPassLedgerPage,
-  ProjectOverviewPassLedgerRow,
+  ProjectOverviewJournalPage,
+  ProjectOverviewJournalRow,
   ProjectOverviewReadModel,
 } from "./project-overview-read-model.js";
 import { PROJECT_OVERVIEW_SCHEMA_VERSION } from "./project-overview-read-model.js";
@@ -345,7 +345,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "cost",
     "telemetry",
     "costDrilldown",
-    "passLedger",
+    "journal",
     "benchmarkHeadline",
     // ovw-launch-pass-action — whether the CALLER may steer the localization
     // (the `draft.write` steer permission). Sourced server-side so the Overview
@@ -5952,7 +5952,7 @@ export function assertJobsRunTableReadModel(
   label = "JobsRunTableReadModel",
 ): asserts value is ApiJobsRunTableResponse {
   const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel);
-  assertLiteral(model.schemaVersion, "jobs.run_table.v0.1", `${label}.schemaVersion`);
+  assertLiteral(model.schemaVersion, "jobs.run_table.v0.2", `${label}.schemaVersion`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   const filter = asStrictRecord(model.filter, `${label}.filter`, ["projectId"]);
   assertNullableString(filter.projectId, `${label}.filter.projectId`);
@@ -5969,11 +5969,10 @@ export function assertJobsRunTableReadModel(
 function assertJobsRunTableRow(value: unknown, label: string): void {
   const row = asStrictRecord(value, label, [
     "runId",
-    "ledgerEntryId",
-    "draftJobId",
-    "draftJobAttemptId",
+    "journalRunId",
+    "attemptId",
     "providerRunId",
-    "jobId",
+    "bridgeUnitId",
     "projectId",
     "localeBranchId",
     "task",
@@ -5987,20 +5986,17 @@ function assertJobsRunTableRow(value: unknown, label: string): void {
     "createdAt",
   ]);
   assertString(row.runId, `${label}.runId`);
-  assertString(row.ledgerEntryId, `${label}.ledgerEntryId`);
-  assertString(row.draftJobId, `${label}.draftJobId`);
-  assertString(row.draftJobAttemptId, `${label}.draftJobAttemptId`);
-  assertNullableString(row.providerRunId, `${label}.providerRunId`);
-  assertNullableString(row.jobId, `${label}.jobId`);
+  assertString(row.journalRunId, `${label}.journalRunId`);
+  assertString(row.attemptId, `${label}.attemptId`);
+  assertString(row.providerRunId, `${label}.providerRunId`);
+  assertString(row.bridgeUnitId, `${label}.bridgeUnitId`);
   assertString(row.projectId, `${label}.projectId`);
   assertString(row.localeBranchId, `${label}.localeBranchId`);
   assertString(row.task, `${label}.task`);
   assertString(row.status, `${label}.status`);
-  assertNullableString(row.servedModel, `${label}.servedModel`);
+  assertString(row.servedModel, `${label}.servedModel`);
   assertString(row.servedProvider, `${label}.servedProvider`);
-  if (row.zdr !== null) {
-    assertBoolean(row.zdr, `${label}.zdr`);
-  }
+  assertBoolean(row.zdr, `${label}.zdr`);
   assertJobsRunTableCost(row.cost, `${label}.cost`);
   assertJobsRunTableTokens(row.tokens, `${label}.tokens`);
   assertJobsRunTableFallback(row.fallback, `${label}.fallback`);
@@ -6027,22 +6023,18 @@ function assertJobsRunTableTokens(value: unknown, label: string): void {
 }
 
 function assertJobsRunTableFallback(value: unknown, label: string): void {
-  const fallback = asStrictRecord(value, label, ["used", "plan", "chain"]);
-  assertBoolean(fallback.used, `${label}.used`);
-  for (const [index, entry] of asArray(fallback.plan, `${label}.plan`).entries()) {
-    assertString(entry, `${label}.plan[${index}]`);
+  const fallback = asStrictRecord(value, label, ["availability", "used", "plan", "chain"]);
+  assertEnum(fallback.availability, ["captured", "not_captured"] as const, `${label}.availability`);
+  if (fallback.availability === "captured") {
+    assertBoolean(fallback.used, `${label}.used`);
+    for (const [index, entry] of asArray(fallback.plan, `${label}.plan`).entries()) {
+      assertString(entry, `${label}.plan[${index}]`);
+    }
+  } else if (fallback.used !== null || fallback.plan !== null) {
+    throw new Error(`${label} without captured fallback facts must use null used/plan`);
   }
-  for (const [index, entryValue] of asArray(fallback.chain, `${label}.chain`).entries()) {
-    const entry = asStrictRecord(entryValue, `${label}.chain[${index}]`, [
-      "modelProviderFamily",
-      "modelId",
-      "failureReason",
-      "attemptedAt",
-    ]);
-    assertString(entry.modelProviderFamily, `${label}.chain[${index}].modelProviderFamily`);
-    assertString(entry.modelId, `${label}.chain[${index}].modelId`);
-    assertString(entry.failureReason, `${label}.chain[${index}].failureReason`);
-    assertDateLike(entry.attemptedAt, `${label}.chain[${index}].attemptedAt`);
+  for (const [index, entry] of asArray(fallback.chain, `${label}.chain`).entries()) {
+    assertString(entry, `${label}.chain[${index}]`);
   }
 }
 
@@ -6059,7 +6051,7 @@ export function assertProjectOverviewReadModel(
   assertProjectCostReport(model.cost, `${label}.cost`);
   assertProjectTelemetryTimeseries(model.telemetry, `${label}.telemetry`);
   assertProjectCostDrilldownResponse(model.costDrilldown, `${label}.costDrilldown`);
-  assertProjectOverviewPassLedgerPage(model.passLedger, `${label}.passLedger`);
+  assertProjectOverviewJournalPage(model.journal, `${label}.journal`);
   assertProjectOverviewBenchmarkHeadline(model.benchmarkHeadline, `${label}.benchmarkHeadline`);
   // ovw-launch-pass-action — the server-derived steer capability the Overview
   // launch-pass action gates itself on.
@@ -6116,10 +6108,10 @@ function assertNumberSeries(value: unknown, label: string): unknown[] {
   return series;
 }
 
-function assertProjectOverviewPassLedgerPage(
+function assertProjectOverviewJournalPage(
   value: unknown,
   label: string,
-): asserts value is ProjectOverviewPassLedgerPage {
+): asserts value is ProjectOverviewJournalPage {
   const page = asStrictRecord(value, label, ["filter", "pagination", "rows", "latestRow"]);
   const filter = asStrictRecord(page.filter, `${label}.filter`, ["projectId", "localeBranchId"]);
   assertString(filter.projectId, `${label}.filter.projectId`);
@@ -6130,10 +6122,10 @@ function assertProjectOverviewPassLedgerPage(
     throw new Error(`${label}.rows must not exceed pagination.limit`);
   }
   for (const [index, row] of rows.entries()) {
-    assertProjectOverviewPassLedgerRow(row, `${label}.rows[${index}]`);
+    assertProjectOverviewJournalRow(row, `${label}.rows[${index}]`);
   }
   if ("latestRow" in page && page.latestRow !== null) {
-    assertProjectOverviewPassLedgerRow(page.latestRow, `${label}.latestRow`);
+    assertProjectOverviewJournalRow(page.latestRow, `${label}.latestRow`);
   }
 }
 
@@ -6161,42 +6153,38 @@ function assertProjectOverviewPagination(value: unknown, label: string): void {
   }
 }
 
-function assertProjectOverviewPassLedgerRow(
+function assertProjectOverviewJournalRow(
   value: unknown,
   label: string,
-): asserts value is ProjectOverviewPassLedgerRow {
+): asserts value is ProjectOverviewJournalRow {
   const row = asStrictRecord(value, label, [
-    "passLedgerId",
+    "journalRunId",
     "projectId",
     "localeBranchId",
     "sourceRevisionId",
-    "passNumber",
-    "priorPassNumber",
-    "totalUsageCostUsd",
-    "zdrConfirmed",
-    "recordedAt",
-    "score",
-    "feedback",
-    "note",
+    "targetLocale",
+    "createdAt",
+    "physicalCallCount",
+    "failedPhysicalCallCount",
+    "writtenOutcomeCount",
+    "candidateCount",
+    "qaFindingCount",
+    "contextRefCount",
+    "speakerLabelCount",
   ]);
-  assertString(row.passLedgerId, `${label}.passLedgerId`);
+  assertString(row.journalRunId, `${label}.journalRunId`);
   assertString(row.projectId, `${label}.projectId`);
   assertString(row.localeBranchId, `${label}.localeBranchId`);
   assertString(row.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertPositiveInteger(row.passNumber, `${label}.passNumber`);
-  if (row.priorPassNumber !== null) {
-    assertPositiveInteger(row.priorPassNumber, `${label}.priorPassNumber`);
-  }
-  assertNonNegativeNumber(row.totalUsageCostUsd, `${label}.totalUsageCostUsd`);
-  assertBoolean(row.zdrConfirmed, `${label}.zdrConfirmed`);
-  assertDateLike(row.recordedAt, `${label}.recordedAt`);
-  if (row.score !== null) {
-    assertNonNegativeNumber(row.score, `${label}.score`);
-  }
-  assertNonNegativeInteger(row.feedback, `${label}.feedback`);
-  if (typeof row.note !== "string") {
-    throw new Error(`${label}.note must be a string`);
-  }
+  assertString(row.targetLocale, `${label}.targetLocale`);
+  assertDateLike(row.createdAt, `${label}.createdAt`);
+  assertNonNegativeInteger(row.physicalCallCount, `${label}.physicalCallCount`);
+  assertNonNegativeInteger(row.failedPhysicalCallCount, `${label}.failedPhysicalCallCount`);
+  assertNonNegativeInteger(row.writtenOutcomeCount, `${label}.writtenOutcomeCount`);
+  assertNonNegativeInteger(row.candidateCount, `${label}.candidateCount`);
+  assertNonNegativeInteger(row.qaFindingCount, `${label}.qaFindingCount`);
+  assertNonNegativeInteger(row.contextRefCount, `${label}.contextRefCount`);
+  assertNonNegativeInteger(row.speakerLabelCount, `${label}.speakerLabelCount`);
 }
 
 function assertProjectOverviewBenchmarkHeadline(

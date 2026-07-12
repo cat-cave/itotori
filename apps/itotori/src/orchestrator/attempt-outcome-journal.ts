@@ -14,6 +14,7 @@ import type {
 import type { AgenticLoopStageName } from "@itotori/localization-bridge-schema";
 import {
   ModelProviderError,
+  providerRunFromThrownError,
   type ModelInvocationRequest,
   type ModelInvocationResult,
   type ModelProvider,
@@ -41,12 +42,24 @@ export type DrivenLlmAttemptRecord = {
   agentLabel: string;
   logicalCallId: string;
   attemptIndex: number;
+  /** Pair requested by the stage policy, retained separately from the serve. */
+  requestedModelId: string;
+  requestedProviderId: string;
   modelId: string;
   providerId: string;
   providerRunId: string;
   costUsd: string;
+  costKind: "billed" | "provider_estimate" | "zero";
+  usageResponseJson: Record<string, unknown>;
   tokensIn: number | null;
   tokensOut: number | null;
+  tokenCountSource: string;
+  /** Null means the provider supplied no cache annotation; it is not zero. */
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheDiscountMicrosUsd: number | null;
+  fallbackUsed: boolean;
+  fallbackPlan: string[];
   zdr: boolean;
   finishState: string | null;
   refusalState: string | null;
@@ -181,7 +194,8 @@ class CapturingModelProvider implements ModelProvider {
       );
       return result;
     } catch (error) {
-      if (error instanceof ModelProviderError && error.providerRun !== undefined) {
+      const providerRun = providerRunFromThrownError(error);
+      if (providerRun !== undefined) {
         this.args.sink.push(
           recordFromProviderRun({
             runId: this.args.runId,
@@ -191,9 +205,12 @@ class CapturingModelProvider implements ModelProvider {
             pair: this.args.pair,
             logicalCallId: this.args.logicalCallId,
             attemptIndex,
-            providerRun: error.providerRun,
-            finishState: "provider_error",
-            failureClass: error.code,
+            providerRun,
+            // A raw artifact/filesystem error can arrive after OpenRouter has
+            // completed the physical call. Preserve that distinction instead
+            // of claiming the remote provider produced this failure.
+            finishState: error instanceof ModelProviderError ? "provider_error" : "post_call_error",
+            failureClass: errorClassOf(error),
           }),
         );
       }
@@ -227,12 +244,22 @@ function recordFromProviderRun(args: {
     agentLabel: args.agentLabel,
     logicalCallId: args.logicalCallId,
     attemptIndex: args.attemptIndex,
+    requestedModelId: args.providerRun.provider.requestedModelId,
+    requestedProviderId: args.providerRun.provider.requestedProviderId,
     modelId: args.providerRun.provider.actualModelId,
     providerId,
     providerRunId: args.providerRun.runId,
     costUsd: args.providerRun.cost.amountUsd,
+    costKind: args.providerRun.cost.costKind,
+    usageResponseJson: args.providerRun.usageResponseJson,
     tokensIn: usage.promptTokens ?? null,
     tokensOut: usage.completionTokens ?? null,
+    tokenCountSource: usage.tokenCountSource,
+    cacheReadTokens: usage.cacheReadTokens ?? null,
+    cacheWriteTokens: usage.cacheWriteTokens ?? null,
+    cacheDiscountMicrosUsd: args.providerRun.cost.cacheDiscountMicrosUsd ?? null,
+    fallbackUsed: args.providerRun.fallbackUsed,
+    fallbackPlan: args.providerRun.fallbackPlan.slice(),
     zdr: args.providerRun.routingPosture.zdr,
     finishState: args.finishState,
     refusalState: isRefusal(args.finishState) ? args.finishState : null,
@@ -350,6 +377,12 @@ function errorClassOf(error: unknown): string {
   if (error instanceof ModelProviderError) {
     return error.code;
   }
+  if (typeof error === "object" && error !== null) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) {
+      return code;
+    }
+  }
   if (error instanceof Error && error.name.length > 0) {
     return error.name;
   }
@@ -357,8 +390,9 @@ function errorClassOf(error: unknown): string {
 }
 
 function providerRunIdOf(error: unknown): string | undefined {
-  if (error instanceof ModelProviderError) {
-    return error.providerRun?.runId;
+  const providerRun = providerRunFromThrownError(error);
+  if (providerRun !== undefined) {
+    return providerRun.runId;
   }
   if (typeof error !== "object" || error === null) {
     return undefined;

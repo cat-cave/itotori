@@ -1,8 +1,8 @@
-// ITOTORI-223 — implementation of the TelemetryQuery surface against
-// the draft-attempt provider ledger.
+// ITOTORI-223 — implementation of the TelemetryQuery surface against the
+// durable localization journal's physical attempts.
 //
 // The implementation is a thin shape-translator on top of the
-// repository's `sumByPairAndDay` aggregate. All cost / token / latency
+// repository's `sumAttemptsByPairAndDay` aggregate. All cost / token / latency
 // math happens in SQL; the translator here turns rows into the typed
 // shapes (TelemetrySummaryByPair, TelemetryTopPairRow,
 // TelemetryPairRanking) the dashboard + CLI render.
@@ -14,9 +14,8 @@
 
 import type {
   AuthorizationActor,
-  ItotoriDraftAttemptProviderLedgerRepositoryPort,
-  ItotoriModelLedgerRepositoryPort,
-  LedgerPairAggregateRow,
+  ItotoriLocalizationJournalRepositoryPort,
+  LocalizationJournalAttemptAggregateRow,
 } from "@itotori/db";
 import {
   buildPairKey,
@@ -33,6 +32,12 @@ import {
   type TelemetryZdrEnforcedRow,
 } from "./queries.js";
 
+/** The read-only journal subset required by the telemetry projection. */
+export type TelemetryJournalPort = Pick<
+  ItotoriLocalizationJournalRepositoryPort,
+  "sumAttemptsByPairAndDay" | "countZdrEnforcedAttemptsByPair" | "countCostKindsByPair"
+>;
+
 export class TelemetryQueryError extends Error {
   constructor(
     readonly code: "telemetry_query_invalid_input",
@@ -44,16 +49,7 @@ export class TelemetryQueryError extends Error {
 }
 
 export class LedgerTelemetryQuery implements TelemetryQuery {
-  constructor(
-    private readonly repository: ItotoriDraftAttemptProviderLedgerRepositoryPort,
-    // ITOTORI-230 — countZdrEnforcedCallsByPair reads `routing_posture`
-    // from `itotori_provider_runs` (the model-ledger), not the
-    // draft-attempt ledger. Optional at the constructor seam so
-    // legacy test wiring that mocks only the draft-attempt port still
-    // compiles; callers that invoke countZdrEnforcedCallsByPair MUST
-    // pass the model-ledger port or get a typed error at call time.
-    private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
-  ) {}
+  constructor(private readonly repository: TelemetryJournalPort) {}
 
   async sumByPair(
     actor: AuthorizationActor,
@@ -62,18 +58,18 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     opts?: TelemetryQuerySumByPairOptions,
   ): Promise<TelemetrySummaryByPair> {
     const groupByDay = opts?.groupByDay === true;
-    const ungroupedRows = await this.repository.sumByPairAndDay(actor, projectId, window);
+    const ungroupedRows = await this.repository.sumAttemptsByPairAndDay(actor, projectId, window);
     const summary = summariseRows(ungroupedRows);
 
     if (!groupByDay) {
       return summary;
     }
 
-    const dailyRows = await this.repository.sumByPairAndDay(actor, projectId, window, {
+    const dailyRows = await this.repository.sumAttemptsByPairAndDay(actor, projectId, window, {
       groupByDay: true,
     });
     const byDay: Record<string, TelemetrySummaryByPair> = {};
-    const dayBuckets = new Map<string, LedgerPairAggregateRow[]>();
+    const dayBuckets = new Map<string, LocalizationJournalAttemptAggregateRow[]>();
     for (const row of dailyRows) {
       if (row.bucketDay === null) {
         // Defensive: groupByDay was requested, so the repo MUST set
@@ -81,7 +77,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
         // a typed error rather than silently dropping the row.
         throw new TelemetryQueryError(
           "telemetry_query_invalid_input",
-          "sumByPairAndDay with groupByDay returned a row with null bucketDay",
+          "sumAttemptsByPairAndDay with groupByDay returned a row with null bucketDay",
         );
       }
       const existing = dayBuckets.get(row.bucketDay);
@@ -118,7 +114,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
         `topPairsByCost k must be a positive integer (got ${k})`,
       );
     }
-    const rows = await this.repository.sumByPairAndDay(actor, projectId, window);
+    const rows = await this.repository.sumAttemptsByPairAndDay(actor, projectId, window);
     const summary = summariseRows(rows);
     const total = parseCost(summary.totalCostUsd);
 
@@ -145,7 +141,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryPairRanking[]> {
-    const rows = await this.repository.sumByPairAndDay(actor, projectId, window);
+    const rows = await this.repository.sumAttemptsByPairAndDay(actor, projectId, window);
     const summary = summariseRows(rows);
     const entries: Array<{
       pair: TelemetryPairKey;
@@ -209,37 +205,23 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
   }
 
   /**
-   * ITOTORI-230 — count per-pair ZDR-enforcement. Delegates to the
-   * model-ledger repository's `countZdrEnforcedByPair` (which queries
-   * `routing_posture->>'zdr' = 'true'` on `itotori_provider_runs`), then
-   * shapes the result into the typed `TelemetryZdrEnforcedRow[]`. Rows
-   * are sorted deterministically by pair key for stable JSON output.
-   *
-   * Throws when the constructor was not given a model-ledger port. The
-   * dashboard wiring at apps/itotori/src/services/database-services.ts
-   * must supply it; if a test mocks only the draft-attempt port it
-   * cannot exercise this method (and gets a typed error rather than a
-   * silent partial result).
+   * Count per-pair ZDR enforcement from the same physical attempts that fund
+   * cost/token/latency telemetry. No separate model-ledger projection is read.
    */
   async countZdrEnforcedCallsByPair(
     actor: AuthorizationActor,
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryZdrEnforcedRow[]> {
-    if (this.modelLedger === undefined) {
-      throw new TelemetryQueryError(
-        "telemetry_query_invalid_input",
-        "countZdrEnforcedCallsByPair requires an ItotoriModelLedgerRepositoryPort at construction",
-      );
-    }
-    const rows = await this.modelLedger.countZdrEnforcedByPair(actor, projectId, window);
+    const rows = await this.repository.countZdrEnforcedAttemptsByPair(actor, projectId, window);
     const sorted = [...rows].sort((a, b) => {
-      const aKey = buildPairKey(a.modelId, a.providerId);
-      const bKey = buildPairKey(b.modelId, b.providerId);
+      const aKey = buildPairKey(a.requestedModelId, a.requestedProviderId);
+      const bKey = buildPairKey(b.requestedModelId, b.requestedProviderId);
       return aKey.localeCompare(bKey);
     });
     return sorted.map((row) => ({
-      pair: buildPairKey(row.modelId, row.providerId),
+      pair: buildPairKey(row.requestedModelId, row.requestedProviderId),
+      requestedPairAvailability: row.requestedPairAvailability,
       invocationCount: row.invocationCount,
       zdrEnforcedCount: row.zdrEnforcedCount,
     }));
@@ -250,20 +232,15 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryCostKindRow[]> {
-    if (this.modelLedger === undefined) {
-      throw new TelemetryQueryError(
-        "telemetry_query_invalid_input",
-        "countCostKindsByPair requires an ItotoriModelLedgerRepositoryPort at construction",
-      );
-    }
-    const rows = await this.modelLedger.countCostKindsByPair(actor, projectId, window);
+    const rows = await this.repository.countCostKindsByPair(actor, projectId, window);
     const sorted = [...rows].sort((a, b) => {
-      const aKey = `${buildPairKey(a.modelId, a.providerId)}:${a.costKind}`;
-      const bKey = `${buildPairKey(b.modelId, b.providerId)}:${b.costKind}`;
+      const aKey = `${buildPairKey(a.requestedModelId, a.requestedProviderId)}:${a.costKind}`;
+      const bKey = `${buildPairKey(b.requestedModelId, b.requestedProviderId)}:${b.costKind}`;
       return aKey.localeCompare(bKey);
     });
     return sorted.map((row) => ({
-      pair: buildPairKey(row.modelId, row.providerId),
+      pair: buildPairKey(row.requestedModelId, row.requestedProviderId),
+      requestedPairAvailability: row.requestedPairAvailability,
       costKind: row.costKind,
       invocationCount: row.invocationCount,
       amountMicrosUsd: row.amountMicrosUsd,
@@ -274,9 +251,8 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
    * ITOTORI-233 — per-(modelId, providerId) cache hit counts + savings
    * over the window. Reads `cache_read_tokens > 0` rows for hit count,
    * and SUMs `cache_discount_micros_usd / 1_000_000` for savings,
-   * BOTH sourced from the draft-attempt provider ledger (which
-   * mirrors the originating OR response's `usage.prompt_tokens_details`
-   * + `usage.cost_details` verbatim — never derived).
+   * Both cache fields are sourced from the journal's ProviderRunRecord
+   * capture (never derived from token counts or pricing).
    *
    * Returns rows sorted by pair key for stable JSON output. Pairs that
    * never logged a cache hit AND never logged a non-zero discount are
@@ -288,7 +264,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryCacheRow[]> {
-    const rows = await this.repository.sumByPairAndDay(actor, projectId, window);
+    const rows = await this.repository.sumAttemptsByPairAndDay(actor, projectId, window);
     // Aggregate per pair (the repository result may not be grouped if
     // multiple buckets exist for a pair across days when groupByDay is
     // requested elsewhere; here we explicitly call without groupByDay
@@ -296,6 +272,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     // to handle pre-aggregated callers).
     type Aggregate = {
       invocationCount: number;
+      cacheFactsCapturedInvocationCount: number;
       cacheHitCount: number;
       cacheReadTokens: number;
       cacheWriteTokens: number;
@@ -303,12 +280,13 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
     };
     const aggregated = new Map<TelemetryPairKey, Aggregate>();
     for (const row of rows) {
-      const key = buildPairKey(row.modelId, row.providerId);
+      const key = buildPairKey(row.requestedModelId, row.requestedProviderId);
       const cacheSavings = parseCost(row.cacheSavingsUsd);
       const existing = aggregated.get(key);
       if (existing === undefined) {
         aggregated.set(key, {
           invocationCount: row.invocationCount,
+          cacheFactsCapturedInvocationCount: row.cacheFactsCapturedInvocationCount,
           cacheHitCount: row.cacheHitCount,
           cacheReadTokens: row.totalCacheReadTokens,
           cacheWriteTokens: row.totalCacheWriteTokens,
@@ -316,6 +294,7 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
         });
       } else {
         existing.invocationCount += row.invocationCount;
+        existing.cacheFactsCapturedInvocationCount += row.cacheFactsCapturedInvocationCount;
         existing.cacheHitCount += row.cacheHitCount;
         existing.cacheReadTokens += row.totalCacheReadTokens;
         existing.cacheWriteTokens += row.totalCacheWriteTokens;
@@ -330,6 +309,11 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
       result.push({
         pair,
         invocationCount: entry.invocationCount,
+        cacheFactsAvailability:
+          entry.cacheFactsCapturedInvocationCount === entry.invocationCount
+            ? "complete"
+            : "partial",
+        cacheFactsCapturedInvocationCount: entry.cacheFactsCapturedInvocationCount,
         cacheHitCount: entry.cacheHitCount,
         totalCacheReadTokens: entry.cacheReadTokens,
         totalCacheWriteTokens: entry.cacheWriteTokens,
@@ -350,7 +334,9 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
  * the per-day p95 is exact, and the rolled-up p95 is the "worst p95
  * across buckets" — a documented conservative upper bound.
  */
-function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySummaryByPair {
+function summariseRows(
+  rows: ReadonlyArray<LocalizationJournalAttemptAggregateRow>,
+): TelemetrySummaryByPair {
   const aggregated = new Map<
     TelemetryPairKey,
     {
@@ -358,6 +344,7 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       tokensIn: number;
       tokensOut: number;
       invocations: number;
+      requestedPairAvailability: "complete" | "partial";
       latencyWeightedSum: number;
       latencyCount: number;
       p95Max: number;
@@ -366,11 +353,13 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       cacheReadTokens: number;
       cacheWriteTokens: number;
       cacheSavings: number;
+      cacheFactsAvailability: "complete" | "partial";
+      cacheFactsCapturedInvocationCount: number;
     }
   >();
 
   for (const row of rows) {
-    const key = buildPairKey(row.modelId, row.providerId);
+    const key = buildPairKey(row.requestedModelId, row.requestedProviderId);
     const cost = parseCost(row.totalCostUsd);
     const cacheSavings = parseCost(row.cacheSavingsUsd);
     const existing = aggregated.get(key);
@@ -382,6 +371,7 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
         tokensIn: row.totalTokensIn,
         tokensOut: row.totalTokensOut,
         invocations: row.invocationCount,
+        requestedPairAvailability: row.requestedPairAvailability,
         latencyWeightedSum: avgLatency * row.invocationCount,
         latencyCount: row.invocationCount,
         p95Max: p95Latency,
@@ -389,12 +379,17 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
         cacheReadTokens: row.totalCacheReadTokens,
         cacheWriteTokens: row.totalCacheWriteTokens,
         cacheSavings,
+        cacheFactsAvailability: row.cacheFactsAvailability,
+        cacheFactsCapturedInvocationCount: row.cacheFactsCapturedInvocationCount,
       });
     } else {
       existing.cost += cost;
       existing.tokensIn += row.totalTokensIn;
       existing.tokensOut += row.totalTokensOut;
       existing.invocations += row.invocationCount;
+      if (row.requestedPairAvailability === "partial") {
+        existing.requestedPairAvailability = "partial";
+      }
       existing.latencyWeightedSum += avgLatency * row.invocationCount;
       existing.latencyCount += row.invocationCount;
       existing.p95Max = Math.max(existing.p95Max, p95Latency);
@@ -402,12 +397,19 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       existing.cacheReadTokens += row.totalCacheReadTokens;
       existing.cacheWriteTokens += row.totalCacheWriteTokens;
       existing.cacheSavings += cacheSavings;
+      if (row.cacheFactsAvailability === "partial") {
+        existing.cacheFactsAvailability = "partial";
+      }
+      existing.cacheFactsCapturedInvocationCount += row.cacheFactsCapturedInvocationCount;
     }
   }
 
   const byPair: Record<TelemetryPairKey, TelemetryPairSummary> = {};
   let totalCost = 0;
   let totalCacheSavings = 0;
+  let totalInvocationCount = 0;
+  let totalCacheFactsCapturedInvocationCount = 0;
+  let cacheFactsAvailability: "complete" | "partial" = "complete";
   // Iterate sorted by pair key for deterministic JSON key order.
   const sortedKeys = Array.from(aggregated.keys()).sort();
   for (const key of sortedKeys) {
@@ -416,12 +418,15 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       continue;
     }
     byPair[key] = {
+      requestedPairAvailability: entry.requestedPairAvailability,
       totalCostUsd: entry.cost.toFixed(8),
       totalTokensIn: entry.tokensIn,
       totalTokensOut: entry.tokensOut,
       avgLatencyMs: entry.latencyCount === 0 ? 0 : entry.latencyWeightedSum / entry.latencyCount,
       p95LatencyMs: entry.p95Max,
       invocationCount: entry.invocations,
+      cacheFactsAvailability: entry.cacheFactsAvailability,
+      cacheFactsCapturedInvocationCount: entry.cacheFactsCapturedInvocationCount,
       cacheHitCount: entry.cacheHitCount,
       totalCacheReadTokens: entry.cacheReadTokens,
       totalCacheWriteTokens: entry.cacheWriteTokens,
@@ -429,11 +434,21 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
     };
     totalCost += entry.cost;
     totalCacheSavings += entry.cacheSavings;
+    totalInvocationCount += entry.invocations;
+    totalCacheFactsCapturedInvocationCount += entry.cacheFactsCapturedInvocationCount;
+    if (entry.cacheFactsAvailability === "partial") {
+      cacheFactsAvailability = "partial";
+    }
   }
 
   return {
     byPair,
     totalCostUsd: totalCost.toFixed(8),
+    cacheFactsAvailability:
+      totalCacheFactsCapturedInvocationCount === totalInvocationCount
+        ? cacheFactsAvailability
+        : "partial",
+    cacheFactsCapturedInvocationCount: totalCacheFactsCapturedInvocationCount,
     cacheSavingsUsd: totalCacheSavings.toFixed(8),
   };
 }

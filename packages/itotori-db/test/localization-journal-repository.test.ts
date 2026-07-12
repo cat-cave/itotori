@@ -237,6 +237,75 @@ describe("ItotoriLocalizationJournalRepository", () => {
     }
   });
 
+  it("lists journal runs chronologically and resolves the latest run for a branch", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      await repository.createRun(localActor, {
+        runId: "journal-run-history-first",
+        ...scope,
+        createdAt: "2026-07-11T10:00:00.000Z",
+      });
+      await repository.createRun(localActor, {
+        runId: "journal-run-history-second",
+        ...scope,
+        createdAt: "2026-07-11T10:01:00.000Z",
+      });
+
+      const history = await repository.loadRunsForBranch(localActor, scope.localeBranchId);
+      expect(history.map((run) => run.runId)).toEqual([
+        "journal-run-history-first",
+        "journal-run-history-second",
+      ]);
+      expect(
+        await repository.loadLatestRunForBranch(localActor, scope.localeBranchId),
+      ).toMatchObject({
+        runId: "journal-run-history-second",
+      });
+      await expect(
+        repository.loadRunsForBranch(deniedActor, scope.localeBranchId),
+      ).rejects.toMatchObject(new AuthorizationError(deniedActor, "catalog.read"));
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a selected candidate that does not belong to its written outcome at the SQL boundary", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const run = await repository.createRun(localActor, {
+        runId: "journal-run-dangling-selected-candidate",
+        ...scope,
+      });
+
+      // This deliberately bypasses the canonical TypeScript assertion. The
+      // migration-level composite FK must reject corruption even if a future
+      // writer bypasses the repository and names a candidate that does not
+      // exist for this outcome.
+      await expect(
+        context.db.execute(sql`
+          insert into itotori_written_unit_outcomes (
+            journal_outcome_id, outcome_id, run_id, bridge_unit_id,
+            target_locale, selected_candidate_id, written_at
+          ) values (
+            'journal-outcome-dangling-selected-candidate',
+            'outcome-dangling-selected-candidate',
+            ${run.runId},
+            'raw-bridge-unit-dangling-selected-candidate',
+            ${scope.targetLocale},
+            'candidate-that-does-not-exist',
+            '2026-07-11T10:00:00.000Z'::timestamptz
+          )
+        `),
+      ).rejects.toThrow(/selected_candidate/i);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("enforces the draft.write/catalog.read authorization split", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -258,6 +327,12 @@ describe("ItotoriLocalizationJournalRepository", () => {
       await expect(repository.loadRun(deniedActor, run.runId)).rejects.toMatchObject(
         new AuthorizationError(deniedActor, "catalog.read"),
       );
+      await expect(
+        repository.loadRunsForBranch(deniedActor, scope.localeBranchId),
+      ).rejects.toMatchObject(new AuthorizationError(deniedActor, "catalog.read"));
+      await expect(
+        repository.loadLatestRunForBranch(deniedActor, scope.localeBranchId),
+      ).rejects.toMatchObject(new AuthorizationError(deniedActor, "catalog.read"));
       await expect(repository.loadRunOutcomes(deniedActor, run.runId)).rejects.toMatchObject(
         new AuthorizationError(deniedActor, "catalog.read"),
       );

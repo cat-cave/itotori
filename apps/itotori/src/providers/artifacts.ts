@@ -1,6 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ProviderRunArtifact, ProviderRunArtifactRecorder } from "./types.js";
+import {
+  attachProviderRunToThrownError,
+  type ProviderRunArtifact,
+  type ProviderRunArtifactRecorder,
+  type ProviderRunRecord,
+} from "./types.js";
 
 export class LocalProviderRunArtifactRecorder implements ProviderRunArtifactRecorder {
   constructor(private readonly baseDirectory = ".tmp/provider-runs") {}
@@ -13,6 +18,23 @@ export class LocalProviderRunArtifactRecorder implements ProviderRunArtifactReco
       `${JSON.stringify(artifact, null, 2)}\n`,
       "utf8",
     );
+  }
+}
+
+/**
+ * Persist the provider artifact without losing the already-completed physical
+ * call if local storage fails. The original error remains the thrown value;
+ * the journal reads the opaque ProviderRunRecord attachment at its boundary.
+ */
+export async function recordProviderRunArtifact(args: {
+  recorder: ProviderRunArtifactRecorder;
+  artifact: ProviderRunArtifact;
+  providerRun: ProviderRunRecord;
+}): Promise<void> {
+  try {
+    await args.recorder.recordProviderRun(args.artifact);
+  } catch (error) {
+    throw attachProviderRunToThrownError(error, args.providerRun);
   }
 }
 

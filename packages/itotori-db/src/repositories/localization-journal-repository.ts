@@ -1,10 +1,9 @@
 // p0-core-attempt-and-outcome-journal — durable per-attempt + per-unit result
 // repository.
 //
-// This is intentionally independent from the legacy draft-job / provider-ledger
-// / pass-ledger path. A localization journal run records every physical provider
-// dispatch, then atomically records the canonical WrittenUnitOutcome and the
-// normalized provenance that the patch/read surface needs to render it.
+// A localization journal run records every physical provider dispatch, then
+// atomically records the canonical WrittenUnitOutcome and the normalized
+// provenance that every patch/read/telemetry surface renders.
 
 import { randomUUID } from "node:crypto";
 import {
@@ -15,7 +14,7 @@ import {
   type WrittenQaFinding,
   type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
@@ -42,6 +41,8 @@ export type LocalizationJournalAttemptValidationResult =
 
 export type LocalizationJournalAttemptRetryDecision = "retry" | "advance" | "write" | "pause";
 
+export type LocalizationJournalAttemptCostKind = "billed" | "provider_estimate" | "zero";
+
 /** One physical provider dispatch, keyed by its provider-run identity. */
 export type PersistLocalizationJournalAttemptInput = {
   /** Must be the physical provider-run id when a candidate will point at it. */
@@ -53,13 +54,25 @@ export type PersistLocalizationJournalAttemptInput = {
   agentLabel: string;
   logicalCallId: string;
   attemptIndex: number;
+  /** Requested stage-policy pair; absent only on pre-0078 journal rows. */
+  requestedModelId?: string | undefined;
+  requestedProviderId?: string | undefined;
   modelId: string;
   providerId: string;
   providerRunId: string;
   /** Exact decimal text. Never pass this through Number or micros. */
   costUsd: string;
+  costKind?: LocalizationJournalAttemptCostKind | undefined;
+  usageResponseJson?: unknown;
   tokensIn: number | null;
   tokensOut: number | null;
+  tokenCountSource?: string | undefined;
+  /** Null/undefined means cache provenance was not captured, never zero. */
+  cacheReadTokens?: number | null | undefined;
+  cacheWriteTokens?: number | null | undefined;
+  cacheDiscountMicrosUsd?: number | null | undefined;
+  fallbackUsed?: boolean | undefined;
+  fallbackPlan?: readonly string[] | undefined;
   zdr: boolean;
   finishState: string | null;
   refusalState: string | null;
@@ -146,13 +159,23 @@ export type LocalizationJournalAttemptRecord = {
   agentLabel: string;
   logicalCallId: string;
   attemptIndex: number;
+  requestedModelId: string | null;
+  requestedProviderId: string | null;
   modelId: string;
   providerId: string;
   providerRunId: string;
   /** Exact decimal text from unconstrained PostgreSQL numeric. */
   costUsd: string;
+  costKind: LocalizationJournalAttemptCostKind | null;
+  usageResponseJson: unknown | null;
   tokensIn: number | null;
   tokensOut: number | null;
+  tokenCountSource: string | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheDiscountMicrosUsd: number | null;
+  fallbackUsed: boolean | null;
+  fallbackPlan: string[] | null;
   zdr: boolean;
   finishState: string | null;
   refusalState: string | null;
@@ -183,6 +206,127 @@ export type LocalizationJournalOutcomeRecord = {
   qaDetails: Record<string, LocalizationJournalQaDetail>;
 };
 
+/** Aggregate over real physical journal attempts for one requested pair. */
+export type LocalizationJournalAttemptAggregateRow = {
+  /**
+   * `requested*` is verbatim only when every row in this bucket captured the
+   * requested pair. For pre-0078 rows the served pair is used strictly as a
+   * grouping fallback, and this is `"partial"` so consumers cannot label it
+   * as a captured request.
+   */
+  requestedPairAvailability: "complete" | "partial";
+  requestedModelId: string;
+  requestedProviderId: string;
+  bucketDay: string | null;
+  totalCostUsd: string;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  invocationCount: number;
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
+  /**
+   * Cache totals below are sums over captured facts. `partial` means at least
+   * one physical attempt predates cache provenance capture; zero is therefore
+   * not a claim that that unobserved attempt had no cache activity.
+   */
+  cacheFactsAvailability: "complete" | "partial";
+  cacheFactsCapturedInvocationCount: number;
+  cacheHitCount: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+  cacheSavingsUsd: string;
+};
+
+export type LocalizationJournalAttemptAggregateOptions = {
+  groupByDay?: boolean | undefined;
+};
+
+export type LocalizationJournalZdrAggregateRow = {
+  requestedPairAvailability: "complete" | "partial";
+  requestedModelId: string;
+  requestedProviderId: string;
+  invocationCount: number;
+  zdrEnforcedCount: number;
+};
+
+export type LocalizationJournalCostKindAggregateRow = {
+  requestedPairAvailability: "complete" | "partial";
+  requestedModelId: string;
+  requestedProviderId: string;
+  costKind: LocalizationJournalAttemptCostKind;
+  invocationCount: number;
+  amountMicrosUsd: number;
+};
+
+export const JOBS_RUN_TABLE_SCHEMA_VERSION = "jobs.run_table.v0.2";
+export const JOBS_RUN_TABLE_DEFAULT_LIMIT = 20;
+export const JOBS_RUN_TABLE_MAX_LIMIT = 100;
+
+export type JobsRunTablePagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
+export type JobsRunTableFilter = { projectId: string | null };
+export type JobsRunTableTokens = { in: number | null; out: number | null; total: number | null };
+export type JobsRunTableCost = { unit: "usd"; amount: string };
+/**
+ * The provider exposes a plan, not an invented per-hop fallback chain. A
+ * pre-0078 row has no fallback facts; `used` / `plan` intentionally remain
+ * null rather than projecting a fabricated no-fallback result.
+ */
+export type JobsRunTableFallback = {
+  availability: "captured" | "not_captured";
+  used: boolean | null;
+  plan: string[] | null;
+  chain: string[];
+};
+
+/**
+ * One physical journal attempt rendered in the jobs run table. Legacy draft
+ * job/ledger identifiers are intentionally absent: `journalRunId` and
+ * `attemptId` are the durable execution provenance.
+ */
+export type JobsRunTableRow = {
+  /** Physical provider-run id, retained for existing route/detail links. */
+  runId: string;
+  journalRunId: string;
+  attemptId: string;
+  providerRunId: string;
+  bridgeUnitId: string;
+  projectId: string;
+  localeBranchId: string;
+  task: string;
+  status: string;
+  servedModel: string;
+  servedProvider: string;
+  zdr: boolean;
+  cost: JobsRunTableCost;
+  tokens: JobsRunTableTokens;
+  fallback: JobsRunTableFallback;
+  createdAt: string;
+};
+
+export type JobsRunTableReadModel = {
+  schemaVersion: typeof JOBS_RUN_TABLE_SCHEMA_VERSION;
+  generatedAt: string;
+  filter: JobsRunTableFilter;
+  pagination: JobsRunTablePagination;
+  rows: JobsRunTableRow[];
+};
+
+export type LoadJobsRunTableOptions = {
+  projectId?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  generatedAt?: Date | undefined;
+};
+
 export interface ItotoriLocalizationJournalRepositoryPort {
   createRun(
     actor: AuthorizationActor,
@@ -202,6 +346,16 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     input: PersistLocalizationJournalUnitInput,
   ): Promise<LocalizationJournalOutcomeRecord>;
   loadRun(actor: AuthorizationActor, runId: string): Promise<LocalizationJournalRunRecord | null>;
+  /** Chronological journal history for one locale branch, oldest run first. */
+  loadRunsForBranch(
+    actor: AuthorizationActor,
+    localeBranchId: string,
+  ): Promise<LocalizationJournalRunRecord[]>;
+  /** Latest journal run for one locale branch, or null when the branch is new. */
+  loadLatestRunForBranch(
+    actor: AuthorizationActor,
+    localeBranchId: string,
+  ): Promise<LocalizationJournalRunRecord | null>;
   loadRunOutcomes(
     actor: AuthorizationActor,
     runId: string,
@@ -210,6 +364,26 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     actor: AuthorizationActor,
     runId: string,
   ): Promise<LocalizationJournalAttemptRecord[]>;
+  sumAttemptsByPairAndDay(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+    opts?: LocalizationJournalAttemptAggregateOptions,
+  ): Promise<LocalizationJournalAttemptAggregateRow[]>;
+  countZdrEnforcedAttemptsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+  ): Promise<LocalizationJournalZdrAggregateRow[]>;
+  countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+  ): Promise<LocalizationJournalCostKindAggregateRow[]>;
+  loadJobsRunTable(
+    actor: AuthorizationActor,
+    options?: LoadJobsRunTableOptions,
+  ): Promise<JobsRunTableReadModel>;
 }
 
 export class LocalizationJournalRepositoryError extends Error {
@@ -232,11 +406,32 @@ type JournalTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[
 
 type NormalizedAttempt = Omit<
   PersistLocalizationJournalAttemptInput,
-  "startedAt" | "completedAt"
+  | "startedAt"
+  | "completedAt"
+  | "requestedModelId"
+  | "requestedProviderId"
+  | "costKind"
+  | "usageResponseJson"
+  | "tokenCountSource"
+  | "cacheReadTokens"
+  | "cacheWriteTokens"
+  | "cacheDiscountMicrosUsd"
+  | "fallbackUsed"
+  | "fallbackPlan"
 > & {
   errorClasses: string[];
   startedAt: Date;
   completedAt: Date;
+  requestedModelId: string | null;
+  requestedProviderId: string | null;
+  costKind: LocalizationJournalAttemptCostKind | null;
+  usageResponseJson: unknown | null;
+  tokenCountSource: string | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheDiscountMicrosUsd: number | null;
+  fallbackUsed: boolean | null;
+  fallbackPlan: string[] | null;
 };
 
 /**
@@ -506,6 +701,27 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     return row === undefined ? null : journalRunRowToRecord(row);
   }
 
+  async loadRunsForBranch(
+    actor: AuthorizationActor,
+    localeBranchId: string,
+  ): Promise<LocalizationJournalRunRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await this.db
+      .select()
+      .from(localizationJournalRuns)
+      .where(eq(localizationJournalRuns.localeBranchId, localeBranchId))
+      .orderBy(asc(localizationJournalRuns.createdAt), asc(localizationJournalRuns.runId));
+    return rows.map(journalRunRowToRecord);
+  }
+
+  async loadLatestRunForBranch(
+    actor: AuthorizationActor,
+    localeBranchId: string,
+  ): Promise<LocalizationJournalRunRecord | null> {
+    const runs = await this.loadRunsForBranch(actor, localeBranchId);
+    return runs.at(-1) ?? null;
+  }
+
   async loadRunOutcomes(
     actor: AuthorizationActor,
     runId: string,
@@ -629,6 +845,384 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       );
     return rows.map(journalAttemptRowToRecord);
   }
+
+  async sumAttemptsByPairAndDay(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+    opts?: LocalizationJournalAttemptAggregateOptions,
+  ): Promise<LocalizationJournalAttemptAggregateRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertJournalAggregateWindow(window);
+
+    const groupByDay = opts?.groupByDay === true;
+    const requestedModelId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedModelId}, ${localizationJournalLlmAttempts.modelId})`;
+    const requestedProviderId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedProviderId}, ${localizationJournalLlmAttempts.providerId})`;
+    const bucketDay = sql<
+      string | null
+    >`to_char(${localizationJournalLlmAttempts.completedAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const nullBucketDay = sql<string | null>`NULL::text`;
+    const latencyMs = sql<
+      string | null
+    >`(avg(extract(epoch from (${localizationJournalLlmAttempts.completedAt} - ${localizationJournalLlmAttempts.startedAt})) * 1000))::text`;
+    const p95LatencyMs = sql<
+      string | null
+    >`(percentile_cont(0.95) within group (order by extract(epoch from (${localizationJournalLlmAttempts.completedAt} - ${localizationJournalLlmAttempts.startedAt})) * 1000))::text`;
+
+    const rows = await this.db
+      .select({
+        requestedModelId,
+        requestedProviderId,
+        requestedPairCapturedInvocationCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.requestedModelId} is not null and ${localizationJournalLlmAttempts.requestedProviderId} is not null)::text`,
+        bucketDay: groupByDay ? bucketDay : nullBucketDay,
+        totalCostUsd: sql<string>`coalesce(sum(${localizationJournalLlmAttempts.costUsd}), 0)::text`,
+        totalTokensIn: sql<string>`coalesce(sum(coalesce(${localizationJournalLlmAttempts.tokensIn}, 0)), 0)::text`,
+        totalTokensOut: sql<string>`coalesce(sum(coalesce(${localizationJournalLlmAttempts.tokensOut}, 0)), 0)::text`,
+        invocationCount: sql<string>`count(*)::text`,
+        avgLatencyMs: latencyMs,
+        p95LatencyMs,
+        cacheFactsCapturedInvocationCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.cacheReadTokens} is not null and ${localizationJournalLlmAttempts.cacheWriteTokens} is not null and ${localizationJournalLlmAttempts.cacheDiscountMicrosUsd} is not null)::text`,
+        cacheHitCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.cacheReadTokens} > 0)::text`,
+        totalCacheReadTokens: sql<string>`coalesce(sum(coalesce(${localizationJournalLlmAttempts.cacheReadTokens}, 0)), 0)::text`,
+        totalCacheWriteTokens: sql<string>`coalesce(sum(coalesce(${localizationJournalLlmAttempts.cacheWriteTokens}, 0)), 0)::text`,
+        cacheSavingsUsd: sql<string>`(coalesce(sum(coalesce(${localizationJournalLlmAttempts.cacheDiscountMicrosUsd}, 0)), 0)::numeric / 1000000)::text`,
+      })
+      .from(localizationJournalLlmAttempts)
+      .innerJoin(
+        localizationJournalRuns,
+        eq(localizationJournalLlmAttempts.runId, localizationJournalRuns.runId),
+      )
+      .where(
+        and(
+          eq(localizationJournalRuns.projectId, projectId),
+          gte(localizationJournalLlmAttempts.completedAt, window.from),
+          lte(localizationJournalLlmAttempts.completedAt, window.to),
+        ),
+      )
+      .groupBy(requestedModelId, requestedProviderId, ...(groupByDay ? [bucketDay] : []))
+      .orderBy(asc(requestedModelId), asc(requestedProviderId));
+
+    return rows.map(parseJournalAttemptAggregateRow);
+  }
+
+  async countZdrEnforcedAttemptsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+  ): Promise<LocalizationJournalZdrAggregateRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertJournalAggregateWindow(window);
+
+    const requestedModelId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedModelId}, ${localizationJournalLlmAttempts.modelId})`;
+    const requestedProviderId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedProviderId}, ${localizationJournalLlmAttempts.providerId})`;
+    const rows = await this.db
+      .select({
+        requestedModelId,
+        requestedProviderId,
+        requestedPairCapturedInvocationCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.requestedModelId} is not null and ${localizationJournalLlmAttempts.requestedProviderId} is not null)::text`,
+        invocationCount: sql<string>`count(*)::text`,
+        zdrEnforcedCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.zdr} = true)::text`,
+      })
+      .from(localizationJournalLlmAttempts)
+      .innerJoin(
+        localizationJournalRuns,
+        eq(localizationJournalLlmAttempts.runId, localizationJournalRuns.runId),
+      )
+      .where(
+        and(
+          eq(localizationJournalRuns.projectId, projectId),
+          gte(localizationJournalLlmAttempts.completedAt, window.from),
+          lte(localizationJournalLlmAttempts.completedAt, window.to),
+        ),
+      )
+      .groupBy(requestedModelId, requestedProviderId)
+      .orderBy(asc(requestedModelId), asc(requestedProviderId));
+
+    return rows.map((row) => ({
+      requestedPairAvailability:
+        parseJournalCount(
+          row.requestedPairCapturedInvocationCount,
+          "requestedPairCapturedInvocationCount",
+        ) === parseJournalCount(row.invocationCount, "invocationCount")
+          ? "complete"
+          : "partial",
+      requestedModelId: row.requestedModelId,
+      requestedProviderId: row.requestedProviderId,
+      invocationCount: parseJournalCount(row.invocationCount, "invocationCount"),
+      zdrEnforcedCount: parseJournalCount(row.zdrEnforcedCount, "zdrEnforcedCount"),
+    }));
+  }
+
+  async countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: { from: Date; to: Date },
+  ): Promise<LocalizationJournalCostKindAggregateRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertJournalAggregateWindow(window);
+
+    const requestedModelId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedModelId}, ${localizationJournalLlmAttempts.modelId})`;
+    const requestedProviderId = sql<string>`coalesce(${localizationJournalLlmAttempts.requestedProviderId}, ${localizationJournalLlmAttempts.providerId})`;
+    const rows = await this.db
+      .select({
+        requestedModelId,
+        requestedProviderId,
+        requestedPairCapturedInvocationCount: sql<string>`count(*) filter (where ${localizationJournalLlmAttempts.requestedModelId} is not null and ${localizationJournalLlmAttempts.requestedProviderId} is not null)::text`,
+        costKind: localizationJournalLlmAttempts.costKind,
+        invocationCount: sql<string>`count(*)::text`,
+        amountMicrosUsd: sql<string>`coalesce(sum(round(${localizationJournalLlmAttempts.costUsd} * 1000000)), 0)::text`,
+      })
+      .from(localizationJournalLlmAttempts)
+      .innerJoin(
+        localizationJournalRuns,
+        eq(localizationJournalLlmAttempts.runId, localizationJournalRuns.runId),
+      )
+      .where(
+        and(
+          eq(localizationJournalRuns.projectId, projectId),
+          gte(localizationJournalLlmAttempts.completedAt, window.from),
+          lte(localizationJournalLlmAttempts.completedAt, window.to),
+          sql`${localizationJournalLlmAttempts.costKind} is not null`,
+        ),
+      )
+      .groupBy(requestedModelId, requestedProviderId, localizationJournalLlmAttempts.costKind)
+      .orderBy(
+        asc(requestedModelId),
+        asc(requestedProviderId),
+        asc(localizationJournalLlmAttempts.costKind),
+      );
+
+    return rows.map((row) => {
+      if (!isJournalCostKind(row.costKind)) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `journal cost kind ${String(row.costKind)} is not supported`,
+        );
+      }
+      return {
+        requestedPairAvailability:
+          parseJournalCount(
+            row.requestedPairCapturedInvocationCount,
+            "requestedPairCapturedInvocationCount",
+          ) === parseJournalCount(row.invocationCount, "invocationCount")
+            ? "complete"
+            : "partial",
+        requestedModelId: row.requestedModelId,
+        requestedProviderId: row.requestedProviderId,
+        costKind: row.costKind,
+        invocationCount: parseJournalCount(row.invocationCount, "invocationCount"),
+        amountMicrosUsd: parseJournalCount(row.amountMicrosUsd, "amountMicrosUsd"),
+      };
+    });
+  }
+
+  async loadJobsRunTable(
+    actor: AuthorizationActor,
+    options: LoadJobsRunTableOptions = {},
+  ): Promise<JobsRunTableReadModel> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const projectId = options.projectId;
+    if (projectId === undefined || projectId.length === 0) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        "loadJobsRunTable requires a non-empty projectId scope (the journal run table is never read across projects)",
+      );
+    }
+    const limit = normalizeJobsRunTableLimit(options.limit);
+    const offset = normalizeJobsRunTableOffset(options.offset);
+    const projectCondition = eq(localizationJournalRuns.projectId, projectId);
+
+    const totalRows = await this.db
+      .select({ total: sql<string>`count(*)::text` })
+      .from(localizationJournalLlmAttempts)
+      .innerJoin(
+        localizationJournalRuns,
+        eq(localizationJournalLlmAttempts.runId, localizationJournalRuns.runId),
+      )
+      .where(projectCondition);
+    const total = parseJournalCount(totalRows[0]?.total ?? "0", "jobs run table total");
+
+    const rows = await this.db
+      .select({
+        runId: localizationJournalRuns.runId,
+        attemptId: localizationJournalLlmAttempts.attemptId,
+        providerRunId: localizationJournalLlmAttempts.providerRunId,
+        bridgeUnitId: localizationJournalLlmAttempts.bridgeUnitId,
+        projectId: localizationJournalRuns.projectId,
+        localeBranchId: localizationJournalRuns.localeBranchId,
+        stage: localizationJournalLlmAttempts.stage,
+        agentLabel: localizationJournalLlmAttempts.agentLabel,
+        status: localizationJournalLlmAttempts.validationResult,
+        servedModel: localizationJournalLlmAttempts.modelId,
+        servedProvider: localizationJournalLlmAttempts.providerId,
+        zdr: localizationJournalLlmAttempts.zdr,
+        costUsd: sql<string>`${localizationJournalLlmAttempts.costUsd}::text`,
+        tokensIn: localizationJournalLlmAttempts.tokensIn,
+        tokensOut: localizationJournalLlmAttempts.tokensOut,
+        fallbackUsed: localizationJournalLlmAttempts.fallbackUsed,
+        fallbackPlan: localizationJournalLlmAttempts.fallbackPlan,
+        completedAt: localizationJournalLlmAttempts.completedAt,
+      })
+      .from(localizationJournalLlmAttempts)
+      .innerJoin(
+        localizationJournalRuns,
+        eq(localizationJournalLlmAttempts.runId, localizationJournalRuns.runId),
+      )
+      .where(projectCondition)
+      .orderBy(
+        desc(localizationJournalLlmAttempts.completedAt),
+        desc(localizationJournalLlmAttempts.attemptId),
+      )
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      schemaVersion: JOBS_RUN_TABLE_SCHEMA_VERSION,
+      generatedAt: (options.generatedAt ?? new Date()).toISOString(),
+      filter: { projectId },
+      pagination: jobsRunTablePagination(total, limit, offset),
+      rows: rows.map((row) => ({
+        runId: row.providerRunId,
+        journalRunId: row.runId,
+        attemptId: row.attemptId,
+        providerRunId: row.providerRunId,
+        bridgeUnitId: row.bridgeUnitId,
+        projectId: row.projectId,
+        localeBranchId: row.localeBranchId,
+        task: `${row.stage}:${row.agentLabel}`,
+        status: row.status,
+        servedModel: row.servedModel,
+        servedProvider: row.servedProvider,
+        zdr: row.zdr,
+        cost: { unit: "usd", amount: row.costUsd },
+        tokens: {
+          in: row.tokensIn,
+          out: row.tokensOut,
+          total:
+            row.tokensIn === null && row.tokensOut === null
+              ? null
+              : (row.tokensIn ?? 0) + (row.tokensOut ?? 0),
+        },
+        fallback: {
+          availability:
+            row.fallbackUsed === null || row.fallbackPlan === null ? "not_captured" : "captured",
+          // No false/[] default: null means this historical physical call
+          // predates the journal fallback capture columns.
+          used: row.fallbackUsed,
+          plan: row.fallbackPlan === null ? null : [...row.fallbackPlan],
+          chain: [],
+        },
+        createdAt: row.completedAt.toISOString(),
+      })),
+    };
+  }
+}
+
+function assertJournalAggregateWindow(window: { from: Date; to: Date }): void {
+  if (window.from.getTime() > window.to.getTime()) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      "journal aggregate window.from must not be after window.to",
+    );
+  }
+}
+
+type RawJournalAttemptAggregateRow = {
+  requestedModelId: string;
+  requestedProviderId: string;
+  requestedPairCapturedInvocationCount: string;
+  bucketDay: string | null;
+  totalCostUsd: string;
+  totalTokensIn: string;
+  totalTokensOut: string;
+  invocationCount: string;
+  avgLatencyMs: string | null;
+  p95LatencyMs: string | null;
+  cacheFactsCapturedInvocationCount: string;
+  cacheHitCount: string;
+  totalCacheReadTokens: string;
+  totalCacheWriteTokens: string;
+  cacheSavingsUsd: string;
+};
+
+function parseJournalAttemptAggregateRow(
+  row: RawJournalAttemptAggregateRow,
+): LocalizationJournalAttemptAggregateRow {
+  const invocationCount = parseJournalCount(row.invocationCount, "invocationCount");
+  const requestedPairCapturedInvocationCount = parseJournalCount(
+    row.requestedPairCapturedInvocationCount,
+    "requestedPairCapturedInvocationCount",
+  );
+  const cacheFactsCapturedInvocationCount = parseJournalCount(
+    row.cacheFactsCapturedInvocationCount,
+    "cacheFactsCapturedInvocationCount",
+  );
+  return {
+    requestedPairAvailability:
+      requestedPairCapturedInvocationCount === invocationCount ? "complete" : "partial",
+    requestedModelId: row.requestedModelId,
+    requestedProviderId: row.requestedProviderId,
+    bucketDay: row.bucketDay,
+    totalCostUsd: row.totalCostUsd,
+    totalTokensIn: parseJournalCount(row.totalTokensIn, "totalTokensIn"),
+    totalTokensOut: parseJournalCount(row.totalTokensOut, "totalTokensOut"),
+    invocationCount,
+    avgLatencyMs: parseOptionalJournalNumber(row.avgLatencyMs),
+    p95LatencyMs: parseOptionalJournalNumber(row.p95LatencyMs),
+    cacheFactsAvailability:
+      cacheFactsCapturedInvocationCount === invocationCount ? "complete" : "partial",
+    cacheFactsCapturedInvocationCount,
+    cacheHitCount: parseJournalCount(row.cacheHitCount, "cacheHitCount"),
+    totalCacheReadTokens: parseJournalCount(row.totalCacheReadTokens, "totalCacheReadTokens"),
+    totalCacheWriteTokens: parseJournalCount(row.totalCacheWriteTokens, "totalCacheWriteTokens"),
+    cacheSavingsUsd: row.cacheSavingsUsd,
+  };
+}
+
+function parseJournalCount(value: string, label: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `unexpected journal aggregate ${label}=${value}`,
+    );
+  }
+  return parsed;
+}
+
+function parseOptionalJournalNumber(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeJobsRunTableLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isInteger(limit) || limit < 1) {
+    return JOBS_RUN_TABLE_DEFAULT_LIMIT;
+  }
+  return Math.min(limit, JOBS_RUN_TABLE_MAX_LIMIT);
+}
+
+function normalizeJobsRunTableOffset(offset: number | undefined): number {
+  return offset === undefined || !Number.isInteger(offset) || offset < 0 ? 0 : offset;
+}
+
+function jobsRunTablePagination(
+  total: number,
+  limit: number,
+  offset: number,
+): JobsRunTablePagination {
+  const pageCount = total === 0 ? 0 : Math.ceil(total / limit);
+  const hasMore = offset + limit < total;
+  return {
+    total,
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    pageCount,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
+  };
 }
 
 function validateRunInput(input: CreateLocalizationJournalRunInput): void {
@@ -660,6 +1254,12 @@ function normalizeAttempts(
     assertNonBlank(attempt.agentLabel, `${label}.agentLabel`);
     assertNonBlank(attempt.logicalCallId, `${label}.logicalCallId`);
     assertNonNegativeInteger(attempt.attemptIndex, `${label}.attemptIndex`);
+    if (attempt.requestedModelId !== undefined) {
+      assertNonBlank(attempt.requestedModelId, `${label}.requestedModelId`);
+    }
+    if (attempt.requestedProviderId !== undefined) {
+      assertNonBlank(attempt.requestedProviderId, `${label}.requestedProviderId`);
+    }
     assertNonBlank(attempt.modelId, `${label}.modelId`);
     assertNonBlank(attempt.providerId, `${label}.providerId`);
     assertNonBlank(attempt.providerRunId, `${label}.providerRunId`);
@@ -670,8 +1270,54 @@ function normalizeAttempts(
       );
     }
     assertExactNonNegativeDecimal(attempt.costUsd, `${label}.costUsd`);
+    if (attempt.costKind !== undefined && !journalCostKindValues.includes(attempt.costKind)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `${label}.costKind=${attempt.costKind} is not supported`,
+      );
+    }
+    if (attempt.usageResponseJson !== undefined) {
+      assertJsonPersistable(attempt.usageResponseJson, `${label}.usageResponseJson`);
+      if (
+        attempt.usageResponseJson === null ||
+        typeof attempt.usageResponseJson !== "object" ||
+        Array.isArray(attempt.usageResponseJson)
+      ) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `${label}.usageResponseJson must be a JSON object when supplied`,
+        );
+      }
+    }
     assertNullableNonNegativeInteger(attempt.tokensIn, `${label}.tokensIn`);
     assertNullableNonNegativeInteger(attempt.tokensOut, `${label}.tokensOut`);
+    if (attempt.cacheReadTokens !== undefined) {
+      assertNullableNonNegativeInteger(attempt.cacheReadTokens, `${label}.cacheReadTokens`);
+    }
+    if (attempt.cacheWriteTokens !== undefined) {
+      assertNullableNonNegativeInteger(attempt.cacheWriteTokens, `${label}.cacheWriteTokens`);
+    }
+    if (attempt.cacheDiscountMicrosUsd !== undefined) {
+      assertNullableNonNegativeInteger(
+        attempt.cacheDiscountMicrosUsd,
+        `${label}.cacheDiscountMicrosUsd`,
+      );
+    }
+    if (attempt.fallbackUsed !== undefined && typeof attempt.fallbackUsed !== "boolean") {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `${label}.fallbackUsed must be boolean when supplied`,
+      );
+    }
+    if (
+      attempt.fallbackPlan !== undefined &&
+      (!Array.isArray(attempt.fallbackPlan) || !attempt.fallbackPlan.every(isNonBlankString))
+    ) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `${label}.fallbackPlan must contain only non-blank strings when supplied`,
+      );
+    }
     assertNullableNonNegativeInteger(attempt.retryDelayMs, `${label}.retryDelayMs`);
     if (!journalValidationResultValues.includes(attempt.validationResult)) {
       throw new LocalizationJournalRepositoryError(
@@ -710,13 +1356,31 @@ function normalizeAttempts(
         `${label} duplicates logicalCallId/attemptIndex=${attempt.logicalCallId}/${attempt.attemptIndex}`,
       );
     }
+    const startedAt = toValidDate(attempt.startedAt, `${label}.startedAt`);
+    const completedAt = toValidDate(attempt.completedAt, `${label}.completedAt`);
+    if (completedAt.getTime() < startedAt.getTime()) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `${label}.completedAt must not precede startedAt`,
+      );
+    }
     seenAttemptIds.add(attempt.attemptId);
     seenLogicalAttempts.add(logicalAttemptKey);
     return {
       ...attempt,
+      requestedModelId: attempt.requestedModelId ?? null,
+      requestedProviderId: attempt.requestedProviderId ?? null,
+      costKind: attempt.costKind ?? null,
+      usageResponseJson: attempt.usageResponseJson ?? null,
+      tokenCountSource: attempt.tokenCountSource ?? null,
+      cacheReadTokens: attempt.cacheReadTokens ?? null,
+      cacheWriteTokens: attempt.cacheWriteTokens ?? null,
+      cacheDiscountMicrosUsd: attempt.cacheDiscountMicrosUsd ?? null,
+      fallbackUsed: attempt.fallbackUsed ?? null,
+      fallbackPlan: attempt.fallbackPlan === undefined ? null : [...attempt.fallbackPlan],
       errorClasses: [...attempt.errorClasses],
-      startedAt: toValidDate(attempt.startedAt, `${label}.startedAt`),
-      completedAt: toValidDate(attempt.completedAt, `${label}.completedAt`),
+      startedAt,
+      completedAt,
     };
   });
 }
@@ -735,6 +1399,16 @@ const journalRetryDecisionValues = [
   "write",
   "pause",
 ] as const satisfies readonly LocalizationJournalAttemptRetryDecision[];
+
+const journalCostKindValues = [
+  "billed",
+  "provider_estimate",
+  "zero",
+] as const satisfies readonly LocalizationJournalAttemptCostKind[];
+
+function isJournalCostKind(value: unknown): value is LocalizationJournalAttemptCostKind {
+  return typeof value === "string" && journalCostKindValues.includes(value as never);
+}
 
 function validateQaDetails(
   findings: readonly WrittenQaFinding[],
@@ -882,12 +1556,22 @@ async function insertAttemptsIdempotently(
         agentLabel: attempt.agentLabel,
         logicalCallId: attempt.logicalCallId,
         attemptIndex: attempt.attemptIndex,
+        requestedModelId: attempt.requestedModelId,
+        requestedProviderId: attempt.requestedProviderId,
         modelId: attempt.modelId,
         providerId: attempt.providerId,
         providerRunId: attempt.providerRunId,
         costUsd: attempt.costUsd,
+        costKind: attempt.costKind,
+        usageResponseJson: attempt.usageResponseJson,
         tokensIn: attempt.tokensIn,
         tokensOut: attempt.tokensOut,
+        tokenCountSource: attempt.tokenCountSource,
+        cacheReadTokens: attempt.cacheReadTokens,
+        cacheWriteTokens: attempt.cacheWriteTokens,
+        cacheDiscountMicrosUsd: attempt.cacheDiscountMicrosUsd,
+        fallbackUsed: attempt.fallbackUsed,
+        fallbackPlan: attempt.fallbackPlan,
         zdr: attempt.zdr,
         finishState: attempt.finishState,
         refusalState: attempt.refusalState,
@@ -937,12 +1621,22 @@ function attemptRowsMatch(
     row.agentLabel === attempt.agentLabel &&
     row.logicalCallId === attempt.logicalCallId &&
     row.attemptIndex === attempt.attemptIndex &&
+    row.requestedModelId === attempt.requestedModelId &&
+    row.requestedProviderId === attempt.requestedProviderId &&
     row.modelId === attempt.modelId &&
     row.providerId === attempt.providerId &&
     row.providerRunId === attempt.providerRunId &&
     row.costUsd === attempt.costUsd &&
+    row.costKind === attempt.costKind &&
+    JSON.stringify(row.usageResponseJson) === JSON.stringify(attempt.usageResponseJson) &&
     row.tokensIn === attempt.tokensIn &&
     row.tokensOut === attempt.tokensOut &&
+    row.tokenCountSource === attempt.tokenCountSource &&
+    row.cacheReadTokens === attempt.cacheReadTokens &&
+    row.cacheWriteTokens === attempt.cacheWriteTokens &&
+    row.cacheDiscountMicrosUsd === attempt.cacheDiscountMicrosUsd &&
+    row.fallbackUsed === attempt.fallbackUsed &&
+    JSON.stringify(row.fallbackPlan) === JSON.stringify(attempt.fallbackPlan) &&
     row.zdr === attempt.zdr &&
     row.finishState === attempt.finishState &&
     row.refusalState === attempt.refusalState &&
@@ -981,12 +1675,22 @@ function journalAttemptRowToRecord(
     agentLabel: row.agentLabel,
     logicalCallId: row.logicalCallId,
     attemptIndex: row.attemptIndex,
+    requestedModelId: row.requestedModelId,
+    requestedProviderId: row.requestedProviderId,
     modelId: row.modelId,
     providerId: row.providerId,
     providerRunId: row.providerRunId,
     costUsd: row.costUsd,
+    costKind: row.costKind as LocalizationJournalAttemptCostKind | null,
+    usageResponseJson: row.usageResponseJson,
     tokensIn: row.tokensIn,
     tokensOut: row.tokensOut,
+    tokenCountSource: row.tokenCountSource,
+    cacheReadTokens: row.cacheReadTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
+    cacheDiscountMicrosUsd: row.cacheDiscountMicrosUsd,
+    fallbackUsed: row.fallbackUsed,
+    fallbackPlan: row.fallbackPlan === null ? null : [...row.fallbackPlan],
     zdr: row.zdr,
     finishState: row.finishState,
     refusalState: row.refusalState,

@@ -2696,7 +2696,7 @@
             "type": "array"
           },
           "schemaVersion": {
-            "const": "jobs.run_table.v0.1"
+            "const": "jobs.run_table.v0.2"
           }
         },
         "required": [
@@ -2837,7 +2837,7 @@
           "generatedAt": {
             "type": "string"
           },
-          "passLedger": {
+          "journal": {
             "type": "object"
           },
           "progress": {
@@ -2860,7 +2860,7 @@
           "costDrilldown",
           "decisions",
           "generatedAt",
-          "passLedger",
+          "journal",
           "progress",
           "projectId",
           "schemaVersion",
@@ -4937,7 +4937,7 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Paged jobs run table with served model/provider ledger rows.",
+        "summary": "Paged jobs run table with physical journal attempts and served provider facts.",
         "x-itotoriRouteId": "jobs.runTable"
       }
     },

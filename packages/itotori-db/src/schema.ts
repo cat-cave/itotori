@@ -4225,147 +4225,6 @@ export const draftJobAttempts = pgTable(
   ],
 );
 
-/**
- * Policy version snapshot persisted on each draft attempt provider
- * ledger row. Mirrors the agent-side policy versions but kept as a
- * loosely-typed Record because the agent layer may carry additional
- * named policies that the ledger should not enumerate.
- */
-export type DraftAttemptProviderLedgerPolicyVersions = Record<string, string>;
-
-/**
- * Reference to a context artifact (scene summary, glossary excerpt,
- * prior draft, etc.) used as input for the draft attempt. The ledger
- * persists the reference only; the artifact body lives in the
- * context-artifacts table.
- */
-export type DraftAttemptProviderLedgerContextRef = {
-  contextArtifactId: string;
-  category: string;
-  contentHash: string;
-};
-
-/**
- * One step in the fallback chain that ran before this attempt
- * succeeded (or failed). `attemptedAt` is ISO-8601 so the row is
- * trivially comparable across runs.
- */
-export type DraftAttemptFallbackChainEntry = {
-  modelProviderFamily: string;
-  modelId: string;
-  failureReason: string;
-  attemptedAt: string;
-};
-
-export const draftAttemptProviderLedger = pgTable(
-  "itotori_draft_attempt_provider_ledger",
-  {
-    ledgerEntryId: text("ledger_entry_id").primaryKey(),
-    draftJobAttemptId: text("draft_job_attempt_id")
-      .notNull()
-      .references(() => draftJobAttempts.draftJobAttemptId, { onDelete: "cascade" }),
-    providerProofId: text("provider_proof_id").notNull(),
-    modelProviderFamily: text("model_provider_family"),
-    modelId: text("model_id"),
-    /**
-     * ITOTORI-220 — required pinned providerId per the (modelId,
-     * providerId) pair rule. NOT NULL with NO sentinel default: a
-     * `.default("unknown")` silently recorded a FAKE (model, "unknown")
-     * pair for any insert that omitted the real served provider, the exact
-     * no-fallback anti-pattern. The default is removed (migration 0047) so
-     * a missing providerId fails loud at insert; the repository's
-     * `recordLedgerEntry` already requires it in its typed input, and the
-     * caller must supply the provider that ACTUALLY served the call.
-     */
-    providerId: text("provider_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens"),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version"),
-    promptHash: text("prompt_hash"),
-    policyVersions: jsonb("policy_versions")
-      .$type<DraftAttemptProviderLedgerPolicyVersions>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    contextArtifactRefs: jsonb("context_artifact_refs")
-      .$type<DraftAttemptProviderLedgerContextRef[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    tokensIn: integer("tokens_in"),
-    tokensOut: integer("tokens_out"),
-    /**
-     * general-audit-1 (genaudit1-00) — provenance of `tokens_in`/`tokens_out`.
-     * PROJECT LAW: persisted token counts come ONLY from real provider
-     * output. A recorded token count MUST name a real source —
-     * `provider_reported` (live OpenRouter `usage` block) or
-     * `deterministic_counter` (recorded/fake bundles counting real bytes).
-     * The estimate sentinels (`estimated`, `unknown`) are rejected at insert
-     * by the application guard AND the migration-0049 CHECK, so a fabricated
-     * count can never masquerade as a provider-reported one (asymmetry with
-     * cost is closed). NULL only for pre-migration rows / rows that recorded
-     * no token count at all.
-     */
-    tokenCountSource: text("token_count_source"),
-    costUnit: text("cost_unit").notNull(),
-    costAmount: numeric("cost_amount", { precision: 20, scale: 8 }).notNull(),
-    /**
-     * ITOTORI-232 — full `usage` block from the originating OpenRouter
-     * response (prompt_tokens, completion_tokens, cost, cost_details,
-     * prompt_tokens_details). NOT NULL at the storage layer; the
-     * partial-NULL CHECK on cost_amount fires only when this object
-     * carries a `cost` key. Pre-migration rows carry the typed sentinel
-     * `{"_pre_itotori_232": true}` (see migration 0041). The application
-     * layer makes this field required on RecordLedgerEntryInput; the DB
-     * column is the belt-and-braces.
-     */
-    usageResponseJson: jsonb("usage_response_json").$type<Record<string, unknown>>().notNull(),
-    /**
-     * ITOTORI-233 — prompt-caching annotations mirrored verbatim from
-     * `usage.prompt_tokens_details.cached_tokens` and
-     * `usage.prompt_tokens_details.cache_write_tokens` on the originating
-     * OpenRouter response. NOT NULL DEFAULT 0 (migration 0042): every
-     * response either has a cache hit/write or it doesn't, and the
-     * "doesn't" case IS zero, not NULL.
-     */
-    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
-    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
-    /**
-     * ITOTORI-233 — `usage.cost_details.cache_discount` mirrored verbatim,
-     * converted to integer micros via decimalUsdStringToMicros. Per
-     * docs/openrouter-integration.md §5.3 / §11 entry 6 (DOC-AMBIGUOUS-6
-     * RESOLVED), `usage.cost` is treated as authoritative billed cost
-     * AND is net of `cache_discount` — this column is an INFORMATIONAL
-     * annotation for telemetry ("how much did caching save us"), NOT an
-     * arithmetic input to the cost cap. NOT NULL DEFAULT 0 (migration
-     * 0042): a non-cache-hit `cache_discount: null` on the wire maps to
-     * 0 here. bigint matches the precision discipline of cost_amount.
-     */
-    cacheDiscountMicrosUsd: pgBigint("cache_discount_micros_usd", { mode: "number" })
-      .notNull()
-      .default(0),
-    latencyMs: integer("latency_ms"),
-    fallbackChain: jsonb("fallback_chain")
-      .$type<DraftAttemptFallbackChainEntry[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    isRecordedProvider: boolean("is_recorded_provider").notNull().default(false),
-    recordedProviderBundleId: text("recorded_provider_bundle_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_draft_attempt_provider_ledger_attempt_idx").on(table.draftJobAttemptId),
-    uniqueIndex("itotori_draft_attempt_provider_ledger_proof_idx").on(table.providerProofId),
-    index("itotori_draft_attempt_provider_ledger_family_created_idx").on(
-      table.modelProviderFamily,
-      table.createdAt,
-    ),
-    // ITOTORI-220 — supports sumCostByProject `byProvider` aggregation.
-    index("itotori_draft_attempt_provider_ledger_provider_family_idx").on(
-      table.providerId,
-      table.modelProviderFamily,
-    ),
-  ],
-);
-
 // ---------------------------------------------------------------------
 // ITOTORI-035 — asset localization decision workflow
 // ---------------------------------------------------------------------
@@ -4809,57 +4668,6 @@ export const workspaceCorrectionEdits = pgTable(
     ),
     index("itotori_workspace_correction_edits_feedback_idx").on(table.feedbackReportId),
     index("itotori_workspace_correction_edits_batch_idx").on(table.batchId),
-  ],
-);
-
-// itotori-multipass-pass-ledger — DB-backed localization pass ledger.
-//
-// One append-only row per localization pass on a locale branch. The generic
-// (game-agnostic) record body — inputs / outputs / accepted deltas / consumed
-// feedback notes — is stored verbatim as jsonb; the fields the port + queries
-// key on (pass lineage, real usage.cost, ZDR posture) are promoted to typed
-// columns. Migration: 0058_localization_pass_ledger.sql.
-export const localizationPassLedger = pgTable(
-  "itotori_localization_pass_ledger",
-  {
-    passLedgerId: text("pass_ledger_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    passNumber: integer("pass_number").notNull(),
-    priorPassNumber: integer("prior_pass_number"),
-    // PROJECT LAW: the REAL usage.cost the executor summed verbatim from
-    // per-invocation provider telemetry — never fabricated (a zero-cost fake
-    // provider records the real zero). `numeric` round-trips as a string.
-    totalUsageCostUsd: numeric("total_usage_cost_usd").notNull(),
-    zdrConfirmed: boolean("zdr_confirmed").notNull(),
-    recordBody: jsonb("record_body")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_localization_pass_ledger_branch_pass_unique").on(
-      table.localeBranchId,
-      table.passNumber,
-    ),
-    index("itotori_localization_pass_ledger_branch_pass_idx").on(
-      table.localeBranchId,
-      table.passNumber,
-    ),
-    index("itotori_localization_pass_ledger_project_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.passNumber,
-    ),
   ],
 );
 
@@ -5522,9 +5330,8 @@ export type LocalizationJournalQaSpan = {
 };
 
 /**
- * One localization execution run. This is deliberately separate from the
- * legacy pass ledger: it owns the physical provider-call and written-outcome
- * facts needed to rebuild a patch/read model losslessly.
+ * One localization execution run. It owns the physical provider-call and
+ * written-outcome facts needed to rebuild a patch/read model losslessly.
  */
 export const localizationJournalRuns = pgTable(
   "itotori_localization_journal_runs",
@@ -5574,12 +5381,26 @@ export const localizationJournalLlmAttempts = pgTable(
     agentLabel: text("agent_label").notNull(),
     logicalCallId: text("logical_call_id").notNull(),
     attemptIndex: integer("attempt_index").notNull(),
+    // The requested policy pair and the actual served pair are distinct facts:
+    // OpenRouter may route within the ZDR allow-list after a preference miss.
+    requestedModelId: text("requested_model_id"),
+    requestedProviderId: text("requested_provider_id"),
     modelId: text("model_id").notNull(),
     providerId: text("provider_id").notNull(),
     providerRunId: text("provider_run_id").notNull(),
     costUsd: numeric("cost_usd").notNull(),
+    costKind: text("cost_kind"),
+    usageResponseJson: jsonb("usage_response_json"),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
+    tokenCountSource: text("token_count_source"),
+    // Cache fields remain nullable for pre-0078 journal rows: NULL means the
+    // provenance was not captured, never a fabricated non-cache-hit zero.
+    cacheReadTokens: integer("cache_read_tokens"),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    cacheDiscountMicrosUsd: pgBigint("cache_discount_micros_usd", { mode: "number" }),
+    fallbackUsed: boolean("fallback_used"),
+    fallbackPlan: jsonb("fallback_plan").$type<string[]>(),
     zdr: boolean("zdr").notNull(),
     finishState: text("finish_state"),
     refusalState: text("refusal_state"),
@@ -5609,10 +5430,10 @@ export const localizationJournalLlmAttempts = pgTable(
 );
 
 /**
- * Canonical terminal result for one unit in a run. The selected candidate is
- * checked by the canonical written-outcome assertion before insertion; a SQL
- * FK would be cyclic with translation candidates, so it remains a typed
- * invariant rather than a lossy denormalization.
+ * Canonical terminal result for one unit in a run. Migration 0077 declares
+ * the selected-candidate composite FK separately because the candidate table
+ * is defined below and the relationship is cyclic; PostgreSQL enforces it as
+ * `DEFERRABLE INITIALLY DEFERRED` at the atomic unit-write boundary.
  */
 export const writtenUnitOutcomes = pgTable(
   "itotori_written_unit_outcomes",

@@ -4,16 +4,16 @@
 //
 // Mounts the REAL `CorrectionScopePanel` over an msw-intercepted
 // `/api/workspace/corrections` (the correction-feedback-loop preview
-// read-model) + `/api/projects/overview` (the repair / pass-ledger
+// read-model) + `/api/projects/overview` (the durable execution-journal
 // read-model) and asserts the OBSERVABLE behavior the reviewer sees: the
 // panel reads the correction-feedback-loop read-model through the typed
 // client (no ad-hoc fetch) and renders the correction's SCOPE (which unit /
-// scene it affects) and which PASS (N+1) folds it in — derived from the
-// pass ledger — using the ds `ComparisonPane` + `StatReadout` + `Badge`
+// scene it affects) and which RUN (N+1) folds it in — derived from the
+// journal run count — using the ds `ComparisonPane` + `StatReadout` + `Badge`
 // tokens. Loading / empty / error surface independently instead of a blank
 // panel.
 // [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only
-// the rendered scope + folding pass + loading / empty / error states are
+// the rendered scope + folding run + loading / empty / error states are
 // asserted, over msw.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ import "@testing-library/jest-dom/vitest";
 import type { WorkspaceCorrectionPreviewReadModel } from "../src/workspace/index.js";
 import {
   CorrectionScopePanel,
-  deriveCorrectionFoldingPass,
+  deriveCorrectionFoldingRun,
 } from "../src/ui/screens/CorrectionScopePanel.js";
 import { apiJson } from "./msw-handlers.js";
 import { projectOverviewFixture } from "./api-fixtures.js";
@@ -106,8 +106,8 @@ function handleScope(): void {
   );
 }
 
-describe("CorrectionScopePanel — correction scope + folding pass (N+1)", () => {
-  it("renders the correction's scope and the next pass that folds it in", async () => {
+describe("CorrectionScopePanel — correction scope + folding run (N+1)", () => {
+  it("renders the correction's scope and the next run that folds it in", async () => {
     handleScope();
     render(
       <CorrectionScopePanel reviewItemId={REVIEW_ITEM_ID} localeBranchId={LOCALE_BRANCH_ID} />,
@@ -116,11 +116,11 @@ describe("CorrectionScopePanel — correction scope + folding pass (N+1)", () =>
     // Panel mounts + the read-model settles to ready.
     expect(await screen.findByRole("heading", { name: "Correction scope" })).toBeInTheDocument();
 
-    // The folding pass is derived from the pass ledger: the fixture's latest
-    // pass is pass 1, so the correction folds into pass 2 (N+1). It renders
+    // The folding run is derived from the journal: the fixture has one run,
+    // so the correction folds into run 2 (N+1). It renders
     // both as the headline badge and in the landing copy.
-    const passMatches = await screen.findAllByText("pass 2");
-    expect(passMatches.length).toBeGreaterThanOrEqual(1);
+    const runMatches = await screen.findAllByText("run 2");
+    expect(runMatches.length).toBeGreaterThanOrEqual(1);
 
     // The SCOPE renders verbatim from the mocked preview — the bridge unit +
     // scene/unit key the correction affects.
@@ -132,18 +132,10 @@ describe("CorrectionScopePanel — correction scope + folding pass (N+1)", () =>
     expect(screen.getByText("Hello, world! [reviewer-corrected]")).toBeInTheDocument();
   });
 
-  it("derives the folding pass purely from the pass-ledger rows", () => {
-    // Behavior-first: the folding-pass derivation is a pure function of the
-    // pass-ledger rows — latest pass N folds into N+1; an empty ledger folds
-    // into pass 1.
-    expect(deriveCorrectionFoldingPass([{ passNumber: 1 }])).toEqual({
-      latestPassNumber: 1,
-      foldingPass: 2,
-    });
-    expect(
-      deriveCorrectionFoldingPass([{ passNumber: 1 }, { passNumber: 4 }, { passNumber: 2 }]),
-    ).toEqual({ latestPassNumber: 4, foldingPass: 5 });
-    expect(deriveCorrectionFoldingPass([])).toEqual({ latestPassNumber: null, foldingPass: 1 });
+  it("derives the folding run purely from the durable journal count", () => {
+    expect(deriveCorrectionFoldingRun(1)).toEqual({ latestRunNumber: 1, foldingRun: 2 });
+    expect(deriveCorrectionFoldingRun(4)).toEqual({ latestRunNumber: 4, foldingRun: 5 });
+    expect(deriveCorrectionFoldingRun(0)).toEqual({ latestRunNumber: null, foldingRun: 1 });
   });
 
   it("surfaces the loading surface before the read-model settles", () => {
@@ -161,9 +153,9 @@ describe("CorrectionScopePanel — correction scope + folding pass (N+1)", () =>
     render(
       <CorrectionScopePanel reviewItemId={REVIEW_ITEM_ID} localeBranchId={LOCALE_BRANCH_ID} />,
     );
-    // Wait for the read-model to settle (the folding pass mounts once the
+    // Wait for the read-model to settle (the folding run mounts once the
     // fetch resolves and the panel paints the ready branch).
-    await screen.findAllByText("pass 2");
+    await screen.findAllByText("run 2");
     const panel = document.querySelector(".itotori-panel");
     expect(panel).not.toBeNull();
     expect(panel).toHaveAttribute("data-pane-id", "correction-scope");

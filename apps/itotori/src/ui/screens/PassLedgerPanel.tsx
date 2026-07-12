@@ -1,20 +1,8 @@
-// ovw-pass-ledger-ui — the Overview screen's pass ledger panel.
+// Durable execution-journal review panel.
 //
-// A panel WITHIN the Workbench dashboard (not a new route): the per-pass
-// SCORE / FEEDBACK / NOTE iteration table, backed by the composed
-// `projects.overview` read model (the `passLedger.rows` piece). It CONSUMES
-// the read model THROUGH the typed client (`useApiQuery`, never an ad-hoc
-// fetch) and paints each pass as a row whose PASS / SCORE / FEEDBACK / NOTE
-// columns are sourced verbatim from the row — no fabricated numbers (a pass
-// with no score renders `null`, never zero). Independent loading / empty /
-// error surfaces, the same way {@link ProgressInstrumentPanel} and
-// {@link DecisionsBand} paint their panels. ClassName-based, ds tokens, no
-// literal styles, no game named. [[feedback_behavior_first_code_agnostic_testing]].
-//
-// Mirrors `pass-ledger iteration tokens` from the `@itotori/ds` Gallery
-// (pass / score / feedback / note / status) — the same per-pass columns the
-// ds gallery paints against its neutral fixtures. This panel paints them
-// against the REAL `localizationPassLedger` data via the composed overview.
+// The filename/component remains the dashboard slot's stable import while its
+// data source is exclusively `projects.overview.journal`: normalized run,
+// physical-call, outcome, candidate, QA, and context provenance.
 
 import { useState, type ReactNode } from "react";
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
@@ -26,82 +14,59 @@ import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 
-// ---------------------------------------------------------------------------
-// Pure derivation — per-row view-model + the headline count.
-// ---------------------------------------------------------------------------
-
-/**
- * Per-pass view-model for the Overview pass ledger. Derived from the composed
- * `passLedger.rows` piece of the overview read model; the row's `score`,
- * `feedback`, and `note` are SOURCED (never fabricated — null / 0 / "" are
- * real values when the row carries no signal). `iteration` collapses the
- * lineage into a human label: "—" for the first pass, "pass N" when built on
- * a prior.
- */
-export type PassLedgerIterationRow = {
-  passLedgerId: string;
-  passNumber: number;
-  iteration: string;
-  scoreLabel: string;
-  feedbackCount: number;
-  note: string;
+export type JournalRunSummaryRow = {
+  journalRunId: string;
+  targetLocale: string;
+  physicalCallCount: number;
+  physicalCallLabel: string;
+  writtenOutcomeCount: number;
+  candidateCount: number;
+  qaFindingCount: number;
+  contextRefCount: number;
 };
 
-/**
- * Derive the per-row view-model for the Overview pass-ledger panel. Pure +
- * deterministic; null fields render honestly (PROJECT LAW / no fabrication).
- */
-export function passLedgerIterationRows(
-  rows: ProjectOverviewReadModel["passLedger"]["rows"],
-): PassLedgerIterationRow[] {
+/** Pure, lossless display projection over the journal overview rows. */
+export function journalRunSummaryRows(
+  rows: ProjectOverviewReadModel["journal"]["rows"],
+): JournalRunSummaryRow[] {
   return rows.map((row) => ({
-    passLedgerId: row.passLedgerId,
-    passNumber: row.passNumber,
-    iteration: row.priorPassNumber === null ? "—" : `pass ${row.priorPassNumber}`,
-    scoreLabel: row.score === null ? "—" : row.score.toFixed(1),
-    feedbackCount: row.feedback,
-    note: row.note.length === 0 ? "—" : row.note,
+    journalRunId: row.journalRunId,
+    targetLocale: row.targetLocale,
+    physicalCallCount: row.physicalCallCount,
+    physicalCallLabel:
+      row.failedPhysicalCallCount === 0
+        ? String(row.physicalCallCount)
+        : `${row.physicalCallCount} (${row.failedPhysicalCallCount} failed)`,
+    writtenOutcomeCount: row.writtenOutcomeCount,
+    candidateCount: row.candidateCount,
+    qaFindingCount: row.qaFindingCount,
+    contextRefCount: row.contextRefCount,
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Panel — owns its `projects.overview` read through the typed client. The
-// overview is shared with `ProgressInstrumentPanel`, but each panel issues
-// its own typed query (the api-client's per-depsKey cache keeps both reads
-// independent; a re-render does not double-fetch).
-// ---------------------------------------------------------------------------
-
 /**
- * The Overview pass-ledger panel — per-pass SCORE / FEEDBACK / NOTE rows
- * sourced from the composed `projects.overview` read model. Self-contained
- * (issues its own `useApiQuery("projects.overview")`); renders loading /
- * empty / error surfaces independently of the other dashboard panels.
+ * The Overview journal panel. It retains the public component name used by
+ * the dashboard shell, but the operator-facing title and every visible value
+ * are sourced from the durable attempt/outcome journal.
  */
 export function PassLedgerPanel(): ReactNode {
   const overview = useApiQuery("projects.overview", {}, "overview");
   return <PassLedgerPanelBody overview={overview} />;
 }
 
-/**
- * The state-bound panel body. Exported (and the prop is the resolved
- * `ApiCallState`) so a behavior-first test can mount the panel over msw.
- */
 export function PassLedgerPanelBody({
   overview,
 }: {
   overview: ApiCallState<ProjectOverviewReadModel>;
 }): ReactNode {
   const caps = useCapsOptional();
-  const rowCount = overview.state === "ready" ? overview.data.passLedger.rows.length : null;
+  const rowCount = overview.state === "ready" ? overview.data.journal.rows.length : null;
   const headline =
     rowCount === null
-      ? "Pass ledger"
+      ? "Execution journal"
       : rowCount === 0
-        ? "Pass ledger — no passes recorded"
-        : `Pass ledger — ${rowCount} pass${rowCount === 1 ? "" : "es"} recorded`;
-  // canSteer: the overview already surfaces the server-derived draft.write
-  // signal; AND it with the caps context when present so a client-resolved
-  // denial cannot be bypassed by a stale overview payload.
+        ? "Execution journal — no runs recorded"
+        : `Execution journal — ${rowCount} run${rowCount === 1 ? "" : "s"} recorded`;
   const overviewCanSteer = overview.state === "ready" ? overview.data.canSteer : false;
   const canSteer = caps === null ? overviewCanSteer : overviewCanSteer && caps.canSteer;
   const steerDenial =
@@ -109,7 +74,7 @@ export function PassLedgerPanelBody({
   return (
     <Panel
       title={headline}
-      eyebrow="Pass ledger"
+      eyebrow="Execution journal"
       className="itotori-panel--pass-ledger"
       data-panel-state={overview.state}
     >
@@ -118,23 +83,13 @@ export function PassLedgerPanelBody({
           canSteer={canSteer}
           steerDenial={steerDenial}
           projectId={overview.data.projectId}
-          localeBranchId={overview.data.passLedger.filter.localeBranchId}
+          localeBranchId={overview.data.journal.filter.localeBranchId}
         />
       )}
       <PassLedgerPanelContent overview={overview} />
     </Panel>
   );
 }
-
-// ---------------------------------------------------------------------------
-// ovw-launch-pass-action — the Overview "launch next pass" action. Folds
-// queued corrections + DRIVES the next localization pass via the typed client
-// (`projects.launchPass` → the project-driven-executor / localize-fullproject
-// driver). `canSteer`-GATED (the `draft.write` steer permission): fnd-caps-
-// context requires a denied action be DISABLED + EXPLAINED (not a silent
-// hide). A refused / errored launch is surfaced like the reviewer strip: an
-// alert, never a silent success. No game is named; ds tokens only.
-// ---------------------------------------------------------------------------
 
 type LaunchPassOutcome =
   | { kind: "started"; journalRunId: string }
@@ -150,14 +105,9 @@ export function LaunchPassAction({
   canSteer: boolean;
   projectId: string;
   localeBranchId: string | null;
-  /** Denial explanation when canSteer is false (from the caps context). */
   steerDenial?: string | null;
 }): ReactNode {
-  // No locale branch to scope the pass to — nothing actionable to show.
-  if (localeBranchId === null) {
-    return null;
-  }
-  // fnd-caps-context — denied steer is disabled + explained, not hidden.
+  if (localeBranchId === null) return null;
   if (!canSteer) {
     const reason = steerDenial ?? "draft.write permission required to launch a pass";
     return (
@@ -197,9 +147,7 @@ function LaunchPassActionBody({
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<LaunchPassOutcome | null>(null);
   async function launch(): Promise<void> {
-    if (pending) {
-      return;
-    }
+    if (pending) return;
     setOutcome(null);
     setPending(true);
     const result = await apiClient.request("projects.launchPass", {
@@ -211,12 +159,10 @@ function LaunchPassActionBody({
         const journalRunId = result.data.journalRunId;
         if (journalRunId === null) {
           setOutcome({ kind: "error", message: "started response omitted journal run id" });
-          return;
+        } else {
+          setOutcome({ kind: "started", journalRunId });
+          notifyHandoff({ kind: "pass-launched", journalRunId });
         }
-        setOutcome({ kind: "started", journalRunId });
-        // shell-toasts — a started journal run is a workflow handoff; surface it as
-        // a legible toast in addition to the in-strip status.
-        notifyHandoff({ kind: "pass-launched", journalRunId });
       } else {
         setOutcome({ kind: "refused", message: result.data.refusalMessage ?? "refused" });
       }
@@ -243,7 +189,7 @@ function LaunchPassActionBody({
         onClick={() => {
           void launch();
         }}
-        title="Fold queued corrections and drive the next localization pass"
+        title="Drive the next localization run"
       >
         {pending ? "Launching…" : "Launch next pass"}
       </button>
@@ -270,17 +216,14 @@ function PassLedgerPanelContent({
 }: {
   overview: ApiCallState<ProjectOverviewReadModel>;
 }): ReactNode {
-  if (overview.state === "loading") {
-    return <LoadingState label="Loading pass ledger…" />;
-  }
-  if (overview.state === "error") {
-    return <ErrorState title="Pass ledger" error={overview.error} />;
-  }
-  if (overview.state === "empty" || overview.data.passLedger.rows.length === 0) {
+  if (overview.state === "loading") return <LoadingState label="Loading execution journal…" />;
+  if (overview.state === "error")
+    return <ErrorState title="Execution journal" error={overview.error} />;
+  if (overview.state === "empty" || overview.data.journal.rows.length === 0) {
     return (
       <EmptyState
-        title="Pass ledger"
-        message="No localization passes have been recorded for this project yet."
+        title="Execution journal"
+        message="No durable localization runs have been recorded for this project yet."
       />
     );
   }
@@ -288,86 +231,69 @@ function PassLedgerPanelContent({
 }
 
 function PassLedgerPanelReady({ overview }: { overview: ProjectOverviewReadModel }): ReactNode {
-  const rows = passLedgerIterationRows(overview.passLedger.rows);
-  const totals = computePassLedgerTotals(rows);
+  const rows = journalRunSummaryRows(overview.journal.rows);
+  const totals = computeJournalTotals(rows);
   return (
     <>
-      <div className="itotori-metric-row" aria-label="Pass ledger aggregate">
-        <StatReadout label="Passes" value={totals.passCount} />
-        <StatReadout label="Feedback notes" value={totals.feedbackTotal} />
-        <StatReadout label="Avg score" value={totals.averageScoreLabel} />
-        <StatReadout label="Latest pass" value={totals.latestPass} />
+      <div className="itotori-metric-row" aria-label="Execution journal aggregate">
+        <StatReadout label="Runs" value={totals.runCount} />
+        <StatReadout label="Physical calls" value={totals.physicalCallCount} />
+        <StatReadout label="Candidates" value={totals.candidateCount} />
+        <StatReadout label="QA findings" value={totals.qaFindingCount} />
       </div>
       <DataTable
-        caption="Pass ledger"
+        caption="Execution journal"
         columns={[
           {
-            key: "pass",
-            header: "Pass",
-            render: (row) => <code>pass {row.passNumber}</code>,
+            key: "run",
+            header: "Run",
+            render: (row) => <code>{row.journalRunId}</code>,
           },
+          { key: "locale", header: "Locale", render: (row) => row.targetLocale },
           {
-            key: "iteration",
-            header: "Iteration",
-            render: (row) => row.iteration,
-          },
-          {
-            key: "score",
-            header: "Score",
+            key: "calls",
+            header: "Physical calls",
             align: "end",
-            render: (row) => row.scoreLabel,
+            render: (row) => row.physicalCallLabel,
           },
           {
-            key: "feedback",
-            header: "Feedback",
+            key: "written",
+            header: "Written",
             align: "end",
-            render: (row) => row.feedbackCount,
+            render: (row) => row.writtenOutcomeCount,
           },
           {
-            key: "note",
-            header: "Note",
-            render: (row) => row.note,
+            key: "candidates",
+            header: "Candidates",
+            align: "end",
+            render: (row) => row.candidateCount,
           },
+          { key: "qa", header: "QA", align: "end", render: (row) => row.qaFindingCount },
           {
-            key: "status",
-            header: "Status",
-            render: () => <Badge status="succeeded" />,
+            key: "context",
+            header: "Context refs",
+            align: "end",
+            render: (row) => row.contextRefCount,
           },
         ]}
         rows={rows}
-        getRowKey={(row) => row.passLedgerId}
-        emptyLabel="No recorded passes."
+        getRowKey={(row) => row.journalRunId}
+        emptyLabel="No recorded runs."
       />
     </>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Totals — pure derivation for the headline metric row.
-// ---------------------------------------------------------------------------
-
-type PassLedgerTotals = {
-  passCount: number;
-  feedbackTotal: number;
-  averageScoreLabel: string;
-  latestPass: string;
-};
-
-function computePassLedgerTotals(rows: PassLedgerIterationRow[]): PassLedgerTotals {
-  const passCount = rows.length;
-  const feedbackTotal = rows.reduce((sum, row) => sum + row.feedbackCount, 0);
-  const scoredRows = rows.filter((row) => row.scoreLabel !== "—");
-  const averageScoreLabel =
-    scoredRows.length === 0
-      ? "—"
-      : (
-          scoredRows.reduce((sum, row) => sum + Number.parseFloat(row.scoreLabel), 0) /
-          scoredRows.length
-        ).toFixed(1);
-  const latestRow = rows.reduce<PassLedgerIterationRow | null>(
-    (latest, row) => (latest === null || row.passNumber > latest.passNumber ? row : latest),
-    null,
-  );
-  const latestPass = latestRow === null ? "—" : `pass ${latestRow.passNumber}`;
-  return { passCount, feedbackTotal, averageScoreLabel, latestPass };
+function computeJournalTotals(rows: JournalRunSummaryRow[]): {
+  runCount: number;
+  physicalCallCount: number;
+  candidateCount: number;
+  qaFindingCount: number;
+} {
+  return {
+    runCount: rows.length,
+    physicalCallCount: rows.reduce((total, row) => total + row.physicalCallCount, 0),
+    candidateCount: rows.reduce((total, row) => total + row.candidateCount, 0),
+    qaFindingCount: rows.reduce((total, row) => total + row.qaFindingCount, 0),
+  };
 }

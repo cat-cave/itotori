@@ -214,7 +214,7 @@ export const costReportFixture: ProjectCostReport = {
 };
 
 export const jobsRunTableFixture: JobsRunTableReadModel = {
-  schemaVersion: "jobs.run_table.v0.1",
+  schemaVersion: "jobs.run_table.v0.2",
   generatedAt: "2026-07-07T00:00:00.000Z",
   filter: { projectId: "project-1" },
   pagination: {
@@ -229,11 +229,10 @@ export const jobsRunTableFixture: JobsRunTableReadModel = {
   rows: [
     {
       runId: "provider-run-1",
-      ledgerEntryId: "draft-attempt-provider-ledger-1",
-      draftJobId: "draft-job-1",
-      draftJobAttemptId: "draft-job-attempt-1",
+      journalRunId: "journal-run-1",
+      attemptId: "provider-run-1",
       providerRunId: "provider-run-1",
-      jobId: "job-draft-1",
+      bridgeUnitId: "bridge-unit-1",
       projectId: "project-1",
       localeBranchId: "locale-branch-1",
       task: "Draft translation",
@@ -243,7 +242,12 @@ export const jobsRunTableFixture: JobsRunTableReadModel = {
       zdr: true,
       cost: { unit: "usd", amount: "0.00218000" },
       tokens: { in: 22, out: 14, total: 36 },
-      fallback: { used: false, plan: ["openai/gpt-4.1-mini"], chain: [] },
+      fallback: {
+        availability: "captured",
+        used: false,
+        plan: ["openai/gpt-4.1-mini"],
+        chain: [],
+      },
       createdAt: "2026-07-07T00:00:00.000Z",
     },
   ],
@@ -1539,7 +1543,7 @@ export const projectOverviewFixture: ProjectOverviewReadModel = {
     costPerRunSeries: [900, 640],
   },
   costDrilldown: costDrilldownFixture,
-  passLedger: {
+  journal: {
     filter: {
       projectId: dashboardStatusFixture.projectId,
       localeBranchId: dashboardStatusFixture.selectedLocaleBranchId,
@@ -1555,18 +1559,19 @@ export const projectOverviewFixture: ProjectOverviewReadModel = {
     },
     rows: [
       {
-        passLedgerId: "localization-pass-fixture-1",
+        journalRunId: "localization-journal-fixture-1",
         projectId: dashboardStatusFixture.projectId,
         localeBranchId: dashboardStatusFixture.selectedLocaleBranchId ?? "locale-branch-1",
         sourceRevisionId: dashboardStatusFixture.sourceBundleRevisionId,
-        passNumber: 1,
-        priorPassNumber: null,
-        totalUsageCostUsd: 0.0123,
-        zdrConfirmed: true,
-        recordedAt: "2026-07-07T00:00:00.000Z",
-        score: 3.4,
-        feedback: 0,
-        note: "First full draft.",
+        targetLocale: "en-US",
+        createdAt: "2026-07-07T00:00:00.000Z",
+        physicalCallCount: 3,
+        failedPhysicalCallCount: 0,
+        writtenOutcomeCount: 1,
+        candidateCount: 2,
+        qaFindingCount: 1,
+        contextRefCount: 2,
+        speakerLabelCount: 1,
       },
     ],
   },

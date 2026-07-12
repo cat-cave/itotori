@@ -389,18 +389,16 @@ export type ProviderCost = {
    * ITOTORI-232 — AUTHORITATIVE full-precision billed cost: the exact
    * decimal-USD string the provider reported (OpenRouter `usage.cost`),
    * carried VERBATIM. This — not `amountMicrosUsd` — is the value the
-   * ledger persists into
-   * `itotori_draft_attempt_provider_ledger.cost_amount`, and the value
-   * the migration-0041 CHECK compares against
-   * `usage_response_json->>'cost'` within 1e-9 USD.
+   * journal persists into `itotori_llm_attempts.cost_usd` alongside the
+   * verbatim usage response.
    *
    * Why a string and not just micros: `amountMicrosUsd` rounds to 1e-6
    * resolution and CANNOT represent the sub-micro costs cheap models
    * actually bill (DEV_PAIR deepseek-v4-flash evidence: `usage.cost`
    * `0.00000602`, which `amountMicrosUsd` would round to `0.000006`, a
-   * 2e-8 error that the ledger CHECK rejects). `amountMicrosUsd` is
-   * therefore a DERIVED, informational value for the cost cap, telemetry
-   * aggregates, and dashboards — it is NEVER the persisted ledger
+   * 2e-8 error that a micros-only persistence model loses). `amountMicrosUsd`
+   * is therefore a DERIVED, informational value for the cost cap, telemetry
+   * aggregates, and dashboards — it is NEVER the persisted journal
    * authority. For `costKind: 'zero'` this is the exact string `"0"`.
    */
   amountUsd: string;
@@ -593,6 +591,47 @@ export class ModelProviderError extends Error {
     super(message);
     this.name = "ModelProviderError";
   }
+}
+
+// A completed physical call can be followed by a local side effect such as
+// artifact persistence. Keep its ProviderRunRecord associated with the raw
+// thrown value so the physical-call journal can still account for the call.
+// This is deliberately opaque: mutating a filesystem Error can fail when it
+// is frozen, and a public property would invite unrelated error plumbing to
+// treat it as a provider error.
+const providerRunByThrownError = new WeakMap<object, ProviderRunRecord>();
+
+/**
+ * Preserve a raw post-call error while retaining the physical call it followed.
+ * Error objects are returned unchanged, including their original class/code.
+ */
+export function attachProviderRunToThrownError(
+  error: unknown,
+  providerRun: ProviderRunRecord,
+): unknown {
+  if (isObjectLike(error)) {
+    providerRunByThrownError.set(error, providerRun);
+    return error;
+  }
+
+  // JavaScript permits throwing primitives. That cannot carry opaque
+  // provenance without a wrapper; normal provider/artifact failures are Error
+  // objects and take the identity-preserving branch above.
+  const wrapped = new Error("provider post-call side effect threw a non-object value");
+  providerRunByThrownError.set(wrapped, providerRun);
+  return wrapped;
+}
+
+/** Return a physical run retained alongside a typed or raw thrown error. */
+export function providerRunFromThrownError(error: unknown): ProviderRunRecord | undefined {
+  if (error instanceof ModelProviderError) {
+    return error.providerRun;
+  }
+  return isObjectLike(error) ? providerRunByThrownError.get(error) : undefined;
+}
+
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
 let providerRunCounter = 0;

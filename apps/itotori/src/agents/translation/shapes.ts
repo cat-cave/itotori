@@ -98,10 +98,10 @@ export type TranslationWorkScopeContext = {
 };
 
 /**
- * itotori-pass-ledger — prior-pass feedback threaded into the translation
+ * durable-journal — prior-pass feedback threaded into the translation
  * prompt so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
  * units instead of re-running from scratch. Strictly project-agnostic: the
- * ledger records whatever the prior localization pass surfaced for this unit
+ * journal records whatever the prior localization pass surfaced for this unit
  * (the written draft, informational quality flags, and any free-form feedback
  * note a play tester / QA finding emitted); the prompt
  * template renders it verbatim into a dedicated "Prior pass feedback" block.
@@ -198,8 +198,8 @@ export type TranslationInvocationInput = {
    */
   workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
-   * itotori-pass-ledger — prior-pass feedback for this unit, threaded from the
-   * localization pass ledger so a pass N+1 draft consumes pass N's accepted
+   * durable-journal — prior-pass feedback for this unit, threaded from the
+   * localization journal so a pass N+1 draft consumes pass N's accepted
    * state + flagged-unit feedback as drafting context. When present the prompt
    * template renders a strictly-additive "Prior pass feedback" block; when
    * ABSENT the prompt is byte-identical to the pre-feature template (the

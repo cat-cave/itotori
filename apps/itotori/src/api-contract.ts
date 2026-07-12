@@ -433,7 +433,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         cost: ref("ProjectCostReport"),
         telemetry: obj,
         costDrilldown: ref("CostDrilldownPage"),
-        passLedger: obj,
+        journal: obj,
         benchmarkHeadline: obj,
         canSteer: bool,
       },
@@ -475,7 +475,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.JobsRunTableReadModel,
       properties: { generatedAt: str, filter: obj, pagination: obj, rows: arr },
       additionalProperties: false,
-      schemaVersion: "jobs.run_table.v0.1",
+      schemaVersion: "jobs.run_table.v0.2",
     }),
   ApiBenchmarkReportsResponse: () =>
     object({

@@ -25,13 +25,18 @@
 // fake provider (tests) records the real zero it produced;
 // nothing is fabricated.
 
-import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
+import type {
+  AuthorizationActor,
+  ItotoriLocalizationJournalRepositoryPort,
+  ItotoriTerminologyCandidateRepositoryPort,
+  LocalizationJournalOutcomeRecord,
+} from "@itotori/db";
 import type { BridgeBundleV02, StyleGuidePolicyV0Draft } from "@itotori/localization-bridge-schema";
 import {
   parseNarrativeStructure,
   type NarrativeStructure,
 } from "../agents/structure-informed-context/index.js";
-import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
+import type { PriorPassFeedback, TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import type { AgenticLoopProviderFactory } from "./agentic-loop.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
@@ -42,6 +47,7 @@ import {
   type DrivenPatchExportSink,
   type DrivenUnitContext,
   type DrivenUnitContextResolver,
+  type PriorPassContext,
   type ProjectDrivenExecutorInput,
   type ProjectDrivenExecutorResult,
   type TranslationScope,
@@ -125,6 +131,23 @@ export type TranslationScopeSettingsPort = {
 };
 
 /**
+ * Narrow journal read surface used to build pass N+1 drafting context. This is
+ * intentionally the normalized, lossless journal: it
+ * loads chronological runs and each prior run's canonical outcomes.
+ */
+export type LocalizationJournalHistoryPort = Pick<
+  ItotoriLocalizationJournalRepositoryPort,
+  "loadRunsForBranch" | "loadRunOutcomes"
+>;
+
+/** Provenance for the journal run whose written outcomes feed the next pass. */
+export type PriorJournalRunContext = {
+  runId: string;
+  passNumber: number;
+  feedbackByUnit: ReadonlyMap<string, PriorPassFeedback>;
+};
+
+/**
  * Injected dependencies. The journal + patch sinks and reviewer queue are ports
  * so production binds them to real DB/fs adapters while a test binds in-memory
  * sinks + a fake provider (no live cost). The provider factory is injected
@@ -138,6 +161,12 @@ export type LocalizeFullProjectDeps = {
     journal: DrivenUnitJournalSink;
     patchExport: DrivenPatchExportSink;
   };
+  /**
+   * Optional durable run history. When wired, pass N+1 reads pass N directly
+   * from the attempt/outcome journal and threads its selected body + QA
+   * feedback into the next translation prompt.
+   */
+  journalHistory?: LocalizationJournalHistoryPort;
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
@@ -179,6 +208,12 @@ export type LocalizeFullProjectArgs = {
 
 export type LocalizeFullProjectResult = {
   result: ProjectDrivenExecutorResult;
+  /** The durable prior journal run consumed by this execution, if any. */
+  priorJournalRun?: {
+    runId: string;
+    passNumber: number;
+    feedbackUnitCount: number;
+  };
 };
 
 export function resolveDrivenConcurrency(
@@ -186,6 +221,76 @@ export function resolveDrivenConcurrency(
   configValue: number | undefined,
 ): number | undefined {
   return cliOverride ?? configValue;
+}
+
+/**
+ * Read the latest completed journal run for a branch and project its exact
+ * selected candidates, quality flags, and QA feedback into the context the
+ * next run receives. The ordinal is derived from chronological journal history
+ * so the existing prompt's generic "pass N" wording remains meaningful
+ * without reintroducing a parallel legacy record.
+ */
+export async function loadPriorJournalRunContext(args: {
+  repository: LocalizationJournalHistoryPort;
+  actor: AuthorizationActor;
+  localeBranchId: string;
+}): Promise<PriorJournalRunContext | undefined> {
+  const runs = await args.repository.loadRunsForBranch(args.actor, args.localeBranchId);
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index]!;
+    const outcomes = await args.repository.loadRunOutcomes(args.actor, run.runId);
+    if (outcomes.length === 0) {
+      // A started/crashed run has no written baseline. Keep looking for the
+      // last completed run rather than fabricating an empty prior pass.
+      continue;
+    }
+    const feedbackByUnit = new Map<string, PriorPassFeedback>();
+    for (const outcome of outcomes) {
+      feedbackByUnit.set(outcome.bridgeUnitId, priorFeedbackFromJournalOutcome(outcome, index + 1));
+    }
+    return { runId: run.runId, passNumber: index + 1, feedbackByUnit };
+  }
+  return undefined;
+}
+
+function priorFeedbackFromJournalOutcome(
+  outcome: LocalizationJournalOutcomeRecord,
+  passNumber: number,
+): PriorPassFeedback {
+  const selected = outcome.candidates.find(
+    (candidate) => candidate.id === outcome.outcome.selectedCandidateId,
+  );
+  if (selected === undefined) {
+    // `loadRunOutcomes` already validates the canonical outcome, so this
+    // protects the journal-to-prompt boundary if a future repository changes.
+    throw new Error(
+      `localize: journal run ${outcome.runId} outcome ${outcome.outcome.id} is missing selected candidate ${outcome.outcome.selectedCandidateId}`,
+    );
+  }
+  const feedbackNote = journalFeedbackNote(outcome);
+  return {
+    passNumber,
+    priorDraftText: selected.body,
+    qualityFlags: outcome.outcome.qualityFlags.slice(),
+    ...(feedbackNote !== undefined ? { feedbackNote } : {}),
+  };
+}
+
+/** Preserve the durable focused-QA recommendations as pass N+1 feedback. */
+function journalFeedbackNote(outcome: LocalizationJournalOutcomeRecord): string | undefined {
+  const notes: string[] = [];
+  for (const finding of outcome.findings) {
+    const detail = outcome.qaDetails[finding.id];
+    if (detail === undefined) {
+      notes.push(finding.note);
+      continue;
+    }
+    notes.push(
+      `${finding.severity}/${finding.category}: ${detail.recommendation}\nRationale: ${detail.agentRationale}`,
+    );
+  }
+  const distinct = [...new Set(notes.map((note) => note.trim()).filter((note) => note.length > 0))];
+  return distinct.length > 0 ? distinct.join("\n\n") : undefined;
 }
 
 /**
@@ -220,6 +325,29 @@ export async function runLocalizeFullProjectCommand(
     run: () => parseLocalizeFullProjectConfig(deps.io.readJson(args.configPath)),
   });
   const targetLocale = config.targetLocale ?? "en-US";
+  const journalHistory = deps.journalHistory;
+  const priorJournalContext =
+    journalHistory === undefined
+      ? undefined
+      : await runPipelineStepWithDiagnostic({
+          step: "localize.read-prior-journal",
+          code: "unknown",
+          message: "localize.read-prior-journal failed: could not load durable prior-run context",
+          repro: { configPath: args.configPath },
+          inputs: {
+            ...baseInputs,
+            projectId: config.projectId,
+            localeBranchId: config.localeBranchId,
+          },
+          actor: deps.actor,
+          now: deps.now,
+          run: () =>
+            loadPriorJournalRunContext({
+              repository: journalHistory,
+              actor: deps.actor,
+              localeBranchId: config.localeBranchId,
+            }),
+        });
   // itotori-translation-scope-configuration-ui — precedence: an EXPLICIT
   // config.translationScope always wins; otherwise consult the DB-backed
   // default a project/branch owner configured (Studio "Translation scope"
@@ -328,7 +456,7 @@ export async function runLocalizeFullProjectCommand(
 
   const concurrency = resolveDrivenConcurrency(args.concurrency, config.concurrency);
 
-  const executorInput: Omit<ProjectDrivenExecutorInput, "priorPass"> = {
+  const executorInput: ProjectDrivenExecutorInput = {
     bridge,
     rawBridge,
     pairPolicy,
@@ -362,16 +490,30 @@ export async function runLocalizeFullProjectCommand(
       : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
     ...(deps.log !== undefined ? { log: deps.log } : {}),
+    ...(priorJournalContext !== undefined
+      ? {
+          priorPass: {
+            passNumber: priorJournalContext.passNumber,
+            journalRunId: priorJournalContext.runId,
+            feedbackByUnit: priorJournalContext.feedbackByUnit,
+          } satisfies PriorPassContext,
+        }
+      : {}),
   };
 
   log(
     `localize: project=${config.projectId} branch=${config.localeBranchId} engine=${config.engineProfile} ` +
       `scope=${translationScope} pair=(${pair.modelId}, ${pair.providerId})`,
   );
+  if (priorJournalContext !== undefined) {
+    log(
+      `localize: consuming journal pass ${priorJournalContext.passNumber} run=${priorJournalContext.runId} ` +
+        `(${priorJournalContext.feedbackByUnit.size} unit(s) with prior feedback)`,
+    );
+  }
 
-  // Run the durable journal projection directly. The selected-body pass ledger
-  // is not a source of truth for this path: candidates, findings, physical
-  // calls, and context provenance all land together in the journal.
+  // Run the durable journal projection directly: candidates, findings,
+  // physical calls, and context provenance all land together in one source.
   const result = await runPipelineStepWithDiagnostic({
     step: "localize.run-journal",
     code: "unknown",
@@ -436,6 +578,15 @@ export async function runLocalizeFullProjectCommand(
     totalUsageCostUsd: result.totalUsageCostUsd,
     zdrConfirmed: result.zdrConfirmed,
     budgetStopped: result.budgetStopped,
+    ...(priorJournalContext !== undefined
+      ? {
+          priorJournalRun: {
+            runId: priorJournalContext.runId,
+            passNumber: priorJournalContext.passNumber,
+            feedbackUnitCount: priorJournalContext.feedbackByUnit.size,
+          },
+        }
+      : {}),
   };
   await runPipelineStepWithDiagnostic({
     step: "localize.write-run-summary",
@@ -459,7 +610,18 @@ export async function runLocalizeFullProjectCommand(
       `(zdr=${result.zdrConfirmed}); wrote ${args.runSummaryPath}`,
   );
 
-  return { result };
+  return {
+    result,
+    ...(priorJournalContext !== undefined
+      ? {
+          priorJournalRun: {
+            runId: priorJournalContext.runId,
+            passNumber: priorJournalContext.passNumber,
+            feedbackUnitCount: priorJournalContext.feedbackByUnit.size,
+          },
+        }
+      : {}),
+  };
 }
 
 /**

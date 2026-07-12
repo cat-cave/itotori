@@ -7,8 +7,8 @@
 //                     and its normalized provenance land atomically.
 //   - patch export -> translated-bridge.json + patch-report.json.
 //
-// Draft-job, aggregate provider-ledger, and pass-ledger rows are deliberately
-// absent from this adapter. They cannot represent a lossless execution journal.
+// Draft-job and aggregate provider-ledger rows are deliberately absent from
+// this adapter. They cannot represent a lossless execution journal.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

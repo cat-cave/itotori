@@ -20,10 +20,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+  STYLE_GUIDE_POLICY_SCHEMA_VERSION,
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
   type BridgeBundleV02,
   type LocalizationUnitV02,
+  type StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
 import {
   ItotoriLocalizationJournalRepository,
@@ -704,11 +706,27 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     });
     const baseScope = resolveEffectiveScope(graph, "fixture-archive#work:base");
     const afterScope = resolveEffectiveScope(graph, "fixture-archive#work:after");
+    const styleGuide: StyleGuidePolicyV0Draft = {
+      schemaVersion: STYLE_GUIDE_POLICY_SCHEMA_VERSION,
+      sections: {
+        tone: [
+          {
+            ruleId: "tone-fixture-warm",
+            guidance: "Keep narration warm and direct.",
+          },
+        ],
+        terminology: [],
+        honorifics: [],
+        formatting: [],
+        protectedSpans: [],
+      },
+    };
 
     const result = await runProjectDrivenExecutor({
       ...baseInput(undefined, sinks),
       providerFactory: promptCapturingProviderFactory(promptsByUnit),
       maxUnits: 3,
+      styleGuide,
       resolveUnitContext: ({ unit }): DrivenUnitContext => ({
         effectiveScope: unit.bridgeUnitId === UNIT_C ? afterScope : baseScope,
       }),
@@ -732,6 +750,72 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     // by translation + terminology QA, not just the audit continuity block.
     expect(afterPrompt).toContain("Glossary (apply preferred target forms):");
     expect(afterPrompt).toContain("光紋 -> Lumen Crest");
+
+    // The journal receives the resolved prompt context itself, not only the
+    // structure artifact references. A reader can reconstruct the glossary,
+    // active style rule, and inherited/override scope that produced UNIT_C.
+    const afterJournal = sinks.journalUnits.find(
+      (journal) => journal.writtenOutcome.bridgeUnitId === UNIT_C,
+    );
+    expect(afterJournal).toBeDefined();
+    expect(afterJournal?.contextPacket).toMatchObject({
+      glossary: expect.arrayContaining([
+        expect.objectContaining({
+          preferredSourceForm: "光紋",
+          preferredTargetForm: "Lumen Crest",
+        }),
+        expect.objectContaining({
+          preferredSourceForm: "約束",
+          preferredTargetForm: "After Promise",
+        }),
+      ]),
+      styleGuide: {
+        schemaVersion: STYLE_GUIDE_POLICY_SCHEMA_VERSION,
+        sections: {
+          tone: [
+            {
+              ruleId: "tone-fixture-warm",
+              guidance: "Keep narration warm and direct.",
+            },
+          ],
+        },
+      },
+      styleGuideRules: [
+        {
+          ruleId: "tone-fixture-warm",
+          section: "tone",
+          guidance: "Keep narration warm and direct.",
+        },
+      ],
+      workScope: {
+        workId: "fixture-archive#work:after",
+        glossary: expect.arrayContaining([
+          expect.objectContaining({ sourceForm: "光紋", provenance: "inherited" }),
+          expect.objectContaining({ sourceForm: "約束", provenance: "override" }),
+        ]),
+      },
+      contextVersionReferenceState: {
+        availability: "pending_persistent_context_brain",
+        refs: [],
+      },
+    });
+    expect(afterJournal?.contextRefs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          refKind: "glossary_term",
+          details: expect.objectContaining({ preferredSourceForm: "光紋" }),
+        }),
+        expect.objectContaining({
+          refKind: "style_guide_rule",
+          refId: "tone-fixture-warm",
+          details: expect.objectContaining({ guidance: "Keep narration warm and direct." }),
+        }),
+        expect.objectContaining({
+          refKind: "work_scope",
+          refId: "fixture-archive#work:after",
+        }),
+      ]),
+    );
   });
 });
 
@@ -808,6 +892,39 @@ class InstrumentedProvider implements ModelProvider {
     } finally {
       this.meter.exit();
     }
+  }
+}
+
+function deferred(): { promise: Promise<void>; resolve(): void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+/** Holds one unit at translation while another worker reaches the journal. */
+class TranslationGateProvider implements ModelProvider {
+  constructor(
+    private readonly inner: ModelProvider,
+    private readonly heldBridgeUnitId: string,
+    private readonly entered: () => void,
+    private readonly release: Promise<void>,
+  ) {}
+
+  get descriptor() {
+    return this.inner.descriptor;
+  }
+
+  async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
+    if (
+      request.taskKind === "draft_translation" &&
+      bridgeUnitIdOf(request) === this.heldBridgeUnitId
+    ) {
+      this.entered();
+      await this.release;
+    }
+    return this.inner.invoke(request);
   }
 }
 
@@ -982,6 +1099,60 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(concMs).toBeLessThan(seqMs * 0.6);
   });
 
+  it("persists each completed unit journal before a slower worker drains", async () => {
+    const { bridge, orderedInScopeIds } = makeManyUnitBridge(2);
+    const [slowUnitId, fastUnitId] = orderedInScopeIds;
+    if (slowUnitId === undefined || fastUnitId === undefined) {
+      throw new Error("incremental-persistence fixture requires two units");
+    }
+    const slowTranslationEntered = deferred();
+    const releaseSlowTranslation = deferred();
+    const fastUnitPersisted = deferred();
+    const sinks = new InMemorySinks();
+    const persistUnitJournal = sinks.journal.persistUnitJournal;
+    sinks.journal.persistUnitJournal = async (record): Promise<void> => {
+      await persistUnitJournal(record);
+      if (record.writtenOutcome.bridgeUnitId === fastUnitId) {
+        fastUnitPersisted.resolve();
+      }
+    };
+    const factory: AgenticLoopProviderFactory = ({ stage, agentLabel }) => {
+      const inner = new FakeModelProvider({
+        providerName: `driven-incremental-${stage}-${agentLabel}`,
+        generate: (request: ModelInvocationRequest): string => drivenGenerate(agentLabel, request),
+      });
+      return new TranslationGateProvider(
+        inner,
+        slowUnitId,
+        () => slowTranslationEntered.resolve(),
+        releaseSlowTranslation.promise,
+      );
+    };
+
+    const run = runProjectDrivenExecutor({
+      ...concurrencyBaseInput({ bridge, factory, sinks }),
+      concurrency: 2,
+    });
+    await slowTranslationEntered.promise;
+
+    // If the executor buffered completion records until `Promise.all(workers)`
+    // drained, this timeout would win because slowUnitId remains held above.
+    const persistedBeforeDrain = await Promise.race([
+      fastUnitPersisted.promise.then(() => true),
+      sleep(1_000).then(() => false),
+    ]);
+    expect(persistedBeforeDrain).toBe(true);
+    expect(sinks.journalUnits.map((journal) => journal.writtenOutcome.bridgeUnitId)).toContain(
+      fastUnitId,
+    );
+
+    releaseSlowTranslation.resolve();
+    await expect(run).resolves.toMatchObject({
+      unitsRun: 2,
+      journalUnitsPersisted: 2,
+    });
+  });
+
   it("isolates a poison unit while the concurrent pool keeps running", async () => {
     const UNIT_COUNT = 8;
     const meter = new ConcurrencyMeter();
@@ -1007,20 +1178,21 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(meter.maxInFlight).toBeGreaterThan(1); // genuinely concurrent.
   });
 
-  it("persists journal units in CANONICAL order, deterministically", async () => {
+  it("keeps aggregate outcome order canonical while journal units stream by completion", async () => {
     const UNIT_COUNT = 9;
     // A mix: clean units + a QA-flagged unit + a poison (isolated).
     const markers = { deferAt: 2, poisonAt: 6 };
 
     const runOnce = async (): Promise<{
       journalUnitOrder: string[];
+      outcomeUnitOrder: string[];
       orderedInScopeIds: string[];
     }> => {
       const meter = new ConcurrencyMeter();
       const sinks = new InMemorySinks();
       const queue = new InMemoryReviewerQueue();
       const { bridge, orderedInScopeIds } = makeManyUnitBridge(UNIT_COUNT, markers);
-      await runProjectDrivenExecutor({
+      const result = await runProjectDrivenExecutor({
         ...concurrencyBaseInput({
           bridge,
           factory: instrumentedFactory({ meter, delayMs: 6 }),
@@ -1032,6 +1204,7 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       expect(meter.maxInFlight).toBeGreaterThan(1);
       return {
         journalUnitOrder: sinks.journalUnits.map((journal) => journal.writtenOutcome.bridgeUnitId),
+        outcomeUnitOrder: result.unitOutcomes.map((outcome) => outcome.bridgeUnitId),
         orderedInScopeIds,
       };
     };
@@ -1039,14 +1212,19 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     const first = await runOnce();
     const second = await runOnce();
 
-    // Canonical order == the enumerated in-scope order MINUS the isolated poison.
-    const expectedJournalUnitOrder = first.orderedInScopeIds.filter(
+    // Canonical report order == the enumerated in-scope order MINUS the
+    // isolated poison. Journal persistence deliberately streams by completion
+    // so a slower worker cannot make already-completed evidence volatile.
+    const expectedOutcomeUnitOrder = first.orderedInScopeIds.filter(
       (_id, index) => index !== markers.poisonAt,
     );
-    expect(first.journalUnitOrder).toEqual(expectedJournalUnitOrder);
+    expect(first.outcomeUnitOrder).toEqual(expectedOutcomeUnitOrder);
+    expect(first.journalUnitOrder.slice().sort()).toEqual(expectedOutcomeUnitOrder.slice().sort());
 
-    // DETERMINISM: identical persisted order across independent runs.
-    expect(second.journalUnitOrder).toEqual(first.journalUnitOrder);
+    // DETERMINISM: the aggregate reported to callers remains canonical across
+    // independent runs even when physical journal writes race by completion.
+    expect(second.outcomeUnitOrder).toEqual(first.outcomeUnitOrder);
+    expect(second.journalUnitOrder.slice().sort()).toEqual(first.journalUnitOrder.slice().sort());
   });
 
   it("budget cap STOPS dispatching before overspend under concurrency (unspent units not run)", async () => {

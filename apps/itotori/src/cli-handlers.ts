@@ -544,7 +544,7 @@ async function runTelemetrySummaryHandler(
   // UTSUSHI-231 — when `--provider-runs-dir` is supplied, source the
   // summary from the per-run `provider-run.json` artifacts the
   // localize-project stage writes (the DB-free path) instead of the
-  // draft-attempt provider ledger. The byPair, ZDR, and billed-cost
+  // durable journal. The byPair, ZDR, and billed-cost
   // evidence come verbatim from the real served responses captured in
   // those artifacts — no DB, no withServices.
   if (args.includes("--provider-runs-dir")) {

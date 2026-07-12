@@ -1,6 +1,6 @@
 // ITOTORI-100 — Provider route reliability and cost report public surface.
 
-import type { DraftAttemptProviderLedgerEntry } from "@itotori/db";
+import type { LocalizationJournalAttemptRecord } from "@itotori/db";
 import type { JsonObject } from "../providers/types.js";
 import type { ProviderLedgerEntry } from "./report.js";
 
@@ -37,11 +37,10 @@ export {
 } from "./report.js";
 
 /**
- * Strip the `live:` / `recorded:` scheme prefix off a provider-ledger
- * `providerProofId` to recover the join key. For a LIVE row the recorder
- * writes `live:<runId>` (see draft/draft-attempt-recorder.ts), so the
- * recovered value IS the `runId` that {@link ProviderLedgerEntry.runId}
- * reconciles against {@link ExperimentInvocationArtifact.runId}.
+ * Strip the `live:` / `recorded:` scheme prefix off a provider-proof id to
+ * recover the run-id join key. This remains useful for recorded proof
+ * fixtures; durable production reconciliation reads physical attempts from
+ * the localization journal directly.
  */
 export function ledgerRunIdFromProofId(providerProofId: string): string {
   const sep = providerProofId.indexOf(":");
@@ -49,29 +48,34 @@ export function ledgerRunIdFromProofId(providerProofId: string): string {
 }
 
 /**
- * Adapt a REAL provider-ledger row (the DB `itotori_draft_attempt_provider_ledger`
- * shape) into the source-agnostic {@link ProviderLedgerEntry} the route
- * cost reconciler consumes. This is how ITOTORI-100 "consumes the provider
- * ledger": the persisted token/cost facts are carried through UNTOUCHED so
- * reconciliation is a genuine cross-check of two independent sources, not a
- * restatement of one.
+ * Adapt one durable localization-journal physical attempt into the
+ * source-agnostic {@link ProviderLedgerEntry} the route-cost reconciler
+ * consumes. Persisted token/cost facts are carried through untouched, so
+ * reconciliation remains a cross-check of independent artifact and journal
+ * records rather than a restatement of either one.
  *
- * The DB ledger keys on its own `ledgerEntryId`, NOT the experiment
- * `ledgerId`, so `ledgerId` is left `""` and the runId (recovered from
- * `providerProofId`) is the sole join key. `cost_amount` is non-NULL at the
- * schema level; an empty string is treated as a MISSING field so the
+ * The journal's `attemptId` is a physical-call identity, not the experiment
+ * artifact's `ledgerId`, so `ledgerId` is left empty and `providerRunId` is
+ * the sole join key. An empty `costUsd` is treated as a missing field so the
  * reconciler can name it.
  */
-export function providerLedgerEntryFromDraftAttempt(
-  entry: DraftAttemptProviderLedgerEntry,
+export function providerLedgerEntryFromJournalAttempt(
+  entry: LocalizationJournalAttemptRecord,
 ): ProviderLedgerEntry {
   return {
-    runId: ledgerRunIdFromProofId(entry.providerProofId),
+    runId: entry.providerRunId,
     ledgerId: "",
     tokensIn: entry.tokensIn,
     tokensOut: entry.tokensOut,
     costAmountUsd:
-      typeof entry.costAmount === "string" && entry.costAmount.length > 0 ? entry.costAmount : null,
-    usageResponseJson: entry.usageResponseJson as JsonObject,
+      typeof entry.costUsd === "string" && entry.costUsd.length > 0 ? entry.costUsd : null,
+    usageResponseJson: journalUsageResponseJson(entry.usageResponseJson),
   };
+}
+
+function journalUsageResponseJson(value: unknown | null): JsonObject {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as JsonObject;
 }

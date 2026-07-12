@@ -309,6 +309,7 @@ export async function runLocalizeFullProjectLive(
             actor,
             providerFactory,
             sinks: { journal: dbAdapter, patchExport: patchSink },
+            journalHistory: journalRepo,
             reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {
               resolveScope: (projectId, localeBranchId) =>

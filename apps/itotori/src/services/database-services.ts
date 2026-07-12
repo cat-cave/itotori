@@ -7,7 +7,6 @@ import {
   ItotoriAuthSsoSettingsRepository,
   ItotoriBenchmarkRunRepository,
   ItotoriBranchReferenceRepository,
-  ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriEventQueueRepository,
   ItotoriFeedbackRepository,
   ItotoriExactSearchDocumentRepository,
@@ -16,7 +15,7 @@ import {
   ItotoriCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
-  ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriLocalizationPassRunConfigRepository,
   ItotoriModelLedgerRepository,
   ItotoriModelRoutingSettingsRepository,
@@ -248,7 +247,7 @@ export type ItotoriApplicationServices = {
   };
   /**
    * ITOTORI-223 — per-(modelId, providerId) telemetry query surface
-   * over the draft-attempt provider ledger.
+   * over durable journal attempts.
    */
   telemetry: {
     query: TelemetryQuery;
@@ -691,7 +690,7 @@ export async function withDatabaseItotoriServices<T>(
     const localizationPassRunConfigRepository = new ItotoriLocalizationPassRunConfigRepository(
       context.db,
     );
-    const passLedgerRepository = new ItotoriLocalizationPassLedgerRepository(context.db);
+    const journalRepository = new ItotoriLocalizationJournalRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
@@ -724,17 +723,9 @@ export async function withDatabaseItotoriServices<T>(
       return actorPrincipalIdPromise;
     };
     const benchmarkRunRepository = new ItotoriBenchmarkRunRepository(context.db);
-    const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
-      context.db,
-    );
-    // ITOTORI-230 — modelLedgerRepository drives the
-    // `countZdrEnforcedCallsByPair` query (reads routing_posture from
-    // itotori_provider_runs). The draft-attempt port handles all the
-    // cost / token / latency aggregates as before.
-    const telemetryQuery = new LedgerTelemetryQuery(
-      draftAttemptProviderLedgerRepository,
-      modelLedgerRepository,
-    );
+    // Physical attempt telemetry and the jobs run table both read the
+    // durable journal. There is intentionally no draft-attempt ledger path.
+    const telemetryQuery = new LedgerTelemetryQuery(journalRepository);
     const manualFeedbackService = new ManualFeedbackImportService(
       feedbackRepository,
       localUserActor,
@@ -768,8 +759,7 @@ export async function withDatabaseItotoriServices<T>(
           assetDecisionRepository.loadCandidateAssets(localUserActor, projectId, localeBranchId),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
         searchTerminology: (input) => terminologyRepository.searchTerms(localUserActor, input),
-        loadRunTable: (input) =>
-          draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, input),
+        loadRunTable: (input) => journalRepository.loadJobsRunTable(localUserActor, input),
         loadReviewerDashboard: (input) => reviewerQueueApiService.loadDashboard(input),
         loadReviewItemIdsByBridgeUnit: (input) =>
           reviewerQueueApiService.loadReviewItemIdsByBridgeUnit(input),
@@ -828,7 +818,7 @@ export async function withDatabaseItotoriServices<T>(
         modelLedgerRepository,
         translationMemoryService,
         undefined,
-        passLedgerRepository,
+        journalRepository,
         // p3-wire-or-explicitly-retire-localizationpassdriverport — the pass
         // driver is now WIRED (no longer `undefined`, which made the Overview
         // "Launch pass" action throw `LocalizationPassDriverNotConfiguredError`).
@@ -976,8 +966,7 @@ export async function withDatabaseItotoriServices<T>(
         loadQueueHealth: (options) => eventQueueRepository.loadQueueHealth(localUserActor, options),
       },
       jobs: {
-        loadRunTable: (options) =>
-          draftAttemptProviderLedgerRepository.loadJobsRunTable(localUserActor, options),
+        loadRunTable: (options) => journalRepository.loadJobsRunTable(localUserActor, options),
       },
       benchmarkCockpit: {
         loadCockpit: (input) =>

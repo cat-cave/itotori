@@ -5,7 +5,7 @@
 // the PATCHED whole-game output for EVERY written unit (render-validate is
 // one-message-per-invocation, so a silent one-per-scene de-dupe would leave
 // later written lines in the same scene unproven). Optional unit caps must be
-// honestly logged. Findings are project-agnostic and the pass ledger carries
+// honestly logged. Findings are project-agnostic and the durable journal carries
 // them into pass N+1.
 
 import { mkdirSync } from "node:fs";

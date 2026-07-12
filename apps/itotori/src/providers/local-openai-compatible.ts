@@ -1,4 +1,5 @@
 import { assertProviderInvocationSupported } from "./capability-guard.js";
+import { recordProviderRunArtifact } from "./artifacts.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -80,8 +81,10 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         errorClasses: ["provider_network_error"],
         tokenUsage: { tokenCountSource: "unknown" },
       });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           error: {
@@ -89,7 +92,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
             message: providerExceptionMessage(error),
           },
         }),
-      );
+      });
       throw new ModelProviderError(
         `local OpenAI-compatible request failed before response: ${providerExceptionMessage(error)}`,
         "provider_http_error",
@@ -109,8 +112,10 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         errorClasses: [`http_${response.status}`],
         tokenUsage: { tokenCountSource: "unknown" },
       });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           error: {
@@ -118,7 +123,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
             message: providerErrorMessage(body, response.status),
           },
         }),
-      );
+      });
       throw new ModelProviderError(
         `local OpenAI-compatible request failed with HTTP ${response.status}`,
         "provider_http_error",
@@ -142,8 +147,10 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         errorClasses: ["provider_response_invalid"],
         tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
       });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           error: {
@@ -151,7 +158,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
             message: providerExceptionMessage(error),
           },
         }),
-      );
+      });
       throw new ModelProviderError(
         `local OpenAI-compatible response was invalid: ${providerExceptionMessage(error)}`,
         "provider_response_invalid",
@@ -169,8 +176,10 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
     });
-    await this.live.artifactRecorder.recordProviderRun(
-      buildArtifact({
+    await recordProviderRunArtifact({
+      recorder: this.live.artifactRecorder,
+      providerRun: run,
+      artifact: buildArtifact({
         request,
         run,
         response: {
@@ -179,7 +188,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
           toolCallCount: normalized.toolCalls.length,
         },
       }),
-    );
+    });
     return {
       content: normalized.content,
       toolCalls: normalized.toolCalls,

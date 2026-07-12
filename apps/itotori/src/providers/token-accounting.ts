@@ -10,8 +10,8 @@
 // Before this guard, seven agents and the agentic-loop context probe
 // substituted a char/4 estimate (or zero) when `tokenUsage.promptTokens`
 // / `completionTokens` was absent. That estimate flowed into the
-// draft_attempt_provider_ledger token columns byte-for-byte
-// indistinguishable from a provider-reported count — asymmetric with
+// durable journal token columns byte-for-byte indistinguishable from a
+// provider-reported count — asymmetric with
 // cost, which always throws. This module makes the token path symmetric:
 // a real count or a typed error, nothing in between.
 
@@ -90,7 +90,7 @@ export type ReportedTokenUsage = {
   tokensIn: number;
   tokensOut: number;
   /**
-   * The provenance both counts were drawn from. Threaded to the ledger sink
+   * The provenance both counts were drawn from. Threaded to the journal sink
    * so a persisted real count is distinguishable from any (now-rejected)
    * estimate.
    */

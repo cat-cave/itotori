@@ -3,8 +3,8 @@
 // CONSUMES the ITOTORI-099 experiment matrix artifacts
 // (`ExperimentInvocationArtifact`, each carrying runId / ledgerId / a
 // `providerRun` block of reliability + cost facts + routingPosture) and
-// the provider ledger (`DraftAttemptProviderLedgerEntry` rows, adapted via
-// {@link providerLedgerEntryFromDraftAttempt}). It renders four things the
+// localization journal's physical-attempt records (adapted via
+// {@link providerLedgerEntryFromJournalAttempt}). It renders four things the
 // ITOTORI-100 acceptance requires:
 //
 //   1. PROVIDER ROUTE RELIABILITY — success / failure / retry / fallback /
@@ -361,8 +361,8 @@ export function renderStructuredOutputSupport(
 /**
  * A normalized provider-ledger row for reconciliation, keyed by `runId`
  * (the join to {@link ExperimentInvocationArtifact.runId}). Source-agnostic
- * so a public fixture can build it directly; the real DB provider ledger
- * adapts into this shape via {@link providerLedgerEntryFromDraftAttempt}.
+ * so a public fixture can build it directly; a durable journal physical
+ * attempt adapts into this shape via {@link providerLedgerEntryFromJournalAttempt}.
  *
  * Every cost/token field is INDEPENDENTLY persisted (it is NOT a copy of the
  * artifact) — reconciliation cross-checks the two sources, so a `null` here
@@ -374,16 +374,16 @@ export type ProviderLedgerEntry = {
   /**
    * The experiment ledger id, when the ledger source carries it (the
    * deterministic `ExperimentInvocationArtifact.ledgerId`). Cross-checked
-   * against the artifact's `ledgerId` when non-empty; the DB draft-attempt
-   * ledger keys on its own `ledgerEntryId` and supplies `""` here, in which
-   * case the runId join is the sole key.
+   * against the artifact's `ledgerId` when non-empty; localization-journal
+   * attempts have their own physical `attemptId` and supply `""` here, in
+   * which case the runId join is the sole key.
    */
   readonly ledgerId: string;
   readonly tokensIn: number | null;
   readonly tokensOut: number | null;
   /**
-   * Authoritative full-precision billed cost, decimal-USD string (the DB
-   * `cost_amount` / verbatim `usage.cost`). `null` = the ledger row is
+   * Authoritative full-precision billed cost, decimal-USD string (the journal
+   * `costUsd` / verbatim `usage.cost`). `null` = the ledger row is
    * missing the field.
    */
   readonly costAmountUsd: string | null;

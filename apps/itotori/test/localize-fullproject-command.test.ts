@@ -52,6 +52,7 @@ import {
 } from "../src/orchestrator/localize-fullproject-command.js";
 import { parseNarrativeStructure } from "../src/agents/structure-informed-context/index.js";
 import type { WholeGameRenderValidationResult } from "../src/orchestrator/wholegame-render-validation-seam.js";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
 // --- ids (text columns; UUID-ish so a shared DB never collides) -------------
 const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
@@ -78,6 +79,8 @@ const UNIT_UI = "019ed0aa-0000-7000-8000-0000000000e5"; // ui_label -> OUT OF SC
 const SCENE_ID = 6010;
 const SPEAKER_NAME = "和人";
 const GENERIC_DRAFT = "Good morning.";
+const CORRECTED_DRAFT = "Good morning, Yui.";
+const PRIOR_FEEDBACK_PROMPT_MARKER = "Prior pass feedback";
 
 // ---------------------------------------------------------------------------
 // Config-parse unit tests (fast, no DB)
@@ -203,7 +206,7 @@ describe("whole-game driver joins the REAL bridge + REAL structure by sceneKey",
 });
 
 // ---------------------------------------------------------------------------
-// Fixtures (mirror project-driven-executor.test.ts / pass-ledger.test.ts)
+// Fixtures (mirror the project-driven executor's journal behavior).
 // ---------------------------------------------------------------------------
 
 function makeStructureJson(): unknown {
@@ -345,8 +348,17 @@ function cleanQaContent(): string {
   });
 }
 
-/** UNIT_B carries a critical QA annotation; all selected text remains written. */
-function makeCaptureFactory(): { factory: AgenticLoopProviderFactory } {
+/**
+ * UNIT_B carries a critical QA annotation on the blank first pass. A second
+ * pass must see the journal-derived feedback block and emit the corrected
+ * target, proving that the durable journal (not an in-memory result) drives
+ * multi-pass iteration.
+ */
+function makeCaptureFactory(): {
+  factory: AgenticLoopProviderFactory;
+  priorFeedbackSeen: Map<string, boolean>;
+} {
+  const priorFeedbackSeen = new Map<string, boolean>();
   const factory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
     new FakeModelProvider({
       providerName: `fullproject-fake-${stage}-${agentLabel}`,
@@ -360,6 +372,11 @@ function makeCaptureFactory(): { factory: AgenticLoopProviderFactory } {
         }
         if (request.taskKind === "draft_translation") {
           const unitId = bridgeUnitIdOf(request);
+          const sawPriorFeedback = blob.includes(PRIOR_FEEDBACK_PROMPT_MARKER);
+          priorFeedbackSeen.set(unitId, sawPriorFeedback);
+          if (unitId === UNIT_B) {
+            return translationContent(unitId, sawPriorFeedback ? CORRECTED_DRAFT : GENERIC_DRAFT);
+          }
           return translationContent(unitId, GENERIC_DRAFT);
         }
         if (request.taskKind === "llm_qa") {
@@ -371,7 +388,7 @@ function makeCaptureFactory(): { factory: AgenticLoopProviderFactory } {
         return "";
       },
     });
-  return { factory };
+  return { factory, priorFeedbackSeen };
 }
 
 // --- fs-backed io + config/fixture materialization --------------------------
@@ -589,6 +606,138 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         );
         expect(queueAfterJournal).toBe(result.reviewerQueueItemCount);
         expect(queueAfterJournal).toBeGreaterThanOrEqual(1); // UNIT_B's QA callout
+      } finally {
+        await context.close();
+      }
+    },
+    120_000,
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "pass 2 consumes pass 1 selected text and QA feedback from the durable journal",
+    async () => {
+      // This regression reads the pass-1 journal while pass 2 is running.
+      // Give it a migrated schema of its own so full-suite DB workers cannot
+      // delete/reseed the fixed fixture project between those two passes.
+      const context = await isolatedMigratedContext();
+      const actor: AuthorizationActor = { userId: localUserId };
+
+      try {
+        await bootstrapLocalUser(context.db);
+        await seedProjectScope(context.pool);
+
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-journal-passes-"));
+        const { configPath } = materializeProject(workDir);
+        const io = fsIo();
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
+        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+
+        const runJournalPass = async (label: string) => {
+          const capture = makeCaptureFactory();
+          const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
+          const runDir = join(workDir, label);
+          mkdirSync(runDir, { recursive: true });
+          const patchSink = new FsDrivenPatchExportSink(runDir);
+          const out = await runLocalizeFullProjectCommand({
+            configPath,
+            runSummaryPath: join(runDir, "run-summary.json"),
+            deps: {
+              io,
+              actor,
+              providerFactory: capture.factory,
+              sinks: { journal, patchExport: patchSink },
+              // The new read path: pass N+1 obtains prior state directly from
+              // normalized journal runs/outcomes, not a legacy pass record.
+              journalHistory: journalRepo,
+              reviewerQueue: { repository: reviewerQueueRepo },
+              now: deterministicClock(),
+            },
+          });
+          return { out, capture, patchSink, runDir };
+        };
+
+        const pass1 = await runJournalPass("pass-1");
+        expect(pass1.out.priorJournalRun).toBeUndefined();
+        expect(pass1.capture.priorFeedbackSeen.get(UNIT_B)).toBe(false);
+        expect(pass1.out.result.writtenOutcomeCount).toBe(3);
+        expect(pass1.out.result.patchReport.coverageComplete).toBe(true);
+
+        const pass1Outcomes = await journalRepo.loadRunOutcomes(
+          actor,
+          pass1.out.result.journalRunId,
+        );
+        const pass1UnitB = pass1Outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B);
+        expect(
+          pass1UnitB?.candidates.find(
+            (candidate) => candidate.id === pass1UnitB.outcome.selectedCandidateId,
+          )?.body,
+        ).toBe(GENERIC_DRAFT);
+        expect(pass1UnitB?.outcome.qualityFlags).toEqual(
+          expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+        );
+        expect(Object.values(pass1UnitB?.qaDetails ?? {})).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              recommendation: "fixture: the generic draft dropped the speaker name",
+            }),
+          ]),
+        );
+
+        const pass2 = await runJournalPass("pass-2");
+        // The production command read pass 1 from real Postgres before it
+        // created pass 2; its lineage reports that exact durable source.
+        expect(pass2.out.priorJournalRun).toEqual({
+          runId: pass1.out.result.journalRunId,
+          passNumber: 1,
+          feedbackUnitCount: 3,
+        });
+        expect(pass2.capture.priorFeedbackSeen.get(UNIT_B)).toBe(true);
+        expect(pass2.out.result.writtenOutcomeCount).toBe(3);
+        expect(pass2.out.result.patchReport.coverageComplete).toBe(true);
+        expect(pass2.patchSink.exportCount).toBe(1);
+
+        const runs = await journalRepo.loadRunsForBranch(actor, LOCALE_BRANCH_ID);
+        expect(runs.map((run) => run.runId)).toEqual([
+          pass1.out.result.journalRunId,
+          pass2.out.result.journalRunId,
+        ]);
+        const pass2Outcomes = await journalRepo.loadRunOutcomes(
+          actor,
+          pass2.out.result.journalRunId,
+        );
+        const pass2UnitB = pass2Outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B);
+        expect(
+          pass2UnitB?.candidates.find(
+            (candidate) => candidate.id === pass2UnitB.outcome.selectedCandidateId,
+          )?.body,
+        ).toBe(CORRECTED_DRAFT);
+        expect(pass2UnitB?.outcome.qualityFlags).toEqual([]);
+        // The journal records the exact prior feedback packet/run identity that
+        // produced pass 2, so the multi-pass context remains reviewable after
+        // the original process exits.
+        expect(pass2UnitB?.contextPacket).toMatchObject({
+          priorPassFeedback: {
+            passNumber: 1,
+            priorDraftText: GENERIC_DRAFT,
+            qualityFlags: expect.arrayContaining(["qa_unresolved"]),
+            feedbackNote: expect.stringContaining(
+              "fixture: the generic draft dropped the speaker name",
+            ),
+          },
+          priorJournalRunId: pass1.out.result.journalRunId,
+        });
+        expect(pass2UnitB?.contextRefs).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              refKind: "prior_pass_feedback",
+              refId: pass1.out.result.journalRunId,
+              details: expect.objectContaining({
+                passNumber: 1,
+                priorDraftText: GENERIC_DRAFT,
+              }),
+            }),
+          ]),
+        );
       } finally {
         await context.close();
       }

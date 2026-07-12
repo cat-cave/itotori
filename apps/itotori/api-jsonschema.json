@@ -2697,7 +2697,7 @@
           "type": "array"
         },
         "schemaVersion": {
-          "const": "jobs.run_table.v0.1"
+          "const": "jobs.run_table.v0.2"
         }
       },
       "required": [
@@ -2838,7 +2838,7 @@
         "generatedAt": {
           "type": "string"
         },
-        "passLedger": {
+        "journal": {
           "type": "object"
         },
         "progress": {
@@ -2861,7 +2861,7 @@
         "costDrilldown",
         "decisions",
         "generatedAt",
-        "passLedger",
+        "journal",
         "progress",
         "projectId",
         "schemaVersion",

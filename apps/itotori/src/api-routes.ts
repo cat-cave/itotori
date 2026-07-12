@@ -110,7 +110,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     method: "GET",
     pathTemplate: "/api/jobs/run-table",
     operationId: "jobsRunTable",
-    summary: "Paged jobs run table with served model/provider ledger rows.",
+    summary: "Paged jobs run table with physical journal attempts and served provider facts.",
     pathParams: [],
     responseSchema: "JobsRunTableReadModel",
   },

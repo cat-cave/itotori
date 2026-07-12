@@ -1,18 +1,18 @@
 // ITOTORI-100 — Provider route reliability + cost report renderer.
 //
 // Proves the four acceptance pillars on REAL ITOTORI-099 artifacts +
-// provider-ledger data:
+// localization-journal physical-attempt data:
 //   1. Reliability / fallback / retry / structured-output aggregate BY THE
 //      REAL SERVED (provider, model) route — the served upstream truth, not
 //      the requested pin (OR-side fallback is DATA, never an error).
-//   2. Cost summaries RECONCILE artifacts against the provider ledger by a
-//      three-way cross-check (artifact usage.cost == ledger cost_amount ==
-//      ledger usage.cost), token counts included — not a restatement.
+//   2. Cost summaries RECONCILE artifacts against durable journal attempts by
+//      a three-way cross-check (artifact usage.cost == journal cost ==
+//      journal usage.cost), token counts included — not a restatement.
 //   3. A missing ledger field FAILS with a structured finding NAMING the
 //      run id and the field; the strict assertion escalates it.
 //   4. Public fixtures only — no prompt/response text or API keys.
 
-import type { DraftAttemptProviderLedgerEntry } from "@itotori/db";
+import type { LocalizationJournalAttemptRecord } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { CapabilityGuard } from "../src/providers/capability-guard.js";
 import { DEV_PAIR, getModelCapabilities } from "../src/providers/dev-pair.js";
@@ -38,7 +38,7 @@ import {
   assertRouteReportReconciled,
   ledgerRunIdFromProofId,
   microsToUsdDecimalString,
-  providerLedgerEntryFromDraftAttempt,
+  providerLedgerEntryFromJournalAttempt,
   reconcileRouteCost,
   renderProviderRouteReport,
   renderRouteReliability,
@@ -289,50 +289,24 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
   });
 });
 
-describe("ITOTORI-100 — provider-ledger (DB) composition", () => {
-  it("adapts a real DraftAttemptProviderLedgerEntry and reconciles by runId from the proof id", () => {
-    const art = artifact({ cellId: "db-row" });
-    const dbRow: DraftAttemptProviderLedgerEntry = {
-      ledgerEntryId: "uuid-1",
-      draftJobAttemptId: "attempt-1",
-      providerProofId: `live:${art.runId}`,
-      modelProviderFamily: "openrouter",
-      modelId: art.providerRun.requestedModelId,
-      providerId: art.providerRun.requestedProviderId,
-      modelContextWindowTokens: null,
-      modelMaxOutputTokens: null,
-      promptTemplateVersion: "1.0.0",
-      promptHash: "sha256:deadbeef",
-      policyVersions: {},
-      contextArtifactRefs: [],
-      tokensIn: art.providerRun.tokenUsage.promptTokens ?? null,
-      tokensOut: art.providerRun.tokenUsage.completionTokens ?? null,
-      costUnit: "usd",
-      costAmount: art.providerRun.cost.amountUsd,
-      usageResponseJson: art.providerRun.usageResponseJson,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      cacheDiscountMicrosUsd: 0,
-      latencyMs: 5,
-      fallbackChain: [],
-      isRecordedProvider: false,
-      recordedProviderBundleId: null,
-      createdAt: new Date(0),
-    };
+describe("ITOTORI-100 — localization-journal composition", () => {
+  it("adapts a durable physical attempt and reconciles by provider-run id", () => {
+    const art = artifact({ cellId: "journal-row" });
+    const journalAttempt = journalAttemptWith(art, {});
 
-    expect(ledgerRunIdFromProofId(dbRow.providerProofId)).toBe(art.runId);
-    const ledger = providerLedgerEntryFromDraftAttempt(dbRow);
+    expect(ledgerRunIdFromProofId(`live:${art.runId}`)).toBe(art.runId);
+    const ledger = providerLedgerEntryFromJournalAttempt(journalAttempt);
     expect(ledger.runId).toBe(art.runId);
-    expect(ledger.ledgerId).toBe(""); // DB row carries no experiment ledger id
+    expect(ledger.ledgerId).toBe(""); // Journal attempt id is not an experiment ledger id.
 
     const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledger] });
     expect(report.findings).toHaveLength(0);
     expect(report.reconciledInvocationCount).toBe(1);
   });
 
-  it("treats an empty DB cost_amount as a missing field (named in the finding)", () => {
-    const art = artifact({ cellId: "db-empty-cost" });
-    const ledger = providerLedgerEntryFromDraftAttempt(dbRowWith(art, { costAmount: "" }));
+  it("treats an empty journal cost as a missing field (named in the finding)", () => {
+    const art = artifact({ cellId: "journal-empty-cost" });
+    const ledger = providerLedgerEntryFromJournalAttempt(journalAttemptWith(art, { costUsd: "" }));
     const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledger] });
     const finding = report.findings.find((f) => f.kind === "missing_ledger_field")!;
     expect(finding.field).toBe("costAmountUsd");
@@ -413,35 +387,45 @@ function billedCost(): ProviderCost {
   return { costKind: "billed", currency: "USD", amountUsd: "0.00000602", amountMicrosUsd: 6 }; // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
 }
 
-function dbRowWith(
+function journalAttemptWith(
   art: ExperimentInvocationArtifact,
-  overrides: Partial<DraftAttemptProviderLedgerEntry>,
-): DraftAttemptProviderLedgerEntry {
+  overrides: Partial<LocalizationJournalAttemptRecord>,
+): LocalizationJournalAttemptRecord {
   return {
-    ledgerEntryId: "uuid",
-    draftJobAttemptId: "attempt",
-    providerProofId: `live:${art.runId}`,
-    modelProviderFamily: "openrouter",
-    modelId: art.providerRun.requestedModelId,
-    providerId: art.providerRun.requestedProviderId,
-    modelContextWindowTokens: null,
-    modelMaxOutputTokens: null,
-    promptTemplateVersion: "1.0.0",
-    promptHash: "sha256:deadbeef",
-    policyVersions: {},
-    contextArtifactRefs: [],
+    attemptId: art.runId,
+    runId: "journal-run-1",
+    bridgeUnitId: "bridge-unit-1",
+    stage: "translation",
+    agentLabel: "translation-primary",
+    logicalCallId: "logical-call-1",
+    attemptIndex: 1,
+    requestedModelId: art.providerRun.requestedModelId,
+    requestedProviderId: art.providerRun.requestedProviderId,
+    modelId: art.providerRun.actualModelId,
+    providerId: art.providerRun.upstreamProvider ?? art.providerRun.requestedProviderId,
+    providerRunId: art.runId,
     tokensIn: art.providerRun.tokenUsage.promptTokens ?? null,
     tokensOut: art.providerRun.tokenUsage.completionTokens ?? null,
-    costUnit: "usd",
-    costAmount: art.providerRun.cost.amountUsd,
+    tokenCountSource: art.providerRun.tokenUsage.tokenCountSource,
+    costUsd: art.providerRun.cost.amountUsd,
+    costKind: art.providerRun.cost.costKind,
     usageResponseJson: art.providerRun.usageResponseJson,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    cacheDiscountMicrosUsd: 0,
-    latencyMs: 5,
-    fallbackChain: [],
-    isRecordedProvider: false,
-    recordedProviderBundleId: null,
+    cacheReadTokens: art.providerRun.tokenUsage.cacheReadTokens ?? null,
+    cacheWriteTokens: art.providerRun.tokenUsage.cacheWriteTokens ?? null,
+    cacheDiscountMicrosUsd: art.providerRun.cost.cacheDiscountMicrosUsd ?? null,
+    fallbackUsed: art.providerRun.fallbackUsed,
+    fallbackPlan: [...art.providerRun.fallbackPlan],
+    zdr: art.providerRun.routingPosture.zdr,
+    finishState: "stop",
+    refusalState: null,
+    validationResult: "accepted",
+    failureClass: null,
+    retryDecision: "write",
+    retryDelayMs: null,
+    artifactRef: `provider-run:${art.runId}`,
+    errorClasses: [],
+    startedAt: new Date(0),
+    completedAt: new Date(0),
     createdAt: new Date(0),
     ...overrides,
   };

@@ -6,7 +6,7 @@ import type {
   CostDrilldownPage,
   DashboardDecisionReadModel,
   ItotoriConformanceRepositoryPort,
-  ItotoriLocalizationPassLedgerRepositoryPort,
+  ItotoriLocalizationJournalRepositoryPort,
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
@@ -376,7 +376,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
     private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
     private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
-    private readonly passLedger?: ItotoriLocalizationPassLedgerRepositoryPort,
+    private readonly journal?: ItotoriLocalizationJournalRepositoryPort,
     // ovw-launch-pass-action — the real localization-pass driver. Optional: a
     // pure-HTTP install without a game-bytes driver leaves it undefined, so
     // `launchNextLocalizationPass` refuses LOUDLY (no fake pass) rather than
@@ -424,7 +424,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     // P2 — scope the dashboard status to the SAME target project as every
     // other composed piece. `getDashboardStatus()` with no argument returns the
     // globally-latest project, which would splice ANOTHER project's progress +
-    // locale-branch set (the set that scopes the pass ledger) into this
+    // locale-branch set (the set that scopes the execution journal) into this
     // overview. Passing the requested projectId keeps the whole payload
     // single-project.
     const requestedProjectId = options.projectId;
@@ -451,7 +451,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       telemetry,
       costDrilldown,
       benchmarkReports,
-      ...(this.passLedger !== undefined ? { passLedgerRepository: this.passLedger } : {}),
+      ...(this.journal !== undefined ? { journalRepository: this.journal } : {}),
       options: { ...options, projectId },
     });
   }
@@ -935,9 +935,9 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     input: LaunchLocalizationPassInput,
   ): Promise<LaunchLocalizationPassResult> {
     // ovw-launch-pass-action — the workflow is a thin adapter over the injected
-    // pass driver: it folds queued corrections + drives the next pass (the
-    // driver itself consumes the prior pass's accepted state + flagged-unit
-    // feedback through the pass ledger). With no driver wired the install has no
+    // pass driver: it folds queued corrections + drives the next pass. The
+    // driver consumes prior written outcomes through the durable journal. With
+    // no driver wired the install has no
     // game-bytes pipeline, so it refuses LOUDLY (never a fabricated pass),
     // mirroring the draft path's provider-not-configured refusal.
     if (this.passDriver === undefined) {

@@ -62,14 +62,13 @@ import type { NarrativeStructure } from "../../src/agents/structure-informed-con
 const U1 = "019ed010-0000-7000-8000-0000000000a1";
 const U2 = "019ed010-0000-7000-8000-0000000000a2";
 
-const SELF_RUN_ID = "pass-3-locale-branch-en-us";
+const SELF_RUN_ID = "journal-run-locale-branch-en-us";
 const FAN_TIER_ID = "fan-tier-v3";
 const PRO_TIER_ID = "official-tier-shipped";
 
 const REAL_RUN_REF: RealRunRef = {
   runId: SELF_RUN_ID,
   localeBranchId: "locale-branch-en-us",
-  passNumber: 3,
 };
 
 /** A real sub-micro billed cost, built via the cost parser (no fabricated literal). */

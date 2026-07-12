@@ -1121,9 +1121,6 @@ async function seedProjectScope(
   await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
     PROJECT_ID,
   ]);
-  await pool.query("delete from itotori_localization_pass_ledger where project_id = $1", [
-    PROJECT_ID,
-  ]);
   await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
     LOCALE_BRANCH_ID,
   ]);

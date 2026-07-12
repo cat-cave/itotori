@@ -198,13 +198,15 @@ export type DrivenUnitContextResolver = (args: {
  * Strictly project-agnostic: the feedback carries only the prior routing
  * outcome, the prior draft, the defer reason, and an optional feedback note.
  * No game / engine / title fields anywhere — the multi-pass loop is generic
- * over any project whose units flow through the agentic loop. The pass ledger
- * A caller may supply this historical context, but it is never a persistence
- * source of truth for the durable attempt/outcome journal.
+ * over any project whose units flow through the agentic loop. A caller may
+ * supply this historical context, but the durable journal is its persistence
+ * source of truth.
  */
 export type PriorPassContext = {
   /** 1-based number of the prior localization pass this context came from. */
   passNumber: number;
+  /** Durable journal run that supplied this context, when one exists. */
+  journalRunId?: string;
   feedbackByUnit: ReadonlyMap<string, PriorPassFeedback>;
 };
 
@@ -510,9 +512,9 @@ export type ProjectDrivenExecutorInput = {
   /** Engine profile controlling the translated-bundle synthesis. */
   engineProfile?: DrivenEngineProfile;
   /**
-   * itotori-pass-ledger — prior localization pass's context, threaded so a pass
-   * N+1 driven run consumes pass N's accepted state + flagged-unit feedback as
-   * drafting context. When present each unit's translation prompt receives a
+   * Prior localization-run context, threaded so a pass N+1 driven run consumes
+   * pass N's accepted state + flagged-unit feedback as drafting context. When
+   * present each unit's translation prompt receives a
    * strictly-additive "Prior pass feedback" block (the draft iterates on the
    * prior result); when absent the run is a blank first pass. This is an
    * optional caller-provided input only; the journal remains the execution
@@ -677,9 +679,9 @@ export async function runProjectDrivenExecutor(
   // a whole route/game, but the per-unit loop fires ~10 ZDR calls, so running
   // units strictly sequentially is ~25 min for four units. We schedule up to
   // `concurrency` units' `runAgenticLoopForUnit` at once via a bounded
-  // worker-pool over the canonical unit list. The pool RUNS units concurrently
-  // but PERSISTS in canonical order (below), so completion order never leaks
-  // into the stored drafts / provider-runs / queue-items.
+  // worker-pool over the canonical unit list. Every completed unit is durably
+  // journaled by its worker immediately; canonical ordering remains only for
+  // the returned aggregate and patch assembly below.
   const concurrency = Math.max(1, Math.floor(input.concurrency ?? DEFAULT_DRIVEN_CONCURRENCY));
 
   // `maxUnits` is a DISPATCH cap: the pool drives AT MOST this many in-scope
@@ -689,10 +691,11 @@ export async function runProjectDrivenExecutor(
   const plannedUnits = enumerated.slice(0, Math.max(0, maxUnits));
 
   // Result slots, one per planned unit, addressed by CANONICAL index. A slot is
-  // filled by whichever worker ran that unit; `undefined` means the unit was
-  // never dispatched (budget cap tripped first). Persistence walks these slots
-  // in index order, so the stored order is canonical regardless of which worker
-  // finished when — deterministic for identical inputs.
+  // filled by whichever worker completed and journaled that unit; `undefined`
+  // means the unit was never dispatched (budget cap tripped first). The final
+  // report and patch assembly walk these slots in index order, so externally
+  // returned data remains deterministic even though durable writes stream by
+  // completion order.
   const slots: Array<UnitRunResult | undefined> = Array.from({ length: plannedUnits.length });
 
   // Realized cost from COMPLETED units — the budget gate. It is an exact
@@ -738,6 +741,10 @@ export async function runProjectDrivenExecutor(
         journalRun,
         log,
       });
+      // Durability boundary: stream this completed unit now instead of waiting
+      // for every unrelated worker to drain. A process failure after another
+      // unit completes cannot erase this unit's attempts/outcome evidence.
+      await persistCompletedUnitJournal(input.sinks.journal, result);
       slots[index] = result;
       if (result.status === "success") {
         // Only completed cost gates further dispatch (PROJECT LAW: real cost).
@@ -752,9 +759,10 @@ export async function runProjectDrivenExecutor(
   const workerCount = Math.min(concurrency, plannedUnits.length);
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
-  // (c) PERSIST in CANONICAL order — walk the slots by index. Completion order
-  // is irrelevant here: drafts, provider-runs, and the loop-bridged queue items
-  // (buffered per unit during the concurrent phase) all land in unit order.
+  // (c) Assemble the aggregate in CANONICAL order. The journal has already
+  // been persisted incrementally inside each worker; only the returned
+  // in-memory projection, patch body map, and buffered reviewer side-channel
+  // retain canonical ordering here.
   for (const slot of slots) {
     if (slot === undefined) {
       continue; // never dispatched (budget cap) — no patch may export incomplete coverage.
@@ -768,23 +776,15 @@ export async function runProjectDrivenExecutor(
       zdrConfirmed = zdrConfirmed && slot.telemetry.zdr;
     }
     if (slot.status === "failure") {
-      // Persist every physical call even though this unit has no fabricated
-      // target/outcome. This is the parser/provider failure lane node 3 will
-      // later resume; node 2 makes its evidence durable now.
-      if (slot.journal.attempts.length > 0) {
-        await input.sinks.journal.persistFailedUnitAttempts(slot.journal);
-        attemptsPersisted += slot.journal.attempts.length;
-      }
+      // Its physical calls were persisted as soon as this failed unit
+      // completed; no fabricated target/outcome accompanies them.
+      attemptsPersisted += slot.journal.attempts.length;
       failures.push(slot.failure);
       continue;
     }
 
     unitsRun += 1;
 
-    // Persist the full per-unit journal atomically: physical calls, exact
-    // costs, candidates, findings, speaker labels, context refs, and outcome.
-    // No draft-job/aggregate-provider-run projection participates here.
-    await input.sinks.journal.persistUnitJournal(slot.journal);
     writtenOutcomesPersisted += 1;
     journalUnitsPersisted += 1;
     attemptsPersisted += slot.journal.attempts.length;
@@ -913,14 +913,13 @@ type UnitRunFailure = {
 };
 
 /**
- * Drive ONE unit through `runAgenticLoopForUnit` and capture everything the
- * caller needs to persist it later — WITHOUT touching the draft / provider-run
- * sinks (those persist in canonical order after the whole pool drains) and with
- * the reviewer-queue writes BUFFERED (replayed in order later). PER-UNIT
- * ISOLATION: a thrown error (incl. a live semantic-agent malformed pack, the
- * filed P2) is caught here and returned as a failure so one bad unit never
- * aborts the pool. Config-driven scope + the (modelId, providerId) pinning +
- * ZDR posture all thread through the loop UNCHANGED.
+ * Drive ONE unit through `runAgenticLoopForUnit` and capture its complete
+ * journal payload. The worker persists that payload immediately after this
+ * function returns; reviewer-queue writes stay buffered for canonical replay
+ * later. PER-UNIT ISOLATION: a thrown error (incl. a live semantic-agent
+ * malformed pack, the filed P2) is caught here and returned as a failure so
+ * one bad unit never aborts the pool. Config-driven scope + the (modelId,
+ * providerId) pinning + ZDR posture all thread through the loop UNCHANGED.
  */
 async function runSingleDrivenUnit(args: {
   enumeratedUnit: EnumeratedUnit;
@@ -938,6 +937,11 @@ async function runSingleDrivenUnit(args: {
   // pipeline-failure-diagnostics — scene id helps the driving agent reproduce
   // the failing slice). The resolver is a pure function that never throws.
   const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
+  // TODO(p0-core-universal-invocation-supervisor-retry): InvocationSupervisor
+  // owns the stricter atomic "attempt row before physical provider call"
+  // contract. This executor can only persist the completed unit immediately
+  // after the capture wrapper returns, which prevents whole-pool buffering but
+  // does not claim pre-call atomicity.
   const providerAttempts = capturePhysicalProviderAttempts({
     runId: journalRun.runId,
     bridgeUnitId: unit.bridgeUnitId,
@@ -1001,6 +1005,9 @@ async function runSingleDrivenUnit(args: {
       // run is a pass N+1 driven run with a prior context) so the translation
       // prompt iterates on the prior accepted state / flagged-unit feedback.
       ...(priorPassFeedback !== undefined ? { priorPassFeedback } : {}),
+      ...(input.priorPass?.journalRunId !== undefined
+        ? { priorJournalRunId: input.priorPass.journalRunId }
+        : {}),
     };
 
     const bundle = await runAgenticLoopForUnit(
@@ -1093,6 +1100,27 @@ async function runSingleDrivenUnit(args: {
 }
 
 /**
+ * Persist one completed worker result at the durable journal boundary. This is
+ * intentionally called INSIDE the worker, before it claims another unit and
+ * before the pool is awaited, so completed evidence survives a later-worker
+ * crash. The repository keeps successful attempts + outcome atomic; failed
+ * units persist their observed physical attempts without fabricating an
+ * outcome.
+ */
+async function persistCompletedUnitJournal(
+  sink: DrivenUnitJournalSink,
+  result: UnitRunResult,
+): Promise<void> {
+  if (result.status === "success") {
+    await sink.persistUnitJournal(result.journal);
+    return;
+  }
+  if (result.journal.attempts.length > 0) {
+    await sink.persistFailedUnitAttempts(result.journal);
+  }
+}
+
+/**
  * Validate and project the loop package's canonical outcome at the executor
  * boundary. The package validates its own wire shape, but this boundary also
  * binds it to the unit the worker was asked to run and refuses the historic
@@ -1167,6 +1195,14 @@ export function materializeDrivenUnitJournal(args: {
   );
   for (const refId of journalProvenance.contextVersionRefs) {
     contextRefs.push({ refKind: "context_version", refId, versionRef: refId });
+  }
+  for (const resolvedRef of journalProvenance.resolvedContextRefs) {
+    contextRefs.push({
+      refKind: resolvedRef.refKind,
+      refId: resolvedRef.refId,
+      ...(resolvedRef.versionRef !== undefined ? { versionRef: resolvedRef.versionRef } : {}),
+      ...(resolvedRef.details !== undefined ? { details: resolvedRef.details } : {}),
+    });
   }
   for (const citationRef of journalProvenance.selectedCandidateCitationRefs) {
     contextRefs.push({ refKind: "selected_candidate_citation", refId: citationRef });
