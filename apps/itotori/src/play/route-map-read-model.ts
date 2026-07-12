@@ -1,16 +1,10 @@
 // play-routemap-ui — compose the Play RouteMap read-model from the existing
-// routeMaps / routeChoices tables. Nodes are routes (col/row/state/coverage/
+// central context artifacts. Nodes are routes (col/row/state/coverage/
 // issues); edges are choice options. Coverage state is derived from the
 // route-choice map status (Fresh → fresh, Stale → stale) — the durable
 // needs_check/flagged/validated workflow lands with play-mark-validated.
 
-import type {
-  AuthorizationActor,
-  ItotoriRouteChoiceMapRepositoryPort,
-  RouteChoiceRecord,
-  RouteMapRecord,
-  RouteMapStatus,
-} from "@itotori/db";
+import type { AuthorizationActor, ContextRouteChoice, ContextRouteMap } from "@itotori/db";
 
 export const PLAY_ROUTE_MAP_SCHEMA_VERSION = "itotori.play.route-map.v0" as const;
 
@@ -70,9 +64,9 @@ export type RouteMapReadModelPort = {
 export class RouteMapReadModelService implements RouteMapReadModelPort {
   constructor(
     private readonly deps: {
-      routeMaps: Pick<
-        ItotoriRouteChoiceMapRepositoryPort,
-        "loadRouteMapsByProject" | "loadRouteChoicesByProject"
+      contextArtifacts: Pick<
+        import("@itotori/db").ItotoriSemanticContextReadRepository,
+        "loadRouteMaps" | "loadRouteChoices"
       >;
       now?: () => Date;
     },
@@ -84,13 +78,15 @@ export class RouteMapReadModelService implements RouteMapReadModelPort {
     localeBranchId: string;
   }): Promise<PlayRouteMapReadModel> {
     const [routeMaps, routeChoices] = await Promise.all([
-      this.deps.routeMaps.loadRouteMapsByProject(input.actor, {
+      this.deps.contextArtifacts.loadRouteMaps(input.actor, {
         projectId: input.projectId,
         localeBranchId: input.localeBranchId,
+        includeStale: true,
       }),
-      this.deps.routeMaps.loadRouteChoicesByProject(input.actor, {
+      this.deps.contextArtifacts.loadRouteChoices(input.actor, {
         projectId: input.projectId,
         localeBranchId: input.localeBranchId,
+        includeStale: true,
       }),
     ]);
     const now = this.deps.now?.() ?? new Date();
@@ -114,8 +110,8 @@ export class RouteMapReadModelService implements RouteMapReadModelPort {
 export function composePlayRouteMapReadModel(input: {
   projectId: string;
   localeBranchId: string;
-  routeMaps: readonly RouteMapRecord[];
-  routeChoices: readonly RouteChoiceRecord[];
+  routeMaps: readonly ContextRouteMap[];
+  routeChoices: readonly ContextRouteChoice[];
   generatedAt: Date;
 }): PlayRouteMapReadModel {
   const routeByKey = selectLatestRoutesByKey(input.routeMaps);
@@ -129,7 +125,7 @@ export function composePlayRouteMapReadModel(input: {
       const position = layout.get(route.routeKey) ?? { col: 0, row: 0 };
       return {
         routeKey: route.routeKey,
-        routeMapId: route.routeMapId,
+        routeMapId: route.contextArtifactId,
         label: route.routeTitle,
         summary: route.routeSummary,
         col: position.col,
@@ -163,16 +159,14 @@ export function composePlayRouteMapReadModel(input: {
   };
 }
 
-function coverageFromStatus(status: RouteMapStatus): PlayRouteMapCoverageState {
-  // RouteMapStatus is the DB enum (`fresh` / `stale` lowercase in schema; the
-  // agent shapes use Fresh/Stale title case). Accept both.
+function coverageFromStatus(status: string): PlayRouteMapCoverageState {
   const normalized = String(status).toLowerCase();
   return normalized === "stale" ? "stale" : "fresh";
 }
 
 function selectLatestRoutesByKey(
-  routeMaps: readonly RouteMapRecord[],
-): Map<string, RouteMapRecord> {
+  routeMaps: readonly ContextRouteMap[],
+): Map<string, ContextRouteMap> {
   const sorted = [...routeMaps].sort((a, b) => {
     // Prefer Fresh over Stale when both exist for the same key.
     const aFresh = String(a.status).toLowerCase() === "fresh" ? 0 : 1;
@@ -180,9 +174,9 @@ function selectLatestRoutesByKey(
     if (aFresh !== bFresh) return aFresh - bFresh;
     const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
     if (byTime !== 0) return byTime;
-    return a.routeMapId.localeCompare(b.routeMapId);
+    return a.contextArtifactId.localeCompare(b.contextArtifactId);
   });
-  const byKey = new Map<string, RouteMapRecord>();
+  const byKey = new Map<string, ContextRouteMap>();
   for (const route of sorted) {
     if (!byKey.has(route.routeKey)) {
       byKey.set(route.routeKey, route);
@@ -192,8 +186,8 @@ function selectLatestRoutesByKey(
 }
 
 function selectLatestChoicesByKey(
-  routeChoices: readonly RouteChoiceRecord[],
-): Map<string, RouteChoiceRecord> {
+  routeChoices: readonly ContextRouteChoice[],
+): Map<string, ContextRouteChoice> {
   const sorted = [...routeChoices].sort((a, b) => {
     // Prefer Fresh over Stale when both exist for the same key.
     const aFresh = String(a.status).toLowerCase() === "fresh" ? 0 : 1;
@@ -201,9 +195,9 @@ function selectLatestChoicesByKey(
     if (aFresh !== bFresh) return aFresh - bFresh;
     const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
     if (byTime !== 0) return byTime;
-    return a.routeChoiceId.localeCompare(b.routeChoiceId);
+    return a.contextArtifactId.localeCompare(b.contextArtifactId);
   });
-  const byKey = new Map<string, RouteChoiceRecord>();
+  const byKey = new Map<string, ContextRouteChoice>();
   for (const choice of sorted) {
     if (!byKey.has(choice.choiceKey)) {
       byKey.set(choice.choiceKey, choice);
@@ -213,8 +207,8 @@ function selectLatestChoicesByKey(
 }
 
 function buildEdges(
-  routeChoices: readonly RouteChoiceRecord[],
-  routeByKey: Map<string, RouteMapRecord>,
+  routeChoices: readonly ContextRouteChoice[],
+  routeByKey: Map<string, ContextRouteMap>,
 ): PlayRouteMapEdge[] {
   const edges: PlayRouteMapEdge[] = [];
   const seen = new Set<string>();
@@ -225,7 +219,7 @@ function buildEdges(
     if (aFresh !== bFresh) return aFresh - bFresh;
     const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
     if (byTime !== 0) return byTime;
-    return a.routeChoiceId.localeCompare(b.routeChoiceId);
+    return a.contextArtifactId.localeCompare(b.contextArtifactId);
   });
 
   for (const choice of sorted) {

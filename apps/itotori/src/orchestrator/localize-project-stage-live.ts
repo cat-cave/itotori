@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  ItotoriContextArtifactRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriProjectRepository,
   bootstrapLocalUser,
@@ -25,7 +26,7 @@ import type { DrivenJournalRunPlan } from "./project-driven-executor.js";
 
 export type RunLocalizeProjectStageLiveArgs = Omit<
   LocalizeProjectStageArgs,
-  "actor" | "supervision"
+  "actor" | "supervision" | "contextArtifactRepository" | "prepareContextScope"
 > & {
   /** Exact durable run cap; omit it for an unlimited, still-accounted run. */
   budgetCapUsd?: number;
@@ -45,6 +46,7 @@ export async function runLocalizeProjectStageLive(args: RunLocalizeProjectStageL
   try {
     const actor = await bootstrapLocalUser(context.db);
     const projectRepository = new ItotoriProjectRepository(context.db);
+    const contextArtifactRepository = new ItotoriContextArtifactRepository(context.db);
     await projectRepository.ensureRunProjectScope(actor, {
       projectId: scope.projectId,
       localeBranchId: scope.localeBranchId,
@@ -61,6 +63,16 @@ export async function runLocalizeProjectStageLive(args: RunLocalizeProjectStageL
       return await runLocalizeProjectStageCommand({
         ...args,
         actor,
+        contextArtifactRepository,
+        prepareContextScope: async (input) => {
+          await projectRepository.importSourceBundle(input.actor, {
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            targetLocale: input.targetLocale,
+            drafts: {},
+            bridge: input.bridge,
+          });
+        },
         supervision: {
           runId: scope.runId,
           lifecycle: adapter,
@@ -114,7 +126,7 @@ function stageRunScope(args: RunLocalizeProjectStageLiveArgs): {
   const { pairPolicy } = parseLocalizeProjectPairPolicy(args.io.readJson(args.pairPolicyPath));
   const runId = `localize-project-stage-run-${randomUUID()}`;
   const projectId = bridge.bridgeId;
-  const sourceRevisionId = unit.sourceRevision.revisionId;
+  const sourceRevisionId = bridge.sourceBundleRevision.revisionId;
   const localeBranchId = `branch:${sourceRevisionId}`;
   const plan: DrivenJournalRunPlan = {
     run: {

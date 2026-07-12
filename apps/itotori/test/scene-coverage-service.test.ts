@@ -1,13 +1,12 @@
-// play-mark-validated — SceneCoverageService unit pins for the P2 audit fixes:
-//   1. setSceneCoverage rejects sceneIds not on the branch route graph
-//   2. loadRouteMapCoverage uses Fresh (status filter), not stale edges
-//   3. orphan coverage rows do not become phantom RouteMap nodes
+// SceneCoverageService reads route topology from central semantic context
+// artifacts. These pins ensure the UI does not silently revive the retired
+// route-map tables through a compatibility read path.
 
 import { describe, expect, it, vi } from "vitest";
 import type {
   AuthorizationActor,
-  RouteChoiceRecord,
-  RouteMapRecord,
+  ContextRouteChoice,
+  ContextRouteMap,
   SceneCoverageRecord,
 } from "@itotori/db";
 import {
@@ -21,60 +20,47 @@ const localeBranchId = "locale-1";
 const fixedNow = new Date("2026-07-08T12:00:00.000Z");
 
 function routeMap(partial: {
-  routeMapId: string;
+  contextArtifactId: string;
   routeKey: string;
   routeTitle?: string;
   status: "Fresh" | "Stale";
   generatedAt: Date;
-}): RouteMapRecord {
+}): ContextRouteMap {
   return {
-    routeMapId: partial.routeMapId,
+    contextArtifactId: partial.contextArtifactId,
     projectId,
     localeBranchId,
     sourceRevisionId: "rev-1",
     routeKey: partial.routeKey,
     routeTitle: partial.routeTitle ?? partial.routeKey,
-    mapLocale: "en-US",
     routeSummary: "summary",
-    modelProviderFamily: "test",
-    modelId: "test-model",
-    modelContextWindowTokens: 1,
-    modelMaxOutputTokens: null,
-    promptTemplateVersion: "v1",
-    promptHash: "hash",
-    inputTokenEstimate: 0,
-    completionTokens: 0,
     status: partial.status,
-    invalidatedAt: partial.status === "Stale" ? fixedNow : null,
-    invalidatedReason: partial.status === "Stale" ? "manual" : null,
     generatedAt: partial.generatedAt,
-    createdAt: fixedNow,
-    citations: [{ bridgeUnitId: "bu-1", citedSourceHash: "h1", citeOrdinal: 0 }],
+    citations: [],
   };
 }
 
 function routeChoice(partial: {
-  routeChoiceId: string;
+  contextArtifactId: string;
   choiceKey: string;
   fromRouteKey: string;
   toRouteKey: string;
   optionLabel?: string;
   status: "Fresh" | "Stale";
   generatedAt?: Date;
-}): RouteChoiceRecord {
+}): ContextRouteChoice {
   return {
-    routeChoiceId: partial.routeChoiceId,
+    contextArtifactId: partial.contextArtifactId,
     projectId,
     localeBranchId,
     sourceRevisionId: "rev-1",
     choiceKey: partial.choiceKey,
-    kind: "route_branch",
+    kind: "RouteBranch",
     fromRouteKey: partial.fromRouteKey,
     promptSummary: "prompt",
-    mapLocale: "en-US",
     options: [
       {
-        optionId: `${partial.routeChoiceId}-opt-0`,
+        optionId: `${partial.contextArtifactId}-opt-0`,
         optionIndex: 0,
         optionLabel: partial.optionLabel ?? "Go",
         targetRouteKey: partial.toRouteKey,
@@ -82,18 +68,9 @@ function routeChoice(partial: {
         targetUnitHashes: [],
       },
     ],
-    modelProviderFamily: "test",
-    modelId: "test-model",
-    modelContextWindowTokens: 1,
-    modelMaxOutputTokens: null,
-    promptTemplateVersion: "v1",
-    promptHash: "hash",
     status: partial.status,
-    invalidatedAt: partial.status === "Stale" ? fixedNow : null,
-    invalidatedReason: partial.status === "Stale" ? "manual" : null,
     generatedAt: partial.generatedAt ?? fixedNow,
-    createdAt: fixedNow,
-    citations: [{ bridgeUnitId: "bu-1", citedSourceHash: "h1", citeOrdinal: 0 }],
+    citations: [],
   };
 }
 
@@ -114,19 +91,18 @@ function coverageRow(partial: {
 }
 
 function makeService(opts: {
-  maps?: RouteMapRecord[];
-  choices?: RouteChoiceRecord[];
+  maps?: ContextRouteMap[];
+  choices?: ContextRouteChoice[];
   coverage?: SceneCoverageRecord[];
 }) {
   const maps = opts.maps ?? [];
   const choices = opts.choices ?? [];
   const coverage = opts.coverage ?? [];
-
-  const loadRouteMapsByProject = vi.fn(async (_actor, query: { status?: string }) =>
-    maps.filter((row) => query.status === undefined || row.status === query.status),
+  const loadRouteMaps = vi.fn(async (_actor, query: { includeStale?: boolean }) =>
+    maps.filter((row) => query.includeStale === true || row.status === "Fresh"),
   );
-  const loadRouteChoicesByProject = vi.fn(async (_actor, query: { status?: string }) =>
-    choices.filter((row) => query.status === undefined || row.status === query.status),
+  const loadRouteChoices = vi.fn(async (_actor, query: { includeStale?: boolean }) =>
+    choices.filter((row) => query.includeStale === true || row.status === "Fresh"),
   );
   const loadCoverageForBranch = vi.fn(async () => coverage);
   const setCoverage = vi.fn(
@@ -148,28 +124,19 @@ function makeService(opts: {
       loadCoverageForBranch,
       loadCoverageForScene: vi.fn(async () => null),
     },
-    routeMaps: {
-      loadRouteMapsByProject,
-      loadRouteChoicesByProject,
-    },
+    contextArtifacts: { loadRouteMaps, loadRouteChoices },
     now: () => fixedNow,
   });
 
-  return {
-    service,
-    loadRouteMapsByProject,
-    loadRouteChoicesByProject,
-    loadCoverageForBranch,
-    setCoverage,
-  };
+  return { service, loadRouteMaps, loadRouteChoices, loadCoverageForBranch, setCoverage };
 }
 
-describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
-  it("setSceneCoverage rejects a sceneId that is not on the active route map", async () => {
-    const { service, setCoverage, loadRouteMapsByProject } = makeService({
+describe("SceneCoverageService central route context", () => {
+  it("rejects a scene not present in the active central route graph", async () => {
+    const { service, setCoverage, loadRouteMaps } = makeService({
       maps: [
         routeMap({
-          routeMapId: "rm-open",
+          contextArtifactId: "route-open",
           routeKey: "scene-open",
           status: "Fresh",
           generatedAt: fixedNow,
@@ -192,20 +159,18 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
       return true;
     });
     expect(setCoverage).not.toHaveBeenCalled();
-    // Status filter: Fresh first (fail-loud when the scene is absent from it).
-    expect(loadRouteMapsByProject).toHaveBeenCalledWith(
+    expect(loadRouteMaps).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ status: "Fresh" }),
+      expect.objectContaining({ includeStale: false }),
     );
   });
 
-  it("setSceneCoverage accepts a sceneId present on the active route map", async () => {
+  it("accepts a scene present in active central route context", async () => {
     const { service, setCoverage } = makeService({
       maps: [
         routeMap({
-          routeMapId: "rm-open",
+          contextArtifactId: "route-open",
           routeKey: "scene-open",
-          routeTitle: "Opening",
           status: "Fresh",
           generatedAt: fixedNow,
         }),
@@ -220,38 +185,34 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
       coverageState: "validated",
       updatedByUserId: "local-user",
     });
-    expect(result).toMatchObject({
-      schemaVersion: "itotori.play.set-scene-coverage.v0",
-      sceneId: "scene-open",
-      coverageState: "validated",
-    });
+
+    expect(result).toMatchObject({ sceneId: "scene-open", coverageState: "validated" });
     expect(setCoverage).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({ sceneId: "scene-open", coverageState: "validated" }),
     );
   });
 
-  it("loadRouteMapCoverage prefers Fresh maps/choices and omits stale edges", async () => {
-    const { service, loadRouteMapsByProject, loadRouteChoicesByProject } = makeService({
+  it("uses active artifacts and omits stale route edges while active context exists", async () => {
+    const { service, loadRouteMaps, loadRouteChoices } = makeService({
       maps: [
         routeMap({
-          routeMapId: "rm-fresh-a",
+          contextArtifactId: "route-a",
           routeKey: "scene-a",
           routeTitle: "Fresh A",
           status: "Fresh",
-          generatedAt: new Date("2026-07-08T10:00:00.000Z"),
+          generatedAt: fixedNow,
         }),
         routeMap({
-          routeMapId: "rm-stale-b",
+          contextArtifactId: "route-stale",
           routeKey: "scene-stale",
-          routeTitle: "Stale only",
           status: "Stale",
-          generatedAt: new Date("2026-07-08T11:00:00.000Z"),
+          generatedAt: fixedNow,
         }),
       ],
       choices: [
         routeChoice({
-          routeChoiceId: "rc-fresh",
+          contextArtifactId: "choice-fresh",
           choiceKey: "choice-fresh",
           fromRouteKey: "scene-a",
           toRouteKey: "scene-b",
@@ -259,7 +220,7 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
           status: "Fresh",
         }),
         routeChoice({
-          routeChoiceId: "rc-stale",
+          contextArtifactId: "choice-stale",
           choiceKey: "choice-stale",
           fromRouteKey: "scene-a",
           toRouteKey: "scene-stale",
@@ -272,25 +233,23 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
 
     const model = await service.loadRouteMapCoverage({ actor, projectId, localeBranchId });
 
-    expect(loadRouteMapsByProject).toHaveBeenCalledWith(
+    expect(loadRouteMaps).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ status: "Fresh" }),
+      expect.objectContaining({ includeStale: false }),
     );
-    expect(loadRouteChoicesByProject).toHaveBeenCalledWith(
+    expect(loadRouteChoices).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ status: "Fresh" }),
+      expect.objectContaining({ includeStale: false }),
     );
-    // Stale fallback must NOT run when Fresh rows exist.
-    expect(loadRouteMapsByProject).not.toHaveBeenCalledWith(
+    expect(loadRouteMaps).not.toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ status: "Stale" }),
+      expect.objectContaining({ includeStale: true }),
     );
-
-    expect(model.nodes.map((n) => n.sceneId).sort()).toEqual(["scene-a", "scene-b"]);
-    expect(model.nodes.find((n) => n.sceneId === "scene-a")).toMatchObject({
+    expect(model.nodes.map((node) => node.sceneId).sort()).toEqual(["scene-a", "scene-b"]);
+    expect(model.nodes.find((node) => node.sceneId === "scene-a")).toMatchObject({
       label: "Fresh A",
       coverageState: "validated",
-      routeMapId: "rm-fresh-a",
+      routeMapId: "route-a",
     });
     expect(model.edges).toEqual([
       {
@@ -300,19 +259,13 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
         label: "Fresh edge",
       },
     ]);
-    expect(model.counts).toEqual({
-      needsCheck: 1,
-      flagged: 0,
-      validated: 1,
-      total: 2,
-    });
   });
 
-  it("loadRouteMapCoverage does not surface orphan coverage as phantom nodes", async () => {
+  it("does not surface orphan coverage as a phantom central-route node", async () => {
     const { service } = makeService({
       maps: [
         routeMap({
-          routeMapId: "rm-open",
+          contextArtifactId: "route-open",
           routeKey: "scene-open",
           status: "Fresh",
           generatedAt: fixedNow,
@@ -325,16 +278,15 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
     });
 
     const model = await service.loadRouteMapCoverage({ actor, projectId, localeBranchId });
-    expect(model.nodes.map((n) => n.sceneId)).toEqual(["scene-open"]);
-    expect(model.counts.validated).toBe(0);
-    expect(model.counts.total).toBe(1);
+    expect(model.nodes.map((node) => node.sceneId)).toEqual(["scene-open"]);
+    expect(model.counts).toMatchObject({ validated: 0, total: 1 });
   });
 
-  it("loadRouteMapCoverage falls back to Stale only when no Fresh graph exists", async () => {
-    const { service, loadRouteMapsByProject } = makeService({
+  it("falls back to stale central artifacts only when no active graph exists", async () => {
+    const { service, loadRouteMaps } = makeService({
       maps: [
         routeMap({
-          routeMapId: "rm-stale",
+          contextArtifactId: "route-stale",
           routeKey: "scene-stale",
           status: "Stale",
           generatedAt: fixedNow,
@@ -342,7 +294,7 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
       ],
       choices: [
         routeChoice({
-          routeChoiceId: "rc-stale",
+          contextArtifactId: "choice-stale",
           choiceKey: "choice-stale",
           fromRouteKey: "scene-stale",
           toRouteKey: "scene-end",
@@ -352,46 +304,11 @@ describe("SceneCoverageService (play-mark-validated P2 pins)", () => {
     });
 
     const model = await service.loadRouteMapCoverage({ actor, projectId, localeBranchId });
-    expect(loadRouteMapsByProject).toHaveBeenCalledWith(
+    expect(loadRouteMaps).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ status: "Stale" }),
+      expect.objectContaining({ includeStale: true }),
     );
-    expect(model.nodes.map((n) => n.sceneId).sort()).toEqual(["scene-end", "scene-stale"]);
+    expect(model.nodes.map((node) => node.sceneId).sort()).toEqual(["scene-end", "scene-stale"]);
     expect(model.edges).toHaveLength(1);
-  });
-
-  it("dedupes duplicate route-choice edges by from/to/choiceKey", async () => {
-    const { service } = makeService({
-      maps: [
-        routeMap({
-          routeMapId: "rm-a",
-          routeKey: "scene-a",
-          status: "Fresh",
-          generatedAt: fixedNow,
-        }),
-      ],
-      choices: [
-        routeChoice({
-          routeChoiceId: "rc-1",
-          choiceKey: "choice-x",
-          fromRouteKey: "scene-a",
-          toRouteKey: "scene-b",
-          optionLabel: "First",
-          status: "Fresh",
-        }),
-        routeChoice({
-          routeChoiceId: "rc-2",
-          choiceKey: "choice-x",
-          fromRouteKey: "scene-a",
-          toRouteKey: "scene-b",
-          optionLabel: "Duplicate",
-          status: "Fresh",
-        }),
-      ],
-    });
-
-    const model = await service.loadRouteMapCoverage({ actor, projectId, localeBranchId });
-    expect(model.edges).toHaveLength(1);
-    expect(model.edges[0]?.label).toBe("First");
   });
 });

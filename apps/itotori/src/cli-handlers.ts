@@ -42,6 +42,7 @@ import type {
   ChannelImportOptions,
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
+  ItotoriContextArtifactRepositoryPort,
   ManualFeedbackImportResult,
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
@@ -98,6 +99,7 @@ import {
   runLocalizeProjectStageLive,
   type RunLocalizeProjectStageLiveArgs,
 } from "./orchestrator/localize-project-stage-live.js";
+import type { LocalizeProjectStageArgs } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
 import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
@@ -214,6 +216,11 @@ export type ItotoriCliServices = {
     defaultProviderId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
+  };
+  /** Live single-unit stage wiring: imported source scope + central context store. */
+  localizeProjectStage?: {
+    contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
+    prepareContextScope: NonNullable<LocalizeProjectStageArgs["prepareContextScope"]>;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
   /**

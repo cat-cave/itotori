@@ -3,7 +3,7 @@
 // These fixtures cover ONLY the workspace read-models (no upstream
 // records, no cost ledgers) so the pure renderers + the API denied-path
 // can be pinned deterministically. Upstream record fixtures
-// (ProjectDashboardStatus, SceneSummaryRecord, etc.) live in the test
+// (ProjectDashboardStatus, ContextSceneSummary, etc.) live in the test
 // tree to keep production `src/` free of cost literals.
 
 import type { WorkspacePermissionView } from "./read-model.js";

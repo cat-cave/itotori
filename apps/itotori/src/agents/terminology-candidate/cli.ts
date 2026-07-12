@@ -1,4 +1,5 @@
-import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
+import type { AuthorizationActor, ItotoriContextArtifactRepositoryPort } from "@itotori/db";
+import { contextArtifactCategoryValues } from "@itotori/db";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
 import {
   resolveSemanticAgentProvider,
@@ -8,12 +9,13 @@ import {
   generateTerminologyCandidates,
   type GenerateTerminologyCandidatesOptions,
 } from "./agent.js";
-import { persistTerminologyCandidate } from "./persistence.js";
-import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import {
-  markStaleTerminologyCandidatesForRevision,
-  type TerminologyCandidateStalenessScanResult,
-} from "./staleness.js";
+  artifactDataString,
+  artifactIsActiveForTemplate,
+  loadSemanticArtifacts,
+  persistTerminologyCandidateInContext,
+} from "../semantic-context-store.js";
+import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import type {
   BridgeUnitForTerminology,
   ExistingGlossaryEntry,
@@ -47,7 +49,7 @@ export type GenerateTerminologyCandidatesCliResult = {
 
 export type TerminologyCandidateCliDependencies = {
   actor: AuthorizationActor;
-  repository: ItotoriTerminologyCandidateRepositoryPort;
+  contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
   provider: ModelProvider;
   loadInputContext: (
     actor: AuthorizationActor,
@@ -60,6 +62,10 @@ export type TerminologyCandidateCliDependencies = {
     units: BridgeUnitForTerminology[];
     existingGlossary: ExistingGlossaryEntry[];
   }>;
+  lookupExistingGlossaryTerm?: (input: {
+    projectId: string;
+    surfaceForm: string;
+  }) => Promise<string | null>;
   log?: (message: string) => void;
   now?: () => Date;
 };
@@ -101,15 +107,23 @@ export async function runGenerateTerminologyCandidatesCli(
   let skippedFreshCount = 0;
   const skipSurfaceForms = new Set<string>();
   if (!input.includeStale) {
-    const existing = await deps.repository.loadCandidatesByProject(deps.actor, {
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      status: "Fresh",
-      promptTemplateVersion: PROMPT_TEMPLATE_VERSION_V1,
-    });
-    for (const candidate of existing) {
-      skipSurfaceForms.add(candidate.surfaceForm);
+    const existing = await loadSemanticArtifacts(
+      { actor: deps.actor, repository: deps.contextArtifactRepository },
+      {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        sourceRevisionId: input.sourceRevisionId,
+        categories: [contextArtifactCategoryValues.terminologyCandidate],
+      },
+    );
+    for (const artifact of existing) {
+      const surfaceForm = artifactDataString(artifact, "surfaceForm");
+      if (
+        surfaceForm !== undefined &&
+        artifactIsActiveForTemplate(artifact, PROMPT_TEMPLATE_VERSION_V1)
+      ) {
+        skipSurfaceForms.add(surfaceForm);
+      }
     }
   }
 
@@ -123,14 +137,11 @@ export async function runGenerateTerminologyCandidatesCli(
     modelProfile: input.modelProfile,
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   };
-  // ITOTORI-150 — forward the repository + actor (already in scope, used just
-  // below for persist/load) so the repository-side `existsTerminologyTermBySurfaceForm`
-  // pre-persist check actually RUNS on this production path, closing the TOCTOU
-  // window between `loadInputContext` above and `persistTerminologyCandidate` below.
   const options: GenerateTerminologyCandidatesOptions = {
     provider: deps.provider,
-    repository: deps.repository,
-    actor: deps.actor,
+    ...(deps.lookupExistingGlossaryTerm !== undefined
+      ? { lookupExistingGlossaryTerm: deps.lookupExistingGlossaryTerm }
+      : {}),
   };
   const output = await generateTerminologyCandidates(agentInput, options);
 
@@ -145,7 +156,10 @@ export async function runGenerateTerminologyCandidatesCli(
       finalCandidates.push(candidate);
     } else {
       finalCandidates.push(
-        await persistTerminologyCandidate(deps.repository, deps.actor, candidate),
+        await persistTerminologyCandidateInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
+          candidate,
+        ),
       );
     }
     log(
@@ -163,14 +177,45 @@ export async function runGenerateTerminologyCandidatesCli(
 export async function runCheckTerminologyCandidatesCli(
   input: CheckTerminologyCandidatesCliInput,
   deps: TerminologyCandidateCliDependencies,
-): Promise<TerminologyCandidateStalenessScanResult> {
+): Promise<CentralTerminologyCheckResult> {
   const log = deps.log ?? noopLog;
-  const result = await markStaleTerminologyCandidatesForRevision(deps.repository, deps.actor, {
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: input.sourceRevisionId,
-    markStale: input.markStale ?? false,
-  });
+  const artifacts = await loadSemanticArtifacts(
+    { actor: deps.actor, repository: deps.contextArtifactRepository },
+    {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      categories: [contextArtifactCategoryValues.terminologyCandidate],
+    },
+  );
+  const invalidated =
+    input.markStale === true
+      ? await deps.contextArtifactRepository.invalidateAffectedArtifacts(deps.actor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          reason: "standalone_cli_check",
+        })
+      : undefined;
+  const invalidatedSet = new Set(invalidated?.invalidatedArtifactIds ?? []);
+  const candidateArtifacts = artifacts.filter(
+    (artifact) => typeof artifact.data.surfaceForm === "string",
+  );
+  const result: CentralTerminologyCheckResult = {
+    scannedCandidateCount: candidateArtifacts.length,
+    driftedCandidates: candidateArtifacts
+      .filter((artifact) => invalidatedSet.has(artifact.contextArtifactId))
+      .map((artifact) => ({
+        surfaceForm: artifactDataString(artifact, "surfaceForm") ?? artifact.title,
+        terminologyCandidateId: artifact.contextArtifactId,
+        driftedBridgeUnitIds: artifact.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+      })),
+    conflictingCandidates: [],
+    markedStaleCandidateCount: candidateArtifacts.filter((artifact) =>
+      invalidatedSet.has(artifact.contextArtifactId),
+    ).length,
+    markedRejectedCandidateCount: 0,
+  };
   log(
     `scanned candidates=${result.scannedCandidateCount} ` +
       `drifted=${result.driftedCandidates.length} ` +
@@ -190,6 +235,22 @@ export async function runCheckTerminologyCandidatesCli(
   }
   return result;
 }
+
+export type CentralTerminologyCheckResult = {
+  scannedCandidateCount: number;
+  driftedCandidates: Array<{
+    surfaceForm: string;
+    terminologyCandidateId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  conflictingCandidates: Array<{
+    surfaceForm: string;
+    terminologyCandidateId: string;
+    terminologyTermId: string;
+  }>;
+  markedStaleCandidateCount: number;
+  markedRejectedCandidateCount: number;
+};
 
 function noopLog(_message: string): void {
   // intentionally empty

@@ -17,19 +17,17 @@
 
 import type {
   AssetDecisionRecord,
-  BridgeUnitTextRecord,
   CandidateAssetRecord,
+  ContextSceneSummary,
   JobsRunTableReadModel,
-  LoadSceneSummariesQuery,
   LocaleBranchIdentity,
   ProjectDashboardStatus,
-  SceneSummaryRecord,
   SearchExactInput,
   SearchExactToolResult,
   TerminologySearchInput,
   TerminologySearchReadModel,
+  SourceUnitTextRecord,
 } from "@itotori/db";
-import { sceneSummaryStatusValues } from "@itotori/db";
 import type { ReviewerQueueDashboardReadModel } from "../reviewer/api-service.js";
 import type { ReviewerDetailContext } from "../reviewer/detail-fixtures.js";
 import { reviewerDetailDiagnosticCodeValues } from "../reviewer/detail-fixtures.js";
@@ -65,8 +63,12 @@ import {
 export interface LocalizationWorkspaceReadPort {
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
-  loadSceneSummaries(query: LoadSceneSummariesQuery): Promise<SceneSummaryRecord[]>;
-  loadBridgeUnitsForSummary(bridgeUnitIds: string[]): Promise<Map<string, BridgeUnitTextRecord>>;
+  loadSceneSummaries(query: {
+    projectId: string;
+    localeBranchId?: string;
+    sourceRevisionId?: string;
+  }): Promise<ContextSceneSummary[]>;
+  loadBridgeUnitsForSummary(bridgeUnitIds: string[]): Promise<Map<string, SourceUnitTextRecord>>;
   loadActiveAssetDecisions(
     projectId: string,
     localeBranchId: string,
@@ -236,17 +238,20 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       };
     }
     const diagnostics: WorkspaceDiagnostic[] = [];
-    const summaryQuery: LoadSceneSummariesQuery = {
+    const summaryQuery: {
+      projectId: string;
+      localeBranchId: string;
+      sourceRevisionId?: string;
+    } = {
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
     };
     if (input.sourceRevisionId !== undefined) {
       summaryQuery.sourceRevisionId = input.sourceRevisionId;
     }
-    if (input.sceneId !== undefined) {
-      summaryQuery.sceneId = input.sceneId;
-    }
-    const summaries = await this.deps.readPort.loadSceneSummaries(summaryQuery);
+    const summaries = (await this.deps.readPort.loadSceneSummaries(summaryQuery)).filter(
+      (summary) => input.sceneId === undefined || summary.sceneId === input.sceneId,
+    );
     // Locale-branch identity guard (ITOTORI-059): never conflate branches.
     const scopedSummaries = summaries.filter((summary) => {
       if (summary.localeBranchId !== input.localeBranchId) {
@@ -274,7 +279,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
     ];
     const unitsById =
       allBridgeUnitIds.length === 0
-        ? new Map<string, BridgeUnitTextRecord>()
+        ? new Map<string, SourceUnitTextRecord>()
         : await this.deps.readPort.loadBridgeUnitsForSummary(allBridgeUnitIds);
     const reviewItemIdByBridgeUnit =
       allBridgeUnitIds.length === 0
@@ -285,7 +290,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
             permission: input.permission,
           });
     const scenes: WorkspaceSceneContext[] = pageSummaries.map((summary) => {
-      const stale = summary.status === sceneSummaryStatusValues.stale;
+      const stale = summary.status === "Stale";
       const units: WorkspaceSceneUnit[] = [];
       let unresolvedCitedUnitCount = 0;
       for (const citation of summary.citations
@@ -331,7 +336,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       }
       return {
         sceneId: summary.sceneId,
-        sceneSummaryId: summary.sceneSummaryId,
+        sceneSummaryId: summary.contextArtifactId,
         localeBranchId: summary.localeBranchId,
         sourceRevisionId: summary.sourceRevisionId,
         summaryLocale: summary.summaryLocale,
@@ -595,7 +600,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
           results.push({
             resultKind: workspaceSearchResultKindValues.scene,
             matchKind: "entity",
-            id: summary.sceneSummaryId,
+            id: summary.contextArtifactId,
             title: summary.sceneId,
             subtitle: summary.summaryText,
             targetPath: workspaceSceneRoutePath(
@@ -604,14 +609,14 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
               summary.sceneId,
             ),
             localeBranchId: input.localeBranchId,
-            sourceArtifactId: summary.sceneSummaryId,
+            sourceArtifactId: summary.contextArtifactId,
             bridgeUnitRef: summary.citations[0]?.bridgeUnitId ?? summary.sceneId,
             sourceRevisionId: summary.sourceRevisionId,
             sourceLocale: null,
             targetLocale: summary.summaryLocale,
             snippet: summary.summaryText,
             score: entityScore(query, [summary.sceneId, summary.summaryText]),
-            matchRefId: summary.sceneSummaryId,
+            matchRefId: summary.contextArtifactId,
           });
         }
         for (const citation of summary.citations) {

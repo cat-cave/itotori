@@ -12,18 +12,6 @@ export {
   type RenderedPrompt,
 } from "./prompt-template.js";
 export {
-  candidateToSaveInput,
-  persistTerminologyCandidate,
-  recordToCandidate,
-} from "./persistence.js";
-export {
-  markStaleTerminologyCandidatesForRevision,
-  type TerminologyCandidateConflict,
-  type TerminologyCandidateDrift,
-  type TerminologyCandidateStalenessScanInput,
-  type TerminologyCandidateStalenessScanResult,
-} from "./staleness.js";
-export {
   resolveTerminologyCandidateProvider,
   runCheckTerminologyCandidatesCli,
   runGenerateTerminologyCandidatesCli,
@@ -31,6 +19,7 @@ export {
   type GenerateTerminologyCandidatesCliInput,
   type GenerateTerminologyCandidatesCliResult,
   type TerminologyCandidateCliDependencies,
+  type CentralTerminologyCheckResult,
 } from "./cli.js";
 export {
   ExistingGlossaryConflictError,

@@ -39,7 +39,6 @@ import type {
   AuthorizationActor,
   CreateReviewerQueueItemInput,
   ItotoriContextArtifactRepositoryPort,
-  ItotoriTerminologyCandidateRepositoryPort,
   ReviewerQueueItemRecord,
 } from "@itotori/db";
 import { ReviewerQueueRepositoryError, reviewerQueueItemStateValues } from "@itotori/db";
@@ -69,6 +68,7 @@ import {
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
+  type ContextEnrichmentSingleFlight,
   type PairPolicy,
 } from "./agentic-loop.js";
 import {
@@ -546,14 +546,6 @@ export type ProjectDrivenExecutorInput = {
   /** The reviewer-queue DB sink (per P0#2). When absent, nothing is bridged. */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
-   * ITOTORI-150 — the terminology-candidate repository the loop's context stage
-   * queries for the repository-side pre-persist conflict check
-   * (`existsTerminologyTermBySurfaceForm`). Threaded verbatim into every unit's
-   * `runAgenticLoopForUnit` call so the TOCTOU check RUNS in production. When
-   * absent the loop's terminology enrichment runs without the repository check.
-   */
-  terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
-  /**
    * p0-core-persistent-context-brain — central context-artifact store (source /
    * sink / invalidation). Threaded into every unit so semantic enrichment +
    * speaker labels persist and cross-unit reuse works on the live path.
@@ -638,6 +630,40 @@ export const DEFAULT_DRIVEN_CONCURRENCY = 8;
  */
 export const MAX_DRIVEN_CONCURRENCY = 16;
 
+/**
+ * One executor owns one fixed project / branch / source revision, so a scene
+ * key is sufficient to identify a shared enrichment build. The map holds only
+ * in-flight work: once the leader has persisted its artifact, later units use
+ * the normal central-store retrieval path. Rejections clear the flight too, so
+ * a transient provider/persistence error never leaves a poisoned lock behind.
+ */
+class SceneContextEnrichmentSingleFlight implements ContextEnrichmentSingleFlight {
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+
+  async run<T>(sceneKey: string, build: () => Promise<T>): Promise<{ value: T; shared: boolean }> {
+    const existing = this.inFlight.get(sceneKey);
+    if (existing !== undefined) {
+      return { value: (await existing) as T, shared: true };
+    }
+
+    const leader = build();
+    this.inFlight.set(sceneKey, leader);
+    void leader.then(
+      () => {
+        if (this.inFlight.get(sceneKey) === leader) {
+          this.inFlight.delete(sceneKey);
+        }
+      },
+      () => {
+        if (this.inFlight.get(sceneKey) === leader) {
+          this.inFlight.delete(sceneKey);
+        }
+      },
+    );
+    return { value: await leader, shared: false };
+  }
+}
+
 export type ProjectDrivenExecutorResult = {
   journalRunId: string;
   /** Node-5 finalizer seam: this executor only reports running vs paused. */
@@ -692,6 +718,13 @@ export async function runProjectDrivenExecutor(
     sourceRevisionId: input.sourceRevisionId,
     targetLocale,
   };
+  // Context reuse is durable only when the central repository is wired. Keep
+  // one coordinator for this whole run so concurrently dispatched same-scene
+  // units cannot all miss the scene-summary row before the leader upserts it.
+  const contextEnrichmentSingleFlight =
+    input.contextArtifactRepository !== undefined
+      ? new SceneContextEnrichmentSingleFlight()
+      : undefined;
 
   if (input.bridge.units.length === 0) {
     throw new Error("project-driven-executor refused: bridge has zero units");
@@ -898,6 +931,7 @@ export async function runProjectDrivenExecutor(
         journalRun,
         lifecycle,
         costAdmission,
+        contextEnrichmentSingleFlight,
         log,
       });
       // Durability boundary: stream this completed unit now instead of waiting
@@ -1153,6 +1187,7 @@ async function runSingleDrivenUnit(args: {
   journalRun: DrivenJournalRunRecord;
   lifecycle: InvocationLifecycle | undefined;
   costAdmission: InvocationCostAdmission;
+  contextEnrichmentSingleFlight: ContextEnrichmentSingleFlight | undefined;
   log: (message: string) => void;
 }): Promise<UnitRunResult> {
   const {
@@ -1164,6 +1199,7 @@ async function runSingleDrivenUnit(args: {
     journalRun,
     lifecycle,
     costAdmission,
+    contextEnrichmentSingleFlight,
     log,
   } = args;
   const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
@@ -1217,6 +1253,10 @@ async function runSingleDrivenUnit(args: {
       unit,
       sourceRevisionId: input.sourceRevisionId,
       sceneUnits: [],
+      semanticSceneKey:
+        context?.sceneId !== undefined
+          ? String(context.sceneId)
+          : (plannerSceneId ?? unit.sourceUnitKey),
       // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
       // glossary + style-guide (caller-resolved) into every unit's loop.
       glossary: mergeGlossaryEntries(input.glossary ?? [], scopeGlossary),
@@ -1233,15 +1273,11 @@ async function runSingleDrivenUnit(args: {
       actor: input.actor,
       attemptOutcomeObserver: providerAttempts.attemptOutcomeObserver,
       ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
-      // ITOTORI-150 — hand the terminology-candidate repository to every unit's
-      // loop so the repository-side pre-persist conflict check runs in prod.
-      ...(input.terminologyCandidateRepository !== undefined
-        ? { terminologyCandidateRepository: input.terminologyCandidateRepository }
-        : {}),
       // Persistent context brain — central store as source/sink/invalidation.
       ...(input.contextArtifactRepository !== undefined
         ? { contextArtifactRepository: input.contextArtifactRepository }
         : {}),
+      ...(contextEnrichmentSingleFlight !== undefined ? { contextEnrichmentSingleFlight } : {}),
       // Thread THIS unit's optional prior-run feedback (if the
       // run is a pass N+1 driven run with a prior context) so the translation
       // prompt iterates on the prior accepted state / flagged-unit feedback.
@@ -1435,7 +1471,7 @@ export function materializeDrivenUnitJournal(args: {
   attempts: DrivenLlmAttemptRecord[];
 }): DrivenUnitJournalRecord {
   const journalProvenance = readOutcomeJournalProvenance(args.writtenOutcome.outcome.provenance);
-  const contextRefs: DrivenOutcomeContextRef[] = journalProvenance.contextArtifactRefs.map(
+  const contextRefs: DrivenOutcomeContextRef[] = journalProvenance.contextArtifactIds.map(
     (refId) => ({
       refKind: contextRefKind(refId),
       refId,

@@ -379,7 +379,7 @@ describe("loadReviewerDetailContext — missing context emits diagnostics, not s
         decisionRecord: {
           schemaVersion: "itotori.agentic-loop-decision-record.v1",
           context: {
-            contextArtifactRefs: ["scene-summary:6010", "character-arc:Hero", "route-branch-map"],
+            contextArtifactIds: ["scene-summary:6010", "character-arc:Hero", "route-branch-map"],
             sceneId: 6010,
             structuredContext: {
               sceneId: 6010,

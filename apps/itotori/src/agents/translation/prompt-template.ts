@@ -91,8 +91,14 @@ export function buildTranslationPrompt(
       lines.push(
         `- contextArtifactId=${artifact.contextArtifactId} category=${artifact.category} title=${JSON.stringify(artifact.title)}`,
       );
+      if (
+        artifact.contextEntryVersionId !== undefined &&
+        artifact.contextEntryVersionId.length > 0
+      ) {
+        lines.push(`  contextEntryVersionId=${artifact.contextEntryVersionId}`);
+      }
       if (artifact.contentHash !== undefined && artifact.contentHash.length > 0) {
-        lines.push(`  version=${artifact.contentHash}`);
+        lines.push(`  contentHash=${artifact.contentHash}`);
       }
       for (const bodyLine of artifact.body.split("\n")) {
         lines.push(`  ${bodyLine}`);

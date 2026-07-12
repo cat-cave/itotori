@@ -12,6 +12,7 @@ import {
   contextArtifactToolVersion,
   ItotoriContextArtifactRepository,
 } from "../src/repositories/context-artifact-repository.js";
+import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
@@ -93,6 +94,169 @@ describe("ItotoriContextArtifactRepository", () => {
           }),
         ],
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("numbers central semantic citations independently for each artifact", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+      for (const input of [
+        {
+          contextArtifactId: "context-artifact-citations-a",
+          sceneId: "scene-a",
+          sourceUnits: [
+            { bridgeUnitId: "unit-opening", citation: "scene-a.opening" },
+            { bridgeUnitId: "unit-mira", citation: "scene-a.mira" },
+          ],
+        },
+        {
+          contextArtifactId: "context-artifact-citations-b",
+          sceneId: "scene-b",
+          sourceUnits: [
+            { bridgeUnitId: "unit-mira", citation: "scene-b.mira" },
+            { bridgeUnitId: "unit-route", citation: "scene-b.route" },
+          ],
+        },
+      ]) {
+        await repository.upsertArtifact(localActor, {
+          contextArtifactId: input.contextArtifactId,
+          projectId: "project-context",
+          localeBranchId: "locale-en-us",
+          sourceRevisionId: "bridge-context:bundle-revision",
+          category: contextArtifactCategoryValues.sceneSummary,
+          title: input.sceneId,
+          body: input.sceneId,
+          data: { semanticKind: "scene_summary", sceneId: input.sceneId },
+          producedByTool: "semantic-context-read-test",
+          producerVersion: "1.0.0",
+          sourceUnits: input.sourceUnits,
+        });
+      }
+
+      const summaries = await new ItotoriSemanticContextReadRepository(
+        context.db,
+      ).loadSceneSummaries(localActor, {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+      });
+      expect(
+        summaries.map((summary) => summary.citations.map((citation) => citation.citeOrdinal)),
+      ).toEqual([
+        [1, 2],
+        [1, 2],
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("retains immutable ContextEntryVersion lineage when an entry is upserted twice", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+
+      const first = await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-versioned-opening",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Opening scene",
+        body: "The first version records the station meeting.",
+        data: { revision: "first" },
+        producedByAgent: "agent.scene-summarizer",
+        producerVersion: "1.0.0",
+        provenance: { runId: "run-context-version-1" },
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+
+      const second = await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-versioned-opening",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Opening scene",
+        body: "The first version records the station meeting.",
+        data: { revision: "first" },
+        producedByAgent: "agent.scene-summarizer",
+        producerVersion: "1.0.0",
+        provenance: { runId: "run-context-version-2" },
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+
+      expect(first.headVersionId).toEqual(expect.any(String));
+      expect(second.headVersionId).toEqual(expect.any(String));
+      expect(second.headVersionId).not.toBe(first.headVersionId);
+      // A content hash attests bytes; it is not a version identity. Repeating
+      // the same body/citation snapshot still advances an append-only lineage.
+      expect(second.contentHash).toBe(first.contentHash);
+
+      const versions = await repository.listEntryVersions(localActor, {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        contextArtifactId: "context-artifact-versioned-opening",
+      });
+
+      // Both packet snapshots remain available after the mutable entry head
+      // advances, even though their content hash is intentionally identical.
+      expect(versions).toEqual([
+        expect.objectContaining({
+          contextEntryVersionId: first.headVersionId,
+          parentVersionId: null,
+          body: "The first version records the station meeting.",
+          data: { revision: "first" },
+          citations: [
+            expect.objectContaining({
+              bridgeUnitId: "unit-opening",
+              citation: "scene.001.opening",
+              sourceHash: "hash:opening",
+            }),
+          ],
+          affectedUnitIds: ["unit-opening"],
+        }),
+        expect.objectContaining({
+          contextEntryVersionId: second.headVersionId,
+          parentVersionId: first.headVersionId,
+          body: "The first version records the station meeting.",
+          data: { revision: "first" },
+          provenance: expect.objectContaining({ runId: "run-context-version-2" }),
+          citations: [
+            expect.objectContaining({
+              bridgeUnitId: "unit-opening",
+              citation: "scene.001.opening",
+              sourceHash: "hash:opening",
+            }),
+          ],
+          affectedUnitIds: ["unit-opening"],
+        }),
+      ]);
+
+      await expect(
+        context.pool.query(
+          "update itotori_context_entry_versions set body = $1 where context_entry_version_id = $2",
+          ["rewritten history", first.headVersionId],
+        ),
+      ).rejects.toThrow(/append-only/);
+
+      // Entry removal is the only sanctioned history cleanup: its cascade may
+      // delete the immutable rows, while direct version deletion is rejected.
+      await context.pool.query(
+        "delete from itotori_context_artifacts where context_artifact_id = $1",
+        ["context-artifact-versioned-opening"],
+      );
+      await expect(
+        repository.listEntryVersions(localActor, {
+          projectId: "project-context",
+          localeBranchId: "locale-en-us",
+          contextArtifactId: "context-artifact-versioned-opening",
+        }),
+      ).resolves.toEqual([]);
     } finally {
       await context.close();
     }

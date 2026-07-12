@@ -27,7 +27,6 @@ import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run
 import { ItotoriAuthSsoSettingsRepository } from "../src/repositories/auth-sso-settings-repository.js";
 import { ItotoriReviewerQueueRepository } from "../src/repositories/reviewer-queue-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
-import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
@@ -47,13 +46,12 @@ import {
   loadPermissionSetAccountId,
 } from "../src/repositories/principal-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
-import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
-import { ItotoriTerminologyCandidateRepository } from "../src/repositories/terminology-candidate-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
 import { ItotoriSceneCoverageRepository } from "../src/repositories/scene-coverage-repository.js";
-import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
+import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
+import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
@@ -568,6 +566,36 @@ const repositoryPermissionGateMatrix = [
     "context-artifact-repository.test.ts retrieval coverage",
     (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
   ),
+  contextArtifactGate(
+    "listEntryVersions",
+    "catalogRead",
+    "context-artifact-repository.test.ts entry history coverage",
+    (repo) => repo.listEntryVersions(deniedActor, undefined as never),
+  ),
+  semanticContextReadGate(
+    "loadArtifacts",
+    "catalogRead",
+    "context-artifact-repository.test.ts central semantic projection coverage",
+    (repo) => repo.loadSceneSummaries(deniedActor, undefined as never),
+  ),
+  sourceUnitGate(
+    "currentSourceHashes",
+    "catalogRead",
+    "context-artifact-repository.test.ts source-unit hash coverage",
+    (repo) => repo.currentSourceHashes(deniedActor, undefined as never),
+  ),
+  sourceUnitGate(
+    "loadSourceUnits",
+    "catalogRead",
+    "context-artifact-repository.test.ts source-unit hydration coverage",
+    (repo) => repo.loadSourceUnits(deniedActor, undefined as never),
+  ),
+  sourceUnitGate(
+    "loadSourceUnitsForScope",
+    "catalogRead",
+    "context-artifact-repository.test.ts source-unit scope coverage",
+    (repo) => repo.loadSourceUnitsForScope(deniedActor, undefined as never),
+  ),
   translationBatchGate(
     "saveBatches",
     "draftWrite",
@@ -598,42 +626,6 @@ const repositoryPermissionGateMatrix = [
     "conformance-repository.test.ts load coverage",
     (repo) => repo.loadConformanceRun(deniedActor, "conformance-run-id"),
   ),
-  sceneSummaryGate(
-    "saveSummary",
-    "draftWrite",
-    "scene-summary-repository.test.ts save coverage",
-    (repo) => repo.saveSummary(deniedActor, undefined as never),
-  ),
-  sceneSummaryGate(
-    "loadSummaryByScene",
-    "catalogRead",
-    "scene-summary-repository.test.ts load-by-scene coverage",
-    (repo) => repo.loadSummaryByScene(deniedActor, undefined as never),
-  ),
-  sceneSummaryGate(
-    "loadSummaries",
-    "catalogRead",
-    "scene-summary-repository.test.ts load coverage",
-    (repo) => repo.loadSummaries(deniedActor, undefined as never),
-  ),
-  sceneSummaryGate(
-    "markStale",
-    "draftWrite",
-    "scene-summary-repository.test.ts mark stale coverage",
-    (repo) => repo.markStale(deniedActor, undefined as never),
-  ),
-  sceneSummaryGate(
-    "currentSourceHashesForBridgeUnits",
-    "catalogRead",
-    "scene-summary-repository.test.ts hashes coverage",
-    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, { bridgeUnitIds: [] }),
-  ),
-  sceneSummaryGate(
-    "loadBridgeUnitsForSummary",
-    "catalogRead",
-    "scene-summary-repository.test.ts bridge units coverage",
-    (repo) => repo.loadBridgeUnitsForSummary(deniedActor, { bridgeUnitIds: [] }),
-  ),
   engineCapabilityReportGate(
     "writeMatrix",
     "projectImport",
@@ -653,54 +645,6 @@ const repositoryPermissionGateMatrix = [
     "engine-capability-report-repository.test.ts capability evidence coverage",
     (repo) => repo.recordCapabilityEvidence(deniedActor, undefined as never),
   ),
-  characterRelationshipGate(
-    "saveBio",
-    "draftWrite",
-    "character-relationship-repository.test.ts save bio coverage",
-    (repo) => repo.saveBio(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "saveRelationship",
-    "draftWrite",
-    "character-relationship-repository.test.ts save relationship coverage",
-    (repo) => repo.saveRelationship(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "loadBios",
-    "catalogRead",
-    "character-relationship-repository.test.ts load bios coverage",
-    (repo) => repo.loadBios(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "loadBioByCharacter",
-    "catalogRead",
-    "character-relationship-repository.test.ts load bio by character coverage",
-    (repo) => repo.loadBioByCharacter(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "loadRelationshipsByProject",
-    "catalogRead",
-    "character-relationship-repository.test.ts load relationships by project coverage",
-    (repo) => repo.loadRelationshipsByProject(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "currentSourceHashesForBridgeUnits",
-    "catalogRead",
-    "character-relationship-repository.test.ts current-source-hashes coverage",
-    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "markBioStale",
-    "draftWrite",
-    "character-relationship-repository.test.ts mark bio stale coverage",
-    (repo) => repo.markBioStale(deniedActor, undefined as never),
-  ),
-  characterRelationshipGate(
-    "markRelationshipStale",
-    "draftWrite",
-    "character-relationship-repository.test.ts mark relationship stale coverage",
-    (repo) => repo.markRelationshipStale(deniedActor, undefined as never),
-  ),
   wikiReadmodelGate(
     "loadEntries",
     "catalogRead",
@@ -710,96 +654,6 @@ const repositoryPermissionGateMatrix = [
         projectId: "project-denied",
         localeBranchId: "locale-denied",
       }),
-  ),
-  routeChoiceMapGate(
-    "saveRouteMap",
-    "draftWrite",
-    "route-choice-map-repository.test.ts save route map coverage",
-    (repo) => repo.saveRouteMap(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "saveRouteChoice",
-    "draftWrite",
-    "route-choice-map-repository.test.ts save route choice coverage",
-    (repo) => repo.saveRouteChoice(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "loadRouteMapsByProject",
-    "catalogRead",
-    "route-choice-map-repository.test.ts load route maps coverage",
-    (repo) => repo.loadRouteMapsByProject(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "loadRouteChoicesByProject",
-    "catalogRead",
-    "route-choice-map-repository.test.ts load route choices coverage",
-    (repo) => repo.loadRouteChoicesByProject(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "currentSourceHashesForBridgeUnits",
-    "catalogRead",
-    "route-choice-map-repository.test.ts current-source-hashes coverage",
-    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "markRouteMapStale",
-    "draftWrite",
-    "route-choice-map-repository.test.ts mark route map stale coverage",
-    (repo) => repo.markRouteMapStale(deniedActor, undefined as never),
-  ),
-  routeChoiceMapGate(
-    "markRouteChoiceStale",
-    "draftWrite",
-    "route-choice-map-repository.test.ts mark route choice stale coverage",
-    (repo) => repo.markRouteChoiceStale(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "saveCandidate",
-    "draftWrite",
-    "terminology-candidate-repository.test.ts save candidate coverage",
-    (repo) => repo.saveCandidate(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "loadCandidatesByProject",
-    "catalogRead",
-    "terminology-candidate-repository.test.ts load candidates coverage",
-    (repo) => repo.loadCandidatesByProject(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "markCandidateStale",
-    "draftWrite",
-    "terminology-candidate-repository.test.ts mark candidate stale coverage",
-    (repo) => repo.markCandidateStale(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "markCandidatePromoted",
-    "draftWrite",
-    "terminology-candidate-repository.test.ts mark candidate promoted coverage",
-    (repo) => repo.markCandidatePromoted(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "markCandidateRejected",
-    "draftWrite",
-    "terminology-candidate-repository.test.ts mark candidate rejected coverage",
-    (repo) => repo.markCandidateRejected(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "currentSourceHashesForBridgeUnits",
-    "catalogRead",
-    "terminology-candidate-repository.test.ts current-source-hashes coverage",
-    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "existsTerminologyTermBySurfaceForm",
-    "catalogRead",
-    "terminology-candidate-repository.test.ts exists surface-form coverage",
-    (repo) => repo.existsTerminologyTermBySurfaceForm(deniedActor, undefined as never),
-  ),
-  terminologyCandidateGate(
-    "countTerminologyTerms",
-    "catalogRead",
-    "terminology-candidate-repository.test.ts count terminology terms coverage",
-    (repo) => repo.countTerminologyTerms(deniedActor, undefined as never),
   ),
   draftJobGate(
     "createDraftJob",
@@ -1929,6 +1783,36 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.listEntryVersions",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts entry history coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSemanticContextReadRepository.loadArtifacts",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts central semantic projection coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSourceUnitRepository.currentSourceHashes",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts source-unit hash coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSourceUnitRepository.loadSourceUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts source-unit hydration coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSourceUnitRepository.loadSourceUnitsForScope",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts source-unit scope coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriTranslationBatchRepository.saveBatches",
           "requiredPermission": "draft.write",
           "successFixture": "translation-batch-repository.test.ts save coverage",
@@ -1959,42 +1843,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.saveSummary",
-          "requiredPermission": "draft.write",
-          "successFixture": "scene-summary-repository.test.ts save coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.loadSummaryByScene",
-          "requiredPermission": "catalog.read",
-          "successFixture": "scene-summary-repository.test.ts load-by-scene coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.loadSummaries",
-          "requiredPermission": "catalog.read",
-          "successFixture": "scene-summary-repository.test.ts load coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.markStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "scene-summary-repository.test.ts mark stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.currentSourceHashesForBridgeUnits",
-          "requiredPermission": "catalog.read",
-          "successFixture": "scene-summary-repository.test.ts hashes coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneSummaryRepository.loadBridgeUnitsForSummary",
-          "requiredPermission": "catalog.read",
-          "successFixture": "scene-summary-repository.test.ts bridge units coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "EngineCapabilityReportRepository.writeMatrix",
           "requiredPermission": "project.import",
           "successFixture": "engine-capability-report-repository.test.ts write matrix coverage",
@@ -2007,147 +1855,9 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.saveBio",
-          "requiredPermission": "draft.write",
-          "successFixture": "character-relationship-repository.test.ts save bio coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.saveRelationship",
-          "requiredPermission": "draft.write",
-          "successFixture": "character-relationship-repository.test.ts save relationship coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.loadBios",
-          "requiredPermission": "catalog.read",
-          "successFixture": "character-relationship-repository.test.ts load bios coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.loadBioByCharacter",
-          "requiredPermission": "catalog.read",
-          "successFixture": "character-relationship-repository.test.ts load bio by character coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.loadRelationshipsByProject",
-          "requiredPermission": "catalog.read",
-          "successFixture": "character-relationship-repository.test.ts load relationships by project coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.currentSourceHashesForBridgeUnits",
-          "requiredPermission": "catalog.read",
-          "successFixture": "character-relationship-repository.test.ts current-source-hashes coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.markBioStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "character-relationship-repository.test.ts mark bio stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriCharacterRelationshipRepository.markRelationshipStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "character-relationship-repository.test.ts mark relationship stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriWikiReadmodelRepository.loadEntries",
           "requiredPermission": "catalog.read",
           "successFixture": "wiki-readmodel-repository.test.ts entries read-model coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.saveRouteMap",
-          "requiredPermission": "draft.write",
-          "successFixture": "route-choice-map-repository.test.ts save route map coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.saveRouteChoice",
-          "requiredPermission": "draft.write",
-          "successFixture": "route-choice-map-repository.test.ts save route choice coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.loadRouteMapsByProject",
-          "requiredPermission": "catalog.read",
-          "successFixture": "route-choice-map-repository.test.ts load route maps coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.loadRouteChoicesByProject",
-          "requiredPermission": "catalog.read",
-          "successFixture": "route-choice-map-repository.test.ts load route choices coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.currentSourceHashesForBridgeUnits",
-          "requiredPermission": "catalog.read",
-          "successFixture": "route-choice-map-repository.test.ts current-source-hashes coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.markRouteMapStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "route-choice-map-repository.test.ts mark route map stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriRouteChoiceMapRepository.markRouteChoiceStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "route-choice-map-repository.test.ts mark route choice stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.saveCandidate",
-          "requiredPermission": "draft.write",
-          "successFixture": "terminology-candidate-repository.test.ts save candidate coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.loadCandidatesByProject",
-          "requiredPermission": "catalog.read",
-          "successFixture": "terminology-candidate-repository.test.ts load candidates coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.markCandidateStale",
-          "requiredPermission": "draft.write",
-          "successFixture": "terminology-candidate-repository.test.ts mark candidate stale coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.markCandidatePromoted",
-          "requiredPermission": "draft.write",
-          "successFixture": "terminology-candidate-repository.test.ts mark candidate promoted coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.markCandidateRejected",
-          "requiredPermission": "draft.write",
-          "successFixture": "terminology-candidate-repository.test.ts mark candidate rejected coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.currentSourceHashesForBridgeUnits",
-          "requiredPermission": "catalog.read",
-          "successFixture": "terminology-candidate-repository.test.ts current-source-hashes coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.existsTerminologyTermBySurfaceForm",
-          "requiredPermission": "catalog.read",
-          "successFixture": "terminology-candidate-repository.test.ts exists surface-form coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyCandidateRepository.countTerminologyTerms",
-          "requiredPermission": "catalog.read",
-          "successFixture": "terminology-candidate-repository.test.ts count terminology terms coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -3195,6 +2905,38 @@ function contextArtifactGate(
   });
 }
 
+function semanticContextReadGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriSemanticContextReadRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriSemanticContextReadRepository",
+    sourceFile: "semantic-context-read-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriSemanticContextReadRepository(db)),
+  });
+}
+
+function sourceUnitGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriSourceUnitRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriSourceUnitRepository",
+    sourceFile: "source-unit-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriSourceUnitRepository(db)),
+  });
+}
+
 function translationBatchGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3227,22 +2969,6 @@ function conformanceGate(
   });
 }
 
-function sceneSummaryGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriSceneSummaryRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriSceneSummaryRepository",
-    sourceFile: "scene-summary-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriSceneSummaryRepository(db)),
-  });
-}
-
 function engineCapabilityReportGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3259,22 +2985,6 @@ function engineCapabilityReportGate(
   });
 }
 
-function characterRelationshipGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriCharacterRelationshipRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriCharacterRelationshipRepository",
-    sourceFile: "character-relationship-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriCharacterRelationshipRepository(db)),
-  });
-}
-
 function wikiReadmodelGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3288,38 +2998,6 @@ function wikiReadmodelGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriWikiReadmodelRepository(db)),
-  });
-}
-
-function routeChoiceMapGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriRouteChoiceMapRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriRouteChoiceMapRepository",
-    sourceFile: "route-choice-map-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriRouteChoiceMapRepository(db)),
-  });
-}
-
-function terminologyCandidateGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriTerminologyCandidateRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriTerminologyCandidateRepository",
-    sourceFile: "terminology-candidate-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriTerminologyCandidateRepository(db)),
   });
 }
 

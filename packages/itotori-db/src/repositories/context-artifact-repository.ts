@@ -7,12 +7,14 @@ import {
   contextArtifacts,
   contextArtifactSourceUnits,
   contextArtifactStatusValues,
+  contextEntryVersions,
   localeBranches,
   projects,
   sourceBundles,
   sourceUnits,
   type ContextArtifactCategory,
   type ContextArtifactStatus,
+  type ContextEntryVersionCitation,
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
 
@@ -92,6 +94,13 @@ export type InvalidateContextArtifactsInput = {
   reason?: string;
 };
 
+/** Scope for the append-only ContextEntryVersion history of one entry. */
+export type ListContextEntryVersionsInput = {
+  projectId: string;
+  localeBranchId: string;
+  contextArtifactId: string;
+};
+
 export type ContextArtifactSourceUnitRecord = {
   contextArtifactId: string;
   bridgeUnitId: string;
@@ -113,6 +122,8 @@ export type ContextArtifactRecord = {
   normalizedTitle: string;
   body: string;
   data: ContextArtifactJsonRecord;
+  /** Immutable ContextEntryVersion id currently selected as this entry's head. */
+  headVersionId: string | null;
   contentHash: string;
   producedByAgent: string | null;
   producedByTool: string | null;
@@ -124,6 +135,37 @@ export type ContextArtifactRecord = {
   createdAt: Date;
   updatedAt: Date;
   sourceUnits: ContextArtifactSourceUnitRecord[];
+};
+
+/**
+ * An immutable ContextEntryVersion snapshot. `contentHash` verifies a snapshot
+ * body but is deliberately not used as its identity: two writes with identical
+ * content are still distinct lineage events.
+ */
+export type ContextEntryVersionRecord = {
+  contextEntryVersionId: string;
+  contextArtifactId: string;
+  projectId: string;
+  localeBranchId: string;
+  parentVersionId: string | null;
+  sourceRevisionId: string;
+  category: ContextArtifactCategory;
+  status: ContextArtifactStatus;
+  title: string;
+  normalizedTitle: string;
+  body: string;
+  data: ContextArtifactJsonRecord;
+  contentHash: string;
+  producedByAgent: string | null;
+  producedByTool: string | null;
+  producerVersion: string;
+  provenance: ContextArtifactJsonRecord;
+  citations: ContextEntryVersionCitation[];
+  affectedUnitIds: string[];
+  invalidatedReason: string | null;
+  invalidatedAt: Date | null;
+  createdByUserId: string | null;
+  createdAt: Date;
 };
 
 export type ContextArtifactMatch = ContextArtifactRecord & {
@@ -241,28 +283,56 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       producedByTool: input.producedByTool ?? null,
       producerVersion: input.producerVersion,
     };
+    const versionCitations: ContextEntryVersionCitation[] = input.sourceUnits.map((sourceUnit) => {
+      const row = sourceUnitById.get(sourceUnit.bridgeUnitId);
+      if (row === undefined) {
+        throw new Error(`validated source unit disappeared: ${sourceUnit.bridgeUnitId}`);
+      }
+      return {
+        bridgeUnitId: sourceUnit.bridgeUnitId,
+        sourceRevisionId: input.sourceRevisionId,
+        sourceHash: row.sourceHash,
+        citation: sourceUnit.citation,
+        metadata: sourceUnit.metadata ?? {},
+      };
+    });
     const contentHash = contextArtifactContentHash({
       category,
       title: input.title,
       body: input.body,
       data,
-      sourceUnits: input.sourceUnits.map((sourceUnit) => {
-        const row = sourceUnitById.get(sourceUnit.bridgeUnitId);
-        if (row === undefined) {
-          throw new Error(`validated source unit disappeared: ${sourceUnit.bridgeUnitId}`);
-        }
-        return {
-          bridgeUnitId: sourceUnit.bridgeUnitId,
-          sourceHash: row.sourceHash,
-          citation: sourceUnit.citation,
-        };
-      }),
+      sourceUnits: versionCitations.map((citation) => ({
+        bridgeUnitId: citation.bridgeUnitId,
+        sourceHash: citation.sourceHash,
+        citation: citation.citation,
+      })),
     });
+    const invalidatedReason =
+      status === contextArtifactStatusValues.active ? null : (input.status ?? null);
+    const invalidatedAt = status === contextArtifactStatusValues.active ? null : sql`now()`;
+    const contextEntryVersionId = createUuid7();
 
     await this.db.transaction(async (tx) => {
-      await tx
-        .insert(contextArtifacts)
-        .values({
+      // Serialize writes of the same ContextEntry. The parent pointer is read
+      // and advanced under one transaction-scoped lock, so concurrent upserts
+      // cannot fork lineage from the same prior head.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(
+          hashtext(coalesce(current_schema(), '') || ':' || ${contextArtifactId})
+        )`,
+      );
+      const [existing] = await tx
+        .select({
+          projectId: contextArtifacts.projectId,
+          localeBranchId: contextArtifacts.localeBranchId,
+          headVersionId: contextArtifacts.headVersionId,
+        })
+        .from(contextArtifacts)
+        .where(eq(contextArtifacts.contextArtifactId, contextArtifactId))
+        .limit(1);
+
+      if (existing === undefined) {
+        await tx.insert(contextArtifacts).values({
           contextArtifactId,
           projectId: input.projectId,
           localeBranchId: input.localeBranchId,
@@ -278,52 +348,88 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
           producedByTool: input.producedByTool ?? null,
           producerVersion: input.producerVersion,
           provenance,
-          invalidatedReason:
-            status === contextArtifactStatusValues.active ? null : (input.status ?? null),
-          invalidatedAt: status === contextArtifactStatusValues.active ? null : sql`now()`,
+          headVersionId: null,
+          invalidatedReason,
+          invalidatedAt,
           createdByUserId: actor.userId,
           updatedAt: sql`now()`,
-        })
-        .onConflictDoUpdate({
-          target: contextArtifacts.contextArtifactId,
-          set: {
-            sourceRevisionId: sql`excluded.source_revision_id`,
-            category: sql`excluded.category`,
-            status: sql`excluded.status`,
-            title: sql`excluded.title`,
-            normalizedTitle: sql`excluded.normalized_title`,
-            body: sql`excluded.body`,
-            data: sql`excluded.data`,
-            contentHash: sql`excluded.content_hash`,
-            producedByAgent: sql`excluded.produced_by_agent`,
-            producedByTool: sql`excluded.produced_by_tool`,
-            producerVersion: sql`excluded.producer_version`,
-            provenance: sql`excluded.provenance`,
-            invalidatedReason: sql`excluded.invalidated_reason`,
-            invalidatedAt: sql`excluded.invalidated_at`,
-            updatedAt: sql`now()`,
-          },
         });
+      } else if (
+        existing.projectId !== input.projectId ||
+        existing.localeBranchId !== input.localeBranchId
+      ) {
+        throw new Error(
+          `context artifact ${contextArtifactId} belongs to a different project or locale branch`,
+        );
+      }
+
+      await tx.insert(contextEntryVersions).values({
+        contextEntryVersionId,
+        contextArtifactId,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        parentVersionId: existing?.headVersionId ?? null,
+        sourceRevisionId: input.sourceRevisionId,
+        category,
+        status,
+        title: input.title,
+        normalizedTitle,
+        body: input.body,
+        data,
+        contentHash,
+        producedByAgent: input.producedByAgent ?? null,
+        producedByTool: input.producedByTool ?? null,
+        producerVersion: input.producerVersion,
+        provenance,
+        citations: versionCitations,
+        affectedUnitIds: unique(versionCitations.map((citation) => citation.bridgeUnitId)).sort(),
+        invalidatedReason,
+        invalidatedAt,
+        createdByUserId: actor.userId,
+      });
+
+      if (existing === undefined) {
+        await tx
+          .update(contextArtifacts)
+          .set({ headVersionId: contextEntryVersionId, updatedAt: sql`now()` })
+          .where(eq(contextArtifacts.contextArtifactId, contextArtifactId));
+      } else {
+        await tx
+          .update(contextArtifacts)
+          .set({
+            sourceRevisionId: input.sourceRevisionId,
+            category,
+            status,
+            title: input.title,
+            normalizedTitle,
+            body: input.body,
+            data,
+            contentHash,
+            producedByAgent: input.producedByAgent ?? null,
+            producedByTool: input.producedByTool ?? null,
+            producerVersion: input.producerVersion,
+            provenance,
+            headVersionId: contextEntryVersionId,
+            invalidatedReason,
+            invalidatedAt,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(contextArtifacts.contextArtifactId, contextArtifactId));
+      }
 
       await tx
         .delete(contextArtifactSourceUnits)
         .where(eq(contextArtifactSourceUnits.contextArtifactId, contextArtifactId));
 
       await tx.insert(contextArtifactSourceUnits).values(
-        input.sourceUnits.map((sourceUnit) => {
-          const row = sourceUnitById.get(sourceUnit.bridgeUnitId);
-          if (row === undefined) {
-            throw new Error(`validated source unit disappeared: ${sourceUnit.bridgeUnitId}`);
-          }
-          return {
-            contextArtifactId,
-            bridgeUnitId: sourceUnit.bridgeUnitId,
-            sourceRevisionId: input.sourceRevisionId,
-            sourceHash: row.sourceHash,
-            citation: sourceUnit.citation,
-            metadata: sourceUnit.metadata ?? {},
-          };
-        }),
+        versionCitations.map((citation) => ({
+          contextArtifactId,
+          bridgeUnitId: citation.bridgeUnitId,
+          sourceRevisionId: citation.sourceRevisionId,
+          sourceHash: citation.sourceHash,
+          citation: citation.citation,
+          metadata: citation.metadata,
+        })),
       );
     });
 
@@ -493,6 +599,28 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       diagnostics: [],
     };
   }
+
+  async listEntryVersions(
+    actor: AuthorizationActor,
+    input: ListContextEntryVersionsInput,
+  ): Promise<ContextEntryVersionRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await this.db
+      .select()
+      .from(contextEntryVersions)
+      .where(
+        and(
+          eq(contextEntryVersions.contextArtifactId, input.contextArtifactId),
+          eq(contextEntryVersions.projectId, input.projectId),
+          eq(contextEntryVersions.localeBranchId, input.localeBranchId),
+        ),
+      )
+      .orderBy(
+        asc(contextEntryVersions.createdAt),
+        asc(contextEntryVersions.contextEntryVersionId),
+      );
+    return rows.map(contextEntryVersionRecordFromRow);
+  }
 }
 
 export class ContextArtifactRepositoryError extends Error {
@@ -521,6 +649,7 @@ function contextArtifactRecordFromRow(
     normalizedTitle: row.normalizedTitle,
     body: row.body,
     data: row.data,
+    headVersionId: row.headVersionId,
     contentHash: row.contentHash,
     producedByAgent: row.producedByAgent,
     producedByTool: row.producedByTool,
@@ -532,6 +661,36 @@ function contextArtifactRecordFromRow(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sourceUnits: sourceUnitRows,
+  };
+}
+
+function contextEntryVersionRecordFromRow(
+  row: typeof contextEntryVersions.$inferSelect,
+): ContextEntryVersionRecord {
+  return {
+    contextEntryVersionId: row.contextEntryVersionId,
+    contextArtifactId: row.contextArtifactId,
+    projectId: row.projectId,
+    localeBranchId: row.localeBranchId,
+    parentVersionId: row.parentVersionId,
+    sourceRevisionId: row.sourceRevisionId,
+    category: parseCategory(row.category, "category"),
+    status: parseStatus(row.status, "status"),
+    title: row.title,
+    normalizedTitle: row.normalizedTitle,
+    body: row.body,
+    data: row.data,
+    contentHash: row.contentHash,
+    producedByAgent: row.producedByAgent,
+    producedByTool: row.producedByTool,
+    producerVersion: row.producerVersion,
+    provenance: row.provenance,
+    citations: row.citations,
+    affectedUnitIds: row.affectedUnitIds,
+    invalidatedReason: row.invalidatedReason,
+    invalidatedAt: row.invalidatedAt,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt,
   };
 }
 

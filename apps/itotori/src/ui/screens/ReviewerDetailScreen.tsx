@@ -990,10 +990,10 @@ function StructureContextFeedPanel({ context }: { context: ReviewerDetailContext
             rows={feed.items}
             getRowKey={(item) => `${item.kind}:${item.artifactRef}:${item.title}`}
           />
-          {feed.contextArtifactRefs.length > 0 ? (
+          {feed.contextArtifactIds.length > 0 ? (
             <p data-structure-context-refs="">
               Cited refs:{" "}
-              {feed.contextArtifactRefs.map((ref, index) => (
+              {feed.contextArtifactIds.map((ref, index) => (
                 <span key={ref}>
                   {index > 0 ? ", " : null}
                   <code>{ref}</code>

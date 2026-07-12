@@ -3,7 +3,8 @@
 //
 // Every semantic enrichment (scene / character / route / terminology / speaker)
 // resolves into a Content-bearing artifact: id + body + citations + provenance
-// + contentHash revision. The translation prompt renders the BODY, never bare
+// + an immutable ContextEntryVersion id. `contentHash` verifies bytes but is
+// not a version identity. The translation prompt renders the BODY, never bare
 // ids. Missing/stale enrichment is built via the supervisor-routed agents and
 // upserted before drafting; a failed enrichment persists a typed failure
 // record (rejected artifact) rather than a silent drop.
@@ -16,6 +17,7 @@ import type {
   ContextArtifactRecord,
   ContextArtifactRetrievalResult,
   ContextArtifactSourceUnitInput,
+  ContextEntryVersionRecord,
   InvalidateContextArtifactsInput,
   ItotoriContextArtifactRepositoryPort,
   RetrieveContextArtifactsInput,
@@ -34,12 +36,20 @@ export type ResolvedContextArtifact = {
   title: string;
   body: string;
   data: ContextArtifactJsonRecord;
+  /** Immutable ContextEntryVersion selected for this resolved packet. */
+  contextEntryVersionId: string | null;
   contentHash: string;
   status: string;
   producedByAgent: string | null;
   producerVersion: string;
   provenance: ContextArtifactJsonRecord;
   citations: Array<{ bridgeUnitId: string; citation: string }>;
+  /**
+   * The semantic outcome represented by this durable artifact. An active
+   * `no_content` record is an honest, reusable result — it is deliberately
+   * distinct from generated content and from a rejected failure record.
+   */
+  semanticResult: ContextArtifactSemanticResult;
   /** Present when this row records a typed enrichment failure. */
   failure?: {
     agentLabel: string;
@@ -54,7 +64,7 @@ export type ResolvedContextArtifact = {
  */
 export type UnitContextPacket = {
   unitId: string;
-  /** entryId → contentHash (revision identity). */
+  /** entryId → immutable ContextEntryVersion id (revision identity). */
   resolvedFromVersions: Record<string, string>;
   artifacts: ResolvedContextArtifact[];
   speakers: SpeakerLabel[];
@@ -68,12 +78,42 @@ export type EnrichmentFailureCode =
   | "persistence_failure"
   | "unknown";
 
+export type ContextArtifactSemanticResult =
+  | { kind: "content" }
+  | { kind: "no_content"; agentLabel: string; reason: string }
+  | { kind: "failure"; agentLabel: string; code: EnrichmentFailureCode; reason: string };
+
 export type TypedEnrichmentFailure = {
   agentLabel: string;
   code: EnrichmentFailureCode;
   reason: string;
   contextArtifactId?: string;
 };
+
+/**
+ * Raised when the fallback failure record itself could not be durably stored.
+ * Callers must surface this rather than pretending an unpersisted artifact id
+ * exists; otherwise the next unit would have no durable explanation for the
+ * dropped enrichment.
+ */
+export class EnrichmentFailurePersistenceError extends Error {
+  readonly attemptedFailure: Omit<TypedEnrichmentFailure, "contextArtifactId">;
+  readonly persistenceCause: unknown;
+
+  constructor(args: {
+    attemptedFailure: Omit<TypedEnrichmentFailure, "contextArtifactId">;
+    persistenceCause: unknown;
+  }) {
+    const persistence = classifyEnrichmentFailure(args.persistenceCause);
+    super(
+      `context-brain failed to persist enrichment failure for ${args.attemptedFailure.agentLabel}: ` +
+        `${args.attemptedFailure.reason} | persist: ${persistence.reason}`,
+    );
+    this.name = "EnrichmentFailurePersistenceError";
+    this.attemptedFailure = args.attemptedFailure;
+    this.persistenceCause = args.persistenceCause;
+  }
+}
 
 /** Stable, deterministic artifact id for a logical enrichment key. */
 export function stableContextArtifactId(parts: ReadonlyArray<string>): string {
@@ -92,6 +132,14 @@ export function sceneSummaryArtifactId(projectId: string, sceneKey: string): str
 
 export function characterNoteArtifactId(projectId: string, characterId: string): string {
   return stableContextArtifactId(["character_note", projectId, characterId]);
+}
+
+/** Stable identity shared by standalone and live character-relationship enrichment. */
+export function characterRelationshipArtifactId(
+  projectId: string,
+  relationshipKey: string,
+): string {
+  return characterNoteArtifactId(projectId, `rel:${relationshipKey}`);
 }
 
 export function routeMapArtifactId(projectId: string, routeKey: string): string {
@@ -166,12 +214,20 @@ export function recordToResolvedArtifact(record: ContextArtifactRecord): Resolve
           reason: String((failureRaw as Record<string, unknown>).reason ?? record.body),
         }
       : undefined;
+  const noContentRaw = record.data?.semanticResult;
+  const semanticResult: ContextArtifactSemanticResult =
+    failure !== undefined
+      ? { kind: "failure", ...failure }
+      : isNoContentSemanticResult(noContentRaw)
+        ? noContentRaw
+        : { kind: "content" };
   return {
     contextArtifactId: record.contextArtifactId,
     category: record.category,
     title: record.title,
     body: record.body,
     data: { ...record.data },
+    contextEntryVersionId: record.headVersionId,
     contentHash: record.contentHash,
     status: record.status,
     producedByAgent: record.producedByAgent,
@@ -181,6 +237,7 @@ export function recordToResolvedArtifact(record: ContextArtifactRecord): Resolve
       bridgeUnitId: unit.bridgeUnitId,
       citation: unit.citation,
     })),
+    semanticResult,
     ...(failure !== undefined ? { failure } : {}),
   };
 }
@@ -192,8 +249,11 @@ export function buildUnitContextPacket(args: {
 }): UnitContextPacket {
   const resolvedFromVersions: Record<string, string> = {};
   for (const artifact of args.artifacts) {
-    if (artifact.status === contextArtifactStatusValues.active) {
-      resolvedFromVersions[artifact.contextArtifactId] = artifact.contentHash;
+    if (
+      artifact.status === contextArtifactStatusValues.active &&
+      artifact.contextEntryVersionId !== null
+    ) {
+      resolvedFromVersions[artifact.contextArtifactId] = artifact.contextEntryVersionId;
     }
   }
   return {
@@ -231,8 +291,9 @@ export type ContextBrainUpsertInput = {
 
 /**
  * Persist one artifact through the central store. When no store is wired
- * (synthetic smoke path), synthesize a resolved record with a content-hash
- * revision so the current unit still receives real content in its packet.
+ * (synthetic smoke path), synthesize a resolved record so the current unit
+ * still receives real content in its packet. It intentionally has no durable
+ * ContextEntryVersion id and therefore cannot masquerade as history.
  */
 export async function upsertContextBrainArtifact(args: {
   repository: ItotoriContextArtifactRepositoryPort | undefined;
@@ -320,14 +381,29 @@ export async function persistTypedEnrichmentFailure(args: {
       contextArtifactId,
     };
   } catch (persistError) {
-    const persistClassified = classifyEnrichmentFailure(persistError);
-    return {
-      agentLabel: args.agentLabel,
-      code: "persistence_failure",
-      reason: `${classified.reason} | persist: ${persistClassified.reason}`,
-      contextArtifactId,
-    };
+    throw new EnrichmentFailurePersistenceError({
+      attemptedFailure: {
+        agentLabel: args.agentLabel,
+        code: classified.code,
+        reason: classified.reason,
+      },
+      persistenceCause: persistError,
+    });
   }
+}
+
+function isNoContentSemanticResult(
+  value: unknown,
+): value is Extract<ContextArtifactSemanticResult, { kind: "no_content" }> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.kind === "no_content" &&
+    typeof candidate.agentLabel === "string" &&
+    typeof candidate.reason === "string"
+  );
 }
 
 function categoryForAgentLabel(agentLabel: string): ContextArtifactCategory {
@@ -466,12 +542,20 @@ function ephemeralResolvedArtifact(input: ContextBrainUpsertInput): ResolvedCont
           reason: String((failureRaw as Record<string, unknown>).reason ?? input.body),
         }
       : undefined;
+  const noContentRaw = data.semanticResult;
+  const semanticResult: ContextArtifactSemanticResult =
+    failure !== undefined
+      ? { kind: "failure", ...failure }
+      : isNoContentSemanticResult(noContentRaw)
+        ? noContentRaw
+        : { kind: "content" };
   return {
     contextArtifactId: input.contextArtifactId,
     category: input.category,
     title: input.title,
     body: input.body,
     data: { ...data },
+    contextEntryVersionId: null,
     contentHash,
     status: input.status ?? contextArtifactStatusValues.active,
     producedByAgent: input.producedByAgent,
@@ -485,6 +569,7 @@ function ephemeralResolvedArtifact(input: ContextBrainUpsertInput): ResolvedCont
       bridgeUnitId: unit.bridgeUnitId,
       citation: unit.citation,
     })),
+    semanticResult,
     ...(failure !== undefined ? { failure } : {}),
   };
 }
@@ -496,12 +581,14 @@ function ephemeralResolvedArtifact(input: ContextBrainUpsertInput): ResolvedCont
  */
 export class InMemoryContextArtifactRepository implements ItotoriContextArtifactRepositoryPort {
   private readonly artifacts = new Map<string, ContextArtifactRecord>();
+  private readonly entryVersions = new Map<string, ContextEntryVersionRecord[]>();
 
   async upsertArtifact(
     actor: AuthorizationActor,
     input: UpsertContextArtifactInput,
   ): Promise<ContextArtifactRecord> {
     const contextArtifactId = input.contextArtifactId ?? randomUUID();
+    const previous = this.artifacts.get(contextArtifactId);
     const now = new Date();
     const data = input.data ?? {};
     const contentHash = `sha256:${createHash("sha256")
@@ -517,6 +604,17 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
       .digest("hex")}`;
     const status = (input.status ??
       contextArtifactStatusValues.active) as ContextArtifactRecord["status"];
+    const versionCount = (this.entryVersions.get(contextArtifactId)?.length ?? 0) + 1;
+    const contextEntryVersionId = `in-memory-context-entry-version:${contextArtifactId}:${versionCount}`;
+    const sourceUnits = input.sourceUnits.map((unit) => ({
+      contextArtifactId,
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceRevisionId: input.sourceRevisionId,
+      sourceHash: typeof unit.metadata?.sourceHash === "string" ? unit.metadata.sourceHash : "",
+      citation: unit.citation,
+      metadata: unit.metadata ?? {},
+      createdAt: now,
+    }));
     const record: ContextArtifactRecord = {
       contextArtifactId,
       projectId: input.projectId,
@@ -532,6 +630,7 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
         .trim(),
       body: input.body,
       data,
+      headVersionId: contextEntryVersionId,
       contentHash,
       producedByAgent: input.producedByAgent ?? null,
       producedByTool: input.producedByTool ?? null,
@@ -547,19 +646,46 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
         status === contextArtifactStatusValues.active ? null : (input.status ?? "rejected"),
       invalidatedAt: status === contextArtifactStatusValues.active ? null : now,
       createdByUserId: actor.userId,
-      createdAt: this.artifacts.get(contextArtifactId)?.createdAt ?? now,
+      createdAt: previous?.createdAt ?? now,
       updatedAt: now,
-      sourceUnits: input.sourceUnits.map((unit) => ({
-        contextArtifactId,
+      sourceUnits,
+    };
+    const version: ContextEntryVersionRecord = {
+      contextEntryVersionId,
+      contextArtifactId,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      parentVersionId: previous?.headVersionId ?? null,
+      sourceRevisionId: input.sourceRevisionId,
+      category: record.category,
+      status,
+      title: input.title,
+      normalizedTitle: record.normalizedTitle,
+      body: input.body,
+      data: { ...data },
+      contentHash,
+      producedByAgent: input.producedByAgent ?? null,
+      producedByTool: input.producedByTool ?? null,
+      producerVersion: input.producerVersion,
+      provenance: { ...record.provenance },
+      citations: sourceUnits.map((unit) => ({
         bridgeUnitId: unit.bridgeUnitId,
-        sourceRevisionId: input.sourceRevisionId,
-        sourceHash: typeof unit.metadata?.sourceHash === "string" ? unit.metadata.sourceHash : "",
+        sourceRevisionId: unit.sourceRevisionId,
+        sourceHash: unit.sourceHash,
         citation: unit.citation,
-        metadata: unit.metadata ?? {},
-        createdAt: now,
+        metadata: { ...unit.metadata },
       })),
+      affectedUnitIds: sourceUnits.map((unit) => unit.bridgeUnitId).sort(),
+      invalidatedReason: record.invalidatedReason,
+      invalidatedAt: record.invalidatedAt,
+      createdByUserId: actor.userId,
+      createdAt: now,
     };
     this.artifacts.set(contextArtifactId, record);
+    this.entryVersions.set(contextArtifactId, [
+      ...(this.entryVersions.get(contextArtifactId) ?? []),
+      version,
+    ]);
     return record;
   }
 
@@ -588,6 +714,13 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
       if (
         bridgeSet !== undefined &&
         !artifact.sourceUnits.some((unit) => bridgeSet.has(unit.bridgeUnitId))
+      ) {
+        continue;
+      }
+      if (
+        input.sourceRevisionId !== undefined &&
+        artifact.sourceRevisionId === input.sourceRevisionId &&
+        bridgeSet === undefined
       ) {
         continue;
       }
@@ -671,6 +804,29 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
       matches,
       diagnostics: [],
     };
+  }
+
+  async listEntryVersions(
+    _actor: AuthorizationActor,
+    input: {
+      projectId: string;
+      localeBranchId: string;
+      contextArtifactId: string;
+    },
+  ): Promise<ContextEntryVersionRecord[]> {
+    return (this.entryVersions.get(input.contextArtifactId) ?? [])
+      .filter((version) => version.projectId === input.projectId)
+      .filter((version) => version.localeBranchId === input.localeBranchId)
+      .map((version) => ({
+        ...version,
+        data: { ...version.data },
+        provenance: { ...version.provenance },
+        citations: version.citations.map((citation) => ({
+          ...citation,
+          metadata: { ...citation.metadata },
+        })),
+        affectedUnitIds: version.affectedUnitIds.slice(),
+      }));
   }
 
   /** Test helper — snapshot of every stored artifact. */

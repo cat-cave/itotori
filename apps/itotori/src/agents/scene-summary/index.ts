@@ -10,13 +10,6 @@ export {
   promptHash,
   type RenderedPrompt,
 } from "./prompt-template.js";
-export { persistSceneSummary, recordToSummary, summaryToSaveInput } from "./persistence.js";
-export {
-  markStaleSummariesForRevision,
-  type SceneSummaryDrift,
-  type StalenessScanInput,
-  type StalenessScanResult,
-} from "./staleness.js";
 export {
   freshSceneSummaryRefs,
   resolveSceneSummaryProvider,
@@ -27,6 +20,7 @@ export {
   type GenerateSceneSummariesCliResult,
   type SceneSummaryCliDependencies,
   type SceneSummaryCliRow,
+  type CentralSceneSummaryCheckResult,
 } from "./cli.js";
 export {
   SceneSummaryEmptyInputError,

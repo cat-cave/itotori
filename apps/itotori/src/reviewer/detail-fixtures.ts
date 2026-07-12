@@ -399,7 +399,7 @@ export function structureContextFeedFixture(
         feedRole: "Cited context artifact available to the translate stage.",
       },
     ],
-    contextArtifactRefs: [
+    contextArtifactIds: [
       "character-arc:勇者",
       "character-arc:王女",
       "glossary-term:term-itotori-082",

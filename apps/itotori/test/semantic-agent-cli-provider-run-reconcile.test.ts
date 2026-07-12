@@ -9,13 +9,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   AuthorizationActor,
-  BridgeUnitTextRecord,
-  ItotoriSceneSummaryRepositoryPort,
+  ItotoriSourceUnitRepositoryPort,
   ItotoriTranslationBatchRepositoryPort,
-  LoadBridgeUnitsForSummaryInput,
-  LoadSceneSummaryByScene,
+  LoadCurrentSourceHashesInput,
+  LoadSourceUnitsForScopeInput,
+  LoadSourceUnitsInput,
   LoadTranslationBatchesQuery,
-  SceneSummaryRecord,
+  SourceUnitTextRecord,
   TranslationBatchRecord,
 } from "@itotori/db";
 import {
@@ -23,6 +23,7 @@ import {
   resolveSceneSummaryProvider,
   type SceneSummaryCliDependencies,
 } from "../src/agents/scene-summary/index.js";
+import { InMemoryContextArtifactRepository } from "../src/orchestrator/context-brain.js";
 import { DEV_PAIR, LocalProviderRunArtifactRecorder } from "../src/providers/index.js";
 import { readProviderRunArtifactsFromDir } from "../src/telemetry/provider-run-artifact-source.js";
 
@@ -59,7 +60,7 @@ function successResponse(): Response {
   });
 }
 
-function unitRecord(bridgeUnitId: string): BridgeUnitTextRecord {
+function unitRecord(bridgeUnitId: string): SourceUnitTextRecord {
   return {
     bridgeUnitId,
     sourceUnitKey: "scene.001.line.001",
@@ -70,7 +71,7 @@ function unitRecord(bridgeUnitId: string): BridgeUnitTextRecord {
   };
 }
 
-function batchRecord(unit: BridgeUnitTextRecord): TranslationBatchRecord {
+function batchRecord(unit: SourceUnitTextRecord): TranslationBatchRecord {
   return {
     batchId: "batch-1",
     projectId: "p",
@@ -123,36 +124,38 @@ class OneBatchRepository implements ItotoriTranslationBatchRepositoryPort {
   }
 }
 
-// Minimal read-only summary repository: the run is `--dry-run` so no summary is
-// persisted; only the three read paths the runner exercises are implemented.
-class ReadOnlySummaryRepository implements ItotoriSceneSummaryRepositoryPort {
-  constructor(private readonly units: Map<string, BridgeUnitTextRecord>) {}
-  async saveSummary(): Promise<SceneSummaryRecord> {
-    throw new Error("dry-run: saveSummary must not be called");
-  }
-  async loadSummaryByScene(
+class OneSourceUnitRepository implements ItotoriSourceUnitRepositoryPort {
+  constructor(private readonly units: Map<string, SourceUnitTextRecord>) {}
+
+  async loadSourceUnits(
     _actor: AuthorizationActor,
-    _query: LoadSceneSummaryByScene,
-  ): Promise<SceneSummaryRecord | null> {
-    return null;
+    input: LoadSourceUnitsInput,
+  ): Promise<Map<string, SourceUnitTextRecord>> {
+    return new Map(
+      input.bridgeUnitIds.flatMap((id) => {
+        const unit = this.units.get(id);
+        return unit === undefined ? [] : [[id, unit] as const];
+      }),
+    );
   }
-  async loadSummaries(): Promise<SceneSummaryRecord[]> {
-    return [];
-  }
-  async markStale(): Promise<void> {}
-  async currentSourceHashesForBridgeUnits(): Promise<Map<string, string>> {
-    return new Map();
-  }
-  async loadBridgeUnitsForSummary(
+
+  async currentSourceHashes(
     _actor: AuthorizationActor,
-    input: LoadBridgeUnitsForSummaryInput,
-  ): Promise<Map<string, BridgeUnitTextRecord>> {
-    const out = new Map<string, BridgeUnitTextRecord>();
-    for (const id of input.bridgeUnitIds) {
-      const rec = this.units.get(id);
-      if (rec) out.set(id, rec);
-    }
-    return out;
+    input: LoadCurrentSourceHashesInput,
+  ): Promise<Map<string, string>> {
+    return new Map(
+      input.bridgeUnitIds.flatMap((id) => {
+        const unit = this.units.get(id);
+        return unit === undefined ? [] : [[id, unit.sourceHash] as const];
+      }),
+    );
+  }
+
+  async loadSourceUnitsForScope(
+    _actor: AuthorizationActor,
+    _input: LoadSourceUnitsForScopeInput,
+  ): Promise<SourceUnitTextRecord[]> {
+    return [...this.units.values()];
   }
 }
 
@@ -193,7 +196,8 @@ describe("semantic-agent CLI paid-provider boundary", () => {
     const deps: SceneSummaryCliDependencies = {
       actor: ACTOR,
       batchRepository: new OneBatchRepository([batchRecord(unit)]),
-      summaryRepository: new ReadOnlySummaryRepository(new Map([[unit.bridgeUnitId, unit]])),
+      sourceUnitRepository: new OneSourceUnitRepository(new Map([[unit.bridgeUnitId, unit]])),
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
       provider,
       now: () => new Date("2026-06-23T12:00:00Z"),
     };

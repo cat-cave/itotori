@@ -24,6 +24,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  LocalizeProjectContextStoreRequiredError,
   LocalizeProjectMissingProviderRunArtifactsDirectoryError,
   LocalizeProjectPairPolicyError,
   assertEngineVisibleTargetText,
@@ -53,6 +54,7 @@ import {
   type PairChoice,
 } from "../src/orchestrator/agentic-loop.js";
 import { InvocationOperationalPauseError } from "../src/orchestrator/invocation-supervisor.js";
+import { InMemoryContextArtifactRepository } from "../src/orchestrator/context-brain.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -245,6 +247,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         io,
         actor: { userId: "test" },
         supervision: testSupervision(),
+        contextArtifactRepository: new InMemoryContextArtifactRepository(),
       }),
     ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
   });
@@ -307,15 +310,55 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         io,
         actor: { userId: "test" },
         supervision: deniedSupervision,
+        contextArtifactRepository: new InMemoryContextArtifactRepository(),
       }),
     ).rejects.toBeInstanceOf(InvocationOperationalPauseError);
     expect(paidDispatches).toBe(0);
     expect(blockers).toEqual([expect.objectContaining({ kind: "budget_cap" })]);
   });
 
-  it("writes all three artifacts from the selected non-blank candidate, and pins every invocation to the policy pair", async () => {
+  it("refuses a provider override when no central context repository is injected", async () => {
     const smokeBridge = loadSmokeBridge() as {
       units: ReadonlyArray<{ bridgeUnitId: string; sourceLocale?: string }>;
+    };
+    const firstUnit = smokeBridge.units[0];
+    if (firstUnit === undefined) {
+      throw new Error("smoke bridge fixture must carry a first unit");
+    }
+    const { io } = ioFixture(
+      new Map<string, unknown>([
+        ["bridge.json", smokeBridge],
+        ["pair-policy.json", loadPreset()],
+      ]),
+    );
+    await expect(
+      runLocalizeProjectStageCommand({
+        bridgePath: "bridge.json",
+        pairPolicyPath: "pair-policy.json",
+        outputPath: "out/agentic-loop-bundle.v0.json",
+        translatedBundleOutputPath: "out/translated-bridge.json",
+        patchReportOutputPath: "out/patch-report.json",
+        liveFactoryOverride: () =>
+          writtenTranslationFactory({
+            bridgeUnitId: firstUnit.bridgeUnitId,
+            sourceLocale: firstUnit.sourceLocale ?? "ja-JP",
+        }),
+        io,
+        actor: { userId: "test" },
+        supervision: testSupervision(),
+      } as never),
+    ).rejects.toBeInstanceOf(LocalizeProjectContextStoreRequiredError);
+  });
+
+  it("writes all three artifacts from the selected non-blank candidate, and pins every invocation to the policy pair", async () => {
+    const smokeBridge = loadSmokeBridge() as {
+      bridgeId: string;
+      sourceBundleRevision: { revisionId: string };
+      units: ReadonlyArray<{
+        bridgeUnitId: string;
+        sourceLocale?: string;
+        sourceRevision: { revisionId: string };
+      }>;
     };
     const firstUnit = smokeBridge.units[0];
     if (firstUnit === undefined) {
@@ -326,6 +369,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
       ["pair-policy.json", loadPreset()],
     ]);
     const { io, writes } = ioFixture(reads);
+    const contextArtifacts = new InMemoryContextArtifactRepository();
     // Inject the deterministic target-language provider via the ONLY test seam
     // (`liveFactoryOverride`). No fake provider ships in the command.
     await runLocalizeProjectStageCommand({
@@ -342,6 +386,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
       io,
       actor: { userId: "test" },
       supervision: testSupervision(),
+      contextArtifactRepository: contextArtifacts,
     });
 
     // ----- AgenticLoopBundle -----
@@ -432,6 +477,19 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     // The patch-report records the selected text the downstream replay must
     // observe, including the RealLive encoding wrap.
     expect(patchReport.translatedTargetText).toBe(`「${selectedBody}」`);
+
+    // The test seam receives an explicitly injected central repository; the
+    // command never constructs an ephemeral fallback of its own.
+    const persistedContext = await contextArtifacts.retrieveArtifacts(
+      { userId: "test" },
+      {
+        projectId: smokeBridge.bridgeId,
+        localeBranchId: `branch:${firstUnit.sourceRevision.revisionId}`,
+        sourceRevisionId: smokeBridge.sourceBundleRevision.revisionId,
+      },
+    );
+    expect(persistedContext.status).toBe("completed");
+    expect(persistedContext.matches.length).toBeGreaterThan(0);
   });
 });
 
@@ -869,6 +927,7 @@ describe("OpenRouter-served route recording", () => {
       io,
       actor: { userId: "test" },
       supervision: testSupervision(),
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
     });
 
     // The reported served route is sufficient for the normal run; there is
@@ -964,6 +1023,7 @@ describe("OpenRouter-served route recording", () => {
       io,
       actor: { userId: "test" },
       supervision: testSupervision(),
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
     });
 
     const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
@@ -1046,6 +1106,7 @@ describe("OpenRouter-served route recording", () => {
       io,
       actor: { userId: "test" },
       supervision: testSupervision(),
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
     });
 
     const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
@@ -1079,6 +1140,7 @@ describe("OpenRouter-served route recording", () => {
         io,
         actor: { userId: "test" },
         supervision: testSupervision(),
+        contextArtifactRepository: new InMemoryContextArtifactRepository(),
       }),
     ).rejects.toMatchObject({
       blocker: { kind: "provider_outage" },

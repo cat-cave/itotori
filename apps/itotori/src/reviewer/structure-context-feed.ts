@@ -57,8 +57,8 @@ export type ReviewerDetailStructureContextFeed = {
   whyHeading: string;
   sceneId: number | null;
   items: ReviewerDetailStructureContextFeedItem[];
-  /** All citable context artifact refs recorded on the decision record. */
-  contextArtifactRefs: string[];
+  /** All citable context artifact IDs recorded on the decision record. */
+  contextArtifactIds: string[];
   /** Draft-selected citation refs that fed the exact draft under review. */
   citationRefs: string[];
   fedTheDraft: boolean;
@@ -66,11 +66,11 @@ export type ReviewerDetailStructureContextFeed = {
 
 /**
  * The shape stored on `decisionRecord.context` by the agentic-loop bridge
- * (wiki-structure-context-feed). Backward-compatible with the pre-feature
- * shape that only carried `contextArtifactRefs` (+ optional `sceneId`).
+ * (wiki-structure-context-feed). `citationRefs` and `sceneId` remain
+ * optional because an outcome may have no draft-selected citations or scene.
  */
 export type DecisionRecordStructureContext = {
-  contextArtifactRefs: string[];
+  contextArtifactIds: string[];
   citationRefs?: string[] | undefined;
   sceneId?: number | undefined;
   /**
@@ -117,13 +117,13 @@ export function classifyStructureContextArtifactRef(ref: string): StructureConte
 
 function classifyDecisionContextFeedRef(
   ref: string,
-  input: { contextArtifactRefs: ReadonlySet<string>; citationRefs: ReadonlySet<string> },
+  input: { contextArtifactIds: ReadonlySet<string>; citationRefs: ReadonlySet<string> },
 ): StructureContextFeedItemKind {
   const artifactKind = classifyStructureContextArtifactRef(ref);
   if (artifactKind !== structureContextFeedItemKindValues.other) {
     return artifactKind;
   }
-  if (input.citationRefs.has(ref) && !input.contextArtifactRefs.has(ref)) {
+  if (input.citationRefs.has(ref) && !input.contextArtifactIds.has(ref)) {
     return structureContextFeedItemKindValues.glossaryTerm;
   }
   return artifactKind;
@@ -174,9 +174,9 @@ function defaultBodyForRef(kind: StructureContextFeedItemKind, ref: string): str
 
 function feedRoleForRef(
   ref: string,
-  input: { contextArtifactRefs: ReadonlySet<string>; citationRefs: ReadonlySet<string> },
+  input: { contextArtifactIds: ReadonlySet<string>; citationRefs: ReadonlySet<string> },
 ): string {
-  if (input.citationRefs.has(ref) && !input.contextArtifactRefs.has(ref)) {
+  if (input.citationRefs.has(ref) && !input.contextArtifactIds.has(ref)) {
     return "Selected by the draft citationRefs; this citation fed the draft under review.";
   }
   return "Cited context artifact available to the translate stage.";
@@ -209,8 +209,8 @@ export function buildStructureContextFeedFromDecisionContext(
   if (context === null || context === undefined) {
     return null;
   }
-  const refs = Array.isArray(context.contextArtifactRefs)
-    ? context.contextArtifactRefs.filter((r): r is string => typeof r === "string" && r.length > 0)
+  const refs = Array.isArray(context.contextArtifactIds)
+    ? context.contextArtifactIds.filter((r): r is string => typeof r === "string" && r.length > 0)
     : [];
   const citationRefs = Array.isArray(context.citationRefs)
     ? context.citationRefs.filter((r): r is string => typeof r === "string" && r.length > 0)
@@ -228,7 +228,7 @@ export function buildStructureContextFeedFromDecisionContext(
 
   const items: ReviewerDetailStructureContextFeedItem[] = [];
   const coveredRefs = new Set<string>();
-  const contextArtifactRefSet = new Set(refs);
+  const contextArtifactIdSet = new Set(refs);
   const citationRefSet = new Set(citationRefs);
 
   if (hasStructured && structured !== undefined) {
@@ -297,7 +297,7 @@ export function buildStructureContextFeedFromDecisionContext(
       continue;
     }
     const kind = classifyDecisionContextFeedRef(ref, {
-      contextArtifactRefs: contextArtifactRefSet,
+      contextArtifactIds: contextArtifactIdSet,
       citationRefs: citationRefSet,
     });
     items.push({
@@ -306,7 +306,7 @@ export function buildStructureContextFeedFromDecisionContext(
       title: titleForKind(kind, ref),
       body: defaultBodyForRef(kind, ref),
       feedRole: feedRoleForRef(ref, {
-        contextArtifactRefs: contextArtifactRefSet,
+        contextArtifactIds: contextArtifactIdSet,
         citationRefs: citationRefSet,
       }),
     });
@@ -329,7 +329,7 @@ export function buildStructureContextFeedFromDecisionContext(
       : "Cited structure context for this draft",
     sceneId,
     items,
-    contextArtifactRefs: [...refs].sort(),
+    contextArtifactIds: [...refs].sort(),
     citationRefs: [...citationRefs].sort(),
     fedTheDraft: hasStructured,
   };
@@ -359,13 +359,13 @@ export function extractDecisionRecordStructureContext(
     return null;
   }
   const ctx = context as {
-    contextArtifactRefs?: unknown;
+    contextArtifactIds?: unknown;
     citationRefs?: unknown;
     sceneId?: unknown;
     structuredContext?: unknown;
   };
-  const refs = Array.isArray(ctx.contextArtifactRefs)
-    ? ctx.contextArtifactRefs.filter((r): r is string => typeof r === "string")
+  const refs = Array.isArray(ctx.contextArtifactIds)
+    ? ctx.contextArtifactIds.filter((r): r is string => typeof r === "string")
     : [];
   const citationRefs = Array.isArray(ctx.citationRefs)
     ? ctx.citationRefs.filter((r): r is string => typeof r === "string")
@@ -394,7 +394,7 @@ export function extractDecisionRecordStructureContext(
     return null;
   }
   return {
-    contextArtifactRefs: refs,
+    contextArtifactIds: refs,
     ...(citationRefs.length > 0 ? { citationRefs } : {}),
     ...(sceneId !== undefined ? { sceneId } : {}),
     ...(structuredContext !== undefined ? { structuredContext } : {}),
@@ -408,12 +408,12 @@ export function extractDecisionRecordStructureContext(
  */
 export function buildStructureContextFeedFromInjection(input: {
   structuredContext?: StructuredContextInjection | undefined;
-  contextArtifactRefs: ReadonlyArray<string>;
+  contextArtifactIds: ReadonlyArray<string>;
   citationRefs?: ReadonlyArray<string> | undefined;
   sceneId?: number | undefined;
 }): ReviewerDetailStructureContextFeed | null {
   return buildStructureContextFeedFromDecisionContext({
-    contextArtifactRefs: [...input.contextArtifactRefs],
+    contextArtifactIds: [...input.contextArtifactIds],
     ...(input.citationRefs !== undefined ? { citationRefs: [...input.citationRefs] } : {}),
     ...(input.sceneId !== undefined ? { sceneId: input.sceneId } : {}),
     ...(input.structuredContext !== undefined

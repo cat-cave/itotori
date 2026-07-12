@@ -157,7 +157,9 @@ export type TranslationContextArtifact = {
   category: string;
   title: string;
   body: string;
-  /** Content-hash / version identity for the resolved artifact. */
+  /** Immutable ContextEntryVersion identity when the artifact came from the central store. */
+  contextEntryVersionId?: string;
+  /** Content integrity hash; this verifies bytes and is not a version identity. */
   contentHash?: string;
   data?: Record<string, unknown>;
 };

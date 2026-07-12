@@ -3,47 +3,35 @@
 // col/row layout, and issues count without a DB.
 
 import { describe, expect, it } from "vitest";
-import type { RouteChoiceRecord, RouteMapRecord } from "@itotori/db";
+import type { ContextRouteChoice, ContextRouteMap } from "@itotori/db";
 import { composePlayRouteMapReadModel } from "../src/play/route-map-read-model.js";
 
 function route(
-  overrides: Partial<RouteMapRecord> & Pick<RouteMapRecord, "routeKey">,
-): RouteMapRecord {
+  overrides: Partial<ContextRouteMap> & Pick<ContextRouteMap, "routeKey">,
+): ContextRouteMap {
   return {
-    routeMapId: overrides.routeMapId ?? `rm-${overrides.routeKey}`,
+    contextArtifactId: overrides.contextArtifactId ?? `rm-${overrides.routeKey}`,
     projectId: "project-1",
     localeBranchId: "locale-1",
     sourceRevisionId: "rev-1",
     routeKey: overrides.routeKey,
     routeTitle: overrides.routeTitle ?? overrides.routeKey,
-    mapLocale: "ja-JP",
     routeSummary: overrides.routeSummary ?? `Summary for ${overrides.routeKey}`,
-    modelProviderFamily: "fake",
-    modelId: "fake-model",
-    modelContextWindowTokens: 8000,
-    modelMaxOutputTokens: null,
-    promptTemplateVersion: "v1",
-    promptHash: "hash",
-    inputTokenEstimate: 100,
-    completionTokens: 50,
     status: overrides.status ?? "Fresh",
-    invalidatedAt: null,
-    invalidatedReason: null,
     generatedAt: overrides.generatedAt ?? new Date("2026-07-08T00:00:00.000Z"),
-    createdAt: new Date("2026-07-08T00:00:00.000Z"),
     citations: [],
     ...overrides,
   };
 }
 
 function choice(
-  overrides: Partial<RouteChoiceRecord> &
-    Pick<RouteChoiceRecord, "choiceKey" | "fromRouteKey"> & {
-      options: RouteChoiceRecord["options"];
+  overrides: Partial<ContextRouteChoice> &
+    Pick<ContextRouteChoice, "choiceKey" | "fromRouteKey"> & {
+      options: ContextRouteChoice["options"];
     },
-): RouteChoiceRecord {
+): ContextRouteChoice {
   return {
-    routeChoiceId: overrides.routeChoiceId ?? `rc-${overrides.choiceKey}`,
+    contextArtifactId: overrides.contextArtifactId ?? `rc-${overrides.choiceKey}`,
     projectId: "project-1",
     localeBranchId: "locale-1",
     sourceRevisionId: "rev-1",
@@ -51,19 +39,9 @@ function choice(
     kind: overrides.kind ?? "RouteBranch",
     fromRouteKey: overrides.fromRouteKey,
     promptSummary: "Choose a path",
-    mapLocale: "ja-JP",
     options: overrides.options,
-    modelProviderFamily: "fake",
-    modelId: "fake-model",
-    modelContextWindowTokens: 8000,
-    modelMaxOutputTokens: null,
-    promptTemplateVersion: "v1",
-    promptHash: "hash",
     status: overrides.status ?? "Fresh",
-    invalidatedAt: null,
-    invalidatedReason: null,
     generatedAt: overrides.generatedAt ?? new Date("2026-07-08T00:00:00.000Z"),
-    createdAt: new Date("2026-07-08T00:00:00.000Z"),
     citations: [],
   };
 }
@@ -137,13 +115,13 @@ describe("composePlayRouteMapReadModel", () => {
       routeMaps: [
         route({
           routeKey: "a",
-          routeMapId: "rm-stale",
+          contextArtifactId: "rm-stale",
           status: "Stale",
           generatedAt: new Date("2026-07-08T02:00:00.000Z"),
         }),
         route({
           routeKey: "a",
-          routeMapId: "rm-fresh",
+          contextArtifactId: "rm-fresh",
           status: "Fresh",
           generatedAt: new Date("2026-07-08T01:00:00.000Z"),
         }),
@@ -169,7 +147,7 @@ describe("composePlayRouteMapReadModel", () => {
       routeChoices: [
         choice({
           choiceKey: "c1",
-          routeChoiceId: "rc-stale",
+          contextArtifactId: "rc-stale",
           fromRouteKey: "a",
           status: "Stale",
           generatedAt: new Date("2026-07-08T02:00:00.000Z"),
@@ -186,7 +164,7 @@ describe("composePlayRouteMapReadModel", () => {
         }),
         choice({
           choiceKey: "c1",
-          routeChoiceId: "rc-fresh",
+          contextArtifactId: "rc-fresh",
           fromRouteKey: "a",
           status: "Fresh",
           generatedAt: new Date("2026-07-08T01:00:00.000Z"),

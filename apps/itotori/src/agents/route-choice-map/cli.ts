@@ -1,16 +1,19 @@
-import type { AuthorizationActor, ItotoriRouteChoiceMapRepositoryPort } from "@itotori/db";
+import type { AuthorizationActor, ItotoriContextArtifactRepositoryPort } from "@itotori/db";
+import { contextArtifactCategoryValues } from "@itotori/db";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
 import {
   resolveSemanticAgentProvider,
   type SemanticAgentLiveProviderOptions,
 } from "../../providers/fake.js";
 import { generateRouteChoiceMap, type GenerateRouteChoiceMapOptions } from "./agent.js";
-import { persistRouteChoice, persistRouteMap } from "./persistence.js";
-import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import {
-  markStaleRouteChoiceArtifactsForRevision,
-  type RouteChoiceStalenessScanResult,
-} from "./staleness.js";
+  artifactDataString,
+  artifactIsActiveForTemplate,
+  loadSemanticArtifacts,
+  persistRouteChoiceInContext,
+  persistRouteMapInContext,
+} from "../semantic-context-store.js";
+import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import type {
   BridgeUnitForRouteMap,
   CuratedRouteRef,
@@ -48,7 +51,7 @@ export type GenerateRouteMapsCliResult = {
 
 export type RouteChoiceMapCliDependencies = {
   actor: AuthorizationActor;
-  repository: ItotoriRouteChoiceMapRepositoryPort;
+  contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
   provider: ModelProvider;
   loadInputContext: (
     actor: AuthorizationActor,
@@ -113,7 +116,7 @@ export async function runGenerateRouteMapsCli(
   }
   const routeKeyFilter = input.routeKeyFilter;
   if (routeKeyFilter !== undefined) {
-    for (const key of [...routesToInclude]) {
+    for (const key of routesToInclude) {
       if (key !== routeKeyFilter) {
         routesToInclude.delete(key);
       }
@@ -121,15 +124,25 @@ export async function runGenerateRouteMapsCli(
   }
 
   if (!input.includeStale) {
-    const existingFresh = await deps.repository.loadRouteMapsByProject(deps.actor, {
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      status: "Fresh",
-      promptTemplateVersion: PROMPT_TEMPLATE_VERSION_V1,
-    });
-    const freshKeys = new Set(existingFresh.map((row) => row.routeKey));
-    for (const routeKey of [...routesToInclude]) {
+    const existingArtifacts = await loadSemanticArtifacts(
+      { actor: deps.actor, repository: deps.contextArtifactRepository },
+      {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        sourceRevisionId: input.sourceRevisionId,
+        categories: [contextArtifactCategoryValues.routeMap],
+      },
+    );
+    const freshKeys = new Set(
+      existingArtifacts.flatMap((artifact) => {
+        const routeKey = artifactDataString(artifact, "routeKey");
+        return routeKey !== undefined &&
+          artifactIsActiveForTemplate(artifact, PROMPT_TEMPLATE_VERSION_V1)
+          ? [routeKey]
+          : [];
+      }),
+    );
+    for (const routeKey of routesToInclude) {
       if (freshKeys.has(routeKey)) {
         routesToInclude.delete(routeKey);
         skippedFreshRouteCount += 1;
@@ -169,7 +182,12 @@ export async function runGenerateRouteMapsCli(
     if (input.dryRun) {
       finalRoutes.push(route);
     } else {
-      finalRoutes.push(await persistRouteMap(deps.repository, deps.actor, route));
+      finalRoutes.push(
+        await persistRouteMapInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
+          route,
+        ),
+      );
     }
     log(
       `route routeKey=${route.routeKey} routeMapId=${route.id} cited=${route.citedUnitIds.length}`,
@@ -183,7 +201,12 @@ export async function runGenerateRouteMapsCli(
     if (input.dryRun) {
       finalChoices.push(choice);
     } else {
-      finalChoices.push(await persistRouteChoice(deps.repository, deps.actor, choice));
+      finalChoices.push(
+        await persistRouteChoiceInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
+          choice,
+        ),
+      );
     }
     log(
       `choice choiceKey=${choice.choiceKey} kind=${choice.kind} cited=${choice.citedUnitIds.length} options=${choice.options.length}`,
@@ -202,14 +225,56 @@ export async function runGenerateRouteMapsCli(
 export async function runCheckRouteMapsCli(
   input: CheckRouteMapsCliInput,
   deps: RouteChoiceMapCliDependencies,
-): Promise<RouteChoiceStalenessScanResult> {
+): Promise<CentralRouteCheckResult> {
   const log = deps.log ?? noopLog;
-  const result = await markStaleRouteChoiceArtifactsForRevision(deps.repository, deps.actor, {
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: input.sourceRevisionId,
-    markStale: input.markStale ?? false,
-  });
+  const artifacts = await loadSemanticArtifacts(
+    { actor: deps.actor, repository: deps.contextArtifactRepository },
+    {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      categories: [contextArtifactCategoryValues.routeMap],
+    },
+  );
+  const invalidated =
+    input.markStale === true
+      ? await deps.contextArtifactRepository.invalidateAffectedArtifacts(deps.actor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          reason: "standalone_cli_check",
+        })
+      : undefined;
+  const invalidatedSet = new Set(invalidated?.invalidatedArtifactIds ?? []);
+  const routeArtifacts = artifacts.filter((artifact) => typeof artifact.data.routeKey === "string");
+  const choiceArtifacts = artifacts.filter(
+    (artifact) => typeof artifact.data.choiceKey === "string",
+  );
+  const result: CentralRouteCheckResult = {
+    scannedRouteCount: routeArtifacts.length,
+    scannedChoiceCount: choiceArtifacts.length,
+    driftedRoutes: routeArtifacts
+      .filter((artifact) => invalidatedSet.has(artifact.contextArtifactId))
+      .map((artifact) => ({
+        routeKey: String(artifact.data.routeKey),
+        routeMapId: artifact.contextArtifactId,
+        driftedBridgeUnitIds: artifact.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+      })),
+    driftedChoices: choiceArtifacts
+      .filter((artifact) => invalidatedSet.has(artifact.contextArtifactId))
+      .map((artifact) => ({
+        choiceKey: String(artifact.data.choiceKey),
+        routeChoiceId: artifact.contextArtifactId,
+        driftedBridgeUnitIds: artifact.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+      })),
+    danglingChoices: [],
+    markedStaleRouteCount: routeArtifacts.filter((artifact) =>
+      invalidatedSet.has(artifact.contextArtifactId),
+    ).length,
+    markedStaleChoiceCount: choiceArtifacts.filter((artifact) =>
+      invalidatedSet.has(artifact.contextArtifactId),
+    ).length,
+  };
   log(
     `scanned routes=${result.scannedRouteCount} choices=${result.scannedChoiceCount} ` +
       `drifted routes=${result.driftedRoutes.length} choices=${result.driftedChoices.length} ` +
@@ -233,6 +298,28 @@ export async function runCheckRouteMapsCli(
   }
   return result;
 }
+
+export type CentralRouteCheckResult = {
+  scannedRouteCount: number;
+  scannedChoiceCount: number;
+  driftedRoutes: Array<{
+    routeKey: string;
+    routeMapId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  driftedChoices: Array<{
+    choiceKey: string;
+    routeChoiceId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  danglingChoices: Array<{
+    choiceKey: string;
+    routeChoiceId: string;
+    targetRouteKey: string;
+  }>;
+  markedStaleRouteCount: number;
+  markedStaleChoiceCount: number;
+};
 
 function noopLog(_message: string): void {
   // intentionally empty

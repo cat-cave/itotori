@@ -1,22 +1,18 @@
 // play-mark-validated — compose per-scene coverage + route map graph into the
 // Play RouteMap read-model. The repository owns persistence + permission gates;
 // this service joins coverage rows with routeMaps / routeChoices so the UI can
-// paint every node with coverage state and mark a scene validated.
+// paint every node with coverage state and mark a scene validated. Route
+// topology is read from central context artifacts, never a parallel map table.
 
 import type {
   AuthorizationActor,
-  ItotoriRouteChoiceMapRepositoryPort,
+  ContextRouteChoice,
+  ContextRouteMap,
   ItotoriSceneCoverageRepositoryPort,
-  RouteChoiceRecord,
-  RouteMapRecord,
   SceneCoverageRecord,
   SceneLocalizationCoverageState,
 } from "@itotori/db";
-import {
-  routeChoiceStatusValues,
-  routeMapStatusValues,
-  sceneLocalizationCoverageStateValues,
-} from "@itotori/db";
+import { sceneLocalizationCoverageStateValues } from "@itotori/db";
 
 export const SCENE_COVERAGE_READ_SCHEMA_VERSION = "itotori.play.scene-coverage.v0" as const;
 export const SCENE_COVERAGE_SET_SCHEMA_VERSION = "itotori.play.set-scene-coverage.v0" as const;
@@ -100,9 +96,9 @@ export class SceneCoverageService implements SceneCoverageServicePort {
   constructor(
     private readonly deps: {
       coverage: ItotoriSceneCoverageRepositoryPort;
-      routeMaps: Pick<
-        ItotoriRouteChoiceMapRepositoryPort,
-        "loadRouteMapsByProject" | "loadRouteChoicesByProject"
+      contextArtifacts: Pick<
+        import("@itotori/db").ItotoriSemanticContextReadRepository,
+        "loadRouteMaps" | "loadRouteChoices"
       >;
       now?: () => Date;
     },
@@ -255,17 +251,17 @@ export class SceneCoverageService implements SceneCoverageServicePort {
   private async loadActiveRouteGraph(
     actor: AuthorizationActor,
     query: { projectId: string; localeBranchId: string },
-  ): Promise<{ routeMaps: RouteMapRecord[]; routeChoices: RouteChoiceRecord[] }> {
+  ): Promise<{ routeMaps: ContextRouteMap[]; routeChoices: ContextRouteChoice[] }> {
     const [freshMaps, freshChoices] = await Promise.all([
-      this.deps.routeMaps.loadRouteMapsByProject(actor, {
+      this.deps.contextArtifacts.loadRouteMaps(actor, {
         projectId: query.projectId,
         localeBranchId: query.localeBranchId,
-        status: routeMapStatusValues.fresh,
+        includeStale: false,
       }),
-      this.deps.routeMaps.loadRouteChoicesByProject(actor, {
+      this.deps.contextArtifacts.loadRouteChoices(actor, {
         projectId: query.projectId,
         localeBranchId: query.localeBranchId,
-        status: routeChoiceStatusValues.fresh,
+        includeStale: false,
       }),
     ]);
     if (freshMaps.length > 0 || freshChoices.length > 0) {
@@ -273,15 +269,15 @@ export class SceneCoverageService implements SceneCoverageServicePort {
     }
 
     const [staleMaps, staleChoices] = await Promise.all([
-      this.deps.routeMaps.loadRouteMapsByProject(actor, {
+      this.deps.contextArtifacts.loadRouteMaps(actor, {
         projectId: query.projectId,
         localeBranchId: query.localeBranchId,
-        status: routeMapStatusValues.stale,
+        includeStale: true,
       }),
-      this.deps.routeMaps.loadRouteChoicesByProject(actor, {
+      this.deps.contextArtifacts.loadRouteChoices(actor, {
         projectId: query.projectId,
         localeBranchId: query.localeBranchId,
-        status: routeChoiceStatusValues.stale,
+        includeStale: true,
       }),
     ]);
     return { routeMaps: staleMaps, routeChoices: staleChoices };
@@ -289,7 +285,7 @@ export class SceneCoverageService implements SceneCoverageServicePort {
 }
 
 function selectLatestRoutesByKey(
-  routeMaps: RouteMapRecord[],
+  routeMaps: ContextRouteMap[],
 ): Map<string, { routeMapId: string; routeKey: string; routeTitle: string; generatedAt: Date }> {
   const routeByKey = new Map<
     string,
@@ -298,12 +294,12 @@ function selectLatestRoutesByKey(
   const sortedMaps = [...routeMaps].sort((a, b) => {
     const byTime = b.generatedAt.getTime() - a.generatedAt.getTime();
     if (byTime !== 0) return byTime;
-    return a.routeMapId.localeCompare(b.routeMapId);
+    return a.contextArtifactId.localeCompare(b.contextArtifactId);
   });
   for (const route of sortedMaps) {
     if (!routeByKey.has(route.routeKey)) {
       routeByKey.set(route.routeKey, {
-        routeMapId: route.routeMapId,
+        routeMapId: route.contextArtifactId,
         routeKey: route.routeKey,
         routeTitle: route.routeTitle,
         generatedAt: route.generatedAt,
@@ -313,7 +309,7 @@ function selectLatestRoutesByKey(
   return routeByKey;
 }
 
-function buildEdgesFromChoices(routeChoices: RouteChoiceRecord[]): PlaySceneCoverageEdge[] {
+function buildEdgesFromChoices(routeChoices: ContextRouteChoice[]): PlaySceneCoverageEdge[] {
   const edges: PlaySceneCoverageEdge[] = [];
   const seenEdge = new Set<string>();
   for (const choice of routeChoices) {

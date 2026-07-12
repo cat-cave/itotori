@@ -1,8 +1,4 @@
-import {
-  createUuid7,
-  type AuthorizationActor,
-  type ItotoriTerminologyCandidateRepositoryPort,
-} from "@itotori/db";
+import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
 import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
@@ -34,14 +30,15 @@ import {
 
 export type GenerateTerminologyCandidatesOptions = {
   provider: ModelProvider;
-  // ITOTORI-150 — optional repository-side pre-persist conflict check.
-  // When both are supplied, `existsTerminologyTermBySurfaceForm` is queried
-  // in the pre-persist loop (mirroring staleness.ts) so a glossary term a
-  // curator inserted mid-run surfaces SYNCHRONOUSLY as an
-  // `ExistingGlossaryConflictError` at pre-persist — closing the TOCTOU
-  // window between input-context load and persist.
-  repository?: ItotoriTerminologyCandidateRepositoryPort;
-  actor?: AuthorizationActor;
+  /**
+   * Optional authoritative glossary lookup. This deliberately talks to the
+   * glossary store, not the retired terminology-candidate table, so a term
+   * added after prompt construction still rejects a duplicate candidate.
+   */
+  lookupExistingGlossaryTerm?: (input: {
+    projectId: string;
+    surfaceForm: string;
+  }) => Promise<string | null>;
 };
 
 export async function generateTerminologyCandidates(
@@ -134,21 +131,14 @@ export async function generateTerminologyCandidates(
 
   const candidates: TerminologyCandidate[] = [];
   for (const emitted of pack.candidates) {
-    // ITOTORI-150 — repository-side pre-persist conflict check, PARALLEL to
-    // the supervised input-glossary check and mirroring staleness.ts. Closes the
-    // TOCTOU window: a glossary term a curator inserted between input-context
-    // load and persist surfaces SYNCHRONOUSLY here as
-    // `ExistingGlossaryConflictError` — even when the input `existingGlossary`
-    // was empty — instead of asynchronously as a `RejectedByReviewer` at the
-    // next staleness scan.
-    if (options.repository !== undefined && options.actor !== undefined) {
-      const repositoryConflict = await options.repository.existsTerminologyTermBySurfaceForm(
-        options.actor,
-        {
-          projectId: input.projectId,
-          surfaceForm: emitted.surfaceForm,
-        },
-      );
+    // Re-read the glossary immediately before projecting the candidate. This
+    // closes the prompt-to-persist TOCTOU window without reintroducing the
+    // retired terminology-candidate persistence silo.
+    if (options.lookupExistingGlossaryTerm !== undefined) {
+      const repositoryConflict = await options.lookupExistingGlossaryTerm({
+        projectId: input.projectId,
+        surfaceForm: emitted.surfaceForm,
+      });
       if (repositoryConflict !== null) {
         throw new ExistingGlossaryConflictError(emitted.surfaceForm, repositoryConflict);
       }
