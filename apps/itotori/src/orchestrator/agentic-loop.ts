@@ -824,6 +824,12 @@ export async function runAgenticLoopForUnit(
   }
   stages.push(preStage);
 
+  // Freeze the post-speaker packet's model-facing projection ONCE. Translation,
+  // repair, initial QA, and post-repair QA all receive this same resolved
+  // content (including persisted speaker-label bodies); none may separately
+  // re-resolve or reduce the packet to ids.
+  const resolvedAgentContext = resolvedAgentContextFromPacket(contextPacket, input.unit);
+
   // --------------------------- translation ---------------------------
   const translationStage = startStage("translation");
   const translationProvider = providerFactory({
@@ -840,7 +846,8 @@ export async function runAgenticLoopForUnit(
       policy,
       agentLabel: "translation-primary",
       structuredContext: contextResult.structuredContext,
-      contextArtifacts: translationContextArtifactsFromPacket(contextPacket),
+      contextArtifacts: resolvedAgentContext.contextArtifacts,
+      speaker: resolvedAgentContext.speaker,
       workScopeContext: input.workScopeContext,
       // Prior-run feedback is optional caller context; it never becomes a
       // durable persistence authority for this execution.
@@ -1008,6 +1015,8 @@ export async function runAgenticLoopForUnit(
         policy,
         draftText: primaryDraftText,
         agentLabel: entry.agentLabel,
+        contextArtifacts: resolvedAgentContext.contextArtifacts,
+        speaker: resolvedAgentContext.speaker,
       });
     } catch (error) {
       rethrowOperationalInvocation(error);
@@ -1104,7 +1113,8 @@ export async function runAgenticLoopForUnit(
           // Repair re-translates carrying the SAME resolved context packet so
           // the retry is still branch/scene/speaker aware, not context-stripped.
           structuredContext: contextResult.structuredContext,
-          contextArtifacts: translationContextArtifactsFromPacket(contextPacket),
+          contextArtifacts: resolvedAgentContext.contextArtifacts,
+          speaker: resolvedAgentContext.speaker,
           workScopeContext: input.workScopeContext,
           // Keep the prior-run feedback on every repair
           // attempt so the retry keeps addressing the flagged issue.
@@ -1183,6 +1193,8 @@ export async function runAgenticLoopForUnit(
         draftText: repairedText,
         attempt,
         repairStage,
+        contextArtifacts: resolvedAgentContext.contextArtifacts,
+        speaker: resolvedAgentContext.speaker,
       });
       qaFindings = qaFindings.concat(reQa.findings);
       for (const finding of reQa.findings) {
@@ -1977,10 +1989,19 @@ async function invokeSemanticContextStage(args: {
       ? { attemptOutcomeObserver: input.attemptOutcomeObserver }
       : {}),
   };
-  const evidenceUnits = [
-    buildSemanticBridgeUnit(input.unit),
-    ...(input.sceneUnits ?? []).map(buildSemanticBridgeUnit),
-  ];
+  // The caller supplies real scene siblings. Keep one canonical copy of each
+  // unit so a caller that includes the primary in its scene slice cannot
+  // duplicate evidence or perturb the semantic prompt/hash.
+  const evidenceByUnitId = new Map<string, ReturnType<typeof buildSemanticBridgeUnit>>();
+  for (const unit of [input.unit, ...(input.sceneUnits ?? [])]) {
+    evidenceByUnitId.set(unit.bridgeUnitId, buildSemanticBridgeUnit(unit));
+  }
+  const evidenceUnits = [...evidenceByUnitId.values()].sort((left, right) => {
+    const sourceKeyDelta = left.sourceUnitKey.localeCompare(right.sourceUnitKey);
+    return sourceKeyDelta !== 0
+      ? sourceKeyDelta
+      : left.bridgeUnitId.localeCompare(right.bridgeUnitId);
+  });
   const evidenceHashes = new Map(evidenceUnits.map((unit) => [unit.bridgeUnitId, unit.sourceHash]));
   const sourceUnitCitations = evidenceUnits.map((unit) => ({
     bridgeUnitId: unit.bridgeUnitId,
@@ -2534,9 +2555,29 @@ async function invokeSemanticContextStage(args: {
     });
   }
 
-  // Speaker labels already in the store are available for reuse by the
-  // pre-translation stage (and included in the packet).
-  const reusedSpeakers = speakerLabelsFromArtifacts(storedArtifacts);
+  // Speaker labels are durable context, not telemetry. Keep the active labels
+  // whose source units are part of this exact scene evidence in BOTH packet
+  // surfaces: `speakers` drives the per-unit prompt field, and `artifacts`
+  // carries the redaction-safe body that translation, repair, and QA cite.
+  const evidenceUnitIds = new Set(evidenceUnits.map((unit) => unit.bridgeUnitId));
+  const reusedSpeakerArtifacts = storedArtifacts.filter((artifact) => {
+    if (artifact.category !== contextArtifactCategoryValues.speakerLabel) {
+      return false;
+    }
+    const [label] = speakerLabelsFromArtifacts([artifact]);
+    if (label === undefined || !evidenceUnitIds.has(label.bridgeUnitId)) {
+      return false;
+    }
+    return (
+      findReusableArtifact({
+        artifacts: storedArtifacts,
+        contextArtifactId: artifact.contextArtifactId,
+        expectedSourceHashes: evidenceHashes,
+      }) !== undefined
+    );
+  });
+  resolvedArtifacts.push(...reusedSpeakerArtifacts);
+  const reusedSpeakers = speakerLabelsFromArtifacts(reusedSpeakerArtifacts);
 
   // Deduplicate artifacts by id (reuse + generate can overlap on structure).
   const deduped = dedupeResolvedArtifacts(resolvedArtifacts);
@@ -2665,9 +2706,29 @@ function dedupeResolvedArtifacts(
   );
 }
 
-function translationContextArtifactsFromPacket(
+type ResolvedAgentContext = {
+  /** The ONE frozen packet projection passed to translation, repair, and QA. */
+  contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
+  /** Redaction-safe persisted label for this unit, if context resolved one. */
+  speaker?: string | undefined;
+};
+
+function resolvedAgentContextFromPacket(
   packet: UnitContextPacket,
-): TranslationContextArtifact[] {
+  unit: LocalizationUnitV02,
+): ResolvedAgentContext {
+  const speakerLabel = speakerLabelToMap(packet.speakers).get(unit.bridgeUnitId);
+  const speaker =
+    speakerLabel !== undefined
+      ? promptSpeakerFromPersistedLabel(speakerLabel)
+      : unitSpeakerName(unit);
+  return {
+    contextArtifacts: contextArtifactsFromPacket(packet),
+    ...(speaker !== undefined ? { speaker } : {}),
+  };
+}
+
+function contextArtifactsFromPacket(packet: UnitContextPacket): TranslationContextArtifact[] {
   return packet.artifacts
     .filter((artifact) => artifact.status === "active" && artifact.body.trim().length > 0)
     .map((artifact) => ({
@@ -2691,8 +2752,23 @@ function mergeSpeakerArtifactsIntoPacket(
   return buildUnitContextPacket({
     unitId: packet.unitId,
     artifacts: dedupeResolvedArtifacts([...packet.artifacts, ...speakerArtifacts]),
-    speakers: labels.length > 0 ? labels : packet.speakers,
+    speakers: mergeSpeakerLabels(packet.speakers, labels),
   });
+}
+
+function mergeSpeakerLabels(
+  existing: ReadonlyArray<SpeakerLabel>,
+  incoming: ReadonlyArray<SpeakerLabel>,
+): SpeakerLabel[] {
+  const byUnitId = speakerLabelToMap(existing);
+  for (const label of incoming) {
+    // A just-persisted label is newer than an earlier label for the same unit;
+    // labels for siblings remain authoritative context for their own prompts.
+    byUnitId.set(label.bridgeUnitId, label);
+  }
+  return [...byUnitId.values()].sort((left, right) =>
+    left.bridgeUnitId.localeCompare(right.bridgeUnitId),
+  );
 }
 
 async function persistSpeakerLabelsToContextBrain(args: {
@@ -2751,6 +2827,29 @@ function formatSpeakerLabelBody(label: SpeakerLabel): string {
     default: {
       const _exhaustive: never = identity;
       return `Speaker: ${JSON.stringify(_exhaustive)}`;
+    }
+  }
+}
+
+/**
+ * Render a durable speaker label into the optional prompt `speaker` field.
+ * This deliberately narrows hidden identities to their reader-facing mask;
+ * `internalCharacterId` never crosses into translation or QA input.
+ */
+function promptSpeakerFromPersistedLabel(label: SpeakerLabel): string {
+  const identity = label.speakerId;
+  switch (identity.kind) {
+    case "named":
+      return `${identity.displayName} (persisted speaker label, confidence=${label.confidence})`;
+    case "narration":
+      return `narration (persisted speaker label, confidence=${label.confidence})`;
+    case "unknown_to_reader":
+      return `${identity.maskedDisplayName} (masked persisted speaker label, confidence=${label.confidence})`;
+    case "unknown_to_parser":
+      return `unknown speaker (${identity.reason}; persisted speaker label, confidence=${label.confidence})`;
+    default: {
+      const _exhaustive: never = identity;
+      return String(_exhaustive);
     }
   }
 }
@@ -2978,7 +3077,12 @@ async function invokeTranslationStage(args: {
    * Resolved content-bearing context artifacts (bodies + ids + versions).
    * The prompt renders the CONTENT; citations use contextArtifactId.
    */
-  contextArtifacts?: ReadonlyArray<TranslationContextArtifact>;
+  contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
+  /**
+   * Redaction-safe persisted speaker identity for the unit. This comes from
+   * the frozen ContextPacket when available, never from transient telemetry.
+   */
+  speaker?: string | undefined;
   workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
    * Prior-run feedback for this unit, rendered into the
@@ -3027,6 +3131,7 @@ async function invokeTranslationStage(args: {
       // Model sees ONLY the body — control markup is stripped.
       sourceText: skeleton.body,
       sourceHash: args.input.unit.sourceHash,
+      ...(args.speaker !== undefined ? { speaker: args.speaker } : {}),
     },
   ];
   const draftJobId = `agentic-loop-${args.input.unit.bridgeUnitId}-job`;
@@ -3048,7 +3153,7 @@ async function invokeTranslationStage(args: {
     // Persistent context brain — translator receives resolved CONTENT (bodies +
     // titles + content integrity hashes), never bare id lists. `structuredContext` still
     // renders the deterministic structure block when present.
-    contextArtifacts: [...(args.contextArtifacts ?? [])],
+    contextArtifacts: args.contextArtifacts,
     ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
     ...(args.workScopeContext !== undefined ? { workScopeContext: args.workScopeContext } : {}),
     ...(args.priorPassFeedback !== undefined ? { priorPassFeedback: args.priorPassFeedback } : {}),
@@ -3193,6 +3298,10 @@ async function invokeQaStage(args: {
   policy: AgenticLoopPolicy;
   draftText: string;
   agentLabel: string;
+  /** The exact frozen packet projection also passed to translation / repair. */
+  contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
+  /** Redaction-safe persisted speaker identity from that same packet. */
+  speaker?: string | undefined;
 }): Promise<QaInvocationResult> {
   const agent = new QaAgent({ provider: args.provider });
   const draftHash = createHash("sha256").update(args.draftText).digest("hex");
@@ -3203,6 +3312,7 @@ async function invokeQaStage(args: {
     sourceHash: args.input.unit.sourceHash,
     draftText: args.draftText,
     draftHash,
+    ...(args.speaker !== undefined ? { speaker: args.speaker } : {}),
   };
   const glossary: QaGlossaryEntry[] = args.input.glossary.map((entry) => {
     const out: QaGlossaryEntry = {
@@ -3226,6 +3336,10 @@ async function invokeQaStage(args: {
     targetLocale: args.policy.targetLocale,
     units: [qaUnit],
     glossary,
+    // Packet parity: QA receives the exact content-bearing artifact projection
+    // the translator and repairer received. Artifact ids are citations only;
+    // the body remains available to the judge.
+    contextArtifacts: args.contextArtifacts,
     // itotori-live-loop-style-glossary-injection — the QA terminology/style
     // lanes now validate the draft against the SAME active style-guide policy
     // the translator wrote against (structurally identical rule shape).
@@ -3266,8 +3380,20 @@ async function runPostRepairReQaPass(args: {
   draftText: string;
   attempt: number;
   repairStage: StageAccumulator;
+  contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
+  speaker?: string | undefined;
 }): Promise<{ findings: QaFinding[]; incomplete: boolean }> {
-  const { input, policy, pairPolicy, providerFactory, draftText, attempt, repairStage } = args;
+  const {
+    input,
+    policy,
+    pairPolicy,
+    providerFactory,
+    draftText,
+    attempt,
+    repairStage,
+    contextArtifacts,
+    speaker,
+  } = args;
   let findings: QaFinding[] = [];
   let incomplete = false;
   for (const entry of [
@@ -3290,6 +3416,8 @@ async function runPostRepairReQaPass(args: {
         policy,
         draftText,
         agentLabel: entry.agentLabel,
+        contextArtifacts,
+        ...(speaker !== undefined ? { speaker } : {}),
       });
     } catch (error) {
       rethrowOperationalInvocation(error);

@@ -111,7 +111,7 @@ function inputFixture(
     sourceLocale: "ja-JP",
     bridgeUnits: unitsFixture(),
     knownCharacters: rosterFixture(),
-    existingSpeakerLabels: new Map(),
+    existingSpeakerLabels: new Map<string, SpeakerLabel>(),
     promptTemplateVersion: "itotori-speaker-label-agent-v1",
     modelMetadata: modelProfile(),
     now: FIXED_NOW,

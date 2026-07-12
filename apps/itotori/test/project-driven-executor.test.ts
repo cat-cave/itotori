@@ -405,12 +405,16 @@ function drivenProviderFactory(): AgenticLoopProviderFactory {
 
 function promptCapturingProviderFactory(
   promptsByUnit: Map<string, string>,
+  semanticPrompts?: string[],
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
       providerName: `driven-capture-${stage}-${agentLabel}`,
       generate: (request: ModelInvocationRequest): string => {
         if (request.taskKind === "experiment" && agentLabel !== "speaker-label") {
+          if (agentLabel === "terminology-candidate") {
+            semanticPrompts?.push(request.messages.map((message) => message.content).join("\n"));
+          }
           return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
@@ -649,6 +653,29 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     for (const { writtenOutcome: outcome } of sinks.journalUnits) {
       expect(outcome.sceneId).toBe(SCENE_ID);
     }
+  });
+
+  it("passes planner batch siblings into semantic terminology evidence", async () => {
+    const promptsByUnit = new Map<string, string>();
+    const semanticPrompts: string[] = [];
+    const sinks = new InMemorySinks();
+    const sibling = makeBridge().units.find((unit) => unit.bridgeUnitId === UNIT_B);
+    if (sibling === undefined) {
+      throw new Error("fixture must include a same-scene sibling");
+    }
+
+    const result = await runProjectDrivenExecutor({
+      ...baseInput(undefined, sinks),
+      providerFactory: promptCapturingProviderFactory(promptsByUnit, semanticPrompts),
+      maxUnits: 1,
+    });
+
+    expect(result.unitsRun).toBe(1);
+    // UNIT_B is not dispatched in this bounded run, so its presence here proves
+    // the planner batch retained its real source body as semantic sibling evidence.
+    expect(semanticPrompts).toHaveLength(1);
+    expect(semanticPrompts[0]).toContain(sibling.bridgeUnitId);
+    expect(semanticPrompts[0]).toContain(sibling.sourceText);
   });
 
   it("a run over units WITHOUT any structure still drives + persists (synthetic path)", async () => {

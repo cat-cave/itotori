@@ -26,6 +26,7 @@ import {
   QaProviderCapabilityError,
   QaSpanOutOfBoundsError,
   QaUnknownCitationError,
+  QaUnknownEvidenceRefError,
   qaPromptHash,
   representativeQaFindingsFixture,
   type QaBridgeUnit,
@@ -94,6 +95,16 @@ function inputFixture(overrides: Partial<QaInvocationInput> = {}): QaInvocationI
         guidance: "Use a formal register throughout the story.",
       },
     ],
+    contextArtifacts: [
+      {
+        contextArtifactId: "context-artifact:scene-summary-001",
+        category: "scene_summary",
+        title: "Station meeting",
+        body: "Mira is speaking to the hero before the route split.",
+        contextEntryVersionId: "019ed079-0000-7000-8000-00000000c001",
+        contentHash: "sha256:fixture-scene-summary-001",
+      },
+    ],
     modelProfile: fakeModelProfile(),
     qaPromptVersion: "itotori-qa-agent-v1",
     now: FIXED_NOW,
@@ -120,7 +131,7 @@ function findingsForInput(input: QaInvocationInput): QaFinding[] {
       category: "protected-span-violation",
       sourceSpan: { start: 6, end: 14 },
       draftSpan: { start: 5, end: 5 },
-      evidenceRefs: ["style-guide:protectedSpans"],
+      evidenceRefs: [input.styleGuide[0]!.ruleId, input.contextArtifacts[0]!.contextArtifactId],
       recommendation: "Restore the {player} placeholder.",
       agentRationale: "Source carries {player}; draft drops it.",
     }),
@@ -129,7 +140,7 @@ function findingsForInput(input: QaInvocationInput): QaFinding[] {
       bridgeUnitId: input.units[1]!.bridgeUnitId,
       severity: "major",
       category: "glossary-conflict",
-      evidenceRefs: ["glossary:019ed079-0000-7000-8000-00000000b001"],
+      evidenceRefs: [input.glossary[0]!.termId],
       recommendation: "Use 'hero' for 勇者 per glossary.",
       agentRationale: "Glossary says 勇者→hero; draft renders 'warrior'.",
     }),
@@ -180,6 +191,21 @@ describe("QA prompt template", () => {
     expect(rendered.systemText).toContain(
       "sourceSpan and draftSpan, when present, MUST each be a JSON OBJECT",
     );
+  });
+
+  it("renders resolved context artifact ids and real bodies, and limits evidence to supplied ids", () => {
+    const input = inputFixture();
+    const rendered = buildQaPrompt(input);
+
+    expect(rendered.systemText).toContain(
+      "evidenceRefs MUST contain ONLY exact ids supplied in the Glossary block",
+    );
+    expect(rendered.userText).toContain("Context artifacts (resolved content):");
+    expect(rendered.userText).toContain(
+      `contextArtifactId=${input.contextArtifacts[0]!.contextArtifactId}`,
+    );
+    expect(rendered.userText).toContain(input.contextArtifacts[0]!.body);
+    expect(rendered.userText).toContain(`ruleId=${input.styleGuide[0]!.ruleId}`);
   });
 });
 
@@ -520,12 +546,34 @@ describe("QaAgent.invokeQa malformed responses", () => {
     expect(error).toBeInstanceOf(QaUnknownCitationError);
   });
 
+  it("rejects a finding that cites evidence absent from the supplied packet", async () => {
+    const input = inputFixture();
+    const finding = makeQaFindingFixture({
+      findingId: "019ed079-0000-7000-8000-100000000009",
+      bridgeUnitId: input.units[0]!.bridgeUnitId,
+      evidenceRefs: ["context-artifact:unseen"],
+    });
+    const provider = buildFakeQaProvider(() =>
+      JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
+    );
+    const error = await new QaAgent({ provider })
+      .invokeQa(FIXED_ACTOR, input)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(QaUnknownEvidenceRefError);
+    if (error instanceof QaUnknownEvidenceRefError) {
+      expect(error.evidenceRef).toBe("context-artifact:unseen");
+      expect(error.findingId).toBe(finding.findingId);
+    }
+  });
+
   it("rejects an in-input finding whose sourceSpan exceeds the source text", async () => {
     const input = inputFixture();
     const finding = makeQaFindingFixture({
       findingId: "019ed079-0000-7000-8000-100000000010",
       bridgeUnitId: input.units[0]!.bridgeUnitId,
       sourceSpan: { start: 0, end: 999999 },
+      evidenceRefs: [input.styleGuide[0]!.ruleId],
     });
     const provider = buildFakeQaProvider(() =>
       JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
@@ -550,6 +598,7 @@ describe("QaAgent.invokeQa malformed responses", () => {
       findingId: "019ed079-0000-7000-8000-100000000011",
       bridgeUnitId: input.units[0]!.bridgeUnitId,
       draftSpan: { start: 0, end: 999999 },
+      evidenceRefs: [input.styleGuide[0]!.ruleId],
     });
     const provider = buildFakeQaProvider(() =>
       JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
@@ -574,6 +623,7 @@ describe("QaAgent.invokeQa malformed responses", () => {
       findingId: "019ed079-0000-7000-8000-100000000012",
       bridgeUnitId: input.units[0]!.bridgeUnitId,
       sourceSpan: { start: 0, end: input.units[0]!.sourceText.length },
+      evidenceRefs: [input.styleGuide[0]!.ruleId],
     });
     const provider = buildFakeQaProvider(() =>
       JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),
@@ -591,6 +641,7 @@ describe("QaAgent.invokeQa malformed responses", () => {
       findingId: "019ed079-0000-7000-8000-100000000013",
       bridgeUnitId: input.units[0]!.bridgeUnitId,
       sourceSpan: { start: 0, end: overshoot },
+      evidenceRefs: [input.styleGuide[0]!.ruleId],
     });
     const provider = buildFakeQaProvider(() =>
       JSON.stringify(makeStructuredQaFindingOutputFixture([finding])),

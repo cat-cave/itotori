@@ -234,7 +234,7 @@ describe("focused QA agents — category lane enforcement", () => {
       bridgeUnitId: fixture.units[0]!.bridgeUnitId,
       severity,
       category,
-      evidenceRefs: ["test-evidence"],
+      evidenceRefs: [],
       recommendation: "out-of-lane test",
       agentRationale: "synthetic out-of-lane finding",
     };

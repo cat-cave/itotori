@@ -16,7 +16,11 @@ import {
 import type { BridgeBundleV02, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { DEV_POLICY, type AgenticLoopProviderFactory } from "../src/orchestrator/agentic-loop.js";
-import { runProjectDrivenExecutor } from "../src/orchestrator/project-driven-executor.js";
+import { speakerLabelArtifactId } from "../src/orchestrator/context-brain.js";
+import {
+  runProjectDrivenExecutor,
+  type DrivenUnitJournalRecord,
+} from "../src/orchestrator/project-driven-executor.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import {
   createProviderRunId,
@@ -42,10 +46,17 @@ const UNIT_A_ID = "019ed0cb-1000-7000-8000-00000000cb21";
 const UNIT_B_ID = "019ed0cb-1000-7000-8000-00000000cb22";
 const SCENE_ID = 6010;
 const SPEAKER_NAME = "和人";
+const PERSISTED_SPEAKER_NAME = "Captain Wato";
+const PERSISTED_SPEAKER_BODY = "Speaker: Captain Wato (characterId=wato, confidence=high)";
+const PERSISTED_SPEAKER_PROMPT = "Captain Wato (persisted speaker label, confidence=high)";
 const SOURCE_REVISION_HASH = `sha256:${"a".repeat(64)}`;
 const SOURCE_PROFILE_HASH = `sha256:${"b".repeat(64)}`;
 const SEMANTIC_SCENE_SUMMARY_BODY =
   "PERSISTED-SEMANTIC-SCENE-SUMMARY: the station scene where 和人 greets the morning sky.";
+const CONTEXT_AWARE_DRAFT = "Captain Wato's context-aware greeting.";
+const PRIMARY_REPAIR_DRAFT = "Captain Wato's draft before repair.";
+const REPAIRED_DRAFT = "Captain Wato's repaired context-aware greeting.";
+const QA_FINDING_ID = "019ed0cb-1000-7000-8000-00000000cb31";
 
 const providerDescriptor: ProviderDescriptor = {
   family: "recorded",
@@ -207,7 +218,7 @@ function speakerLabelContent(bridgeUnitId: string): string {
     labels: [
       {
         bridgeUnitId,
-        speakerId: { kind: "named", characterId: "wato", displayName: SPEAKER_NAME },
+        speakerId: { kind: "named", characterId: "wato", displayName: PERSISTED_SPEAKER_NAME },
         confidence: "high",
         evidenceRefs: [],
         agentRationale: "fixture roster match",
@@ -216,7 +227,7 @@ function speakerLabelContent(bridgeUnitId: string): string {
   });
 }
 
-function translationContent(bridgeUnitId: string): string {
+function translationContent(bridgeUnitId: string, draftText = "Good morning."): string {
   return JSON.stringify({
     schemaVersion: "itotori.structured-translation-draft-output.v1",
     drafts: [
@@ -224,7 +235,7 @@ function translationContent(bridgeUnitId: string): string {
         bridgeUnitId,
         sourceLocale: "ja-JP",
         targetLocale: "en-US",
-        draftText: "Good morning.",
+        draftText,
         confidenceFloor: "medium",
         protectedSpanRefs: [],
         citationRefs: [],
@@ -232,6 +243,96 @@ function translationContent(bridgeUnitId: string): string {
       },
     ],
   });
+}
+
+function qaFindingContent(bridgeUnitId: string, evidenceRef: string): string {
+  return JSON.stringify({
+    schemaVersion: "itotori.structured-qa-finding-output.v1",
+    findings: [
+      {
+        findingId: QA_FINDING_ID,
+        bridgeUnitId,
+        severity: "minor",
+        category: "context-mismatch",
+        evidenceRefs: [evidenceRef],
+        recommendation: "Use the persisted scene and speaker evidence.",
+        agentRationale: "The fixture only emits this finding after receiving the resolved packet.",
+      },
+    ],
+  });
+}
+
+function emptyQaFindingsContent(): string {
+  return JSON.stringify({
+    schemaVersion: "itotori.structured-qa-finding-output.v1",
+    findings: [],
+  });
+}
+
+type PromptCaptures = {
+  translationByUnit: Map<string, string[]>;
+  repairByUnit: Map<string, string[]>;
+  qaByUnit: Map<string, string[]>;
+};
+
+type ProviderResponseOverride = (args: {
+  stage: string;
+  agentLabel: string;
+  request: ModelInvocationRequest;
+  bridgeUnitId: string;
+  prompt: string;
+}) => string | undefined;
+
+function makePromptCaptures(): PromptCaptures {
+  return {
+    translationByUnit: new Map<string, string[]>(),
+    repairByUnit: new Map<string, string[]>(),
+    qaByUnit: new Map<string, string[]>(),
+  };
+}
+
+function promptFromRequest(request: ModelInvocationRequest): string {
+  return request.messages.map((message) => String(message.content)).join("\n");
+}
+
+function appendCapturedPrompt(
+  promptsByUnit: Map<string, string[]>,
+  unitId: string,
+  prompt: string,
+): void {
+  const existing = promptsByUnit.get(unitId) ?? [];
+  existing.push(prompt);
+  promptsByUnit.set(unitId, existing);
+}
+
+function capturedPromptsFor(promptsByUnit: Map<string, string[]>, unitId: string): string[] {
+  const prompts = promptsByUnit.get(unitId);
+  if (prompts === undefined) {
+    throw new Error(`expected captured prompt for bridge unit ${unitId}`);
+  }
+  return prompts;
+}
+
+function expectPromptContainsResolvedArtifacts(
+  prompt: string,
+  artifacts: ReadonlyArray<{
+    contextArtifactId: string;
+    title: string;
+    body: string;
+    headVersionId: string | null;
+    contentHash: string;
+  }>,
+): void {
+  expect(prompt).toContain("Context artifacts (resolved content):");
+  for (const artifact of artifacts) {
+    expect(prompt).toContain(`contextArtifactId=${artifact.contextArtifactId}`);
+    expect(prompt).toContain(`title=${JSON.stringify(artifact.title)}`);
+    expect(prompt).toContain(artifact.body);
+    expect(prompt).toContain(`contentHash=${artifact.contentHash}`);
+    if (artifact.headVersionId !== null) {
+      expect(prompt).toContain(`contextEntryVersionId=${artifact.headVersionId}`);
+    }
+  }
 }
 
 class DeterministicExecutorProvider implements ModelProvider {
@@ -242,7 +343,9 @@ class DeterministicExecutorProvider implements ModelProvider {
       stage: string;
       agentLabel: string;
       sceneSummaryCalls: { count: number };
-      promptsByUnit: Map<string, string>;
+      speakerLabelCalls: { count: number };
+      prompts: PromptCaptures;
+      responseOverride?: ProviderResponseOverride | undefined;
     },
   ) {}
 
@@ -304,21 +407,42 @@ class DeterministicExecutorProvider implements ModelProvider {
       }
     }
     if (this.args.stage === "pre_translation") {
+      this.args.speakerLabelCalls.count += 1;
       return speakerLabelContent(currentBridgeUnitId(request));
     }
-    if (this.args.stage === "translation") {
+    if (
+      this.args.stage === "translation" ||
+      this.args.stage === "repair" ||
+      this.args.stage === "qa_findings"
+    ) {
       const unitId = currentBridgeUnitId(request);
-      this.args.promptsByUnit.set(
-        unitId,
-        request.messages.map((message) => String(message.content)).join("\n"),
-      );
-      return translationContent(unitId);
-    }
-    if (this.args.stage === "qa_findings") {
-      return JSON.stringify({
-        schemaVersion: "itotori.structured-qa-finding-output.v1",
-        findings: [],
+      const prompt = promptFromRequest(request);
+      switch (this.args.stage) {
+        case "translation":
+          appendCapturedPrompt(this.args.prompts.translationByUnit, unitId, prompt);
+          break;
+        case "repair":
+          appendCapturedPrompt(this.args.prompts.repairByUnit, unitId, prompt);
+          break;
+        case "qa_findings":
+          appendCapturedPrompt(this.args.prompts.qaByUnit, unitId, prompt);
+          break;
+        default:
+          throw new Error(`unexpected captured executor stage ${this.args.stage}`);
+      }
+      const override = this.args.responseOverride?.({
+        stage: this.args.stage,
+        agentLabel: this.args.agentLabel,
+        request,
+        bridgeUnitId: unitId,
+        prompt,
       });
+      if (override !== undefined) {
+        return override;
+      }
+      return this.args.stage === "qa_findings"
+        ? emptyQaFindingsContent()
+        : translationContent(unitId);
     }
     throw new Error(`unexpected executor stage ${this.args.stage}`);
   }
@@ -326,21 +450,27 @@ class DeterministicExecutorProvider implements ModelProvider {
 
 function executorProviderFactory(args: {
   sceneSummaryCalls: { count: number };
-  promptsByUnit: Map<string, string>;
+  speakerLabelCalls?: { count: number } | undefined;
+  prompts?: PromptCaptures | undefined;
+  responseOverride?: ProviderResponseOverride | undefined;
 }): AgenticLoopProviderFactory {
+  const speakerLabelCalls = args.speakerLabelCalls ?? { count: 0 };
+  const prompts = args.prompts ?? makePromptCaptures();
   return ({ stage, agentLabel }) =>
     new DeterministicExecutorProvider({
       stage,
       agentLabel,
       sceneSummaryCalls: args.sceneSummaryCalls,
-      promptsByUnit: args.promptsByUnit,
+      speakerLabelCalls,
+      prompts,
+      ...(args.responseOverride !== undefined ? { responseOverride: args.responseOverride } : {}),
     });
 }
 
 describe.skipIf(!process.env.DATABASE_URL)(
   "persistent context brain — Postgres-backed full-project reuse",
   () => {
-    it("persists unit A's scene body and reuses it for unit B without a second scene build", async () => {
+    it("reuses persisted scene and speaker bodies in a later translation and every QA judge", async () => {
       const context = await isolatedMigratedContext();
       try {
         await bootstrapLocalUser(context.db);
@@ -354,10 +484,42 @@ describe.skipIf(!process.env.DATABASE_URL)(
         });
         const contextArtifacts = new ItotoriContextArtifactRepository(context.db);
         const sceneSummaryCalls = { count: 0 };
-        const promptsByUnit = new Map<string, string>();
-        const journalUnits: unknown[] = [];
+        const speakerLabelCalls = { count: 0 };
+        const prompts = makePromptCaptures();
+        const journalUnits: DrivenUnitJournalRecord[] = [];
+        let reusePass = false;
+        const persistedSpeakerArtifactId = speakerLabelArtifactId(PROJECT_ID, UNIT_A_ID);
+        const providerFactory = executorProviderFactory({
+          sceneSummaryCalls,
+          speakerLabelCalls,
+          prompts,
+          responseOverride: ({ agentLabel, bridgeUnitId, prompt, stage }) => {
+            if (!reusePass) {
+              return undefined;
+            }
+            const hasPersistedPacket =
+              prompt.includes(SEMANTIC_SCENE_SUMMARY_BODY) &&
+              prompt.includes(PERSISTED_SPEAKER_BODY) &&
+              prompt.includes(PERSISTED_SPEAKER_PROMPT) &&
+              prompt.includes(
+                `contextArtifactId=${speakerLabelArtifactId(PROJECT_ID, bridgeUnitId)}`,
+              );
+            if (stage === "translation") {
+              return translationContent(
+                bridgeUnitId,
+                hasPersistedPacket ? CONTEXT_AWARE_DRAFT : "Context packet was not reused.",
+              );
+            }
+            if (stage === "qa_findings" && agentLabel === "qa-semantic-drift") {
+              return hasPersistedPacket
+                ? qaFindingContent(bridgeUnitId, speakerLabelArtifactId(PROJECT_ID, bridgeUnitId))
+                : emptyQaFindingsContent();
+            }
+            return undefined;
+          },
+        });
 
-        const result = await runProjectDrivenExecutor({
+        const first = await runProjectDrivenExecutor({
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
@@ -366,7 +528,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
           actor: ACTOR,
-          providerFactory: executorProviderFactory({ sceneSummaryCalls, promptsByUnit }),
+          providerFactory,
           contextArtifactRepository: contextArtifacts,
           resolveUnitContext: () => ({ narrativeStructure: makeStructure(), sceneId: SCENE_ID }),
           translationScope: "dialogue-only",
@@ -387,41 +549,265 @@ describe.skipIf(!process.env.DATABASE_URL)(
           },
         });
 
-        expect(result.pausedBlocker).toBeNull();
-        expect(result.runState).toBe("running");
-        expect(result.unitsRun).toBe(2);
+        expect(first.pausedBlocker).toBeNull();
+        expect(first.runState).toBe("running");
+        expect(first.unitsRun).toBe(2);
         expect(journalUnits).toHaveLength(2);
         expect(sceneSummaryCalls.count).toBe(1);
+        expect(speakerLabelCalls.count).toBe(2);
 
         const persisted = await contextArtifacts.retrieveArtifacts(ACTOR, {
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
-          categories: ["scene_summary"],
+          categories: ["scene_summary", "speaker_label"],
         });
         expect(persisted.status).toBe("completed");
-        expect(persisted.matches).toEqual([
-          expect.objectContaining({
-            body: SEMANTIC_SCENE_SUMMARY_BODY,
-            headVersionId: expect.any(String),
-            producedByAgent: "scene-summary",
-            sourceUnits: expect.arrayContaining([
-              expect.objectContaining({ bridgeUnitId: UNIT_A_ID }),
-            ]),
-          }),
-        ]);
-
-        const unitBPrompt = promptsByUnit.get(UNIT_B_ID);
-        expect(unitBPrompt).toContain("Context artifacts (resolved content):");
-        expect(unitBPrompt).toContain(SEMANTIC_SCENE_SUMMARY_BODY);
-        expect(unitBPrompt).toContain(
-          `contextEntryVersionId=${persisted.matches[0]?.headVersionId}`,
+        const persistedScene = persisted.matches.find(
+          (artifact) => artifact.body === SEMANTIC_SCENE_SUMMARY_BODY,
         );
-        expect(unitBPrompt).toContain(`contentHash=${persisted.matches[0]?.contentHash}`);
-        expect(unitBPrompt).not.toContain("Context artifacts available for citation:");
+        if (persistedScene === undefined) {
+          throw new Error("first driven pass did not persist the semantic scene body");
+        }
+        expect(persistedScene).toMatchObject({
+          headVersionId: expect.any(String),
+          producedByAgent: "scene-summary",
+          sourceUnits: expect.arrayContaining([
+            expect.objectContaining({ bridgeUnitId: UNIT_A_ID }),
+          ]),
+        });
+        const persistedSpeaker = persisted.matches.find(
+          (artifact) => artifact.contextArtifactId === persistedSpeakerArtifactId,
+        );
+        if (persistedSpeaker === undefined) {
+          throw new Error("first driven pass did not persist unit A's speaker label");
+        }
+        expect(persistedSpeaker).toMatchObject({
+          body: PERSISTED_SPEAKER_BODY,
+          headVersionId: expect.any(String),
+          producedByAgent: "speaker-label",
+        });
+
+        const translationCountBeforeReuse = capturedPromptsFor(
+          prompts.translationByUnit,
+          UNIT_A_ID,
+        ).length;
+        const qaCountBeforeReuse = capturedPromptsFor(prompts.qaByUnit, UNIT_A_ID).length;
+        reusePass = true;
+        const reused = await runProjectDrivenExecutor({
+          bridge,
+          rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
+          pairPolicy: DEV_POLICY,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          actor: ACTOR,
+          providerFactory,
+          contextArtifactRepository: contextArtifacts,
+          resolveUnitContext: () => ({ narrativeStructure: makeStructure(), sceneId: SCENE_ID }),
+          translationScope: "dialogue-only",
+          engineProfile: "rpg-maker-mv-mz",
+          concurrency: 1,
+          maxRepairAttempts: 0,
+          sinks: {
+            journal: {
+              createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
+              persistUnitJournal: async (record) => {
+                journalUnits.push(record);
+              },
+              persistFailedUnitAttempts: async () => {},
+            },
+            patchExport: { exportPatch: async () => {} },
+          },
+        });
+
+        expect(reused.pausedBlocker).toBeNull();
+        expect(reused.runState).toBe("running");
+        expect(reused.unitsRun).toBe(2);
+        expect(journalUnits).toHaveLength(4);
+        expect(sceneSummaryCalls.count).toBe(1);
+        // The second pass is a genuine central-store reuse: no label model call
+        // may replace the persisted voice identity with fresh telemetry.
+        expect(speakerLabelCalls.count).toBe(2);
+
+        const reusedUnitA = reused.unitOutcomes.find(
+          (outcome) => outcome.bridgeUnitId === UNIT_A_ID,
+        );
+        if (reusedUnitA === undefined) {
+          throw new Error("second driven pass did not write unit A");
+        }
+        expect(reusedUnitA.selectedBody).toBe(CONTEXT_AWARE_DRAFT);
+        expect(reusedUnitA.outcome.findings).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              category: "context-mismatch",
+            }),
+          ]),
+        );
+        const unitAJournals = journalUnits.filter(
+          (record) => record.writtenOutcome.bridgeUnitId === UNIT_A_ID,
+        );
+        const reusedUnitAJournal = unitAJournals[unitAJournals.length - 1];
+        if (reusedUnitAJournal === undefined) {
+          throw new Error("second driven pass did not journal unit A's QA evidence");
+        }
+        expect(Object.values(reusedUnitAJournal.qaDetails)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ evidenceRefs: [persistedSpeakerArtifactId] }),
+          ]),
+        );
+
+        const reusedTranslationPrompts = capturedPromptsFor(
+          prompts.translationByUnit,
+          UNIT_A_ID,
+        ).slice(translationCountBeforeReuse);
+        const reusedQaPrompts = capturedPromptsFor(prompts.qaByUnit, UNIT_A_ID).slice(
+          qaCountBeforeReuse,
+        );
+        expect(reusedTranslationPrompts).toHaveLength(1);
+        expect(reusedQaPrompts).toHaveLength(4);
+        for (const prompt of [...reusedTranslationPrompts, ...reusedQaPrompts]) {
+          expectPromptContainsResolvedArtifacts(prompt, [persistedScene, persistedSpeaker]);
+          expect(prompt).toContain(`speaker=${PERSISTED_SPEAKER_PROMPT}`);
+          expect(prompt).not.toContain("Context artifacts available for citation:");
+        }
       } finally {
         await context.close();
       }
-    }, 15_000);
+    }, 30_000);
+
+    it("keeps the frozen resolved packet intact for repair and post-repair QA", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await bootstrapLocalUser(context.db);
+        const bridge = makeBridge();
+        await new ItotoriProjectRepository(context.db).importSourceBundle(ACTOR, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          targetLocale: "en-US",
+          drafts: {},
+          bridge,
+        });
+        const contextArtifacts = new ItotoriContextArtifactRepository(context.db);
+        const sceneSummaryCalls = { count: 0 };
+        const speakerLabelCalls = { count: 0 };
+        const prompts = makePromptCaptures();
+        const persistedSpeakerArtifactId = speakerLabelArtifactId(PROJECT_ID, UNIT_A_ID);
+        const providerFactory = executorProviderFactory({
+          sceneSummaryCalls,
+          speakerLabelCalls,
+          prompts,
+          responseOverride: ({ agentLabel, bridgeUnitId, prompt, stage }) => {
+            const hasFrozenPacket =
+              prompt.includes(SEMANTIC_SCENE_SUMMARY_BODY) &&
+              prompt.includes(PERSISTED_SPEAKER_BODY) &&
+              prompt.includes(PERSISTED_SPEAKER_PROMPT) &&
+              prompt.includes(
+                `contextArtifactId=${speakerLabelArtifactId(PROJECT_ID, bridgeUnitId)}`,
+              );
+            if (stage === "translation") {
+              return translationContent(bridgeUnitId, PRIMARY_REPAIR_DRAFT);
+            }
+            if (stage === "repair") {
+              return translationContent(
+                bridgeUnitId,
+                hasFrozenPacket ? REPAIRED_DRAFT : "Repair lost the resolved packet.",
+              );
+            }
+            if (
+              stage === "qa_findings" &&
+              agentLabel === "qa-semantic-drift" &&
+              prompt.includes(PRIMARY_REPAIR_DRAFT)
+            ) {
+              return hasFrozenPacket
+                ? qaFindingContent(bridgeUnitId, speakerLabelArtifactId(PROJECT_ID, bridgeUnitId))
+                : emptyQaFindingsContent();
+            }
+            return undefined;
+          },
+        });
+
+        const result = await runProjectDrivenExecutor({
+          bridge,
+          rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
+          pairPolicy: DEV_POLICY,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          actor: ACTOR,
+          providerFactory,
+          contextArtifactRepository: contextArtifacts,
+          resolveUnitContext: () => ({ narrativeStructure: makeStructure(), sceneId: SCENE_ID }),
+          translationScope: "dialogue-only",
+          engineProfile: "rpg-maker-mv-mz",
+          concurrency: 1,
+          maxUnits: 1,
+          maxRepairAttempts: 1,
+          sinks: {
+            journal: {
+              createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
+              persistUnitJournal: async () => {},
+              persistFailedUnitAttempts: async () => {},
+            },
+            patchExport: { exportPatch: async () => {} },
+          },
+        });
+
+        expect(result.pausedBlocker).toBeNull();
+        expect(result.runState).toBe("running");
+        expect(result.unitsRun).toBe(1);
+        expect(result.patchReport.writtenUnits).toEqual([
+          expect.objectContaining({ bridgeUnitId: UNIT_A_ID, selectedBody: REPAIRED_DRAFT }),
+        ]);
+        expect(sceneSummaryCalls.count).toBe(1);
+        expect(speakerLabelCalls.count).toBe(1);
+
+        const persisted = await contextArtifacts.retrieveArtifacts(ACTOR, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          categories: ["scene_summary", "speaker_label"],
+        });
+        expect(persisted.status).toBe("completed");
+        const persistedScene = persisted.matches.find(
+          (artifact) => artifact.body === SEMANTIC_SCENE_SUMMARY_BODY,
+        );
+        const persistedSpeaker = persisted.matches.find(
+          (artifact) => artifact.contextArtifactId === persistedSpeakerArtifactId,
+        );
+        if (persistedScene === undefined || persistedSpeaker === undefined) {
+          throw new Error("repair fixture did not persist the context packet artifacts");
+        }
+
+        const primaryPrompts = capturedPromptsFor(prompts.translationByUnit, UNIT_A_ID);
+        const repairPrompts = capturedPromptsFor(prompts.repairByUnit, UNIT_A_ID);
+        const qaPrompts = capturedPromptsFor(prompts.qaByUnit, UNIT_A_ID);
+        const initialQaPrompts = qaPrompts.filter((prompt) =>
+          prompt.includes(PRIMARY_REPAIR_DRAFT),
+        );
+        const reQaPrompts = qaPrompts.filter((prompt) => prompt.includes(REPAIRED_DRAFT));
+        expect(primaryPrompts).toHaveLength(1);
+        expect(repairPrompts).toHaveLength(1);
+        expect(initialQaPrompts).toHaveLength(4);
+        expect(reQaPrompts).toHaveLength(4);
+
+        // One immutable packet projection must be visible in primary drafting,
+        // repair, initial QA, and the bounded re-QA pass. The version ids and
+        // hashes prove this is real persisted content, not a citation-only list.
+        for (const prompt of [
+          ...primaryPrompts,
+          ...repairPrompts,
+          ...initialQaPrompts,
+          ...reQaPrompts,
+        ]) {
+          expectPromptContainsResolvedArtifacts(prompt, [persistedScene, persistedSpeaker]);
+          expect(prompt).toContain(`speaker=${PERSISTED_SPEAKER_PROMPT}`);
+        }
+      } finally {
+        await context.close();
+      }
+    }, 30_000);
   },
 );

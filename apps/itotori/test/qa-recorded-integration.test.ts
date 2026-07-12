@@ -100,7 +100,7 @@ function recordedInputFixture(): QaInvocationInput {
     units: unitsForRecordedTest(),
     glossary: [
       {
-        termId: "019ed079-0000-7000-8000-00000000b001",
+        termId: "glossary:term-yusha",
         preferredSourceForm: "勇者",
         preferredTargetForm: "hero",
         policyAction: "localize",
@@ -108,9 +108,22 @@ function recordedInputFixture(): QaInvocationInput {
     ],
     styleGuide: [
       {
-        ruleId: "tone-001",
+        ruleId: "style-guide:protectedSpans",
+        section: "protectedSpans",
+        guidance: "Preserve every protected placeholder.",
+      },
+      {
+        ruleId: "style-guide:tone-formal",
         section: "tone",
         guidance: "Use a formal register throughout the story.",
+      },
+    ],
+    contextArtifacts: [
+      {
+        contextArtifactId: "scene-summary:scene-001",
+        category: "scene_summary",
+        title: "Recorded QA scene",
+        body: "The hero meets Mira at the station before the route split.",
       },
     ],
     modelProfile: modelProfile(),

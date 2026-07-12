@@ -10,7 +10,7 @@
       "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
       "severity": "major",
       "category": "glossary-conflict",
-      "evidenceRefs": ["glossary:019ed079-0000-7000-8000-000000cb0001"],
+      "evidenceRefs": ["019ed079-0000-7000-8000-000000cb0001"],
       "recommendation": "Use the glossary's preferred target form 'hero' for 勇者 instead of 'warrior'.",
       "agentRationale": "Glossary maps 勇者 → hero (policyAction=localize); the draft renders it as 'warrior'."
     }

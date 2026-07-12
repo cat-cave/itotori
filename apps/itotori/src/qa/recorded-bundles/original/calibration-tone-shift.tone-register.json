@@ -10,7 +10,7 @@
       "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
       "severity": "major",
       "category": "tone",
-      "evidenceRefs": ["style-guide:tone-formal-001"],
+      "evidenceRefs": ["tone-formal-001"],
       "recommendation": "Rewrite using the formal register established by units 1 and 3.",
       "agentRationale": "Draft switches to casual register mid-scene ('kinda just bowed', 'lol'), violating the tone-formal-001 style guide."
     }

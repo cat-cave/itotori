@@ -237,13 +237,32 @@ function qaInput(): QaInvocationInput {
     units: qaUnits(),
     glossary: [
       {
-        termId: "019ed079-0000-7000-8000-00000000b001",
+        termId: "glossary:term-yusha",
         preferredSourceForm: "勇者",
         preferredTargetForm: "hero",
         policyAction: "localize",
       },
     ],
-    styleGuide: [{ ruleId: "tone-001", section: "tone", guidance: "Use a formal register." }],
+    styleGuide: [
+      {
+        ruleId: "style-guide:protectedSpans",
+        section: "protectedSpans",
+        guidance: "Preserve every protected placeholder.",
+      },
+      {
+        ruleId: "style-guide:tone-formal",
+        section: "tone",
+        guidance: "Use a formal register.",
+      },
+    ],
+    contextArtifacts: [
+      {
+        contextArtifactId: "scene-summary:scene-001",
+        category: "scene_summary",
+        title: "Local QA scene",
+        body: "The hero meets Mira at the station before the route split.",
+      },
+    ],
     modelProfile: localQaProfile(),
     qaPromptVersion: "itotori-qa-agent-v1",
   };

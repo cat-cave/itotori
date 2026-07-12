@@ -154,7 +154,6 @@ export async function runAgenticLoopSmokeCommand(
   const input: AgenticLoopUnitInput = {
     unit,
     sourceRevisionId: SMOKE_BUNDLE_SOURCE_REVISION_ID,
-    sceneUnits: [],
     glossary: [],
     protectedSpans: [],
     knownCharacters: [],

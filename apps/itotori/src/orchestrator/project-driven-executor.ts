@@ -1219,7 +1219,7 @@ async function runSingleDrivenUnit(args: {
     contextEnrichmentSingleFlight,
     log,
   } = args;
-  const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
+  const { unit, unitIndex, plannerSceneId, sceneUnits } = enumeratedUnit;
   // Resolve the per-unit structure-informed context OUTSIDE the try block so
   // the failure path can surface it in the diagnostic (itotori-agent-facing-
   // pipeline-failure-diagnostics — scene id helps the driving agent reproduce
@@ -1269,7 +1269,10 @@ async function runSingleDrivenUnit(args: {
     const unitInput: AgenticLoopUnitInput = {
       unit,
       sourceRevisionId: input.sourceRevisionId,
-      sceneUnits: [],
+      // The planner batch is the real bounded scene/route evidence available
+      // for this unit. The loop adds `unit` itself, so this list contains only
+      // its siblings and never duplicates the current source body.
+      sceneUnits,
       semanticSceneKey:
         context?.sceneId !== undefined
           ? String(context.sceneId)
@@ -1693,6 +1696,8 @@ type EnumeratedUnit = {
   unit: LocalizationUnitV02;
   unitIndex: number;
   plannerSceneId: string | undefined;
+  /** Other real bridge units retained from this unit's planner batch. */
+  sceneUnits: ReadonlyArray<LocalizationUnitV02>;
 };
 
 async function enumerateInScopeUnits(args: {
@@ -1730,19 +1735,29 @@ async function enumerateInScopeUnits(args: {
   const enumerated: EnumeratedUnit[] = [];
   const seen = new Set<string>();
   for (const batch of plan.batches) {
-    for (const ref of batch.units) {
+    // Keep the concrete bridge units behind planner refs. The planner's batch
+    // boundary is the only production source of sibling scene evidence for a
+    // driven unit; retaining it here prevents the later loop call from seeing
+    // an empty synthetic scene.
+    const batchUnits = batch.units.flatMap((ref) => {
       const found = unitById.get(ref.bridgeUnitId);
-      if (found === undefined || seen.has(ref.bridgeUnitId)) {
+      return found === undefined ? [] : [found];
+    });
+    for (const found of batchUnits) {
+      if (seen.has(found.unit.bridgeUnitId)) {
         continue;
       }
       if (!unitSurfaceKindInScope(found.unit.surfaceKind, args.translationScope)) {
         continue;
       }
-      seen.add(ref.bridgeUnitId);
+      seen.add(found.unit.bridgeUnitId);
       enumerated.push({
         unit: found.unit,
         unitIndex: found.index,
         plannerSceneId: batch.sceneId,
+        sceneUnits: batchUnits
+          .filter((candidate) => candidate.unit.bridgeUnitId !== found.unit.bridgeUnitId)
+          .map((candidate) => candidate.unit),
       });
     }
   }
