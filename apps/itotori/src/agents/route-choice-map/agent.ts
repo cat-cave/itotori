@@ -1,9 +1,6 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
-import {
-  executeStructuredInvocation,
-  InvocationRetryCeilingError,
-} from "../../orchestrator/invocation-supervisor.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
@@ -88,45 +85,24 @@ export async function generateRouteChoiceMap(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  let lastModelOutputError: unknown;
-  let supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack };
-  try {
-    supervised = await executeStructuredInvocation(options.provider, {
+  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
+    await executeStructuredInvocation(options.provider, {
       request,
-      parse: (raw) => {
-        try {
-          return parseProviderPack(raw);
-        } catch (error) {
-          lastModelOutputError = error;
-          throw error;
-        }
-      },
+      parse: parseProviderPack,
       isSchemaValidationError: (error) =>
         error instanceof RouteChoiceMapParseError ||
         error instanceof RouteChoiceMapInvalidKindError,
-      validateParsed: (pack) => {
-        try {
-          validateProviderPack(
-            pack,
-            allowedRouteKeys,
-            requiredRouteKeys,
-            allowedChoiceKeys,
-            validUnitIds,
-            sourceHashByUnitId,
-          );
-        } catch (error) {
-          lastModelOutputError = error;
-          throw error;
-        }
-      },
+      validateParsed: (pack) =>
+        validateProviderPack(
+          pack,
+          allowedRouteKeys,
+          requiredRouteKeys,
+          allowedChoiceKeys,
+          validUnitIds,
+          sourceHashByUnitId,
+        ),
       successDecision: "advance",
     });
-  } catch (error) {
-    if (error instanceof InvocationRetryCeilingError && lastModelOutputError !== undefined) {
-      throw lastModelOutputError;
-    }
-    throw error;
-  }
   const { invocation, parsed: pack } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
 

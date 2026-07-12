@@ -376,6 +376,10 @@ export const migrations = [
     id: "0079_invocation_supervisor_lifecycle",
     file: "0079_invocation_supervisor_lifecycle.sql",
   },
+  {
+    id: "0080_localization_run_leases_and_unit_claims",
+    file: "0080_localization_run_leases_and_unit_claims.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

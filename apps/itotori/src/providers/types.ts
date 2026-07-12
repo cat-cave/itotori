@@ -604,8 +604,9 @@ export class ModelProviderError extends Error {
     readonly retryable = false,
     readonly providerRun?: ProviderRunRecord,
     readonly adapterMetadata?: JsonObject,
+    causeValue?: unknown,
   ) {
-    super(message);
+    super(message, causeValue === undefined ? undefined : { cause: causeValue });
     this.name = "ModelProviderError";
   }
 }

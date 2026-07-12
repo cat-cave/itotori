@@ -1,9 +1,6 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
-import {
-  executeStructuredInvocation,
-  InvocationRetryCeilingError,
-} from "../../orchestrator/invocation-supervisor.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
@@ -109,43 +106,17 @@ export async function generateCharacterRelationships(
   // 5. Invoke and accept only a parsed, input-grounded pack. Parse/schema and
   //    semantic failures stay inside InvocationSupervisor so it can issue a
   //    corrective retry before this agent projects any durable record shape.
-  let lastModelOutputError: unknown;
-  let supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack };
-  try {
-    supervised = await executeStructuredInvocation(options.provider, {
+  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
+    await executeStructuredInvocation(options.provider, {
       request,
-      parse: (raw) => {
-        try {
-          return parseProviderPack(raw);
-        } catch (error) {
-          lastModelOutputError = error;
-          throw error;
-        }
-      },
+      parse: parseProviderPack,
       isSchemaValidationError: (error) =>
         error instanceof CharacterRelationshipParseError ||
         error instanceof CharacterRelationshipInvalidKindError,
-      validateParsed: (pack) => {
-        try {
-          validateProviderPack(pack, roster, validUnitIds, sourceHashByUnitId);
-        } catch (error) {
-          lastModelOutputError = error;
-          throw error;
-        }
-      },
+      validateParsed: (pack) =>
+        validateProviderPack(pack, roster, validUnitIds, sourceHashByUnitId),
       successDecision: "advance",
     });
-  } catch (error) {
-    // A bare semantic-agent call has no run/stage binding, so persistent
-    // invalid content reaches the standalone supervisor ceiling. Preserve the
-    // agent's public typed validation error; run-bound context supervision
-    // exits earlier through InvocationContentExhaustedError for best-effort
-    // enrichment handling.
-    if (error instanceof InvocationRetryCeilingError && lastModelOutputError !== undefined) {
-      throw lastModelOutputError;
-    }
-    throw error;
-  }
   const { invocation, parsed: pack } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
 

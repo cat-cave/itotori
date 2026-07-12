@@ -46,6 +46,24 @@ export type LocalizationJournalAttemptCostKind = "billed" | "provider_estimate" 
 
 export type LocalizationJournalAttemptLifecycleState = "dispatching" | "completed";
 
+/**
+ * The production lease is four times the supervisor's 30-second physical-call
+ * deadline. begin/complete writes renew it, so a live bounded provider call
+ * cannot be mistaken for a crashed driver by a second resumer.
+ */
+export const LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS = 120;
+
+export type LocalizationJournalRunLeaseIdentity = {
+  ownerId: string;
+  fenceToken: number;
+  leaseSeconds?: number;
+};
+
+export type SeedLocalizationJournalRunLeaseInput = {
+  ownerId: string;
+  leaseSeconds?: number;
+};
+
 export type LocalizationJournalRunStatus =
   | "running"
   | "paused"
@@ -67,7 +85,7 @@ export type LocalizationJournalUnitNextAction = {
   [key: string]: unknown;
 };
 
-export type LocalizationJournalRunUnitState = "pending" | "written";
+export type LocalizationJournalRunUnitState = "pending" | "claimed" | "written";
 
 export type SeedLocalizationJournalRunUnitInput = {
   bridgeUnitId: string;
@@ -86,6 +104,8 @@ export type SeedLocalizationJournalRunInput = {
   routingPolicy: Record<string, unknown>;
   costPolicy: Record<string, unknown>;
   units: readonly SeedLocalizationJournalRunUnitInput[];
+  /** Present on a newly-driven run; resume verifies the plan before taking a new fence. */
+  lease?: SeedLocalizationJournalRunLeaseInput;
   createdAt?: LocalizationJournalTimestamp;
 };
 
@@ -104,6 +124,7 @@ export type BeginLocalizationJournalAttemptInput = {
   zdr: boolean;
   artifactRef?: string | null;
   startedAt: LocalizationJournalTimestamp;
+  lease: LocalizationJournalRunLeaseIdentity;
 };
 
 /** Real provider + validation facts that close one pre-dispatch attempt row. */
@@ -135,6 +156,7 @@ export type CompleteLocalizationJournalAttemptInput = {
   artifactRef?: string | null;
   errorClasses: readonly string[];
   completedAt: LocalizationJournalTimestamp;
+  lease: LocalizationJournalRunLeaseIdentity;
 };
 
 /** One physical provider dispatch, keyed by its provider-run identity. */
@@ -225,6 +247,8 @@ export type PersistLocalizationJournalUnitInput = {
   speakerLabels: readonly SpeakerLabel[];
   /** Raw QA fields intentionally omitted by the concise WrittenQaFinding shape. */
   qaDetails: LocalizationJournalQaDetailsByFindingId;
+  /** Required for every frozen/supervised run; legacy non-frozen rows omit it. */
+  lease?: LocalizationJournalRunLeaseIdentity;
 };
 
 export type CreateLocalizationJournalRunInput = {
@@ -247,6 +271,9 @@ export type LocalizationJournalRunRecord = {
   costPolicy: Record<string, unknown> | null;
   status: LocalizationJournalRunStatus;
   pausedBlocker: LocalizationJournalOperationalBlocker | null;
+  leaseOwnerId: string | null;
+  leaseExpiresAt: Date | null;
+  fenceToken: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -258,6 +285,8 @@ export type LocalizationJournalRunUnitRecord = {
   unitOrdinal: number;
   state: LocalizationJournalRunUnitState;
   nextAction: LocalizationJournalUnitNextAction | null;
+  claimOwnerId: string | null;
+  claimFenceToken: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -271,6 +300,7 @@ export type LocalizationJournalAttemptRecord = {
   logicalCallId: string;
   attemptIndex: number;
   lifecycleState: LocalizationJournalAttemptLifecycleState;
+  fenceToken: number;
   requestedModelId: string | null;
   requestedProviderId: string | null;
   modelId: string | null;
@@ -478,8 +508,19 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     actor: AuthorizationActor,
     runId: string,
     blocker: LocalizationJournalOperationalBlocker,
+    lease: LocalizationJournalRunLeaseIdentity,
   ): Promise<LocalizationJournalRunRecord>;
-  resumeRun(actor: AuthorizationActor, runId: string): Promise<LocalizationJournalRunRecord>;
+  resumeRun(
+    actor: AuthorizationActor,
+    runId: string,
+    lease: Omit<LocalizationJournalRunLeaseIdentity, "fenceToken">,
+  ): Promise<LocalizationJournalRunRecord>;
+  /** Release only a paused run after the owning executor has fully quiesced. */
+  releaseRunLease(
+    actor: AuthorizationActor,
+    runId: string,
+    lease: LocalizationJournalRunLeaseIdentity,
+  ): Promise<LocalizationJournalRunRecord>;
   /** Chronological journal history for one locale branch, oldest run first. */
   loadRunsForBranch(
     actor: AuthorizationActor,
@@ -531,6 +572,9 @@ export class LocalizationJournalRepositoryError extends Error {
       | "outcome_already_persisted"
       | "run_seed_conflict"
       | "unit_not_seeded"
+      | "unit_not_pending"
+      | "run_lease_conflict"
+      | "run_lease_lost"
       | "invalid_run_transition",
     message: string,
   ) {
@@ -571,9 +615,10 @@ type NormalizedAttempt = Omit<
   fallbackPlan: string[] | null;
 };
 
-type NormalizedBeginAttempt = Omit<BeginLocalizationJournalAttemptInput, "startedAt"> & {
+type NormalizedBeginAttempt = Omit<BeginLocalizationJournalAttemptInput, "startedAt" | "lease"> & {
   artifactRef: string | null;
   startedAt: Date;
+  lease: Required<LocalizationJournalRunLeaseIdentity>;
 };
 
 type NormalizedCompleteAttempt = Omit<
@@ -588,6 +633,7 @@ type NormalizedCompleteAttempt = Omit<
   | "fallbackUsed"
   | "fallbackPlan"
   | "artifactRef"
+  | "lease"
 > & {
   costKind: LocalizationJournalAttemptCostKind | null;
   usageResponseJson: unknown | null;
@@ -600,6 +646,7 @@ type NormalizedCompleteAttempt = Omit<
   artifactRef: string | null | undefined;
   errorClasses: string[];
   completedAt: Date;
+  lease: Required<LocalizationJournalRunLeaseIdentity>;
 };
 
 /**
@@ -620,6 +667,10 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
     const runId = input.runId ?? `localization-run-${randomUUID()}`;
     const createdAt = toValidDate(input.createdAt ?? new Date(), "createdAt");
+    const initialLease =
+      input.lease === undefined ? null : normalizeSeedRunLease(input.lease, "lease");
+    const initialLeaseExpiresAt =
+      initialLease === null ? null : leaseExpiryFromNow(initialLease.leaseSeconds);
     return this.db.transaction(async (tx) => {
       await requireRunScopeInTx(tx, input);
       await tx
@@ -635,6 +686,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           costPolicy: input.costPolicy,
           status: "running",
           pausedBlocker: null,
+          leaseOwnerId: initialLease?.ownerId ?? null,
+          leaseExpiresAt: initialLeaseExpiresAt,
+          fenceToken: initialLease === null ? 0 : 1,
           createdAt,
           updatedAt: createdAt,
         })
@@ -749,6 +803,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         costPolicy: null,
         status: "running",
         pausedBlocker: null,
+        leaseOwnerId: null,
+        leaseExpiresAt: null,
+        fenceToken: 0,
         createdAt,
         updatedAt: createdAt,
       })
@@ -771,6 +828,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const attempt = normalizeBeginAttempt(input);
 
     return this.db.transaction(async (tx) => {
+      await renewRunLeaseInTx(tx, attempt.runId, attempt.lease, ["running"]);
       const existing = await loadAttemptInTx(tx, attempt.attemptId);
       if (existing !== undefined) {
         if (!beginAttemptRowMatches(existing, attempt)) {
@@ -781,14 +839,29 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         }
         return journalAttemptRowToRecord(existing);
       }
-      const run = await requireRunInTx(tx, attempt.runId);
-      if (run.status !== "running") {
+      const claimed = await tx
+        .update(localizationJournalRunUnits)
+        .set({
+          state: "claimed",
+          claimOwnerId: attempt.lease.ownerId,
+          claimFenceToken: attempt.lease.fenceToken,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(localizationJournalRunUnits.runId, attempt.runId),
+            eq(localizationJournalRunUnits.bridgeUnitId, attempt.bridgeUnitId),
+            eq(localizationJournalRunUnits.state, "pending"),
+          ),
+        )
+        .returning({ bridgeUnitId: localizationJournalRunUnits.bridgeUnitId });
+      if (claimed[0] === undefined) {
+        const current = await requireSeededUnitInTx(tx, attempt.runId, attempt.bridgeUnitId);
         throw new LocalizationJournalRepositoryError(
-          "invalid_run_transition",
-          `cannot dispatch attempt ${attempt.attemptId} while run ${attempt.runId} is ${run.status}`,
+          "unit_not_pending",
+          `cannot dispatch attempt ${attempt.attemptId}: planned unit ${attempt.runId}/${attempt.bridgeUnitId} is ${current.state}`,
         );
       }
-      await requireSeededUnitInTx(tx, attempt.runId, attempt.bridgeUnitId);
       await tx
         .insert(localizationJournalLlmAttempts)
         .values({
@@ -800,6 +873,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           logicalCallId: attempt.logicalCallId,
           attemptIndex: attempt.attemptIndex,
           lifecycleState: "dispatching",
+          fenceToken: attempt.lease.fenceToken,
           requestedModelId: attempt.requestedModelId,
           requestedProviderId: attempt.requestedProviderId,
           modelId: null,
@@ -850,9 +924,35 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const completion = normalizeCompleteAttempt(input);
 
     return this.db.transaction(async (tx) => {
-      await requireRunInTx(tx, completion.runId);
-      await requireSeededUnitInTx(tx, completion.runId, completion.bridgeUnitId);
+      await renewRunLeaseInTx(tx, completion.runId, completion.lease, ["running", "paused"]);
+      const before = await loadAttemptInTx(tx, completion.attemptId);
       const persisted = await completeAttemptInTx(tx, completion);
+      if (before?.lifecycleState === "dispatching") {
+        const released = await tx
+          .update(localizationJournalRunUnits)
+          .set({
+            state: "pending",
+            claimOwnerId: null,
+            claimFenceToken: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(localizationJournalRunUnits.runId, completion.runId),
+              eq(localizationJournalRunUnits.bridgeUnitId, completion.bridgeUnitId),
+              eq(localizationJournalRunUnits.state, "claimed"),
+              eq(localizationJournalRunUnits.claimOwnerId, completion.lease.ownerId),
+              eq(localizationJournalRunUnits.claimFenceToken, completion.lease.fenceToken),
+            ),
+          )
+          .returning({ bridgeUnitId: localizationJournalRunUnits.bridgeUnitId });
+        if (released[0] === undefined) {
+          throw new LocalizationJournalRepositoryError(
+            "unit_not_pending",
+            `attempt ${completion.attemptId} no longer owns claimed unit ${completion.runId}/${completion.bridgeUnitId}`,
+          );
+        }
+      }
       return journalAttemptRowToRecord(persisted);
     });
   }
@@ -867,8 +967,18 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const attempts = normalizeAttempts(input.runId, input.bridgeUnitId, input.attempts);
 
     return this.db.transaction(async (tx) => {
-      await requireRunInTx(tx, input.runId);
+      const run = await requireRunInTx(tx, input.runId);
       if (attempts.length === 0) return [];
+      if (run.frozenScope !== null) {
+        // Supervised runs may write attempts only through beginAttempt /
+        // completeAttempt, where the current lease and fence are revalidated.
+        // Keep this batch append solely for pre-supervisor, non-frozen rows.
+        await requireSeededUnitInTx(tx, input.runId, input.bridgeUnitId);
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `frozen journal run ${input.runId} rejects unfenced persistAttempts; use beginAttempt/completeAttempt`,
+        );
+      }
       await ensureLegacyUnitInTx(tx, input.runId, input.bridgeUnitId);
       const persisted = await insertAttemptsIdempotently(tx, attempts);
       return persisted.map(journalAttemptRowToRecord);
@@ -897,6 +1007,10 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const qaDetails = validateQaDetails(input.outcome.findings, input.qaDetails);
     const contextRefs = normalizeContextRefs(input.contextRefs);
     const speakerLabels = normalizeSpeakerLabels(input.bridgeUnitId, input.speakerLabels);
+    const lease =
+      input.lease === undefined
+        ? null
+        : normalizeRunLeaseIdentity(input.lease, "persistUnit.lease");
 
     const journalOutcomeId = journalOutcomeIdFor(input.runId, input.outcome.id);
     const journalCandidateIds = new Map<string, string>();
@@ -906,18 +1020,38 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
     await this.db.transaction(async (tx) => {
       const run = await requireRunInTx(tx, input.runId);
+      if (run.frozenScope !== null) {
+        if (lease === null) {
+          throw new LocalizationJournalRepositoryError(
+            "run_lease_lost",
+            `frozen journal run ${input.runId} requires the active driver lease to persist a unit`,
+          );
+        }
+        await renewRunLeaseInTx(tx, input.runId, lease, ["running", "paused"]);
+      } else if (lease !== null) {
+        await renewRunLeaseInTx(tx, input.runId, lease, ["running", "paused"]);
+      }
       if (run.targetLocale !== input.outcome.targetLocale) {
         throw new LocalizationJournalRepositoryError(
           "run_scope_mismatch",
           `outcome targetLocale=${input.outcome.targetLocale} does not match run=${input.runId} targetLocale=${run.targetLocale}`,
         );
       }
-      const plannedUnit = await ensureLegacyUnitInTx(
-        tx,
-        input.runId,
-        input.bridgeUnitId,
-        input.sourceUnitKey ?? null,
-      );
+      const plannedUnit =
+        run.frozenScope === null
+          ? await ensureLegacyUnitInTx(
+              tx,
+              input.runId,
+              input.bridgeUnitId,
+              input.sourceUnitKey ?? null,
+            )
+          : await requireSeededUnitInTx(tx, input.runId, input.bridgeUnitId);
+      if (run.frozenScope !== null && attempts.length > 0) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `frozen journal run ${input.runId} rejects unfenced attempts in persistUnit; use beginAttempt/completeAttempt`,
+        );
+      }
       if (
         input.sourceUnitKey !== undefined &&
         plannedUnit.sourceUnitKey !== null &&
@@ -979,6 +1113,12 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           throw new LocalizationJournalRepositoryError(
             "candidate_attempt_missing",
             `candidate ${candidate.id} requires a completed attempt ${candidate.attemptId} in run/unit ${input.runId}/${input.bridgeUnitId}`,
+          );
+        }
+        if (run.frozenScope !== null && lease !== null && attempt.fenceToken !== lease.fenceToken) {
+          throw new LocalizationJournalRepositoryError(
+            "attempt_conflict",
+            `candidate ${candidate.id} attempt ${candidate.attemptId} belongs to fence ${attempt.fenceToken}, not active fence ${lease.fenceToken}`,
           );
         }
         if (
@@ -1082,7 +1222,13 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
       const unitUpdate = await tx
         .update(localizationJournalRunUnits)
-        .set({ state: "written", nextAction: null, updatedAt: now })
+        .set({
+          state: "written",
+          nextAction: null,
+          claimOwnerId: null,
+          claimFenceToken: null,
+          updatedAt: now,
+        })
         .where(
           and(
             eq(localizationJournalRunUnits.runId, input.runId),
@@ -1140,17 +1286,27 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     actor: AuthorizationActor,
     runId: string,
     blocker: LocalizationJournalOperationalBlocker,
+    leaseInput: LocalizationJournalRunLeaseIdentity,
   ): Promise<LocalizationJournalRunRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     assertNonBlank(runId, "runId");
     const normalizedBlocker = normalizeOperationalBlocker(blocker);
+    const lease = normalizeRunLeaseIdentity(leaseInput, "lease");
     const updated = await this.db
       .update(localizationJournalRuns)
-      .set({ status: "paused", pausedBlocker: normalizedBlocker, updatedAt: new Date() })
+      .set({
+        status: "paused",
+        pausedBlocker: normalizedBlocker,
+        leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(localizationJournalRuns.runId, runId),
           eq(localizationJournalRuns.status, "running"),
+          eq(localizationJournalRuns.leaseOwnerId, lease.ownerId),
+          eq(localizationJournalRuns.fenceToken, lease.fenceToken),
+          sql`${localizationJournalRuns.leaseExpiresAt} > now()`,
         ),
       )
       .returning();
@@ -1169,11 +1325,38 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         `journal run ${runId} does not exist`,
       );
     }
-    if (current.status === "paused") {
+    if (
+      current.status === "paused" &&
+      current.leaseOwnerId === lease.ownerId &&
+      current.fenceToken === lease.fenceToken &&
+      current.leaseExpiresAt !== null &&
+      current.leaseExpiresAt.getTime() > Date.now()
+    ) {
       // Concurrent supervisors can discover the same operational outage. The
       // first durable blocker wins; later pause writes converge on that record
       // without overwriting its evidence or operator action.
+      await this.db
+        .update(localizationJournalRuns)
+        .set({
+          leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(localizationJournalRuns.runId, runId),
+            eq(localizationJournalRuns.status, "paused"),
+            eq(localizationJournalRuns.leaseOwnerId, lease.ownerId),
+            eq(localizationJournalRuns.fenceToken, lease.fenceToken),
+            sql`${localizationJournalRuns.leaseExpiresAt} > now()`,
+          ),
+        );
       return journalRunRowToRecord(current);
+    }
+    if (current.status === "running" || current.status === "paused") {
+      throw new LocalizationJournalRepositoryError(
+        "run_lease_lost",
+        `driver ${lease.ownerId} fence ${lease.fenceToken} no longer owns journal run ${runId}`,
+      );
     }
     throw new LocalizationJournalRepositoryError(
       "invalid_run_transition",
@@ -1181,43 +1364,63 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     );
   }
 
-  async resumeRun(actor: AuthorizationActor, runId: string): Promise<LocalizationJournalRunRecord> {
+  async resumeRun(
+    actor: AuthorizationActor,
+    runId: string,
+    leaseInput: Omit<LocalizationJournalRunLeaseIdentity, "fenceToken">,
+  ): Promise<LocalizationJournalRunRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     assertNonBlank(runId, "runId");
+    const lease = normalizeSeedRunLease(leaseInput, "lease");
     return this.db.transaction(async (tx) => {
-      const currentRows = await tx
-        .select()
-        .from(localizationJournalRuns)
-        .where(eq(localizationJournalRuns.runId, runId))
-        .limit(1);
-      const current = currentRows[0];
-      if (current === undefined) {
-        throw new LocalizationJournalRepositoryError(
-          "run_not_found",
-          `journal run ${runId} does not exist`,
-        );
-      }
-      if (current.status !== "paused" && current.status !== "running") {
-        throw new LocalizationJournalRepositoryError(
-          "invalid_run_transition",
-          `cannot resume journal run ${runId} from status ${current.status}`,
-        );
-      }
-
       const resumedAt = new Date();
-      let resumed = current;
-      if (current.status === "paused") {
-        const rows = await tx
-          .update(localizationJournalRuns)
-          .set({ status: "running", pausedBlocker: null, updatedAt: resumedAt })
-          .where(
-            and(
-              eq(localizationJournalRuns.runId, runId),
-              eq(localizationJournalRuns.status, "paused"),
-            ),
-          )
-          .returning();
-        resumed = rows[0] ?? current;
+      const rows = await tx
+        .update(localizationJournalRuns)
+        .set({
+          status: "running",
+          pausedBlocker: null,
+          leaseOwnerId: lease.ownerId,
+          leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+          fenceToken: sql`${localizationJournalRuns.fenceToken} + 1`,
+          updatedAt: resumedAt,
+        })
+        .where(
+          and(
+            eq(localizationJournalRuns.runId, runId),
+            sql`(
+              (
+                ${localizationJournalRuns.status} = 'paused'
+                and (
+                  (
+                    ${localizationJournalRuns.leaseOwnerId} is null
+                    and ${localizationJournalRuns.leaseExpiresAt} is null
+                  )
+                  or ${localizationJournalRuns.leaseExpiresAt} <= now()
+                )
+              )
+              or (
+                ${localizationJournalRuns.status} = 'running'
+                and ${localizationJournalRuns.fenceToken} > 0
+                and ${localizationJournalRuns.leaseOwnerId} is not null
+                and ${localizationJournalRuns.leaseExpiresAt} <= now()
+              )
+            )`,
+          ),
+        )
+        .returning();
+      const resumed = rows[0];
+      if (resumed === undefined) {
+        const current = await requireRunInTx(tx, runId);
+        if (current.status !== "paused" && current.status !== "running") {
+          throw new LocalizationJournalRepositoryError(
+            "invalid_run_transition",
+            `cannot resume journal run ${runId} from status ${current.status}`,
+          );
+        }
+        throw new LocalizationJournalRepositoryError(
+          "run_lease_conflict",
+          `cannot resume journal run ${runId}: ${current.status} lease fence ${current.fenceToken} is still live or was never acquired`,
+        );
       }
 
       // A process can die after the pre-dispatch row commits and before the
@@ -1254,10 +1457,90 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           and(
             eq(localizationJournalLlmAttempts.runId, runId),
             eq(localizationJournalLlmAttempts.lifecycleState, "dispatching"),
+            sql`${localizationJournalLlmAttempts.fenceToken} < ${resumed.fenceToken}`,
+          ),
+        );
+
+      await tx
+        .update(localizationJournalRunUnits)
+        .set({
+          state: "pending",
+          claimOwnerId: null,
+          claimFenceToken: null,
+          updatedAt: resumedAt,
+        })
+        .where(
+          and(
+            eq(localizationJournalRunUnits.runId, runId),
+            eq(localizationJournalRunUnits.state, "claimed"),
+            sql`${localizationJournalRunUnits.claimFenceToken} < ${resumed.fenceToken}`,
           ),
         );
 
       return journalRunRowToRecord(resumed);
+    });
+  }
+
+  async releaseRunLease(
+    actor: AuthorizationActor,
+    runId: string,
+    leaseInput: LocalizationJournalRunLeaseIdentity,
+  ): Promise<LocalizationJournalRunRecord> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    assertNonBlank(runId, "runId");
+    const lease = normalizeRunLeaseIdentity(leaseInput, "lease");
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(localizationJournalRuns)
+        .set({ leaseOwnerId: null, leaseExpiresAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(localizationJournalRuns.runId, runId),
+            eq(localizationJournalRuns.status, "paused"),
+            eq(localizationJournalRuns.leaseOwnerId, lease.ownerId),
+            eq(localizationJournalRuns.fenceToken, lease.fenceToken),
+            sql`${localizationJournalRuns.leaseExpiresAt} > now()`,
+            sql`not exists (
+              select 1
+              from itotori_llm_attempts attempt
+              where attempt.run_id = ${localizationJournalRuns.runId}
+                and attempt.fence_token = ${localizationJournalRuns.fenceToken}
+                and attempt.lifecycle_state = 'dispatching'
+            )`,
+            sql`not exists (
+              select 1
+              from itotori_localization_journal_run_units unit
+              where unit.run_id = ${localizationJournalRuns.runId}
+                and unit.claim_fence_token = ${localizationJournalRuns.fenceToken}
+                and unit.state = 'claimed'
+            )`,
+          ),
+        )
+        .returning();
+      if (rows[0] !== undefined) return journalRunRowToRecord(rows[0]);
+
+      const current = await requireRunInTx(tx, runId);
+      if (current.status !== "paused") {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_run_transition",
+          `cannot release journal run ${runId} while it is ${current.status}`,
+        );
+      }
+      if (
+        current.leaseOwnerId === lease.ownerId &&
+        current.fenceToken === lease.fenceToken &&
+        current.leaseExpiresAt !== null &&
+        current.leaseExpiresAt.getTime() > Date.now()
+      ) {
+        throw new LocalizationJournalRepositoryError(
+          "run_lease_conflict",
+          `cannot release journal run ${runId}: fence ${lease.fenceToken} still has a dispatching attempt or claimed unit`,
+        );
+      }
+      throw new LocalizationJournalRepositoryError(
+        "run_lease_lost",
+        `driver ${lease.ownerId} fence ${lease.fenceToken} cannot release journal run ${runId}`,
+      );
     });
   }
 
@@ -1882,6 +2165,51 @@ function validateSeedRunInput(input: SeedLocalizationJournalRunInput): void {
     }
     normalizeNextAction(unit.nextAction, `units[${index}].nextAction`);
   }
+  if (input.lease !== undefined) normalizeSeedRunLease(input.lease, "lease");
+}
+
+function normalizeLeaseSeconds(value: number | undefined, label: string): number {
+  const leaseSeconds = value ?? LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS;
+  if (
+    !Number.isFinite(leaseSeconds) ||
+    !Number.isInteger(leaseSeconds) ||
+    leaseSeconds < LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS
+  ) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `${label} must be an integer of at least ${LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS} seconds`,
+    );
+  }
+  return leaseSeconds;
+}
+
+function normalizeSeedRunLease(
+  input: SeedLocalizationJournalRunLeaseInput,
+  label: string,
+): Required<SeedLocalizationJournalRunLeaseInput> {
+  assertNonBlank(input.ownerId, `${label}.ownerId`);
+  return {
+    ownerId: input.ownerId,
+    leaseSeconds: normalizeLeaseSeconds(input.leaseSeconds, `${label}.leaseSeconds`),
+  };
+}
+
+function normalizeRunLeaseIdentity(
+  input: LocalizationJournalRunLeaseIdentity,
+  label: string,
+): Required<LocalizationJournalRunLeaseIdentity> {
+  const lease = normalizeSeedRunLease(input, label);
+  if (!Number.isInteger(input.fenceToken) || input.fenceToken <= 0) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `${label}.fenceToken must be a positive integer`,
+    );
+  }
+  return { ...lease, fenceToken: input.fenceToken };
+}
+
+function leaseExpiryFromNow(leaseSeconds: number): Date {
+  return new Date(Date.now() + leaseSeconds * 1_000);
 }
 
 function normalizeBeginAttempt(
@@ -1906,6 +2234,7 @@ function normalizeBeginAttempt(
     ...input,
     artifactRef: input.artifactRef ?? null,
     startedAt: toValidDate(input.startedAt, "startedAt"),
+    lease: normalizeRunLeaseIdentity(input.lease, "lease"),
   };
 }
 
@@ -2009,6 +2338,7 @@ function normalizeCompleteAttempt(
     artifactRef: input.artifactRef,
     errorClasses: [...input.errorClasses],
     completedAt: toValidDate(input.completedAt, "completedAt"),
+    lease: normalizeRunLeaseIdentity(input.lease, "lease"),
   };
 }
 
@@ -2410,6 +2740,7 @@ async function ensureLegacyUnitInTx(
   bridgeUnitId: string,
   sourceUnitKey: string | null = null,
 ): Promise<typeof localizationJournalRunUnits.$inferSelect> {
+  const run = await requireRunInTx(tx, runId);
   const existing = await tx
     .select()
     .from(localizationJournalRunUnits)
@@ -2421,6 +2752,15 @@ async function ensureLegacyUnitInTx(
     )
     .limit(1);
   if (existing[0] !== undefined) return existing[0];
+
+  // Frozen runs are immutable obligation sets. Compatibility may synthesize a
+  // unit only for a pre-supervisor createRun row whose frozen scope is null.
+  if (run.frozenScope !== null) {
+    throw new LocalizationJournalRepositoryError(
+      "unit_not_seeded",
+      `frozen journal run ${runId} has no planned unit ${bridgeUnitId}`,
+    );
+  }
 
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${runId}))`);
   const afterLock = await tx
@@ -2477,6 +2817,43 @@ async function requireRunInTx(
   return row;
 }
 
+async function renewRunLeaseInTx(
+  tx: JournalTransaction,
+  runId: string,
+  lease: Required<LocalizationJournalRunLeaseIdentity>,
+  allowedStatuses: readonly LocalizationJournalRunStatus[],
+): Promise<typeof localizationJournalRuns.$inferSelect> {
+  const rows = await tx
+    .update(localizationJournalRuns)
+    .set({
+      leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRuns.runId, runId),
+        inArray(localizationJournalRuns.status, [...allowedStatuses]),
+        eq(localizationJournalRuns.leaseOwnerId, lease.ownerId),
+        eq(localizationJournalRuns.fenceToken, lease.fenceToken),
+        sql`${localizationJournalRuns.leaseExpiresAt} > now()`,
+      ),
+    )
+    .returning();
+  if (rows[0] !== undefined) return rows[0];
+
+  const current = await requireRunInTx(tx, runId);
+  if (!allowedStatuses.includes(current.status as LocalizationJournalRunStatus)) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_run_transition",
+      `journal run ${runId} is ${current.status}; expected ${allowedStatuses.join(" or ")}`,
+    );
+  }
+  throw new LocalizationJournalRepositoryError(
+    "run_lease_lost",
+    `driver ${lease.ownerId} fence ${lease.fenceToken} has no live lease for journal run ${runId}`,
+  );
+}
+
 async function loadAttemptInTx(
   tx: JournalTransaction,
   attemptId: string,
@@ -2500,6 +2877,7 @@ function beginAttemptRowMatches(
     row.agentLabel === attempt.agentLabel &&
     row.logicalCallId === attempt.logicalCallId &&
     row.attemptIndex === attempt.attemptIndex &&
+    row.fenceToken === attempt.lease.fenceToken &&
     row.requestedModelId === attempt.requestedModelId &&
     row.requestedProviderId === attempt.requestedProviderId &&
     row.providerRunId === attempt.attemptId &&
@@ -2524,6 +2902,12 @@ async function completeAttemptInTx(
     throw new LocalizationJournalRepositoryError(
       "attempt_conflict",
       `attempt ${completion.attemptId} is not bound to ${completion.runId}/${completion.bridgeUnitId}`,
+    );
+  }
+  if (current.fenceToken !== completion.lease.fenceToken) {
+    throw new LocalizationJournalRepositoryError(
+      "run_lease_lost",
+      `attempt ${completion.attemptId} belongs to fence ${current.fenceToken}, not ${completion.lease.fenceToken}`,
     );
   }
   if (current.zdr !== completion.zdr) {
@@ -2581,6 +2965,7 @@ async function completeAttemptInTx(
       and(
         eq(localizationJournalLlmAttempts.attemptId, completion.attemptId),
         eq(localizationJournalLlmAttempts.lifecycleState, "dispatching"),
+        eq(localizationJournalLlmAttempts.fenceToken, completion.lease.fenceToken),
       ),
     )
     .returning();
@@ -2602,6 +2987,7 @@ function completeAttemptRowMatches(
     row.lifecycleState === "completed" &&
     row.runId === completion.runId &&
     row.bridgeUnitId === completion.bridgeUnitId &&
+    row.fenceToken === completion.lease.fenceToken &&
     row.modelId === completion.modelId &&
     row.providerId === completion.providerId &&
     row.costUsd === completion.costUsd &&
@@ -2651,6 +3037,7 @@ async function insertAttemptsIdempotently(
         logicalCallId: attempt.logicalCallId,
         attemptIndex: attempt.attemptIndex,
         lifecycleState: "completed",
+        fenceToken: 0,
         requestedModelId: attempt.requestedModelId,
         requestedProviderId: attempt.requestedProviderId,
         modelId: attempt.modelId,
@@ -2696,6 +3083,12 @@ async function insertAttemptsIdempotently(
   for (const attempt of attempts) {
     let persisted = byAttemptId.get(attempt.attemptId);
     if (persisted?.lifecycleState === "dispatching") {
+      if (persisted.fenceToken > 0) {
+        throw new LocalizationJournalRepositoryError(
+          "run_lease_lost",
+          `supervised attempt ${attempt.attemptId} must be completed through its fenced lifecycle`,
+        );
+      }
       if (!completedAttemptIdentityMatches(persisted, attempt)) {
         throw new LocalizationJournalRepositoryError(
           "attempt_conflict",
@@ -2727,6 +3120,7 @@ function attemptRowsMatch(
     row.agentLabel === attempt.agentLabel &&
     row.logicalCallId === attempt.logicalCallId &&
     row.attemptIndex === attempt.attemptIndex &&
+    row.fenceToken === 0 &&
     row.requestedModelId === attempt.requestedModelId &&
     row.requestedProviderId === attempt.requestedProviderId &&
     row.modelId === attempt.modelId &&
@@ -2768,6 +3162,7 @@ function completedAttemptIdentityMatches(
     row.agentLabel === attempt.agentLabel &&
     row.logicalCallId === attempt.logicalCallId &&
     row.attemptIndex === attempt.attemptIndex &&
+    row.fenceToken === 0 &&
     row.requestedModelId === attempt.requestedModelId &&
     row.requestedProviderId === attempt.requestedProviderId &&
     row.providerRunId === attempt.providerRunId &&
@@ -2803,6 +3198,11 @@ function normalizedAttemptToCompletion(attempt: NormalizedAttempt): NormalizedCo
     artifactRef: attempt.artifactRef,
     errorClasses: attempt.errorClasses,
     completedAt: attempt.completedAt,
+    lease: {
+      ownerId: "legacy-unfenced-attempt",
+      fenceToken: 0,
+      leaseSeconds: LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS,
+    },
   };
 }
 
@@ -2820,6 +3220,9 @@ function journalRunRowToRecord(
     costPolicy: row.costPolicy,
     status: row.status as LocalizationJournalRunStatus,
     pausedBlocker: row.pausedBlocker,
+    leaseOwnerId: row.leaseOwnerId,
+    leaseExpiresAt: row.leaseExpiresAt,
+    fenceToken: row.fenceToken,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -2835,6 +3238,8 @@ function journalRunUnitRowToRecord(
     unitOrdinal: row.unitOrdinal,
     state: row.state as LocalizationJournalRunUnitState,
     nextAction: row.nextAction,
+    claimOwnerId: row.claimOwnerId,
+    claimFenceToken: row.claimFenceToken,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -2852,6 +3257,7 @@ function journalAttemptRowToRecord(
     logicalCallId: row.logicalCallId,
     attemptIndex: row.attemptIndex,
     lifecycleState: row.lifecycleState as LocalizationJournalAttemptLifecycleState,
+    fenceToken: row.fenceToken,
     requestedModelId: row.requestedModelId,
     requestedProviderId: row.requestedProviderId,
     modelId: row.modelId,

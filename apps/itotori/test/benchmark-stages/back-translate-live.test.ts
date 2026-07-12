@@ -170,7 +170,13 @@ describe("ZdrBackTranslator — round-trip + passthrough + ZDR gate", () => {
         label: "x",
         targetText: "Take up the sword.",
       }),
-    ).rejects.toThrow(BackTranslateError);
+    ).rejects.toMatchObject({
+      name: "BackTranslateError",
+      cause: {
+        name: "InvocationRetryCeilingError",
+        lastInvocation: { content: "   " },
+      },
+    });
   });
 });
 

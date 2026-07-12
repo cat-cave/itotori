@@ -10,6 +10,7 @@
 // Draft-job and aggregate provider-ledger rows are deliberately absent from
 // this adapter. They cannot represent a lossless execution journal.
 
+import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AuthorizationActor, ItotoriLocalizationJournalRepositoryPort } from "@itotori/db";
@@ -30,6 +31,10 @@ import type {
 
 export type DrivenJournalPersistenceOptions = {
   actor: AuthorizationActor;
+  /** Stable only for this live executor instance; a resumer must use a new owner. */
+  driverId?: string;
+  /** Defaults to the repository's 120-second lease (4x the provider deadline). */
+  leaseSeconds?: number;
 };
 
 /**
@@ -41,13 +46,20 @@ export type DrivenJournalPersistenceOptions = {
  */
 export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
   private readonly seededRuns = new Map<string, Promise<void>>();
+  private readonly activeLeases = new Map<
+    string,
+    { ownerId: string; fenceToken: number; leaseSeconds?: number }
+  >();
+  private readonly driverId: string;
 
   constructor(
     private readonly journal: ItotoriLocalizationJournalRepositoryPort,
     private readonly opts: DrivenJournalPersistenceOptions,
-  ) {}
+  ) {
+    this.driverId = opts.driverId ?? `localization-driver-${randomUUID()}`;
+  }
 
-  async beginJournalRun(plan: DrivenJournalRunPlan): Promise<void> {
+  async beginJournalRun(plan: DrivenJournalRunPlan, mode: "new" | "resume"): Promise<void> {
     let seed = this.seededRuns.get(plan.run.runId);
     if (seed === undefined) {
       seed = this.journal
@@ -61,8 +73,35 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
           routingPolicy: plan.routingPolicy,
           costPolicy: plan.costPolicy,
           units: plan.units,
+          ...(mode === "new"
+            ? {
+                lease: {
+                  ownerId: this.driverId,
+                  ...(this.opts.leaseSeconds === undefined
+                    ? {}
+                    : { leaseSeconds: this.opts.leaseSeconds }),
+                },
+              }
+            : {}),
         })
-        .then(() => undefined);
+        .then((run) => {
+          if (mode === "new") {
+            if (
+              run.leaseOwnerId !== this.driverId ||
+              run.leaseExpiresAt === null ||
+              run.fenceToken <= 0
+            ) {
+              throw new Error(`journal run ${run.runId} is already owned by another live driver`);
+            }
+            this.activeLeases.set(run.runId, {
+              ownerId: this.driverId,
+              fenceToken: run.fenceToken,
+              ...(this.opts.leaseSeconds === undefined
+                ? {}
+                : { leaseSeconds: this.opts.leaseSeconds }),
+            });
+          }
+        });
       this.seededRuns.set(plan.run.runId, seed);
     }
     await seed;
@@ -78,6 +117,9 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     return {
       status: run.status,
       pausedBlocker: run.pausedBlocker,
+      leaseOwnerId: run.leaseOwnerId,
+      leaseExpiresAt: run.leaseExpiresAt?.toISOString() ?? null,
+      fenceToken: run.fenceToken,
       attempts: attempts.map((attempt): DrivenLlmAttemptRecord => {
         if (attempt.requestedModelId === null || attempt.requestedProviderId === null) {
           throw new Error(
@@ -140,11 +182,20 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
   }
 
   async resumeJournalRun(runId: string): Promise<void> {
-    await this.journal.resumeRun(this.opts.actor, runId);
+    const run = await this.journal.resumeRun(this.opts.actor, runId, {
+      ownerId: this.driverId,
+      ...(this.opts.leaseSeconds === undefined ? {} : { leaseSeconds: this.opts.leaseSeconds }),
+    });
+    this.activeLeases.set(runId, {
+      ownerId: this.driverId,
+      fenceToken: run.fenceToken,
+      ...(this.opts.leaseSeconds === undefined ? {} : { leaseSeconds: this.opts.leaseSeconds }),
+    });
   }
 
   async attemptStarted(attempt: InvocationAttemptStarted): Promise<void> {
     await this.requireSeed(attempt.runId);
+    const lease = this.requireLease(attempt.runId);
     await this.journal.beginAttempt(this.opts.actor, {
       attemptId: attempt.attemptId,
       runId: attempt.runId,
@@ -158,12 +209,14 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       zdr: attempt.zdr,
       artifactRef: `provider-run:${attempt.providerRunId}`,
       startedAt: attempt.startedAt,
+      lease,
     });
   }
 
   async attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void> {
     const run = attempt.providerRun;
     await this.requireSeed(attempt.runId);
+    const lease = this.requireLease(attempt.runId);
     const usage = run?.tokenUsage;
     await this.journal.completeAttempt(this.opts.actor, {
       attemptId: attempt.attemptId,
@@ -197,16 +250,25 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       artifactRef: attempt.artifactRef,
       errorClasses: run?.errorClasses ?? [],
       completedAt: attempt.completedAt,
+      lease,
     });
   }
 
   async pauseRun(runId: string, blocker: OperationalBlocker): Promise<void> {
     await this.requireSeed(runId);
-    await this.journal.pauseRun(this.opts.actor, runId, blocker);
+    await this.journal.pauseRun(this.opts.actor, runId, blocker, this.requireLease(runId));
+  }
+
+  async releasePausedRunLease(runId: string): Promise<void> {
+    await this.requireSeed(runId);
+    const lease = this.requireLease(runId);
+    await this.journal.releaseRunLease(this.opts.actor, runId, lease);
+    this.activeLeases.delete(runId);
   }
 
   async persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void> {
     await this.requireSeed(record.run.runId);
+    const lease = this.requireLease(record.run.runId);
     await this.journal.persistUnit(this.opts.actor, {
       runId: record.run.runId,
       bridgeUnitId: record.writtenOutcome.bridgeUnitId,
@@ -220,6 +282,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       contextRefs: record.contextRefs,
       speakerLabels: record.speakerLabels,
       qaDetails: record.qaDetails,
+      lease,
     });
   }
 
@@ -235,6 +298,18 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     const seed = this.seededRuns.get(runId);
     if (seed === undefined) throw new Error(`journal run ${runId} was not seeded before dispatch`);
     await seed;
+  }
+
+  private requireLease(runId: string): {
+    ownerId: string;
+    fenceToken: number;
+    leaseSeconds?: number;
+  } {
+    const lease = this.activeLeases.get(runId);
+    if (lease === undefined) {
+      throw new Error(`journal run ${runId} has no active driver lease`);
+    }
+    return lease;
   }
 }
 

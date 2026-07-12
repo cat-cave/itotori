@@ -52,14 +52,20 @@ describe("localize resume operator plumbing", () => {
     let plannedRun: DrivenJournalRunPlan | undefined;
     let persistedBlocker: OperationalBlocker | undefined;
     let patchExports = 0;
+    let resumed = false;
     const journal = {
       loadResumeState: async () => ({
-        status: "running" as const,
+        status: resumed ? ("running" as const) : ("paused" as const),
         pausedBlocker: null,
+        leaseOwnerId: resumed ? "resume-plumbing-driver" : null,
+        leaseExpiresAt: resumed ? "2099-01-01T00:00:00.000Z" : null,
+        fenceToken: resumed ? 2 : 1,
         writtenOutcomes: [],
         attempts: [],
       }),
-      resumeJournalRun: async () => {},
+      resumeJournalRun: async () => {
+        resumed = true;
+      },
       beginJournalRun: async (plan) => {
         plannedRun = plan;
       },

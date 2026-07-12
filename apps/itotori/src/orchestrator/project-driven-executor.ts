@@ -267,6 +267,9 @@ export type DrivenJournalRunPlan = {
 export type DrivenJournalResumeState = {
   status: "running" | "paused" | "finalizing" | "succeeded" | "failed" | "aborted";
   pausedBlocker: OperationalBlocker | null;
+  leaseOwnerId: string | null;
+  leaseExpiresAt: string | null;
+  fenceToken: number;
   writtenOutcomes: DrivenWrittenOutcomeRecord[];
   /** Complete run ledger, including providerless/interrupted attempts. */
   attempts?: DrivenLlmAttemptRecord[];
@@ -466,12 +469,14 @@ export type DrivenProviderRunSink = {
 };
 export type DrivenUnitJournalSink = {
   /** Atomically establishes the immutable run and every planned unit. */
-  beginJournalRun?(plan: DrivenJournalRunPlan): Promise<void>;
+  beginJournalRun?(plan: DrivenJournalRunPlan, mode: "new" | "resume"): Promise<void>;
   loadResumeState?(runId: string): Promise<DrivenJournalResumeState>;
   resumeJournalRun?(runId: string): Promise<void>;
   attemptStarted?(attempt: InvocationAttemptStarted): Promise<void>;
   attemptCompleted?(attempt: InvocationAttemptCompleted): Promise<void>;
   pauseRun?(runId: string, blocker: OperationalBlocker): Promise<void>;
+  /** Called only after every in-flight worker on a paused run has drained. */
+  releasePausedRunLease?(runId: string): Promise<void>;
   persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void>;
   persistFailedUnitAttempts(record: DrivenFailedUnitJournalRecord): Promise<void>;
 };
@@ -723,16 +728,26 @@ export async function runProjectDrivenExecutor(
     // Load first so a typo cannot silently seed a brand-new run under an id
     // the operator explicitly asked to resume.
     resumeState = await input.sinks.journal.loadResumeState(journalRun.runId);
-    if (resumeState.status !== "paused" && resumeState.status !== "running") {
+    const leaseExpired =
+      resumeState.leaseOwnerId !== null &&
+      resumeState.leaseExpiresAt !== null &&
+      resumeState.fenceToken > 0 &&
+      Date.parse(resumeState.leaseExpiresAt) <= Date.now();
+    if (resumeState.status !== "paused" && !(resumeState.status === "running" && leaseExpired)) {
       throw new Error(
-        `cannot resume journal run ${journalRun.runId} from terminal/finalizer state ${resumeState.status}`,
+        resumeState.status === "running"
+          ? `cannot resume journal run ${journalRun.runId}: its running driver lease is still live`
+          : `cannot resume journal run ${journalRun.runId} from terminal/finalizer state ${resumeState.status}`,
       );
     }
   }
 
   // New runs are atomically established here. Existing runs are re-seeded
   // idempotently to verify the frozen scope/policies before any resumed call.
-  await input.sinks.journal.beginJournalRun?.(runPlan);
+  await input.sinks.journal.beginJournalRun?.(
+    runPlan,
+    resumeState === undefined ? "new" : "resume",
+  );
 
   if (resumeState !== undefined) {
     // Explicit resume also reconciles any pre-dispatch attempt left in the
@@ -950,6 +965,12 @@ export async function runProjectDrivenExecutor(
 
   const workerCount = Math.min(concurrency, plannedUnits.length);
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  if (pausedBlocker !== null) {
+    // pauseRun intentionally retains the fence while sibling workers still
+    // have live provider calls. Only this post-Promise.all quiescence boundary
+    // makes the paused run available to a new owner.
+    await input.sinks.journal.releasePausedRunLease?.(journalRun.runId);
+  }
 
   // (c) Assemble the aggregate in CANONICAL order. The journal has already
   // been persisted incrementally inside each worker; only the returned

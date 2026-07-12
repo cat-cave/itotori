@@ -1083,13 +1083,20 @@ const repositoryPermissionGateMatrix = [
     "pauseRun",
     "draftWrite",
     "localization-journal-repository.test.ts operational pause coverage",
-    (repo) => repo.pauseRun(deniedActor, "journal-run-denied", undefined as never),
+    (repo) =>
+      repo.pauseRun(deniedActor, "journal-run-denied", undefined as never, undefined as never),
   ),
   localizationJournalGate(
     "resumeRun",
     "draftWrite",
     "localization-journal-repository.test.ts operational resume coverage",
-    (repo) => repo.resumeRun(deniedActor, "journal-run-denied"),
+    (repo) => repo.resumeRun(deniedActor, "journal-run-denied", undefined as never),
+  ),
+  localizationJournalGate(
+    "releaseRunLease",
+    "draftWrite",
+    "localization-journal-repository.test.ts paused lease release coverage",
+    (repo) => repo.releaseRunLease(deniedActor, "journal-run-denied", undefined as never),
   ),
   localizationJournalGate(
     "loadRunsForBranch",
@@ -2387,6 +2394,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationJournalRepository.resumeRun",
           "requiredPermission": "draft.write",
           "successFixture": "localization-journal-repository.test.ts operational resume coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.releaseRunLease",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts paused lease release coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

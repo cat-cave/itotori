@@ -199,9 +199,15 @@ type EvaluatedInvocation<T> =
   | { accepted: false; failure: InvocationFailure };
 
 const SUPERVISOR_BINDING = Symbol("itotori.invocation-supervisor.binding");
+const SUPERVISED_DISPATCH_CAPABILITY = Symbol("itotori.invocation-supervisor.dispatch-capability");
+const activeSupervisedDispatchCapabilities = new Set<symbol>();
 
 type SupervisorBoundProvider = ModelProvider & {
   readonly [SUPERVISOR_BINDING]: InvocationSupervisor;
+};
+
+type SupervisedDispatchRequest = ModelInvocationRequest & {
+  readonly [SUPERVISED_DISPATCH_CAPABILITY]: symbol;
 };
 
 export class InvocationOperationalPauseError extends Error {
@@ -219,6 +225,8 @@ export class InvocationRetryCeilingError extends Error {
     readonly attempts: number,
     readonly lastFailure: InvocationFailureClass,
     readonly detail: string,
+    /** Last physical result rejected by evaluation, when dispatch returned one. */
+    readonly lastInvocation?: ModelInvocationResult,
   ) {
     super(
       `InvocationSupervisor hard retry ceiling ${attempts} reached after ${lastFailure}: ${detail}`,
@@ -239,6 +247,15 @@ export class InvocationContentExhaustedError extends Error {
   ) {
     super(`bounded ${failureClass} recovery exhausted: ${detail}`);
     this.name = "InvocationContentExhaustedError";
+  }
+}
+
+export class UnsupervisedProviderAdapterDispatchError extends Error {
+  constructor() {
+    super(
+      "provider adapter delegation requires an active InvocationSupervisor dispatch capability",
+    );
+    this.name = "UnsupervisedProviderAdapterDispatchError";
   }
 }
 
@@ -424,22 +441,17 @@ export class InvocationSupervisor {
       };
       const reachedOneRoutePass = routeAction.advance && routeIndex === routes.length - 1;
       if (reachedOneRoutePass) {
-        // Direct agent/library calls have no durable run to pause or resume.
-        // They still receive deterministic salvage + one bounded corrective
-        // route pass, then preserve their established typed error contract.
-        // Durable localization calls remain under the hard-ceiling/write or
-        // retain-existing policies below.
-        if (this.standalone && input.parse === null && failure.invocation !== undefined) {
-          return {
-            invocation: failure.invocation,
-            parsed: failure.invocation as T,
-            priorAttempts: priorAttempts.slice(0, -1),
-          };
-        }
-        if (this.standalone) throw failure.error;
+        // Structured agent/library calls preserve their established typed
+        // validation error after one bounded route pass. Plain-text callers
+        // cannot do that: their only result is the invocation itself, and an
+        // evaluator-rejected invocation is not a successful result. Keep
+        // correcting it within the hard ceiling, then surface the operational
+        // ceiling signal if no usable invocation exists.
+        if (this.standalone && input.parse !== null) throw failure.error;
         if (
-          input.contentFailureMode === "retain_existing" ||
-          mayReturnToExistingWrittenCandidate(this.context.stage)
+          !this.standalone &&
+          (input.contentFailureMode === "retain_existing" ||
+            mayReturnToExistingWrittenCandidate(this.context.stage))
         ) {
           throw new InvocationContentExhaustedError(failure.kind, failure.detail);
         }
@@ -471,6 +483,7 @@ export class InvocationSupervisor {
       this.policy.hardAttemptCeiling,
       ceilingFailure.kind,
       ceilingFailure.detail,
+      lastFailure?.invocation,
     );
   }
 
@@ -510,6 +523,8 @@ export class InvocationSupervisor {
     if (inheritedSignal?.aborted) forwardAbort();
     inheritedSignal?.addEventListener("abort", forwardAbort, { once: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    const dispatchCapability = Symbol("supervised-provider-dispatch");
+    activeSupervisedDispatchCapabilities.add(dispatchCapability);
     try {
       const deadline = new Promise<never>((_resolve, reject) => {
         timeout = setTimeout(() => {
@@ -518,9 +533,19 @@ export class InvocationSupervisor {
         }, this.policy.deadlineMs);
       });
       // This is the sole non-adapter physical dispatch in production.
-      const dispatched = this.options.provider.invoke({ ...request, signal: controller.signal });
+      const dispatchedRequest: SupervisedDispatchRequest = {
+        ...request,
+        signal: controller.signal,
+        // Symbol-keyed properties are enumerable by default, so request-
+        // decorating providers preserve this private capability when they
+        // spread the request before delegating. The active set below makes the
+        // copied token useless as soon as this supervised dispatch ends.
+        [SUPERVISED_DISPATCH_CAPABILITY]: dispatchCapability,
+      };
+      const dispatched = this.options.provider.invoke(dispatchedRequest);
       return await Promise.race([dispatched, deadline]);
     } finally {
+      activeSupervisedDispatchCapabilities.delete(dispatchCapability);
       if (timeout !== undefined) clearTimeout(timeout);
       inheritedSignal?.removeEventListener("abort", forwardAbort);
     }
@@ -629,15 +654,27 @@ export async function executeModelInvocation(
 }
 
 /**
- * Raw delegation for a transport-decorating ModelProvider adapter that is
- * itself already executing beneath InvocationSupervisor (for example posture
- * injection or lazy provider construction). Production call sites must use
- * `executeModelInvocation`; the static guard limits direct dispatch surfaces.
+ * Delegation for a transport-decorating ModelProvider adapter that is already
+ * executing beneath InvocationSupervisor (for example posture injection or
+ * lazy provider construction). The private request capability is live only for
+ * the active supervisor dispatch, so importing this helper does not grant a
+ * raw provider-dispatch bypass.
  */
 export function dispatchProviderAdapter(
   provider: ModelProvider,
   request: ModelInvocationRequest,
 ): Promise<ModelInvocationResult> {
+  const dispatchCapability = (
+    request as ModelInvocationRequest & {
+      readonly [SUPERVISED_DISPATCH_CAPABILITY]?: symbol;
+    }
+  )[SUPERVISED_DISPATCH_CAPABILITY];
+  if (
+    dispatchCapability === undefined ||
+    !activeSupervisedDispatchCapabilities.has(dispatchCapability)
+  ) {
+    throw new UnsupervisedProviderAdapterDispatchError();
+  }
   return provider.invoke(request);
 }
 

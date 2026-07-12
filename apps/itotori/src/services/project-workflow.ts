@@ -44,7 +44,10 @@ import {
 } from "@itotori/localization-bridge-schema";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import { summarizeBenchmarkReportMetadata } from "../benchmark-report-summary.js";
-import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
+import {
+  executeModelInvocation,
+  InvocationRetryCeilingError,
+} from "../orchestrator/invocation-supervisor.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -586,14 +589,15 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         });
         result = await executeModelInvocation(provider, request);
       } catch (error) {
+        const workflowError = workflowDraftInvocationError(error, unit.bridgeUnitId);
         await this.recordProviderFailure(
           provider,
           nextProject,
           request,
           invocationStartedAt,
-          error,
+          workflowError,
         );
-        throw error;
+        throw workflowError;
       }
       const validatedDraft = validateWorkflowDraftText({
         draftText: result.content,
@@ -1099,6 +1103,21 @@ function failedProviderRunFromRun(run: ProviderRunRecord, errorClass: string): P
       amountMicrosUsd: 0,
     },
   };
+}
+
+function workflowDraftInvocationError(error: unknown, bridgeUnitId: string): unknown {
+  if (!(error instanceof InvocationRetryCeilingError) || error.lastInvocation === undefined) {
+    return error;
+  }
+  const lastInvocation = error.lastInvocation;
+  return new ModelProviderError(
+    `draft provider never returned usable content for ${bridgeUnitId} (${error.lastFailure})`,
+    "provider_response_invalid",
+    false,
+    failedProviderRunFromRun(lastInvocation.providerRun, "provider_response_invalid"),
+    lastInvocation.adapterMetadata,
+    error,
+  );
 }
 
 function failedProviderRunFromRequest(input: {

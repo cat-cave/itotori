@@ -86,6 +86,8 @@ describe("localization attempt/outcome journal migration", () => {
         "next_action",
         "created_at",
         "updated_at",
+        "claim_owner_id",
+        "claim_fence_token",
       ]);
       expect(unitColumnNames).not.toEqual(
         expect.arrayContaining(["source_text", "target_text", "candidate", "body"]),
@@ -98,13 +100,18 @@ describe("localization attempt/outcome journal migration", () => {
           and table_name = 'itotori_llm_attempts'
           and column_name in (
             'lifecycle_state', 'model_id', 'provider_id', 'cost_usd',
-            'zdr', 'validation_result', 'completed_at'
+            'zdr', 'validation_result', 'completed_at', 'fence_token'
           )
         order by column_name
       `);
       expect(attemptLifecycleColumns.rows).toEqual([
         expect.objectContaining({ column_name: "completed_at", is_nullable: "YES" }),
         expect.objectContaining({ column_name: "cost_usd", is_nullable: "YES" }),
+        expect.objectContaining({
+          column_name: "fence_token",
+          is_nullable: "NO",
+          column_default: "0",
+        }),
         expect.objectContaining({
           column_name: "lifecycle_state",
           is_nullable: "NO",

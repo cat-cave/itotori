@@ -34,6 +34,7 @@ import {
   openRouterApiKeyFromEnv,
   DEV_PAIR,
   type ModelCapabilities,
+  type ModelInvocationResult,
   type ModelInvocationRequest,
   type ModelProvider,
   type ProviderInputClassification,
@@ -41,7 +42,10 @@ import {
   type ProviderRunArtifactRecorder,
   type ProviderRunRecord,
 } from "../providers/index.js";
-import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
+import {
+  executeModelInvocation,
+  InvocationRetryCeilingError,
+} from "../orchestrator/invocation-supervisor.js";
 import { backTranslationTripwire } from "./deterministic-metrics/back-translation-tripwire.js";
 import {
   DEFAULT_METRIC_CONFIG,
@@ -51,8 +55,8 @@ import {
 } from "./deterministic-metrics/index.js";
 
 export class BackTranslateError extends Error {
-  constructor(detail: string) {
-    super(`benchmark back-translate refused: ${detail}`);
+  constructor(detail: string, options?: ErrorOptions) {
+    super(`benchmark back-translate refused: ${detail}`, options);
     this.name = "BackTranslateError";
   }
 }
@@ -149,7 +153,18 @@ export class ZdrBackTranslator implements BackTranslator {
 
   async backTranslate(input: BackTranslateUnitInput): Promise<BackTranslateOutcome> {
     const request = this.buildRequest(input);
-    const result = await executeModelInvocation(this.provider, request);
+    let result: ModelInvocationResult;
+    try {
+      result = await executeModelInvocation(this.provider, request);
+    } catch (error) {
+      if (error instanceof InvocationRetryCeilingError) {
+        throw new BackTranslateError(
+          `unit '${input.unitId}' back-translation never produced usable content`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     const run = result.providerRun;
     // Privacy gate: a serve whose wire routing posture is not zdr:true is
     // DISQUALIFIED (never consumed) — the round-trip is ZDR-routed only.

@@ -948,6 +948,7 @@ export {
   JOBS_RUN_TABLE_DEFAULT_LIMIT,
   JOBS_RUN_TABLE_MAX_LIMIT,
   JOBS_RUN_TABLE_SCHEMA_VERSION,
+  LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS,
 } from "./repositories/localization-journal-repository.js";
 export type {
   BeginLocalizationJournalAttemptInput,
@@ -977,6 +978,7 @@ export type {
   LocalizationJournalQaDetail,
   LocalizationJournalQaDetailsByFindingId,
   LocalizationJournalRunRecord,
+  LocalizationJournalRunLeaseIdentity,
   LocalizationJournalRunStatus,
   LocalizationJournalRunUnitRecord,
   LocalizationJournalRunUnitState,
@@ -987,6 +989,7 @@ export type {
   PersistLocalizationJournalAttemptsInput,
   PersistLocalizationJournalUnitInput,
   SeedLocalizationJournalRunInput,
+  SeedLocalizationJournalRunLeaseInput,
   SeedLocalizationJournalRunUnitInput,
 } from "./repositories/localization-journal-repository.js";
 export type {

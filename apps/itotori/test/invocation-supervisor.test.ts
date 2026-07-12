@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  executeModelInvocation,
   InvocationRetryCeilingError,
   InvocationSupervisor,
+  supervisedModelProvider,
   type InvocationAttemptCompleted,
   type InvocationAttemptStarted,
   type InvocationLifecycle,
@@ -271,6 +273,57 @@ describe("InvocationSupervisor failure matrix", () => {
       true,
     );
   });
+
+  it("keeps a standalone plain-text call under supervision until it becomes usable", async () => {
+    const provider = new ScriptedProvider([
+      { content: "" },
+      { content: "" },
+      { content: "Usable plain-text response." },
+    ]);
+    const standalone = supervisedModelProvider(
+      new InvocationSupervisor({
+        provider,
+        retryPolicy: { hardAttemptCeiling: 3 },
+        sleep: async () => undefined,
+      }),
+    );
+
+    const result = await executeModelInvocation(standalone, request());
+
+    expect(result.content).toBe("Usable plain-text response.");
+    expect(provider.requests).toHaveLength(3);
+  });
+
+  it.each([
+    { name: "blank", response: { content: "" } },
+    {
+      name: "refusal",
+      response: { content: "I cannot comply.", finishReason: "content_filter" },
+    },
+    { name: "partial", response: { content: "unfinished", finishReason: "max_tokens" } },
+  ])(
+    "never returns an evaluator-rejected $name standalone invocation as success",
+    async ({ response }) => {
+      const provider = new ScriptedProvider(Array.from({ length: 3 }, () => ({ ...response })));
+      const standalone = supervisedModelProvider(
+        new InvocationSupervisor({
+          provider,
+          retryPolicy: { hardAttemptCeiling: 3 },
+          sleep: async () => undefined,
+        }),
+      );
+
+      await expect(executeModelInvocation(standalone, request())).rejects.toMatchObject({
+        name: "InvocationRetryCeilingError",
+        attempts: 3,
+        lastInvocation: {
+          content: response.content,
+          finishReason: response.finishReason ?? "stop",
+        },
+      });
+      expect(provider.requests).toHaveLength(3);
+    },
+  );
 });
 
 function supervisorFor(

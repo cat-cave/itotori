@@ -5372,6 +5372,9 @@ export const localizationJournalRuns = pgTable(
     costPolicy: jsonb("cost_policy").$type<LocalizationJournalCostPolicyJson>(),
     status: text("status").notNull().default("running"),
     pausedBlocker: jsonb("paused_blocker").$type<LocalizationJournalPausedBlockerJson>(),
+    leaseOwnerId: text("lease_owner_id"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    fenceToken: integer("fence_token").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -5403,6 +5406,8 @@ export const localizationJournalRunUnits = pgTable(
     unitOrdinal: integer("unit_ordinal").notNull(),
     state: text("state").notNull().default("pending"),
     nextAction: jsonb("next_action").$type<LocalizationJournalNextActionJson>(),
+    claimOwnerId: text("claim_owner_id"),
+    claimFenceToken: integer("claim_fence_token"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -5441,6 +5446,7 @@ export const localizationJournalLlmAttempts = pgTable(
     logicalCallId: text("logical_call_id").notNull(),
     attemptIndex: integer("attempt_index").notNull(),
     lifecycleState: text("lifecycle_state").notNull().default("completed"),
+    fenceToken: integer("fence_token").notNull().default(0),
     // The requested policy pair and the actual served pair are distinct facts:
     // OpenRouter may route within the ZDR allow-list after a preference miss.
     requestedModelId: text("requested_model_id"),

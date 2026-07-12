@@ -16,6 +16,7 @@ import {
   DEV_POLICY,
   fakeSemanticContextContent,
   type AgenticLoopProviderFactory,
+  type PairPolicy,
 } from "../src/orchestrator/agentic-loop.js";
 import {
   runProjectDrivenExecutor,
@@ -183,7 +184,184 @@ describe("InvocationSupervisor durable pause/resume", () => {
       await context.close();
     }
   });
+
+  it("persists an itotori_bug pause when enrichment breaches the hard retry ceiling", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const calls = new Map<string, number>();
+      const healthyFactory = providerFactory(calls);
+      const ceilingFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        if (factoryInput.stage !== "context" || factoryInput.agentLabel !== "scene-summary") {
+          return healthyFactory(factoryInput);
+        }
+        return new FakeModelProvider({
+          providerName: "ceiling-context-scene-summary",
+          generate: () => {
+            calls.set("scene-summary", (calls.get("scene-summary") ?? 0) + 1);
+            return "";
+          },
+        });
+      };
+      const patches: DrivenPatchExportRecord[] = [];
+
+      const result = await runProjectDrivenExecutor({
+        ...executorInput(ceilingFactory),
+        pairPolicy: enrichmentCeilingPairPolicy(),
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, { actor: ACTOR }),
+          patchExport: { exportPatch: async (record) => void patches.push(record) },
+        },
+      });
+
+      expect(result.runState).toBe("paused");
+      expect(result.pausedBlocker).toMatchObject({
+        kind: "itotori_bug",
+        detail: expect.stringContaining("hard retry ceiling 12"),
+      });
+      expect(result.patchExportCount).toBe(0);
+      expect(patches).toEqual([]);
+      expect(calls.get("scene-summary")).toBe(12);
+
+      const [pausedRun, units, attempts] = await Promise.all([
+        repository.loadRun(ACTOR, result.journalRunId),
+        repository.loadRunUnits(ACTOR, result.journalRunId),
+        repository.loadAttemptsForRun(ACTOR, result.journalRunId),
+      ]);
+      expect(pausedRun).toMatchObject({
+        status: "paused",
+        pausedBlocker: { kind: "itotori_bug" },
+      });
+      expect(units.every((unit) => unit.state === "pending")).toBe(true);
+      expect(attempts).toHaveLength(12);
+      expect(
+        attempts.every(
+          (attempt) =>
+            attempt.stage === "context" &&
+            attempt.agentLabel === "scene-summary" &&
+            attempt.lifecycleState === "completed" &&
+            attempt.failureClass === "empty",
+        ),
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a second resumer while the original driver has a live provider dispatch", async () => {
+    const context = await isolatedMigratedContext();
+    let releaseDispatch: (() => void) | undefined;
+    let firstExecution: ReturnType<typeof runProjectDrivenExecutor> | undefined;
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const firstCalls = new Map<string, number>();
+      const healthyFirstFactory = providerFactory(firstCalls);
+      const dispatchGate = new Promise<void>((resolve) => {
+        releaseDispatch = resolve;
+      });
+      let markDispatchStarted!: () => void;
+      const dispatchStarted = new Promise<void>((resolve) => {
+        markDispatchStarted = resolve;
+      });
+      let liveDispatchCount = 0;
+      const blockingFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        if (factoryInput.stage !== "context" || factoryInput.agentLabel !== "scene-summary") {
+          return healthyFirstFactory(factoryInput);
+        }
+        const provider = new FakeModelProvider({
+          providerName: "live-first-driver-scene-summary",
+          generate: () => fakeSemanticContextContent("scene-summary"),
+        });
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request) => {
+            liveDispatchCount += 1;
+            markDispatchStarted();
+            await dispatchGate;
+            return provider.invoke(request);
+          },
+        };
+      };
+
+      firstExecution = runProjectDrivenExecutor({
+        ...executorInput(blockingFactory),
+        maxUnits: 1,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, {
+            actor: ACTOR,
+            driverId: "live-driver-a",
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+      await dispatchStarted;
+      const activeRun = await repository.loadLatestRunForBranch(ACTOR, BRANCH_ID);
+      if (activeRun === null) throw new Error("live first driver did not seed its run");
+      expect(activeRun).toMatchObject({
+        status: "running",
+        leaseOwnerId: "live-driver-a",
+        fenceToken: 1,
+      });
+
+      const secondCalls = new Map<string, number>();
+      await expect(
+        runProjectDrivenExecutor({
+          ...executorInput(providerFactory(secondCalls)),
+          maxUnits: 1,
+          resumeRunId: activeRun.runId,
+          sinks: {
+            journal: new DrivenJournalPersistenceAdapter(repository, {
+              actor: ACTOR,
+              driverId: "live-driver-b",
+            }),
+            patchExport: { exportPatch: async () => undefined },
+          },
+        }),
+      ).rejects.toThrow(/running driver lease is still live/u);
+      expect(liveDispatchCount).toBe(1);
+      expect(secondCalls.get("__all__") ?? 0).toBe(0);
+      expect(await repository.loadAttemptsForRun(ACTOR, activeRun.runId)).toEqual([
+        expect.objectContaining({
+          lifecycleState: "dispatching",
+          fenceToken: 1,
+          completedAt: null,
+        }),
+      ]);
+
+      releaseDispatch?.();
+      await firstExecution;
+      expect(
+        (await repository.loadAttemptsForRun(ACTOR, activeRun.runId)).some(
+          (attempt) => attempt.finishState === "interrupted",
+        ),
+      ).toBe(false);
+    } finally {
+      releaseDispatch?.();
+      await firstExecution?.catch(() => undefined);
+      await context.close();
+    }
+  });
 });
+
+function enrichmentCeilingPairPolicy(): PairPolicy {
+  return {
+    ...DEV_POLICY,
+    context: {
+      ...DEV_POLICY.context,
+      sceneSummary: {
+        ...DEV_POLICY.context.sceneSummary,
+        // More than six two-attempt routes forces the universal hard ceiling
+        // before a complete route pass can degrade into best-effort content.
+        fallbackModels: Array.from(
+          { length: 7 },
+          (_value, index) => `scene-summary-fallback-${String(index + 1)}`,
+        ),
+      },
+    },
+  };
+}
 
 function executorInput(providerFactoryValue: AgenticLoopProviderFactory) {
   const bridge = bridgeFixture();
