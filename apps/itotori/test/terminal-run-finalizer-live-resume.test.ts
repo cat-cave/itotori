@@ -18,6 +18,7 @@ import {
   type LocalizationJournalRunLeaseIdentity,
 } from "@itotori/db";
 import {
+  assertBridgeBundleV02,
   asNonBlankTargetText,
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
@@ -69,12 +70,16 @@ const driverLease: LocalizationJournalRunLeaseIdentity = {
 const scope = {
   projectId: "project-terminal-finalizer-live-resume",
   localeBranchId: "branch-terminal-finalizer-live-resume",
-  sourceRevisionId: "revision-terminal-finalizer-live-resume",
+  sourceRevisionId: "019ef200-0000-7000-8000-000000000010",
   targetLocale: "en-US",
 } as const;
 const RESUME_UNIT_ONE = "019ef200-0000-7000-8000-000000000001";
 const RESUME_UNIT_TWO = "019ef200-0000-7000-8000-000000000002";
 const RESUME_UNIT_THREE = "019ef200-0000-7000-8000-000000000003";
+const RESUME_BRIDGE_ID = "019ef200-0000-7000-8000-000000000011";
+const RESUME_ASSET_ID = "019ef200-0000-7000-8000-000000000012";
+const RESUME_SOURCE_BUNDLE_HASH = `sha256:${"a".repeat(64)}`;
+const RESUME_SOURCE_PROFILE_HASH = `sha256:${"b".repeat(64)}`;
 
 describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", () => {
   it("finishes an unconfirmed finalizing commit without config, provider, or executor work", async () => {
@@ -744,12 +749,16 @@ function resumeProviderFactory(
 }
 
 function resumeUnitIdOf(request: ModelInvocationRequest): string {
-  const serialized = JSON.stringify(request);
-  const unitId = [RESUME_UNIT_ONE, RESUME_UNIT_TWO, RESUME_UNIT_THREE].find((candidate) =>
-    serialized.includes(candidate),
+  // Resolved context can cite earlier units from the same scene. Attribute the
+  // call from the prompt's explicit current-unit marker rather than the first
+  // ID that happens to appear in context artifact data.
+  const unitId = JSON.stringify(request).match(
+    new RegExp(`unitId=(${[RESUME_UNIT_ONE, RESUME_UNIT_TWO, RESUME_UNIT_THREE].join("|")})`, "u"),
   );
-  if (unitId === undefined) throw new Error("terminal resume provider could not find unit id");
-  return unitId;
+  if (unitId === null || unitId[1] === undefined) {
+    throw new Error("terminal resume provider could not find the current unit id");
+  }
+  return unitId[1];
 }
 
 function resumeSpeakerContent(bridgeUnitId: string): string {
@@ -793,47 +802,99 @@ function cleanResumeQaContent(): string {
 }
 
 function resumeBridge(unitIds: readonly string[]): BridgeBundleV02 {
-  return {
+  const sourceBundleRevision = resumeRevision(scope.sourceRevisionId, RESUME_SOURCE_BUNDLE_HASH);
+  const bridge: BridgeBundleV02 = {
     schemaVersion: "0.2.0",
-    bridgeId: "terminal-finalizer-live-resume-bridge",
+    bridgeId: RESUME_BRIDGE_ID,
+    sourceGame: {
+      gameId: "terminal-finalizer-live-resume-fixture",
+      gameVersion: "1",
+      sourceProfileId: "terminal-finalizer-live-resume-profile",
+      sourceProfileRevision: resumeRevision(
+        "019ef200-0000-7000-8000-000000000013",
+        RESUME_SOURCE_PROFILE_HASH,
+      ),
+    },
+    sourceBundleHash: RESUME_SOURCE_BUNDLE_HASH,
+    sourceBundleRevision,
     sourceLocale: "ja-JP",
+    hashStrategy: {
+      sourceProfile: {
+        scope: "source_profile",
+        algorithm: "sha256",
+        normalization: "utf8-lf-json-stable-v1",
+      },
+      sourceBundle: {
+        scope: "source_bundle",
+        algorithm: "sha256",
+        normalization: "utf8-lf-json-stable-v1",
+      },
+      sourceAsset: { scope: "source_asset", algorithm: "sha256", normalization: "bytes" },
+      sourceUnit: {
+        scope: "source_unit",
+        algorithm: "sha256",
+        normalization: "utf8-lf-json-stable-v1",
+        fields: ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+      },
+      patchExport: {
+        scope: "patch_export",
+        algorithm: "sha256",
+        normalization: "utf8-lf-json-stable-v1",
+      },
+      deltaPackage: {
+        scope: "delta_package",
+        algorithm: "sha256",
+        normalization: "utf8-lf-json-stable-v1",
+      },
+    },
+    extractor: { name: "terminal-finalizer-live-resume-fixture", version: "1" },
+    assets: [
+      {
+        assetId: RESUME_ASSET_ID,
+        assetKey: "Map001.json",
+        assetKind: "text",
+        sourceHash: RESUME_SOURCE_BUNDLE_HASH,
+        sourceRevision: sourceBundleRevision,
+      },
+    ],
     units: unitIds.map((unitId, index) => resumeUnit(unitId, index + 1)),
-  } as unknown as BridgeBundleV02;
+    policyRecords: [],
+  };
+  assertBridgeBundleV02(bridge);
+  return bridge;
 }
 
 function resumeUnit(bridgeUnitId: string, ordinal: number): LocalizationUnitV02 {
-  const assetId = `019ef200-0000-7000-9000-${String(ordinal).padStart(12, "0")}`;
+  const sourceText = ordinal === 1 ? "一番目" : ordinal === 2 ? "二番目" : "三番目";
+  const sourceUnitKey = `Map001/events/${String(ordinal)}`;
+  const sourceRevision = resumeRevision(scope.sourceRevisionId, RESUME_SOURCE_BUNDLE_HASH);
   return {
     bridgeUnitId,
-    surfaceId: assetId,
+    surfaceId: RESUME_ASSET_ID,
     surfaceKind: "dialogue",
-    sourceUnitKey: `Map001/events/${String(ordinal)}`,
+    sourceUnitKey,
     occurrenceId: `terminal-resume-occurrence-${String(ordinal)}`,
     sourceLocale: "ja-JP",
-    sourceText: ordinal === 1 ? "一番目" : "二番目",
-    sourceHash: `terminal-resume-source-hash-${String(ordinal)}`,
-    sourceRevision: {
-      revisionId: scope.sourceRevisionId,
-      revisionKind: "content_hash",
-      value: "v1",
-    },
-    sourceAssetRef: { assetId, assetKey: `terminal-resume-asset-${String(ordinal)}` },
+    sourceText,
+    sourceHash: `sha256:${ordinal === 1 ? "c".repeat(64) : ordinal === 2 ? "d".repeat(64) : "e".repeat(64)}`,
+    sourceRevision,
+    sourceAssetRef: { assetId: RESUME_ASSET_ID, assetKey: "Map001.json" },
     sourceLocation: { containerKey: "Map001.json" },
-    speaker: { knowledgeState: "unknown" },
-    context: {},
+    speaker: { knowledgeState: "not_applicable" },
+    context: { route: { sceneKey: "terminal-resume-scene" } },
     spans: [],
     patchRef: {
-      assetId,
+      assetId: RESUME_ASSET_ID,
       writeMode: "replace",
-      sourceUnitKey: `Map001/events/${String(ordinal)}`,
-      sourceRevision: {
-        revisionId: scope.sourceRevisionId,
-        revisionKind: "content_hash",
-        value: "v1",
-      },
+      sourceUnitKey,
+      sourceRevision,
     },
     runtimeExpectation: { expectationKind: "metadata_only" },
   };
+}
+
+function resumeRevision(revisionId: string, value: string) {
+  return { revisionId, revisionKind: "content_hash" as const, value };
 }
 
 function materializeRpgMakerOutputs(targetRoot: string, deltaPath: string): void {
@@ -1027,9 +1088,9 @@ async function seedScope(
   await context.pool.query(
     `
     insert into itotori_source_revisions (source_revision_id, project_id, revision_kind, value)
-    values ($1, $2, 'bridge_revision', 'terminal-finalizer-live-resume-v1')
+    values ($1, $2, 'content_hash', $3)
   `,
-    [scope.sourceRevisionId, scope.projectId],
+    [scope.sourceRevisionId, scope.projectId, RESUME_SOURCE_BUNDLE_HASH],
   );
   await context.pool.query(
     `

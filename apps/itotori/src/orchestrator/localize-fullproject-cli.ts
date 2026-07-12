@@ -18,7 +18,10 @@
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { assertPatchExportBundle } from "@itotori/localization-bridge-schema";
+import {
+  assertBridgeBundleV02,
+  assertPatchExportBundle,
+} from "@itotori/localization-bridge-schema";
 import {
   ItotoriAssetLocalizationDecisionRepository,
   ItotoriContextArtifactRepository,
@@ -299,18 +302,17 @@ export async function runLocalizeFullProjectLive(
     await bootstrapLocalUser(context.db);
     const actor: AuthorizationActor = { userId: localUserId };
 
-    // The durable journal run is FK-bound to the project / locale branch /
-    // source revision identity. Those parent rows are not created elsewhere in
-    // the whole-game path, so provision the graph idempotently before writing
-    // the first physical provider attempt.
-    // The source locale comes from the run's bridge bundle, so this is
-    // game-agnostic (no hardcoded locale / no per-game special-casing).
+    // Context artifacts cite canonical source-unit rows. Import the exact
+    // v0.2 bridge before the executor can enrich or draft a pending unit, so a
+    // paused run resumed after an earlier terminal summary has the same
+    // source-unit graph as a fresh live run. The config's source revision is a
+    // durable identity fence and must name this bridge bundle revision.
     const projectRepo = new ItotoriProjectRepository(context.db);
     await runPipelineStepWithDiagnostic({
       step: "localize.provision-project-scope",
       code: "unknown",
       message:
-        "localize-live: provision-project-scope failed: could not upsert the project / locale-branch / source-revision graph the journal FKs require",
+        "localize-live: provision-project-scope failed: could not import the bridge source units required by the journal and context brain",
       inputs: {
         configPath: args.configPath,
         bridgePath: config.bridgePath,
@@ -321,17 +323,23 @@ export async function runLocalizeFullProjectLive(
       },
       repro: { configPath: args.configPath, bridgePath: config.bridgePath },
       actor,
-      run: () =>
-        projectRepo.ensureRunProjectScope(actor, {
+      run: async () => {
+        const bridge = args.io.readJson(config.bridgePath);
+        assertBridgeBundleV02(bridge);
+        if (bridge.sourceBundleRevision.revisionId !== config.sourceRevisionId) {
+          throw new Error(
+            `localize-live: config sourceRevisionId '${config.sourceRevisionId}' does not match ` +
+              `bridge sourceBundleRevision '${bridge.sourceBundleRevision.revisionId}'`,
+          );
+        }
+        await projectRepo.importSourceBundle(actor, {
           projectId: config.projectId,
           localeBranchId: config.localeBranchId,
-          sourceRevisionId: config.sourceRevisionId,
           targetLocale: config.targetLocale ?? "en-US",
-          sourceLocale: readBridgeSourceLocale(
-            args.io.readJson(config.bridgePath),
-            config.bridgePath,
-          ),
-        }),
+          drafts: {},
+          bridge,
+        });
+      },
     });
 
     const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
@@ -906,28 +914,6 @@ async function resumeDurableFinalizingRun(
   } finally {
     await context.close();
   }
-}
-
-/**
- * Read the BCP-47 source locale off the run's bridge bundle (a top-level
- * `sourceLocale` on both the v0.1 and v0.2 BridgeBundle shapes). Used to
- * provision the project/source-bundle source locale from the real extracted
- * bytes rather than a hardcoded default — keeping the whole-game path
- * game-agnostic.
- */
-function readBridgeSourceLocale(rawBridge: unknown, bridgePath: string): string {
-  if (
-    typeof rawBridge === "object" &&
-    rawBridge !== null &&
-    "sourceLocale" in rawBridge &&
-    typeof (rawBridge as { sourceLocale: unknown }).sourceLocale === "string" &&
-    (rawBridge as { sourceLocale: string }).sourceLocale.length > 0
-  ) {
-    return (rawBridge as { sourceLocale: string }).sourceLocale;
-  }
-  throw new Error(
-    `localize-live: bridge bundle at '${bridgePath}' is missing a non-empty top-level string 'sourceLocale'; cannot provision the project source locale`,
-  );
 }
 
 /**
