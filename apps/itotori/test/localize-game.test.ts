@@ -19,7 +19,7 @@
 // No real game bytes, no live LLM: every stage is a fake. The env-gated real
 // vertical proof lives in `localize-game-real.test.ts` (below).
 
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -58,15 +58,14 @@ const IDENTITY = {
 function fakeLocalizeResult(withPatch: boolean): RunLocalizeFullProjectLiveResult {
   const result = {
     unitsRun: 3,
-    acceptedDraftCount: 3,
-    deferredCount: 0,
+    writtenOutcomeCount: 3,
     failures: [],
     reviewerQueueItemCount: 1,
     totalUsageCostUsd: 0.0042,
     zdrConfirmed: true,
     budgetStopped: false,
   };
-  const record = { passNumber: 1, priorPassNumber: null, acceptedDeltas: [] };
+  const record = { passNumber: 1, priorPassNumber: null, writtenDeltas: [] };
   const base = { result, record, prior: undefined } as unknown as RunLocalizeFullProjectLiveResult;
   if (withPatch) {
     return {
@@ -145,6 +144,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     const io = memoryIo({ [configPath]: BASE_CONFIG });
     const order: CallLog = [];
     const capture: Capture = { nativeCalls: [] };
+    const logs: string[] = [];
 
     const result = await runLocalizeGameCommand({
       configPath,
@@ -157,6 +157,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
       allowPartialPatch: true,
       io,
       stages: fakeStages(order, capture),
+      log: (message) => logs.push(message),
     });
 
     // Exact stage sequence: extract, structure, localize, then validate's two
@@ -215,6 +216,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
 
     expect(result.patchTargetRoot).toBe("/out/patched");
     expect(result.localize.patchApply).toBeDefined();
+    expect(logs.join("\n")).toContain("written=3");
   });
 
   it("fails closed when the localize driver did not apply a patch", async () => {

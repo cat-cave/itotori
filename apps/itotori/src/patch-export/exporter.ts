@@ -2,7 +2,7 @@
 //
 // Patch-export service. Loads a draft artifact bundle, resolves every
 // referenced asset decision, runs the preflight battery, and emits a
-// `PatchExportBundle` v0.2 — or returns a typed `PreflightFailure` if
+// `PatchExportBundle` — or returns a typed `PreflightFailure` if
 // any blocking preflight check fails. No partial bundle is ever
 // produced.
 //
@@ -17,6 +17,7 @@
 import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "@itotori/db";
 import {
+  assertDraftArtifactBundle,
   assertPatchExportBundle,
   PATCH_EXPORT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
@@ -32,6 +33,7 @@ import {
   type AssetPolicyResolution,
   type ResolvedAssetPolicy,
 } from "../asset-decisions/policy-resolver.js";
+import { stripOutOfBandControlMarkup } from "../localization/patchback-safety.js";
 import {
   PatchExportPreflight,
   type DraftGlossaryRendering,
@@ -143,6 +145,7 @@ export class PatchExporter {
       input.draftArtifactBundleId,
     );
     const bundle = load.bundle;
+    assertDraftArtifactBundle(bundle);
     const declaredSourceBridgeHash = load.sourceBridgeHash;
     if (bundle.projectId !== input.projectId) {
       throw new PatchExporterIdentityMismatchError("projectId", input.projectId, bundle.projectId);
@@ -260,24 +263,31 @@ function buildDraftEntries(
   const drafts: PatchExportDraft[] = [];
   const unitsBySource = new Map(view.units.map((unit) => [unit.sourceUnitId, unit]));
   for (const entry of bundle.drafts) {
-    // Skip terminal-rejection entries — preflight already blocked
-    // export when any were present, so we should never reach this
-    // path. Defensive guard prevents a partial bundle.
-    if (entry.retryFallbackState === "terminal-rejection") {
-      throw new Error(
-        `patch exporter: terminal-rejection entry for ${entry.sourceUnitId} reached bundle assembly; preflight invariant violated`,
-      );
-    }
-    const draftText = entry.draftText;
-    if (draftText === undefined) {
-      throw new Error(
-        `patch exporter: success-state draft ${entry.draftId} is missing draftText (schema invariant violated)`,
-      );
-    }
     const unit = unitsBySource.get(entry.sourceUnitId);
     if (unit === undefined) {
       throw new Error(
         `patch exporter: draft ${entry.draftId} references unknown sourceUnitId=${entry.sourceUnitId}`,
+      );
+    }
+    const selectedCandidate = entry.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === entry.writtenOutcome.selectedCandidateId,
+    );
+    if (selectedCandidate === undefined) {
+      throw new Error(
+        `patch exporter: written outcome for ${entry.sourceUnitId} has no selected candidate`,
+      );
+    }
+    const draftText = selectedCandidate.body;
+    const engineVisibleSource = stripOutOfBandControlMarkup(unit.sourceText).trim();
+    const engineVisibleDraft = stripOutOfBandControlMarkup(draftText).trim();
+    if (engineVisibleDraft.length === 0) {
+      throw new Error(
+        `patch exporter: written outcome for ${entry.sourceUnitId} has no engine-visible target text`,
+      );
+    }
+    if (engineVisibleSource.length > 0 && engineVisibleDraft === engineVisibleSource) {
+      throw new Error(
+        `patch exporter: written outcome for ${entry.sourceUnitId} repeats the engine-visible source text`,
       );
     }
     drafts.push({

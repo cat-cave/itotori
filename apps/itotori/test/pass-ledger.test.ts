@@ -1,7 +1,7 @@
 // itotori-pass-ledger — multi-pass localization ledger tests.
 //
 // Proves the crux acceptance: the driver records each localization pass in a
-// pass ledger, and a pass N+1 run CONSUMES pass N's accepted state + flagged-
+// pass ledger, and a pass N+1 run CONSUMES pass N's written state + flagged-
 // unit feedback as drafting context — so iteration BUILDS ON the prior pass's
 // flagged units instead of re-running from scratch. A blank re-run (no prior
 // context) is the control: it does NOT thread prior feedback, so the flagged
@@ -35,14 +35,14 @@ import {
   type NarrativeStructure,
 } from "../src/agents/structure-informed-context/index.js";
 import type {
-  DrivenDraftRecord,
+  DrivenWrittenOutcomeRecord,
   DrivenPatchExportRecord,
   DrivenProviderRunRecord,
   DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
   buildPriorPassContext,
-  deriveAcceptedDeltas,
+  deriveWrittenDeltas,
   InMemoryPassLedger,
   runLocalizationPass,
   type LocalizationPassRecord,
@@ -57,9 +57,9 @@ const SPEAKER_ID = "019ed0cc-0000-7000-8000-000000000005";
 
 // Bridge unit ids carry a distinct `019ed0aa` prefix so the fake provider can
 // regex the CURRENT unit's bridge id out of any request blob.
-const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // always accepted
+const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // always written
 const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // FLAGGED in pass 1, addressed in pass 2
-const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // always accepted
+const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // always written
 
 const SCENE_ID = 6010;
 const SPEAKER_NAME = "和人";
@@ -78,12 +78,12 @@ const PRIOR_FEEDBACK_PROMPT_MARKER = "Prior pass feedback";
 // ---------------------------------------------------------------------------
 
 class InMemorySinks {
-  readonly drafts: DrivenDraftRecord[] = [];
+  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
   readonly providerRuns: DrivenProviderRunRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly draft = {
-    persistDraft: async (record: DrivenDraftRecord): Promise<void> => {
-      this.drafts.push(record);
+  readonly writtenOutcome = {
+    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
+      this.writtenOutcomes.push(record);
     },
   };
   readonly providerRun = {
@@ -330,7 +330,7 @@ function deterministicClock(): () => Date {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () => {
+describe("InMemoryPassLedger + deriveWrittenDeltas (deterministic, pure)", () => {
   it("assigns sequential passNumbers per branch and chains priorPassNumber", async () => {
     const ledger = new InMemoryPassLedger();
     const clock = deterministicClock();
@@ -349,8 +349,7 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
         unitsRun: 1,
       },
       outputs: {
-        acceptedDraftCount: 1,
-        deferredCount: 0,
+        writtenOutcomeCount: 1,
         failureCount: 0,
         totalUsageCostUsd: 0,
         zdrConfirmed: true,
@@ -359,15 +358,17 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
           {
             bridgeUnitId: UNIT_A,
             sourceUnitKey: "k",
-            outcome: "accepted" as const,
-            accepted: true,
             targetLocale: "en-US",
-            draftText: "Hello.",
+            outcomeId: "outcome-a",
+            selectedCandidateId: "candidate-a",
+            selectedBody: "Hello.",
+            qualityFlags: [],
+            writtenAt: "2026-07-06T12:00:00.000Z",
           },
         ],
         unitFailures: [],
       },
-      acceptedDeltas: [],
+      writtenDeltas: [],
       consumedFeedbackNotes: [],
     };
     const r1 = await ledger.recordPass(ACTOR, base);
@@ -388,15 +389,16 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
     expect(await ledger.loadLatestPass(ACTOR, "other-branch")).toBeUndefined();
   });
 
-  it("deriveAcceptedDeltas flags newly-accepted + changed units, skips byte-equal accepted", () => {
-    const unit = (id: string, draftText: string | undefined, accepted: boolean) => ({
+  it("deriveWrittenDeltas flags newly written and changed bodies, skips byte-equal bodies", () => {
+    const unit = (id: string, selectedBody: string) => ({
       bridgeUnitId: id,
       sourceUnitKey: `k-${id}`,
-      outcome: (accepted ? "accepted" : "deferred_to_human") as const,
-      accepted,
       targetLocale: "en-US",
-      ...(draftText !== undefined ? { draftText } : {}),
-      ...(accepted ? {} : { deferredReason: "flagged" }),
+      outcomeId: `outcome-${id}`,
+      selectedCandidateId: `candidate-${id}`,
+      selectedBody,
+      qualityFlags: [],
+      writtenAt: "2026-07-06T12:00:00.000Z",
     });
     const prior: LocalizationPassRecord = {
       passNumber: 1,
@@ -411,23 +413,21 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
         engineProfile: "reallive",
         unitsEnumerated: 3,
         unitsInScope: 3,
-        unitsRun: 3,
+        unitsRun: 2,
       },
       outputs: {
-        acceptedDraftCount: 2,
-        deferredCount: 1,
+        writtenOutcomeCount: 2,
         failureCount: 0,
         totalUsageCostUsd: 0,
         zdrConfirmed: true,
         budgetStopped: false,
         unitOutcomes: [
-          unit(UNIT_A, "kept", true), // stays accepted, byte-equal -> NOT a delta
-          unit(UNIT_B, undefined, false), // deferred in prior
-          unit(UNIT_C, "old", true), // accepted but will change
+          unit(UNIT_A, "kept"), // byte-equal -> not a delta
+          unit(UNIT_C, "old"), // changes in the current pass
         ],
         unitFailures: [],
       },
-      acceptedDeltas: [],
+      writtenDeltas: [],
       consumedFeedbackNotes: [],
     };
     const current: LocalizationPassRecord = {
@@ -436,27 +436,26 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
       priorPassNumber: 1,
       outputs: {
         ...prior.outputs,
-        acceptedDraftCount: 3,
-        deferredCount: 0,
+        writtenOutcomeCount: 3,
         unitOutcomes: [
-          unit(UNIT_A, "kept", true), // byte-equal -> NOT a delta
-          unit(UNIT_B, "fixed", true), // newly accepted -> delta (no priorDraftText)
-          unit(UNIT_C, "new", true), // changed -> delta (priorDraftText="old")
+          unit(UNIT_A, "kept"), // byte-equal -> not a delta
+          unit(UNIT_B, "fixed"), // newly written -> no prior selected body
+          unit(UNIT_C, "new"), // changed from "old"
         ],
       },
     };
-    const deltas = deriveAcceptedDeltas({ prior, current });
+    const deltas = deriveWrittenDeltas({ prior, current });
     expect(deltas).toEqual([
       {
         bridgeUnitId: UNIT_B,
         sourceUnitKey: "k-019ed0aa-0000-7000-8000-0000000000b2",
-        currentDraftText: "fixed",
+        currentSelectedBody: "fixed",
       },
       {
         bridgeUnitId: UNIT_C,
         sourceUnitKey: "k-019ed0aa-0000-7000-8000-0000000000c3",
-        priorDraftText: "old",
-        currentDraftText: "new",
+        priorSelectedBody: "old",
+        currentSelectedBody: "new",
       },
     ]);
   });
@@ -479,8 +478,7 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
         unitsRun: 1,
       },
       outputs: {
-        acceptedDraftCount: 0,
-        deferredCount: 1,
+        writtenOutcomeCount: 1,
         failureCount: 0,
         totalUsageCostUsd: 0,
         zdrConfirmed: true,
@@ -489,15 +487,17 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
           {
             bridgeUnitId: UNIT_B,
             sourceUnitKey: "k",
-            outcome: "deferred_to_human",
-            accepted: false,
             targetLocale: "en-US",
-            deferredReason: "dropped the speaker name",
+            outcomeId: "outcome-b",
+            selectedCandidateId: "candidate-b",
+            selectedBody: "Good morning.",
+            qualityFlags: ["qa_unresolved", "repair_budget_exhausted"],
+            writtenAt: "2026-07-06T12:00:00.000Z",
           },
         ],
         unitFailures: [],
       },
-      acceptedDeltas: [],
+      writtenDeltas: [],
       consumedFeedbackNotes: [],
     };
     const ctx = buildPriorPassContext({
@@ -508,33 +508,32 @@ describe("InMemoryPassLedger + deriveAcceptedDeltas (deterministic, pure)", () =
     expect(ctx.feedbackByUnit.has(UNIT_B)).toBe(true);
     const fb = ctx.feedbackByUnit.get(UNIT_B)!;
     expect(fb.passNumber).toBe(1);
-    expect(fb.priorOutcome).toBe("deferred_to_human");
-    expect(fb.deferredReason).toBe("dropped the speaker name");
     expect(fb.feedbackNote).toBe("restore the speaker name");
-    expect(fb.priorDraftText).toBeUndefined();
+    expect(fb.priorDraftText).toBe("Good morning.");
+    expect(fb.qualityFlags).toEqual(["qa_unresolved", "repair_budget_exhausted"]);
   });
 });
 
 describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", () => {
   //
   //                            ─── pass 1 ───
-  //   UNIT_A  -> accepted (generic draft, clean QA)
-  //   UNIT_B  -> DEFERRED   (generic draft, critical QA finding: "dropped the
-  //                           speaker name"). This is the FLAGGED unit.
-  //   UNIT_C  -> accepted (generic draft, clean QA)
-  //   The ledger records pass 1 with UNIT_B deferred + its deferredReason.
+  //   UNIT_A  -> written (generic draft, clean QA)
+  //   UNIT_B  -> written (generic draft, critical QA finding: "dropped the
+  //                       speaker name"). This is the FLAGGED unit.
+  //   UNIT_C  -> written (generic draft, clean QA)
+  //   The ledger records UNIT_B's required body plus quality flags.
   //
   //                            ─── pass 2 ───
   //   runLocalizationPass LOADS pass 1 from the ledger and threads UNIT_B's
   //   prior-pass feedback into its translation prompt. The fake provider SEES
   //   the "Prior pass feedback" block and emits the CORRECTED draft; QA then
-  //   passes clean -> UNIT_B ACCEPTED. UNIT_A / UNIT_C (no prior feedback
-  //   needed) stay accepted byte-equal.
+  //   passes clean -> UNIT_B selects the corrected body. UNIT_A / UNIT_C (no
+  //   prior feedback needed) stay byte-equal.
   //
   //   CONTROL: a BLANK re-run (runProjectDrivenExecutor with no priorPass) does
-  //   NOT thread prior feedback, so UNIT_B stays deferred exactly as in pass 1.
+  //   NOT thread prior feedback, so UNIT_B stays written with its generic body.
   //
-  it("pass 1 flags UNIT_B; pass 2 consumes pass-1 feedback and accepts it; a blank re-run does not", async () => {
+  it("pass 1 retains a flagged body; pass 2 consumes its feedback and improves it; a blank re-run does not", async () => {
     const ledger = new InMemoryPassLedger();
     const clock = deterministicClock();
 
@@ -551,15 +550,15 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
       now: clock,
     });
 
-    // Pass 1: UNIT_A + UNIT_C accepted; UNIT_B deferred (flagged).
+    // Pass 1: all three units are written; UNIT_B is flagged informationally.
     expect(pass1.record.passNumber).toBe(1);
     expect(pass1.prior).toBeUndefined();
-    expect(pass1.result.acceptedDraftCount).toBe(2);
-    expect(pass1.result.deferredCount).toBe(1);
-    const pass1Deferred = pass1.record.outputs.unitOutcomes.find((u) => !u.accepted)!;
-    expect(pass1Deferred.bridgeUnitId).toBe(UNIT_B);
-    expect(pass1Deferred.outcome).toBe("deferred_to_human");
-    expect(pass1Deferred.deferredReason).toBeDefined();
+    expect(pass1.result.writtenOutcomeCount).toBe(3);
+    const pass1Flagged = pass1.record.outputs.unitOutcomes.find(
+      (unit) => unit.bridgeUnitId === UNIT_B,
+    )!;
+    expect(pass1Flagged.selectedBody).toBe(GENERIC_DRAFT);
+    expect(pass1Flagged.qualityFlags.length).toBeGreaterThan(0);
 
     // Pass 1 UNIT_B's translation prompt did NOT carry prior-pass feedback
     // (blank first pass — the capture proves the marker was absent).
@@ -589,28 +588,23 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
 
     // CRUX: pass 2's UNIT_B translation prompt CARRIED the prior-pass feedback
     // (consumed from the ledger), so the provider emitted the corrected draft
-    // and QA accepted it.
+    // and QA selected it while retaining the first pass as the baseline.
     expect(pass2Capture.priorFeedbackSeen.get(UNIT_B)).toBe(true);
-    expect(pass2.result.deferredCount).toBe(0);
-    expect(pass2.result.acceptedDraftCount).toBe(3);
+    expect(pass2.result.writtenOutcomeCount).toBe(3);
     const pass2UnitB = pass2.record.outputs.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B)!;
-    expect(pass2UnitB.accepted).toBe(true);
-    expect(pass2UnitB.draftText).toBe(CORRECTED_DRAFT);
+    expect(pass2UnitB.selectedBody).toBe(CORRECTED_DRAFT);
 
-    // Pass 2 UNIT_A / UNIT_C stayed byte-equal accepted (no prior feedback was
-    // needed and their drafts did not change) -> they are NOT accepted deltas.
-    // UNIT_B is newly accepted -> it IS an accepted delta.
-    const deltaIds = pass2.record.acceptedDeltas.map((d) => d.bridgeUnitId);
+    // Pass 2 UNIT_A / UNIT_C stayed byte-equal, so only UNIT_B is a written
+    // delta. Its prior selected body remains inspectable.
+    const deltaIds = pass2.record.writtenDeltas.map((d) => d.bridgeUnitId);
     expect(deltaIds).toEqual([UNIT_B]);
-    const unitBDelta = pass2.record.acceptedDeltas.find((d) => d.bridgeUnitId === UNIT_B)!;
-    expect(unitBDelta.currentDraftText).toBe(CORRECTED_DRAFT);
-    // UNIT_B had no prior accepted draft (it was deferred in pass 1), so the
-    // delta carries no priorDraftText.
-    expect(unitBDelta.priorDraftText).toBeUndefined();
+    const unitBDelta = pass2.record.writtenDeltas.find((d) => d.bridgeUnitId === UNIT_B)!;
+    expect(unitBDelta.currentSelectedBody).toBe(CORRECTED_DRAFT);
+    expect(unitBDelta.priorSelectedBody).toBe(GENERIC_DRAFT);
 
     // ---------------- CONTROL: blank re-run (no prior context) ----------------
     // Running the executor DIRECTLY (no priorPass) reproduces pass 1's outcome
-    // for UNIT_B exactly — the generic draft, the critical finding, the defer.
+    // for UNIT_B exactly — the generic selected body and critical annotation.
     // This proves pass 2's improvement came FROM consuming the prior feedback,
     // not from any non-determinism in the fake provider.
     const blankCapture = makeCaptureFactory();
@@ -622,16 +616,16 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
       now: clock,
     });
     expect(blankCapture.priorFeedbackSeen.get(UNIT_B)).toBe(false);
-    expect(blankResult.deferredCount).toBe(1);
+    expect(blankResult.writtenOutcomeCount).toBe(3);
     const blankUnitB = blankResult.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B)!;
-    expect(blankUnitB.accepted).toBe(false);
-    expect(blankUnitB.outcome).toBe("deferred_to_human");
+    expect(blankUnitB.selectedBody).toBe(GENERIC_DRAFT);
+    expect(blankUnitB.outcome.qualityFlags.length).toBeGreaterThan(0);
   });
 
   it("a reviewer feedback note layered between passes reaches the pass N+1 prompt", async () => {
-    // A reviewer correction added AFTER pass 1 (UNIT_A was accepted but the
-    // reviewer wants it changed) reaches pass 2's translation prompt via the
-    // ledger's feedbackNotesByUnit seam — even though pass 1 accepted UNIT_A.
+    // A play-test correction added AFTER pass 1 (UNIT_A was written but the
+    // play tester wants it changed) reaches pass 2's translation prompt via
+    // the ledger's feedbackNotesByUnit seam.
     const ledger = new InMemoryPassLedger();
     const clock = deterministicClock();
     const reviewerNote = "restore the character's full name";
@@ -647,7 +641,7 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
       now: clock,
     });
     expect(pass1.record.passNumber).toBe(1);
-    // UNIT_A was accepted in pass 1 with no prior feedback.
+    // UNIT_A was written in pass 1 with no prior feedback.
     expect(pass1Capture.priorFeedbackSeen.get(UNIT_A)).toBe(false);
 
     const pass2Capture = makeCaptureFactory();
@@ -672,7 +666,7 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
   it("buildLocalizationPassRecord records real usage.cost verbatim and is deterministic", async () => {
     // Two replays of the same pass produce byte-equal records (passNumber
     // aside, which the ledger assigns): deterministic recordedAt (via the
-    // injected clock), deterministic acceptedDeltas, real cost from the
+    // injected clock), deterministic writtenDeltas, real cost from the
     // executor's totalUsageCostUsd (zero for the fake provider — never
     // fabricated).
     const clock1 = deterministicClock();
@@ -694,9 +688,21 @@ describe("runLocalizationPass (multi-pass iteration consumes prior feedback)", (
     };
     const a = await runOnce(clock1, ledgerA);
     const b = await runOnce(clock2, ledgerB);
-    // Strip the ledger-assigned passNumber (identical = 1 for both) and compare
-    // the deterministic body — recordedAt is clock-driven so both replay equal.
-    expect(a.record).toEqual(b.record);
+    // Candidate IDs are physical provider-attempt identifiers, so normalize
+    // only that intentionally fresh provenance before comparing the replayable
+    // ledger projection. Selected bodies, flags, deltas, clocks, and cost must
+    // remain byte-equal.
+    const normalizeCandidateIds = (record: LocalizationPassRecord) => ({
+      ...record,
+      outputs: {
+        ...record.outputs,
+        unitOutcomes: record.outputs.unitOutcomes.map((unit) => ({
+          ...unit,
+          selectedCandidateId: "<physical-attempt-id>",
+        })),
+      },
+    });
+    expect(normalizeCandidateIds(a.record)).toEqual(normalizeCandidateIds(b.record));
     // Cost is the real zero the fake provider produced (PROJECT LAW).
     expect(a.record.outputs.totalUsageCostUsd).toBe(0);
     expect(a.record.outputs.zdrConfirmed).toBe(true);

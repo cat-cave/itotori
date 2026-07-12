@@ -487,14 +487,7 @@ describe("ItotoriProjectWorkflowService", () => {
           provenance: { source: "approved_draft" },
         });
 
-        const generate = vi.fn((request: ModelInvocationRequest) => {
-          const message = request.messages.findLast((candidate) => candidate.role === "user");
-          const body = JSON.parse(String(message?.content)) as {
-            targetLocale: string;
-            sourceText: string;
-          };
-          return `[${body.targetLocale}] ${body.sourceText}`;
-        });
+        const generate = vi.fn(() => "Bonjour, {player}.");
         const service = new ItotoriProjectWorkflowService(
           projectRepository,
           actor,
@@ -509,8 +502,8 @@ describe("ItotoriProjectWorkflowService", () => {
 
         expect(generate).toHaveBeenCalledTimes(2);
         expect(drafted.targetLocale).toBe("fr-FR");
-        expect(drafted.drafts["bridge-unit-repeat"]).toBe("[fr-FR] こんにちは、{player}。");
-        expect(drafted.drafts["bridge-unit-memory"]).toBe("[fr-FR] こんにちは、{player}。");
+        expect(drafted.drafts["bridge-unit-repeat"]).toBe("Bonjour, {player}.");
+        expect(drafted.drafts["bridge-unit-memory"]).toBe("Bonjour, {player}.");
 
         const requestBodies = generate.mock.calls.map((call) => {
           const message = call[0].messages.findLast((candidate) => candidate.role === "user");
@@ -549,7 +542,7 @@ describe("ItotoriProjectWorkflowService", () => {
         };
         expect(body.sourceLocale).toBe("de-DE");
         expect(body.targetLocale).toBe("en-US");
-        return `[${body.targetLocale}] ${body.sourceText}`;
+        return "Hello, {player}.";
       },
     });
     const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
@@ -558,7 +551,7 @@ describe("ItotoriProjectWorkflowService", () => {
     const drafted = await service.draftProject(project, "en-US");
 
     expect(drafted.targetLocale).toBe("en-US");
-    expect(drafted.drafts["bridge-unit-test"]).toBe("[en-US] Guten Tag, {player}.");
+    expect(drafted.drafts["bridge-unit-test"]).toBe("Hello, {player}.");
     expect(repository.saveDrafts).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({
@@ -678,6 +671,32 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.saveDrafts).not.toHaveBeenCalled();
   });
 
+  it("refuses a provider source replay instead of persisting it as a project draft", async () => {
+    const repository = repositoryFixture();
+    const ledger = ledgerFixture();
+    const provider = new FakeModelProvider({
+      generate: (request) => {
+        const message = request.messages.findLast((candidate) => candidate.role === "user");
+        const payload = JSON.parse(String(message?.content)) as { sourceText: string };
+        return payload.sourceText;
+      },
+    });
+    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
+
+    await expect(
+      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
+    ).rejects.toMatchObject({ code: "provider_response_invalid" });
+
+    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        status: "failed",
+        errorClasses: ["provider_response_invalid"],
+      }),
+    );
+    expect(repository.saveDrafts).not.toHaveBeenCalled();
+  });
+
   it("drafts two target locales with ledger-enabled immutable prompt presets", async () => {
     const repository = repositoryFixture();
     const ledger = driftDetectingLedgerFixture();
@@ -744,7 +763,7 @@ describe("ItotoriProjectWorkflowService", () => {
             protectedSpans: string[];
           };
           seenProtectedSpans.push(payload.protectedSpans);
-          return payload.sourceText;
+          return "Localized fixture target {player}.";
         },
       }),
     );
@@ -753,7 +772,9 @@ describe("ItotoriProjectWorkflowService", () => {
     const drafted = await service.draftProject(project, "fr-FR");
 
     expect(seenProtectedSpans).toContainEqual(["{player}"]);
-    expect(drafted.drafts["019ed001-0000-7000-8000-000000000201"]).toBe("Hello, {player}.");
+    expect(drafted.drafts["019ed001-0000-7000-8000-000000000201"]).toBe(
+      "Localized fixture target {player}.",
+    );
     expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
   });
 
@@ -775,7 +796,7 @@ describe("ItotoriProjectWorkflowService", () => {
             surfaceKind: string;
           };
           seen.push({ sourceText: payload.sourceText, surfaceKind: payload.surfaceKind });
-          return payload.sourceText;
+          return "Localized surface target.";
         },
       }),
     );

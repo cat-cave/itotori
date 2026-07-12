@@ -1,12 +1,11 @@
 // ITOTORI-019 — DraftArtifactBundle schema tests.
 //
 // Covers the wire-shape contract:
-//   - accepted bundle round-trips through assertDraftArtifactBundle.
+//   - written-outcome bundle round-trips through assertDraftArtifactBundle.
 //   - parseDraftArtifactBundle wraps JSON.parse errors as
 //     DraftArtifactBundleValidationError (no silent SyntaxError leak).
-//   - terminal-rejection entries MUST carry terminalReason; success
-//     states MUST carry draftText.
-//   - violation kind / spanKind enums are closed.
+//   - every entry owns a required, canonical WrittenUnitOutcome.
+//   - source-unit and written-outcome identities remain bound one-to-one.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -27,10 +26,8 @@ function validBundle(overrides: Record<string, unknown> = {}): Record<string, un
         sourceUnitId: "unit-01",
         draftId: "draft-01",
         providerProofId: "recorded:bundle-01",
-        protectedSpanValidationResult: { accepted: true },
-        retryFallbackState: "success",
         costLedgerEntryRef: "ledger-01",
-        draftText: "Hello, {player}.",
+        writtenOutcome: validWrittenOutcome(),
       },
     ],
     ledgerSummary: {
@@ -40,6 +37,31 @@ function validBundle(overrides: Record<string, unknown> = {}): Record<string, un
       attemptCount: 1,
       providerProofIds: ["recorded:bundle-01"],
     },
+    ...overrides,
+  };
+}
+
+function validWrittenOutcome(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "outcome-01",
+    status: "written",
+    unitId: "unit-01",
+    targetLocale: "en-US",
+    selectedCandidateId: "candidate-01",
+    candidates: [
+      {
+        id: "candidate-01",
+        outcomeId: "outcome-01",
+        body: "Hello, {player}.",
+        producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+        attemptId: "attempt-01",
+        kind: "primary",
+      },
+    ],
+    findings: [],
+    qualityFlags: [],
+    provenance: { fixture: true },
+    writtenAt: "2026-07-11T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -55,7 +77,7 @@ describe("DraftArtifactBundle", () => {
     );
   });
 
-  it("requires terminalReason on terminal-rejection entries", () => {
+  it("requires a canonical written outcome on every entry", () => {
     expect(() =>
       assertDraftArtifactBundle(
         validBundle({
@@ -64,29 +86,45 @@ describe("DraftArtifactBundle", () => {
               sourceUnitId: "unit-01",
               draftId: "draft-01",
               providerProofId: "recorded:bundle-01",
-              protectedSpanValidationResult: {
-                accepted: false,
-                violations: [
+              costLedgerEntryRef: "ledger-01",
+              // missing writtenOutcome
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/writtenOutcome/u);
+  });
+
+  it("rejects a written outcome whose selected candidate is blank", () => {
+    expect(() =>
+      assertDraftArtifactBundle(
+        validBundle({
+          drafts: [
+            {
+              sourceUnitId: "unit-01",
+              draftId: "draft-01",
+              providerProofId: "recorded:bundle-01",
+              costLedgerEntryRef: "ledger-01",
+              writtenOutcome: validWrittenOutcome({
+                candidates: [
                   {
-                    kind: "capitalization_drift",
-                    spanRefId: "span-1",
-                    spanKind: "glossary",
-                    bridgeUnitId: "unit-01",
-                    detail: "expected Hero observed hero",
+                    id: "candidate-01",
+                    outcomeId: "outcome-01",
+                    body: "",
+                    producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+                    attemptId: "attempt-01",
+                    kind: "primary",
                   },
                 ],
-              },
-              retryFallbackState: "terminal-rejection",
-              costLedgerEntryRef: "ledger-01",
-              // missing terminalReason
+              }),
             },
           ],
         }),
       ),
-    ).toThrow(/terminalReason/u);
+    ).toThrow(/nonBlank/u);
   });
 
-  it("requires draftText on non-terminal entries", () => {
+  it("binds each written outcome to its source unit", () => {
     expect(() =>
       assertDraftArtifactBundle(
         validBundle({
@@ -95,18 +133,16 @@ describe("DraftArtifactBundle", () => {
               sourceUnitId: "unit-01",
               draftId: "draft-01",
               providerProofId: "recorded:bundle-01",
-              protectedSpanValidationResult: { accepted: true },
-              retryFallbackState: "success",
               costLedgerEntryRef: "ledger-01",
-              // missing draftText
+              writtenOutcome: validWrittenOutcome({ unitId: "other-unit" }),
             },
           ],
         }),
       ),
-    ).toThrow(/draftText/u);
+    ).toThrow(/unitBinding/u);
   });
 
-  it("rejects an unknown retryFallbackState", () => {
+  it("rejects duplicate source-unit entries", () => {
     expect(() =>
       assertDraftArtifactBundle(
         validBundle({
@@ -115,46 +151,20 @@ describe("DraftArtifactBundle", () => {
               sourceUnitId: "unit-01",
               draftId: "draft-01",
               providerProofId: "recorded:bundle-01",
-              protectedSpanValidationResult: { accepted: true },
-              retryFallbackState: "unknown-state",
               costLedgerEntryRef: "ledger-01",
-              draftText: "Hello.",
+              writtenOutcome: validWrittenOutcome(),
             },
-          ],
-        }),
-      ),
-    ).toThrow(/retryFallbackState/u);
-  });
-
-  it("rejects an unknown violation kind", () => {
-    expect(() =>
-      assertDraftArtifactBundle(
-        validBundle({
-          drafts: [
             {
               sourceUnitId: "unit-01",
-              draftId: "draft-01",
-              providerProofId: "recorded:bundle-01",
-              protectedSpanValidationResult: {
-                accepted: false,
-                violations: [
-                  {
-                    kind: "obscure_new_kind",
-                    spanRefId: "span-1",
-                    spanKind: "glossary",
-                    bridgeUnitId: "unit-01",
-                    detail: "synthetic",
-                  },
-                ],
-              },
-              retryFallbackState: "terminal-rejection",
-              costLedgerEntryRef: "ledger-01",
-              terminalReason: "synthetic terminal reason",
+              draftId: "draft-02",
+              providerProofId: "recorded:bundle-02",
+              costLedgerEntryRef: "ledger-02",
+              writtenOutcome: validWrittenOutcome(),
             },
           ],
         }),
       ),
-    ).toThrow(/violations\[0\]\.kind/u);
+    ).toThrow(/duplicate sourceUnitId/u);
   });
 
   it("parseDraftArtifactBundle wraps JSON parse errors", () => {

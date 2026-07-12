@@ -11,13 +11,12 @@
 //     invocation in every stage. The pair is drawn from the
 //     `PairPolicy` the caller passes; there is NO defaulting at the
 //     orchestrator boundary.
-//   - No silent fallbacks. Every stage failure routes through the
-//     triage router; deterministic-check P0 failures short-circuit
-//     before the LLM-QA stages can fire.
-//   - Repair is bounded by `policy.maxRepairAttempts`. Exceeding the
-//     cap records `routingSummary.outcome === 'deferred_to_human'`;
-//     the bundle's finalDraft carries a `deferredReason` instead of a
-//     `draftText`.
+//   - No silent fallbacks. Provider failures remain typed operational seams for
+//     the later invocation supervisor; once a usable candidate exists, every
+//     path writes it into a canonical outcome.
+//   - Repair is bounded by `policy.maxRepairAttempts`. Exhaustion and QA
+//     concerns are informational annotations; they never clear a draft or
+//     block the unit from being written.
 //   - No `as any`, no `@ts-ignore`. Every union resolution uses
 //     proper narrowing or an exhaustive switch.
 //   - No legacy compat. The old isolated drafting command was deleted
@@ -27,11 +26,10 @@ import { createHash } from "node:crypto";
 import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
 import {
   AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
+  asNonBlankTargetText,
   STYLE_GUIDE_POLICY_SECTIONS,
   type AgenticLoopBundle,
   type AgenticLoopInvocation,
-  type AgenticLoopRoutingOutcome,
-  type AgenticLoopRoutingSummary,
   type AgenticLoopStageName,
   type AgenticLoopStageRecord,
   type DroppedContextEnrichment,
@@ -39,6 +37,9 @@ import {
   type QaFinding,
   type StagePostureV03,
   type StyleGuidePolicyV0Draft,
+  type TranslationCandidate,
+  type WrittenQaFinding,
+  type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
 import { SpeakerLabelAgent } from "../agents/speaker-label/agent.js";
 import {
@@ -60,6 +61,7 @@ import {
 } from "../agents/structure-informed-context/index.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
+  TranslationPartialResultError,
   type PriorPassFeedback,
   type TranslationBridgeUnit,
   type TranslationGlossaryEntry,
@@ -72,6 +74,7 @@ import {
 import { QaAgent } from "../agents/qa/agent.js";
 import {
   QA_PROMPT_TEMPLATE_VERSION_V1,
+  QaPartialResultError,
   type QaBridgeUnit,
   type QaGlossaryEntry,
   type QaInvocationInput,
@@ -87,6 +90,7 @@ import {
   normalizeToSjisSafe,
   reconstructTarget,
   splitProtectedSpans,
+  stripOutOfBandControlMarkup,
 } from "../localization/patchback-safety.js";
 import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
 import { FindingTriageRouter } from "../triage/router.js";
@@ -207,9 +211,9 @@ export const DEV_POLICY: PairPolicy = {
 };
 
 /**
- * Tunables for the loop. `maxRepairAttempts` is strictly enforced —
- * exceeding it records `routingSummary.outcome === 'deferred_to_human'`
- * (see acceptance criterion #4 of ITOTORI-222).
+ * Tunables for the loop. `maxRepairAttempts` bounds improvement work; an
+ * exhausted budget leaves the selected written candidate intact and records
+ * informational quality flags.
  */
 export type AgenticLoopPolicy = {
   projectId: string;
@@ -323,15 +327,11 @@ export type AgenticLoopUnitInput = {
    */
   actor: AuthorizationActor;
   /**
-   * itotori-loop-to-review-queue-bridge — the reviewer-queue write surface a
-   * DRIVEN run wires so the loop's `deferred_to_human` /
-   * `short_circuit_deterministic_p0` outcome (or a threshold-exceeding QA
-   * finding) lands a context-rich `reviewer_queue_items` record automatically.
-   * This is the DEFAULT path for a driven run: when the sink is present the
-   * loop bridges its outcome into the HITL queue with the full decision context
-   * (source / draft / context / evidence / reasoning / options). When absent
-   * (the synthetic smoke path, which has no DB) the loop still returns its
-   * bundle but persists nothing.
+   * itotori-loop-to-review-queue-bridge — an optional legacy notification
+   * surface for threshold-crossing QA callouts. It receives the required
+   * selected draft plus annotations; it is never fed a blank or withheld unit.
+   * When absent (the synthetic smoke path, which has no DB) the loop still
+   * returns its written bundle but persists nothing.
    */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
@@ -543,6 +543,17 @@ export async function runAgenticLoopForUnit(
     translationResult,
     input.unit.bridgeUnitId,
   );
+  const outcomeId = writtenOutcomeId(input, policy);
+  const primaryCandidate = candidateFromTranslation({
+    outcomeId,
+    input,
+    result: translationResult,
+    body: primaryDraftText,
+    kind: "primary",
+  });
+  const candidates: TranslationCandidate[] = [primaryCandidate];
+  const outcomeFindings: WrittenQaFinding[] = [];
+  const qualityFlags = new Set<string>();
 
   // --------------------- deterministic checks ------------------------
   const deterministicStage = startStage("deterministic_checks");
@@ -563,9 +574,15 @@ export async function runAgenticLoopForUnit(
   // Deterministic-check P0 short-circuits before QA fires.            //
   // ------------------------------------------------------------------ //
   let qaFindings: QaFinding[] = [];
+  let qaIncomplete = false;
   if (deterministicResult.shortCircuit) {
+    for (const violation of deterministicResult.violations) {
+      qualityFlags.add(`deterministic_${violation.kind}`);
+    }
+    qualityFlags.add("deterministic_validation_failed");
+
     const qaStage = startStage("qa_findings");
-    qaStage.outcome = "skipped:deterministic_p0";
+    qaStage.outcome = "skipped:deterministic_diagnostic";
     stages.push(qaStage);
 
     const routingStage = startStage("routing");
@@ -574,42 +591,44 @@ export async function runAgenticLoopForUnit(
       violations: deterministicResult.violations,
       projectId: policy.projectId,
     });
-    routingStage.outcome = "routed";
+    routingStage.outcome = "diagnosed";
     stages.push(routingStage);
 
     const repairStage = startStage("repair");
-    repairStage.outcome = "skipped:deterministic_p0";
+    repairStage.outcome = "skipped:deterministic_diagnostic";
     stages.push(repairStage);
 
     const finalStage = startStage("final_draft");
-    finalStage.outcome = "deferred_to_human";
+    finalStage.outcome = "written:deterministic_flags";
     stages.push(finalStage);
 
     const shortCircuitBundle = finalizeBundle({
       bridgeUnitId: input.unit.bridgeUnitId,
       policy,
       stages,
-      routingSummary: {
-        outcome: "short_circuit_deterministic_p0",
-        routedFindingCount: triageResult.routings.length,
-        criticalFindingCount: triageResult.summary.criticalCount,
-        repairAttempts: 0,
-        maxRepairAttempts: policy.maxRepairAttempts,
-      },
-      finalDraft: {
-        bridgeUnitId: input.unit.bridgeUnitId,
-        deferredReason: `deterministic_checks short-circuited on P0: ${deterministicResult.firstP0Kind ?? "unknown"}`,
-      },
+      writtenOutcome: buildWrittenOutcome({
+        id: outcomeId,
+        input,
+        policy,
+        candidates,
+        selectedCandidate: primaryCandidate,
+        findings: outcomeFindings,
+        qualityFlags,
+        provenance: {
+          deterministicViolations: deterministicResult.violations,
+          routedFindingCount: triageResult.routings.length,
+          repairAttempts: 0,
+          maxRepairAttempts: policy.maxRepairAttempts,
+        },
+        writtenAt: now().toISOString(),
+      }),
     });
-    // itotori-loop-to-review-queue-bridge — a P0 short-circuit is a deferral;
-    // surface it to the reviewer queue with the rejected draft + the violations
-    // that fired so a human sees WHY it was held (not a random line).
+    // Deterministic concerns accompany the written draft as annotations. The
+    // reviewer bridge remains optional and never receives a blank outcome.
     await maybeBridgeLoopOutcomeToReviewerQueue({
       input,
       now,
       bundle: shortCircuitBundle,
-      draftText: primaryDraftText,
-      deferredReason: shortCircuitBundle.finalDraft.deferredReason,
       qaFindings: [],
       deterministicViolations: deterministicResult.violations,
       contextArtifactRefs: contextResult.contextArtifactRefs,
@@ -644,19 +663,34 @@ export async function runAgenticLoopForUnit(
       agentLabel: entry.agentLabel,
       pair: entry.pair,
     });
-    const result = await invokeQaStage({
-      provider,
-      pair: entry.pair,
-      input,
-      policy,
-      draftText: primaryDraftText,
-      agentLabel: entry.agentLabel,
-    });
+    let result: QaInvocationResult;
+    try {
+      result = await invokeQaStage({
+        provider,
+        pair: entry.pair,
+        input,
+        policy,
+        draftText: primaryDraftText,
+        agentLabel: entry.agentLabel,
+      });
+    } catch (error) {
+      // A primary candidate is already non-blank and canonical at this
+      // point. A provider's empty/truncated QA response is an informational
+      // loss of review coverage, not grounds to discard that candidate.
+      if (!isQaPartialResultError(error)) {
+        throw error;
+      }
+      qaIncomplete = true;
+      continue;
+    }
     qaInvocationResults.push({ agentLabel: entry.agentLabel, pair: entry.pair, result });
     pushInvocation(qaStage, providerTelemetryFromQa(result, entry.pair, entry.agentLabel));
     qaFindings = qaFindings.concat(result.findings);
   }
-  qaStage.outcome = "succeeded";
+  if (qaIncomplete) {
+    qualityFlags.add("qa_incomplete");
+  }
+  qaStage.outcome = qaIncomplete ? "incomplete:partial_result" : "succeeded";
   stages.push(qaStage);
 
   // ------------------------------ routing ----------------------------
@@ -673,63 +707,41 @@ export async function runAgenticLoopForUnit(
     isRepairableCauseClass(routing.rootCause.class),
   ).length;
 
+  for (const finding of qaFindings) {
+    outcomeFindings.push(
+      writtenFindingFromQa(finding, outcomeId, primaryCandidate.id, outcomeFindings.length),
+    );
+  }
+  for (const violation of deterministicResult.violations) {
+    qualityFlags.add(`deterministic_${violation.kind}`);
+  }
+
   // ------------------------------ repair -----------------------------
   const repairStage = startStage("repair");
-  let routingOutcome: AgenticLoopRoutingOutcome = "accepted";
-  let finalDraftText: string | undefined = primaryDraftText;
-  let finalDraftCitationRefs: ReadonlyArray<string> = primaryDraftCitationRefs;
-  let deferredReason: string | undefined;
+  let selectedCandidate = primaryCandidate;
+  let selectedCandidateCitationRefs: ReadonlyArray<string> = primaryDraftCitationRefs;
   let repairAttempts = 0;
+  let repairSucceeded = false;
 
   if (qaFindings.length === 0 && deterministicResult.violations.length === 0) {
     // Nothing to repair — short, clean path.
-    repairStage.outcome = "skipped:no_findings";
+    repairStage.outcome = qaIncomplete ? "skipped:qa_incomplete" : "skipped:no_findings";
   } else if (repairableCauseCount === 0) {
     repairStage.outcome = "skipped:no_repairable_cause";
-    if (triageResult.summary.criticalCount > 0) {
-      routingOutcome = "deferred_to_human";
-      finalDraftText = undefined;
-      deferredReason = `routing reported ${triageResult.summary.criticalCount} critical finding(s) without a repairable cause`;
-    }
+    qualityFlags.add("qa_unresolved");
   } else if (policy.maxRepairAttempts <= 0) {
-    // Cap exceeded before the first attempt.
-    repairStage.outcome = "cap_exceeded";
-    routingOutcome = "deferred_to_human";
-    finalDraftText = undefined;
-    deferredReason = `maxRepairAttempts=${policy.maxRepairAttempts} but ${repairableCauseCount} repairable cause(s) emerged`;
+    // A zero repair budget retains the primary candidate and exposes the
+    // concern as informational quality state.
+    repairStage.outcome = "repair_budget_exhausted";
+    qualityFlags.add("qa_unresolved");
+    qualityFlags.add("repair_budget_exhausted");
   } else {
-    // Run the bounded repair loop. We invoke the repair agent once per
-    // repair budget. A repaired draft is accepted ONLY when it clears
-    // BOTH gates in sequence:
-    //   (1) the DETERMINISTIC recheck (balanced / non-empty / charset /
-    //       protected-spans), AND
-    //   (2) a BOUNDED post-repair re-QA pass (agentic-loop-post-repair-qa-
-    //       revalidation) — the same four focused QA judges that DROVE the
-    //       repair re-evaluate the repaired draft to CONFIRM the flagged
-    //       issue is actually resolved, not merely deterministically valid.
-    //
-    // DECISION — bounded re-QA over deterministic-only (option (a)). The
-    // original QA pass is a FIXED-cost, four-agent evaluation
-    // (`invokeQaStage` × the four focused labels); it is not itself a loop.
-    // The repair loop is ALREADY strictly bounded by
-    // `policy.maxRepairAttempts`. Re-running that fixed QA pass ONCE per
-    // repair attempt therefore keeps the total cost bounded at
-    // `initialQA(4) + maxRepairAttempts × (repair(1) + reQA(4))` — there is
-    // NO unbounded QA→repair→QA recursion, because the re-QA only decides
-    // accept-vs-continue WITHIN the existing attempt budget; it never spawns
-    // an attempt beyond `maxRepairAttempts`. Deterministic-only acceptance
-    // (option (b)) would FALSELY accept a draft that clears
-    // balanced/charset/protected-span checks yet still mistranslates — the
-    // deterministic gate cannot see the semantic issue the QA judge flagged.
-    // Re-QA closes that gap with real evidence that the repair worked.
-    //
-    // Terminal outcomes:
-    //   - a draft that clears (1) AND (2)          → `repaired_then_accepted`
-    //   - the last deterministically-clean draft still fails (2) after the
-    //     budget is spent                          → `repaired_then_qa_rejected`
-    //   - no attempt ever cleared (1)              → `deferred_to_human`
+    // Run bounded repairs to improve the selection. A repair is eligible for
+    // selection only after deterministic validation and focused re-QA, but a
+    // failed repair never erases the already-written primary candidate.
     let attempt = 0;
     let lastReQaRejected = false;
+    let repairFlowIncomplete = false;
     while (attempt < policy.maxRepairAttempts) {
       attempt += 1;
       const repairProvider = providerFactory({
@@ -737,21 +749,35 @@ export async function runAgenticLoopForUnit(
         agentLabel: "repair-primary",
         pair: pairPolicy.repair.primary,
       });
-      const repairResult = await invokeTranslationStage({
-        provider: repairProvider,
-        pair: pairPolicy.repair.primary,
-        input,
-        policy,
-        agentLabel: `repair-primary[${attempt}]`,
-        // Repair re-translates carrying the SAME structure-informed context so
-        // the retry is still branch/scene/speaker aware, not context-stripped.
-        structuredContext: contextResult.structuredContext,
-        contextArtifactRefs: contextResult.contextArtifactRefs,
-        workScopeContext: input.workScopeContext,
-        // itotori-pass-ledger — keep the prior-pass feedback on every repair
-        // attempt so the retry keeps addressing the flagged issue.
-        priorPassFeedback: input.priorPassFeedback,
-      });
+      let repairResult: TranslationInvocationResult;
+      try {
+        repairResult = await invokeTranslationStage({
+          provider: repairProvider,
+          pair: pairPolicy.repair.primary,
+          input,
+          policy,
+          agentLabel: `repair-primary[${attempt}]`,
+          // Repair re-translates carrying the SAME structure-informed context so
+          // the retry is still branch/scene/speaker aware, not context-stripped.
+          structuredContext: contextResult.structuredContext,
+          contextArtifactRefs: contextResult.contextArtifactRefs,
+          workScopeContext: input.workScopeContext,
+          // itotori-pass-ledger — keep the prior-pass feedback on every repair
+          // attempt so the retry keeps addressing the flagged issue.
+          priorPassFeedback: input.priorPassFeedback,
+        });
+      } catch (error) {
+        // The selected primary (or an earlier selected repair) remains valid.
+        // Do not manufacture a replacement or let a partial repair erase it.
+        if (!isTranslationPartialResultError(error)) {
+          throw error;
+        }
+        repairAttempts = attempt;
+        repairFlowIncomplete = true;
+        qualityFlags.add("repair_incomplete");
+        repairStage.outcome = `incomplete:partial_result_at_attempt_${attempt}`;
+        break;
+      }
       pushInvocation(
         repairStage,
         providerTelemetryFromTranslation(
@@ -769,6 +795,14 @@ export async function runAgenticLoopForUnit(
         repairResult,
         input.unit.bridgeUnitId,
       );
+      const repairedCandidate = candidateFromTranslation({
+        outcomeId,
+        input,
+        result: repairResult,
+        body: repairedText,
+        kind: "repair",
+      });
+      candidates.push(repairedCandidate);
       const recheck = runDeterministicChecks({
         input,
         draftText: repairedText,
@@ -778,15 +812,17 @@ export async function runAgenticLoopForUnit(
         targetLocale: policy.targetLocale,
       });
       if (recheck.shortCircuit || recheck.violations.length > 0) {
-        // Gate (1) still fails — this attempt cannot be accepted. Do NOT run
-        // re-QA on a deterministically-broken draft; try again if budget
-        // remains, else fall through to the budget-exhaustion defer.
+        // A deterministically invalid repair remains a persisted candidate for
+        // provenance, but cannot displace the known primary selection.
+        for (const violation of recheck.violations) {
+          qualityFlags.add(`deterministic_${violation.kind}`);
+        }
+        qualityFlags.add("deterministic_validation_failed");
         lastReQaRejected = false;
         continue;
       }
-      // Gate (1) passed — run the BOUNDED post-repair re-QA (gate (2)). This
-      // runs at most once per attempt, so it adds a fixed four-call pass to a
-      // loop that is already capped at `maxRepairAttempts`.
+      // Re-QA annotates the repaired candidate and informs the best-candidate
+      // selection; it cannot turn the unit into a no-text result.
       const reQa = await runPostRepairReQaPass({
         input,
         policy,
@@ -796,6 +832,22 @@ export async function runAgenticLoopForUnit(
         attempt,
         repairStage,
       });
+      qaFindings = qaFindings.concat(reQa.findings);
+      for (const finding of reQa.findings) {
+        outcomeFindings.push(
+          writtenFindingFromQa(finding, outcomeId, repairedCandidate.id, outcomeFindings.length),
+        );
+      }
+      if (reQa.incomplete) {
+        // A repaired candidate has not received a complete QA pass, so it
+        // cannot displace the known selected candidate. The latter remains a
+        // written outcome with an explicit review-coverage annotation.
+        repairAttempts = attempt;
+        repairFlowIncomplete = true;
+        qualityFlags.add("qa_incomplete");
+        repairStage.outcome = `incomplete:qa_partial_result_at_attempt_${attempt}`;
+        break;
+      }
       const reTriage = routeFindingsAndViolations({
         findings: reQa.findings,
         // Gate (1) already confirmed zero deterministic violations remain.
@@ -806,80 +858,70 @@ export async function runAgenticLoopForUnit(
         isRepairableCauseClass(routing.rootCause.class),
       ).length;
       if (reRepairableCount === 0 && reTriage.summary.criticalCount === 0) {
-        // Re-QA CONFIRMS the flagged issue is resolved: no repairable cause
-        // and no critical finding on the repaired draft. Accept.
-        finalDraftText = repairedText;
-        finalDraftCitationRefs = repairedCitationRefs;
-        routingOutcome = "repaired_then_accepted";
+        // This is the best available candidate. Any remaining minor/info QA
+        // note stays attached as a quality annotation, never a release gate.
+        selectedCandidate = repairedCandidate;
+        selectedCandidateCitationRefs = repairedCitationRefs;
+        repairSucceeded = true;
         repairAttempts = attempt;
-        repairStage.outcome = `repaired_then_accepted_at_attempt_${attempt}`;
+        repairStage.outcome = `selected_repair_candidate_at_attempt_${attempt}`;
+        if (reQa.findings.length > 0) {
+          qualityFlags.add("qa_unresolved");
+        }
         break;
       }
-      // Re-QA still flags a repairable/critical issue: the repair did NOT
-      // confirmably fix the problem. Continue to the next attempt if budget
-      // remains; otherwise this records `repaired_then_qa_rejected` below.
+      // Continue seeking a stronger candidate within the bounded budget. The
+      // primary candidate remains selected until a repair earns selection.
       lastReQaRejected = true;
     }
-    if (routingOutcome !== "repaired_then_accepted") {
+    if (!repairSucceeded && !repairFlowIncomplete) {
       repairAttempts = attempt;
-      finalDraftText = undefined;
-      if (lastReQaRejected) {
-        // The final deterministically-clean repaired draft was still rejected
-        // by the bounded re-QA — a DISTINCT outcome from a plain budget-exhaust
-        // defer, so telemetry shows repair WAS attempted + re-judged but the
-        // flagged issue was not confirmed resolved.
-        routingOutcome = "repaired_then_qa_rejected";
-        deferredReason = `repaired draft still failed the bounded re-QA after ${attempt} attempt(s): the QA-flagged issue was not confirmed resolved (maxRepairAttempts=${policy.maxRepairAttempts})`;
-        repairStage.outcome = `repaired_then_qa_rejected_after_${attempt}_attempts`;
-      } else {
-        routingOutcome = "deferred_to_human";
-        deferredReason = `repair budget exhausted after ${attempt} attempt(s) (maxRepairAttempts=${policy.maxRepairAttempts})`;
-        repairStage.outcome = `cap_exhausted_after_${attempt}_attempts`;
-      }
+      qualityFlags.add("qa_unresolved");
+      qualityFlags.add("repair_budget_exhausted");
+      repairStage.outcome = lastReQaRejected
+        ? `repair_budget_exhausted_with_qa_flags_after_${attempt}_attempts`
+        : `repair_budget_exhausted_after_${attempt}_attempts`;
     }
   }
   stages.push(repairStage);
 
-  // ---------------------------- final draft --------------------------
+  // -------------------------- written outcome ------------------------
   const finalStage = startStage("final_draft");
-  finalStage.outcome = routingOutcome;
+  finalStage.outcome = "written";
   stages.push(finalStage);
 
   const finalBundle = finalizeBundle({
     bridgeUnitId: input.unit.bridgeUnitId,
     policy,
     stages,
-    routingSummary: {
-      outcome: routingOutcome,
-      routedFindingCount: triageResult.routings.length,
-      criticalFindingCount: triageResult.summary.criticalCount,
-      repairAttempts,
-      maxRepairAttempts: policy.maxRepairAttempts,
-    },
-    finalDraft:
-      finalDraftText !== undefined
-        ? { bridgeUnitId: input.unit.bridgeUnitId, draftText: finalDraftText }
-        : {
-            bridgeUnitId: input.unit.bridgeUnitId,
-            deferredReason:
-              deferredReason ?? "agentic loop deferred to human without specific reason",
-          },
+    writtenOutcome: buildWrittenOutcome({
+      id: outcomeId,
+      input,
+      policy,
+      candidates,
+      selectedCandidate,
+      findings: outcomeFindings,
+      qualityFlags,
+      provenance: {
+        routedFindingCount: triageResult.routings.length,
+        criticalFindingCount: triageResult.summary.criticalCount,
+        repairAttempts,
+        maxRepairAttempts: policy.maxRepairAttempts,
+        selectedKind: selectedCandidate.kind,
+      },
+      writtenAt: now().toISOString(),
+    }),
   });
-  // itotori-loop-to-review-queue-bridge — DEFAULT loop path. When the outcome
-  // is `deferred_to_human` (or a QA finding crossed the review severity floor
-  // even on an accepted draft) this lands ONE context-rich reviewer_queue_items
-  // record. `finalDraftText ?? primaryDraftText` carries the accepted draft, or
-  // the REJECTED draft on a defer, so the reviewer never judges an isolated line.
+  // The optional reviewer bridge receives the selected, non-blank candidate
+  // plus QA annotations only; it never becomes a sink for withheld drafts.
   await maybeBridgeLoopOutcomeToReviewerQueue({
     input,
     now,
     bundle: finalBundle,
-    draftText: finalDraftText ?? primaryDraftText,
-    ...(deferredReason !== undefined ? { deferredReason } : {}),
     qaFindings,
     deterministicViolations: deterministicResult.violations,
     contextArtifactRefs: contextResult.contextArtifactRefs,
-    citationRefs: finalDraftCitationRefs,
+    citationRefs: selectedCandidateCitationRefs,
     // wiki-structure-context-feed — pass the structure-informed injection so
     // the decision record carries the exact texts that fed the draft.
     structuredContext: contextResult.structuredContext,
@@ -897,8 +939,6 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
   input: AgenticLoopUnitInput;
   now: () => Date;
   bundle: AgenticLoopBundle;
-  draftText?: string | undefined;
-  deferredReason?: string | undefined;
   qaFindings: ReadonlyArray<QaFinding>;
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
   contextArtifactRefs: ReadonlyArray<string>;
@@ -915,8 +955,6 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
     bundle: args.bundle,
     unit: args.input.unit,
     sourceRevisionId: args.input.sourceRevisionId,
-    draftText: args.draftText,
-    deferredReason: args.deferredReason,
     qaFindings: args.qaFindings,
     deterministicViolations: args.deterministicViolations,
     contextArtifactRefs: args.contextArtifactRefs,
@@ -992,8 +1030,7 @@ function finalizeBundle(args: {
   bridgeUnitId: string;
   policy: AgenticLoopPolicy;
   stages: StageAccumulator[];
-  routingSummary: AgenticLoopRoutingSummary;
-  finalDraft: AgenticLoopBundle["finalDraft"];
+  writtenOutcome: WrittenUnitOutcome;
 }): AgenticLoopBundle {
   return {
     schemaVersion: AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
@@ -1003,8 +1040,90 @@ function finalizeBundle(args: {
     sourceLocale: args.policy.sourceLocale,
     targetLocale: args.policy.targetLocale,
     stages: args.stages.map(stageAccumulatorToRecord),
-    routingSummary: args.routingSummary,
-    finalDraft: args.finalDraft,
+    writtenOutcome: args.writtenOutcome,
+  };
+}
+
+function writtenOutcomeId(input: AgenticLoopUnitInput, policy: AgenticLoopPolicy): string {
+  return `written-outcome:${policy.projectId}:${policy.localeBranchId}:${input.unit.bridgeUnitId}`;
+}
+
+function candidateFromTranslation(args: {
+  outcomeId: string;
+  input: AgenticLoopUnitInput;
+  result: TranslationInvocationResult;
+  body: string;
+  kind: TranslationCandidate["kind"];
+}): TranslationCandidate {
+  const sourceText = args.input.unit.sourceText.trim();
+  const engineVisibleSourceText = stripOutOfBandControlMarkup(sourceText).trim();
+  const targetText = args.body.trim();
+  const engineVisibleTargetText = stripOutOfBandControlMarkup(targetText).trim();
+  if (targetText === sourceText || engineVisibleTargetText === engineVisibleSourceText) {
+    throw new AgenticLoopInvariantError(
+      `translation result for bridgeUnitId='${args.input.unit.bridgeUnitId}' repeats source text after control-markup normalization`,
+    );
+  }
+  const provider = args.result.modelMetadata.providerIdentity;
+  return {
+    id: `${args.outcomeId}:candidate:${args.kind}:${args.result.providerRunId}`,
+    outcomeId: args.outcomeId,
+    body: asNonBlankTargetText(args.body),
+    producedBy: {
+      modelId: provider.actualModelId,
+      providerId: provider.upstreamProvider ?? provider.requestedProviderId,
+    },
+    attemptId: args.result.providerRunId,
+    kind: args.kind,
+  };
+}
+
+function writtenFindingFromQa(
+  finding: QaFinding,
+  outcomeId: string,
+  candidateId: string,
+  ordinal: number,
+): WrittenQaFinding {
+  return {
+    // Focused QA agents may independently emit the same provider-local id.
+    // The canonical finding id is therefore candidate-scoped and ordinalized,
+    // while retaining the provider-local id as its stable prefix.
+    id: `${finding.findingId}:${candidateId}:${ordinal}`,
+    outcomeId,
+    candidateId,
+    severity: finding.severity,
+    category: finding.category,
+    note: `${finding.recommendation}\n${finding.agentRationale}`,
+    contested: false,
+    // The current QA wire contract has no calibrated confidence field. Keep
+    // that seam explicit until the QA model emits one, rather than treating an
+    // uncalibrated finding as a gate.
+    confidence: 0.5,
+  };
+}
+
+function buildWrittenOutcome(args: {
+  id: string;
+  input: AgenticLoopUnitInput;
+  policy: AgenticLoopPolicy;
+  candidates: ReadonlyArray<TranslationCandidate>;
+  selectedCandidate: TranslationCandidate;
+  findings: ReadonlyArray<WrittenQaFinding>;
+  qualityFlags: ReadonlySet<string>;
+  provenance: unknown;
+  writtenAt: string;
+}): WrittenUnitOutcome {
+  return {
+    id: args.id,
+    status: "written",
+    unitId: args.input.unit.bridgeUnitId,
+    targetLocale: args.policy.targetLocale,
+    selectedCandidateId: args.selectedCandidate.id,
+    candidates: [...args.candidates],
+    findings: [...args.findings],
+    qualityFlags: [...args.qualityFlags].sort(),
+    provenance: args.provenance,
+    writtenAt: args.writtenAt,
   };
 }
 
@@ -1816,9 +1935,10 @@ async function runPostRepairReQaPass(args: {
   draftText: string;
   attempt: number;
   repairStage: StageAccumulator;
-}): Promise<{ findings: QaFinding[] }> {
+}): Promise<{ findings: QaFinding[]; incomplete: boolean }> {
   const { input, policy, pairPolicy, providerFactory, draftText, attempt, repairStage } = args;
   let findings: QaFinding[] = [];
+  let incomplete = false;
   for (const entry of [
     { agentLabel: "qa-style-adherence", pair: pairPolicy.qa.styleAdherence },
     { agentLabel: "qa-semantic-drift", pair: pairPolicy.qa.semanticDrift },
@@ -1830,21 +1950,42 @@ async function runPostRepairReQaPass(args: {
       agentLabel: entry.agentLabel,
       pair: entry.pair,
     });
-    const result = await invokeQaStage({
-      provider,
-      pair: entry.pair,
-      input,
-      policy,
-      draftText,
-      agentLabel: entry.agentLabel,
-    });
+    let result: QaInvocationResult;
+    try {
+      result = await invokeQaStage({
+        provider,
+        pair: entry.pair,
+        input,
+        policy,
+        draftText,
+        agentLabel: entry.agentLabel,
+      });
+    } catch (error) {
+      // Re-QA happens only after both the primary and this repair candidate
+      // exist. Retain the known selection while making the coverage loss
+      // visible to the caller; other focused judges may still contribute
+      // their findings during this bounded pass.
+      if (!isQaPartialResultError(error)) {
+        throw error;
+      }
+      incomplete = true;
+      continue;
+    }
     pushInvocation(
       repairStage,
       providerTelemetryFromQa(result, entry.pair, `${entry.agentLabel}-reqa[${attempt}]`),
     );
     findings = findings.concat(result.findings);
   }
-  return { findings };
+  return { findings, incomplete };
+}
+
+function isQaPartialResultError(error: unknown): error is QaPartialResultError {
+  return error instanceof QaPartialResultError;
+}
+
+function isTranslationPartialResultError(error: unknown): error is TranslationPartialResultError {
+  return error instanceof TranslationPartialResultError;
 }
 
 function providerTelemetryFromQa(

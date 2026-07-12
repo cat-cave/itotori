@@ -3,6 +3,7 @@
 // branch identity is dropped or merged.
 
 import {
+  asNonBlankTargetText,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type BenchmarkReportV02,
   type DraftArtifactBundle,
@@ -24,6 +25,7 @@ const BRANCH_A: LocaleBranchSeedSpec = {
   targetLocale: "fr-FR",
   draftJobId: "019ed059-0000-7000-8000-0000000000d1",
   benchmarkRunId: "019ed059-0000-7000-8000-0000000000e1",
+  sourceText: "Source fixture text.",
   draftText: "Bonjour, joueur — branche primaire.",
 };
 
@@ -36,6 +38,7 @@ const BRANCH_B: LocaleBranchSeedSpec = {
   targetLocale: "fr-FR",
   draftJobId: "019ed059-0000-7000-8000-0000000000d2",
   benchmarkRunId: "019ed059-0000-7000-8000-0000000000e2",
+  sourceText: "Source fixture text.",
   draftText: "Salut, joueur — branche alternative.",
 };
 
@@ -50,10 +53,28 @@ function baseDraftBundle(): DraftArtifactBundle {
         sourceUnitId: "019ed001-0000-7000-8000-000000000201",
         draftId: "draft-001",
         providerProofId: "proof-001",
-        protectedSpanValidationResult: { accepted: true },
-        retryFallbackState: "success",
         costLedgerEntryRef: "ledger-entry-001",
-        draftText: "base draft text",
+        writtenOutcome: {
+          id: "outcome-001",
+          status: "written",
+          unitId: "019ed001-0000-7000-8000-000000000201",
+          targetLocale: "fr-FR",
+          selectedCandidateId: "candidate-001",
+          candidates: [
+            {
+              id: "candidate-001",
+              outcomeId: "outcome-001",
+              body: asNonBlankTargetText("base draft text"),
+              producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+              attemptId: "attempt-001",
+              kind: "primary",
+            },
+          ],
+          findings: [],
+          qualityFlags: [],
+          provenance: { fixture: true },
+          writtenAt: "2026-07-11T00:00:00.000Z",
+        },
       },
     ],
     ledgerSummary: {
@@ -97,11 +118,9 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
     expect(b!.draftArtifactBundle.localeBranchId).toBe(BRANCH_B.localeBranchId);
     expect(a!.draftArtifactBundle.projectId).toBe(PROJECT_ID);
     expect(a!.draftArtifactBundle.draftJobId).not.toBe(b!.draftArtifactBundle.draftJobId);
-    expect(a!.draftArtifactBundle.drafts[0]!.draftText).toBe(BRANCH_A.draftText);
-    expect(b!.draftArtifactBundle.drafts[0]!.draftText).toBe(BRANCH_B.draftText);
-    expect(a!.draftArtifactBundle.drafts[0]!.draftText).not.toBe(
-      b!.draftArtifactBundle.drafts[0]!.draftText,
-    );
+    expect(selectedBody(a!.draftArtifactBundle)).toBe(BRANCH_A.draftText);
+    expect(selectedBody(b!.draftArtifactBundle)).toBe(BRANCH_B.draftText);
+    expect(selectedBody(a!.draftArtifactBundle)).not.toBe(selectedBody(b!.draftArtifactBundle));
   });
 
   it("keeps benchmark + cost state per branch without conflation", () => {
@@ -151,6 +170,12 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
     expect(() => buildSeed([BRANCH_A])).toThrow(LocaleBranchSeedConflationError);
   });
 
+  it("rejects a draft body that echoes its source text before producing a bundle", () => {
+    expect(() => buildSeed([{ ...BRANCH_A, draftText: BRANCH_A.sourceText }, BRANCH_B])).toThrow(
+      /must not echo sourceText/u,
+    );
+  });
+
   it("API rejects a benchmark record that drops its locale-branch identity", () => {
     const seed = buildSeed();
     const request = structuredClone(seed.branches[0]!.recordBenchmarkRequest);
@@ -174,3 +199,8 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
     );
   });
 });
+
+function selectedBody(bundle: DraftArtifactBundle): string {
+  const outcome = bundle.drafts[0]!.writtenOutcome;
+  return outcome.candidates.find((candidate) => candidate.id === outcome.selectedCandidateId)!.body;
+}

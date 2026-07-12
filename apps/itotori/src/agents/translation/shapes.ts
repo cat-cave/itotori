@@ -102,8 +102,8 @@ export type TranslationWorkScopeContext = {
  * prompt so a pass N+1 draft BUILDS ON pass N's accepted state / flagged
  * units instead of re-running from scratch. Strictly project-agnostic: the
  * ledger records whatever the prior localization pass surfaced for this unit
- * (the routing outcome, the accepted or rejected draft, the defer reason, and
- * any free-form feedback note a reviewer / QA finding emitted); the prompt
+ * (the written draft, informational quality flags, and any free-form feedback
+ * note a play tester / QA finding emitted); the prompt
  * template renders it verbatim into a dedicated "Prior pass feedback" block.
  *
  * The shape carries no game / engine / title fields — the multi-pass loop is
@@ -112,18 +112,14 @@ export type TranslationWorkScopeContext = {
 export type PriorPassFeedback = {
   /** 1-based number of the prior localization pass this feedback came from. */
   passNumber: number;
-  /** The prior pass's routing outcome for this unit (accepted / deferred / …). */
-  priorOutcome: string;
   /**
-   * The draft text the prior pass produced for this unit — the ACCEPTED draft
-   * when the prior pass accepted, or the REJECTED primary draft when it
-   * deferred. Absent only when the prior pass never produced a draft (e.g. a
-   * deterministic short-circuit before translation). Pass N+1 treats this as
-   * the baseline to improve on, not a blank slate.
+   * The non-blank target draft the prior pass wrote for this unit. Every
+   * written outcome carries one, so pass N+1 always has a baseline to improve
+   * on rather than a blank or source-repetition fallback.
    */
-  priorDraftText?: string;
-  /** Why the prior pass deferred this unit, when it deferred. */
-  deferredReason?: string;
+  priorDraftText: string;
+  /** Informational QA/repair flags retained with the written outcome. */
+  qualityFlags: string[];
   /**
    * Free-form feedback note carried from the prior pass — a reviewer
    * correction, a QA-finding recommendation, or any project-agnostic hint the

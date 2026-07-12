@@ -14,8 +14,7 @@
 //      (a real `mistranslation`/`tone`/`context-mismatch` finding routed to
 //      a repairable root cause), and
 //   3. the REPAIR stage fires a LIVE ZDR translation call that regenerates
-//      the draft, which then passes the acceptance recheck ->
-//      `repaired_then_accepted`.
+//      the draft, which becomes the selected written candidate after re-QA.
 //
 // Nothing here weakens QA or fakes the rejection: the QA verdict is the
 // live model's own judgement of a genuinely-wrong draft. Only the primary
@@ -237,7 +236,7 @@ class CapturingLiveWrapper implements ModelProvider {
 }
 
 describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () => {
-  it("genuine QA rejection -> live ZDR repair call -> repaired draft accepted", async () => {
+  it("genuine QA finding -> live ZDR repair call -> repaired candidate selected", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -278,19 +277,21 @@ describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () 
       factory,
     );
 
-    // --- The reject -> repair -> pass transition ------------------------
+    // --- The QA annotation -> repair -> selected-candidate transition ---
     const qaStage = bundle.stages.find((s) => s.stageName === "qa_findings");
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
     expect(qaStage?.invocations.length ?? 0).toBeGreaterThanOrEqual(1);
-    // Genuine QA rejection routed to at least one repairable cause.
-    expect(bundle.routingSummary.routedFindingCount).toBeGreaterThanOrEqual(1);
-    // Repair fired a LIVE call and the repaired draft was accepted.
-    expect(bundle.routingSummary.outcome).toBe("repaired_then_accepted");
-    expect(bundle.routingSummary.repairAttempts).toBeGreaterThanOrEqual(1);
+    // Repair fired a LIVE call and the repaired candidate was selected while
+    // every QA concern remained a permanent annotation.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(bundle.writtenOutcome.findings.length).toBeGreaterThanOrEqual(1);
     expect(repairStage?.invocations.length ?? 0).toBeGreaterThanOrEqual(1);
-    expect(repairStage?.outcome ?? "").toMatch(/^repaired_then_accepted_at_attempt_/u);
-    expect(bundle.finalDraft.draftText).toBeTruthy();
-    expect(bundle.finalDraft.deferredReason).toBeUndefined();
+    expect(repairStage?.outcome ?? "").toMatch(/^selected_repair_candidate_at_attempt_/u);
+    const selectedCandidate = bundle.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+    );
+    expect(selectedCandidate?.kind).toBe("repair");
+    expect(selectedCandidate?.body).toBeTruthy();
 
     // --- Live ZDR + served-pair + real-cost evidence --------------------
     const qaCaptured = captured.filter((c) => c.stage === "qa_findings");
@@ -349,12 +350,12 @@ describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () 
       pairFromPreset: "presets/localize-project.pair-policy.json",
       transition: {
         firstDraft: "fixture mistranslation (genuine bad translation, reached live QA)",
-        qaVerdict: "rejected",
-        routedFindingCount: bundle.routingSummary.routedFindingCount,
-        criticalFindingCount: bundle.routingSummary.criticalFindingCount,
+        qaVerdict: "annotated",
+        findingCount: bundle.writtenOutcome.findings.length,
+        qualityFlags: bundle.writtenOutcome.qualityFlags,
         repairOutcome: repairStage?.outcome,
-        routingOutcome: bundle.routingSummary.outcome,
-        repairAttempts: bundle.routingSummary.repairAttempts,
+        writtenStatus: bundle.writtenOutcome.status,
+        selectedCandidateId: bundle.writtenOutcome.selectedCandidateId,
       },
       qaRejectionFindings: qaFindings,
       repairLiveCall: {
@@ -377,7 +378,7 @@ describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () 
       })),
       totalCostUsd: totalCostUsd.toFixed(8),
       liveInvocationCount: captured.length,
-      finalRepairedDraft: bundle.finalDraft.draftText,
+      selectedRepairDraft: selectedCandidate?.body,
     };
 
     const evidencePath =
@@ -386,10 +387,10 @@ describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () 
     writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
     // eslint-disable-next-line no-console
     console.log(
-      `[agentic-repair-live] reject->repair->pass proven LIVE. ` +
+      `[agentic-repair-live] QA annotation->repair->written selection proven LIVE. ` +
         `served repair pair=(${repairInvocation!.servedModelId}, ${repairInvocation!.servedProviderId}) ` +
         `repairCostUsd=${repairInvocation!.costAmountUsd} zdr=${repairInvocation!.zdr} ` +
-        `outcome=${bundle.routingSummary.outcome} attempts=${bundle.routingSummary.repairAttempts} ` +
+        `outcome=${bundle.writtenOutcome.status} candidate=${bundle.writtenOutcome.selectedCandidateId} ` +
         `totalCostUsd=${totalCostUsd.toFixed(8)} calls=${captured.length}\n` +
         `[agentic-repair-live] evidence: ${evidencePath}`,
     );

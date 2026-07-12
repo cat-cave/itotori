@@ -121,7 +121,7 @@ export class RealRunBenchmarkAdapterError extends Error {
  * A ref to a REAL localized run's accepted drafts (the SELF contestant). Opaque
  * id(s) the {@link RealRunArtifactPort} resolves; game-agnostic. The adapter
  * never touches raw game bytes — it consumes the run artifacts the orchestrator
- * already produced (drafts / pass-ledger records / patch-export acceptedUnits).
+ * already produced (drafts / pass-ledger records / patch-export written units).
  */
 export type RealRunRef = {
   /** Opaque run id (e.g. a localization-pass id / patch-export report id). */

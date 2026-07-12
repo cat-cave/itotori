@@ -2,23 +2,22 @@
 //
 // The agentic loop (`runAgenticLoopForUnit`) is persistence-pure: it chains
 // every agentic stage and emits an `AgenticLoopBundle`, but historically it
-// NEVER created a reviewer-queue item — so a driven run's `deferred_to_human`
-// outcome (or a threshold-exceeding QA finding) produced a `deferredReason`
-// string that no human ever saw. The automated pipeline and the HITL reviewer
-// machinery were two separate universes.
+// used the queue as a sink for withheld drafts. It now carries only
+// threshold-crossing QA callouts on an already-written candidate. The automated
+// pipeline and the legacy reviewer machinery remain separate universes.
 //
-// This module is the bridge. When the loop's outcome warrants human judgment it
+// This module is the bridge. When the loop's annotations warrant a callout it
 // builds ONE `reviewer_queue_items` record (via the existing
 // `ItotoriReviewerQueueRepository.createItem` — NOT a new queue) carrying the
 // FULL decision context the product workflow mandates
 // (docs/itotori-product-workflow.md §"Decision Queue Record Shape"):
 //
 //   - source     : source text / hash / revision / unit key / spans
-//   - draft      : the current (accepted) or rejected draft text + status
+//   - draft      : the selected written draft text + status
 //   - context    : the (now-real) structure-informed context artifact refs
 //   - evidence   : the QA findings + deterministic violations that fired
-//   - reasoning  : the loop's deferredReason + bounded-repair history
-//   - options    : accept / reject / edit / defer / escalate
+//   - reasoning  : informational QA flags + bounded-repair history
+//   - options    : informational callout only
 //
 // The record is a CONTEXT-RICH decision, never a random-line review: if the
 // loop could not assemble source+draft+context the product workflow says the
@@ -42,7 +41,6 @@ import type {
 import { ReviewerQueueRepositoryError, reviewerQueueItemKindValues } from "@itotori/db";
 import type {
   AgenticLoopBundle,
-  AgenticLoopRoutingOutcome,
   LocalizationUnitV02,
   QaFinding,
   QaFindingSeverity,
@@ -50,22 +48,6 @@ import type {
 import type { DraftProtectedSpanViolation } from "../draft/protected-span-validator.js";
 import type { StructuredContextInjection } from "../agents/structure-informed-context/shapes.js";
 import { structuredContextForDecisionRecord } from "../reviewer/structure-context-feed.js";
-
-/**
- * True for every loop outcome that DEFERS the unit to the human queue (the
- * draft was NOT persisted): a plain budget-exhaustion / immediate-review defer,
- * a deterministic-P0 short-circuit, OR a `repaired_then_qa_rejected` — the
- * repaired draft cleared the deterministic recheck but the bounded post-repair
- * re-QA (agentic-loop-post-repair-qa-revalidation) still flagged it, so it must
- * reach a human exactly like any other defer.
- */
-function isDeferredLoopOutcome(outcome: AgenticLoopRoutingOutcome): boolean {
-  return (
-    outcome === "deferred_to_human" ||
-    outcome === "short_circuit_deterministic_p0" ||
-    outcome === "repaired_then_qa_rejected"
-  );
-}
 
 /**
  * Severity floor at/above which a QA finding warrants human review even when
@@ -93,9 +75,9 @@ export type AgenticLoopReviewerQueueSink = {
 
 /**
  * Everything the bridge needs from one `runAgenticLoopForUnit` pass. The loop
- * assembles this from its own internal state (findings, violations, draft,
- * context refs) at finalization — the `AgenticLoopBundle` alone does NOT expose
- * the individual findings/violations, so they are threaded here explicitly.
+ * assembles this from its own internal state (findings, violations, context
+ * refs) at finalization — raw QA evidence is threaded here explicitly while
+ * the bundle owns the selected written candidate.
  */
 export type AgenticLoopBridgeInput = {
   actor: AuthorizationActor;
@@ -108,15 +90,6 @@ export type AgenticLoopBridgeInput = {
    * content-hash id in `unit.sourceRevision.revisionId`.
    */
   sourceRevisionId: string;
-  /**
-   * The current (accepted) or REJECTED draft text. Carried even on a
-   * `deferred_to_human` outcome so the reviewer sees what the loop produced and
-   * why it was held — a defer with no visible draft would be a random-line
-   * review, which the product workflow forbids.
-   */
-  draftText?: string | undefined;
-  /** The loop's reasoning string when it deferred (repair-budget / P0 / critical). */
-  deferredReason?: string | undefined;
   qaFindings: ReadonlyArray<QaFinding>;
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
   /** Citable context artifact refs (structure slice + live semantic enrichment). */
@@ -137,22 +110,13 @@ export type AgenticLoopBridgeInput = {
 };
 
 /**
- * True when the loop's outcome warrants a human decision:
- *   - the loop deferred (`deferred_to_human` / `short_circuit_deterministic_p0`),
- *     OR
- *   - a QA finding is at/above the review severity floor even though the draft
- *     was otherwise accepted (an accepted draft can still carry a major finding
- *     that merits a human glance).
- * A clean run (accepted, no floor-crossing finding) warrants NOTHING.
+ * True when permanent QA annotations warrant an optional human callout. A
+ * clean written outcome warrants nothing; quality never controls coverage.
  */
 export function agenticLoopWarrantsReviewerQueueItem(input: {
   bundle: AgenticLoopBundle;
   qaFindings: ReadonlyArray<QaFinding>;
 }): boolean {
-  const outcome = input.bundle.routingSummary.outcome;
-  if (isDeferredLoopOutcome(outcome)) {
-    return true;
-  }
   return input.qaFindings.some((finding) =>
     AGENTIC_LOOP_REVIEW_SEVERITY_FLOOR.has(finding.severity),
   );
@@ -182,32 +146,30 @@ export function buildAgenticLoopReviewerQueueItemInput(
   input: AgenticLoopBridgeInput,
 ): CreateReviewerQueueItemInput {
   const { bundle, unit } = input;
-  const outcome = bundle.routingSummary.outcome;
-  const deferred = isDeferredLoopOutcome(outcome);
+  const outcome = bundle.writtenOutcome.status;
   const flaggedFindings = input.qaFindings.filter((finding) =>
     AGENTIC_LOOP_REVIEW_SEVERITY_FLOOR.has(finding.severity),
   );
+  const selectedCandidate = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  if (selectedCandidate === undefined) {
+    throw new Error(
+      `reviewer-queue bridge refused: written outcome for ${unit.bridgeUnitId} has no selected candidate`,
+    );
+  }
 
   const decisionId = agenticLoopDecisionId(unit);
   const sourceItemRef = agenticLoopDecisionSourceItemRef(unit);
-  const hasDraft = typeof input.draftText === "string" && input.draftText.length > 0;
-
-  const reasoningSummary =
-    input.deferredReason !== undefined
-      ? input.deferredReason
-      : `${flaggedFindings.length} QA finding(s) at/above the review severity floor`;
-
-  const summary = deferred
-    ? `Agentic loop deferred ${unit.sourceUnitKey}: ${reasoningSummary}`
-    : `Agentic loop flagged ${unit.sourceUnitKey}: ${reasoningSummary}`;
+  const qualityFlags = bundle.writtenOutcome.qualityFlags;
+  const reasoningSummary = `${flaggedFindings.length} QA finding(s) at/above the review severity floor`;
+  const summary = `Agentic loop QA callout for ${unit.sourceUnitKey}: ${reasoningSummary}`;
 
   const repairStage = bundle.stages.find((stage) => stage.stageName === "repair");
 
-  const decisionType = deferred ? "deferred_translation_review" : "qa_finding_review";
-
   // Product-workflow "Decision Queue Record Shape". Field names track the doc;
-  // this carries source / draft / context / evidence / reasoning / options so
-  // the reviewer never judges an isolated line.
+  // this carries source / selected draft / context / evidence / annotations so
+  // the reviewer never judges an isolated line or controls coverage.
   const decisionRecord: Record<string, unknown> = {
     schemaVersion: AGENTIC_LOOP_DECISION_RECORD_SCHEMA_VERSION,
     decisionId,
@@ -216,7 +178,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
     targetLocale: bundle.targetLocale,
     // Full context is present, so this is a real human decision, not needs_context.
     state: "ready_for_human",
-    decisionType,
+    decisionType: "qa_finding_review",
     outcome,
     source: {
       bridgeUnitId: unit.bridgeUnitId,
@@ -231,14 +193,8 @@ export function buildAgenticLoopReviewerQueueItemInput(
       spans: unit.spans,
     },
     draft: {
-      // The current or rejected draft the loop produced (null when the loop
-      // deferred before any draft survived, e.g. a P0 short-circuit).
-      draftText: hasDraft ? input.draftText : null,
-      draftStatus: deferred
-        ? hasDraft
-          ? "deferred_with_draft"
-          : "deferred_no_draft"
-        : "qa_flagged",
+      draftText: selectedCandidate.body,
+      draftStatus: "written_with_qa_callout",
       targetLocale: bundle.targetLocale,
       localeBranchId: bundle.localeBranchId,
     },
@@ -259,7 +215,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
     // Reasoning + findings — the evidence the reviewer weighs.
     reasoningAndFindings: {
       summary: reasoningSummary,
-      ...(input.deferredReason !== undefined ? { deferredReason: input.deferredReason } : {}),
+      qualityFlags,
       qaFindings: input.qaFindings.map((finding) => ({
         findingId: finding.findingId,
         bridgeUnitId: finding.bridgeUnitId,
@@ -278,52 +234,26 @@ export function buildAgenticLoopReviewerQueueItemInput(
         bridgeUnitId: violation.bridgeUnitId,
         detail: violation.detail,
       })),
-      criticalFindingCount: bundle.routingSummary.criticalFindingCount,
-      routedFindingCount: bundle.routingSummary.routedFindingCount,
+      criticalFindingCount: input.qaFindings.filter((finding) => finding.severity === "critical")
+        .length,
+      routedFindingCount: input.qaFindings.length,
       repairHistory: {
         repairStageOutcome: repairStage?.outcome ?? "absent",
-        repairAttempts: bundle.routingSummary.repairAttempts,
-        maxRepairAttempts: bundle.routingSummary.maxRepairAttempts,
       },
     },
     impact: {
       surfaceKind: unit.surfaceKind,
-      deferred,
+      written: true,
       flaggedFindingCount: flaggedFindings.length,
     },
-    // Decision OPTIONS the reviewer chooses between. `action` maps each option
-    // to the reviewer-queue action taxonomy the `qa` item kind supports
-    // (approve / reject / request_repair / defer / escalate).
+    // This retained bridge is notification-only. It deliberately exposes no
+    // action that can erase the selected text or make QA a release gate.
     options: [
       {
-        optionId: "accept",
-        label: "Accept the draft",
+        optionId: "inspect",
+        label: "Inspect QA callout",
         action: "approve",
-        consequence: "Marks the draft accepted and patch-ready for this unit.",
-      },
-      {
-        optionId: "reject",
-        label: "Reject the draft",
-        action: "reject",
-        consequence: "Marks the draft rejected; the unit needs a fresh draft.",
-      },
-      {
-        optionId: "edit",
-        label: "Send back for a repaired re-draft",
-        action: "request_repair",
-        consequence: "Re-queues the unit for the agentic loop with reviewer guidance.",
-      },
-      {
-        optionId: "defer",
-        label: "Defer this decision",
-        action: "defer",
-        consequence: "Keeps the unit blocked for export until revisited.",
-      },
-      {
-        optionId: "escalate",
-        label: "Escalate for senior review",
-        action: "escalate",
-        consequence: "Routes the decision to a senior reviewer.",
+        consequence: "Leaves the written draft and configured patch coverage unchanged.",
       },
     ],
   };
@@ -344,7 +274,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
     sourceItemRef,
     summary,
     affectedArtifactIds,
-    priority: deferred ? 10 : 5,
+    priority: 5,
     payload: {
       source: "agentic_loop",
       decisionId,
@@ -366,10 +296,10 @@ export function buildAgenticLoopReviewerQueueItemInput(
 
 /**
  * Bridge a finished agentic-loop pass into the reviewer queue. Returns the
- * created item, or `null` when the outcome warrants no human decision OR an
+ * created item, or `null` when no annotation warrants a callout OR an
  * equivalent item already exists (idempotent re-run). This is the DEFAULT loop
- * path: a driven run wires the sink and every deferral / threshold-finding
- * lands here automatically — no fixture or manual step required.
+ * path: a driven run wires the sink and every threshold finding lands here
+ * automatically — no fixture or manual step required.
  */
 export async function bridgeAgenticLoopToReviewerQueue(
   input: AgenticLoopBridgeInput,

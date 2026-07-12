@@ -17,6 +17,7 @@
 // JP-to-EN-only assumption) is a structured error, never a silent rollup.
 
 import {
+  asNonBlankTargetText,
   assertBenchmarkReportV02,
   assertDraftArtifactBundle,
   type BenchmarkReportV02,
@@ -36,6 +37,8 @@ export type LocaleBranchSeedSpec = {
   draftJobId: string;
   /** Benchmark run id for this branch's benchmark report. */
   benchmarkRunId: string;
+  /** Source text for the fixture unit; prevents emitting a source replay as a draft. */
+  sourceText: string;
   /** Distinct draft text so the two branches' draft state never collapses. */
   draftText: string;
 };
@@ -182,12 +185,33 @@ function projectDraftOntoBranch(
   bundle.projectId = projectId;
   bundle.localeBranchId = spec.localeBranchId;
   bundle.draftJobId = spec.draftJobId;
-  // Distinct draft text per branch: branch state must never be shared.
-  bundle.drafts = bundle.drafts.map((draft) =>
-    draft.retryFallbackState === "terminal-rejection"
-      ? draft
-      : { ...draft, draftText: spec.draftText },
-  );
+  // Distinct selected bodies per branch: branch state must never be shared.
+  const selectedBody = asNonBlankTargetText(spec.draftText);
+  if (selectedBody === spec.sourceText.trim()) {
+    throw new LocaleBranchSeedConflationError(
+      `draftText for branch ${spec.localeBranchId} must not echo sourceText`,
+    );
+  }
+  bundle.drafts = bundle.drafts.map((draft) => {
+    const selectedCandidate = draft.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+    );
+    if (selectedCandidate === undefined) {
+      throw new LocaleBranchSeedConflationError(
+        `draft ${draft.draftId} has no selected written candidate`,
+      );
+    }
+    return {
+      ...draft,
+      writtenOutcome: {
+        ...draft.writtenOutcome,
+        targetLocale: spec.targetLocale,
+        candidates: draft.writtenOutcome.candidates.map((candidate) =>
+          candidate.id === selectedCandidate.id ? { ...candidate, body: selectedBody } : candidate,
+        ),
+      },
+    };
+  });
   return bundle;
 }
 

@@ -1,6 +1,6 @@
 // ITOTORI-025 — Kaifuu handoff helper.
 //
-// Pure data transformation from a v0.2 `PatchExportBundle` into the
+// Pure data transformation from a `PatchExportBundle` into the
 // payload shape Kaifuu's `patch` command expects. Kaifuu must never
 // see itotori-internal types (engine leakage in reverse): only the
 // engine-agnostic patch instructions per unit and a small provenance
@@ -34,7 +34,7 @@ export type KaifuuPatchAssetDirective = {
 };
 
 export type KaifuuPatchPayload = {
-  schemaVersion: "itotori.patch-export-bundle.v2";
+  schemaVersion: "itotori.patch-export-bundle.v3";
   projectId: string;
   localeBranchId: string;
   targetLocale: string;

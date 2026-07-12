@@ -19,6 +19,7 @@ import {
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
   type LocalizationUnitV02,
   type SurfaceKindV02,
+  type AgenticLoopBundle,
 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
@@ -182,6 +183,18 @@ function providerFactoryReturning(translationRaw: string): AgenticLoopProviderFa
     });
 }
 
+function selectedWrittenCandidateBody(bundle: AgenticLoopBundle): string {
+  expect(bundle.writtenOutcome.status).toBe("written");
+  const selectedCandidate = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  expect(selectedCandidate).toBeDefined();
+  if (selectedCandidate === undefined) {
+    throw new Error("written outcome selectedCandidateId must resolve to a candidate");
+  }
+  return selectedCandidate.body;
+}
+
 describe("runAgenticLoopForUnit — patchback-safety wired into the production loop", () => {
   it("re-injects 【name】+「」 byte-exact when the mocked LLM DROPS all control markup", async () => {
     // Source carries a kidoku marker, a 【name】 token, and 「」 quotes.
@@ -195,8 +208,23 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       providerFactoryReturning(translationBodyContent("Hello")),
     );
     // The deterministic re-inject supplied the markup: byte-exact 【name】+「」.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe("【ユカリ】「Hello」");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【ユカリ】「Hello」");
+  });
+
+  it("rejects a source-repeated body after out-of-band markup is stripped", async () => {
+    const source = "<reallive.kidoku 5>こんにちは";
+
+    await expect(
+      runAgenticLoopForUnit(
+        makeInput({ unit: makeUnit(source) }),
+        DEV_POLICY,
+        makePolicy(),
+        // The model sees only `こんにちは`, then returns a different kidoku
+        // marker plus that source body. Raw strings differ, but both engine
+        // bodies collapse to the same source text after marker removal.
+        providerFactoryReturning(translationBodyContent("<reallive.kidoku 99>こんにちは")),
+      ),
+    ).rejects.toThrow(/repeats source text after control-markup normalization/u);
   });
 
   it("re-injects even when the LLM ADDS spurious markup in its body (the loop ignores it)", async () => {
@@ -211,7 +239,7 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       makePolicy(),
       providerFactoryReturning(translationBodyContent("Hi there")),
     );
-    expect(bundle.finalDraft.draftText).toBe("【凛】「Hi there」");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【凛】「Hi there」");
   });
 
   it("SJIS-normalizes curly quotes / em-dash / ellipsis in the body before re-inject", async () => {
@@ -223,9 +251,10 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       providerFactoryReturning(translationBodyContent("“Wait”—no…")),
     );
     // Curly quotes → ASCII, em-dash → --, ellipsis → ... ; 「」 re-injected.
-    expect(bundle.finalDraft.draftText).toBe('「"Wait"--no...」');
+    const body = selectedWrittenCandidateBody(bundle);
+    expect(body).toBe('「"Wait"--no...」');
     // Every codepoint is Shift_JIS-representable (ASCII or the CJK brackets).
-    for (const ch of bundle.finalDraft.draftText ?? "") {
+    for (const ch of body) {
       const cp = ch.codePointAt(0) ?? 0;
       const sjisSafe = cp <= 0x7e || cp === 0x300c || cp === 0x300d; // 「 」
       expect(sjisSafe).toBe(true);
@@ -248,7 +277,7 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       makePolicy(),
       providerFactoryReturning(translationBodyContent("Morning")),
     );
-    expect(bundle.finalDraft.draftText).toBe("【Yukari】「Morning」");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【Yukari】「Morning」");
   });
 
   it("repairs a truncated / trailing-comma structured-output response and still produces a safe target", async () => {
@@ -263,8 +292,7 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       makePolicy(),
       providerFactoryReturning(malformed),
     );
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe("【某】「See you」");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【某】「See you」");
   });
 
   it("config-coherence: a choice_label with no name/quotes re-injects a bare body (still SJIS-normalized)", async () => {
@@ -277,7 +305,7 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       makePolicy(),
       providerFactoryReturning(translationBodyContent("Yes—of course…")),
     );
-    expect(bundle.finalDraft.draftText).toBe("Yes--of course...");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Yes--of course...");
   });
 
   it("in-body variable spans survive strip → re-inject with recomputed offsets (validator passes as a safety net)", async () => {
@@ -326,8 +354,7 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       makePolicy(),
       providerFactoryReturning(withRef),
     );
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe("【店員】「Welcome, {player}」");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【店員】「Welcome, {player}」");
   });
 
   it("does NOT false-positive on spans OWNED by the re-inject layer (out-of-body caller guard)", async () => {
@@ -352,9 +379,8 @@ describe("runAgenticLoopForUnit — patchback-safety wired into the production l
       providerFactoryReturning(translationBodyContent("Hello")),
     );
     // The re-inject layer guaranteed both spans byte-exact; the guard excluded
-    // them from the validator so no false violation short-circuits / defers.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe("【ユカリ】「Hello」");
+    // them from the validator so no false violation clears the written target.
+    expect(selectedWrittenCandidateBody(bundle)).toBe("【ユカリ】「Hello」");
   });
 });
 

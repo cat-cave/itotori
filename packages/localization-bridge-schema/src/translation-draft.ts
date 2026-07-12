@@ -12,6 +12,7 @@
 // pure-TS draft shape so producers and consumers can agree before the
 // table is fully wired.
 
+import { isLocaleTaggedSourceEcho } from "./agentic-loop-bundle.js";
 import type { Uuid7 } from "./index.js";
 
 export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION =
@@ -86,6 +87,7 @@ export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA = {
     schemaVersion: { const: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION },
     drafts: {
       type: "array",
+      minItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
@@ -103,7 +105,7 @@ export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA = {
           bridgeUnitId: { type: "string", minLength: 1 },
           sourceLocale: { type: "string", minLength: 1 },
           targetLocale: { type: "string", minLength: 1 },
-          draftText: { type: "string" },
+          draftText: { type: "string", minLength: 1 },
           protectedSpanRefs: {
             type: "array",
             items: {
@@ -231,6 +233,13 @@ export function assertStructuredTranslationDraftOutput(
   if (!Array.isArray(record.drafts)) {
     throw new TranslationDraftResponseValidationError("drafts", "type", "expected array");
   }
+  if (record.drafts.length === 0) {
+    throw new TranslationDraftResponseValidationError(
+      "drafts",
+      "minItems",
+      "must contain at least one written draft",
+    );
+  }
   for (const [index, entry] of record.drafts.entries()) {
     assertDraft(entry, `drafts[${index}]`);
   }
@@ -272,16 +281,7 @@ function assertDraft(value: unknown, label: string): asserts value is Translatio
   assertNonEmptyString(record.bridgeUnitId, `${label}.bridgeUnitId`);
   assertNonEmptyString(record.sourceLocale, `${label}.sourceLocale`);
   assertNonEmptyString(record.targetLocale, `${label}.targetLocale`);
-  // draftText may be empty (the model can decide to emit an empty
-  // target string for an info-only protected-span pass-through); we
-  // therefore require `string` but not `minLength: 1`.
-  if (typeof record.draftText !== "string") {
-    throw new TranslationDraftResponseValidationError(
-      `${label}.draftText`,
-      "type",
-      "expected string",
-    );
-  }
+  assertNonBlankDraftText(record.draftText, `${label}.draftText`);
   if (!Array.isArray(record.protectedSpanRefs)) {
     throw new TranslationDraftResponseValidationError(
       `${label}.protectedSpanRefs`,
@@ -342,6 +342,29 @@ function assertProtectedSpanRef(value: unknown, label: string): asserts value is
       label,
       "spanOrder",
       `endInDraft ${String(record.endInDraft)} must be greater than startInDraft ${String(record.startInDraft)}`,
+    );
+  }
+}
+
+function assertNonBlankDraftText(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string") {
+    throw new TranslationDraftResponseValidationError(label, "type", "expected string");
+  }
+  if (value.trim().length === 0) {
+    throw new TranslationDraftResponseValidationError(label, "nonBlank", "must not be blank");
+  }
+  if (value !== value.trim()) {
+    throw new TranslationDraftResponseValidationError(
+      label,
+      "trimmed",
+      "must not have leading or trailing whitespace",
+    );
+  }
+  if (isLocaleTaggedSourceEcho(value)) {
+    throw new TranslationDraftResponseValidationError(
+      label,
+      "sourceEcho",
+      "must not use a locale-tagged source replay",
     );
   }
 }

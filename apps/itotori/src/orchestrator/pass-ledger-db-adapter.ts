@@ -12,7 +12,7 @@
 // The db repository is intentionally ignorant of the app's record type (it
 // stores the generic body as opaque jsonb + promotes lineage/cost/ZDR columns),
 // so the type dependency flows one way (app -> db) with no cycle. This adapter
-// owns the (de)serialization of the record BODY (inputs / outputs / accepted
+// owns the (de)serialization of the record BODY (inputs / outputs / written
 // deltas / consumed feedback notes) which is plain, Date-free JSON.
 //
 // Mirrors how `DrivenDbPersistenceAdapter` (project-driven-executor-sinks.ts)
@@ -24,7 +24,7 @@ import type {
   LocalizationPassLedgerRecord,
 } from "@itotori/db";
 import type {
-  AcceptedDelta,
+  WrittenDelta,
   LocalizationPassInputs,
   LocalizationPassOutputs,
   LocalizationPassRecord,
@@ -40,7 +40,7 @@ import type {
 type StoredPassBody = {
   inputs: LocalizationPassInputs;
   outputs: LocalizationPassOutputs;
-  acceptedDeltas: AcceptedDelta[];
+  writtenDeltas: WrittenDelta[];
   consumedFeedbackNotes: PassFeedbackNote[];
 };
 
@@ -60,7 +60,7 @@ export class DbPassLedger implements PassLedgerPort {
     const body: StoredPassBody = {
       inputs: record.inputs,
       outputs: record.outputs,
-      acceptedDeltas: record.acceptedDeltas,
+      writtenDeltas: record.writtenDeltas,
       consumedFeedbackNotes: record.consumedFeedbackNotes,
     };
     const stored = await this.repository.recordPass(actor, {
@@ -100,7 +100,7 @@ function reconstruct(stored: LocalizationPassLedgerRecord): LocalizationPassReco
     body === null ||
     typeof body.inputs !== "object" ||
     typeof body.outputs !== "object" ||
-    !Array.isArray(body.acceptedDeltas) ||
+    !Array.isArray(body.writtenDeltas) ||
     !Array.isArray(body.consumedFeedbackNotes)
   ) {
     throw new Error(
@@ -116,7 +116,7 @@ function reconstruct(stored: LocalizationPassLedgerRecord): LocalizationPassReco
     recordedAt: stored.recordedAt,
     inputs: body.inputs,
     outputs: body.outputs,
-    acceptedDeltas: body.acceptedDeltas,
+    writtenDeltas: body.writtenDeltas,
     consumedFeedbackNotes: body.consumedFeedbackNotes,
   };
 }

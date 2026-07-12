@@ -935,11 +935,19 @@ describe("Itotori CLI handlers", () => {
       }
     }
     const written = writes.get("out/agentic-loop-bundle.json") as
-      | { schemaVersion: string; stages: Array<{ stageName: string }> }
+      | {
+          schemaVersion: string;
+          stages: Array<{ stageName: string }>;
+          writtenOutcome: {
+            status: string;
+            selectedCandidateId: string;
+            candidates: Array<{ id: string; body: string }>;
+          };
+        }
       | undefined;
     expect(written).toBeDefined();
     if (written === undefined) return;
-    expect(written.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
+    expect(written.schemaVersion).toBe("itotori.agentic-loop-bundle.v3");
     expect(written.stages.map((s) => s.stageName)).toEqual([
       "context",
       "pre_translation",
@@ -950,6 +958,12 @@ describe("Itotori CLI handlers", () => {
       "repair",
       "final_draft",
     ]);
+    expect(written.writtenOutcome.status).toBe("written");
+    const selected = written.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === written.writtenOutcome.selectedCandidateId,
+    );
+    expect(selected?.body).toMatch(/^Localized smoke draft/u);
+    expect(selected?.body).not.toMatch(/^\[[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*\]/u);
   });
 });
 

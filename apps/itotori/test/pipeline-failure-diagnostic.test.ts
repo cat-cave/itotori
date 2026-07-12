@@ -41,13 +41,12 @@ import type { ModelInvocationRequest } from "../src/providers/types.js";
 import { InMemoryPassLedger, type PassLedgerPort } from "../src/orchestrator/pass-ledger.js";
 import {
   runProjectDrivenExecutor,
-  type DrivenDraftRecord,
+  type DrivenWrittenOutcomeRecord,
   type DrivenPatchExportRecord,
   type DrivenProviderRunRecord,
   type DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
-  parseLocalizeFullProjectConfig,
   runLocalizeFullProjectCommand,
   type LocalizeFullProjectIo,
 } from "../src/orchestrator/localize-fullproject-command.js";
@@ -62,7 +61,6 @@ import {
   renderPipelineFailureDiagnosticOneLine,
   runPipelineStepWithDiagnostic,
   scrubGameTextFromString,
-  type PipelineFailureDiagnostic,
   type PipelineUnitFailureDiagnostic,
 } from "../src/orchestrator/pipeline-failure-diagnostic.js";
 
@@ -542,12 +540,12 @@ function diagProviderFactory(): AgenticLoopProviderFactory {
 }
 
 class InMemorySinks {
-  readonly drafts: DrivenDraftRecord[] = [];
+  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
   readonly providerRuns: DrivenProviderRunRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly draft = {
-    persistDraft: async (record: DrivenDraftRecord): Promise<void> => {
-      this.drafts.push(record);
+  readonly writtenOutcome = {
+    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
+      this.writtenOutcomes.push(record);
     },
   };
   readonly providerRun = {
@@ -681,7 +679,7 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
         actor: ACTOR,
         providerFactory: diagProviderFactory(),
         sinks: {
-          draft: sinks.draft,
+          writtenOutcome: sinks.writtenOutcome,
           providerRun: sinks.providerRun,
           patchExport: sinks.patchExport,
         },
@@ -722,7 +720,7 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
         actor: ACTOR,
         providerFactory: diagProviderFactory(),
         sinks: {
-          draft: sinks.draft,
+          writtenOutcome: sinks.writtenOutcome,
           providerRun: sinks.providerRun,
           patchExport: sinks.patchExport,
         },
@@ -761,7 +759,7 @@ function makeDeps() {
     actor: ACTOR,
     providerFactory: diagProviderFactory(),
     sinks: {
-      draft: new InMemorySinks().draft,
+      writtenOutcome: new InMemorySinks().writtenOutcome,
       providerRun: new InMemorySinks().providerRun,
       patchExport: new InMemorySinks().patchExport,
     },

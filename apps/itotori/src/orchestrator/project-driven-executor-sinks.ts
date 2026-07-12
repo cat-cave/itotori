@@ -4,10 +4,10 @@
 // patch-export). These adapters bind those ports to REAL storage so a driven
 // run persists to actual tables + the filesystem, not in-memory:
 //
-//   - draft outcome      -> itotori_draft_jobs + itotori_draft_job_attempts
+//   - written outcome    -> itotori_draft_jobs + itotori_draft_job_attempts
 //                           (ItotoriDraftJobRepository): one job + attempt per
-//                           run unit; accepted -> markAttemptSucceeded,
-//                           deferred -> markAttemptFailed (the outcome record).
+//                           run unit; every persisted outcome is written and
+//                           therefore marks its attempt succeeded.
 //   - provider-run       -> itotori_draft_attempt_provider_ledger
 //                           (ItotoriDraftAttemptProviderLedgerRepository): one
 //                           ledger row per unit carrying the REAL aggregated
@@ -28,8 +28,8 @@ import type {
   ItotoriDraftJobRepositoryPort,
 } from "@itotori/db";
 import type {
-  DrivenDraftRecord,
-  DrivenDraftSink,
+  DrivenWrittenOutcomeRecord,
+  DrivenWrittenOutcomeSink,
   DrivenPatchExportRecord,
   DrivenPatchExportSink,
   DrivenProviderRunRecord,
@@ -52,7 +52,7 @@ export type DrivenDbPersistenceOptions = {
  * draft) can reference it (the ledger's on-delete-cascade FK requires the
  * attempt to exist first — the executor persists the draft before the run).
  */
-export class DrivenDbPersistenceAdapter implements DrivenDraftSink, DrivenProviderRunSink {
+export class DrivenDbPersistenceAdapter implements DrivenWrittenOutcomeSink, DrivenProviderRunSink {
   private readonly attemptByUnit = new Map<string, string>();
 
   constructor(
@@ -61,7 +61,7 @@ export class DrivenDbPersistenceAdapter implements DrivenDraftSink, DrivenProvid
     private readonly opts: DrivenDbPersistenceOptions,
   ) {}
 
-  async persistDraft(record: DrivenDraftRecord): Promise<void> {
+  async persistWrittenOutcome(record: DrivenWrittenOutcomeRecord): Promise<void> {
     const now = this.opts.now?.() ?? new Date();
     const job = await this.draftJobs.createDraftJob(this.opts.actor, {
       projectId: this.opts.projectId,
@@ -80,19 +80,7 @@ export class DrivenDbPersistenceAdapter implements DrivenDraftSink, DrivenProvid
       startedAt: now,
     });
     this.attemptByUnit.set(record.bridgeUnitId, attempt.draftJobAttemptId);
-    if (record.accepted) {
-      await this.draftJobs.markAttemptSucceeded(this.opts.actor, attempt.draftJobAttemptId, now);
-    } else {
-      // A deferred unit produced no accepted draft — record the outcome as a
-      // non-retryable attempt failure carrying the loop's reasoning.
-      await this.draftJobs.markAttemptFailed(
-        this.opts.actor,
-        attempt.draftJobAttemptId,
-        record.deferredReason ?? `deferred:${record.outcome}`,
-        false,
-        now,
-      );
-    }
+    await this.draftJobs.markAttemptSucceeded(this.opts.actor, attempt.draftJobAttemptId, now);
   }
 
   async persistProviderRun(record: DrivenProviderRunRecord): Promise<void> {
@@ -131,8 +119,8 @@ export class DrivenDbPersistenceAdapter implements DrivenDraftSink, DrivenProvid
 /**
  * Writes the ONE patch export to disk under a run directory as
  * `translated-bridge.json` + `patch-report.json`. Real filesystem storage —
- * the translated bridge carries the accepted units' real bodies (others a byte
- * no-op), the patch report the deterministic run summary.
+ * the translated bridge carries every in-scope unit's selected body once
+ * coverage is complete, and the patch report is the deterministic summary.
  */
 export class FsDrivenPatchExportSink implements DrivenPatchExportSink {
   private count = 0;

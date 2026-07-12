@@ -8,7 +8,7 @@
 // Blocking vs warning:
 //
 //   - sourceBridgeIntegrity, noUnresolvedAssetDecisions,
-//     allDraftsAccepted, protectedSpanCoverage   → blocking (fail);
+//     protectedSpanCoverage                      → blocking (fail);
 //   - qaScoreThreshold, glossaryConsistency       → warning (warn).
 //
 // The exporter treats any `blockingExport: true` failure as a hard
@@ -87,7 +87,6 @@ export class PatchExportPreflight {
     const results: PreflightResult[] = [];
     results.push(this.sourceBridgeIntegrity(input));
     results.push(await this.noUnresolvedAssetDecisions(input));
-    results.push(this.allDraftsAccepted(input));
     results.push(this.protectedSpanCoverage(input));
     results.push(this.qaScoreThreshold(input));
     results.push(this.glossaryConsistency(input));
@@ -130,40 +129,34 @@ export class PatchExportPreflight {
     return blockingFail(check, `unresolved asset decisions: ${unresolved.sort().join(", ")}`);
   }
 
-  allDraftsAccepted(input: PreflightInput): PreflightResult {
-    const check: PatchExportPreflightCheckKind = "allDraftsAccepted";
-    const terminallyRejected = input.draftArtifactBundle.drafts.filter(
-      (draft) => draft.retryFallbackState === "terminal-rejection",
-    );
-    if (terminallyRejected.length === 0) {
-      return passing(check, "no_terminal_rejections");
-    }
-    const ids = terminallyRejected.map((draft) => draft.sourceUnitId).sort();
-    return blockingFail(
-      check,
-      `${terminallyRejected.length} draft(s) terminally rejected: ${ids.join(", ")}`,
-    );
-  }
-
   protectedSpanCoverage(input: PreflightInput): PreflightResult {
     const check: PatchExportPreflightCheckKind = "protectedSpanCoverage";
-    const draftsBySource = indexDraftsBySource(input.draftArtifactBundle);
+    const draftsBySource = new Map<string, DraftArtifactBundle["drafts"][number]>();
+    const duplicateDrafts: string[] = [];
+    const unknownDrafts: string[] = [];
+    const expectedUnitIds = new Set(input.sourceBridgeView.units.map((unit) => unit.sourceUnitId));
+    for (const draft of input.draftArtifactBundle.drafts) {
+      if (draftsBySource.has(draft.sourceUnitId)) {
+        duplicateDrafts.push(draft.sourceUnitId);
+        continue;
+      }
+      draftsBySource.set(draft.sourceUnitId, draft);
+      if (!expectedUnitIds.has(draft.sourceUnitId)) {
+        unknownDrafts.push(draft.sourceUnitId);
+      }
+    }
+
     const missing: string[] = [];
     for (const unit of input.sourceBridgeView.units) {
       const draft = draftsBySource.get(unit.sourceUnitId);
       if (draft === undefined) {
-        // The exporter only emits drafts that exist in the artifact
-        // bundle — a source unit with no draft means coverage failed
-        // upstream (allDraftsAccepted should also catch this when the
-        // draft is terminal). We surface it explicitly so the operator
-        // sees both signals.
-        for (const span of unit.protectedSpans) {
-          if (span.outOfBand) continue;
-          missing.push(`${unit.sourceUnitId}:${span.spanRef}:no_draft`);
-        }
+        // Coverage is total over the configured source view, even when a unit
+        // has no protected spans. A missing entry must never become a partial
+        // patch merely because there was no structural span to inspect.
+        missing.push(`${unit.sourceUnitId}:no_written_outcome`);
         continue;
       }
-      const draftText = draft.draftText ?? "";
+      const draftText = selectedTargetBody(draft);
       for (const span of unit.protectedSpans) {
         if (span.outOfBand) continue;
         if (!spanIsCovered(span, draftText)) {
@@ -171,10 +164,25 @@ export class PatchExportPreflight {
         }
       }
     }
-    if (missing.length === 0) {
-      return passing(check, "every_protected_span_present_in_draft");
+    if (missing.length === 0 && duplicateDrafts.length === 0 && unknownDrafts.length === 0) {
+      return passing(
+        check,
+        "every_source_unit_has_one_written_outcome_and_every_protected_span_is_present",
+      );
     }
-    return blockingFail(check, `protected spans missing from drafts: ${missing.sort().join(", ")}`);
+    const details = [
+      ...(missing.length === 0 ? [] : [`missing: ${missing.sort().join(", ")}`]),
+      ...(duplicateDrafts.length === 0
+        ? []
+        : [`duplicate written outcomes: ${[...new Set(duplicateDrafts)].sort().join(", ")}`]),
+      ...(unknownDrafts.length === 0
+        ? []
+        : [`unknown written outcomes: ${unknownDrafts.sort().join(", ")}`]),
+    ];
+    return blockingFail(
+      check,
+      `written outcome/protected-span coverage failed: ${details.join("; ")}`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -264,14 +272,16 @@ function blockingFail(check: PatchExportPreflightCheckKind, detail: string): Pre
   };
 }
 
-function indexDraftsBySource(
-  bundle: DraftArtifactBundle,
-): Map<string, DraftArtifactBundle["drafts"][number]> {
-  const map = new Map<string, DraftArtifactBundle["drafts"][number]>();
-  for (const draft of bundle.drafts) {
-    map.set(draft.sourceUnitId, draft);
+function selectedTargetBody(draft: DraftArtifactBundle["drafts"][number]): string {
+  const selectedCandidate = draft.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+  );
+  if (selectedCandidate === undefined) {
+    throw new Error(
+      `patch-export preflight: written outcome for ${draft.sourceUnitId} has no selected candidate`,
+    );
   }
-  return map;
+  return selectedCandidate.body;
 }
 
 /**

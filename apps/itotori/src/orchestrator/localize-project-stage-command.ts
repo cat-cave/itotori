@@ -81,6 +81,7 @@
 import type { AuthorizationActor } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
+  isLocaleTaggedSourceEcho,
   parsePairPolicyV03,
   PairPolicyVersionMismatchError,
   PairPolicyV03ValidationError,
@@ -440,7 +441,15 @@ export async function runLocalizeProjectStageCommand(
   // ASCII bytes as `Unknown`; it is NOT a sentinel. The exact text
   // written here is what a downstream replay/render must OBSERVE, so it
   // is recorded verbatim in the patch-report as `translatedTargetText`.
-  const draftText = bundle.finalDraft.draftText ?? `[en-US] ${unit.sourceText}`;
+  const selectedCandidate = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  if (selectedCandidate === undefined) {
+    throw new Error(
+      `localize-project-stage refused: written outcome for ${unit.bridgeUnitId} has no selected candidate`,
+    );
+  }
+  const draftText = selectedCandidate.body;
   const engineProfile = args.engineProfile ?? "reallive";
   // For RealLive, strip the producer's OUT-OF-BAND control markup
   // (`<reallive.kidoku …>`) the model reproduced inline: it has no byte run in
@@ -450,6 +459,15 @@ export async function runLocalizeProjectStageCommand(
   // (RPG Maker carries no such markup; its draft passes through unchanged.)
   const bodyDraftText =
     engineProfile === "rpg-maker-mv-mz" ? draftText : stripOutOfBandControlMarkup(draftText);
+  const engineVisibleSourceText =
+    engineProfile === "rpg-maker-mv-mz"
+      ? unit.sourceText
+      : stripOutOfBandControlMarkup(unit.sourceText);
+  assertEngineVisibleTargetText({
+    body: bodyDraftText,
+    sourceText: engineVisibleSourceText,
+    label: `localize-project-stage selected candidate for ${unit.bridgeUnitId}`,
+  });
   const translatedTargetText =
     engineProfile === "rpg-maker-mv-mz" ? bodyDraftText : bracketWrapForRealLive(bodyDraftText);
   const translatedBridge =
@@ -714,6 +732,31 @@ export function stripOutOfBandControlMarkup(text: string): string {
       return out + rest.slice(open);
     }
     rest = afterOpen.slice(close + 1);
+  }
+}
+
+/**
+ * The patchback consumes engine-visible bodies, not the producer's synthetic
+ * control markup. Enforce the written-target invariant after that projection
+ * so an out-of-band marker cannot disguise a source replay or an empty body.
+ */
+export function assertEngineVisibleTargetText(args: {
+  body: string;
+  sourceText: string;
+  label: string;
+}): void {
+  const targetText = args.body.trim();
+  if (targetText.length === 0) {
+    throw new Error(`${args.label} must remain non-blank after control-markup normalization`);
+  }
+  if (targetText !== args.body) {
+    throw new Error(`${args.label} must remain trimmed after control-markup normalization`);
+  }
+  if (isLocaleTaggedSourceEcho(targetText)) {
+    throw new Error(`${args.label} must not use a locale-tagged source replay`);
+  }
+  if (targetText === args.sourceText.trim()) {
+    throw new Error(`${args.label} repeats source text after control-markup normalization`);
   }
 }
 

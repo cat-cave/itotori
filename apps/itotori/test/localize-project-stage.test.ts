@@ -11,8 +11,8 @@
 //     (matching the pair-policy). There is NO shipped fake-provider mode:
 //     a fake translation is never reachable on the production localize
 //     surface, so tests inject the fake through the override seam.
-//   - The synthesised translated bundle's `target.text` field contains
-//     the en-US sentinel substring, wrapped with the SJIS bracket pair
+//   - The synthesised translated bundle's `target.text` field contains the
+//     selected non-blank candidate body, wrapped with the SJIS bracket pair
 //     (`「…」`) so the KAIFUU-191 lexer classifies it as a Textout run.
 //   - The synthesised patch-report.json carries the (modelId,
 //     providerId) pair byte-for-byte.
@@ -26,6 +26,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LocalizeProjectMissingProviderRunArtifactsDirectoryError,
   LocalizeProjectPairPolicyError,
+  assertEngineVisibleTargetText,
   parseLocalizeProjectPairPolicy,
   runLocalizeProjectStageCommand,
   type LocalizeProjectStageIo,
@@ -55,6 +56,7 @@ const SMOKE_BRIDGE_PATH = resolve(
   REPO_ROOT,
   "apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json",
 );
+const WRITTEN_TARGET_TEXT = "Good morning, Kazu.";
 
 function loadPreset(): unknown {
   return JSON.parse(readFileSync(PAIR_POLICY_PATH, "utf8"));
@@ -164,6 +166,28 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
   });
 });
 
+describe("engine-visible selected target invariant", () => {
+  it("rejects a source-repeated body after out-of-band markup is removed", () => {
+    expect(() =>
+      assertEngineVisibleTargetText({
+        body: "こんにちは",
+        sourceText: "こんにちは",
+        label: "fixture target",
+      }),
+    ).toThrow(/repeats source text/u);
+  });
+
+  it("rejects an empty body after control-markup normalization", () => {
+    expect(() =>
+      assertEngineVisibleTargetText({
+        body: "",
+        sourceText: "こんにちは",
+        label: "fixture target",
+      }),
+    ).toThrow(/non-blank/u);
+  });
+});
+
 describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
   it("refuses the real live OpenRouter path without a provider-run artifact directory", async () => {
     const reads = new Map<string, unknown>([
@@ -184,21 +208,21 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
   });
 
-  it("writes all three artifacts with the real translated draft, and pins every invocation to the policy pair (injected en-US stand-in provider)", async () => {
+  it("writes all three artifacts from the selected non-blank candidate, and pins every invocation to the policy pair", async () => {
     const smokeBridge = loadSmokeBridge() as {
-      units: ReadonlyArray<{ bridgeUnitId: string; sourceLocale?: string; sourceText?: string }>;
+      units: ReadonlyArray<{ bridgeUnitId: string; sourceLocale?: string }>;
     };
     const firstUnit = smokeBridge.units[0];
-    if (firstUnit === undefined || firstUnit.sourceText === undefined) {
-      throw new Error("smoke bridge fixture must carry a first unit with sourceText");
+    if (firstUnit === undefined) {
+      throw new Error("smoke bridge fixture must carry a first unit");
     }
     const reads = new Map<string, unknown>([
       ["bridge.json", smokeBridge],
       ["pair-policy.json", loadPreset()],
     ]);
     const { io, writes } = ioFixture(reads);
-    // Inject the deterministic en-US stand-in provider via the ONLY test
-    // seam (`liveFactoryOverride`). No fake provider ships in the command.
+    // Inject the deterministic target-language provider via the ONLY test seam
+    // (`liveFactoryOverride`). No fake provider ships in the command.
     await runLocalizeProjectStageCommand({
       bridgePath: "bridge.json",
       pairPolicyPath: "pair-policy.json",
@@ -206,10 +230,9 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
       translatedBundleOutputPath: "out/translated-bridge.json",
       patchReportOutputPath: "out/patch-report.json",
       liveFactoryOverride: () =>
-        enUsStandInTranslationFactory({
+        writtenTranslationFactory({
           bridgeUnitId: firstUnit.bridgeUnitId,
           sourceLocale: firstUnit.sourceLocale ?? "ja-JP",
-          sourceText: firstUnit.sourceText ?? "",
         }),
       io,
       actor: { userId: "test" },
@@ -226,10 +249,17 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
           seed: number;
         }>;
       }>;
-      finalDraft: { draftText?: string };
+      writtenOutcome: {
+        status: "written";
+        unitId: string;
+        selectedCandidateId: string;
+        candidates: Array<{ id: string; body: string; kind: "primary" | "repair" }>;
+        findings: unknown[];
+        qualityFlags: string[];
+      };
     };
     expect(bundle).toBeDefined();
-    expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
+    expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v3");
     const stageNames = bundle.stages.map((s) => s.stageName);
     expect(stageNames).toEqual([
       "context",
@@ -253,11 +283,15 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         expect(invocation.seed).toBeGreaterThanOrEqual(0);
       }
     }
-    // The injected provider emits a deterministic stand-in translation
-    // (`[en-US] <source>`), no sentinel; assert the orchestrator
-    // surfaced the REAL draft through final-draft.
-    const draftText = bundle.finalDraft.draftText ?? "";
-    expect(draftText.startsWith("[en-US] ")).toBe(true);
+    // The selected candidate is required and non-blank even before/after QA.
+    const selectedCandidate = bundle.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+    );
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(bundle.writtenOutcome.unitId).toBe(firstUnit.bridgeUnitId);
+    expect(selectedCandidate).toMatchObject({ body: WRITTEN_TARGET_TEXT, kind: "primary" });
+    const selectedBody = selectedCandidate?.body ?? "";
+    expect(selectedBody.trim()).not.toBe("");
 
     // ----- Translated bridge bundle -----
     const translated = writes.get("out/translated-bridge.json") as {
@@ -268,10 +302,10 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     for (const unit of translated.units) {
       expect(unit.target.locale).toBe("en-US");
       // RealLive bracket wrap is an encoding requirement; the interior
-      // is the REAL translated draft verbatim.
+      // is the selected candidate body verbatim.
       expect(unit.target.text.startsWith("「")).toBe(true);
       expect(unit.target.text.endsWith("」")).toBe(true);
-      expect(unit.target.text).toContain(draftText);
+      expect(unit.target.text).toContain(selectedBody);
     }
 
     // ----- Patch report -----
@@ -279,7 +313,6 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
       schemaVersion: string;
       pair: { modelId: string; providerId: string };
       sceneId: number;
-      finalDraftText: string;
       translatedTargetText: string;
     };
     expect(patchReport).toBeDefined();
@@ -290,10 +323,9 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     });
     expect(patchReport).not.toHaveProperty("enUsSentinel");
     expect(patchReport.sceneId).toBe(1017);
-    // The patch-report records the REAL translated text the downstream
-    // replay must OBSERVE — not a planted sentinel.
-    expect(patchReport.finalDraftText).toBe(draftText);
-    expect(patchReport.translatedTargetText).toBe(`「${draftText}」`);
+    // The patch-report records the selected text the downstream replay must
+    // observe, including the RealLive encoding wrap.
+    expect(patchReport.translatedTargetText).toBe(`「${selectedBody}」`);
   });
 });
 
@@ -436,34 +468,17 @@ function alwaysFailingFactory(error: ModelProviderError): AgenticLoopProviderFac
 }
 
 /**
- * Build a fake provider factory keyed to a (modelId, providerId) pair
- * that emits structurally-correct payloads whose translated draft
- * carries a caller-supplied `marker` string, so a downstream
- * agentic-loop run actually succeeds when this factory is injected via
- * the `liveFactoryOverride` test seam. The marker is an ordinary
- * test-double tracer for asserting the draft flowed through the
- * orchestrator — NOT a runtime-evidence sentinel.
- *
- * The bridgeUnitId is captured here so the speaker-label citation
- * resolver finds a known unit; the smoke bridge fixture's first unit
- * is the canonical alpha-closer scene-1 unit 0.
+ * Deterministic target-language translation provider for the artifact shape
+ * test. This lives in the TEST harness — the shipped command carries no fake
+ * provider; the test injects it through the `liveFactoryOverride` seam.
  */
-/**
- * Deterministic en-US stand-in translation provider for the artifact
- * shape test. Mirrors what a real provider would emit per stage but the
- * translation stage's draft is the deterministic stand-in `[en-US]
- * <source>` (no sentinel). This lives in the TEST harness — the shipped
- * command carries no fake provider; the test injects it through the
- * `liveFactoryOverride` seam.
- */
-function enUsStandInTranslationFactory(unit: {
+function writtenTranslationFactory(unit: {
   bridgeUnitId: string;
   sourceLocale: string;
-  sourceText: string;
 }): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
-      providerName: `test-en-us-standin:${stage}:${agentLabel}`,
+      providerName: `test-written-outcome:${stage}:${agentLabel}`,
       generate: (request: ModelInvocationRequest) => {
         if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
           return JSON.stringify({
@@ -490,7 +505,7 @@ function enUsStandInTranslationFactory(unit: {
                 bridgeUnitId: unit.bridgeUnitId,
                 sourceLocale: unit.sourceLocale,
                 targetLocale: "en-US",
-                draftText: `[en-US] ${unit.sourceText}`,
+                draftText: WRITTEN_TARGET_TEXT,
                 protectedSpanRefs: [],
                 citationRefs: [],
                 agentRationale: "test translation",
@@ -510,6 +525,12 @@ function enUsStandInTranslationFactory(unit: {
     });
 }
 
+/**
+ * Build a fake provider factory keyed to a (modelId, providerId) pair that
+ * emits structurally-correct payloads whose selected candidate carries a
+ * caller-supplied marker. The marker proves the written outcome reached the
+ * downstream artifacts without imitating source text.
+ */
 function workingTranslationFactory(
   pair: PairChoice["pair"],
   marker: string,
@@ -622,7 +643,7 @@ describe("OpenRouter-side fallback resilience", () => {
     ): AgenticLoopProviderFactory => {
       const delegateFactory = workingTranslationFactory(
         pair,
-        "STELLA-ALPHA-EN-US-SENTINEL",
+        "STELLA-WRITTEN-MARKER",
         firstBridgeUnitId,
       );
       return (input) => {
@@ -668,7 +689,10 @@ describe("OpenRouter-side fallback resilience", () => {
     });
 
     // The run COMPLETED via OR-side fallback — no app-level retry loop.
-    expect(bundle.finalDraft.draftText ?? "").toContain("STELLA-ALPHA-EN-US-SENTINEL");
+    const selectedCandidate = bundle.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+    );
+    expect(selectedCandidate?.body).toContain("STELLA-WRITTEN-MARKER");
 
     // The patch-report records the REQUESTED primary pair (order[0]); the
     // served upstream lives on the per-invocation provider-run records.
@@ -724,7 +748,7 @@ describe("OpenRouter-side fallback resilience", () => {
     ): AgenticLoopProviderFactory => {
       const delegateFactory = workingTranslationFactory(
         pair,
-        "STELLA-ALPHA-EN-US-SENTINEL",
+        "STELLA-WRITTEN-MARKER",
         firstBridgeUnitId,
       );
       return (input) => {
@@ -812,7 +836,7 @@ describe("OpenRouter-side fallback resilience", () => {
     ): AgenticLoopProviderFactory => {
       const delegateFactory = workingTranslationFactory(
         pair,
-        "STELLA-ALPHA-EN-US-SENTINEL",
+        "STELLA-WRITTEN-MARKER",
         firstBridgeUnitId,
       );
       return (input) => {

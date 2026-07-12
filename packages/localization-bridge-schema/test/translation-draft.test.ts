@@ -35,23 +35,37 @@ describe("StructuredTranslationDraftOutput", () => {
     expect(() => assertStructuredTranslationDraftOutput(validOutput())).not.toThrow();
   });
 
-  it("accepts an empty drafts array", () => {
+  it("rejects an empty drafts array", () => {
     expect(() =>
       assertStructuredTranslationDraftOutput({
         schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
         drafts: [],
       }),
-    ).not.toThrow();
+    ).toThrow(/minItems/);
   });
 
-  it("accepts a draft with empty draftText and no spans (info-only pass-through)", () => {
+  it("rejects a blank draftText", () => {
     expect(() =>
       assertStructuredTranslationDraftOutput(
         validOutput({
           drafts: [validDraft({ draftText: "", protectedSpanRefs: [], citationRefs: [] })],
         }),
       ),
-    ).not.toThrow();
+    ).toThrow(/nonBlank/);
+  });
+
+  it("rejects padded and locale-tagged source-replay draft text", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({ drafts: [validDraft({ draftText: " Hello, {player}." })] }),
+      ),
+    ).toThrow(/trimmed/);
+
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({ drafts: [validDraft({ draftText: "[en-US]こんにちは、{player}。" })] }),
+      ),
+    ).toThrow(/sourceEcho/);
   });
 
   it("rejects an output without schemaVersion", () => {
@@ -191,11 +205,11 @@ describe("StructuredTranslationDraftOutput", () => {
         $id: "itotori://fixture",
         title: "StructuredTranslationDraftOutput",
         schemaVersion: "itotori.structural-translation-draft-output.v1",
-        drafts: [],
+        drafts: [validDraft()],
       }),
     );
     expect(parsed.schemaVersion).toBe(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION);
-    expect(parsed.drafts).toEqual([]);
+    expect(parsed.drafts).toHaveLength(1);
   });
 
   it("does not coerce an unknown top-level key or rewrite a citation ref", () => {
@@ -218,6 +232,7 @@ describe("StructuredTranslationDraftOutput", () => {
         .confidenceFloor as { enum: ReadonlyArray<string> }
     ).enum;
     expect([...confidenceEnum]).toEqual([...TRANSLATION_DRAFT_CONFIDENCE_FLOORS]);
+    expect(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA.properties.drafts.minItems).toBe(1);
   });
 
   it("schema version constant is pinned to v1 (changes require a wire-contract bump)", () => {

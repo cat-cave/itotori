@@ -1,9 +1,9 @@
 // ITOTORI-025 — `export-patch-v2` CLI command.
 //
-// Fixture-mode entry point for the v0.2 patch-export pipeline. The
+// Fixture-mode entry point for the current patch-export pipeline. The
 // existing `export-patch` command (v0.1) is unchanged and continues to
-// serve the legacy `just hello` recipe; the v0.2 command runs the new
-// preflight battery and emits a `PatchExportBundle` v0.2.
+// serve the legacy `just hello` recipe; this command runs the preflight
+// battery and emits the current `PatchExportBundle` schema.
 //
 // Inputs:
 //   --project       path to a JSON fixture describing the source bridge
@@ -26,6 +26,7 @@ import type { AuthorizationActor } from "@itotori/db";
 import {
   assertDraftArtifactBundle,
   assertPatchExportBundle,
+  PATCH_EXPORT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
   type PatchExportBundle,
 } from "@itotori/localization-bridge-schema";
@@ -232,14 +233,14 @@ export async function runExportPatchV2Command(
   args.io.writeJson(args.outputPath, result);
   if (args.log) {
     args.log(
-      `patch-export v0.2 produced: drafts=${result.drafts.length} assetDecisions=${result.assetDecisions.length} preflight=${result.preflightResults.length}`,
+      `patch-export ${PATCH_EXPORT_BUNDLE_SCHEMA_VERSION} produced: drafts=${result.drafts.length} assetDecisions=${result.assetDecisions.length} preflight=${result.preflightResults.length}`,
     );
   }
   return result;
 }
 
 function formatPreflightFailureMessage(failure: PreflightFailure): string {
-  const lines = ["patch-export v0.2 preflight failed:"];
+  const lines = [`patch-export ${PATCH_EXPORT_BUNDLE_SCHEMA_VERSION} preflight failed:`];
   for (const check of failure.failingChecks) {
     lines.push(`  - ${check.check}: ${check.detail ?? "<no detail>"}`);
   }

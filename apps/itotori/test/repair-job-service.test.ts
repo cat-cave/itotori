@@ -225,13 +225,7 @@ describe("ITOTORI-038 closed enums", () => {
   });
 
   it("REPAIR_JOB_OUTCOMES enumerates every terminal outcome", () => {
-    const expected: ReadonlyArray<RepairJobOutcome> = [
-      "succeeded",
-      "partial_failure",
-      "deferred_to_human",
-      "cap_exhausted",
-      "no_change",
-    ];
+    const expected: ReadonlyArray<RepairJobOutcome> = ["succeeded", "partial_failure", "no_change"];
     expect([...REPAIR_JOB_OUTCOMES].sort()).toEqual([...expected].sort());
   });
 
@@ -626,8 +620,8 @@ describe("ITOTORI-038 fixture repair loop", () => {
     }
 
     // Replay the orchestrator's repair-stage outcomes from the fixture:
-    //   - QA job: succeeded (repaired then accepted).
-    //   - Span job: deferred_to_human (cap exhausted).
+    //   - QA job: succeeded (written body persisted).
+    //   - Span job: succeeded (quality concern remains an annotation, not a deferral).
     //   - Human job: no_change (already-clean reruns are noop).
     for (const entry of fixture.triggers) {
       service.recordOutcome(jobFor(entry.name).jobId, entry.outcome);

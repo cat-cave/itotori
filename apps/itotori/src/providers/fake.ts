@@ -146,11 +146,13 @@ export const fakeModelCapabilities: ModelCapabilities = {
 };
 
 function defaultFakeCompletion(request: ModelInvocationRequest): string {
-  const sourceText = extractSourceText(request);
-  if (sourceText === "こんにちは、{player}。") {
+  if (extractSourceText(request) === "こんにちは、{player}。") {
     return "Hello, {player}.";
   }
-  return `[en-US] ${sourceText}`;
+  // A fake is test-only, but it still must model the production invariant:
+  // a successful translation result is a target draft, never a tagged
+  // source repetition. Tests that need a particular translation supply `generate`.
+  return "Localized fixture draft.";
 }
 
 function extractSourceText(request: ModelInvocationRequest): string {

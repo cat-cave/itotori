@@ -9,20 +9,20 @@ function coverage(overrides: Partial<WholeGamePatchCoverage> = {}): WholeGamePat
   return {
     unitsInScope: 25,
     unitsRun: 25,
-    acceptedDraftCount: 25,
-    deferredCount: 0,
+    writtenOutcomeCount: 25,
     failureCount: 0,
+    coverageComplete: true,
     ...overrides,
   };
 }
 
 describe("whole-game patch coverage gate", () => {
-  it("refuses partial coverage by default and carries the report counts", () => {
+  it("refuses incomplete written coverage and carries the canonical report counts", () => {
     const report = coverage({
       unitsRun: 5,
-      acceptedDraftCount: 4,
-      deferredCount: 1,
+      writtenOutcomeCount: 5,
       failureCount: 0,
+      coverageComplete: false,
     });
 
     expect(() => assertWholeGamePatchCoverage(report, false)).toThrow(
@@ -36,16 +36,21 @@ describe("whole-game patch coverage gate", () => {
       expect(error).toMatchObject({
         unitsInScope: 25,
         unitsRun: 5,
-        acceptedDraftCount: 4,
-        deferredCount: 1,
+        writtenOutcomeCount: 5,
         failureCount: 0,
+        coverageComplete: false,
       });
-      expect((error as Error).message).toContain("--allow-partial-patch");
+      expect((error as Error).message).toContain("complete written coverage");
     }
   });
 
-  it("allows partial coverage when explicitly producing a preview patch", () => {
-    expect(() => assertWholeGamePatchCoverage(coverage({ unitsRun: 5 }), true)).not.toThrow();
+  it("does not waive an incomplete configured scope with --allow-partial-patch", () => {
+    expect(() =>
+      assertWholeGamePatchCoverage(
+        coverage({ unitsRun: 5, writtenOutcomeCount: 5, coverageComplete: false }),
+        true,
+      ),
+    ).toThrow(WholeGamePatchCoverageRefusedError);
   });
 
   it("allows complete coverage with the strict default", () => {
