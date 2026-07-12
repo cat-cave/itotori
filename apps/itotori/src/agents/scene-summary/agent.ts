@@ -1,8 +1,14 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import {
+  executeStructuredInvocation,
+  InvocationContentExhaustedError,
+  InvocationRetryCeilingError,
+} from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   ProviderRunRecord,
@@ -59,9 +65,22 @@ export async function generateSceneSummary(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  const invocation = await options.provider.invoke(request);
+  let supervised: { invocation: ModelInvocationResult; parsed: string };
+  try {
+    supervised = await executeStructuredInvocation(options.provider, {
+      request,
+      parse: (raw) => raw.trim(),
+      validateParsed: () => undefined,
+      successDecision: "advance",
+    });
+  } catch (error) {
+    if (error instanceof InvocationRetryCeilingError) {
+      throw new InvocationContentExhaustedError(error.lastFailure, error.detail);
+    }
+    throw error;
+  }
+  const { invocation, parsed: summaryText } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
-  const summaryText = (invocation.content ?? "").trim();
 
   const now = (input.now ?? (() => new Date()))();
 

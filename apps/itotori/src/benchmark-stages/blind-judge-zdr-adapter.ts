@@ -24,6 +24,7 @@ import {
   BENCHMARK_RUBRIC_SCORES,
 } from "@itotori/localization-bridge-schema";
 import { createHash } from "node:crypto";
+import { executeStructuredInvocation } from "../orchestrator/invocation-supervisor.js";
 import { selectStructuredOutputRequest } from "../providers/structured-output.js";
 import type {
   JsonObject,
@@ -86,15 +87,27 @@ export class ZdrModelJudge implements BlindJudgeAdapter {
 
   async scoreUnit(input: BlindJudgeUnitInput): Promise<JudgeUnitScoring> {
     const request = this.buildRequest(input);
-    const result = await this.provider.invoke(request);
-    const run = result.providerRun;
-    // §4.1 — ZDR-routed only. A non-ZDR serve is disqualified, never scored.
-    if (run.routingPosture.zdr !== true) {
-      throw new ZdrJudgeError(
-        `judge '${this.judgeId}' response was not ZDR-routed (routingPosture.zdr=${String(run.routingPosture.zdr)})`,
-      );
-    }
-    const candidates = parseJudgeScoringJson(result.content, input);
+    const supervised = await executeStructuredInvocation(this.provider, {
+      request,
+      parse: (raw) => parseJudgeScoringJson(raw, input),
+      validateParsed: () => undefined,
+      validateResponse: (invocation) => {
+        const run = invocation.providerRun;
+        // §4.1 — validate posture before accepting the physical attempt. A
+        // non-ZDR serve is disqualified and receives the same bounded
+        // corrective route handling as every other semantic failure.
+        if (run.routingPosture.zdr !== true) {
+          throw new ZdrJudgeError(
+            `judge '${this.judgeId}' response was not ZDR-routed (routingPosture.zdr=${String(run.routingPosture.zdr)})`,
+          );
+        }
+        return invocation.content ?? "";
+      },
+      isSchemaValidationError: (error) => error instanceof ZdrJudgeError,
+      successDecision: "advance",
+    });
+    const run = supervised.invocation.providerRun;
+    const candidates = supervised.parsed;
     return { unitId: input.unitId, candidates, providerRun: run };
   }
 

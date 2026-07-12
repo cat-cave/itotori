@@ -176,22 +176,30 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
     const incompleteQaAttempts = journalUnits[0]!.attempts.filter(
       (attempt) => attempt.stage === "qa_findings",
     );
-    expect(incompleteQaAttempts).toHaveLength(4);
+    expect(incompleteQaAttempts).toHaveLength(8);
     expect(incompleteQaAttempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           validationResult: "semantic_invalid",
+          retryDecision: "retry",
+          failureClass: "empty",
+        }),
+        expect.objectContaining({
+          validationResult: "semantic_invalid",
           retryDecision: "advance",
-          failureClass: "QaPartialResultError",
+          failureClass: "InvocationContentExhaustedError",
         }),
       ]),
     );
     expect(
-      incompleteQaAttempts.every(
-        (attempt) =>
-          attempt.validationResult === "semantic_invalid" && attempt.retryDecision === "advance",
-      ),
+      incompleteQaAttempts.every((attempt) => attempt.validationResult === "semantic_invalid"),
     ).toBe(true);
+    expect(
+      incompleteQaAttempts.filter((attempt) => attempt.retryDecision === "retry"),
+    ).toHaveLength(4);
+    expect(
+      incompleteQaAttempts.filter((attempt) => attempt.retryDecision === "advance"),
+    ).toHaveLength(4);
     expect(patchExports).toHaveLength(1);
     const exported = patchExports[0]!.translatedBridge as {
       units: Array<{ bridgeUnitId: string; target: { text: string } }>;

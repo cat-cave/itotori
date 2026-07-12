@@ -19,7 +19,7 @@
 //     (glossary_mistranslation).
 //
 // The closed enum `DraftProtectedSpanViolationKind` is the typed surface a
-// downstream RetryPolicy classifier branches on (see `./retry-policy.ts`).
+// the InvocationSupervisor can name in corrective semantic feedback.
 // Any new violation kind MUST be added to the enum AND to the switch in the
 // retry policy — the `assertNever` default makes that a compile error.
 
@@ -80,7 +80,7 @@ export type DraftProtectedSpanValidationInput = {
 /**
  * Closed enum of acceptance-time violation kinds. The retry policy
  * branches on this enum in a `switch` whose `default` calls `assertNever`,
- * so a new kind added here MUST also be classified in retry-policy.ts.
+ * so a new kind added here remains visible to supervisor corrective feedback.
  *
  *   - `span_deleted`           — required ref absent from the draft entirely
  *                                (no matching entry in `draftProtectedSpanRefs`
@@ -164,7 +164,7 @@ export type DraftProtectedSpanValidationResult = {
  *
  * The validator returns an accumulated `violations` array rather than
  * throwing on the first failure — the acceptance gate routes the
- * full violation set into the retry-policy classifier so triage gets a
+ * full violation set into InvocationSupervisor's semantic classifier so triage gets a
  * complete picture in one pass.
  */
 export class DraftProtectedSpanValidator {

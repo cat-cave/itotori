@@ -67,13 +67,18 @@ describe("capturePhysicalProviderAttempts", () => {
     });
 
     expect(artifactPersistenceError).not.toBeInstanceOf(ModelProviderError);
-    await expect(capturingProvider.invoke(request())).rejects.toBe(artifactPersistenceError);
+    const caught = await capturingProvider.invoke(request()).catch((error: unknown) => error);
+    expect(caught).toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "itotori_bug" },
+      causeValue: artifactPersistenceError,
+    });
     expect(physicalCallCount).toBe(1);
     expect(artifact?.run.status).toBe("succeeded");
 
     // This mirrors the failed-unit path before its attempts are sent to the
     // journal persistence sink.
-    captured.markFailed(artifactPersistenceError);
+    captured.markFailed(caught);
 
     expect(captured.attempts).toHaveLength(1);
     expect(captured.attempts[0]).toMatchObject({
@@ -86,7 +91,7 @@ describe("capturePhysicalProviderAttempts", () => {
       providerId: "Fireworks",
       finishState: "post_call_error",
       validationResult: "provider_failed",
-      failureClass: "EROFS",
+      failureClass: "itotori_bug",
       retryDecision: "pause",
     });
   });

@@ -1032,6 +1032,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.loadCorrectionEditsByBranch(deniedActor, "branch-x"),
   ),
   localizationJournalGate(
+    "seedRun",
+    "draftWrite",
+    "localization-journal-repository.test.ts atomic run/unit seed coverage",
+    (repo) => repo.seedRun(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
     "createRun",
     "draftWrite",
     "localization-journal-repository.test.ts create run coverage",
@@ -1044,6 +1050,18 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.persistAttempts(deniedActor, undefined as never),
   ),
   localizationJournalGate(
+    "beginAttempt",
+    "draftWrite",
+    "localization-journal-repository.test.ts pre-dispatch attempt coverage",
+    (repo) => repo.beginAttempt(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
+    "completeAttempt",
+    "draftWrite",
+    "localization-journal-repository.test.ts attempt completion coverage",
+    (repo) => repo.completeAttempt(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
     "persistUnit",
     "draftWrite",
     "localization-journal-repository.test.ts atomic outcome persistence coverage",
@@ -1054,6 +1072,24 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "localization-journal-repository.test.ts run read coverage",
     (repo) => repo.loadRun(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "loadRunUnits",
+    "catalogRead",
+    "localization-journal-repository.test.ts planned unit read coverage",
+    (repo) => repo.loadRunUnits(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "pauseRun",
+    "draftWrite",
+    "localization-journal-repository.test.ts operational pause coverage",
+    (repo) => repo.pauseRun(deniedActor, "journal-run-denied", undefined as never),
+  ),
+  localizationJournalGate(
+    "resumeRun",
+    "draftWrite",
+    "localization-journal-repository.test.ts operational resume coverage",
+    (repo) => repo.resumeRun(deniedActor, "journal-run-denied"),
   ),
   localizationJournalGate(
     "loadRunsForBranch",
@@ -2294,6 +2330,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.seedRun",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts atomic run/unit seed coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriLocalizationJournalRepository.createRun",
           "requiredPermission": "draft.write",
           "successFixture": "localization-journal-repository.test.ts create run coverage",
@@ -2306,6 +2348,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.beginAttempt",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts pre-dispatch attempt coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.completeAttempt",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts attempt completion coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriLocalizationJournalRepository.persistUnit",
           "requiredPermission": "draft.write",
           "successFixture": "localization-journal-repository.test.ts atomic outcome persistence coverage",
@@ -2315,6 +2369,24 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationJournalRepository.loadRun",
           "requiredPermission": "catalog.read",
           "successFixture": "localization-journal-repository.test.ts run read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadRunUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts planned unit read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.pauseRun",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts operational pause coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.resumeRun",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts operational resume coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

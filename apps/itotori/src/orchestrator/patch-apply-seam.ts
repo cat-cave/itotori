@@ -316,7 +316,10 @@ function journalLedgerSummary(
   const providerProofIds: string[] = [];
   const seenProviderProofIds = new Set<string>();
   for (const attempt of attempts) {
-    totalCost = addDecimalUsd(totalCost, attempt.costUsd);
+    // Node 5 owns the terminal no-running-attempt/cost-reconciliation
+    // predicate. This pre-finalizer projection retains providerless attempts
+    // without inventing a bill; unknown cost contributes no reported spend.
+    totalCost = addDecimalUsd(totalCost, attempt.costUsd ?? "0");
     totalTokensIn += attempt.tokensIn ?? 0;
     totalTokensOut += attempt.tokensOut ?? 0;
     if (!seenProviderProofIds.has(attempt.providerRunId)) {

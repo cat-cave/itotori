@@ -11,8 +11,8 @@
 //   (d) the localize-fullproject command wraps every pipeline step in the
 //       helper — a FORCED failure at each step yields the diagnostic (not a
 //       bare `Error`);
-//   (e) the driven executor's per-unit failure path emits a structured
-//       `DrivenUnitFailure.diagnostic` so the failure is actionable;
+//   (e) the driven executor turns unexpected per-unit defects into a resumable
+//       operational pause whose operator detail/evidence remain redacted;
 //   (f) the diagnostic renders cleanly to a one-line log summary.
 //
 // All tests run WITHOUT a DB / live provider. The forced-failure path uses the
@@ -60,7 +60,6 @@ import {
   renderPipelineFailureDiagnosticOneLine,
   runPipelineStepWithDiagnostic,
   scrubGameTextFromString,
-  type PipelineUnitFailureDiagnostic,
 } from "../src/orchestrator/pipeline-failure-diagnostic.js";
 
 // ---------------------------------------------------------------------------
@@ -416,6 +415,11 @@ const UNIT_POISON = "019ed0aa-0000-7000-8000-0000000000d4";
 const SCENE_ID = 6010;
 const POISON_MARKER = "POISON_DIAGNOSTIC";
 const POISON_GAME_TEXT = "禁書庫の封印を解く呪文は失われた";
+const POISON_SCHEMA_FAILURE_DETAIL =
+  "TranslationDraftResponseValidationError: StructuredTranslationDraftOutput.schemaVersion failed rule 'const': expected itotori.structured-translation-draft-output.v1, got totally.wrong.v0";
+const POISON_BLOCKER_DETAIL = `InvocationSupervisor hard retry ceiling 12 reached after schema_invalid: ${POISON_SCHEMA_FAILURE_DETAIL}`;
+const POISON_BLOCKER_EVIDENCE = `schema_invalid:${POISON_SCHEMA_FAILURE_DETAIL}`;
+const POISON_OPERATOR_ACTION = "fix the model/tool/schema configuration, then resume";
 
 function makeUnit(
   bridgeUnitId: string,
@@ -660,7 +664,7 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     expectRedactionComplete(diag);
   });
 
-  it("executor.drive-unit failure: emits a per-unit diagnostic on the failure record (regression)", async () => {
+  it("executor.drive-unit defect: pauses the run without creating a terminal unit failure", async () => {
     const workDir = mkdtempSync(join(tmpdir(), "itotori-diag-poison-"));
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
@@ -682,23 +686,20 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
       },
     });
 
-    // The poison unit was isolated; the run completed.
-    expect(out.result.failures).toHaveLength(1);
-    const failure = out.result.failures[0]!;
-    expect(failure.bridgeUnitId).toBe(UNIT_POISON);
-
-    // The failure carries a structured diagnostic (itotori-agent-facing-
-    // pipeline-failure-diagnostics) naming the failing unit + the step.
-    expect(failure.diagnostic).toBeDefined();
-    const diag = failure.diagnostic as PipelineUnitFailureDiagnostic;
-    expect(diag.step).toBe("executor.drive-unit");
-    expect(diag.bridgeUnitId).toBe(UNIT_POISON);
-    expect(diag.errorMessage).not.toContain(POISON_GAME_TEXT);
-    // Source text never leaks past redaction.
-    expectRedactionComplete(diag);
+    expect(out.result.failures).toEqual([]);
+    expect(out.result.runState).toBe("paused");
+    expect(out.result.pausedBlocker).toMatchObject({
+      kind: "itotori_bug",
+      detail: POISON_BLOCKER_DETAIL,
+      evidence: POISON_BLOCKER_EVIDENCE,
+      operatorAction: POISON_OPERATOR_ACTION,
+    });
+    expect(out.result.pausedBlocker?.raisedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expectRedactionComplete(out.result.pausedBlocker, POISON_GAME_TEXT);
+    expect(sinks.patchExports).toEqual([]);
   });
 
-  it("structured diagnostic renders to a one-line log summary without leaking game text", async () => {
+  it("operator pause detail and evidence stay one-line, exact, and free of game text", async () => {
     const workDir = mkdtempSync(join(tmpdir(), "itotori-diag-render-"));
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
@@ -719,27 +720,17 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
         reviewerQueue: { repository: queue as never },
       },
     });
-    const failure = out.result.failures[0]!;
-    const diag = failure.diagnostic as PipelineUnitFailureDiagnostic;
-    const line = renderPipelineFailureDiagnosticOneLine(
-      // Cast to the top-level diagnostic for the renderer — the unit
-      // diagnostic has the same field shape, but the renderer expects the
-      // top-level type. Verify the ONE-LINE form is suitable for the unit
-      // diagnostic by translating.
-      buildPipelineFailureDiagnostic({
-        step: diag.step,
-        code: diag.code,
-        message: diag.message,
-        error: new Error(diag.errorMessage),
-        failingUnitId: diag.bridgeUnitId,
-        repro: diag.repro,
-        now: () => new Date(diag.occurredAt),
-      }),
-    );
-    expect(line).toContain(`[${diag.step}]`);
-    expect(line).toContain(`unit=${UNIT_POISON}`);
-    expect(line).not.toContain(POISON_GAME_TEXT);
-    expectRedactionComplete({ line });
+    const blocker = out.result.pausedBlocker;
+    expect(out.result.failures).toEqual([]);
+    expect(out.result.runState).toBe("paused");
+    expect(blocker?.kind).toBe("itotori_bug");
+    expect(blocker?.detail).toBe(POISON_BLOCKER_DETAIL);
+    expect(blocker?.evidence).toBe(POISON_BLOCKER_EVIDENCE);
+    expect(blocker?.operatorAction).toBe(POISON_OPERATOR_ACTION);
+    expect(blocker?.detail).not.toMatch(/[\r\n]/u);
+    expect(blocker?.evidence).not.toMatch(/[\r\n]/u);
+    expectRedactionComplete(blocker, POISON_GAME_TEXT);
+    expect(sinks.patchExports).toEqual([]);
   });
 });
 
@@ -758,11 +749,11 @@ function makeDeps() {
 }
 
 // ---------------------------------------------------------------------------
-// Driven executor — per-unit failure path populates the diagnostic directly
+// Driven executor — unexpected per-unit defects pause instead of terminalizing
 // ---------------------------------------------------------------------------
 
 describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagnostics)", () => {
-  it("isolates a poison unit and the failure record carries a structured diagnostic", async () => {
+  it("leaves a poison unit pending and returns an actionable operational pause", async () => {
     const sinks = new InMemorySinks();
     const bridge = makeBridge();
     const result = await runProjectDrivenExecutor({
@@ -782,20 +773,22 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       sinks,
     });
 
-    expect(result.failures).toHaveLength(1);
-    const failure = result.failures[0]!;
-    expect(failure.bridgeUnitId).toBe(UNIT_POISON);
-    // The failure now carries the diagnostic directly on the failure record.
-    expect(failure.diagnostic).toBeDefined();
-    const diag = failure.diagnostic as PipelineUnitFailureDiagnostic;
-    expect(diag.step).toBe("executor.drive-unit");
-    expect(diag.bridgeUnitId).toBe(UNIT_POISON);
-    expect(diag.sourceUnitKey).toBe(`scene-${SCENE_ID}/line-004`);
-    expect(diag.errorMessage).not.toContain(POISON_GAME_TEXT);
-    expectRedactionComplete(diag);
+    expect(result.failures).toEqual([]);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).toMatchObject({
+      kind: "itotori_bug",
+      detail: POISON_BLOCKER_DETAIL,
+      evidence: POISON_BLOCKER_EVIDENCE,
+      operatorAction: POISON_OPERATOR_ACTION,
+    });
+    expectRedactionComplete(result.pausedBlocker, POISON_GAME_TEXT);
+    expect(sinks.journalUnits.map((record) => record.writtenOutcome.bridgeUnitId)).toEqual([
+      UNIT_OK,
+    ]);
+    expect(sinks.patchExports).toEqual([]);
   });
 
-  it("keeps the per-unit diagnostic on the durable executor result", async () => {
+  it("keeps exact redacted blocker detail while retaining non-terminal attempt evidence", async () => {
     const sinks = new InMemorySinks();
     const bridge = makeBridge();
     const result = await runProjectDrivenExecutor({
@@ -815,13 +808,19 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       sinks,
     });
 
-    // The journal persistence path consumes `result.failures`; confirm the
-    // diagnostic stays attached at the executor boundary instead of being
-    // silently stripped before durable capture.
-    expect(result.failures).toHaveLength(1);
-    const failure = result.failures[0]!;
-    expect(failure.diagnostic).toBeDefined();
-    expect(failure.errorClass).toBe(failure.diagnostic!.errorClass);
-    expect(failure.errorMessage).toBe(failure.diagnostic!.errorMessage);
+    expect(result.failures).toEqual([]);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker?.kind).toBe("itotori_bug");
+    expect(result.pausedBlocker?.detail).toBe(POISON_BLOCKER_DETAIL);
+    expect(result.pausedBlocker?.evidence).toBe(POISON_BLOCKER_EVIDENCE);
+    expect(result.pausedBlocker?.operatorAction).toBe(POISON_OPERATOR_ACTION);
+    expectRedactionComplete(result.pausedBlocker, POISON_GAME_TEXT);
+    expect(sinks.failedUnitAttempts).toHaveLength(1);
+    expect(sinks.failedUnitAttempts[0]?.bridgeUnitId).toBe(UNIT_POISON);
+    expect(sinks.failedUnitAttempts[0]?.attempts.at(-1)).toMatchObject({
+      failureClass: "schema_invalid",
+      validationResult: "schema_invalid",
+    });
+    expect(sinks.patchExports).toEqual([]);
   });
 });

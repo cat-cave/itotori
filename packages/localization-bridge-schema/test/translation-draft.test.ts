@@ -91,7 +91,7 @@ describe("StructuredTranslationDraftOutput", () => {
 
   it("reports a genuinely-missing required field with rule 'required' (non-retryable)", () => {
     // A missing field is unrecoverable by re-emission and must be reported
-    // as 'required' (not 'type'), so the RetryPolicy routes it to triage.
+    // as 'required' (not 'type'), so corrective feedback names the omission.
     const value = validOutput({
       drafts: [validDraft({ confidenceFloor: undefined })],
     });
@@ -111,7 +111,7 @@ describe("StructuredTranslationDraftOutput", () => {
 
   it("reports a present-but-wrong-type field with rule 'type' (retryable coercion)", () => {
     // A field that is present with the wrong type is a recoverable
-    // coercion glitch — reported as 'type' so the RetryPolicy retries it.
+    // coercion glitch — reported as 'type' so corrective feedback names it.
     try {
       assertStructuredTranslationDraftOutput(
         validOutput({ drafts: [validDraft({ draftText: 42 })] }),

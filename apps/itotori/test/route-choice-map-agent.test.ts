@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
   buildPrompt,
   ChoiceOptionOutOfOrderError,
@@ -245,6 +246,45 @@ describe("generateRouteChoiceMap", () => {
         expect(choice.options[i]?.optionIndex).toBe(i);
       }
     }
+  });
+
+  it("correctively retries a semantically invalid route before accepting the map", async () => {
+    const input = inputFixture();
+    const requests: ModelInvocationRequest[] = [];
+    const invalidPack = JSON.stringify({
+      routes: [
+        {
+          routeKey: "true-route",
+          routeTitle: "真ルート",
+          routeSummary: "x",
+          citedUnitIds: [],
+        },
+        {
+          routeKey: "princess-route",
+          routeTitle: "王女ルート",
+          routeSummary: "x",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a04"],
+        },
+      ],
+      choices: [],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "route-choice-map-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        requests.push(request);
+        return requests.length === 1 ? invalidPack : successPackJson;
+      },
+    });
+
+    const output = await generateRouteChoiceMap(input, { provider });
+
+    expect(output.routes).toHaveLength(2);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      "previous response failed with semantic_invalid",
+    );
+    expect(requests[1]?.messages.at(-1)?.content).toContain("true-route");
   });
 
   it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {

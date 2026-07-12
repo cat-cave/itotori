@@ -41,6 +41,7 @@ import {
   type ProviderRunArtifactRecorder,
   type ProviderRunRecord,
 } from "../providers/index.js";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import { backTranslationTripwire } from "./deterministic-metrics/back-translation-tripwire.js";
 import {
   DEFAULT_METRIC_CONFIG,
@@ -148,7 +149,7 @@ export class ZdrBackTranslator implements BackTranslator {
 
   async backTranslate(input: BackTranslateUnitInput): Promise<BackTranslateOutcome> {
     const request = this.buildRequest(input);
-    const result = await this.provider.invoke(request);
+    const result = await executeModelInvocation(this.provider, request);
     const run = result.providerRun;
     // Privacy gate: a serve whose wire routing posture is not zdr:true is
     // DISQUALIFIED (never consumed) — the round-trip is ZDR-routed only.

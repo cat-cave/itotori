@@ -950,6 +950,8 @@ export {
   JOBS_RUN_TABLE_SCHEMA_VERSION,
 } from "./repositories/localization-journal-repository.js";
 export type {
+  BeginLocalizationJournalAttemptInput,
+  CompleteLocalizationJournalAttemptInput,
   CreateLocalizationJournalRunInput,
   ItotoriLocalizationJournalRepositoryPort,
   JobsRunTableCost,
@@ -963,6 +965,7 @@ export type {
   LocalizationJournalAttemptAggregateOptions,
   LocalizationJournalAttemptAggregateRow,
   LocalizationJournalAttemptCostKind,
+  LocalizationJournalAttemptLifecycleState,
   LocalizationJournalAttemptRecord,
   LocalizationJournalAttemptRetryDecision,
   LocalizationJournalAttemptValidationResult,
@@ -970,18 +973,30 @@ export type {
   LocalizationJournalOutcomeContextRef,
   LocalizationJournalOutcomeContextRefInput,
   LocalizationJournalOutcomeRecord,
+  LocalizationJournalOperationalBlocker,
   LocalizationJournalQaDetail,
   LocalizationJournalQaDetailsByFindingId,
   LocalizationJournalRunRecord,
+  LocalizationJournalRunStatus,
+  LocalizationJournalRunUnitRecord,
+  LocalizationJournalRunUnitState,
   LocalizationJournalTimestamp,
+  LocalizationJournalUnitNextAction,
   LocalizationJournalZdrAggregateRow,
   PersistLocalizationJournalAttemptInput,
   PersistLocalizationJournalAttemptsInput,
   PersistLocalizationJournalUnitInput,
+  SeedLocalizationJournalRunInput,
+  SeedLocalizationJournalRunUnitInput,
 } from "./repositories/localization-journal-repository.js";
 export type {
+  LocalizationJournalCostPolicyJson,
+  LocalizationJournalFrozenScopeJson,
+  LocalizationJournalNextActionJson,
   LocalizationJournalOutcomeContextRefDetails,
+  LocalizationJournalPausedBlockerJson,
   LocalizationJournalQaSpan,
+  LocalizationJournalRoutingPolicyJson,
 } from "./schema.js";
 export {
   BENCHMARK_RUN_DEFAULT_LIMIT,

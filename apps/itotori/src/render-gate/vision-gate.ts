@@ -13,6 +13,7 @@
 // per-request `provider.zdr=true`) the drafting path uses.
 
 import { createHash } from "node:crypto";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import {
   assertBilledCost,
   openRouterDefaultCapabilities,
@@ -367,7 +368,7 @@ export async function runVisionGate(args: RunVisionGateArgs): Promise<VisionGate
     promptHash,
   });
 
-  const result = await args.provider.invoke(request);
+  const result = await executeModelInvocation(args.provider, request);
   const verdict = parseVisionVerdict(result.content);
   const gate = evaluateVisionGate(verdict, { redactionMode: args.redactionMode });
 

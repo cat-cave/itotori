@@ -43,6 +43,7 @@ import type { BenchmarkSystemKindV02 } from "@itotori/localization-bridge-schema
 import type { ContestantCandidate } from "./decoded-context-feed.js";
 import type { MetricSystemInput, MetricUnit } from "./deterministic-metrics/types.js";
 import { deterministicUuid7 } from "./ids.js";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import type {
   ModelInvocationRequest,
   ModelProvider,
@@ -720,7 +721,7 @@ export function makeRawMtlBaselineRunner(
       },
       fallbackModels: [],
     };
-    const result = await options.provider.invoke(request);
+    const result = await executeModelInvocation(options.provider, request);
     if (result.content === null || result.content.trim().length === 0) {
       throw new ContestantHarnessError(
         `raw-MTL baseline produced no content for unit '${unit.unitId}'`,

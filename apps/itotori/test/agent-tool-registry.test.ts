@@ -159,6 +159,79 @@ describe("agent and deterministic tool registries", () => {
     expect(JSON.stringify(result.output)).not.toMatch(/confidence/iu);
   });
 
+  it("correctively retries schema-invalid agent output before accepting the attempt", async () => {
+    const requests: ModelInvocationRequest[] = [];
+    const schemaInvalidOutput = {
+      outputKind: "score",
+      rationales: ["The first response omitted the required score."],
+      findings: [],
+    };
+    let invocationCount = 0;
+    const provider = new FakeModelProvider({
+      providerName: "itotori-agent-schema-retry-fixture",
+      modelId: "itotori-fake-judge-v0",
+      generate: (request) => {
+        requests.push(request);
+        invocationCount += 1;
+        return JSON.stringify(
+          invocationCount === 1 ? schemaInvalidOutput : translationQualityJudgeOutputFixture,
+        );
+      },
+    });
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    agents.register({ ...translationQualityJudgeAgent(), provider });
+
+    const result = await new AgentToolRuntime(agents, tools).runAgentJob(
+      translationQualityJudgeJobFixture,
+    );
+
+    expect(result.output).toEqual(translationQualityJudgeOutputFixture);
+    expect(invocationCount).toBe(2);
+    expect(requests[1]?.messages.at(-1)?.content).toMatch(/schema_invalid.*score.*required/iu);
+  });
+
+  it("correctively retries semantic agent-contract failures before accepting the attempt", async () => {
+    const requests: ModelInvocationRequest[] = [];
+    const semanticInvalidOutput = {
+      ...translationQualityJudgeOutputFixture,
+      rationales: [],
+    };
+    let invocationCount = 0;
+    const provider = new FakeModelProvider({
+      providerName: "itotori-agent-semantic-retry-fixture",
+      modelId: "itotori-fake-judge-v0",
+      generate: (request) => {
+        requests.push(request);
+        invocationCount += 1;
+        return JSON.stringify(
+          invocationCount === 1 ? semanticInvalidOutput : translationQualityJudgeOutputFixture,
+        );
+      },
+    });
+    const definition = translationQualityJudgeAgent();
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    agents.register({
+      ...definition,
+      provider,
+      // Keep the descriptor deliberately broad in this focused test so the
+      // runtime's additional judgment contract is the rejecting boundary.
+      outputSchema: {
+        ...definition.outputSchema,
+        jsonSchema: { type: "object" },
+      },
+    });
+
+    const result = await new AgentToolRuntime(agents, tools).runAgentJob(
+      translationQualityJudgeJobFixture,
+    );
+
+    expect(result.output).toEqual(translationQualityJudgeOutputFixture);
+    expect(invocationCount).toBe(2);
+    expect(requests[1]?.messages.at(-1)?.content).toMatch(/semantic_invalid.*include rationales/iu);
+  });
+
   it("rejects unsupported agent structured-output requirements before provider execution", async () => {
     const events: TriageEventV02[] = [];
     const agents = new AgentRegistry();

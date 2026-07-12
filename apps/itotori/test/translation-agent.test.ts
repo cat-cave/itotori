@@ -591,7 +591,7 @@ describe("TranslationAgent.invokeTranslation bridge unit + citation resolution",
     const agent = new TranslationAgent({ provider });
     const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TranslationUnknownCitationError);
-    expect(invocations).toBe(1);
+    expect(invocations).toBe(2);
     if (error instanceof TranslationUnknownCitationError) {
       expect(error.citationRef).toBe("glossary:does-not-exist");
     }

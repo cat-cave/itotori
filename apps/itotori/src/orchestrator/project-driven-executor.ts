@@ -82,6 +82,15 @@ import {
 import { buildPipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
 import type { PipelineUnitFailureDiagnostic } from "./pipeline-failure-diagnostic.js";
 import type { WholeGameRenderValidationResult } from "./wholegame-render-validation-seam.js";
+import {
+  InvocationRetryCeilingError,
+  isInvocationOperationalPause,
+  type InvocationLifecycle,
+  type InvocationAttemptCompleted,
+  type InvocationAttemptStarted,
+  type InvocationCostAdmission,
+  type OperationalBlocker,
+} from "./invocation-supervisor.js";
 
 // ---------------------------------------------------------------------------
 // Config-driven translation scope
@@ -235,6 +244,32 @@ export type DrivenJournalRunRecord = {
   localeBranchId: string;
   sourceRevisionId: string;
   targetLocale: string;
+};
+
+export type DrivenPlannedRunUnit = {
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  nextAction: { kind: "drive_unit"; stage: "context" };
+};
+
+/** Immutable launch facts persisted atomically with every planned unit. */
+export type DrivenJournalRunPlan = {
+  run: DrivenJournalRunRecord;
+  frozenScope: {
+    translationScope: TranslationScope;
+    bridgeUnitIds: string[];
+  };
+  routingPolicy: PairPolicy;
+  costPolicy: { budgetCapUsd: number | null; reservation: "node_4_seam" };
+  units: DrivenPlannedRunUnit[];
+};
+
+export type DrivenJournalResumeState = {
+  status: "running" | "paused" | "finalizing" | "succeeded" | "failed" | "aborted";
+  pausedBlocker: OperationalBlocker | null;
+  writtenOutcomes: DrivenWrittenOutcomeRecord[];
+  /** Complete run ledger, including providerless/interrupted attempts. */
+  attempts?: DrivenLlmAttemptRecord[];
 };
 
 /** A resolved context reference; versionRef is omitted when the current source has no version id. */
@@ -430,8 +465,13 @@ export type DrivenProviderRunSink = {
   persistProviderRun(record: DrivenProviderRunRecord): Promise<void>;
 };
 export type DrivenUnitJournalSink = {
-  /** Establishes the immutable run record before any unit is dispatched. */
-  beginJournalRun?(run: DrivenJournalRunRecord): Promise<void>;
+  /** Atomically establishes the immutable run and every planned unit. */
+  beginJournalRun?(plan: DrivenJournalRunPlan): Promise<void>;
+  loadResumeState?(runId: string): Promise<DrivenJournalResumeState>;
+  resumeJournalRun?(runId: string): Promise<void>;
+  attemptStarted?(attempt: InvocationAttemptStarted): Promise<void>;
+  attemptCompleted?(attempt: InvocationAttemptCompleted): Promise<void>;
+  pauseRun?(runId: string, blocker: OperationalBlocker): Promise<void>;
   persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void>;
   persistFailedUnitAttempts(record: DrivenFailedUnitJournalRecord): Promise<void>;
 };
@@ -478,6 +518,8 @@ export type ProjectDrivenExecutorInput = {
   actor: AuthorizationActor;
   /** The loop's provider factory (live OpenRouter in production, fake in tests). */
   providerFactory: AgenticLoopProviderFactory;
+  /** Node-4 replacement seam; denial pauses before physical dispatch. */
+  costAdmission?: InvocationCostAdmission;
   /** The reviewer-queue DB sink (per P0#2). When absent, nothing is bridged. */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
@@ -541,6 +583,8 @@ export type ProjectDrivenExecutorInput = {
    * guard.
    */
   budgetCapUsd?: number;
+  /** Existing durable run identity to resume instead of creating a new run. */
+  resumeRunId?: string;
   /**
    * itotori-batched-concurrent-translation-scheduling — the CLIENT-SIDE
    * bounded-concurrency cap: at most this many units run their agentic loop
@@ -576,6 +620,9 @@ export const MAX_DRIVEN_CONCURRENCY = 16;
 
 export type ProjectDrivenExecutorResult = {
   journalRunId: string;
+  /** Node-5 finalizer seam: this executor only reports running vs paused. */
+  runState: "running" | "paused";
+  pausedBlocker: OperationalBlocker | null;
   unitsEnumerated: number;
   unitsInScope: number;
   unitsRun: number;
@@ -589,8 +636,8 @@ export type ProjectDrivenExecutorResult = {
   /**
    * Per-unit written outcomes (one entry per successfully-run unit, canonical
    * order). This is an in-memory convenience for callers; the durable source
-   * of truth is the journal record. Operational failures are surfaced
-   * separately via {@link failures}.
+   * of truth is the journal record. `failures` remains as a compatibility
+   * projection and is always empty: operational problems use `pausedBlocker`.
    */
   unitOutcomes: DrivenWrittenOutcomeRecord[];
   /**
@@ -619,7 +666,7 @@ export async function runProjectDrivenExecutor(
   const translationScope = input.translationScope ?? "dialogue-only";
   const engineProfile = input.engineProfile ?? "reallive";
   const journalRun: DrivenJournalRunRecord = {
-    runId: `localization-journal-run-${randomUUID()}`,
+    runId: input.resumeRunId ?? `localization-journal-run-${randomUUID()}`,
     projectId: input.projectId,
     localeBranchId: input.localeBranchId,
     sourceRevisionId: input.sourceRevisionId,
@@ -629,11 +676,6 @@ export async function runProjectDrivenExecutor(
   if (input.bridge.units.length === 0) {
     throw new Error("project-driven-executor refused: bridge has zero units");
   }
-  // The database adapter establishes the run even when scope/budget means no
-  // physical call is ultimately dispatched. In-memory test sinks may omit this
-  // lifecycle hook because they only retain unit rows.
-  await input.sinks.journal.beginJournalRun?.(journalRun);
-
   // (a) ENUMERATE — consume the batch PLANNER's scene/route grouping.
   const enumerated = await enumerateInScopeUnits({
     bridge: input.bridge,
@@ -649,6 +691,67 @@ export async function runProjectDrivenExecutor(
   log(
     `project-driven-executor: enumerated ${unitsEnumerated} unit(s); ${unitsInScope} in scope (${translationScope})`,
   );
+
+  // Freeze and seed the COMPLETE scope before any provider is constructed or
+  // dispatched. Pending rows carry identity + next action only—never source
+  // text or a fabricated candidate.
+  const runPlan: DrivenJournalRunPlan = {
+    run: journalRun,
+    frozenScope: {
+      translationScope,
+      bridgeUnitIds: enumerated.map((entry) => entry.unit.bridgeUnitId),
+    },
+    routingPolicy: input.pairPolicy,
+    costPolicy: {
+      budgetCapUsd: input.budgetCapUsd ?? null,
+      reservation: "node_4_seam",
+    },
+    units: enumerated.map((entry) => ({
+      bridgeUnitId: entry.unit.bridgeUnitId,
+      sourceUnitKey: entry.unit.sourceUnitKey,
+      nextAction: { kind: "drive_unit", stage: "context" },
+    })),
+  };
+  let resumeState: DrivenJournalResumeState | undefined;
+  if (input.resumeRunId !== undefined) {
+    if (
+      input.sinks.journal.loadResumeState === undefined ||
+      input.sinks.journal.resumeJournalRun === undefined
+    ) {
+      throw new Error("resume requires a journal sink with durable load and resume support");
+    }
+    // Load first so a typo cannot silently seed a brand-new run under an id
+    // the operator explicitly asked to resume.
+    resumeState = await input.sinks.journal.loadResumeState(journalRun.runId);
+    if (resumeState.status !== "paused" && resumeState.status !== "running") {
+      throw new Error(
+        `cannot resume journal run ${journalRun.runId} from terminal/finalizer state ${resumeState.status}`,
+      );
+    }
+  }
+
+  // New runs are atomically established here. Existing runs are re-seeded
+  // idempotently to verify the frozen scope/policies before any resumed call.
+  await input.sinks.journal.beginJournalRun?.(runPlan);
+
+  if (resumeState !== undefined) {
+    // Explicit resume also reconciles any pre-dispatch attempt left in the
+    // dispatching state by a process crash, including when the durable run was
+    // still marked running at the time of death.
+    await input.sinks.journal.resumeJournalRun!(journalRun.runId);
+    resumeState = await input.sinks.journal.loadResumeState!(journalRun.runId);
+    if (resumeState.status !== "running" || resumeState.pausedBlocker !== null) {
+      throw new Error(`journal run ${journalRun.runId} did not enter running state on resume`);
+    }
+    const unresolved = (resumeState.attempts ?? []).filter(
+      (attempt) => attempt.completedAt === null,
+    );
+    if (unresolved.length > 0) {
+      throw new Error(
+        `journal run ${journalRun.runId} resume left ${unresolved.length} attempt(s) dispatching`,
+      );
+    }
+  }
 
   const policy: AgenticLoopPolicy = {
     projectId: input.projectId,
@@ -669,11 +772,43 @@ export async function runProjectDrivenExecutor(
   let writtenOutcomesPersisted = 0;
   let writtenOutcomeCount = 0;
   let journalUnitsPersisted = 0;
-  let attemptsPersisted = 0;
-  let totalUsageCostExactUsd = "0";
-  let zdrConfirmed = true;
-  let sawPhysicalInvocation = false;
+  const resumedAttempts = resumeState?.attempts ?? [];
+  let attemptsPersisted = resumedAttempts.length;
+  let totalUsageCostExactUsd = resumedAttempts.reduce(
+    (total, attempt) => addDecimalUsd(total, attempt.costUsd ?? "0"),
+    "0",
+  );
+  let zdrConfirmed = resumedAttempts.every((attempt) => attempt.zdr);
+  let sawPhysicalInvocation = resumedAttempts.length > 0;
   let budgetStopped = false;
+  let pausedBlocker: OperationalBlocker | null = null;
+
+  const resumedWrittenIds = new Set<string>();
+  for (const written of resumeState?.writtenOutcomes ?? []) {
+    const source = enumerated.find(
+      (entry) => entry.unit.bridgeUnitId === written.bridgeUnitId,
+    )?.unit;
+    if (source === undefined) {
+      throw new Error(
+        `durable run ${journalRun.runId} contains written unit ${written.bridgeUnitId} outside the frozen bridge scope`,
+      );
+    }
+    assertSelectedTargetBody({
+      body: written.selectedBody,
+      sourceText: source.sourceText,
+      label: `resumed selected candidate for ${written.bridgeUnitId}`,
+    });
+    resumedWrittenIds.add(written.bridgeUnitId);
+    writtenBodies.set(written.bridgeUnitId, written.selectedBody);
+    writtenUnits.push({
+      bridgeUnitId: written.bridgeUnitId,
+      sourceUnitKey: written.sourceUnitKey,
+      selectedBody: written.selectedBody,
+      qualityFlags: written.outcome.qualityFlags.slice(),
+    });
+    unitOutcomes.push(written);
+    writtenOutcomeCount += 1;
+  }
 
   // itotori-batched-concurrent-translation-scheduling — the pilot must scale to
   // a whole route/game, but the per-unit loop fires ~10 ZDR calls, so running
@@ -688,7 +823,9 @@ export async function runProjectDrivenExecutor(
   // units (canonical prefix). A failed unit is isolated but still consumes a
   // dispatch slot — the cap bounds provider calls, not successes.
   const maxUnits = input.maxUnits ?? enumerated.length;
-  const plannedUnits = enumerated.slice(0, Math.max(0, maxUnits));
+  const plannedUnits = enumerated
+    .filter((entry) => !resumedWrittenIds.has(entry.unit.bridgeUnitId))
+    .slice(0, Math.max(0, maxUnits));
 
   // Result slots, one per planned unit, addressed by CANONICAL index. A slot is
   // filled by whichever worker completed and journaled that unit; `undefined`
@@ -706,11 +843,28 @@ export async function runProjectDrivenExecutor(
   // gate trips; the provider's own `costCapUsd` is the hard per-call backstop.
   const budgetCapExactUsd =
     input.budgetCapUsd === undefined ? undefined : decimalUsdFromFiniteNumber(input.budgetCapUsd);
-  let realizedCostExactUsd = "0";
+  let realizedCostExactUsd = totalUsageCostExactUsd;
   let nextIndex = 0;
+  const lifecycle = invocationLifecycleFor(input.sinks.journal);
+  const costAdmission: InvocationCostAdmission | undefined =
+    input.costAdmission ??
+    (budgetCapExactUsd === undefined
+      ? undefined
+      : {
+          admit: async () =>
+            compareDecimalUsd(realizedCostExactUsd, budgetCapExactUsd) >= 0
+              ? {
+                  admitted: false as const,
+                  detail: `run cost cap $${budgetCapExactUsd} reached at $${realizedCostExactUsd}`,
+                  evidence: `journal-run:${journalRun.runId};spent-usd:${realizedCostExactUsd}`,
+                  operatorAction: "raise the cost cap, then resume",
+                }
+              : { admitted: true as const },
+        });
 
   const runWorker = async (): Promise<void> => {
     for (;;) {
+      if (pausedBlocker !== null) return;
       // (a) BUDGET GATE — stop DISPATCHING once completed cost reaches the cap.
       if (
         budgetCapExactUsd !== undefined &&
@@ -722,6 +876,14 @@ export async function runProjectDrivenExecutor(
             `project-driven-executor: budget cap $${budgetCapExactUsd} reached ($${realizedCostExactUsd}); stopping dispatch (concurrency=${concurrency})`,
           );
         }
+        const blocker = budgetBlocker(
+          journalRun.runId,
+          budgetCapExactUsd,
+          realizedCostExactUsd,
+          input.now?.() ?? new Date(),
+        );
+        pausedBlocker = blocker;
+        await input.sinks.journal.pauseRun?.(journalRun.runId, blocker);
         return;
       }
       // Claim the next canonical index atomically (no await between read+bump).
@@ -732,20 +894,50 @@ export async function runProjectDrivenExecutor(
       nextIndex += 1;
 
       const enumeratedUnit = plannedUnits[index]!;
-      const result = await runSingleDrivenUnit({
+      let result = await runSingleDrivenUnit({
         enumeratedUnit,
         input,
         policy,
         targetLocale,
         engineProfile,
         journalRun,
+        lifecycle,
+        costAdmission,
         log,
       });
       // Durability boundary: stream this completed unit now instead of waiting
       // for every unrelated worker to drain. A process failure after another
       // unit completes cannot erase this unit's attempts/outcome evidence.
-      await persistCompletedUnitJournal(input.sinks.journal, result);
+      try {
+        await persistCompletedUnitJournal(input.sinks.journal, result);
+      } catch (error) {
+        const blocker = itotoriBugBlocker({
+          runId: journalRun.runId,
+          bridgeUnitId: enumeratedUnit.unit.bridgeUnitId,
+          operation: "persist completed unit journal",
+          error,
+          raisedAt: input.now?.() ?? new Date(),
+        });
+        await input.sinks.journal.pauseRun?.(journalRun.runId, blocker);
+        const attempts = result.journal.attempts;
+        result = {
+          status: "paused",
+          blocker,
+          journal: {
+            run: journalRun,
+            bridgeUnitId: enumeratedUnit.unit.bridgeUnitId,
+            sourceUnitKey: enumeratedUnit.unit.sourceUnitKey,
+            attempts: [...attempts],
+          },
+          telemetry: result.telemetry,
+        };
+      }
       slots[index] = result;
+      if (result.status === "paused") {
+        pausedBlocker ??= result.blocker;
+        budgetStopped = budgetStopped || result.blocker.kind === "budget_cap";
+        return;
+      }
       if (result.status === "success") {
         // Only completed cost gates further dispatch (PROJECT LAW: real cost).
         realizedCostExactUsd = addDecimalUsd(
@@ -775,11 +967,9 @@ export async function runProjectDrivenExecutor(
       sawPhysicalInvocation = true;
       zdrConfirmed = zdrConfirmed && slot.telemetry.zdr;
     }
-    if (slot.status === "failure") {
-      // Its physical calls were persisted as soon as this failed unit
-      // completed; no fabricated target/outcome accompanies them.
+    if (slot.status === "paused") {
       attemptsPersisted += slot.journal.attempts.length;
-      failures.push(slot.failure);
+      pausedBlocker ??= slot.blocker;
       continue;
     }
 
@@ -817,7 +1007,7 @@ export async function runProjectDrivenExecutor(
   // Coverage is the export gate. Do not turn an operational failure, budget
   // pause, or bounded pilot slice into source text just to manufacture a
   // complete-looking bridge. The later run finalizer/supervisor owns resume.
-  const coverageComplete = writtenBodies.size === unitsInScope;
+  const coverageComplete = pausedBlocker === null && writtenBodies.size === unitsInScope;
   // Existing call sites render a number, but all accounting and persistence
   // above use this exact decimal string. Do not feed this projection back into
   // any journal or decision path.
@@ -846,7 +1036,7 @@ export async function runProjectDrivenExecutor(
     sourceBridgeHash: hashDraftedAgainstBridge(input.rawBridge),
     writtenUnits,
   };
-  if (coverageComplete) {
+  if (coverageComplete && pausedBlocker === null) {
     const translatedBridge = synthesiseDrivenTranslatedBridge({
       rawBridge: input.rawBridge,
       writtenBodies,
@@ -862,6 +1052,8 @@ export async function runProjectDrivenExecutor(
 
   return {
     journalRunId: journalRun.runId,
+    runState: pausedBlocker === null ? "running" : "paused",
+    pausedBlocker,
     unitsEnumerated,
     unitsInScope,
     unitsRun,
@@ -885,12 +1077,65 @@ export async function runProjectDrivenExecutor(
 // Bounded-concurrent unit scheduling — per-unit worker + deterministic buffers
 // ---------------------------------------------------------------------------
 
+function invocationLifecycleFor(sink: DrivenUnitJournalSink): InvocationLifecycle | undefined {
+  if (
+    sink.attemptStarted === undefined &&
+    sink.attemptCompleted === undefined &&
+    sink.pauseRun === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    attemptStarted: async (attempt) => {
+      await sink.attemptStarted?.(attempt);
+    },
+    attemptCompleted: async (attempt) => {
+      await sink.attemptCompleted?.(attempt);
+    },
+    pauseRun: async (runId, blocker) => {
+      await sink.pauseRun?.(runId, blocker);
+    },
+  };
+}
+
+function budgetBlocker(
+  runId: string,
+  budgetCapExactUsd: string,
+  realizedCostExactUsd: string,
+  raisedAt: Date,
+): OperationalBlocker {
+  return {
+    kind: "budget_cap",
+    detail: `run cost cap $${budgetCapExactUsd} reached at $${realizedCostExactUsd}`,
+    evidence: `journal-run:${runId};spent-usd:${realizedCostExactUsd}`,
+    raisedAt: raisedAt.toISOString(),
+    operatorAction: "raise the cost cap, then resume",
+  };
+}
+
+function itotoriBugBlocker(input: {
+  runId: string;
+  bridgeUnitId: string;
+  operation: string;
+  error: unknown;
+  raisedAt: Date;
+}): OperationalBlocker {
+  const detail = input.error instanceof Error ? input.error.message : String(input.error);
+  return {
+    kind: "itotori_bug",
+    detail: `${input.operation}: ${detail}`,
+    evidence: `journal-run:${input.runId};unit:${input.bridgeUnitId};operation:${input.operation}`,
+    raisedAt: input.raisedAt.toISOString(),
+    operatorAction: "fix the itotori defect, then resume this run",
+  };
+}
+
 /**
  * The fully-computed outcome of driving ONE unit through the agentic loop,
  * captured (NOT persisted) inside a worker so the pool can run units
  * concurrently and the caller can persist them in CANONICAL order afterwards.
  */
-type UnitRunResult = UnitRunSuccess | UnitRunFailure;
+type UnitRunResult = UnitRunSuccess | UnitRunPaused;
 
 type UnitRunSuccess = {
   status: "success";
@@ -904,11 +1149,10 @@ type UnitRunSuccess = {
   queueCaptures: CapturedReviewerQueueCreate[];
 };
 
-type UnitRunFailure = {
-  status: "failure";
-  failure: DrivenUnitFailure;
+type UnitRunPaused = {
+  status: "paused";
+  blocker: OperationalBlocker;
   journal: DrivenFailedUnitJournalRecord;
-  /** Physical calls can incur cost even when the unit produces no outcome. */
   telemetry: ProviderTelemetrySummary;
 };
 
@@ -916,10 +1160,10 @@ type UnitRunFailure = {
  * Drive ONE unit through `runAgenticLoopForUnit` and capture its complete
  * journal payload. The worker persists that payload immediately after this
  * function returns; reviewer-queue writes stay buffered for canonical replay
- * later. PER-UNIT ISOLATION: a thrown error (incl. a live semantic-agent
- * malformed pack, the filed P2) is caught here and returned as a failure so
- * one bad unit never aborts the pool. Config-driven scope + the (modelId,
- * providerId) pinning + ZDR posture all thread through the loop UNCHANGED.
+ * later. Any unexpected exception is an operational itotori bug: the durable
+ * run is paused and the unit remains pending. No exception becomes a terminal
+ * per-unit outcome. Config-driven scope + the (modelId, providerId) pinning +
+ * ZDR posture all thread through the loop unchanged.
  */
 async function runSingleDrivenUnit(args: {
   enumeratedUnit: EnumeratedUnit;
@@ -928,9 +1172,21 @@ async function runSingleDrivenUnit(args: {
   targetLocale: string;
   engineProfile: DrivenEngineProfile;
   journalRun: DrivenJournalRunRecord;
+  lifecycle: InvocationLifecycle | undefined;
+  costAdmission: InvocationCostAdmission | undefined;
   log: (message: string) => void;
 }): Promise<UnitRunResult> {
-  const { enumeratedUnit, input, policy, targetLocale, engineProfile, journalRun, log } = args;
+  const {
+    enumeratedUnit,
+    input,
+    policy,
+    targetLocale,
+    engineProfile,
+    journalRun,
+    lifecycle,
+    costAdmission,
+    log,
+  } = args;
   const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
   // Resolve the per-unit structure-informed context OUTSIDE the try block so
   // the failure path can surface it in the diagnostic (itotori-agent-facing-
@@ -946,6 +1202,8 @@ async function runSingleDrivenUnit(args: {
     runId: journalRun.runId,
     bridgeUnitId: unit.bridgeUnitId,
     source: input.providerFactory,
+    ...(lifecycle !== undefined ? { lifecycle } : {}),
+    ...(costAdmission !== undefined ? { costAdmission } : {}),
   });
   try {
     assertValidDrivenUnitContext(context);
@@ -1057,17 +1315,9 @@ async function runSingleDrivenUnit(args: {
       queueCaptures,
     };
   } catch (error) {
-    providerAttempts.markFailed(error);
-    log(
-      `project-driven-executor: unit ${unit.sourceUnitKey} FAILED (isolated, run continues): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    // itotori-agent-facing-pipeline-failure-diagnostics — turn the bare throw
-    // into a structured per-unit diagnostic so a driving agent gets the step,
-    // failing unit/scene, redacted inputs, and a repro pointer — not just a
-    // class + message. The diagnostic is optional on `DrivenUnitFailure` so
-    // existing call sites that read the four legacy fields keep working.
+    // No exception becomes a terminal unit failure. Model-output failures are
+    // already classified by InvocationSupervisor; anything else is an
+    // itotori defect and pauses the durable run with this unit still pending.
     const unitInputs = redactUnitInputsForDiagnostic(unit, policy);
     const diagnostic = buildPipelineUnitFailureDiagnostic({
       bridgeUnitId: unit.bridgeUnitId,
@@ -1079,15 +1329,30 @@ async function runSingleDrivenUnit(args: {
       stage: "translation",
       agentLabel: "translation-primary",
     });
+    const blocker: OperationalBlocker = isInvocationOperationalPause(error)
+      ? error.blocker
+      : error instanceof InvocationRetryCeilingError
+        ? {
+            kind: "itotori_bug",
+            detail: error.message,
+            evidence: `${error.lastFailure}:${error.detail}`,
+            raisedAt: (input.now?.() ?? new Date()).toISOString(),
+            operatorAction: "fix the model/tool/schema configuration, then resume",
+          }
+        : {
+            kind: "itotori_bug",
+            detail: `${diagnostic.errorClass}: ${diagnostic.errorMessage}`,
+            evidence: `journal-run:${journalRun.runId};unit:${unit.bridgeUnitId};diagnostic:${diagnostic.errorClass}`,
+            raisedAt: (input.now?.() ?? new Date()).toISOString(),
+            operatorAction: "fix the itotori defect, then resume this run",
+          };
+    await input.sinks.journal.pauseRun?.(journalRun.runId, blocker);
+    log(
+      `project-driven-executor: unit ${unit.sourceUnitKey} PAUSED run (${blocker.kind}): ${blocker.detail}`,
+    );
     return {
-      status: "failure",
-      failure: {
-        bridgeUnitId: unit.bridgeUnitId,
-        sourceUnitKey: unit.sourceUnitKey,
-        errorClass: diagnostic.errorClass,
-        errorMessage: diagnostic.errorMessage,
-        diagnostic,
-      },
+      status: "paused",
+      blocker,
       journal: {
         run: journalRun,
         bridgeUnitId: unit.bridgeUnitId,
@@ -1482,7 +1747,9 @@ export function summariseCapturedProviderAttempts(
   let totalTokensOut = 0;
   let zdr = true;
   for (const attempt of attempts) {
-    totalCostExactUsd = addDecimalUsd(totalCostExactUsd, attempt.costUsd);
+    if (attempt.costUsd !== null) {
+      totalCostExactUsd = addDecimalUsd(totalCostExactUsd, attempt.costUsd);
+    }
     totalTokensIn += attempt.tokensIn ?? 0;
     totalTokensOut += attempt.tokensOut ?? 0;
     zdr = zdr && attempt.zdr;

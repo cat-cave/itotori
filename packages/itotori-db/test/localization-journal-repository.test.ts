@@ -23,6 +23,250 @@ const scope = {
 } as const;
 
 describe("ItotoriLocalizationJournalRepository", () => {
+  it("atomically seeds ordered units, persists attempts before dispatch, and writes from an already-completed attempt", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-lifecycle");
+
+      const run = await repository.seedRun(localActor, seed);
+      expect(run).toMatchObject({
+        runId: seed.runId,
+        status: "running",
+        frozenScope: seed.frozenScope,
+        routingPolicy: seed.routingPolicy,
+        costPolicy: seed.costPolicy,
+        pausedBlocker: null,
+      });
+      // Retrying the launch write is exact/idempotent; it cannot duplicate or
+      // reorder the frozen unit obligation set.
+      await expect(repository.seedRun(localActor, seed)).resolves.toMatchObject({
+        runId: seed.runId,
+      });
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        {
+          bridgeUnitId: "raw-bridge-unit-lifecycle-1",
+          sourceUnitKey: "scene.lifecycle.1",
+          unitOrdinal: 0,
+          state: "pending",
+          nextAction: { kind: "drive_unit", stage: "translation" },
+        },
+        {
+          bridgeUnitId: "raw-bridge-unit-lifecycle-2",
+          sourceUnitKey: "scene.lifecycle.2",
+          unitOrdinal: 1,
+          state: "pending",
+          nextAction: { kind: "drive_unit", stage: "translation" },
+        },
+      ]);
+
+      const begin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      const dispatching = await repository.beginAttempt(localActor, begin);
+      expect(dispatching).toMatchObject({
+        attemptId: begin.attemptId,
+        lifecycleState: "dispatching",
+        requestedModelId: "model-lifecycle-requested",
+        requestedProviderId: "provider-lifecycle-requested",
+        providerRunId: begin.attemptId,
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        zdr: true,
+        validationResult: null,
+        completedAt: null,
+      });
+      await expect(repository.beginAttempt(localActor, begin)).resolves.toMatchObject({
+        lifecycleState: "dispatching",
+      });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toHaveLength(1);
+      // Jobs/cost read models describe completed physical calls only; an
+      // honest in-flight row is visible in the attempt journal, not fabricated
+      // into a zero-cost served result.
+      expect(
+        await repository.loadJobsRunTable(localActor, { projectId: scope.projectId }),
+      ).toMatchObject({ pagination: { total: 0 }, rows: [] });
+
+      const completion = lifecycleCompleteAttempt(
+        begin,
+        "model-lifecycle-served",
+        "provider-lifecycle-served",
+      );
+      const completed = await repository.completeAttempt(localActor, completion);
+      expect(completed).toMatchObject({
+        lifecycleState: "completed",
+        modelId: "model-lifecycle-served",
+        providerId: "provider-lifecycle-served",
+        costUsd: "0.00000000000000000007",
+        validationResult: "accepted",
+        retryDecision: "write",
+      });
+      await expect(repository.completeAttempt(localActor, completion)).resolves.toMatchObject({
+        lifecycleState: "completed",
+      });
+      await expect(
+        repository.completeAttempt(localActor, { ...completion, costUsd: "0.5" }),
+      ).rejects.toMatchObject({ code: "attempt_conflict" });
+
+      const timeoutBegin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-2");
+      await repository.beginAttempt(localActor, timeoutBegin);
+      const timeoutCompletion = {
+        ...lifecycleCompleteAttempt(timeoutBegin, "unused-model", "unused-provider"),
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        costKind: undefined,
+        usageResponseJson: undefined,
+        tokensIn: null,
+        tokensOut: null,
+        tokenCountSource: undefined,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        cacheDiscountMicrosUsd: null,
+        fallbackUsed: undefined,
+        fallbackPlan: undefined,
+        finishState: "timeout",
+        validationResult: "provider_failed" as const,
+        failureClass: "timeout",
+        retryDecision: "advance" as const,
+      };
+      await expect(
+        repository.completeAttempt(localActor, timeoutCompletion),
+      ).resolves.toMatchObject({
+        lifecycleState: "completed",
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        validationResult: "provider_failed",
+      });
+      // Providerless timeout evidence is durable, but is not projected as a
+      // fake served/cost row in the legacy jobs read model.
+      expect(
+        await repository.loadJobsRunTable(localActor, { projectId: scope.projectId }),
+      ).toMatchObject({ pagination: { total: 1 }, rows: [{ attemptId: begin.attemptId }] });
+
+      const outcome: WrittenUnitOutcome = {
+        id: "written-outcome-lifecycle",
+        status: "written",
+        unitId: begin.bridgeUnitId,
+        targetLocale: scope.targetLocale,
+        selectedCandidateId: "candidate-lifecycle",
+        candidates: [
+          {
+            id: "candidate-lifecycle",
+            outcomeId: "written-outcome-lifecycle",
+            body: asNonBlankTargetText("Welcome back."),
+            producedBy: {
+              modelId: completion.modelId,
+              providerId: completion.providerId,
+            },
+            attemptId: begin.attemptId,
+            kind: "primary",
+          },
+        ],
+        findings: [],
+        qualityFlags: [],
+        provenance: { origin: "invocation-supervisor" },
+        writtenAt: "2026-07-12T12:00:02.000Z",
+      };
+      await repository.persistUnit(localActor, {
+        runId: seed.runId,
+        bridgeUnitId: begin.bridgeUnitId,
+        sourceUnitKey: "scene.lifecycle.1",
+        outcome,
+        // The supervisor completed this attempt before materializing the
+        // canonical outcome; it need not replay terminal attempt facts here.
+        attempts: [],
+        contextPacket: null,
+        contextRefs: [],
+        speakerLabels: [],
+        qaDetails: {},
+      });
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        { bridgeUnitId: begin.bridgeUnitId, state: "written", nextAction: null },
+        { bridgeUnitId: "raw-bridge-unit-lifecycle-2", state: "pending" },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("guards operational pause/resume without changing pending unit work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-pause-resume");
+      await repository.seedRun(localActor, seed);
+      const blocker = {
+        kind: "provider_outage" as const,
+        detail: "All configured routes returned retryable transport failures.",
+        evidence: "attempts=route-a:2,route-b:2",
+        raisedAt: "2026-07-12T12:05:00.000Z",
+        operatorAction: "Wait for a provider route to recover, then resume.",
+      };
+
+      const paused = await repository.pauseRun(localActor, seed.runId, blocker);
+      expect(paused).toMatchObject({ status: "paused", pausedBlocker: blocker });
+      await expect(
+        repository.beginAttempt(
+          localActor,
+          lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1"),
+        ),
+      ).rejects.toMatchObject({ code: "invalid_run_transition" });
+      await expect(
+        repository.pauseRun(localActor, seed.runId, {
+          ...blocker,
+          detail: "A concurrent worker observed the same outage later.",
+          evidence: "attempts=route-c:2",
+        }),
+      ).resolves.toMatchObject({
+        status: "paused",
+        // First-writer-wins: concurrent supervisors converge without
+        // replacing the original operator evidence.
+        pausedBlocker: blocker,
+      });
+
+      const resumed = await repository.resumeRun(localActor, seed.runId);
+      expect(resumed).toMatchObject({ status: "running", pausedBlocker: null });
+      const interrupted = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      await repository.beginAttempt(localActor, interrupted);
+      // Explicit resume of a still-running run is the process-crash recovery
+      // boundary. It closes the orphaned pre-dispatch fact before re-driving.
+      await expect(repository.resumeRun(localActor, seed.runId)).resolves.toMatchObject({
+        status: "running",
+        pausedBlocker: null,
+      });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toMatchObject([
+        {
+          attemptId: interrupted.attemptId,
+          lifecycleState: "completed",
+          modelId: null,
+          providerId: null,
+          costUsd: null,
+          finishState: "interrupted",
+          validationResult: "provider_failed",
+          failureClass: "interrupted",
+          retryDecision: "retry",
+          errorClasses: ["supervisor_process_interrupted"],
+        },
+      ]);
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        { state: "pending", nextAction: { kind: "drive_unit", stage: "translation" } },
+        { state: "pending", nextAction: { kind: "drive_unit", stage: "translation" } },
+      ]);
+
+      await expect(
+        repository.seedRun(localActor, {
+          ...seed,
+          units: seed.units.slice(0, 1),
+        }),
+      ).rejects.toMatchObject({ code: "run_seed_conflict" });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("persists N physical attempts and a lossless written-outcome provenance projection", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -344,6 +588,84 @@ describe("ItotoriLocalizationJournalRepository", () => {
     }
   });
 });
+
+function lifecycleSeedInput(runId: string) {
+  return {
+    runId,
+    ...scope,
+    frozenScope: {
+      kind: "explicit_units",
+      unitIds: ["raw-bridge-unit-lifecycle-1", "raw-bridge-unit-lifecycle-2"],
+    },
+    routingPolicy: { routes: ["model-lifecycle-requested/provider-lifecycle-requested"] },
+    costPolicy: { kind: "simple_cap_seam", capUsd: "1.00" },
+    units: [
+      {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-1",
+        sourceUnitKey: "scene.lifecycle.1",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      },
+      {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-2",
+        sourceUnitKey: "scene.lifecycle.2",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      },
+    ],
+    createdAt: "2026-07-12T12:00:00.000Z",
+  };
+}
+
+function lifecycleBeginAttempt(runId: string, bridgeUnitId: string) {
+  return {
+    attemptId: `provider-run-lifecycle-${bridgeUnitId}`,
+    runId,
+    bridgeUnitId,
+    stage: "translation",
+    agentLabel: "translator",
+    logicalCallId: `logical-lifecycle-${bridgeUnitId}`,
+    attemptIndex: 1,
+    requestedModelId: "model-lifecycle-requested",
+    requestedProviderId: "provider-lifecycle-requested",
+    zdr: true,
+    artifactRef: `provider-run:provider-run-lifecycle-${bridgeUnitId}`,
+    startedAt: "2026-07-12T12:00:01.000Z",
+  };
+}
+
+function lifecycleCompleteAttempt(
+  begin: ReturnType<typeof lifecycleBeginAttempt>,
+  modelId: string,
+  providerId: string,
+) {
+  return {
+    attemptId: begin.attemptId,
+    runId: begin.runId,
+    bridgeUnitId: begin.bridgeUnitId,
+    modelId,
+    providerId,
+    costUsd: "0.00000000000000000007",
+    costKind: "billed" as const,
+    usageResponseJson: { cost: 0.00000000000000000007 },
+    tokensIn: 9,
+    tokensOut: 4,
+    tokenCountSource: "provider_reported",
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cacheDiscountMicrosUsd: 0,
+    fallbackUsed: true,
+    fallbackPlan: ["provider-lifecycle-requested", providerId],
+    zdr: true,
+    finishState: "stop",
+    refusalState: null,
+    validationResult: "accepted" as const,
+    failureClass: null,
+    retryDecision: "write" as const,
+    retryDelayMs: null,
+    artifactRef: begin.artifactRef,
+    errorClasses: [],
+    completedAt: "2026-07-12T12:00:02.000Z",
+  };
+}
 
 function unitInput(
   runId: string,

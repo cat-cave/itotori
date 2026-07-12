@@ -314,6 +314,12 @@ export type ModelInvocationRequest = {
   preset?: ProviderPresetReference;
   prompt: PromptPresetReference;
   runId?: string;
+  /**
+   * InvocationSupervisor-owned cancellation. Provider adapters must pass this
+   * signal to the physical transport so the attempt deadline covers both the
+   * request and response decode instead of merely racing an abandoned call.
+   */
+  signal?: AbortSignal;
   recordRawText?: boolean;
 };
 
@@ -565,6 +571,17 @@ export type ProviderLiveRunOptions =
 
 export interface ModelProvider {
   readonly descriptor: ProviderDescriptor;
+  /**
+   * Optional provider-owned guard exposed to InvocationSupervisor so legacy
+   * per-process caps are checked before an attempt row is opened. Node 4 will
+   * replace this compatibility probe with the atomic run-cost reservation.
+   */
+  preflightInvocation?(
+    request: ModelInvocationRequest,
+  ): Promise<
+    | { admitted: true }
+    | { admitted: false; detail: string; evidence: string; operatorAction?: string }
+  >;
   invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult>;
 }
 

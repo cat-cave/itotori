@@ -55,9 +55,14 @@ const IDENTITY = {
 } as const;
 
 /** A minimal localize result carrying only the fields the command reads. */
-function fakeLocalizeResult(withPatch: boolean): RunLocalizeFullProjectLiveResult {
+function fakeLocalizeResult(
+  withPatch: boolean,
+  pausedBlocker: RunLocalizeFullProjectLiveResult["result"]["pausedBlocker"] = null,
+): RunLocalizeFullProjectLiveResult {
   const result = {
     journalRunId: "localization-journal-run-test",
+    runState: pausedBlocker === null ? "running" : "paused",
+    pausedBlocker,
     unitsRun: 3,
     writtenOutcomeCount: 3,
     failures: [],
@@ -104,7 +109,10 @@ type Capture = { localize?: unknown; nativeCalls: string[][] };
 function fakeStages(
   order: CallLog,
   capture: Capture,
-  opts: { withPatch?: boolean } = {},
+  opts: {
+    withPatch?: boolean;
+    pausedBlocker?: RunLocalizeFullProjectLiveResult["result"]["pausedBlocker"];
+  } = {},
 ): LocalizeGameStageSeams {
   return {
     extract: (args) => {
@@ -128,7 +136,9 @@ function fakeStages(
     localize: (args) => {
       order.push("localize");
       capture.localize = args;
-      return Promise.resolve(fakeLocalizeResult(opts.withPatch ?? true));
+      return Promise.resolve(
+        fakeLocalizeResult(opts.withPatch ?? true, opts.pausedBlocker ?? null),
+      );
     },
     runNative: (_bin, args) => {
       order.push(`native:${args[0]}`);
@@ -154,6 +164,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
       runDir,
       identity: IDENTITY,
       validateScene: "1",
+      resumeRunId: "localization-journal-run-resume-me",
       expectTextContains: "Hello",
       allowPartialPatch: true,
       io,
@@ -177,6 +188,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
       configPath: string;
       sourceRoot: string;
       patchTargetRoot: string;
+      resumeRunId?: string;
     };
     const effective = io.writes.get(localizeArgs.configPath) as Record<string, unknown>;
     expect(effective.bridgePath).toBe(join(runDir, "bridge-bundle.json"));
@@ -187,6 +199,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     // Source + target are threaded so the patch-apply seam runs.
     expect(localizeArgs.sourceRoot).toBe("/games/sweetie");
     expect(localizeArgs.patchTargetRoot).toBe("/out/patched");
+    expect(localizeArgs.resumeRunId).toBe("localization-journal-run-resume-me");
     expect((localizeArgs as { allowPartialPatch?: boolean }).allowPartialPatch).toBe(true);
 
     // Validate stage hit the PATCHED target (target tree, not source).
@@ -218,6 +231,42 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     expect(result.patchTargetRoot).toBe("/out/patched");
     expect(result.localize.patchApply).toBeDefined();
     expect(logs.join("\n")).toContain("written=3");
+  });
+
+  it("surfaces an exact resumable blocker and stops before patch validation", async () => {
+    const runDir = mkdtempSync(join(tmpdir(), "lgame-paused-"));
+    const configPath = join(runDir, "base.config.json");
+    const io = memoryIo({ [configPath]: BASE_CONFIG });
+    const order: CallLog = [];
+    const capture: Capture = { nativeCalls: [] };
+    const logs: string[] = [];
+    const pausedBlocker = {
+      kind: "provider_outage" as const,
+      detail: "all configured provider routes were exhausted",
+      evidence: "HTTP 503 from the pinned route",
+      raisedAt: "2026-07-12T12:00:00.000Z",
+      operatorAction: "restore the provider route, then resume this run",
+    };
+
+    const result = await runLocalizeGameCommand({
+      configPath,
+      sourceRoot: "/games/sweetie",
+      targetRoot: "/out/patched",
+      runDir,
+      identity: IDENTITY,
+      validateScene: "1",
+      resumeRunId: "localization-journal-run-resume-me",
+      io,
+      stages: fakeStages(order, capture, { withPatch: false, pausedBlocker }),
+      log: (message) => logs.push(message),
+    });
+
+    expect(order).toEqual(["extract", "structure", "localize"]);
+    expect(result.localize.result.runState).toBe("paused");
+    expect(result.localize.result.pausedBlocker).toEqual(pausedBlocker);
+    expect(result.localize.patchApply).toBeUndefined();
+    expect(capture.nativeCalls).toHaveLength(0);
+    expect(logs.join("\n")).toContain(JSON.stringify(pausedBlocker));
   });
 
   it("fails closed when the localize driver did not apply a patch", async () => {

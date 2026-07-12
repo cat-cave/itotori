@@ -1,8 +1,13 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import {
+  executeStructuredInvocation,
+  InvocationRetryCeilingError,
+} from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   ProviderRunRecord,
@@ -68,6 +73,12 @@ export async function generateCharacterRelationships(
   // 3. Compute roster: union of curated character ids + every observed
   //    speaker + every observed addressee. Sorted for determinism.
   const roster = computeRoster(input);
+  const sourceHashByUnitId = new Map<string, string>();
+  const validUnitIds = new Set<string>();
+  for (const unit of input.units) {
+    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
+    validUnitIds.add(unit.bridgeUnitId);
+  }
 
   // 4. Build prompt (canonicalisation happens inside buildPrompt).
   const templateVersion = input.promptTemplateVersion ?? PROMPT_TEMPLATE_VERSION_V1;
@@ -95,21 +106,50 @@ export async function generateCharacterRelationships(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  // 5. Invoke provider. The capability-guard runs inside the provider's
-  //    invoke(); this method does NOT construct a provider on its own.
-  const invocation = await options.provider.invoke(request);
+  // 5. Invoke and accept only a parsed, input-grounded pack. Parse/schema and
+  //    semantic failures stay inside InvocationSupervisor so it can issue a
+  //    corrective retry before this agent projects any durable record shape.
+  let lastModelOutputError: unknown;
+  let supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack };
+  try {
+    supervised = await executeStructuredInvocation(options.provider, {
+      request,
+      parse: (raw) => {
+        try {
+          return parseProviderPack(raw);
+        } catch (error) {
+          lastModelOutputError = error;
+          throw error;
+        }
+      },
+      isSchemaValidationError: (error) =>
+        error instanceof CharacterRelationshipParseError ||
+        error instanceof CharacterRelationshipInvalidKindError,
+      validateParsed: (pack) => {
+        try {
+          validateProviderPack(pack, roster, validUnitIds, sourceHashByUnitId);
+        } catch (error) {
+          lastModelOutputError = error;
+          throw error;
+        }
+      },
+      successDecision: "advance",
+    });
+  } catch (error) {
+    // A bare semantic-agent call has no run/stage binding, so persistent
+    // invalid content reaches the standalone supervisor ceiling. Preserve the
+    // agent's public typed validation error; run-bound context supervision
+    // exits earlier through InvocationContentExhaustedError for best-effort
+    // enrichment handling.
+    if (error instanceof InvocationRetryCeilingError && lastModelOutputError !== undefined) {
+      throw lastModelOutputError;
+    }
+    throw error;
+  }
+  const { invocation, parsed: pack } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
 
-  // 6. Parse provider output as the structured pack.
-  const pack = parseProviderPack(invocation.content ?? "");
-
-  // 7. Validate the pack and project into the persisted record shape.
-  const sourceHashByUnitId = new Map<string, string>();
-  const validUnitIds = new Set<string>();
-  for (const unit of input.units) {
-    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
-    validUnitIds.add(unit.bridgeUnitId);
-  }
+  // 6. Project the already-accepted pack into the persisted record shape.
 
   const now = (input.now ?? (() => new Date()))();
   const generatedAt = now.toISOString();
@@ -126,36 +166,8 @@ export async function generateCharacterRelationships(
 
   const bios: CharacterBio[] = [];
   for (const emitted of pack.bios) {
-    if (!roster.has(emitted.characterId)) {
-      throw new CharacterRelationshipUnknownCharacterError(emitted.characterId, "bio");
-    }
-    if (emitted.citedUnitIds.length === 0) {
-      // An empty bio citation list is structurally indistinguishable from
-      // a relationship's uncited-edge case; we surface the dedicated edge
-      // error variant only for relationships, and reuse the same "no
-      // citations" reject pathway for bios via the unknown-citation
-      // surface (an empty list cannot identify any unit).
-      throw new CharacterRelationshipUnknownCitationError(
-        "<no citation>",
-        `bio for ${emitted.characterId}`,
-      );
-    }
-    const citedUnitIds: string[] = [];
-    const citedUnitHashes: string[] = [];
-    for (const id of emitted.citedUnitIds) {
-      if (!validUnitIds.has(id)) {
-        throw new CharacterRelationshipUnknownCitationError(id, `bio for ${emitted.characterId}`);
-      }
-      const hashValue = sourceHashByUnitId.get(id);
-      if (!hashValue) {
-        throw new CharacterRelationshipUnknownCitationError(
-          id,
-          `bio for ${emitted.characterId} (no source hash)`,
-        );
-      }
-      citedUnitIds.push(id);
-      citedUnitHashes.push(hashValue);
-    }
+    const citedUnitIds = [...emitted.citedUnitIds];
+    const citedUnitHashes = emitted.citedUnitIds.map((id) => sourceHashByUnitId.get(id)!);
     bios.push({
       id: createUuid7(),
       projectId: input.projectId,
@@ -178,50 +190,8 @@ export async function generateCharacterRelationships(
 
   const relationships: CharacterRelationship[] = [];
   for (const emitted of pack.relationships) {
-    if (!roster.has(emitted.fromCharacterId)) {
-      throw new CharacterRelationshipUnknownCharacterError(
-        emitted.fromCharacterId,
-        "relationship-from",
-      );
-    }
-    if (!roster.has(emitted.toCharacterId)) {
-      throw new CharacterRelationshipUnknownCharacterError(
-        emitted.toCharacterId,
-        "relationship-to",
-      );
-    }
-    if (!isValidKind(emitted.kind)) {
-      throw new CharacterRelationshipInvalidKindError(emitted.kind);
-    }
-    if (!isValidDirection(emitted.direction)) {
-      throw new CharacterRelationshipInvalidKindError(emitted.direction);
-    }
-    if (emitted.citedUnitIds.length === 0) {
-      throw new CharacterRelationshipUncitedEdgeError(
-        emitted.fromCharacterId,
-        emitted.toCharacterId,
-        emitted.kind,
-      );
-    }
-    const citedUnitIds: string[] = [];
-    const citedUnitHashes: string[] = [];
-    for (const id of emitted.citedUnitIds) {
-      if (!validUnitIds.has(id)) {
-        throw new CharacterRelationshipUnknownCitationError(
-          id,
-          `relationship ${emitted.fromCharacterId}->${emitted.toCharacterId}`,
-        );
-      }
-      const hashValue = sourceHashByUnitId.get(id);
-      if (!hashValue) {
-        throw new CharacterRelationshipUnknownCitationError(
-          id,
-          `relationship ${emitted.fromCharacterId}->${emitted.toCharacterId} (no source hash)`,
-        );
-      }
-      citedUnitIds.push(id);
-      citedUnitHashes.push(hashValue);
-    }
+    const citedUnitIds = [...emitted.citedUnitIds];
+    const citedUnitHashes = emitted.citedUnitIds.map((id) => sourceHashByUnitId.get(id)!);
     relationships.push({
       id: createUuid7(),
       projectId: input.projectId,
@@ -289,6 +259,78 @@ export function computeRoster(input: CharacterRelationshipInput): Set<string> {
   return roster;
 }
 
+function validateProviderPack(
+  pack: ProviderEmittedPack,
+  roster: ReadonlySet<string>,
+  validUnitIds: ReadonlySet<string>,
+  sourceHashByUnitId: ReadonlyMap<string, string>,
+): void {
+  for (const emitted of pack.bios) {
+    if (!roster.has(emitted.characterId)) {
+      throw new CharacterRelationshipUnknownCharacterError(emitted.characterId, "bio");
+    }
+    if (emitted.citedUnitIds.length === 0) {
+      throw new CharacterRelationshipUnknownCitationError(
+        "<no citation>",
+        `bio for ${emitted.characterId}`,
+      );
+    }
+    for (const id of emitted.citedUnitIds) {
+      if (!validUnitIds.has(id)) {
+        throw new CharacterRelationshipUnknownCitationError(id, `bio for ${emitted.characterId}`);
+      }
+      if (!sourceHashByUnitId.get(id)) {
+        throw new CharacterRelationshipUnknownCitationError(
+          id,
+          `bio for ${emitted.characterId} (no source hash)`,
+        );
+      }
+    }
+  }
+
+  for (const emitted of pack.relationships) {
+    if (!roster.has(emitted.fromCharacterId)) {
+      throw new CharacterRelationshipUnknownCharacterError(
+        emitted.fromCharacterId,
+        "relationship-from",
+      );
+    }
+    if (!roster.has(emitted.toCharacterId)) {
+      throw new CharacterRelationshipUnknownCharacterError(
+        emitted.toCharacterId,
+        "relationship-to",
+      );
+    }
+    if (!isValidKind(emitted.kind)) {
+      throw new CharacterRelationshipInvalidKindError(emitted.kind);
+    }
+    if (!isValidDirection(emitted.direction)) {
+      throw new CharacterRelationshipInvalidKindError(emitted.direction);
+    }
+    if (emitted.citedUnitIds.length === 0) {
+      throw new CharacterRelationshipUncitedEdgeError(
+        emitted.fromCharacterId,
+        emitted.toCharacterId,
+        emitted.kind,
+      );
+    }
+    for (const id of emitted.citedUnitIds) {
+      if (!validUnitIds.has(id)) {
+        throw new CharacterRelationshipUnknownCitationError(
+          id,
+          `relationship ${emitted.fromCharacterId}->${emitted.toCharacterId}`,
+        );
+      }
+      if (!sourceHashByUnitId.get(id)) {
+        throw new CharacterRelationshipUnknownCitationError(
+          id,
+          `relationship ${emitted.fromCharacterId}->${emitted.toCharacterId} (no source hash)`,
+        );
+      }
+    }
+  }
+}
+
 function parseProviderPack(content: string): ProviderEmittedPack {
   let parsed: unknown;
   try {
@@ -318,9 +360,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     const row = entry as Record<string, unknown>;
     const characterId = typeof row.characterId === "string" ? row.characterId : null;
     const bioText = typeof row.bioText === "string" ? row.bioText : null;
-    const citedUnitIds = Array.isArray(row.citedUnitIds)
-      ? row.citedUnitIds.filter((id): id is string => typeof id === "string")
-      : null;
+    const citedUnitIds = parseStringArray(row.citedUnitIds);
     if (characterId === null || bioText === null || citedUnitIds === null) {
       throw new CharacterRelationshipParseError("output.bios entry missing required field");
     }
@@ -337,9 +377,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     const kindRaw = typeof row.kind === "string" ? row.kind : null;
     const directionRaw = typeof row.direction === "string" ? row.direction : null;
     const descriptor = typeof row.descriptor === "string" ? row.descriptor : null;
-    const citedUnitIds = Array.isArray(row.citedUnitIds)
-      ? row.citedUnitIds.filter((id): id is string => typeof id === "string")
-      : null;
+    const citedUnitIds = parseStringArray(row.citedUnitIds);
     if (
       fromCharacterId === null ||
       toCharacterId === null ||
@@ -368,6 +406,16 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     });
   }
   return { bios, relationships };
+}
+
+function parseStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const parsed: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    parsed.push(entry);
+  }
+  return parsed;
 }
 
 function isValidKind(value: string): value is CharacterRelationshipKind {

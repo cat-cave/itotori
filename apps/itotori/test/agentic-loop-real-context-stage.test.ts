@@ -360,11 +360,12 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
       },
     } as unknown as ItotoriTerminologyCandidateRepositoryPort;
 
-    const unit = makeUnit("おはよう。");
+    const unit = makeUnit("ハル、おはよう。");
     // A factory whose terminology-candidate agent emits a candidate whose
     // surfaceForm ("ハル") matches the curator-inserted repository term. The
-    // repository check runs BEFORE citation validation, so a non-empty
-    // citedUnitIds is all that is needed to reach it.
+    // supervised semantic-grounding check first proves the cited surface
+    // appears in the source; the asynchronous repository check then catches
+    // the curator-inserted conflict before candidate persistence.
     const factory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
       new FakeModelProvider({
         providerName: `i150-loop-fake:${stage}:${agentLabel}`,

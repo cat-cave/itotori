@@ -23,6 +23,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AuthorizationActor, ItotoriProjectRepositoryPort } from "@itotori/db";
+import { dispatchProviderAdapter } from "../orchestrator/invocation-supervisor.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import {
   DEV_PAIR,
@@ -103,9 +104,19 @@ export class DbBackedDraftModelProvider implements ModelProvider {
     };
   }
 
+  async preflightInvocation(
+    request: ModelInvocationRequest,
+  ): Promise<
+    | { admitted: true }
+    | { admitted: false; detail: string; evidence: string; operatorAction?: string }
+  > {
+    this.inner ??= this.buildInner();
+    return (await this.inner.preflightInvocation?.(request)) ?? { admitted: true };
+  }
+
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
     this.inner ??= this.buildInner();
-    return await this.inner.invoke(request);
+    return await dispatchProviderAdapter(this.inner, request);
   }
 }
 

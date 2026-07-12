@@ -394,7 +394,10 @@ describe("OpenRouterProvider", () => {
   it("throws provider errors carrying failed run records", async () => {
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () => {
-      return jsonResponse({ error: { message: "rate limited" } }, 429);
+      return new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": "2" },
+      });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
       modelId: "openai/gpt-4o-mini",
@@ -407,6 +410,7 @@ describe("OpenRouterProvider", () => {
     await expect(provider.invoke(jsonSchemaRequest())).rejects.toMatchObject({
       code: "provider_http_error",
       retryable: true,
+      adapterMetadata: expect.objectContaining({ retryAfterMs: 2000 }),
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["http_429"],
@@ -424,6 +428,7 @@ describe("OpenRouterProvider", () => {
       retryable: true,
       providerErrorClass: "http_429",
     });
+    expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({ retryAfterMs: 2000 });
   });
 
   it("redacts upstream HTTP error text from private provider-run artifacts", async () => {

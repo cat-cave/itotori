@@ -5329,6 +5329,26 @@ export type LocalizationJournalQaSpan = {
   end: number;
 };
 
+/** Opaque, versioned supervisor inputs frozen at run launch. */
+export type LocalizationJournalFrozenScopeJson = Record<string, unknown> | unknown[];
+export type LocalizationJournalRoutingPolicyJson = Record<string, unknown>;
+export type LocalizationJournalCostPolicyJson = Record<string, unknown>;
+
+/** Run-level operational blocker persisted while execution is resumably paused. */
+export type LocalizationJournalPausedBlockerJson = {
+  kind: "budget_cap" | "provider_outage" | "itotori_bug";
+  detail: string;
+  evidence: string;
+  raisedAt: string;
+  operatorAction: string;
+};
+
+/** Durable, provider-independent description of the unit work to resume. */
+export type LocalizationJournalNextActionJson = {
+  kind: string;
+  [key: string]: unknown;
+};
+
 /**
  * One localization execution run. It owns the physical provider-call and
  * written-outcome facts needed to rebuild a patch/read model losslessly.
@@ -5347,7 +5367,13 @@ export const localizationJournalRuns = pgTable(
       .notNull()
       .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
     targetLocale: text("target_locale").notNull(),
+    frozenScope: jsonb("frozen_scope").$type<LocalizationJournalFrozenScopeJson>(),
+    routingPolicy: jsonb("routing_policy").$type<LocalizationJournalRoutingPolicyJson>(),
+    costPolicy: jsonb("cost_policy").$type<LocalizationJournalCostPolicyJson>(),
+    status: text("status").notNull().default("running"),
+    pausedBlocker: jsonb("paused_blocker").$type<LocalizationJournalPausedBlockerJson>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("itotori_localization_journal_runs_branch_created_idx").on(
@@ -5357,6 +5383,39 @@ export const localizationJournalRuns = pgTable(
     index("itotori_localization_journal_runs_project_created_idx").on(
       table.projectId,
       table.createdAt,
+    ),
+  ],
+);
+
+/**
+ * One planned unit execution slot, seeded before dispatch. This table never
+ * stores source text, target text, or candidates; those belong only to the
+ * canonical terminal WrittenUnitOutcome tables below.
+ */
+export const localizationJournalRunUnits = pgTable(
+  "itotori_localization_journal_run_units",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    sourceUnitKey: text("source_unit_key"),
+    unitOrdinal: integer("unit_ordinal").notNull(),
+    state: text("state").notNull().default("pending"),
+    nextAction: jsonb("next_action").$type<LocalizationJournalNextActionJson>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.bridgeUnitId] }),
+    unique("itotori_localization_journal_run_units_run_ordinal_unique").on(
+      table.runId,
+      table.unitOrdinal,
+    ),
+    index("itotori_localization_journal_run_units_run_state_idx").on(
+      table.runId,
+      table.state,
+      table.unitOrdinal,
     ),
   ],
 );
@@ -5381,14 +5440,15 @@ export const localizationJournalLlmAttempts = pgTable(
     agentLabel: text("agent_label").notNull(),
     logicalCallId: text("logical_call_id").notNull(),
     attemptIndex: integer("attempt_index").notNull(),
+    lifecycleState: text("lifecycle_state").notNull().default("completed"),
     // The requested policy pair and the actual served pair are distinct facts:
     // OpenRouter may route within the ZDR allow-list after a preference miss.
     requestedModelId: text("requested_model_id"),
     requestedProviderId: text("requested_provider_id"),
-    modelId: text("model_id").notNull(),
-    providerId: text("provider_id").notNull(),
+    modelId: text("model_id"),
+    providerId: text("provider_id"),
     providerRunId: text("provider_run_id").notNull(),
-    costUsd: numeric("cost_usd").notNull(),
+    costUsd: numeric("cost_usd"),
     costKind: text("cost_kind"),
     usageResponseJson: jsonb("usage_response_json"),
     tokensIn: integer("tokens_in"),
@@ -5404,7 +5464,7 @@ export const localizationJournalLlmAttempts = pgTable(
     zdr: boolean("zdr").notNull(),
     finishState: text("finish_state"),
     refusalState: text("refusal_state"),
-    validationResult: text("validation_result").notNull(),
+    validationResult: text("validation_result"),
     failureClass: text("failure_class"),
     retryDecision: text("retry_decision"),
     retryDelayMs: integer("retry_delay_ms"),
@@ -5414,7 +5474,7 @@ export const localizationJournalLlmAttempts = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -5426,6 +5486,16 @@ export const localizationJournalLlmAttempts = pgTable(
     uniqueIndex("itotori_llm_attempts_provider_run_idx").on(table.providerRunId),
     index("itotori_llm_attempts_run_unit_idx").on(table.runId, table.bridgeUnitId),
     index("itotori_llm_attempts_run_stage_idx").on(table.runId, table.stage),
+    index("itotori_llm_attempts_dispatching_idx").on(
+      table.runId,
+      table.lifecycleState,
+      table.startedAt,
+    ),
+    foreignKey({
+      columns: [table.runId, table.bridgeUnitId],
+      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
+      name: "itotori_llm_attempts_planned_unit_fkey",
+    }).onDelete("cascade"),
   ],
 );
 
@@ -5464,6 +5534,11 @@ export const writtenUnitOutcomes = pgTable(
     uniqueIndex("itotori_written_unit_outcomes_run_outcome_idx").on(table.runId, table.outcomeId),
     uniqueIndex("itotori_written_unit_outcomes_run_unit_idx").on(table.runId, table.bridgeUnitId),
     index("itotori_written_unit_outcomes_run_written_idx").on(table.runId, table.writtenAt),
+    foreignKey({
+      columns: [table.runId, table.bridgeUnitId],
+      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
+      name: "itotori_written_unit_outcomes_planned_unit_fkey",
+    }).onDelete("cascade"),
   ],
 );
 

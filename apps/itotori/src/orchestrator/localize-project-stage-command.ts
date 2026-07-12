@@ -109,6 +109,7 @@ import {
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "./agentic-loop.js";
+import { dispatchProviderAdapter } from "./invocation-supervisor.js";
 
 export type LocalizeProjectStageIo = {
   readJson(path: string): unknown;
@@ -587,8 +588,21 @@ class StagePostureProviderWrapper implements ModelProvider {
     // pairs fall back to the safe defaults inside `descriptorForPair`.
     this.descriptor = descriptorForStagePair(opts.inner, opts.pair.pair);
   }
+  async preflightInvocation(
+    request: ModelInvocationRequest,
+  ): Promise<
+    | { admitted: true }
+    | { admitted: false; detail: string; evidence: string; operatorAction?: string }
+  > {
+    return (
+      (await this.opts.inner.preflightInvocation?.({
+        ...request,
+        maxPriceUsd: this.opts.pair.maxPriceUsd,
+      })) ?? { admitted: true }
+    );
+  }
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
-    return this.opts.inner.invoke({
+    return dispatchProviderAdapter(this.opts.inner, {
       ...request,
       maxPriceUsd: this.opts.pair.maxPriceUsd,
     });

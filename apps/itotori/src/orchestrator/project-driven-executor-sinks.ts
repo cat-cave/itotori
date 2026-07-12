@@ -14,12 +14,19 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AuthorizationActor, ItotoriLocalizationJournalRepositoryPort } from "@itotori/db";
 import type {
-  DrivenFailedUnitJournalRecord,
+  DrivenJournalResumeState,
+  DrivenJournalRunPlan,
   DrivenUnitJournalRecord,
   DrivenUnitJournalSink,
   DrivenPatchExportRecord,
   DrivenPatchExportSink,
 } from "./project-driven-executor.js";
+import type { DrivenLlmAttemptRecord } from "./attempt-outcome-journal.js";
+import type {
+  InvocationAttemptCompleted,
+  InvocationAttemptStarted,
+  OperationalBlocker,
+} from "./invocation-supervisor.js";
 
 export type DrivenJournalPersistenceOptions = {
   actor: AuthorizationActor;
@@ -33,25 +40,182 @@ export type DrivenJournalPersistenceOptions = {
  * chooses concurrent persistence.
  */
 export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
-  private readonly createdRuns = new Map<string, Promise<void>>();
+  private readonly seededRuns = new Map<string, Promise<void>>();
 
   constructor(
     private readonly journal: ItotoriLocalizationJournalRepositoryPort,
     private readonly opts: DrivenJournalPersistenceOptions,
   ) {}
 
-  async beginJournalRun(record: DrivenUnitJournalRecord["run"]): Promise<void> {
-    await this.ensureRun(record);
+  async beginJournalRun(plan: DrivenJournalRunPlan): Promise<void> {
+    let seed = this.seededRuns.get(plan.run.runId);
+    if (seed === undefined) {
+      seed = this.journal
+        .seedRun(this.opts.actor, {
+          runId: plan.run.runId,
+          projectId: plan.run.projectId,
+          localeBranchId: plan.run.localeBranchId,
+          sourceRevisionId: plan.run.sourceRevisionId,
+          targetLocale: plan.run.targetLocale,
+          frozenScope: plan.frozenScope,
+          routingPolicy: plan.routingPolicy,
+          costPolicy: plan.costPolicy,
+          units: plan.units,
+        })
+        .then(() => undefined);
+      this.seededRuns.set(plan.run.runId, seed);
+    }
+    await seed;
+  }
+
+  async loadResumeState(runId: string): Promise<DrivenJournalResumeState> {
+    const [run, outcomes, attempts] = await Promise.all([
+      this.journal.loadRun(this.opts.actor, runId),
+      this.journal.loadRunOutcomes(this.opts.actor, runId),
+      this.journal.loadAttemptsForRun(this.opts.actor, runId),
+    ]);
+    if (run === null) throw new Error(`cannot resume missing journal run ${runId}`);
+    return {
+      status: run.status,
+      pausedBlocker: run.pausedBlocker,
+      attempts: attempts.map((attempt): DrivenLlmAttemptRecord => {
+        if (attempt.requestedModelId === null || attempt.requestedProviderId === null) {
+          throw new Error(
+            `supervised attempt ${attempt.attemptId} is missing its requested model/provider pair`,
+          );
+        }
+        return {
+          attemptId: attempt.attemptId,
+          runId: attempt.runId,
+          bridgeUnitId: attempt.bridgeUnitId,
+          stage: attempt.stage,
+          agentLabel: attempt.agentLabel,
+          logicalCallId: attempt.logicalCallId,
+          attemptIndex: attempt.attemptIndex,
+          requestedModelId: attempt.requestedModelId,
+          requestedProviderId: attempt.requestedProviderId,
+          modelId: attempt.modelId,
+          providerId: attempt.providerId,
+          providerRunId: attempt.providerRunId,
+          costUsd: attempt.costUsd,
+          costKind: attempt.costKind,
+          usageResponseJson: attempt.usageResponseJson as Record<string, unknown> | null,
+          tokensIn: attempt.tokensIn,
+          tokensOut: attempt.tokensOut,
+          tokenCountSource: attempt.tokenCountSource,
+          cacheReadTokens: attempt.cacheReadTokens,
+          cacheWriteTokens: attempt.cacheWriteTokens,
+          cacheDiscountMicrosUsd: attempt.cacheDiscountMicrosUsd,
+          fallbackUsed: attempt.fallbackUsed,
+          fallbackPlan: attempt.fallbackPlan,
+          zdr: attempt.zdr,
+          finishState: attempt.finishState,
+          refusalState: attempt.refusalState,
+          validationResult: attempt.validationResult ?? "not_evaluated",
+          failureClass: attempt.failureClass,
+          retryDecision: attempt.retryDecision,
+          retryDelayMs: attempt.retryDelayMs,
+          artifactRef: attempt.artifactRef,
+          errorClasses: attempt.errorClasses,
+          startedAt: attempt.startedAt.toISOString(),
+          completedAt: attempt.completedAt?.toISOString() ?? null,
+        };
+      }),
+      writtenOutcomes: outcomes.map((record) => {
+        const selected = record.outcome.candidates.find(
+          (candidate) => candidate.id === record.outcome.selectedCandidateId,
+        );
+        if (selected === undefined) {
+          throw new Error(`journal outcome ${record.outcome.id} has no selected candidate`);
+        }
+        return {
+          bridgeUnitId: record.bridgeUnitId,
+          sourceUnitKey: record.sourceUnitKey ?? record.bridgeUnitId,
+          sceneId: undefined,
+          outcome: record.outcome,
+          selectedBody: selected.body,
+        };
+      }),
+    };
+  }
+
+  async resumeJournalRun(runId: string): Promise<void> {
+    await this.journal.resumeRun(this.opts.actor, runId);
+  }
+
+  async attemptStarted(attempt: InvocationAttemptStarted): Promise<void> {
+    await this.requireSeed(attempt.runId);
+    await this.journal.beginAttempt(this.opts.actor, {
+      attemptId: attempt.attemptId,
+      runId: attempt.runId,
+      bridgeUnitId: attempt.bridgeUnitId,
+      stage: attempt.stage,
+      agentLabel: attempt.agentLabel,
+      logicalCallId: attempt.logicalCallId,
+      attemptIndex: attempt.attemptIndex,
+      requestedModelId: attempt.requestedModelId,
+      requestedProviderId: attempt.requestedProviderId,
+      zdr: attempt.zdr,
+      artifactRef: `provider-run:${attempt.providerRunId}`,
+      startedAt: attempt.startedAt,
+    });
+  }
+
+  async attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void> {
+    const run = attempt.providerRun;
+    await this.requireSeed(attempt.runId);
+    const usage = run?.tokenUsage;
+    await this.journal.completeAttempt(this.opts.actor, {
+      attemptId: attempt.attemptId,
+      runId: attempt.runId,
+      bridgeUnitId: attempt.bridgeUnitId,
+      modelId: run?.provider.actualModelId ?? null,
+      providerId:
+        run === undefined
+          ? null
+          : (run.provider.upstreamProvider ?? run.provider.requestedProviderId),
+      costUsd: run?.cost.amountUsd ?? null,
+      ...(run !== undefined ? { costKind: run.cost.costKind } : {}),
+      ...(run !== undefined ? { usageResponseJson: run.usageResponseJson } : {}),
+      tokensIn: usage?.promptTokens ?? null,
+      tokensOut: usage?.completionTokens ?? null,
+      ...(usage !== undefined ? { tokenCountSource: usage.tokenCountSource } : {}),
+      ...(usage !== undefined ? { cacheReadTokens: usage.cacheReadTokens ?? null } : {}),
+      ...(usage !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens ?? null } : {}),
+      ...(run !== undefined
+        ? { cacheDiscountMicrosUsd: run.cost.cacheDiscountMicrosUsd ?? null }
+        : {}),
+      ...(run !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
+      ...(run !== undefined ? { fallbackPlan: run.fallbackPlan } : {}),
+      zdr: run?.routingPosture.zdr ?? attempt.zdr,
+      finishState: attempt.finishState,
+      refusalState: attempt.refusalState,
+      validationResult: attempt.validationResult,
+      failureClass: attempt.failureClass,
+      retryDecision: attempt.retryDecision,
+      retryDelayMs: attempt.retryDelayMs,
+      artifactRef: attempt.artifactRef,
+      errorClasses: run?.errorClasses ?? [],
+      completedAt: attempt.completedAt,
+    });
+  }
+
+  async pauseRun(runId: string, blocker: OperationalBlocker): Promise<void> {
+    await this.requireSeed(runId);
+    await this.journal.pauseRun(this.opts.actor, runId, blocker);
   }
 
   async persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void> {
-    await this.ensureRun(record.run);
+    await this.requireSeed(record.run.runId);
     await this.journal.persistUnit(this.opts.actor, {
       runId: record.run.runId,
       bridgeUnitId: record.writtenOutcome.bridgeUnitId,
       sourceUnitKey: record.writtenOutcome.sourceUnitKey,
       outcome: record.writtenOutcome.outcome,
-      attempts: record.attempts,
+      // Attempts were begun/completed around each physical dispatch. Supplying
+      // an empty batch makes the outcome transaction verify those existing
+      // rows instead of creating a second append path.
+      attempts: [],
       contextPacket: record.contextPacket,
       contextRefs: record.contextRefs,
       speakerLabels: record.speakerLabels,
@@ -59,30 +223,18 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     });
   }
 
-  async persistFailedUnitAttempts(record: DrivenFailedUnitJournalRecord): Promise<void> {
-    await this.ensureRun(record.run);
-    await this.journal.persistAttempts(this.opts.actor, {
-      runId: record.run.runId,
-      bridgeUnitId: record.bridgeUnitId,
-      attempts: record.attempts,
-    });
+  async persistFailedUnitAttempts(
+    record: Parameters<DrivenUnitJournalSink["persistFailedUnitAttempts"]>[0],
+  ): Promise<void> {
+    await this.requireSeed(record.run.runId);
+    // Supervisor lifecycle already persisted every observable attempt. An
+    // interrupted attempt deliberately remains dispatching for resume.
   }
 
-  private async ensureRun(run: DrivenUnitJournalRecord["run"]): Promise<void> {
-    let creation = this.createdRuns.get(run.runId);
-    if (creation === undefined) {
-      creation = this.journal
-        .createRun(this.opts.actor, {
-          runId: run.runId,
-          projectId: run.projectId,
-          localeBranchId: run.localeBranchId,
-          sourceRevisionId: run.sourceRevisionId,
-          targetLocale: run.targetLocale,
-        })
-        .then(() => undefined);
-      this.createdRuns.set(run.runId, creation);
-    }
-    await creation;
+  private async requireSeed(runId: string): Promise<void> {
+    const seed = this.seededRuns.get(runId);
+    if (seed === undefined) throw new Error(`journal run ${runId} was not seeded before dispatch`);
+    await seed;
   }
 }
 

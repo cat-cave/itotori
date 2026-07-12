@@ -1,7 +1,6 @@
-// ITOTORI-076 — public surface of the draft acceptance gate.
-//
-// Consolidates the validator, classifier, gate helper, and fixture set
-// behind one import path so callers don't have to reach across files.
+// Protected-span validation remains deterministic input/output validation.
+// Invocation retry and provider dispatch live exclusively in the universal
+// InvocationSupervisor; the former classifier-only draft façade was removed.
 
 export {
   DRAFT_PROTECTED_SPAN_KINDS,
@@ -14,20 +13,6 @@ export {
   type DraftProtectedSpanViolationKind,
   type DraftSourceProtectedSpan,
 } from "./protected-span-validator.js";
-
-export {
-  PROVIDER_TIMEOUT_ATTEMPT_INDEX_MAX,
-  RetryPolicy,
-  type DraftFailure,
-  type RetryClassification,
-} from "./retry-policy.js";
-
-export {
-  acceptOrRejectDraft,
-  routeFailedAttempt,
-  type AcceptDraftArgs,
-  type AcceptDraftResult,
-} from "./acceptance-gate.js";
 
 export {
   draftFixtureBridgeUnit,

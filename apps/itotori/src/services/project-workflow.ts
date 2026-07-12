@@ -44,6 +44,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import { summarizeBenchmarkReportMetadata } from "../benchmark-report-summary.js";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -583,7 +584,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
           request,
           requestedModelId: request.modelId ?? provider.descriptor.defaultModelId,
         });
-        result = await provider.invoke(request);
+        result = await executeModelInvocation(provider, request);
       } catch (error) {
         await this.recordProviderFailure(
           provider,

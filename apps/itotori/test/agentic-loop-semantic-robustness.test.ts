@@ -1,7 +1,7 @@
 // itotori-semantic-agent-live-robustness-single-unit — the loop's context
-// stage runs the four semantic agents BEST-EFFORT: a single live semantic
-// failure (a model emits a malformed / uncitable pack, or the call throws)
-// is CAUGHT + recorded as a dropped-enrichment signal, and the unit degrades
+// stage runs the four semantic agents BEST-EFFORT: a persistent model-content
+// failure (empty, malformed, or uncitable output) is CAUGHT + recorded as a
+// dropped-enrichment signal, and the unit degrades
 // to the DETERMINISTIC structure-informed context (+ whichever semantic agents
 // DID succeed) instead of failing the whole unit.
 //
@@ -185,8 +185,8 @@ function validSemanticPack(agentLabel: SemanticAgent): string {
 }
 
 /**
- * Capturing fake factory. Semantic agents in `failing` either THROW (transport
- * failure) or return a MALFORMED pack (parse failure) so the loop's best-effort
+ * Capturing fake factory. Semantic agents in `failing` return EMPTY or
+ * MALFORMED model output so the loop's best-effort
  * seam must catch them; the rest return minimal-valid packs. Records every
  * `draft_translation` user prompt so the deterministic structure block can be
  * asserted.
@@ -194,7 +194,8 @@ function validSemanticPack(agentLabel: SemanticAgent): string {
 function makeFactory(
   unit: LocalizationUnitV02,
   capturedTranslationPrompts: string[],
-  failing: Partial<Record<SemanticAgent, "throw" | "malformed">>,
+  failing: Partial<Record<SemanticAgent, "empty" | "malformed">>,
+  attemptCounts?: Map<SemanticAgent, number>,
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
@@ -204,17 +205,17 @@ function makeFactory(
           return makeSpeakerLabel(unit);
         }
         if (request.taskKind === "experiment") {
-          const mode = failing[agentLabel as SemanticAgent];
-          if (mode === "throw") {
-            throw new Error(`synthetic transport failure for ${agentLabel}`);
-          }
+          const semanticAgent = agentLabel as SemanticAgent;
+          attemptCounts?.set(semanticAgent, (attemptCounts.get(semanticAgent) ?? 0) + 1);
+          const mode = failing[semanticAgent];
+          if (mode === "empty") return "";
           if (mode === "malformed") {
             // Not parseable JSON → the structured-pack agents throw a parse
             // error. For scene-summary (free text) a malformed JSON is still
-            // "valid" free text, so scene-summary is only exercised via throw.
+            // "valid" free text, so scene-summary is exercised via empty output.
             return "{{{ this is not a valid pack";
           }
-          return validSemanticPack(agentLabel as SemanticAgent);
+          return validSemanticPack(semanticAgent);
         }
         if (request.taskKind === "draft_translation") {
           const userMessage = request.messages?.find((m) => m.role === "user");
@@ -252,11 +253,12 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
   it("one malformed semantic pack → unit still completes on deterministic + the other three agents; the drop is recorded", async () => {
     const unit = makeUnit("おはよう。");
     const captured: string[] = [];
+    const attemptCounts = new Map<SemanticAgent, number>();
     const bundle = await runAgenticLoopForUnit(
       makeInput(unit),
       DEV_POLICY,
       makePolicy(),
-      makeFactory(unit, captured, { "route-choice-map": "malformed" }),
+      makeFactory(unit, captured, { "route-choice-map": "malformed" }, attemptCounts),
     );
 
     // The unit STILL completes with a real draft.
@@ -278,6 +280,7 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     const drop = contextStage?.droppedEnrichments?.[0];
     expect(drop?.agentLabel).toBe("route-choice-map");
     expect(drop?.reason.length).toBeGreaterThan(0);
+    expect(attemptCounts.get("route-choice-map")).toBeGreaterThan(1);
     // The stage still SUCCEEDS (degraded), never fails.
     expect(contextStage?.outcome).toContain("succeeded");
     expect(contextStage?.outcome).toContain("1-dropped");
@@ -297,16 +300,22 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
   it("ALL four semantic agents fail → unit still completes on the deterministic structure context alone; all four are recorded", async () => {
     const unit = makeUnit("おはよう。");
     const captured: string[] = [];
+    const attemptCounts = new Map<SemanticAgent, number>();
     const bundle = await runAgenticLoopForUnit(
       makeInput(unit),
       DEV_POLICY,
       makePolicy(),
-      makeFactory(unit, captured, {
-        "scene-summary": "throw",
-        "character-relationship": "malformed",
-        "terminology-candidate": "malformed",
-        "route-choice-map": "throw",
-      }),
+      makeFactory(
+        unit,
+        captured,
+        {
+          "scene-summary": "empty",
+          "character-relationship": "malformed",
+          "terminology-candidate": "malformed",
+          "route-choice-map": "malformed",
+        },
+        attemptCounts,
+      ),
     );
 
     // The unit STILL completes on the deterministic context alone.
@@ -321,6 +330,9 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     );
     for (const drop of contextStage?.droppedEnrichments ?? []) {
       expect(drop.reason.length).toBeGreaterThan(0);
+    }
+    for (const agent of SEMANTIC_AGENTS) {
+      expect(attemptCounts.get(agent)).toBeGreaterThan(1);
     }
     expect(contextStage?.outcome).toContain("4-dropped");
 

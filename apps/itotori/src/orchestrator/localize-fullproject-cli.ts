@@ -70,6 +70,8 @@ export type RunLocalizeFullProjectLiveArgs = {
   /** Directory the patch export + provider-run artifacts + run summary land in. */
   runDir: string;
   io: LocalizeFullProjectIo;
+  /** Existing durable journal run to resume from its first pending unit. */
+  resumeRunId?: string;
   /** Per-process USD cost cap for the OpenRouter provider. Defaults to $0.50. */
   costCapUsd?: number;
   /**
@@ -193,7 +195,11 @@ export async function runLocalizeFullProjectLive(
     step: "localize.parse-config",
     code: "refused",
     message: `localize-live: parse-config refused: config JSON at '${args.configPath}' is invalid`,
-    inputs: { configPath: args.configPath, runDir: args.runDir },
+    inputs: {
+      configPath: args.configPath,
+      runDir: args.runDir,
+      ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
+    },
     repro: { configPath: args.configPath },
     run: () => parseLocalizeFullProjectConfig(args.io.readJson(args.configPath)),
   });
@@ -291,6 +297,7 @@ export async function runLocalizeFullProjectLive(
         projectId: config.projectId,
         localeBranchId: config.localeBranchId,
         pair,
+        ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
       },
       preserveError: (error) => error instanceof WholeGamePatchCoverageRefusedError,
       repro: {
@@ -303,6 +310,7 @@ export async function runLocalizeFullProjectLive(
         runLocalizeFullProjectCommand({
           configPath: args.configPath,
           runSummaryPath: join(args.runDir, "run-summary.json"),
+          ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
           ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
           deps: {
             io: args.io,
@@ -321,6 +329,12 @@ export async function runLocalizeFullProjectLive(
             args.patchTargetRoot.length > 0
               ? {
                   afterExecutor: async (result) => {
+                    // A resumable operational pause is an expected, durable
+                    // operator state. Never turn it into a patch-coverage
+                    // exception and never emit/apply a partial patch.
+                    if (result.runState === "paused") {
+                      return result;
+                    }
                     const allowPartialPatch = args.allowPartialPatch ?? false;
                     assertWholeGamePatchCoverage(result.patchReport, allowPartialPatch);
                     const sourceRoot = args.sourceRoot!;

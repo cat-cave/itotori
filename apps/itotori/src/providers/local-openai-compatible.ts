@@ -69,6 +69,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify(buildRequestBody(request, requestedModelId)),
+        ...(request.signal !== undefined ? { signal: request.signal } : {}),
       });
     } catch (error) {
       const run = buildRun({

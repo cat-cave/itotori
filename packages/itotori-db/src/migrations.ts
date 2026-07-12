@@ -372,6 +372,10 @@ export const migrations = [
     id: "0078_retire_draft_attempt_provider_ledger",
     file: "0078_retire_draft_attempt_provider_ledger.sql",
   },
+  {
+    id: "0079_invocation_supervisor_lifecycle",
+    file: "0079_invocation_supervisor_lifecycle.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

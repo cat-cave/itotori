@@ -1048,6 +1048,7 @@ async function runLocalizeProjectStage(
  *   --run-dir <PATH>      directory for the patch export + provider-run
  *                         artifacts + run summary
  * Optional:
+ *   --resume-run-id <ID> resume an existing paused durable journal run
  *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
  *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
  *                         over the config's `concurrency`)
@@ -1069,6 +1070,7 @@ async function runLocalizeFullProject(
 ): Promise<void> {
   const configPath = requiredFlag(args, "--config");
   const runDir = requiredFlag(args, "--run-dir");
+  const resumeRunId = optionalFlag(args, "--resume-run-id");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const concurrency = parseConcurrencyFlag(args);
   const allowPartialPatch = args.includes("--allow-partial-patch");
@@ -1098,6 +1100,7 @@ async function runLocalizeFullProject(
       readJson: (path) => dependencies.io.readJson(path),
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
+    ...(resumeRunId !== undefined ? { resumeRunId } : {}),
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
     ...(concurrency !== undefined ? { concurrency } : {}),
     ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
@@ -1112,6 +1115,8 @@ async function runLocalizeFullProject(
     `${JSON.stringify(
       {
         journalRunId: result.journalRunId,
+        runState: result.runState,
+        pausedBlocker: result.pausedBlocker,
         unitsRun: result.unitsRun,
         writtenOutcomeCount: result.writtenOutcomeCount,
         failureCount: result.failures.length,
@@ -1164,6 +1169,7 @@ async function runLocalizeFullProject(
  *                                RealLive identity for the whole-seen extract
  *   --scene <N>                  scene the validate stage replays + renders
  * Optional:
+ *   --resume-run-id <ID>        resume an existing paused durable journal run
  *   --vault-canonical-id <ID>    source by-id through the read-only vault
  *   --game-root <PATH>           raw extract source root (defaults to --source)
  *   --gameexe <PATH> / --seen <PATH>  structure inputs (default <source>/REALLIVEDATA/*)
@@ -1179,6 +1185,7 @@ async function runLocalizeGame(
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
   const configPath = requiredFlag(args, "--config");
+  const resumeRunId = optionalFlag(args, "--resume-run-id");
   const sourceRoot = requiredFlag(args, "--source");
   const targetRoot = requiredFlag(args, "--target");
   const runDir = requiredFlag(args, "--run-dir");
@@ -1223,6 +1230,7 @@ async function runLocalizeGame(
     runDir,
     identity,
     validateScene,
+    ...(resumeRunId !== undefined ? { resumeRunId } : {}),
     redaction: redactionRaw,
     io: {
       readJson: (path) => dependencies.io.readJson(path),
@@ -1268,14 +1276,21 @@ async function runLocalizeGame(
           runDir: result.runDir,
           effectiveConfigPath: result.effectiveConfigPath,
           patchTargetRoot: result.patchTargetRoot,
+          journalRunId: result.localize.result.journalRunId,
+          runState: result.localize.result.runState,
+          pausedBlocker: result.localize.result.pausedBlocker,
           unitsRun: result.localize.result.unitsRun,
           writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
           totalUsageCostExactUsd: result.localize.result.totalUsageCostExactUsd,
           totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
           zdrConfirmed: result.localize.result.zdrConfirmed,
           patchApplied: result.localize.patchApply !== undefined,
-          replayLogPath: result.replayLogPath,
-          renderEvidencePath: result.renderEvidencePath,
+          ...(result.localize.result.runState === "running"
+            ? {
+                replayLogPath: result.replayLogPath,
+                renderEvidencePath: result.renderEvidencePath,
+              }
+            : {}),
         },
         null,
         2,

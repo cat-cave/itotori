@@ -32,6 +32,7 @@
 // and flip the manifest to `status: "failed"`.
 
 import { createHash } from "node:crypto";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import {
   assertProviderInvocationSupported,
   CapabilityGuard,
@@ -301,7 +302,7 @@ export async function runExperimentMatrix(
       // ── Invocation. Only reached after BOTH guards passed. ────────────
       let result;
       try {
-        result = await provider.invoke(request);
+        result = await executeModelInvocation(provider, request);
       } catch (error) {
         const kind: ExperimentRunFindingKind =
           error instanceof RecordedBundleMissingError

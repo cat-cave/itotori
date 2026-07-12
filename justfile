@@ -80,6 +80,8 @@ check:
     node --test scripts/classify-test-seams.test.mjs
     node --test scripts/audit-no-hardcoded-roles.test.mjs
     node scripts/audit-no-hardcoded-roles.mjs
+    node --test scripts/audit-no-direct-provider-invoke.test.mjs
+    node scripts/audit-no-direct-provider-invoke.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs
@@ -790,6 +792,8 @@ ci-tier0-meta:
     node --test scripts/classify-test-seams.test.mjs
     node --test scripts/audit-no-hardcoded-roles.test.mjs
     node scripts/audit-no-hardcoded-roles.mjs
+    node --test scripts/audit-no-direct-provider-invoke.test.mjs
+    node scripts/audit-no-direct-provider-invoke.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs

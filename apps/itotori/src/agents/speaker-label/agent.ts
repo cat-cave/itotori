@@ -45,10 +45,7 @@ import {
   type SpeakerLabelOutput,
   type SpeakerLabelUnknownReason,
 } from "@itotori/localization-bridge-schema";
-import {
-  buildStructuredRetryMessages,
-  invokeWithBoundedStructuredRetry,
-} from "../bounded-structured-retry.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
@@ -126,22 +123,25 @@ export class SpeakerLabelAgent {
           : { maxOutputTokens: input.modelMetadata.maxOutputTokens },
     };
 
-    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
-      provider: this.options.provider,
-      request,
-      parse: parseSpeakerLabelOutput,
-      isSchemaValidationError: (error) => error instanceof SpeakerLabelResponseValidationError,
-      buildCorrectiveMessages: buildStructuredRetryMessages,
-      validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
-      validateParsed: (candidate) => {
-        this.assertCitationsResolve(candidate, input);
-        this.assertHiddenIdentityNotLeaked(candidate, input);
-        this.assertHiddenMaskConsistency(candidate, input);
-        if (input.confidenceFloor !== undefined) {
-          this.assertConfidenceFloor(candidate, input.confidenceFloor);
-        }
+    const { invocation, parsed, priorAttempts } = await executeStructuredInvocation(
+      this.options.provider,
+      {
+        request,
+        parse: parseSpeakerLabelOutput,
+        isSchemaValidationError: (error) => error instanceof SpeakerLabelResponseValidationError,
+        validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+        validateParsed: (candidate) => {
+          this.assertCitationsResolve(candidate, input);
+          this.assertHiddenIdentityNotLeaked(candidate, input);
+          this.assertHiddenMaskConsistency(candidate, input);
+          if (input.confidenceFloor !== undefined) {
+            this.assertConfidenceFloor(candidate, input.confidenceFloor);
+          }
+        },
+        requiredUnitIds: input.bridgeUnits.map((unit) => unit.bridgeUnitId),
+        successDecision: "advance",
       },
-    });
+    );
     const providerRun = invocation.providerRun;
     const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 

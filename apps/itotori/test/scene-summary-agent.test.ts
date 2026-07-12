@@ -13,6 +13,7 @@ import {
   type SceneSummaryModelProfile,
 } from "../src/agents/scene-summary/index.js";
 import type { GlossaryRef } from "../src/batch-planner/shapes.js";
+import type { ModelInvocationRequest } from "../src/providers/types.js";
 
 const fixedNow = (): Date => new Date("2026-06-23T12:00:00Z");
 
@@ -143,6 +144,25 @@ describe("generateSceneSummary", () => {
     expect(summary.id).toBe(input.sceneSummaryId);
     expect(summary.generatedAt).toBe("2026-06-23T12:00:00.000Z");
     expect(summary.promptHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("correctively retries an empty response before accepting the summary", async () => {
+    const input = inputFixture();
+    const requests: ModelInvocationRequest[] = [];
+    const provider = new FakeModelProvider({
+      providerName: "scene-summary-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        requests.push(request);
+        return requests.length === 1 ? "" : "Corrected scene summary.";
+      },
+    });
+
+    const output = await generateSceneSummary(input, { provider });
+
+    expect(output.summary.summaryText).toBe("Corrected scene summary.");
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toContain("previous response failed with empty");
   });
 
   it("is deterministic byte-for-byte across two invocations", async () => {
