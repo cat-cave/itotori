@@ -30,7 +30,11 @@ import {
   parseLocalizeProjectPairPolicy,
   runLocalizeProjectStageCommand,
   type LocalizeProjectStageIo,
+  type LocalizeProjectStageSupervision,
 } from "../src/orchestrator/localize-project-stage-command.js";
+import { runLocalizeProjectStageLive } from "../src/orchestrator/localize-project-stage-live.js";
+import { ItotoriLocalizationJournalRepository, localUserId } from "@itotori/db";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { PairPolicyVersionMismatchError } from "@itotori/localization-bridge-schema";
 import {
   createProviderRunId,
@@ -48,6 +52,7 @@ import {
   type AgenticLoopProviderFactory,
   type PairChoice,
 } from "../src/orchestrator/agentic-loop.js";
+import { InvocationOperationalPauseError } from "../src/orchestrator/invocation-supervisor.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -55,6 +60,10 @@ const PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-polic
 const SMOKE_BRIDGE_PATH = resolve(
   REPO_ROOT,
   "apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json",
+);
+const VALID_STAGE_BRIDGE_PATH = resolve(
+  REPO_ROOT,
+  "packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
 );
 const WRITTEN_TARGET_TEXT = "Good morning, Kazu.";
 
@@ -64,6 +73,10 @@ function loadPreset(): unknown {
 
 function loadSmokeBridge(): unknown {
   return JSON.parse(readFileSync(SMOKE_BRIDGE_PATH, "utf8"));
+}
+
+function loadValidStageBridge(): unknown {
+  return JSON.parse(readFileSync(VALID_STAGE_BRIDGE_PATH, "utf8"));
 }
 
 function ioFixture(reads: Map<string, unknown>): {
@@ -83,6 +96,19 @@ function ioFixture(reads: Map<string, unknown>): {
     }),
   };
   return { io, writes };
+}
+
+/** The command core requires a supervision boundary even under a fake provider. */
+function testSupervision(): LocalizeProjectStageSupervision {
+  return {
+    runId: "localize-project-stage-test-run",
+    lifecycle: {
+      attemptStarted: async () => undefined,
+      attemptCompleted: async () => undefined,
+      pauseRun: async () => undefined,
+    },
+    costAdmission: { admit: async () => ({ admitted: true }) },
+  };
 }
 
 describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
@@ -115,6 +141,19 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
       pair: { modelId: "anthropic/claude-sonnet-4", providerId: "anthropic" },
     };
     expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
+  });
+
+  it("rejects a live policy leaf without an explicit hard billing ceiling", () => {
+    const preset = loadPreset() as {
+      stages: {
+        translation: { primary: Record<string, unknown> };
+      };
+    };
+    delete preset.stages.translation.primary.maximumBillableCostUsd;
+
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(
+      /translation\.primary\.maximumBillableCostUsd is required/u,
+    );
   });
 
   it("rejects non-object input", () => {
@@ -161,6 +200,7 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
     // it must be positive + finite.
     expect(Number.isFinite(parsed.pairPolicy.translation.primary.maxPriceUsd)).toBe(true);
     expect(parsed.pairPolicy.translation.primary.maxPriceUsd).toBeGreaterThan(0);
+    expect(parsed.pairPolicy.translation.primary.maximumBillableCostUsd).toBe(0.5);
     // fallbackModels defaults to [].
     expect(parsed.pairPolicy.translation.primary.fallbackModels).toEqual([]);
   });
@@ -204,8 +244,73 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         patchReportOutputPath: "out/patch-report.json",
         io,
         actor: { userId: "test" },
+        supervision: testSupervision(),
       }),
     ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
+  });
+
+  it("pauses before a paid stage dispatch when durable cost admission denies the cap", async () => {
+    const smokeBridge = loadSmokeBridge() as {
+      units: ReadonlyArray<{ bridgeUnitId: string; sourceLocale?: string }>;
+    };
+    const firstUnit = smokeBridge.units[0];
+    if (firstUnit === undefined) {
+      throw new Error("smoke bridge fixture must carry a first unit");
+    }
+    const reads = new Map<string, unknown>([
+      ["bridge.json", smokeBridge],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io } = ioFixture(reads);
+    let paidDispatches = 0;
+    const blockers: Array<{ kind: string }> = [];
+    const deniedSupervision: LocalizeProjectStageSupervision = {
+      runId: "localize-project-stage-capped-test",
+      lifecycle: {
+        attemptStarted: async () => undefined,
+        attemptCompleted: async () => undefined,
+        pauseRun: async (_runId, blocker) => void blockers.push(blocker),
+      },
+      costAdmission: {
+        admit: async () => ({
+          admitted: false,
+          detail: "test cap leaves no room for the next paid call",
+          evidence: "test:stage-cost-cap",
+        }),
+      },
+    };
+    const liveFactoryOverride = () => {
+      const source = writtenTranslationFactory({
+        bridgeUnitId: firstUnit.bridgeUnitId,
+        sourceLocale: firstUnit.sourceLocale ?? "ja-JP",
+      });
+      return (factoryInput: Parameters<AgenticLoopProviderFactory>[0]) => {
+        const provider = source(factoryInput);
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request: ModelInvocationRequest) => {
+            paidDispatches += 1;
+            return await provider.invoke(request);
+          },
+        };
+      };
+    };
+
+    await expect(
+      runLocalizeProjectStageCommand({
+        bridgePath: "bridge.json",
+        pairPolicyPath: "pair-policy.json",
+        outputPath: "out/agentic-loop-bundle.v0.json",
+        translatedBundleOutputPath: "out/translated-bridge.json",
+        patchReportOutputPath: "out/patch-report.json",
+        liveFactoryOverride,
+        io,
+        actor: { userId: "test" },
+        supervision: deniedSupervision,
+      }),
+    ).rejects.toBeInstanceOf(InvocationOperationalPauseError);
+    expect(paidDispatches).toBe(0);
+    expect(blockers).toEqual([expect.objectContaining({ kind: "budget_cap" })]);
   });
 
   it("writes all three artifacts from the selected non-blank candidate, and pins every invocation to the policy pair", async () => {
@@ -236,6 +341,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         }),
       io,
       actor: { userId: "test" },
+      supervision: testSupervision(),
     });
 
     // ----- AgenticLoopBundle -----
@@ -326,6 +432,83 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     // The patch-report records the selected text the downstream replay must
     // observe, including the RealLive encoding wrap.
     expect(patchReport.translatedTargetText).toBe(`「${selectedBody}」`);
+  });
+});
+
+describe.skipIf(!process.env.DATABASE_URL)("localize-project-stage durable cost admission", () => {
+  it("persists a capped stage run and pauses before its first paid dispatch", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const bridge = loadValidStageBridge() as {
+        sourceLocale: string;
+        units: ReadonlyArray<{
+          bridgeUnitId: string;
+          sourceRevision: { revisionId: string };
+        }>;
+      };
+      const firstUnit = bridge.units[0];
+      if (firstUnit === undefined) {
+        throw new Error("valid stage bridge must carry a first unit");
+      }
+      const reads = new Map<string, unknown>([
+        ["bridge.json", bridge],
+        ["pair-policy.json", loadPreset()],
+      ]);
+      const { io } = ioFixture(reads);
+      let paidDispatches = 0;
+      const capUsd = 0.000001; // itotori-225-audit-allow: focused durable-stage cap is deliberately below the pair-policy worst case
+
+      await expect(
+        runLocalizeProjectStageLive({
+          bridgePath: "bridge.json",
+          pairPolicyPath: "pair-policy.json",
+          outputPath: "out/agentic-loop-bundle.v0.json",
+          translatedBundleOutputPath: "out/translated-bridge.json",
+          patchReportOutputPath: "out/patch-report.json",
+          io,
+          budgetCapUsd: capUsd,
+          databaseUrl: context.databaseUrl,
+          liveFactoryOverride: () => () => {
+            const provider = new FakeModelProvider();
+            return {
+              descriptor: provider.descriptor,
+              invoke: async (request: ModelInvocationRequest) => {
+                paidDispatches += 1;
+                return await provider.invoke(request);
+              },
+            };
+          },
+        }),
+      ).rejects.toBeInstanceOf(InvocationOperationalPauseError);
+      expect(paidDispatches).toBe(0);
+
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const runs = await repository.loadRunsForBranch(
+        { userId: localUserId },
+        `branch:${firstUnit.sourceRevision.revisionId}`,
+      );
+      expect(runs).toHaveLength(1);
+      const run = runs[0];
+      if (run === undefined) {
+        throw new Error("durable stage run was not persisted");
+      }
+      expect(run).toMatchObject({
+        status: "paused",
+        pausedBlocker: { kind: "budget_cap" },
+        leaseOwnerId: null,
+        costPolicy: { budgetCapUsd: capUsd, reservation: "node_4_seam" },
+      });
+      expect(await repository.loadRunCostAccount({ userId: localUserId }, run.runId)).toMatchObject(
+        {
+          capUsd: "0.000001",
+          spentCostUsd: "0",
+          reservedCostUsd: "0",
+        },
+      );
+      expect(await repository.loadAttemptsForRun({ userId: localUserId }, run.runId)).toEqual([]);
+    } finally {
+      await context.close();
+    }
   });
 });
 
@@ -685,6 +868,7 @@ describe("OpenRouter-served route recording", () => {
       liveFactoryOverride,
       io,
       actor: { userId: "test" },
+      supervision: testSupervision(),
     });
 
     // The reported served route is sufficient for the normal run; there is
@@ -779,6 +963,7 @@ describe("OpenRouter-served route recording", () => {
       liveFactoryOverride,
       io,
       actor: { userId: "test" },
+      supervision: testSupervision(),
     });
 
     const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
@@ -860,6 +1045,7 @@ describe("OpenRouter-served route recording", () => {
       liveFactoryOverride,
       io,
       actor: { userId: "test" },
+      supervision: testSupervision(),
     });
 
     const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
@@ -892,7 +1078,11 @@ describe("OpenRouter-served route recording", () => {
         liveFactoryOverride,
         io,
         actor: { userId: "test" },
+        supervision: testSupervision(),
       }),
-    ).rejects.toBeInstanceOf(ModelProviderError);
+    ).rejects.toMatchObject({
+      blocker: { kind: "provider_outage" },
+      causeValue: error,
+    });
   });
 });

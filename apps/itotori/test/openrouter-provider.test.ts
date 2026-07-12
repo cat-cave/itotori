@@ -828,6 +828,24 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
 });
 
 describe("OpenRouterModelProvider — exact per-request max price", () => {
+  it("keeps a sub-picodollar maxPriceUsd exact for the local billed-cost comparison", async () => {
+    const subPicodollarUsd = 1e-13;
+    const fetchMock = vi.fn(async () =>
+      successResponse({ usageCost: subPicodollarUsd }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      rateLimitPerSec: 1000,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+
+    const result = await provider.invoke(baseRequest({ maxPriceUsd: subPicodollarUsd }));
+
+    expect(result.providerRun.cost.amountUsd).toBe("0.0000000000001");
+  });
+
   it("raises cost_cap_exceeded when reported usage.cost exceeds request maxPriceUsd", async () => {
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>

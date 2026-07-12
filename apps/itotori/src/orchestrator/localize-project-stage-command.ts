@@ -106,11 +106,27 @@ import {
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "./agentic-loop.js";
-import { SupervisedModelProviderAdapter } from "./invocation-supervisor.js";
+import { capturePhysicalProviderAttempts } from "./attempt-outcome-journal.js";
+import {
+  SupervisedModelProviderAdapter,
+  type InvocationCostAdmission,
+  type InvocationLifecycle,
+} from "./invocation-supervisor.js";
 
 export type LocalizeProjectStageIo = {
   readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
+};
+
+/**
+ * The durable supervision boundary for every physical stage invocation.
+ * Production builds this with `DrivenJournalPersistenceAdapter`, exactly as
+ * the whole-project executor does; tests may provide a deterministic seam.
+ */
+export type LocalizeProjectStageSupervision = {
+  runId: string;
+  lifecycle: InvocationLifecycle;
+  costAdmission: InvocationCostAdmission;
 };
 
 export type LocalizeProjectStageArgs = {
@@ -163,6 +179,12 @@ export type LocalizeProjectStageArgs = {
   engineProfile?: "reallive" | "rpg-maker-mv-mz";
   io: LocalizeProjectStageIo;
   actor: AuthorizationActor;
+  /**
+   * Required before any provider is constructed. This prevents the single-unit
+   * live path from falling back to InvocationSupervisor's standalone mode,
+   * which has no durable reservation/accounting boundary.
+   */
+  supervision: LocalizeProjectStageSupervision;
   log?: (message: string) => void;
   /**
    * Maximum repair attempts the loop is allowed. Defaults to 1.
@@ -215,9 +237,9 @@ export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Er
 }
 
 const DEFAULT_UNIT_INDEX = 0;
-// This single-unit command has no run-scope provisioning or reviewer-queue
-// sink. Keep the required loop input explicit without using the unit's
-// content-hash revision as a queue FK candidate.
+// The selected unit's stage bundle remains distinct from a whole-project
+// outcome, so keep its bundle source revision stable while the live wrapper
+// provisions the durable run scope from the bridge's real source revision.
 const LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID = "localize-project-stage-bundle-revision";
 
 // Re-export so the test surface and any external integrators get the
@@ -252,6 +274,10 @@ export { PairPolicyVersionMismatchError };
  * (single-game alpha invariant — only one pair drives this recipe;
  * the per-stage breakout is preserved so the orchestrator's required
  * PairPolicy shape lines up without us having to fork either side).
+ * Every leaf used by this live localization surface must also declare
+ * `maximumBillableCostUsd`: it is the durable reservation contract for one
+ * paid physical invocation. `maxPriceUsd` remains a provider-pricing filter
+ * and is deliberately not accepted as a substitute.
  *
  * If `openrouterPresetSlug` is set, the OpenRouter-side preset
  * (configured at the OR dashboard) handles routing AT REQUEST TIME.
@@ -294,6 +320,7 @@ export function parseLocalizeProjectPairPolicy(value: unknown): {
     throw error;
   }
   assertEveryLeafMatches(parsed);
+  assertEveryLeafHasMaximumBillableCost(parsed);
   const out: {
     policyId: string;
     pair: { modelId: string; providerId: string };
@@ -323,6 +350,23 @@ function assertEveryLeafMatches(policy: PairPolicyV03): void {
     ) {
       throw new LocalizeProjectPairPolicyError(
         `stages.${leafPath}.pair (modelId=${posture.pair.modelId}, providerId=${posture.pair.providerId}) does not byte-equal the top-level pair (modelId=${expected.modelId}, providerId=${expected.providerId}); the single-game alpha invariant forbids mixed pairs in this policy`,
+      );
+    }
+  }
+}
+
+/**
+ * Keep the generic v0.3 parser compatible with offline/legacy consumers, but
+ * make every policy accepted by a LIVE localization entry point carry a real
+ * durable reservation ceiling. InvocationSupervisor repeats this fail-closed
+ * check at admission time so programmatic callers cannot bypass it.
+ */
+function assertEveryLeafHasMaximumBillableCost(policy: PairPolicyV03): void {
+  for (const { leafPath, posture } of flattenPairPolicyV03Postures(policy)) {
+    if (posture.maximumBillableCostUsd === undefined) {
+      throw new LocalizeProjectPairPolicyError(
+        `stages.${leafPath}.maximumBillableCostUsd is required for a live paid invocation; ` +
+          "maxPriceUsd is only a provider-pricing filter and cannot be used as its durable reservation bound",
       );
     }
   }
@@ -417,7 +461,31 @@ export async function runLocalizeProjectStageCommand(
           artifactRecorder,
         });
 
-  const bundle = await runAgenticLoopForUnit(input, pairPolicy, policy, factory);
+  // Every provider factory handed to the loop is supervisor-bound here. This
+  // is intentionally the same capture/admission bridge the full-project
+  // executor uses: the reservation transaction persists the dispatching
+  // attempt before the live transport can run, and completion reconciles the
+  // exact billed cost into the same run account.
+  const supervisedAttempts = capturePhysicalProviderAttempts({
+    runId: args.supervision.runId,
+    bridgeUnitId: unit.bridgeUnitId,
+    source: factory,
+    lifecycle: args.supervision.lifecycle,
+    costAdmission: args.supervision.costAdmission,
+  });
+  let bundle: AgenticLoopBundle;
+  try {
+    bundle = await runAgenticLoopForUnit(
+      input,
+      pairPolicy,
+      policy,
+      supervisedAttempts.providerFactory,
+    );
+    supervisedAttempts.markSuccessful();
+  } catch (error) {
+    supervisedAttempts.markFailed(error);
+    throw error;
+  }
   assertAgenticLoopBundle(bundle);
 
   args.io.writeJson(args.outputPath, bundle);

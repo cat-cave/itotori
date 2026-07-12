@@ -69,6 +69,9 @@ describe("localize resume operator plumbing", () => {
       beginJournalRun: async (plan) => {
         plannedRun = plan;
       },
+      // Explicit test admission keeps this fixture focused on the provider
+      // outage/resume contract; production supplies the durable DB adapter.
+      createCostAdmission: () => ({ admit: async () => ({ admitted: true as const }) }),
       pauseRun: async (_runId, blocker) => {
         persistedBlocker = blocker;
       },

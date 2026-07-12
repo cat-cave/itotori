@@ -384,6 +384,10 @@ export const migrations = [
     id: "0081_atomic_cost_reservations",
     file: "0081_atomic_cost_reservations.sql",
   },
+  {
+    id: "0082_backfill_localization_run_cost_accounts",
+    file: "0082_backfill_localization_run_cost_accounts.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -250,6 +250,102 @@ describe("InvocationSupervisor failure matrix", () => {
     expect((await executeDraft(resumed)).parsed.drafts[0]?.body).toBe(VALID_BODY);
   });
 
+  it("reserves the explicit hard billing ceiling instead of the provider-pricing filter", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const reservedWorstCases: Array<string | null> = [];
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: {
+        ...context(),
+        maximumCostUsd: 0.01,
+        maximumBillableCostUsd: 0.02,
+      },
+      lifecycle,
+      costAdmission: {
+        admit: async ({ worstCaseCostUsd }) => {
+          reservedWorstCases.push(worstCaseCostUsd);
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await executeDraft(supervisor);
+
+    expect(reservedWorstCases).toEqual(["0.02"]);
+    expect(provider.requests).toMatchObject([{ maxPriceUsd: 0.01 }]);
+  });
+
+  it("refuses cost admission without an explicit hard billing ceiling instead of reserving maxPriceUsd", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const admissionCalls: string[] = [];
+    const { maximumBillableCostUsd: _omittedCeiling, ...legacyOnlyContext } = context();
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: legacyOnlyContext,
+      lifecycle,
+      costAdmission: {
+        admit: async () => {
+          admissionCalls.push("admit");
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await expect(executeDraft(supervisor)).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("maximumBillableCostUsd"),
+      },
+    });
+    expect(admissionCalls).toEqual([]);
+    expect(lifecycle.started).toEqual([]);
+    expect(provider.requests).toEqual([]);
+    expect(lifecycle.blockers).toEqual([
+      expect.objectContaining({
+        kind: "budget_cap",
+        operatorAction: expect.stringContaining("maximumBillableCostUsd"),
+      }),
+    ]);
+  });
+
+  it("refuses a hard billing ceiling below the provider-pricing filter before admission", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const admissionCalls: string[] = [];
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: {
+        ...context(),
+        maximumCostUsd: 0.02,
+        maximumBillableCostUsd: 0.01,
+      },
+      lifecycle,
+      costAdmission: {
+        admit: async () => {
+          admissionCalls.push("admit");
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await expect(executeDraft(supervisor)).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("below provider maxPriceUsd"),
+      },
+    });
+    expect(admissionCalls).toEqual([]);
+    expect(lifecycle.started).toEqual([]);
+    expect(provider.requests).toEqual([]);
+  });
+
   it("pauses when provider preparation refuses before opening the attempt row", async () => {
     const lifecycle = new RecordingLifecycle();
     const transport = new ScriptedProvider([{ content: validContent() }]);
@@ -397,6 +493,7 @@ function context() {
     modelId: "primary-model",
     providerId: "fixture-provider",
     maximumCostUsd: 1,
+    maximumBillableCostUsd: 1,
     zdr: true,
   } as const;
 }

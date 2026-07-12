@@ -840,14 +840,15 @@ export async function runProjectDrivenExecutor(
 
   let nextIndex = 0;
   const lifecycle = invocationLifecycleFor(input.sinks.journal);
-  const costAdmission: InvocationCostAdmission | undefined =
-    input.costAdmission ??
-    (input.budgetCapUsd === undefined
-      ? undefined
-      : input.sinks.journal.createCostAdmission?.(journalRun.runId));
-  if (input.budgetCapUsd !== undefined && costAdmission === undefined) {
+  // Every physical provider call must pass through durable cost admission.
+  // Unlimited accounts intentionally participate too: they record exact
+  // spent/reserved state so an operator can later add a finite cap without
+  // erasing the run's historical provider spend.
+  const costAdmission =
+    input.costAdmission ?? input.sinks.journal.createCostAdmission?.(journalRun.runId);
+  if (costAdmission === undefined) {
     throw new Error(
-      "a budget-capped run requires a durable atomic cost-admission journal sink or an explicit admission implementation",
+      "every driven run requires a durable atomic cost-admission journal sink or an explicit admission implementation",
     );
   }
 
@@ -1125,7 +1126,7 @@ async function runSingleDrivenUnit(args: {
   engineProfile: DrivenEngineProfile;
   journalRun: DrivenJournalRunRecord;
   lifecycle: InvocationLifecycle | undefined;
-  costAdmission: InvocationCostAdmission | undefined;
+  costAdmission: InvocationCostAdmission;
   log: (message: string) => void;
 }): Promise<UnitRunResult> {
   const {
@@ -1155,7 +1156,7 @@ async function runSingleDrivenUnit(args: {
     bridgeUnitId: unit.bridgeUnitId,
     source: input.providerFactory,
     ...(lifecycle !== undefined ? { lifecycle } : {}),
-    ...(costAdmission !== undefined ? { costAdmission } : {}),
+    costAdmission,
   });
   try {
     assertValidDrivenUnitContext(context);

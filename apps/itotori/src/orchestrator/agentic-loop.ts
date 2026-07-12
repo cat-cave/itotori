@@ -116,9 +116,9 @@ import {
 /**
  * ITOTORI-234 / ITOTORI-238 — A single stage / agent's full posture:
  * pinned (modelId, providerId) pair + ZDR posture + fallback list +
- * seed + USD cap. Every invocation carries the seed + zdr + pair
- * fields onto the bundle so audit can prove the orchestrator never
- * defaulted.
+ * seed + provider-pricing cap + optional durable reservation ceiling. Every
+ * invocation carries the seed + zdr + pair fields onto the bundle so audit
+ * can prove the orchestrator never defaulted.
  *
  * The orchestrator never constructs these — callers build them from
  * the parsed v0.3 pair-policy (`parsePairPolicyV03` resolves every
@@ -166,8 +166,9 @@ import { deriveDefaultSeed } from "@itotori/localization-bridge-schema";
 /**
  * Build a `PairChoice` (== `StagePostureV03`) keyed to `DEV_PAIR` with
  * the canonical alpha posture: `zdr: true`, no fallbacks, a
- * deterministic seed derived from the leaf path, and a single-stage
- * cost cap (DEV-only — production callers feed the parsed v0.2 policy
+ * deterministic seed derived from the leaf path, a single-stage
+ * provider-pricing filter, and an explicit hard bill ceiling (DEV-only —
+ * production callers feed the parsed v0.3 policy
  * straight through and never hit this helper). The cap is set to the
  * canonical ITOTORI-231 default 0.5 USD because DEV_POLICY is meant for
  * smoke / unit-test paths where the cap is not load-bearing; production
@@ -181,6 +182,9 @@ function devPosture(leafPath: string): PairChoice {
     fallbackModels: [],
     seed: deriveDefaultSeed(leafPath),
     maxPriceUsd: 0.5,
+    // This is deliberately distinct from maxPriceUsd. The explicit value is
+    // what a cost-admitted run reserves before a physical provider dispatch.
+    maximumBillableCostUsd: 0.5,
   };
 }
 
@@ -2785,6 +2789,14 @@ function assertPairPolicyComplete(policy: PairPolicy): void {
       posture.maxPriceUsd < 0
     ) {
       throw new PairPolicyMissingEntryError(stage, `${agent}.maxPriceUsd`);
+    }
+    if (
+      posture.maximumBillableCostUsd !== undefined &&
+      (typeof posture.maximumBillableCostUsd !== "number" ||
+        !Number.isFinite(posture.maximumBillableCostUsd) ||
+        posture.maximumBillableCostUsd < posture.maxPriceUsd)
+    ) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.maximumBillableCostUsd`);
     }
   }
 }

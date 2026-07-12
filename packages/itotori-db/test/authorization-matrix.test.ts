@@ -1056,10 +1056,22 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.beginAttempt(deniedActor, undefined as never),
   ),
   localizationJournalGate(
+    "reserveAttemptCost",
+    "draftWrite",
+    "invocation-supervisor-db.test.ts atomic N-way reservation coverage",
+    (repo) => repo.reserveAttemptCost(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
     "completeAttempt",
     "draftWrite",
     "localization-journal-repository.test.ts attempt completion coverage",
     (repo) => repo.completeAttempt(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
+    "reconcileAttemptBilling",
+    "draftWrite",
+    "localization-journal-repository.test.ts late billed-cost reconciliation coverage",
+    (repo) => repo.reconcileAttemptBilling(deniedActor, undefined as never),
   ),
   localizationJournalGate(
     "persistUnit",
@@ -1072,6 +1084,18 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "localization-journal-repository.test.ts run read coverage",
     (repo) => repo.loadRun(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "loadRunCostAccount",
+    "catalogRead",
+    "invocation-supervisor-db.test.ts durable cost account coverage",
+    (repo) => repo.loadRunCostAccount(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "loadCostReservations",
+    "catalogRead",
+    "invocation-supervisor-db.test.ts durable cost reservation coverage",
+    (repo) => repo.loadCostReservations(deniedActor, "journal-run-denied"),
   ),
   localizationJournalGate(
     "loadRunUnits",
@@ -1091,6 +1115,12 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "localization-journal-repository.test.ts operational resume coverage",
     (repo) => repo.resumeRun(deniedActor, "journal-run-denied", undefined as never),
+  ),
+  localizationJournalGate(
+    "raiseRunCostCap",
+    "draftWrite",
+    "invocation-supervisor-db.test.ts cap raise coverage",
+    (repo) => repo.raiseRunCostCap(deniedActor, "journal-run-denied", "1"),
   ),
   localizationJournalGate(
     "renewRunLease",
@@ -2367,9 +2397,21 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.reserveAttemptCost",
+          "requiredPermission": "draft.write",
+          "successFixture": "invocation-supervisor-db.test.ts atomic N-way reservation coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriLocalizationJournalRepository.completeAttempt",
           "requiredPermission": "draft.write",
           "successFixture": "localization-journal-repository.test.ts attempt completion coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.reconcileAttemptBilling",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-journal-repository.test.ts late billed-cost reconciliation coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -2382,6 +2424,18 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationJournalRepository.loadRun",
           "requiredPermission": "catalog.read",
           "successFixture": "localization-journal-repository.test.ts run read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadRunCostAccount",
+          "requiredPermission": "catalog.read",
+          "successFixture": "invocation-supervisor-db.test.ts durable cost account coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadCostReservations",
+          "requiredPermission": "catalog.read",
+          "successFixture": "invocation-supervisor-db.test.ts durable cost reservation coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -2400,6 +2454,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationJournalRepository.resumeRun",
           "requiredPermission": "draft.write",
           "successFixture": "localization-journal-repository.test.ts operational resume coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.raiseRunCostCap",
+          "requiredPermission": "draft.write",
+          "successFixture": "invocation-supervisor-db.test.ts cap raise coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

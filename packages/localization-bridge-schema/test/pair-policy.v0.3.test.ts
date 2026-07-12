@@ -69,6 +69,7 @@ describe("parsePairPolicyV03 (happy path)", () => {
     expect(parsed.stages.translation.primary.maxPriceUsd).toBe(
       deriveDefaultMaxPriceUsd(DEFAULT_COST_CAP_USD, stageCount),
     );
+    expect(parsed.stages.translation.primary.maximumBillableCostUsd).toBeUndefined();
   });
 });
 
@@ -202,6 +203,43 @@ describe("parsePairPolicyV03 (ZDR posture preserved from v0.2)", () => {
       zdrDowngradeEnv: undefined,
     });
     expect(parsed.stages.translation.primary.maxPriceUsd).toBe(0.01);
+  });
+
+  it("uses an explicit durable reservation ceiling distinct from the provider-pricing filter", () => {
+    const raw = minimalV03();
+    const stages = raw.stages as Record<string, Record<string, Record<string, unknown>>>;
+    stages.translation.primary = {
+      pair: { modelId: "deepseek/deepseek-v4-flash", providerId: "fireworks" },
+      maxPriceUsd: 0.01,
+      maximumBillableCostUsd: 0.02,
+    };
+
+    const parsed = parsePairPolicyV03(raw, {
+      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
+      zdrDowngradeEnv: undefined,
+    });
+
+    expect(parsed.stages.translation.primary).toMatchObject({
+      maxPriceUsd: 0.01,
+      maximumBillableCostUsd: 0.02,
+    });
+  });
+
+  it("rejects a durable reservation ceiling below the provider-pricing filter", () => {
+    const raw = minimalV03();
+    const stages = raw.stages as Record<string, Record<string, Record<string, unknown>>>;
+    stages.translation.primary = {
+      pair: { modelId: "deepseek/deepseek-v4-flash", providerId: "fireworks" },
+      maxPriceUsd: 0.02,
+      maximumBillableCostUsd: 0.01,
+    };
+
+    expect(() =>
+      parsePairPolicyV03(raw, {
+        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
+        zdrDowngradeEnv: undefined,
+      }),
+    ).toThrow(PairPolicyV03ValidationError);
   });
 
   it("threads openrouterPresetSlug through when present", () => {

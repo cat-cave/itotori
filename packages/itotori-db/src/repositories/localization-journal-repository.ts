@@ -1032,29 +1032,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         };
       }
 
-      // One conditional UPDATE serializes every competing reservation for the
-      // run. PostgreSQL reevaluates the predicate after the row lock, so no
-      // application-level read/check/write race can overspend the cap.
-      const updatedAccount = await tx
-        .update(localizationJournalRunCostAccounts)
-        .set({
-          reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} + ${worstCaseCostUsd}`,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(localizationJournalRunCostAccounts.runId, attempt.runId),
-            sql`(
-              ${localizationJournalRunCostAccounts.capUsd} is null
-              or ${localizationJournalRunCostAccounts.spentCostUsd}
-                + ${localizationJournalRunCostAccounts.reservedCostUsd}
-                + ${worstCaseCostUsd}
-                <= ${localizationJournalRunCostAccounts.capUsd}
-            )`,
-          ),
-        )
-        .returning();
-      const account = updatedAccount[0];
+      const account = await reserveRunCostAccountInTx(tx, attempt.runId, worstCaseCostUsd);
       if (account === undefined) {
         return {
           admitted: false,
@@ -1306,13 +1284,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const capUsd = normalizeExactNonNegativeDecimal(capUsdInput, "capUsd");
     return this.db.transaction(async (tx) => {
       const account = await requireRunCostAccountInTx(tx, runId);
-      if (account.capUsd === null) {
-        throw new LocalizationJournalRepositoryError(
-          "invalid_input",
-          `journal run ${runId} has no finite cap to raise`,
-        );
-      }
-      if (compareExactNonNegativeDecimals(capUsd, account.capUsd) < 0) {
+      if (account.capUsd !== null && compareExactNonNegativeDecimals(capUsd, account.capUsd) < 0) {
         throw new LocalizationJournalRepositoryError(
           "invalid_input",
           `cost cap ${capUsd} may not lower existing cap ${account.capUsd}`,
@@ -1338,7 +1310,13 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         .where(
           and(
             eq(localizationJournalRunCostAccounts.runId, runId),
-            sql`${localizationJournalRunCostAccounts.capUsd} <= ${capUsd}`,
+            sql`(
+              ${localizationJournalRunCostAccounts.capUsd} is null
+              or ${localizationJournalRunCostAccounts.capUsd} <= ${capUsd}
+            )`,
+            sql`${localizationJournalRunCostAccounts.spentCostUsd}
+              + ${localizationJournalRunCostAccounts.reservedCostUsd}
+              <= ${capUsd}`,
           ),
         )
         .returning();
@@ -1346,7 +1324,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       if (row === undefined) {
         throw new LocalizationJournalRepositoryError(
           "invalid_input",
-          `cost cap ${capUsd} may not lower a concurrently raised cap for journal run ${runId}`,
+          `cost cap ${capUsd} must not lower the concurrent cap or fall below committed spend and reservations for journal run ${runId}`,
         );
       }
       await tx
@@ -3501,6 +3479,40 @@ async function beginAttemptInTx(
   };
 }
 
+/**
+ * The account-only admission primitive. Its single conditional UPDATE is the
+ * concurrency boundary for cost reservations: PostgreSQL locks the account
+ * row, reevaluates the cap predicate after that lock, and either returns the
+ * newly reserved balance or no row. Keep lease/unit/attempt work out of this
+ * helper so its atomicity can be exercised independently of run-row locks.
+ */
+export async function reserveRunCostAccountInTx(
+  tx: JournalTransaction,
+  runId: string,
+  worstCaseCostUsd: string,
+): Promise<typeof localizationJournalRunCostAccounts.$inferSelect | undefined> {
+  const updated = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({
+      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} + ${worstCaseCostUsd}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, runId),
+        sql`(
+          ${localizationJournalRunCostAccounts.capUsd} is null
+          or ${localizationJournalRunCostAccounts.spentCostUsd}
+            + ${localizationJournalRunCostAccounts.reservedCostUsd}
+            + ${worstCaseCostUsd}
+            <= ${localizationJournalRunCostAccounts.capUsd}
+        )`,
+      ),
+    )
+    .returning();
+  return updated[0];
+}
+
 async function requireRunCostAccountInTx(
   tx: JournalTransaction,
   runId: string,
@@ -3548,18 +3560,36 @@ async function ensureRunCostAccountInTx(
       `journal run ${runId} cost cap cannot decrease from ${existing.capUsd} to ${capUsd}`,
     );
   }
-  if (existing.capUsd === null && capUsd !== null) {
+  if (existing.capUsd !== null && capUsd === null) {
     throw new LocalizationJournalRepositoryError(
       "run_seed_conflict",
-      `journal run ${runId} already has an unlimited cost account and cannot be lowered to ${capUsd}`,
+      `journal run ${runId} already has finite cost cap ${existing.capUsd} and cannot become unlimited`,
     );
   }
   const updated = await tx
     .update(localizationJournalRunCostAccounts)
     .set({ capUsd, updatedAt: new Date() })
-    .where(eq(localizationJournalRunCostAccounts.runId, runId))
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, runId),
+        sql`(
+          ${localizationJournalRunCostAccounts.capUsd} is null
+          or ${localizationJournalRunCostAccounts.capUsd} <= ${capUsd}
+        )`,
+        sql`${localizationJournalRunCostAccounts.spentCostUsd}
+          + ${localizationJournalRunCostAccounts.reservedCostUsd}
+          <= ${capUsd}`,
+      ),
+    )
     .returning();
-  return updated[0] ?? existing;
+  const account = updated[0];
+  if (account === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "run_seed_conflict",
+      `journal run ${runId} cost cap ${capUsd} cannot fall below committed spend and reservations`,
+    );
+  }
+  return account;
 }
 
 async function requireCostReservationInTx(
@@ -3611,6 +3641,10 @@ async function reconcileKnownAttemptReservationInTx(
   tx: JournalTransaction,
   input: { runId: string; attemptId: string; settledCostUsd: string },
 ): Promise<void> {
+  // Cost admission locks the run before its account. Take the same lock order
+  // on both immediate completion and late reconciliation, so an over-cap
+  // settlement can pause the run without racing a concurrent reservation.
+  await lockRunForCostReconciliationInTx(tx, input.runId);
   const transitioned = await tx
     .update(localizationJournalCostReservations)
     .set({
@@ -3647,6 +3681,7 @@ async function reconcileKnownAttemptReservationInTx(
         `attempt ${input.attemptId} cost reservation was reconciled with different facts`,
       );
     }
+    await pauseRunForOverCapSettlementInTx(tx, input);
     return;
   }
   const account = await tx
@@ -3662,13 +3697,81 @@ async function reconcileKnownAttemptReservationInTx(
         sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
       ),
     )
-    .returning({ runId: localizationJournalRunCostAccounts.runId });
-  if (account[0] === undefined) {
+    .returning();
+  const updatedAccount = account[0];
+  if (updatedAccount === undefined) {
     throw new LocalizationJournalRepositoryError(
       "attempt_conflict",
       `cost account for attempt ${input.attemptId} has no matching reserved balance`,
     );
   }
+  await pauseRunForOverCapSettlementInTx(tx, input, updatedAccount);
+}
+
+/**
+ * Reconciliation is allowed to record a provider bill above the pre-dispatch
+ * reservation, because refusing the write would erase a real charge. The
+ * account is still never allowed to continue silently over its run cap:
+ * persist node 3's normal budget-cap operational state in the same
+ * transaction as the settlement.
+ */
+async function pauseRunForOverCapSettlementInTx(
+  tx: JournalTransaction,
+  input: { runId: string; attemptId: string; settledCostUsd: string },
+  updatedAccount?: typeof localizationJournalRunCostAccounts.$inferSelect,
+): Promise<void> {
+  const account = updatedAccount ?? (await requireRunCostAccountInTx(tx, input.runId));
+  if (
+    account.capUsd === null ||
+    compareExactNonNegativeDecimals(
+      addExactNonNegativeDecimals(account.spentCostUsd, account.reservedCostUsd),
+      account.capUsd,
+    ) <= 0
+  ) {
+    return;
+  }
+
+  const blocker: LocalizationJournalOperationalBlocker = {
+    kind: "budget_cap",
+    detail:
+      `reconciled provider bill $${input.settledCostUsd} raised run spend ` +
+      `plus reservations to $${addExactNonNegativeDecimals(
+        account.spentCostUsd,
+        account.reservedCostUsd,
+      )}, above configured cap $${account.capUsd}`,
+    evidence:
+      `cost-account:${input.runId};attempt:${input.attemptId};` +
+      `spent-usd:${account.spentCostUsd};reserved-usd:${account.reservedCostUsd};` +
+      `cap-usd:${account.capUsd}`,
+    raisedAt: new Date().toISOString(),
+    operatorAction: "raise the run cost cap, then resume",
+  };
+
+  // Preserve an earlier operational blocker rather than overwriting its
+  // evidence. A running run is the only state that could otherwise continue
+  // dispatching after this paid overrun.
+  await tx
+    .update(localizationJournalRuns)
+    .set({ status: "paused", pausedBlocker: blocker, updatedAt: new Date() })
+    .where(
+      and(
+        eq(localizationJournalRuns.runId, input.runId),
+        eq(localizationJournalRuns.status, "running"),
+      ),
+    );
+}
+
+async function lockRunForCostReconciliationInTx(
+  tx: JournalTransaction,
+  runId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    select 1
+    from ${localizationJournalRuns}
+    where ${localizationJournalRuns.runId} = ${runId}
+    for update
+  `);
+  await requireRunInTx(tx, runId);
 }
 
 async function completeAttemptInTx(
@@ -4255,6 +4358,23 @@ function compareExactNonNegativeDecimals(left: string, right: string): -1 | 0 | 
   return leftScaled < rightScaled ? -1 : 1;
 }
 
+function addExactNonNegativeDecimals(left: string, right: string): string {
+  const leftCanonical = normalizeExactNonNegativeDecimal(left, "left decimal");
+  const rightCanonical = normalizeExactNonNegativeDecimal(right, "right decimal");
+  const [leftWhole, leftFraction = ""] = leftCanonical.split(".");
+  const [rightWhole, rightFraction = ""] = rightCanonical.split(".");
+  const scale = Math.max(leftFraction.length, rightFraction.length);
+  const sum =
+    BigInt(leftWhole! + leftFraction.padEnd(scale, "0")) +
+    BigInt(rightWhole! + rightFraction.padEnd(scale, "0"));
+  if (scale === 0) return sum.toString();
+  const digits = sum.toString().padStart(scale + 1, "0");
+  return normalizeExactNonNegativeDecimal(
+    `${digits.slice(0, digits.length - scale)}.${digits.slice(digits.length - scale)}`,
+    "decimal sum",
+  );
+}
+
 function costCapUsdFromPolicy(policy: Record<string, unknown>): string | null {
   const raw = policy.budgetCapUsd;
   if (raw === undefined || raw === null) return null;
@@ -4286,7 +4406,10 @@ function costPolicyIsCapRaise(
   const after = costCapUsdFromPolicy(next);
   if (before === after) return true;
   if (after === null) return before === null;
-  if (before === null) return false;
+  // An unlimited account still tracks durable spent/reserved history. An
+  // operator may add a finite cap later, provided the account update proves
+  // it covers all already-committed cost.
+  if (before === null) return true;
   return compareExactNonNegativeDecimals(after, before) >= 0;
 }
 

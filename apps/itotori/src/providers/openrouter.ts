@@ -806,7 +806,7 @@ function assertValidMaxPriceUsd(value: number): void {
 
 function maxPriceUsdToDecimalString(value: number): string {
   assertValidMaxPriceUsd(value);
-  return value.toFixed(12).replace(/0+$/u, "").replace(/\.$/u, "");
+  return usageCostToDecimalString(value);
 }
 
 function isPrivateInput(inputClassification: ProviderInputClassification): boolean {

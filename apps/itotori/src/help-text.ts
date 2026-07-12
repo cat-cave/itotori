@@ -50,7 +50,9 @@ export function buildHelpText(allCommands = false): string {
   if (allCommands) {
     lines.push("ADVANCED:");
     lines.push("  dashboard-status        Write dashboard status JSON.");
-    lines.push("  localize-project-stage  Run a single agentic-loop stage (live).");
+    lines.push(
+      "  localize-project-stage  Run one durably-accounted agentic-loop stage (live; --cost-cap-usd applies a run cap).",
+    );
     lines.push("  export-patch-v2         Export a v0.2 patch bundle from drafts.");
     lines.push("  ingest-runtime          Ingest a runtime evidence report.");
     lines.push("  ingest-patch-result     Ingest a patch result.");

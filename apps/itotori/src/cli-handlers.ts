@@ -95,9 +95,9 @@ import {
   runRawMtlBaselineProofCommand,
 } from "./raw-mtl-baseline-proof/index.js";
 import {
-  runLocalizeProjectStageCommand,
-  type LocalizeProjectStageArgs,
-} from "./orchestrator/localize-project-stage-command.js";
+  runLocalizeProjectStageLive,
+  type RunLocalizeProjectStageLiveArgs,
+} from "./orchestrator/localize-project-stage-live.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
 import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
@@ -958,6 +958,7 @@ async function runLocalizeProjectStage(
   // Optional:
   //   --unit-index <N>                         default 0
   //   --max-repair-attempts <N>                default 1
+  //   --cost-cap-usd <decimal>                 durable run-level exact-decimal cap
   //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
   // The command runs the LIVE OpenRouter path only — there is no fake /
   // fixture provider option on this production CLI surface.
@@ -969,6 +970,7 @@ async function runLocalizeProjectStage(
   const unitIndexRaw = optionalFlag(args, "--unit-index");
   const engineProfileRaw = optionalFlag(args, "--engine-profile");
   const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
+  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
   if (providerRunArtifactDirectory === undefined) {
     throw new Error(
@@ -976,7 +978,7 @@ async function runLocalizeProjectStage(
     );
   }
 
-  const callArgs: LocalizeProjectStageArgs = {
+  const callArgs: RunLocalizeProjectStageLiveArgs = {
     bridgePath,
     pairPolicyPath,
     outputPath,
@@ -986,7 +988,6 @@ async function runLocalizeProjectStage(
       readJson: (path) => dependencies.io.readJson(path),
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
-    actor: { userId: "local-user" },
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
@@ -1017,10 +1018,19 @@ async function runLocalizeProjectStage(
     }
     callArgs.maxRepairAttempts = parsed;
   }
+  if (costCapUsdRaw !== undefined) {
+    const parsed = Number.parseFloat(costCapUsdRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `localize-project-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
+      );
+    }
+    callArgs.budgetCapUsd = parsed;
+  }
   if (providerRunArtifactDirectory !== undefined) {
     callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
-  await runLocalizeProjectStageCommand(callArgs);
+  await runLocalizeProjectStageLive(callArgs);
 }
 
 /**

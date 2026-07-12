@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { repairJsonObject } from "../localization/patchback-safety.js";
+import { compareDecimalUsd } from "../providers/cost.js";
 import {
   ModelProviderError,
   providerRunFromThrownError,
@@ -102,8 +103,11 @@ export type InvocationCostAdmission = {
     stage: string;
     agentLabel: string;
     request: ModelInvocationRequest;
-    /** Canonical exact decimal worst case, never a rounded micros mirror. */
-    worstCaseCostUsd: string | null;
+    /**
+     * Canonical exact decimal hard ceiling, never a rounded micros mirror.
+     * A cost-admitted physical invocation cannot proceed without this value.
+     */
+    worstCaseCostUsd: string;
   }): Promise<
     | {
         admitted: true;
@@ -154,7 +158,16 @@ export type InvocationSupervisorContext = {
   modelId?: string;
   providerId?: string;
   fallbackModels?: readonly string[];
+  /** Legacy provider-pricing filter. It is never a durable reservation bound. */
   maximumCostUsd?: number;
+  /**
+   * Explicit hard maximum bill for one physical invocation. Cost admission
+   * reserves this before dispatch; it is distinct from a provider-pricing
+   * filter and must be supplied by a validated stage posture. Any invocation
+   * with cost admission fails closed before provider preparation/dispatch when
+   * this is absent.
+   */
+  maximumBillableCostUsd?: number;
   zdr?: boolean;
 };
 
@@ -596,6 +609,16 @@ export class InvocationSupervisor {
   ): Promise<
     Extract<Awaited<ReturnType<InvocationCostAdmission["admit"]>>, { admitted: true }> | undefined
   > {
+    const costAdmission = this.options.costAdmission;
+    // `maxPriceUsd` is a provider-pricing preference/filter, not a proved
+    // upper bound on what a provider can settle. Do not turn it (or the legacy
+    // `maximumCostUsd` alias) into a reservation value. A durable paid call
+    // requires an operator-declared, validated hard bill ceiling instead.
+    const worstCaseCostUsd =
+      costAdmission === undefined
+        ? undefined
+        : await this.requiredCostAdmissionCeiling(request, attempt);
+
     // Provider preparation owns rate tokens (and any narrower transport
     // permit). It deliberately runs before the DB reservation, so a token is
     // never acquired after the run has already claimed budget.
@@ -608,16 +631,17 @@ export class InvocationSupervisor {
         providerAdmission.operatorAction ?? "raise the provider cost cap, then resume",
       );
     }
-    const admission = await this.options.costAdmission?.admit({
+    const admission = await costAdmission?.admit({
       attempt,
       runId: this.context.runId,
       bridgeUnitId: this.context.bridgeUnitId,
       stage: this.context.stage,
       agentLabel: this.context.agentLabel,
       request,
-      worstCaseCostUsd: exactDecimalUsdFromNumber(
-        this.context.maximumCostUsd ?? request.maxPriceUsd ?? null,
-      ),
+      // The helper above either returned a canonical ceiling or paused before
+      // this admission call. The non-null assertion documents that invariant
+      // at the optional-admission boundary.
+      worstCaseCostUsd: worstCaseCostUsd!,
     });
     if (admission === undefined || admission.admitted) return admission;
     await this.pauseAndThrow(
@@ -626,6 +650,42 @@ export class InvocationSupervisor {
       admission.evidence,
       admission.operatorAction ?? "raise the cost cap, then resume",
     );
+  }
+
+  /**
+   * Resolve the only value a durable admission may reserve. This intentionally
+   * has no `maxPriceUsd` fallback: OpenRouter can report a settled bill above
+   * that provider-side filter, in which case reconciliation persists it and
+   * pauses the run rather than pretending the earlier reservation was safe.
+   */
+  private async requiredCostAdmissionCeiling(
+    request: ModelInvocationRequest,
+    attempt: InvocationAttemptStarted,
+  ): Promise<string> {
+    const ceiling = this.context.maximumBillableCostUsd;
+    if (ceiling === undefined) {
+      return await this.pauseAndThrow(
+        "budget_cap",
+        "invocation policy does not declare maximumBillableCostUsd; maxPriceUsd is a provider-pricing filter and cannot be used as a durable reservation bound",
+        `cost-admission:${this.context.runId};attempt:${attempt.attemptId};maximum-billable:missing`,
+        "set a validated maximumBillableCostUsd for this stage, then resume",
+      );
+    }
+
+    const worstCaseCostUsd = exactDecimalUsdFromNumber(ceiling);
+    if (request.maxPriceUsd !== undefined) {
+      const providerPriceFilterUsd = exactDecimalUsdFromNumber(request.maxPriceUsd);
+      if (compareDecimalUsd(worstCaseCostUsd, providerPriceFilterUsd) < 0) {
+        await this.pauseAndThrow(
+          "budget_cap",
+          `maximumBillableCostUsd $${worstCaseCostUsd} is below provider maxPriceUsd $${providerPriceFilterUsd}`,
+          `cost-admission:${this.context.runId};attempt:${attempt.attemptId};` +
+            `maximum-billable:${worstCaseCostUsd};max-price:${providerPriceFilterUsd}`,
+          "set maximumBillableCostUsd at or above maxPriceUsd, then resume",
+        );
+      }
+    }
+    return worstCaseCostUsd;
   }
 
   private async dispatchWithDeadline(
@@ -1396,8 +1456,7 @@ function abortReason(reason: unknown): Error {
 }
 
 /** Convert policy's numeric input to a canonical decimal without arithmetic. */
-function exactDecimalUsdFromNumber(value: number | null): string | null {
-  if (value === null) return null;
+function exactDecimalUsdFromNumber(value: number): string {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(`maximum cost must be a finite non-negative USD number, got ${String(value)}`);
   }

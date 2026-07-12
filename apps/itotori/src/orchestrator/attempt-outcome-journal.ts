@@ -139,6 +139,9 @@ export function capturePhysicalProviderAttempts(args: {
         providerId: factoryInput.pair.pair.providerId,
         fallbackModels: factoryInput.pair.fallbackModels,
         maximumCostUsd: factoryInput.pair.maxPriceUsd,
+        ...(factoryInput.pair.maximumBillableCostUsd !== undefined
+          ? { maximumBillableCostUsd: factoryInput.pair.maximumBillableCostUsd }
+          : {}),
         zdr: factoryInput.pair.zdr,
       },
       lifecycle,

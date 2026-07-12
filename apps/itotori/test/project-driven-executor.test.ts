@@ -175,7 +175,17 @@ class InMemorySinks {
   readonly journalUnits: DrivenUnitJournalRecord[] = [];
   readonly failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
+  readonly admittedAttemptIds: string[] = [];
   readonly journal = {
+    // The executor intentionally requires admission even for an unlimited
+    // run. This fixture is an explicit test-only admission, not a production
+    // fallback: production uses DrivenJournalPersistenceAdapter.
+    createCostAdmission: (): InvocationCostAdmission => ({
+      admit: async ({ attempt }) => {
+        this.admittedAttemptIds.push(attempt.attemptId);
+        return { admitted: true };
+      },
+    }),
     persistUnitJournal: async (record: DrivenUnitJournalRecord): Promise<void> => {
       this.journalUnits.push(record);
     },
@@ -1219,22 +1229,29 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(second.journalUnitOrder.slice().sort()).toEqual(first.journalUnitOrder.slice().sort());
   });
 
-  it("rejects a capped in-memory run without a durable atomic admission", async () => {
+  it("rejects an uncapped in-memory run without atomic admission before dispatch", async () => {
     const UNIT_COUNT = 12;
     const meter = new ConcurrencyMeter();
     const sinks = new InMemorySinks();
     const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+    const input = concurrencyBaseInput({
+      bridge,
+      factory: instrumentedFactory({ meter, delayMs: 4 }),
+      sinks,
+    });
     await expect(
       runProjectDrivenExecutor({
-        ...concurrencyBaseInput({
-          bridge,
-          factory: instrumentedFactory({ meter, delayMs: 4 }),
-          sinks,
-        }),
+        ...input,
+        sinks: {
+          journal: {
+            persistUnitJournal: sinks.journal.persistUnitJournal,
+            persistFailedUnitAttempts: sinks.journal.persistFailedUnitAttempts,
+          },
+          patchExport: sinks.patchExport,
+        },
         concurrency: 2,
-        budgetCapUsd: 0.03,
       }),
-    ).rejects.toThrow("durable atomic cost-admission");
+    ).rejects.toThrow("every driven run requires a durable atomic cost-admission");
     expect(meter.totalCalls).toBe(0);
   });
 

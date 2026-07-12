@@ -31,6 +31,7 @@ import type {
 import type { DrivenLlmAttemptRecord } from "./attempt-outcome-journal.js";
 import {
   INVOCATION_DEFAULT_DEADLINE_MS,
+  InvocationOperationalPauseError,
   type InvocationAttemptCompleted,
   type InvocationAttemptStarted,
   type InvocationCostAdmission,
@@ -254,14 +255,6 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
             `cost admission for ${runId} cannot reserve attempt for different run ${input.runId}`,
           );
         }
-        if (input.worstCaseCostUsd === null) {
-          return {
-            admitted: false,
-            detail: "invocation has no exact worst-case cost for durable budget reservation",
-            evidence: `cost-account:${runId};worst-case:missing`,
-            operatorAction: "configure a per-stage maximum cost, then resume",
-          };
-        }
         await this.requireSeed(runId);
         const lease = this.requireLease(runId);
         const roundTripStartedAt = performance.now();
@@ -379,6 +372,15 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
         completedAt: attempt.completedAt,
         lease,
       });
+      // A provider can report a settled bill above its pre-dispatch estimate.
+      // The repository commits that real cost and atomically pauses a capped
+      // run. Surface the durable blocker back through the supervisor so this
+      // worker stops before it can materialize an outcome or patch after the
+      // over-cap settlement.
+      const runState = await this.journal.loadRun(this.opts.actor, attempt.runId);
+      if (runState?.status === "paused" && runState.pausedBlocker?.kind === "budget_cap") {
+        throw new InvocationOperationalPauseError(runState.pausedBlocker);
+      }
     } finally {
       await this.stopAttemptHeartbeat(attempt.runId, attempt.attemptId);
     }

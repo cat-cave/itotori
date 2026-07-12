@@ -26,6 +26,7 @@ import {
 import { DrivenJournalPersistenceAdapter } from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import { addDecimalUsd, compareDecimalUsd } from "../src/providers/cost.js";
 import type { ModelInvocationRequest, ProviderCost } from "../src/providers/types.js";
 
 const ACTOR: AuthorizationActor = { userId: localUserId };
@@ -46,25 +47,41 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
       await seedScope(context.pool);
       const repository = new ItotoriLocalizationJournalRepository(context.db);
       const runId = "journal-run-atomic-exact-cost";
-      const unitIds = [
-        "raw-bridge-unit-atomic-cost-1",
-        "raw-bridge-unit-atomic-cost-2",
-        "raw-bridge-unit-atomic-cost-3",
-      ] as const;
+      const unitIds = Array.from(
+        { length: 8 },
+        (_value, index) => `raw-bridge-unit-atomic-cost-${String(index + 1)}`,
+      );
       await repository.seedRun(ACTOR, atomicCostSeed(runId, unitIds));
 
-      // These requests intentionally race. The single conditional account
-      // update must admit both 0.49-micro reservations, but never a third,
-      // even though the provider's rounded integer-micro display is zero.
-      const firstTwo = await Promise.all(
-        unitIds
-          .slice(0, 2)
-          .map((bridgeUnitId) =>
-            repository.reserveAttemptCost(ACTOR, atomicCostAttempt(runId, bridgeUnitId)),
-          ),
+      // Exercise the full fenced repository path with N concurrent callers.
+      // That path also renews the run lease, so its run-row lock intentionally
+      // serializes admissions. The repository-package race test separately
+      // holds the account row and races the extracted account-only primitive,
+      // proving this integration lock cannot mask a read/check/write TOCTOU.
+      // Each observable snapshot here must still retain spent + reserved <=
+      // cap.
+      const raced = await Promise.all(
+        unitIds.map(async (bridgeUnitId) => {
+          const reservation = await repository.reserveAttemptCost(
+            ACTOR,
+            atomicCostAttempt(runId, bridgeUnitId),
+          );
+          const account = await repository.loadRunCostAccount(ACTOR, runId);
+          expect(account).not.toBeNull();
+          expect(
+            compareDecimalUsd(
+              addDecimalUsd(account?.spentCostUsd ?? "0", account?.reservedCostUsd ?? "0"),
+              account?.capUsd ?? "0",
+            ) <= 0,
+          ).toBe(true);
+          return reservation;
+        }),
       );
-      expect(firstTwo.every((result) => result.admitted)).toBe(true);
-      if (!firstTwo[0]?.admitted || !firstTwo[1]?.admitted) {
+      const admitted = raced.filter(
+        (result): result is Extract<(typeof raced)[number], { admitted: true }> => result.admitted,
+      );
+      expect(admitted).toHaveLength(2);
+      if (admitted.length !== 2) {
         throw new Error("atomic exact-cost fixture unexpectedly denied an admitted reservation");
       }
 
@@ -74,27 +91,17 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
         reservedCostUsd: "0.00000098",
       });
 
-      await expect(
-        repository.reserveAttemptCost(ACTOR, atomicCostAttempt(runId, unitIds[2])),
-      ).resolves.toMatchObject({
-        admitted: false,
-        account: {
-          spentCostUsd: "0",
-          reservedCostUsd: "0.00000098",
-        },
-      });
-
       await Promise.all([
         repository.completeAttempt(
           ACTOR,
-          atomicCostCompletion(firstTwo[0].attempt, {
+          atomicCostCompletion(admitted[0].attempt, {
             failureClass: "malformed_response",
             refusalState: "malformed-http-200",
             retryDecision: "advance",
             validationResult: "semantic_invalid",
           }),
         ),
-        repository.completeAttempt(ACTOR, atomicCostCompletion(firstTwo[1].attempt)),
+        repository.completeAttempt(ACTOR, atomicCostCompletion(admitted[1].attempt)),
       ]);
 
       // A known billed cost is charged even when the response is unusable.
@@ -109,13 +116,13 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
       expect(await repository.loadCostReservations(ACTOR, runId)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            attemptId: firstTwo[0].attempt.attemptId,
+            attemptId: admitted[0].attempt.attemptId,
             reservedUsd: "0.00000049",
             reconciledUsd: "0.00000049",
             state: "reconciled",
           }),
           expect.objectContaining({
-            attemptId: firstTwo[1].attempt.attemptId,
+            attemptId: admitted[1].attempt.attemptId,
             reservedUsd: "0.00000049",
             reconciledUsd: "0.00000049",
             state: "reconciled",
@@ -125,19 +132,160 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
       expect(await repository.loadAttemptsForRun(ACTOR, runId)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            attemptId: firstTwo[0].attempt.attemptId,
+            attemptId: admitted[0].attempt.attemptId,
             billingState: "known",
             costUsd: "0.00000049",
             failureClass: "malformed_response",
             refusalState: "malformed-http-200",
           }),
           expect.objectContaining({
-            attemptId: firstTwo[1].attempt.attemptId,
+            attemptId: admitted[1].attempt.attemptId,
             billingState: "known",
             costUsd: "0.00000049",
           }),
         ]),
       );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("reconciles a billed malformed provider response that the supervisor rejects", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const calls = new Map<string, number>();
+      const healthyFactory = providerFactory(calls);
+      const malformedFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        if (
+          factoryInput.stage !== "translation" ||
+          factoryInput.agentLabel !== "translation-primary"
+        ) {
+          return healthyFactory(factoryInput);
+        }
+        return new FakeModelProvider({
+          providerName: "billed-malformed-translation-response",
+          // This is a real provider result flowing through InvocationSupervisor:
+          // the broken JSON body is NOT a hand-built completion record, while
+          // the injected telemetry models a provider that billed the malformed
+          // response.
+          cost: ATOMIC_SUB_MICRO_BILLED_COST,
+          generate: () => "{ malformed provider JSON",
+        });
+      };
+
+      const result = await runProjectDrivenExecutor({
+        ...executorInput(malformedFactory),
+        pairPolicy: atomicCostPairPolicy(),
+        budgetCapUsd: ATOMIC_COST_RAISED_CAP_USD,
+        maxUnits: 1,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, {
+            actor: ACTOR,
+            driverId: "billed-malformed-response-driver",
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+
+      expect(result).toMatchObject({
+        runState: "paused",
+        patchExportCount: 0,
+      });
+      const attempts = await repository.loadAttemptsForRun(ACTOR, result.journalRunId);
+      const malformedAttempts = attempts.filter(
+        (attempt) =>
+          attempt.stage === "translation" &&
+          attempt.agentLabel === "translation-primary" &&
+          attempt.failureClass === "invalid_json",
+      );
+      expect(malformedAttempts.length).toBeGreaterThan(0);
+      expect(malformedAttempts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            lifecycleState: "completed",
+            billingState: "known",
+            costUsd: "0.00000049",
+          }),
+        ]),
+      );
+
+      const reservations = await repository.loadCostReservations(ACTOR, result.journalRunId);
+      for (const attempt of malformedAttempts) {
+        expect(reservations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              attemptId: attempt.attemptId,
+              reservedUsd: "0.00000049",
+              reconciledUsd: "0.00000049",
+              state: "reconciled",
+            }),
+          ]),
+        );
+      }
+      const account = await repository.loadRunCostAccount(ACTOR, result.journalRunId);
+      const expectedBilledSpend = malformedAttempts.reduce(
+        (total) => addDecimalUsd(total, ATOMIC_SUB_MICRO_BILLED_COST.amountUsd),
+        "0",
+      );
+      expect(account).toMatchObject({ spentCostUsd: expectedBilledSpend, reservedCostUsd: "0" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("accounts for paid uncapped executor calls and permits adding a later cap", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const calls = new Map<string, number>();
+      const patches: DrivenPatchExportRecord[] = [];
+      const result = await runProjectDrivenExecutor({
+        ...executorInput(providerFactory(calls, ATOMIC_SUB_MICRO_BILLED_COST)),
+        pairPolicy: atomicCostPairPolicy(),
+        maxUnits: 1,
+        // Deliberately omit budgetCapUsd. The durable adapter must still
+        // reserve/reconcile every physical call against an unlimited account.
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, {
+            actor: ACTOR,
+            driverId: "atomic-cost-uncapped-driver",
+          }),
+          patchExport: { exportPatch: async (record) => void patches.push(record) },
+        },
+      });
+
+      // This focused fixture intentionally drives one unit from a two-unit
+      // frozen scope, so no final patch is expected even though the paid
+      // calls complete normally.
+      expect(result).toMatchObject({ runState: "running", patchExportCount: 0 });
+      expect(patches).toEqual([]);
+      const account = await repository.loadRunCostAccount(ACTOR, result.journalRunId);
+      expect(account).toMatchObject({ capUsd: null, reservedCostUsd: "0" });
+      expect(compareDecimalUsd(account?.spentCostUsd ?? "0", "0")).toBeGreaterThan(0);
+      const reservations = await repository.loadCostReservations(ACTOR, result.journalRunId);
+      expect(reservations.length).toBeGreaterThan(0);
+      expect(reservations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            state: "reconciled",
+            reconciledUsd: ATOMIC_SUB_MICRO_BILLED_COST.amountUsd,
+          }),
+        ]),
+      );
+
+      const addedCap = addDecimalUsd(
+        account?.spentCostUsd ?? "0",
+        ATOMIC_UNCAPPED_CAP_HEADROOM_USD,
+      );
+      await expect(
+        repository.raiseRunCostCap(ACTOR, result.journalRunId, addedCap),
+      ).resolves.toMatchObject({ capUsd: addedCap, spentCostUsd: account?.spentCostUsd });
+      expect(await repository.loadRun(ACTOR, result.journalRunId)).toMatchObject({
+        costPolicy: expect.objectContaining({ budgetCapUsd: addedCap }),
+      });
     } finally {
       await context.close();
     }
@@ -650,15 +798,19 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
       const repository = new ItotoriLocalizationJournalRepository(context.db);
       const exhaustedDeadlineJournal = new Proxy(repository, {
         get(target, property) {
-          if (property === "beginAttempt") {
+          if (property === "reserveAttemptCost") {
             return async (
-              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[0],
-              input: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[1],
+              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["reserveAttemptCost"]>[0],
+              input: Parameters<ItotoriLocalizationJournalRepositoryPort["reserveAttemptCost"]>[1],
             ) => {
-              const dispatching = await target.beginAttempt(actor, input);
+              const reservation = await target.reserveAttemptCost(actor, input);
+              if (!reservation.admitted) return reservation;
               return {
-                ...dispatching,
-                leaseDeadline: { ...dispatching.leaseDeadline, remainingMs: 0 },
+                ...reservation,
+                attempt: {
+                  ...reservation.attempt,
+                  leaseDeadline: { ...reservation.attempt.leaseDeadline, remainingMs: 0 },
+                },
               };
             };
           }
@@ -721,12 +873,13 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
       });
       const deadlineJournal = new Proxy(repository, {
         get(target, property) {
-          if (property === "beginAttempt") {
+          if (property === "reserveAttemptCost") {
             return async (
-              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[0],
-              input: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[1],
+              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["reserveAttemptCost"]>[0],
+              input: Parameters<ItotoriLocalizationJournalRepositoryPort["reserveAttemptCost"]>[1],
             ) => {
-              const dispatching = await target.beginAttempt(actor, input);
+              const reservation = await target.reserveAttemptCost(actor, input);
+              if (!reservation.admitted) return reservation;
               // Keep the production 120-second floor while making this one
               // DB-issued deadline observable in a focused integration test.
               const compressed = await context.pool.query<{
@@ -750,7 +903,7 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
               if (leaseDeadline === undefined) {
                 throw new Error(`failed to compress test lease for ${input.runId}`);
               }
-              return { ...dispatching, leaseDeadline };
+              return { ...reservation, attempt: { ...reservation.attempt, leaseDeadline } };
             };
           }
           if (property === "completeAttempt") {
@@ -1050,6 +1203,7 @@ const ATOMIC_COST_LEASE = { ownerId: "atomic-cost-driver", fenceToken: 1 } as co
 const ATOMIC_COST_INITIAL_CAP_USD = 0.00000098; // itotori-225-audit-allow: focused live-DB fixture cap admits exactly two 0.49-micro reservations before testing atomic budget pause
 const ATOMIC_COST_RAISED_CAP_USD = 0.0001; // itotori-225-audit-allow: focused live-DB fixture cap raise leaves room for the complete two-unit executor resume
 const ATOMIC_SUB_MICRO_MAX_USD = 0.00000049; // itotori-225-audit-allow: pair-policy fixture exposes an exact sub-micro worst case to the durable reservation seam
+const ATOMIC_UNCAPPED_CAP_HEADROOM_USD = "0.00000001"; // itotori-225-audit-allow: exact post-run headroom proves a previously unlimited account can accept a finite cap above observed spend
 const ATOMIC_SUB_MICRO_BILLED_COST: ProviderCost = {
   costKind: "billed",
   currency: "USD",
@@ -1141,9 +1295,12 @@ function atomicCostCompletion(
 }
 
 function atomicCostPairPolicy(): PairPolicy {
-  const withAtomicMax = <T extends { maxPriceUsd: number }>(posture: T): T => ({
+  const withAtomicMax = <T extends { maxPriceUsd: number; maximumBillableCostUsd?: number }>(
+    posture: T,
+  ): T => ({
     ...posture,
     maxPriceUsd: ATOMIC_SUB_MICRO_MAX_USD,
+    maximumBillableCostUsd: ATOMIC_SUB_MICRO_MAX_USD,
   });
   return {
     context: {
