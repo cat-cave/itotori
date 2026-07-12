@@ -47,10 +47,7 @@ import {
   type StructuredTranslationDraftOutput,
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
-import {
-  buildStructuredRetryMessages,
-  invokeWithBoundedStructuredRetry,
-} from "../bounded-structured-retry.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
@@ -84,6 +81,8 @@ export type TranslationAgentOptions = {
    * runs before any provider call.
    */
   provider: ModelProvider;
+  /** Repair already has a primary candidate to retain after a bounded pass. */
+  contentFailureMode?: "must_succeed" | "retain_existing";
 };
 
 /**
@@ -135,21 +134,28 @@ export class TranslationAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
-      provider: this.options.provider,
-      request,
-      parse: parseStructuredTranslationDraftOutput,
-      isSchemaValidationError: (error) => error instanceof TranslationDraftResponseValidationError,
-      buildCorrectiveMessages: buildStructuredRetryMessages,
-      validateResponse: (candidate) => this.assertCompleteInvocation(candidate, input),
-      validateParsed: (candidate) => {
-        this.assertBridgeUnitsResolve(candidate, input);
-        this.assertLocaleConsistency(candidate, input);
-        this.assertCitationsResolve(candidate, input);
-        this.assertProtectedSpansPreserved(candidate, input);
-        this.assertEveryRequestedUnitHasOneNonBlankDraft(candidate, input);
+    const { invocation, parsed, priorAttempts } = await executeStructuredInvocation(
+      this.options.provider,
+      {
+        request,
+        parse: parseStructuredTranslationDraftOutput,
+        isSchemaValidationError: (error) =>
+          error instanceof TranslationDraftResponseValidationError,
+        validateResponse: (candidate) => this.assertCompleteInvocation(candidate, input),
+        validateParsed: (candidate) => {
+          this.assertBridgeUnitsResolve(candidate, input);
+          this.assertLocaleConsistency(candidate, input);
+          this.assertCitationsResolve(candidate, input);
+          this.assertProtectedSpansPreserved(candidate, input);
+          this.assertEveryRequestedUnitHasOneNonBlankDraft(candidate, input);
+        },
+        requiredUnitIds: input.sourceBridgeUnits.map((unit) => unit.bridgeUnitId),
+        successDecision: "write",
+        ...(this.options.contentFailureMode !== undefined
+          ? { contentFailureMode: this.options.contentFailureMode }
+          : {}),
       },
-    });
+    );
     const providerRun = invocation.providerRun;
     const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 

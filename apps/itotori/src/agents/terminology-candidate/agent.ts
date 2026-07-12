@@ -4,9 +4,11 @@ import {
   type ItotoriTerminologyCandidateRepositoryPort,
 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   ProviderRunRecord,
@@ -63,6 +65,14 @@ export async function generateTerminologyCandidates(
   //    check). Maps every alias + preferredSourceForm to the owning
   //    terminologyTermId.
   const conflictIndex = buildConflictIndex(input.existingGlossary);
+  const sourceHashByUnitId = new Map<string, string>();
+  const sourceTextByUnitId = new Map<string, string>();
+  const validUnitIds = new Set<string>();
+  for (const unit of input.units) {
+    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
+    sourceTextByUnitId.set(unit.bridgeUnitId, unit.sourceText);
+    validUnitIds.add(unit.bridgeUnitId);
+  }
 
   const templateVersion = input.promptTemplateVersion ?? PROMPT_TEMPLATE_VERSION_V1;
   const rendered = buildPrompt(input);
@@ -89,18 +99,25 @@ export async function generateTerminologyCandidates(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  const invocation = await options.provider.invoke(request);
+  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
+    await executeStructuredInvocation(options.provider, {
+      request,
+      parse: parseProviderPack,
+      isSchemaValidationError: (error) =>
+        error instanceof TerminologyCandidateParseError ||
+        error instanceof TerminologyCandidateInvalidKindError,
+      validateParsed: (pack) =>
+        validateProviderPack(
+          pack,
+          conflictIndex,
+          validUnitIds,
+          sourceHashByUnitId,
+          sourceTextByUnitId,
+        ),
+      successDecision: "advance",
+    });
+  const { invocation, parsed: pack } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
-  const pack = parseProviderPack(invocation.content ?? "");
-
-  const sourceHashByUnitId = new Map<string, string>();
-  const sourceTextByUnitId = new Map<string, string>();
-  const validUnitIds = new Set<string>();
-  for (const unit of input.units) {
-    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
-    sourceTextByUnitId.set(unit.bridgeUnitId, unit.sourceText);
-    validUnitIds.add(unit.bridgeUnitId);
-  }
 
   const now = (input.now ?? (() => new Date()))();
   const generatedAt = now.toISOString();
@@ -117,22 +134,8 @@ export async function generateTerminologyCandidates(
 
   const candidates: TerminologyCandidate[] = [];
   for (const emitted of pack.candidates) {
-    if (!isValidCandidateKind(emitted.kind)) {
-      throw new TerminologyCandidateInvalidKindError(emitted.kind);
-    }
-    if (emitted.surfaceForm.trim().length === 0) {
-      throw new TerminologyCandidateUncitedError(emitted.surfaceForm);
-    }
-    if (emitted.citedUnitIds.length === 0) {
-      throw new TerminologyCandidateUncitedError(emitted.surfaceForm);
-    }
-    // Pre-persist conflict check against the supplied existingGlossary.
-    const conflict = conflictIndex.get(emitted.surfaceForm);
-    if (conflict !== undefined) {
-      throw new ExistingGlossaryConflictError(emitted.surfaceForm, conflict);
-    }
     // ITOTORI-150 — repository-side pre-persist conflict check, PARALLEL to
-    // the conflictIndex check above and mirroring staleness.ts. Closes the
+    // the supervised input-glossary check and mirroring staleness.ts. Closes the
     // TOCTOU window: a glossary term a curator inserted between input-context
     // load and persist surfaces SYNCHRONOUSLY here as
     // `ExistingGlossaryConflictError` — even when the input `existingGlossary`
@@ -150,30 +153,8 @@ export async function generateTerminologyCandidates(
         throw new ExistingGlossaryConflictError(emitted.surfaceForm, repositoryConflict);
       }
     }
-    const citedUnitIds: string[] = [];
-    const citedUnitHashes: string[] = [];
-    let surfaceFormAppearsInCitedUnit = false;
-    for (const id of emitted.citedUnitIds) {
-      if (!validUnitIds.has(id)) {
-        throw new TerminologyCandidateUnknownCitationError(id, `candidate ${emitted.surfaceForm}`);
-      }
-      const hashValue = sourceHashByUnitId.get(id);
-      if (!hashValue) {
-        throw new TerminologyCandidateUnknownCitationError(
-          id,
-          `candidate ${emitted.surfaceForm} (no source hash)`,
-        );
-      }
-      citedUnitIds.push(id);
-      citedUnitHashes.push(hashValue);
-      const sourceText = sourceTextByUnitId.get(id) ?? "";
-      if (sourceText.includes(emitted.surfaceForm)) {
-        surfaceFormAppearsInCitedUnit = true;
-      }
-    }
-    if (!surfaceFormAppearsInCitedUnit) {
-      throw new TerminologyCandidateNotInUnitsError(emitted.surfaceForm);
-    }
+    const citedUnitIds = [...emitted.citedUnitIds];
+    const citedUnitHashes = emitted.citedUnitIds.map((id) => sourceHashByUnitId.get(id)!);
     const candidate: TerminologyCandidate = {
       id: createUuid7(),
       projectId: input.projectId,
@@ -228,6 +209,47 @@ export function buildConflictIndex(
   return index;
 }
 
+function validateProviderPack(
+  pack: ProviderEmittedPack,
+  conflictIndex: ReadonlyMap<string, string>,
+  validUnitIds: ReadonlySet<string>,
+  sourceHashByUnitId: ReadonlyMap<string, string>,
+  sourceTextByUnitId: ReadonlyMap<string, string>,
+): void {
+  for (const emitted of pack.candidates) {
+    if (!isValidCandidateKind(emitted.kind)) {
+      throw new TerminologyCandidateInvalidKindError(emitted.kind);
+    }
+    if (emitted.surfaceForm.trim().length === 0 || emitted.citedUnitIds.length === 0) {
+      throw new TerminologyCandidateUncitedError(emitted.surfaceForm);
+    }
+    const conflict = conflictIndex.get(emitted.surfaceForm);
+    if (conflict !== undefined) {
+      throw new ExistingGlossaryConflictError(emitted.surfaceForm, conflict);
+    }
+
+    let surfaceFormAppearsInCitedUnit = false;
+    for (const id of emitted.citedUnitIds) {
+      if (!validUnitIds.has(id)) {
+        throw new TerminologyCandidateUnknownCitationError(id, `candidate ${emitted.surfaceForm}`);
+      }
+      if (!sourceHashByUnitId.get(id)) {
+        throw new TerminologyCandidateUnknownCitationError(
+          id,
+          `candidate ${emitted.surfaceForm} (no source hash)`,
+        );
+      }
+      const sourceText = sourceTextByUnitId.get(id) ?? "";
+      if (sourceText.includes(emitted.surfaceForm)) {
+        surfaceFormAppearsInCitedUnit = true;
+      }
+    }
+    if (!surfaceFormAppearsInCitedUnit) {
+      throw new TerminologyCandidateNotInUnitsError(emitted.surfaceForm);
+    }
+  }
+}
+
 function parseProviderPack(content: string): ProviderEmittedPack {
   let parsed: unknown;
   try {
@@ -255,9 +277,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     const surfaceForm = typeof row.surfaceForm === "string" ? row.surfaceForm : null;
     const rationale = typeof row.rationale === "string" ? row.rationale : null;
     const readingHint = typeof row.readingHint === "string" ? row.readingHint : undefined;
-    const citedUnitIds = Array.isArray(row.citedUnitIds)
-      ? row.citedUnitIds.filter((id): id is string => typeof id === "string")
-      : null;
+    const citedUnitIds = parseStringArray(row.citedUnitIds);
     if (kindRaw === null || surfaceForm === null || rationale === null || citedUnitIds === null) {
       throw new TerminologyCandidateParseError("output.candidates entry missing required field");
     }
@@ -273,6 +293,16 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     });
   }
   return { candidates };
+}
+
+function parseStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const parsed: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    parsed.push(entry);
+  }
+  return parsed;
 }
 
 function isValidCandidateKind(value: string): value is CandidateKind {

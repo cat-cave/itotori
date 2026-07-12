@@ -103,6 +103,11 @@ import {
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
+import {
+  InvocationContentExhaustedError,
+  InvocationRetryCeilingError,
+  isInvocationOperationalPause,
+} from "./invocation-supervisor.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -891,6 +896,7 @@ export async function runAgenticLoopForUnit(
         agentLabel: entry.agentLabel,
       });
     } catch (error) {
+      rethrowOperationalInvocation(error);
       // A primary candidate is already non-blank and canonical at this
       // point. A provider's empty/truncated QA response is an informational
       // loss of review coverage, not grounds to discard that candidate.
@@ -991,6 +997,7 @@ export async function runAgenticLoopForUnit(
           priorPassFeedback: input.priorPassFeedback,
         });
       } catch (error) {
+        rethrowOperationalInvocation(error);
         // The selected primary (or an earlier selected repair) remains valid.
         // Do not manufacture a replacement or let a partial repair erase it.
         markJournalAttemptFailure(
@@ -1649,6 +1656,7 @@ async function runBestEffortEnrichment(
       sink.artifactRefs.add(ref);
     }
   } catch (error) {
+    rethrowOperationalInvocation(error);
     sink.attemptOutcomeObserver?.markFailedAttempt({
       stage: "context",
       agentLabel,
@@ -2096,7 +2104,12 @@ async function invokeTranslationStage(args: {
    */
   priorPassFeedback?: PriorPassFeedback | undefined;
 }): Promise<TranslationInvocationResult> {
-  const agent = new TranslationAgent({ provider: args.provider });
+  const agent = new TranslationAgent({
+    provider: args.provider,
+    ...(args.agentLabel.startsWith("repair-")
+      ? { contentFailureMode: "retain_existing" as const }
+      : {}),
+  });
 
   // PATCHBACK-SAFETY (primary, deterministic). Strip EVERY protected control
   // span — out-of-band kidoku markers, the leading 【name】 speaker token, and
@@ -2398,6 +2411,7 @@ async function runPostRepairReQaPass(args: {
         agentLabel: entry.agentLabel,
       });
     } catch (error) {
+      rethrowOperationalInvocation(error);
       // Re-QA happens only after both the primary and this repair candidate
       // exist. Retain the known selection while making the coverage loss
       // visible to the caller; other focused judges may still contribute
@@ -2425,11 +2439,20 @@ async function runPostRepairReQaPass(args: {
 }
 
 function isQaPartialResultError(error: unknown): error is QaPartialResultError {
-  return error instanceof QaPartialResultError;
+  return error instanceof QaPartialResultError || error instanceof InvocationContentExhaustedError;
 }
 
 function isTranslationPartialResultError(error: unknown): error is TranslationPartialResultError {
-  return error instanceof TranslationPartialResultError;
+  return (
+    error instanceof TranslationPartialResultError ||
+    error instanceof InvocationContentExhaustedError
+  );
+}
+
+function rethrowOperationalInvocation(error: unknown): void {
+  if (isInvocationOperationalPause(error) || error instanceof InvocationRetryCeilingError) {
+    throw error;
+  }
 }
 
 function markJournalAttemptFailure(
@@ -2683,7 +2706,7 @@ function countChar(haystack: string, needle: string): number {
 }
 
 function isP0ViolationKind(kind: DraftProtectedSpanViolation["kind"]): boolean {
-  // The closed-enum split mirrors retry-policy.ts: only the
+  // The closed-enum split mirrors InvocationSupervisor: only the
   // non-retryable kinds are treated as P0 for short-circuit. Adding a
   // new violation kind without updating this set is an explicit
   // editorial decision, not a silent default.

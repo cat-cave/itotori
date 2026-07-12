@@ -41,7 +41,6 @@ import {
   type PairPolicy,
 } from "../src/orchestrator/agentic-loop.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
-import { TranslationPartialResultError } from "../src/agents/translation/shapes.js";
 import { usageCostToDecimalString, usageCostToMicros } from "../src/providers/cost.js";
 import type {
   ModelInvocationRequest,
@@ -673,15 +672,15 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
   });
 
-  it("keeps a primary partial result as a typed operational failure when no candidate exists", async () => {
-    await expect(
-      runAgenticLoopForUnit(
-        makeInput(),
-        DEV_POLICY,
-        makePolicy(),
-        partialResultProviderFactory({ primaryTranslationPartial: true }),
-      ),
-    ).rejects.toBeInstanceOf(TranslationPartialResultError);
+  it("correctively retries a primary partial result until a usable candidate exists", async () => {
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy(),
+      partialResultProviderFactory({ primaryTranslationPartial: true }),
+    );
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
   });
 
   it("post-repair re-QA selects a repaired candidate that passes the bounded re-QA", async () => {

@@ -40,6 +40,7 @@ import {
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
 } from "../providers/index.js";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import {
   PROVIDER_PROOF_LIVE_MAX_PRICE_USD,
   PROVIDER_PROOF_MAX_REPAIR_ATTEMPTS,
@@ -237,7 +238,7 @@ export async function runLiveRawMtlBaselineProof(
       attemptIndex,
       fixture,
     });
-    const result = await provider.invoke(request);
+    const result = await executeModelInvocation(provider, request);
     return { content: result.content, providerRun: result.providerRun };
   };
 

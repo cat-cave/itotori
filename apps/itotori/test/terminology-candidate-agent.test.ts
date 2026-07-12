@@ -5,6 +5,7 @@ import type {
   ItotoriTerminologyCandidateRepositoryPort,
 } from "@itotori/db";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
   buildConflictIndex,
   buildPrompt,
@@ -125,11 +126,13 @@ const successPackJson = JSON.stringify({
 // throws to keep the fixture honest.
 class SurfaceFormConflictRepository implements ItotoriTerminologyCandidateRepositoryPort {
   public glossary = new Map<string, string>(); // surfaceForm -> termId
+  public lookupCalls = 0;
 
   async existsTerminologyTermBySurfaceForm(
     _actor: AuthorizationActor,
     input: ExistsTerminologyTermBySurfaceFormInput,
   ): Promise<string | null> {
+    this.lookupCalls += 1;
     return this.glossary.get(input.surfaceForm) ?? null;
   }
 
@@ -228,6 +231,46 @@ describe("generateTerminologyCandidates", () => {
       expect(candidate.promptHash).toMatch(/^[0-9a-f]{64}$/);
       expect(TERMINOLOGY_CANDIDATE_KINDS as ReadonlyArray<string>).toContain(candidate.kind);
     }
+  });
+
+  it("correctively retries a semantically invalid citation before accepting the pack", async () => {
+    const input = inputFixture();
+    const requests: ModelInvocationRequest[] = [];
+    const invalidPack = JSON.stringify({
+      candidates: [
+        {
+          kind: "ProperNoun",
+          surfaceForm: "ハル",
+          rationale: "主人公の固有名。",
+          citedUnitIds: ["unknown-bridge-unit"],
+        },
+      ],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        requests.push(request);
+        return requests.length === 1 ? invalidPack : successPackJson;
+      },
+    });
+    const repository = new SurfaceFormConflictRepository();
+
+    const output = await generateTerminologyCandidates(input, {
+      provider,
+      repository,
+      actor: i150Actor,
+    });
+
+    expect(output.candidates).toHaveLength(4);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      "previous response failed with semantic_invalid",
+    );
+    expect(requests[1]?.messages.at(-1)?.content).toContain("unknown-bridge-unit");
+    // Repository/TOCTOU checks run only for the four candidates in the
+    // accepted pack, never for the rejected model response.
+    expect(repository.lookupCalls).toBe(4);
   });
 
   it("is byte-stable across two invocations (same prompt hash)", async () => {

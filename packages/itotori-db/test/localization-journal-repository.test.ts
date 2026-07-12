@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   asNonBlankTargetText,
   type SpeakerLabel,
@@ -14,6 +14,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const deniedActor: AuthorizationActor = { userId: "user-without-required-permission" };
+const driverALease = { ownerId: "journal-driver-a", fenceToken: 1 } as const;
 
 const scope = {
   projectId: "project-localization-journal",
@@ -23,6 +24,628 @@ const scope = {
 } as const;
 
 describe("ItotoriLocalizationJournalRepository", () => {
+  it("atomically seeds ordered units, persists attempts before dispatch, and writes from an already-completed attempt", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-lifecycle");
+
+      const run = await repository.seedRun(localActor, seed);
+      expect(run).toMatchObject({
+        runId: seed.runId,
+        status: "running",
+        frozenScope: seed.frozenScope,
+        routingPolicy: seed.routingPolicy,
+        costPolicy: seed.costPolicy,
+        pausedBlocker: null,
+      });
+      // Retrying the launch write is exact/idempotent; it cannot duplicate or
+      // reorder the frozen unit obligation set.
+      await expect(repository.seedRun(localActor, seed)).resolves.toMatchObject({
+        runId: seed.runId,
+      });
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        {
+          bridgeUnitId: "raw-bridge-unit-lifecycle-1",
+          sourceUnitKey: "scene.lifecycle.1",
+          unitOrdinal: 0,
+          state: "pending",
+          nextAction: { kind: "drive_unit", stage: "translation" },
+        },
+        {
+          bridgeUnitId: "raw-bridge-unit-lifecycle-2",
+          sourceUnitKey: "scene.lifecycle.2",
+          unitOrdinal: 1,
+          state: "pending",
+          nextAction: { kind: "drive_unit", stage: "translation" },
+        },
+      ]);
+
+      const begin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      const dispatching = await repository.beginAttempt(localActor, begin);
+      expect(dispatching).toMatchObject({
+        attemptId: begin.attemptId,
+        lifecycleState: "dispatching",
+        requestedModelId: "model-lifecycle-requested",
+        requestedProviderId: "provider-lifecycle-requested",
+        providerRunId: begin.attemptId,
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        zdr: true,
+        validationResult: null,
+        completedAt: null,
+      });
+      await expect(repository.beginAttempt(localActor, begin)).resolves.toMatchObject({
+        lifecycleState: "dispatching",
+      });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toHaveLength(1);
+      // Jobs/cost read models describe completed physical calls only; an
+      // honest in-flight row is visible in the attempt journal, not fabricated
+      // into a zero-cost served result.
+      expect(
+        await repository.loadJobsRunTable(localActor, { projectId: scope.projectId }),
+      ).toMatchObject({ pagination: { total: 0 }, rows: [] });
+
+      const completion = lifecycleCompleteAttempt(
+        begin,
+        "model-lifecycle-served",
+        "provider-lifecycle-served",
+      );
+      const completed = await repository.completeAttempt(localActor, completion);
+      expect(completed).toMatchObject({
+        lifecycleState: "completed",
+        modelId: "model-lifecycle-served",
+        providerId: "provider-lifecycle-served",
+        costUsd: "0.00000000000000000007",
+        validationResult: "accepted",
+        retryDecision: "write",
+      });
+      await expect(repository.completeAttempt(localActor, completion)).resolves.toMatchObject({
+        lifecycleState: "completed",
+      });
+      await expect(
+        repository.completeAttempt(localActor, { ...completion, costUsd: "0.5" }),
+      ).rejects.toMatchObject({ code: "attempt_conflict" });
+
+      const timeoutBegin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-2");
+      await repository.beginAttempt(localActor, timeoutBegin);
+      const timeoutCompletion = {
+        ...lifecycleCompleteAttempt(timeoutBegin, "unused-model", "unused-provider"),
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        costKind: undefined,
+        usageResponseJson: undefined,
+        tokensIn: null,
+        tokensOut: null,
+        tokenCountSource: undefined,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        cacheDiscountMicrosUsd: null,
+        fallbackUsed: undefined,
+        fallbackPlan: undefined,
+        finishState: "timeout",
+        validationResult: "provider_failed" as const,
+        failureClass: "timeout",
+        retryDecision: "advance" as const,
+      };
+      await expect(
+        repository.completeAttempt(localActor, timeoutCompletion),
+      ).resolves.toMatchObject({
+        lifecycleState: "completed",
+        modelId: null,
+        providerId: null,
+        costUsd: null,
+        validationResult: "provider_failed",
+      });
+      // Providerless timeout evidence is durable, but is not projected as a
+      // fake served/cost row in the legacy jobs read model.
+      expect(
+        await repository.loadJobsRunTable(localActor, { projectId: scope.projectId }),
+      ).toMatchObject({ pagination: { total: 1 }, rows: [{ attemptId: begin.attemptId }] });
+
+      const outcome: WrittenUnitOutcome = {
+        id: "written-outcome-lifecycle",
+        status: "written",
+        unitId: begin.bridgeUnitId,
+        targetLocale: scope.targetLocale,
+        selectedCandidateId: "candidate-lifecycle",
+        candidates: [
+          {
+            id: "candidate-lifecycle",
+            outcomeId: "written-outcome-lifecycle",
+            body: asNonBlankTargetText("Welcome back."),
+            producedBy: {
+              modelId: completion.modelId,
+              providerId: completion.providerId,
+            },
+            attemptId: begin.attemptId,
+            kind: "primary",
+          },
+        ],
+        findings: [],
+        qualityFlags: [],
+        provenance: { origin: "invocation-supervisor" },
+        writtenAt: "2026-07-12T12:00:02.000Z",
+      };
+      await repository.persistUnit(localActor, {
+        runId: seed.runId,
+        bridgeUnitId: begin.bridgeUnitId,
+        sourceUnitKey: "scene.lifecycle.1",
+        outcome,
+        // The supervisor completed this attempt before materializing the
+        // canonical outcome; it need not replay terminal attempt facts here.
+        attempts: [],
+        contextPacket: null,
+        contextRefs: [],
+        speakerLabels: [],
+        qaDetails: {},
+        lease: driverALease,
+      });
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        { bridgeUnitId: begin.bridgeUnitId, state: "written", nextAction: null },
+        { bridgeUnitId: "raw-bridge-unit-lifecycle-2", state: "pending" },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a frozen-run re-seed with an extra unit without persisting it", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-frozen-reseed-extra-unit");
+      await repository.seedRun(localActor, seed);
+
+      const extraUnit = {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-extra",
+        sourceUnitKey: "scene.lifecycle.extra",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      };
+      await expect(
+        repository.seedRun(localActor, { ...seed, units: [...seed.units, extraUnit] }),
+      ).rejects.toMatchObject({ code: "run_seed_conflict" });
+
+      expect(
+        (await repository.loadRunUnits(localActor, seed.runId)).map((unit) => unit.bridgeUnitId),
+      ).toEqual(seed.units.map((unit) => unit.bridgeUnitId));
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("derives lease expiry from PostgreSQL despite executor host-clock skew", async () => {
+    const context = await isolatedMigratedContext();
+    const hostClock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2099-01-01T00:00:00Z"));
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-db-clock-lease");
+      await repository.seedRun(localActor, seed);
+      await repository.renewRunLease(localActor, seed.runId, driverALease);
+
+      const leaseWindow = await context.db.execute(sql`
+        select extract(epoch from (lease_expires_at - now())) as seconds_remaining
+        from itotori_localization_journal_runs
+        where run_id = ${seed.runId}
+      `);
+      const secondsRemaining = Number(
+        (leaseWindow.rows[0] as { seconds_remaining: string }).seconds_remaining,
+      );
+      expect(secondsRemaining).toBeGreaterThan(110);
+      expect(secondsRemaining).toBeLessThanOrEqual(121);
+    } finally {
+      hostClock.mockRestore();
+      await context.close();
+    }
+  });
+
+  it("guards operational pause/resume without changing pending unit work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-pause-resume");
+      await repository.seedRun(localActor, seed);
+      const blocker = {
+        kind: "provider_outage" as const,
+        detail: "All configured routes returned retryable transport failures.",
+        evidence: "attempts=route-a:2,route-b:2",
+        raisedAt: "2026-07-12T12:05:00.000Z",
+        operatorAction: "Wait for a provider route to recover, then resume.",
+      };
+
+      const paused = await repository.pauseRun(localActor, seed.runId, blocker, driverALease);
+      expect(paused).toMatchObject({ status: "paused", pausedBlocker: blocker });
+      await expect(
+        repository.beginAttempt(
+          localActor,
+          lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1"),
+        ),
+      ).rejects.toMatchObject({ code: "invalid_run_transition" });
+      await expect(
+        repository.pauseRun(
+          localActor,
+          seed.runId,
+          {
+            ...blocker,
+            detail: "A concurrent worker observed the same outage later.",
+            evidence: "attempts=route-c:2",
+          },
+          driverALease,
+        ),
+      ).resolves.toMatchObject({
+        status: "paused",
+        // First-writer-wins: concurrent supervisors converge without
+        // replacing the original operator evidence.
+        pausedBlocker: blocker,
+      });
+
+      await repository.releaseRunLease(localActor, seed.runId, driverALease);
+      const resumed = await repository.resumeRun(localActor, seed.runId, {
+        ownerId: "journal-driver-b",
+      });
+      expect(resumed).toMatchObject({
+        status: "running",
+        pausedBlocker: null,
+        leaseOwnerId: "journal-driver-b",
+        fenceToken: 2,
+      });
+      const driverBLease = { ownerId: "journal-driver-b", fenceToken: resumed.fenceToken };
+      const interrupted = lifecycleBeginAttempt(
+        seed.runId,
+        "raw-bridge-unit-lifecycle-1",
+        driverBLease,
+      );
+      await repository.beginAttempt(localActor, interrupted);
+      // A live running lease is never a crash-recovery signal. A second driver
+      // cannot reconcile this still-live provider dispatch or take its unit.
+      await expect(
+        repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-c" }),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toMatchObject([
+        {
+          attemptId: interrupted.attemptId,
+          lifecycleState: "dispatching",
+          fenceToken: 2,
+          completedAt: null,
+        },
+      ]);
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toMatchObject([
+        {
+          state: "claimed",
+          claimOwnerId: "journal-driver-b",
+          claimFenceToken: 2,
+          nextAction: { kind: "drive_unit", stage: "translation" },
+        },
+        { state: "pending", nextAction: { kind: "drive_unit", stage: "translation" } },
+      ]);
+
+      await expect(
+        repository.seedRun(localActor, {
+          ...seed,
+          units: seed.units.slice(0, 1),
+        }),
+      ).rejects.toMatchObject({ code: "run_seed_conflict" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("atomically claims a pending unit once and requires completion before the next attempt", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-atomic-unit-claim");
+      await expect(
+        repository.seedRun(localActor, {
+          ...seed,
+          runId: `${seed.runId}-unsafe-short-lease`,
+          lease: { ownerId: driverALease.ownerId, leaseSeconds: 30 },
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      await repository.seedRun(localActor, seed);
+      const first = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      const second = {
+        ...first,
+        attemptId: `${first.attemptId}-racer`,
+        logicalCallId: `${first.logicalCallId}-racer`,
+        artifactRef: `${first.artifactRef}-racer`,
+      };
+
+      const raced = await Promise.allSettled([
+        repository.beginAttempt(localActor, first),
+        repository.beginAttempt(localActor, second),
+      ]);
+      expect(raced.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(raced.filter((result) => result.status === "rejected")).toEqual([
+        expect.objectContaining({ reason: expect.objectContaining({ code: "unit_not_pending" }) }),
+      ]);
+
+      const winner = raced.find((result) => result.status === "fulfilled");
+      if (winner?.status !== "fulfilled") throw new Error("claim race had no winner");
+      const winningBegin = winner.value.attemptId === first.attemptId ? first : second;
+      await repository.completeAttempt(
+        localActor,
+        lifecycleCompleteAttempt(
+          winningBegin,
+          "model-lifecycle-served",
+          "provider-lifecycle-served",
+        ),
+      );
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            bridgeUnitId: first.bridgeUnitId,
+            state: "pending",
+            claimOwnerId: null,
+            claimFenceToken: null,
+          }),
+        ]),
+      );
+
+      await expect(
+        repository.beginAttempt(localActor, {
+          ...second,
+          attemptId: `${second.attemptId}-after-release`,
+          logicalCallId: `${second.logicalCallId}-after-release`,
+          artifactRef: `${second.artifactRef}-after-release`,
+          attemptIndex: 2,
+        }),
+      ).resolves.toMatchObject({ lifecycleState: "dispatching", fenceToken: 1 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a live second resumer and fences stale writes after an expired-lease takeover", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-resume-fence");
+      await repository.seedRun(localActor, seed);
+      const oldBegin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      await repository.beginAttempt(localActor, oldBegin);
+
+      await expect(
+        repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-b" }),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toEqual([
+        expect.objectContaining({
+          attemptId: oldBegin.attemptId,
+          lifecycleState: "dispatching",
+          fenceToken: 1,
+        }),
+      ]);
+
+      await context.db.execute(sql`
+        update itotori_localization_journal_runs
+        set lease_expires_at = now() - interval '1 second'
+        where run_id = ${seed.runId}
+      `);
+      const takeover = await repository.resumeRun(localActor, seed.runId, {
+        ownerId: "journal-driver-b",
+      });
+      expect(takeover).toMatchObject({
+        status: "running",
+        leaseOwnerId: "journal-driver-b",
+        fenceToken: 2,
+      });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toEqual([
+        expect.objectContaining({
+          attemptId: oldBegin.attemptId,
+          lifecycleState: "completed",
+          finishState: "interrupted",
+          failureClass: "interrupted",
+          fenceToken: 1,
+        }),
+      ]);
+
+      await expect(
+        repository.completeAttempt(
+          localActor,
+          lifecycleCompleteAttempt(oldBegin, "model-lifecycle-served", "provider-lifecycle-served"),
+        ),
+      ).rejects.toMatchObject({ code: "run_lease_lost" });
+      await expect(
+        repository.persistUnit(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: oldBegin.bridgeUnitId,
+          outcome: outcomeFixture(oldBegin.bridgeUnitId, "stale-owner"),
+          attempts: [],
+          contextPacket: null,
+          contextRefs: [],
+          speakerLabels: [],
+          qaDetails: {
+            "finding-tone-1": {
+              recommendation: "Reject the stale write.",
+              agentRationale: "A newer fence owns the run.",
+              evidenceRefs: ["fence-2"],
+            },
+          },
+          lease: oldBegin.lease,
+        }),
+      ).rejects.toMatchObject({ code: "run_lease_lost" });
+
+      await expect(
+        repository.beginAttempt(localActor, {
+          ...lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1", {
+            ownerId: "journal-driver-b",
+            fenceToken: takeover.fenceToken,
+          }),
+          attemptId: "provider-run-lifecycle-fence-2-replacement",
+          logicalCallId: "logical-lifecycle-fence-2-replacement",
+          artifactRef: "provider-run:provider-run-lifecycle-fence-2-replacement",
+          attemptIndex: 2,
+        }),
+      ).resolves.toMatchObject({ lifecycleState: "dispatching", fenceToken: 2 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps a paused lease fenced until its in-flight attempt drains", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-paused-drain-fence");
+      await repository.seedRun(localActor, seed);
+      const begin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
+      await repository.beginAttempt(localActor, begin);
+      const blocker = {
+        kind: "provider_outage" as const,
+        detail: "A sibling unit exhausted its provider routes.",
+        evidence: "failure-injection:paused-with-live-attempt",
+        raisedAt: "2026-07-12T12:00:01.500Z",
+        operatorAction: "Resume only after the original driver drains.",
+      };
+      await repository.pauseRun(localActor, seed.runId, blocker, driverALease);
+
+      await expect(
+        repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-b" }),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+      await expect(
+        repository.releaseRunLease(localActor, seed.runId, driverALease),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+      await expect(
+        repository.completeAttempt(
+          localActor,
+          lifecycleCompleteAttempt(begin, "model-lifecycle-served", "provider-lifecycle-served"),
+        ),
+      ).resolves.toMatchObject({ lifecycleState: "completed", fenceToken: 1 });
+      await repository.releaseRunLease(localActor, seed.runId, driverALease);
+      const resumed = await repository.resumeRun(localActor, seed.runId, {
+        ownerId: "journal-driver-b",
+      });
+      expect(resumed).toMatchObject({ status: "running", fenceToken: 2 });
+      const crossFenceOutcome: WrittenUnitOutcome = {
+        id: "written-outcome-cross-fence",
+        status: "written",
+        unitId: begin.bridgeUnitId,
+        targetLocale: scope.targetLocale,
+        selectedCandidateId: "candidate-cross-fence",
+        candidates: [
+          {
+            id: "candidate-cross-fence",
+            outcomeId: "written-outcome-cross-fence",
+            body: asNonBlankTargetText("A stale-fence candidate."),
+            producedBy: {
+              modelId: "model-lifecycle-served",
+              providerId: "provider-lifecycle-served",
+            },
+            attemptId: begin.attemptId,
+            kind: "primary",
+          },
+        ],
+        findings: [],
+        qualityFlags: [],
+        provenance: { origin: "cross-fence-failure-injection" },
+        writtenAt: "2026-07-12T12:00:03.000Z",
+      };
+      await expect(
+        repository.persistUnit(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: begin.bridgeUnitId,
+          sourceUnitKey: "scene.lifecycle.1",
+          outcome: crossFenceOutcome,
+          attempts: [],
+          contextPacket: null,
+          contextRefs: [],
+          speakerLabels: [],
+          qaDetails: {},
+          lease: { ownerId: "journal-driver-b", fenceToken: resumed.fenceToken },
+        }),
+      ).rejects.toMatchObject({ code: "attempt_conflict" });
+      await expect(
+        repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-b" }),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects attempts and outcomes outside a frozen planned-unit set", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-frozen-unit-rejection");
+      await repository.seedRun(localActor, seed);
+      const unplannedUnitId = "raw-bridge-unit-not-in-frozen-scope";
+      const attempts = attemptsFixture(seed.runId, unplannedUnitId, "unplanned");
+
+      await expect(
+        repository.persistAttempts(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: seed.units[0]!.bridgeUnitId,
+          attempts: attemptsFixture(seed.runId, seed.units[0]!.bridgeUnitId, "planned-unfenced"),
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const plannedUnitId = seed.units[0]!.bridgeUnitId;
+      const fabricatedPlannedAttempts = attemptsFixture(
+        seed.runId,
+        plannedUnitId,
+        "planned-persist-unit",
+      );
+      await expect(
+        repository.persistUnit(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: plannedUnitId,
+          outcome: outcomeFixture(plannedUnitId, "planned-persist-unit"),
+          attempts: fabricatedPlannedAttempts,
+          contextPacket: null,
+          contextRefs: [],
+          speakerLabels: [],
+          qaDetails: {
+            "finding-tone-1": {
+              recommendation: "Use the fenced lifecycle.",
+              agentRationale: "Fabricated terminal attempts must not bypass begin/complete.",
+              evidenceRefs: ["failure-injection:fence-0-attempt"],
+            },
+          },
+          lease: driverALease,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+
+      await expect(
+        repository.persistAttempts(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: unplannedUnitId,
+          attempts,
+        }),
+      ).rejects.toMatchObject({ code: "unit_not_seeded" });
+      await expect(
+        repository.persistUnit(localActor, {
+          runId: seed.runId,
+          bridgeUnitId: unplannedUnitId,
+          outcome: outcomeFixture(unplannedUnitId, "unplanned"),
+          attempts,
+          contextPacket: null,
+          contextRefs: [],
+          speakerLabels: [],
+          qaDetails: {
+            "finding-tone-1": {
+              recommendation: "Keep the frozen run immutable.",
+              agentRationale: "Failure injection targets an unplanned unit.",
+              evidenceRefs: ["frozen-scope"],
+            },
+          },
+          lease: driverALease,
+        }),
+      ).rejects.toMatchObject({ code: "unit_not_seeded" });
+      expect(await repository.loadRunUnits(localActor, seed.runId)).toHaveLength(seed.units.length);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("persists N physical attempts and a lossless written-outcome provenance projection", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -344,6 +967,91 @@ describe("ItotoriLocalizationJournalRepository", () => {
     }
   });
 });
+
+function lifecycleSeedInput(runId: string) {
+  return {
+    runId,
+    ...scope,
+    frozenScope: {
+      kind: "explicit_units",
+      unitIds: ["raw-bridge-unit-lifecycle-1", "raw-bridge-unit-lifecycle-2"],
+    },
+    routingPolicy: { routes: ["model-lifecycle-requested/provider-lifecycle-requested"] },
+    costPolicy: { kind: "simple_cap_seam", capUsd: "1.00" },
+    units: [
+      {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-1",
+        sourceUnitKey: "scene.lifecycle.1",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      },
+      {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-2",
+        sourceUnitKey: "scene.lifecycle.2",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      },
+    ],
+    lease: { ownerId: driverALease.ownerId },
+    createdAt: "2026-07-12T12:00:00.000Z",
+  };
+}
+
+function lifecycleBeginAttempt(
+  runId: string,
+  bridgeUnitId: string,
+  lease: { ownerId: string; fenceToken: number } = driverALease,
+) {
+  return {
+    attemptId: `provider-run-lifecycle-${bridgeUnitId}`,
+    runId,
+    bridgeUnitId,
+    stage: "translation",
+    agentLabel: "translator",
+    logicalCallId: `logical-lifecycle-${bridgeUnitId}`,
+    attemptIndex: 1,
+    requestedModelId: "model-lifecycle-requested",
+    requestedProviderId: "provider-lifecycle-requested",
+    zdr: true,
+    artifactRef: `provider-run:provider-run-lifecycle-${bridgeUnitId}`,
+    startedAt: "2026-07-12T12:00:01.000Z",
+    lease,
+  };
+}
+
+function lifecycleCompleteAttempt(
+  begin: ReturnType<typeof lifecycleBeginAttempt>,
+  modelId: string,
+  providerId: string,
+) {
+  return {
+    attemptId: begin.attemptId,
+    runId: begin.runId,
+    bridgeUnitId: begin.bridgeUnitId,
+    modelId,
+    providerId,
+    costUsd: "0.00000000000000000007",
+    costKind: "billed" as const,
+    usageResponseJson: { cost: 0.00000000000000000007 }, // itotori-225-audit-allow: synthetic sub-micro provider usage.cost fixture exercising exact-decimal cost persistence, not a real billed amount
+    tokensIn: 9,
+    tokensOut: 4,
+    tokenCountSource: "provider_reported",
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cacheDiscountMicrosUsd: 0,
+    fallbackUsed: true,
+    fallbackPlan: ["provider-lifecycle-requested", providerId],
+    zdr: true,
+    finishState: "stop",
+    refusalState: null,
+    validationResult: "accepted" as const,
+    failureClass: null,
+    retryDecision: "write" as const,
+    retryDelayMs: null,
+    artifactRef: begin.artifactRef,
+    errorClasses: [],
+    completedAt: "2026-07-12T12:00:02.000Z",
+    lease: begin.lease,
+  };
+}
 
 function unitInput(
   runId: string,

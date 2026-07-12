@@ -34,10 +34,7 @@ import {
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   type StructuredQaFindingOutput,
 } from "@itotori/localization-bridge-schema";
-import {
-  buildStructuredRetryMessages,
-  invokeWithBoundedStructuredRetry,
-} from "../bounded-structured-retry.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
@@ -119,18 +116,22 @@ export class QaAgent {
           : { maxOutputTokens: input.modelProfile.maxOutputTokens },
     };
 
-    const { invocation, parsed, priorAttempts } = await invokeWithBoundedStructuredRetry({
-      provider: this.options.provider,
-      request,
-      parse: parseStructuredQaFindingOutput,
-      isSchemaValidationError: (error) => error instanceof QaResponseValidationError,
-      buildCorrectiveMessages: buildStructuredRetryMessages,
-      validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
-      validateParsed: (candidate) => {
-        this.assertCitationsResolve(candidate, input);
-        this.assertSpansWithinBounds(candidate, input);
+    const { invocation, parsed, priorAttempts } = await executeStructuredInvocation(
+      this.options.provider,
+      {
+        request,
+        parse: parseStructuredQaFindingOutput,
+        isSchemaValidationError: (error) => error instanceof QaResponseValidationError,
+        validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
+        validateParsed: (candidate) => {
+          this.assertCitationsResolve(candidate, input);
+          this.assertSpansWithinBounds(candidate, input);
+        },
+        requiredUnitIds: input.units.map((unit) => unit.bridgeUnitId),
+        successDecision: "advance",
+        contentFailureMode: "retain_existing",
       },
-    });
+    );
     const providerRun = invocation.providerRun;
     const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 

@@ -31,6 +31,7 @@ import {
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
 } from "../providers/index.js";
+import { executeModelInvocation } from "../orchestrator/invocation-supervisor.js";
 import {
   assertProviderProofFixture,
   recordedAttemptSource,
@@ -141,7 +142,7 @@ export async function runLiveProviderProof(
       attemptIndex,
       fixture,
     });
-    const result = await provider.invoke(request);
+    const result = await executeModelInvocation(provider, request);
     return { content: result.content, providerRun: result.providerRun };
   };
 

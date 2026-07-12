@@ -13,7 +13,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ContestantBlindingError,
-  ContestantHarnessError,
   GENERATIVE_CONTESTANT_KINDS,
   assertContestantBundleBlind,
   buildDecodedContextFeed,
@@ -334,7 +333,13 @@ describe("makeRawMtlBaselineRunner — the MTL generation path", () => {
       sourceLocale: "ja-JP",
       inputClassification: "synthetic_public",
     });
-    await expect(runner(corpus()[0])).rejects.toThrow(ContestantHarnessError);
+    await expect(runner(corpus()[0])).rejects.toMatchObject({
+      name: "ContestantHarnessError",
+      cause: {
+        name: "InvocationRetryCeilingError",
+        lastInvocation: { content: "   " },
+      },
+    });
   });
 });
 

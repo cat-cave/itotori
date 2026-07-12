@@ -195,6 +195,8 @@ export type LocalizeFullProjectArgs = {
   configPath: string;
   /** Where the deterministic run-summary artifact lands. */
   runSummaryPath: string;
+  /** Existing durable journal run to resume from its first pending unit. */
+  resumeRunId?: string;
   /**
    * Optional client-side bounded-concurrency override. When present it WINS
    * over the config's `concurrency` (and the executor default). Threaded from
@@ -234,9 +236,16 @@ export async function loadPriorJournalRunContext(args: {
   repository: LocalizationJournalHistoryPort;
   actor: AuthorizationActor;
   localeBranchId: string;
+  /** A resumed in-progress run is not its own prior localization pass. */
+  excludeRunId?: string;
 }): Promise<PriorJournalRunContext | undefined> {
   const runs = await args.repository.loadRunsForBranch(args.actor, args.localeBranchId);
-  for (let index = runs.length - 1; index >= 0; index -= 1) {
+  const excludedIndex =
+    args.excludeRunId === undefined
+      ? -1
+      : runs.findIndex((candidate) => candidate.runId === args.excludeRunId);
+  const lastEligibleIndex = excludedIndex >= 0 ? excludedIndex - 1 : runs.length - 1;
+  for (let index = lastEligibleIndex; index >= 0; index -= 1) {
     const run = runs[index]!;
     const outcomes = await args.repository.loadRunOutcomes(args.actor, run.runId);
     if (outcomes.length === 0) {
@@ -312,6 +321,7 @@ export async function runLocalizeFullProjectCommand(
   const baseInputs: Record<string, unknown> = {
     configPath: args.configPath,
     runSummaryPath: args.runSummaryPath,
+    ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
   };
 
   const config = await runPipelineStepWithDiagnostic<LocalizeFullProjectConfig>({
@@ -346,6 +356,7 @@ export async function runLocalizeFullProjectCommand(
               repository: journalHistory,
               actor: deps.actor,
               localeBranchId: config.localeBranchId,
+              ...(args.resumeRunId !== undefined ? { excludeRunId: args.resumeRunId } : {}),
             }),
         });
   // itotori-translation-scope-configuration-ui — precedence: an EXPLICIT
@@ -482,6 +493,7 @@ export async function runLocalizeFullProjectCommand(
     ...(resolveUnitContext !== undefined ? { resolveUnitContext } : {}),
     ...(config.maxUnits !== undefined ? { maxUnits: config.maxUnits } : {}),
     ...(config.budgetCapUsd !== undefined ? { budgetCapUsd: config.budgetCapUsd } : {}),
+    ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
     // `--concurrency` CLI override wins over the config value; falls back to
     // the config's `concurrency`, then the executor's DEFAULT_DRIVEN_CONCURRENCY.
     ...(concurrency !== undefined ? { concurrency } : {}),
@@ -554,6 +566,8 @@ export async function runLocalizeFullProjectCommand(
   const runSummary = {
     schemaVersion: RUN_SUMMARY_SCHEMA_VERSION,
     journalRunId: result.journalRunId,
+    runState: result.runState,
+    pausedBlocker: result.pausedBlocker,
     projectId: config.projectId,
     localeBranchId: config.localeBranchId,
     sourceRevisionId: config.sourceRevisionId,
@@ -603,11 +617,15 @@ export async function runLocalizeFullProjectCommand(
       deps.io.writeJson(args.runSummaryPath, runSummary);
     },
   });
+  const runStateSummary =
+    result.pausedBlocker === null
+      ? "state=running"
+      : `state=paused blocker=${JSON.stringify(result.pausedBlocker)}`;
   log(
     `localize: journal ${result.journalRunId} recorded — ${result.unitsRun} unit(s), ` +
       `${result.writtenOutcomeCount} written / ${result.failures.length} failed; ` +
       `${result.attemptsPersisted} physical attempt(s); usage.cost $${result.totalUsageCostExactUsd} ` +
-      `(zdr=${result.zdrConfirmed}); wrote ${args.runSummaryPath}`,
+      `(zdr=${result.zdrConfirmed}); ${runStateSummary}; wrote ${args.runSummaryPath}`,
   );
 
   return {

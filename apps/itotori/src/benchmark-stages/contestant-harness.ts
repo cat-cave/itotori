@@ -43,7 +43,12 @@ import type { BenchmarkSystemKindV02 } from "@itotori/localization-bridge-schema
 import type { ContestantCandidate } from "./decoded-context-feed.js";
 import type { MetricSystemInput, MetricUnit } from "./deterministic-metrics/types.js";
 import { deterministicUuid7 } from "./ids.js";
+import {
+  executeModelInvocation,
+  InvocationRetryCeilingError,
+} from "../orchestrator/invocation-supervisor.js";
 import type {
+  ModelInvocationResult,
   ModelInvocationRequest,
   ModelProvider,
   ProviderInputClassification,
@@ -233,8 +238,8 @@ export type ContestantHarnessResult = {
 
 /** Raised when the contestant-harness inputs are missing or inconsistent. */
 export class ContestantHarnessError extends Error {
-  constructor(detail: string) {
-    super(`benchmark-contestant-harness refused: ${detail}`);
+  constructor(detail: string, options?: ErrorOptions) {
+    super(`benchmark-contestant-harness refused: ${detail}`, options);
     this.name = "ContestantHarnessError";
   }
 }
@@ -720,7 +725,18 @@ export function makeRawMtlBaselineRunner(
       },
       fallbackModels: [],
     };
-    const result = await options.provider.invoke(request);
+    let result: ModelInvocationResult;
+    try {
+      result = await executeModelInvocation(options.provider, request);
+    } catch (error) {
+      if (error instanceof InvocationRetryCeilingError) {
+        throw new ContestantHarnessError(
+          `raw-MTL baseline produced no usable content for unit '${unit.unitId}'`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     if (result.content === null || result.content.trim().length === 0) {
       throw new ContestantHarnessError(
         `raw-MTL baseline produced no content for unit '${unit.unitId}'`,

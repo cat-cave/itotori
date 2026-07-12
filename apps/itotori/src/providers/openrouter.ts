@@ -171,6 +171,7 @@ export class OpenRouterProvider implements ModelProvider {
           "X-OpenRouter-Metadata": "enabled",
         },
         body: JSON.stringify(requestBody),
+        ...(request.signal !== undefined ? { signal: request.signal } : {}),
       });
     } catch (error) {
       const metadata = adapterMetadata({}, providerRouting);
@@ -216,7 +217,11 @@ export class OpenRouterProvider implements ModelProvider {
 
     const body = await safeJson(response);
     if (!response.ok) {
-      const metadata = adapterMetadata(body, providerRouting);
+      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+      const metadata: JsonObject = {
+        ...adapterMetadata(body, providerRouting),
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      };
       const run = buildProviderRunRecord({
         descriptor: this.descriptor,
         request,
@@ -1570,6 +1575,15 @@ function adapterMetadata(body: unknown, providerRouting: JsonObject): JsonObject
   return metadata as JsonObject;
 }
 
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (value === null) return undefined;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const instant = Date.parse(value);
+  if (!Number.isFinite(instant)) return undefined;
+  return Math.max(0, instant - Date.now());
+}
+
 function fallbackPlanForRequest(
   request: ModelInvocationRequest,
   requestedModelId: string,
@@ -2103,6 +2117,20 @@ export class OpenRouterModelProvider implements ModelProvider {
       ? this.capabilityGuard.lookup(pair.modelId, pair.providerId)
       : this.descriptor.capabilities;
     return { ...this.descriptor, capabilities };
+  }
+
+  async preflightInvocation(): Promise<
+    | { admitted: true }
+    | { admitted: false; detail: string; evidence: string; operatorAction: string }
+  > {
+    const remainingUsd = this.remainingBudgetUsd();
+    if (remainingUsd > 0) return { admitted: true };
+    return {
+      admitted: false,
+      detail: `OpenRouter per-process cost cap of $${this.costCapUsd.toFixed(4)} reached`,
+      evidence: `provider:openrouter;spent-usd:${this.spentUsd.toFixed(6)};remaining-usd:${remainingUsd.toFixed(6)}`,
+      operatorAction: "raise --cost-cap-usd, then resume the same run",
+    };
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {

@@ -31,11 +31,17 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
   );
+  lines.push(
+    "                          --resume-run-id <ID>  Resume the durable run from its first pending unit after clearing its exact paused blocker.",
+  );
   lines.push("  extract                 Extract a bridge bundle from a game.");
   lines.push("  structure-export        Export narrative structure from a game.");
   lines.push("  localize                Run the whole-project localization driver.");
   lines.push(
     "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
+  );
+  lines.push(
+    "                          --resume-run-id <ID>  Resume the durable run from its first pending unit after clearing its exact paused blocker.",
   );
   lines.push("  patch                   Apply a translation patch to a game.");
   lines.push("  validate                Validate a patched game (replay + render).");

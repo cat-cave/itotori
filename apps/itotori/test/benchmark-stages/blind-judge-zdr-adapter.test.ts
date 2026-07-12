@@ -111,12 +111,16 @@ function fakeProvider(content: string, zdr: boolean): ModelProvider {
 }
 
 function makeJudge(content: string, zdr: boolean): ZdrModelJudge {
+  return makeJudgeWithProvider(fakeProvider(content, zdr));
+}
+
+function makeJudgeWithProvider(provider: ModelProvider): ZdrModelJudge {
   return new ZdrModelJudge({
     judgeId: "judge-fake",
     modelId: "fake/model",
     providerId: "fake-provider",
     modelFamily: "fake",
-    provider: fakeProvider(content, zdr),
+    provider,
     capabilities: {
       ...openRouterDefaultCapabilities,
       structuredOutputs: {
@@ -129,6 +133,31 @@ function makeJudge(content: string, zdr: boolean): ZdrModelJudge {
     },
     maxPriceUsd: 0.05,
   });
+}
+
+function sequencedFakeProvider(
+  responses: readonly { content: string; zdr: boolean }[],
+  requests: ModelInvocationRequest[],
+): ModelProvider {
+  const descriptor = fakeProvider("", true).descriptor;
+  let invocationIndex = 0;
+  return {
+    descriptor,
+    invoke: async (request): Promise<ModelInvocationResult> => {
+      requests.push(request);
+      const response = responses[Math.min(invocationIndex, responses.length - 1)];
+      invocationIndex += 1;
+      if (response === undefined) {
+        throw new Error("sequenced fake judge requires at least one response");
+      }
+      return {
+        content: response.content,
+        toolCalls: [],
+        finishReason: "stop",
+        providerRun: fakeProviderRun(response.zdr),
+      };
+    },
+  };
 }
 
 describe("ZdrModelJudge — parse + passthrough + ZDR gate", () => {
@@ -152,6 +181,51 @@ describe("ZdrModelJudge — parse + passthrough + ZDR gate", () => {
     const input = blindInput();
     const judge = makeJudge(wellFormedJudgeJson(input), false);
     await expect(judge.scoreUnit(input)).rejects.toThrow(/not ZDR-routed/);
+  });
+
+  it("correctively retries invalid scoring schema before accepting the judge attempt", async () => {
+    const input = blindInput();
+    const requests: ModelInvocationRequest[] = [];
+    const schemaInvalid = JSON.stringify({
+      candidates: [{ blindLabel: "candidate-a", dimensions: [] }],
+    });
+    const judge = makeJudgeWithProvider(
+      sequencedFakeProvider(
+        [
+          { content: schemaInvalid, zdr: true },
+          { content: wellFormedJudgeJson(input), zdr: true },
+        ],
+        requests,
+      ),
+    );
+
+    const scoring = await judge.scoreUnit(input);
+
+    expect(scoring.candidates).toHaveLength(input.candidates.length);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toMatch(
+      /schema_invalid.*did not score dimension/iu,
+    );
+  });
+
+  it("correctively retries a non-ZDR semantic failure before accepting a ZDR serve", async () => {
+    const input = blindInput();
+    const requests: ModelInvocationRequest[] = [];
+    const judge = makeJudgeWithProvider(
+      sequencedFakeProvider(
+        [
+          { content: wellFormedJudgeJson(input), zdr: false },
+          { content: wellFormedJudgeJson(input), zdr: true },
+        ],
+        requests,
+      ),
+    );
+
+    const scoring = await judge.scoreUnit(input);
+
+    expect(scoring.providerRun.routingPosture.zdr).toBe(true);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toMatch(/semantic_invalid.*not ZDR-routed/iu);
   });
 });
 

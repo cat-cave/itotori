@@ -486,7 +486,7 @@ describe("synthesiseDrivenTranslatedBridge (written-body coverage)", () => {
 });
 
 describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () => {
-  it("persists every returned written outcome, retains QA flags, and refuses target-source substitution after an isolated failure", async () => {
+  it("persists written progress and pauses without a partial patch at the retry ceiling", async () => {
     const queue = new InMemoryReviewerQueue();
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor(baseInput(queue, sinks));
@@ -495,10 +495,13 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     expect(result.unitsEnumerated).toBe(5);
     expect(result.unitsInScope).toBe(4);
 
-    // Per-unit isolation: UNIT_D (poison) throws but the run completes.
-    expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.bridgeUnitId).toBe(UNIT_D);
-    expect(result.unitsRun).toBe(3); // A, B, C returned written outcomes; D isolated.
+    // UNIT_D models a degenerate route that never satisfies the schema. This
+    // is the hard-ceiling bug path: run-level pause, never a terminal unit
+    // failure or fabricated candidate.
+    expect(result.failures).toEqual([]);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).toMatchObject({ kind: "itotori_bug" });
+    expect(result.unitsRun).toBe(3);
 
     // Every successfully returned loop bundle persists one required selected
     // body. UNIT_B's critical QA finding is annotation only, never a missing
@@ -548,14 +551,22 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     const poisonTranslationAttempts = poisonAttempts.filter(
       (attempt) => attempt.stage === "translation",
     );
-    expect(poisonTranslationAttempts).toHaveLength(2);
+    expect(poisonTranslationAttempts).toHaveLength(12);
     expect(poisonTranslationAttempts[0]).toMatchObject({
       validationResult: "schema_invalid",
       retryDecision: "retry",
     });
-    expect(poisonTranslationAttempts[1]).toMatchObject({
-      validationResult: "semantic_invalid",
-      retryDecision: "pause",
+    expect(
+      poisonTranslationAttempts.every(
+        (attempt) =>
+          attempt.validationResult === "schema_invalid" &&
+          attempt.failureClass === "schema_invalid",
+      ),
+    ).toBe(true);
+    expect(poisonTranslationAttempts.at(-1)).toMatchObject({
+      validationResult: "schema_invalid",
+      failureClass: "schema_invalid",
+      retryDecision: "advance",
     });
     expect(result.zdrConfirmed).toBe(true);
 
@@ -563,8 +574,8 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     // required bodies above.
     expect(result.reviewerQueueItemCount).toBe(queue.items.length);
 
-    // UNIT_D failed operationally. Do not fabricate source text for that
-    // in-scope unit just to make an export look complete.
+    // UNIT_D paused operationally. Do not fabricate source text for that
+    // in-scope unit or emit a partial patch.
     expect(result.patchReport.coverageComplete).toBe(false);
     expect(result.patchReport.writtenUnits.map((unit) => unit.bridgeUnitId).sort()).toEqual(
       [UNIT_A, UNIT_B, UNIT_C].sort(),
@@ -615,7 +626,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     }
   });
 
-  it("isolates malformed structure context instead of silently dropping it", async () => {
+  it("pauses malformed structure context as an itotori bug without a terminal unit failure", async () => {
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor({
       ...baseInput(undefined, sinks),
@@ -624,13 +635,12 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
         ({ narrativeStructure: makeStructure() }) as unknown as DrivenUnitContext,
     });
 
-    expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.bridgeUnitId).toBe(UNIT_A);
-    expect(result.failures[0]!.errorClass).toBe("AgenticLoopInvariantError");
-    expect(result.failures[0]!.errorMessage).toContain(
-      "narrativeStructure supplied without sceneId",
-    );
-    expect(result.failures[0]!.diagnostic?.step).toBe("executor.drive-unit");
+    expect(result.failures).toEqual([]);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).toMatchObject({
+      kind: "itotori_bug",
+      detail: expect.stringContaining("narrativeStructure supplied without sceneId"),
+    });
     expect(result.unitsRun).toBe(0);
     expect(result.writtenOutcomesPersisted).toBe(0);
     expect(result.journalUnitsPersisted).toBe(0);
@@ -1153,7 +1163,7 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     });
   });
 
-  it("isolates a poison unit while the concurrent pool keeps running", async () => {
+  it("persists concurrent progress then pauses the poison unit without a partial patch", async () => {
     const UNIT_COUNT = 8;
     const meter = new ConcurrencyMeter();
     const sinks = new InMemorySinks();
@@ -1166,9 +1176,10 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       }),
       concurrency: 4,
     });
-    // One poison unit isolated; the other 7 still persist. Incomplete coverage
-    // must not manufacture a target-source patch export.
-    expect(result.failures).toHaveLength(1);
+    // The hard ceiling is a run-level bug pause, not a terminal unit failure.
+    expect(result.failures).toEqual([]);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).toMatchObject({ kind: "itotori_bug" });
     expect(result.unitsRun).toBe(UNIT_COUNT - 1);
     expect(result.writtenOutcomesPersisted).toBe(UNIT_COUNT - 1);
     expect(result.journalUnitsPersisted).toBe(UNIT_COUNT - 1);

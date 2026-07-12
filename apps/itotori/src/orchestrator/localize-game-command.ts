@@ -164,6 +164,8 @@ export type RunLocalizeGameArgs = {
   redaction?: "on" | "off";
   /** Per-process OpenRouter USD budget cap forwarded to the localize driver. */
   costCapUsd?: number;
+  /** Existing durable journal run to resume from its first pending unit. */
+  resumeRunId?: string;
   /**
    * Optional client-side bounded-concurrency override (from `--concurrency`),
    * forwarded to the localize driver. Wins over the config's `concurrency` and
@@ -301,6 +303,7 @@ export async function runLocalizeGameCommand(
       io: args.io,
       sourceRoot: args.sourceRoot,
       patchTargetRoot: args.targetRoot,
+      ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
       ...(args.costCapUsd !== undefined ? { costCapUsd: args.costCapUsd } : {}),
       ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
       ...(args.allowPartialPatch !== undefined
@@ -309,6 +312,24 @@ export async function runLocalizeGameCommand(
       ...(args.log !== undefined ? { log: args.log } : {}),
     }),
   );
+  if (localize.result.runState === "paused") {
+    // Pause is nonterminal and operator-actionable, not a failed localization
+    // stage. The live driver has already persisted run-summary.json with this
+    // exact blocker; stop before patch/apply/validation and return it intact.
+    log(
+      `[localize-game] stage 3/4 paused run=${localize.result.journalRunId} blocker=${JSON.stringify(localize.result.pausedBlocker)}`,
+    );
+    return {
+      runDir: args.runDir,
+      effectiveConfigPath,
+      bridgePath,
+      structureJsonPath,
+      patchTargetRoot: args.targetRoot,
+      localize,
+      replayLogPath,
+      renderEvidencePath,
+    };
+  }
   if (localize.patchApply === undefined) {
     // The source + target are always passed here, so the driver MUST have
     // reached an applyable patch. If it did not, the vertical did not produce a

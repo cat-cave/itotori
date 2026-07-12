@@ -20,6 +20,7 @@ import type {
   PromptPresetReference,
   ProviderRunRecord,
 } from "../providers/types.js";
+import { executeStructuredInvocation } from "../orchestrator/invocation-supervisor.js";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 
 export type StableJsonHash = `sha256:${string}`;
@@ -220,6 +221,16 @@ export type DeterministicToolRunOptions = {
 const defaultAgentCompletionEventKind = "model_output_recorded" satisfies TriageEventKindV02;
 const defaultToolCompletionEventKind = "qa_finding_reported" satisfies TriageEventKindV02;
 
+class RegistryOutputSchemaError extends Error {
+  constructor(
+    message: string,
+    readonly causeValue: unknown,
+  ) {
+    super(message);
+    this.name = "RegistryOutputSchemaError";
+  }
+}
+
 export class AgentRegistry {
   private readonly definitions = new Map<string, unknown>();
 
@@ -317,10 +328,35 @@ export class AgentToolRuntime {
       request,
       requestedModelId: request.modelId ?? definition.provider.descriptor.defaultModelId,
     });
-    const result = await definition.provider.invoke(request);
-    const output = definition.parseResult(result, job.input, job.context);
-    assertRegistrySchemaValue(definition.outputSchema, output, `${definition.agentName} output`);
-    assertAgentOutputContract(output, `${definition.agentName} output`);
+    const supervised = await executeStructuredInvocation(definition.provider, {
+      request,
+      parse: (raw, invocation) => {
+        const output = definition.parseResult(
+          { ...invocation, content: raw },
+          job.input,
+          job.context,
+        );
+        try {
+          assertRegistrySchemaValue(
+            definition.outputSchema,
+            output,
+            `${definition.agentName} output`,
+          );
+        } catch (error) {
+          throw new RegistryOutputSchemaError(
+            error instanceof Error ? error.message : String(error),
+            error,
+          );
+        }
+        return output;
+      },
+      validateParsed: (output) =>
+        assertAgentOutputContract(output, `${definition.agentName} output`),
+      isSchemaValidationError: (error) => error instanceof RegistryOutputSchemaError,
+      successDecision: "advance",
+    });
+    const result = supervised.invocation;
+    const output = supervised.parsed;
     const outputHash = hashJson(output);
     const event = agentInvocationEvent(definition, job, result.providerRun, inputHash, outputHash);
     await this.events.emit(event);

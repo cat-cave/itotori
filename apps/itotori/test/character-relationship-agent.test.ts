@@ -21,6 +21,7 @@ import {
   type CuratedCharacterRef,
 } from "../src/agents/character-relationship/index.js";
 import type { GlossaryRef } from "../src/batch-planner/shapes.js";
+import type { ModelInvocationRequest } from "../src/providers/types.js";
 
 const fixedNow = (): Date => new Date("2026-06-23T12:00:00Z");
 
@@ -248,6 +249,29 @@ describe("generateCharacterRelationships", () => {
       expect(rel.citedUnitHashes.length).toBe(rel.citedUnitIds.length);
       expect(CHARACTER_RELATIONSHIP_KINDS as ReadonlyArray<string>).toContain(rel.kind);
     }
+  });
+
+  it("correctively retries malformed structured output before accepting the pack", async () => {
+    const input = inputFixture();
+    const requests: ModelInvocationRequest[] = [];
+    const invalidPack = JSON.stringify({ bios: "not-an-array", relationships: [] });
+    const provider = new FakeModelProvider({
+      providerName: "character-relationship-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        requests.push(request);
+        return requests.length === 1 ? invalidPack : successPackJson;
+      },
+    });
+
+    const output = await generateCharacterRelationships(input, { provider });
+
+    expect(output.bios).toHaveLength(3);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-2)?.content).toBe(invalidPack);
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      "previous response failed with schema_invalid",
+    );
   });
 
   it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {

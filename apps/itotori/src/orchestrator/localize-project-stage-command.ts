@@ -98,7 +98,6 @@ import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/open
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import type {
   ModelInvocationRequest,
-  ModelInvocationResult,
   ModelProvider,
   ProviderRunArtifactRecorder,
 } from "../providers/types.js";
@@ -109,6 +108,7 @@ import {
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "./agentic-loop.js";
+import { SupervisedModelProviderAdapter } from "./invocation-supervisor.js";
 
 export type LocalizeProjectStageIo = {
   readJson(path: string): unknown;
@@ -569,7 +569,7 @@ function withStagePostureInjectionFactory(
  * asserted over the engine's observed decode of the REAL translated
  * bytes — there is no injected sentinel substring.
  */
-class StagePostureProviderWrapper implements ModelProvider {
+class StagePostureProviderWrapper extends SupervisedModelProviderAdapter {
   readonly descriptor: ModelProvider["descriptor"];
   constructor(
     private readonly opts: {
@@ -579,6 +579,7 @@ class StagePostureProviderWrapper implements ModelProvider {
       pair: StagePostureV03;
     },
   ) {
+    super(() => opts.inner);
     // ITOTORI-237 — surface the per-pair capability sheet to agents
     // reading `provider.descriptor.capabilities` directly (e.g. the
     // speaker-label pre-flight check). The wrapper knows the
@@ -587,11 +588,14 @@ class StagePostureProviderWrapper implements ModelProvider {
     // pairs fall back to the safe defaults inside `descriptorForPair`.
     this.descriptor = descriptorForStagePair(opts.inner, opts.pair.pair);
   }
-  async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
-    return this.opts.inner.invoke({
+
+  protected override decorateInvocationRequest(
+    request: ModelInvocationRequest,
+  ): ModelInvocationRequest {
+    return {
       ...request,
       maxPriceUsd: this.opts.pair.maxPriceUsd,
-    });
+    };
   }
 }
 

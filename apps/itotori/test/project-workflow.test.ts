@@ -657,6 +657,13 @@ describe("ItotoriProjectWorkflowService", () => {
       service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
     ).rejects.toMatchObject({
       code: "provider_response_invalid",
+      cause: {
+        name: "InvocationRetryCeilingError",
+        lastInvocation: {
+          content: null,
+          providerRun: { runId: "provider-run-null-content" },
+        },
+      },
     });
 
     expect(ledger.recordProviderRun).toHaveBeenCalledWith(

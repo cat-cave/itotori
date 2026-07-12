@@ -16,6 +16,7 @@ import {
   type StyleGuideProjectedVersionDraft,
 } from "@itotori/localization-bridge-schema";
 import { assertRegistrySchemaValue, type RegistrySchemaDescriptor } from "./agents/index.js";
+import { executeModelInvocation } from "./orchestrator/invocation-supervisor.js";
 import {
   OpenRouterProvider,
   assertOpenRouterZdrAccount,
@@ -180,7 +181,7 @@ export async function runLiveStyleGuideProviderSmoke(
     styleGuideLiveSmokeCapabilities(),
     options.fallbackModels ?? [],
   );
-  const result = await provider.invoke(request);
+  const result = await executeModelInvocation(provider, request);
   const parsed = parseStyleGuideSuggestionFromProviderResult(result);
   assertStyleGuideProviderSmokeLedger(result.providerRun);
   return {

@@ -1,8 +1,10 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import { executeStructuredInvocation } from "../../orchestrator/invocation-supervisor.js";
 import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
+  ModelInvocationResult,
   ModelMessage,
   ModelProvider,
   ProviderRunRecord,
@@ -48,8 +50,15 @@ export async function generateRouteChoiceMap(
 
   // 3. Compute the closed route set.
   const allowedRouteKeys = computeRouteKeySet(input);
+  const requiredRouteKeys = new Set(input.curatedRoutes.map((route) => route.routeKey));
   // 4. Compute the closed choice set.
   const allowedChoiceKeys = computeChoiceKeySet(input);
+  const sourceHashByUnitId = new Map<string, string>();
+  const validUnitIds = new Set<string>();
+  for (const unit of input.units) {
+    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
+    validUnitIds.add(unit.bridgeUnitId);
+  }
 
   const templateVersion = input.promptTemplateVersion ?? PROMPT_TEMPLATE_VERSION_V1;
   const rendered = buildPrompt(input);
@@ -76,16 +85,26 @@ export async function generateRouteChoiceMap(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  const invocation = await options.provider.invoke(request);
+  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
+    await executeStructuredInvocation(options.provider, {
+      request,
+      parse: parseProviderPack,
+      isSchemaValidationError: (error) =>
+        error instanceof RouteChoiceMapParseError ||
+        error instanceof RouteChoiceMapInvalidKindError,
+      validateParsed: (pack) =>
+        validateProviderPack(
+          pack,
+          allowedRouteKeys,
+          requiredRouteKeys,
+          allowedChoiceKeys,
+          validUnitIds,
+          sourceHashByUnitId,
+        ),
+      successDecision: "advance",
+    });
+  const { invocation, parsed: pack } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
-  const pack = parseProviderPack(invocation.content ?? "");
-
-  const sourceHashByUnitId = new Map<string, string>();
-  const validUnitIds = new Set<string>();
-  for (const unit of input.units) {
-    sourceHashByUnitId.set(unit.bridgeUnitId, unit.sourceHash);
-    validUnitIds.add(unit.bridgeUnitId);
-  }
 
   const now = (input.now ?? (() => new Date()))();
   const generatedAt = now.toISOString();
@@ -100,34 +119,11 @@ export async function generateRouteChoiceMap(
     providerRun.runId,
   );
 
-  // Build routes first so we know the cross-reference set when validating
-  // choices.
+  // Project routes before choices, preserving the provider pack's order.
   const routes: RouteMap[] = [];
-  const emittedRouteKeys = new Set<string>();
   for (const emitted of pack.routes) {
-    if (!allowedRouteKeys.has(emitted.routeKey)) {
-      throw new UnknownRouteError(`route:${emitted.routeKey}`, emitted.routeKey);
-    }
-    if (emitted.citedUnitIds.length === 0) {
-      throw new RouteUncitedError(emitted.routeKey);
-    }
-    const citedUnitIds: string[] = [];
-    const citedUnitHashes: string[] = [];
-    for (const id of emitted.citedUnitIds) {
-      if (!validUnitIds.has(id)) {
-        throw new RouteChoiceMapUnknownCitationError(id, `route ${emitted.routeKey}`);
-      }
-      const hashValue = sourceHashByUnitId.get(id);
-      if (!hashValue) {
-        throw new RouteChoiceMapUnknownCitationError(
-          id,
-          `route ${emitted.routeKey} (no source hash)`,
-        );
-      }
-      citedUnitIds.push(id);
-      citedUnitHashes.push(hashValue);
-    }
-    emittedRouteKeys.add(emitted.routeKey);
+    const citedUnitIds = [...emitted.citedUnitIds];
+    const citedUnitHashes = emitted.citedUnitIds.map((id) => sourceHashByUnitId.get(id)!);
     routes.push({
       id: createUuid7(),
       projectId: input.projectId,
@@ -149,98 +145,17 @@ export async function generateRouteChoiceMap(
     });
   }
 
-  // Every curated route is authoritative — fail if any curated route was
-  // not emitted with at least one citation.
-  for (const ref of input.curatedRoutes) {
-    if (!emittedRouteKeys.has(ref.routeKey)) {
-      throw new RouteUncitedError(ref.routeKey);
-    }
-  }
-
   const choices: RouteChoice[] = [];
   for (const emitted of pack.choices) {
-    if (!allowedChoiceKeys.has(emitted.choiceKey)) {
-      throw new RouteChoiceMapUnknownCitationError(
-        emitted.choiceKey,
-        `choice ${emitted.choiceKey} (not in observed choice set)`,
-      );
-    }
-    if (!isValidChoiceKind(emitted.kind)) {
-      throw new RouteChoiceMapInvalidKindError(emitted.kind);
-    }
-    if (emitted.citedUnitIds.length === 0) {
-      throw new ChoiceUncitedError(emitted.choiceKey, "prompt");
-    }
-    const citedUnitIds: string[] = [];
-    const citedUnitHashes: string[] = [];
-    for (const id of emitted.citedUnitIds) {
-      if (!validUnitIds.has(id)) {
-        throw new RouteChoiceMapUnknownCitationError(id, `choice ${emitted.choiceKey}`);
-      }
-      const hashValue = sourceHashByUnitId.get(id);
-      if (!hashValue) {
-        throw new RouteChoiceMapUnknownCitationError(
-          id,
-          `choice ${emitted.choiceKey} (no source hash)`,
-        );
-      }
-      citedUnitIds.push(id);
-      citedUnitHashes.push(hashValue);
-    }
+    const citedUnitIds = [...emitted.citedUnitIds];
+    const citedUnitHashes = emitted.citedUnitIds.map((id) => sourceHashByUnitId.get(id)!);
 
     // Validate options.
     const choiceOptions: RouteChoiceOption[] = [];
-    if (emitted.options.length < 1) {
-      throw new ChoiceUncitedError(emitted.choiceKey, "prompt");
-    }
     for (let optionPos = 0; optionPos < emitted.options.length; optionPos += 1) {
-      const optionEmitted = emitted.options[optionPos];
-      if (!optionEmitted) {
-        throw new RouteChoiceMapParseError(
-          `choice ${emitted.choiceKey} missing option at ${optionPos}`,
-        );
-      }
-      if (optionEmitted.optionIndex !== optionPos) {
-        throw new ChoiceOptionOutOfOrderError(
-          emitted.choiceKey,
-          optionPos,
-          optionEmitted.optionIndex,
-        );
-      }
-      const requiresTargetUnits =
-        emitted.kind === "RouteBranch" || emitted.kind === "SceneSelector";
-      if (requiresTargetUnits && optionEmitted.targetUnitIds.length === 0) {
-        throw new ChoiceUncitedError(
-          emitted.choiceKey,
-          "option",
-          `index=${optionPos} label="${optionEmitted.optionLabel}"`,
-        );
-      }
-      const targetUnitIds: string[] = [];
-      const targetUnitHashes: string[] = [];
-      for (const id of optionEmitted.targetUnitIds) {
-        if (!validUnitIds.has(id)) {
-          throw new RouteChoiceMapUnknownCitationError(
-            id,
-            `choice ${emitted.choiceKey} option ${optionPos} target`,
-          );
-        }
-        const hashValue = sourceHashByUnitId.get(id);
-        if (!hashValue) {
-          throw new RouteChoiceMapUnknownCitationError(
-            id,
-            `choice ${emitted.choiceKey} option ${optionPos} target (no source hash)`,
-          );
-        }
-        targetUnitIds.push(id);
-        targetUnitHashes.push(hashValue);
-      }
-      // Validate route target reference.
-      if (emitted.kind === "RouteBranch" && optionEmitted.targetRouteKey !== undefined) {
-        if (!emittedRouteKeys.has(optionEmitted.targetRouteKey)) {
-          throw new UnknownRouteError(emitted.choiceKey, optionEmitted.targetRouteKey);
-        }
-      }
+      const optionEmitted = emitted.options[optionPos]!;
+      const targetUnitIds = [...optionEmitted.targetUnitIds];
+      const targetUnitHashes = optionEmitted.targetUnitIds.map((id) => sourceHashByUnitId.get(id)!);
       const option: RouteChoiceOption = {
         optionId: createUuid7(),
         optionIndex: optionPos,
@@ -316,6 +231,109 @@ export function computeChoiceKeySet(input: RouteChoiceMapInput): Set<string> {
   return keys;
 }
 
+function validateProviderPack(
+  pack: ProviderEmittedPack,
+  allowedRouteKeys: ReadonlySet<string>,
+  requiredRouteKeys: ReadonlySet<string>,
+  allowedChoiceKeys: ReadonlySet<string>,
+  validUnitIds: ReadonlySet<string>,
+  sourceHashByUnitId: ReadonlyMap<string, string>,
+): void {
+  const emittedRouteKeys = new Set<string>();
+  for (const emitted of pack.routes) {
+    if (!allowedRouteKeys.has(emitted.routeKey)) {
+      throw new UnknownRouteError(`route:${emitted.routeKey}`, emitted.routeKey);
+    }
+    if (emitted.citedUnitIds.length === 0) {
+      throw new RouteUncitedError(emitted.routeKey);
+    }
+    for (const id of emitted.citedUnitIds) {
+      assertKnownCitation(id, `route ${emitted.routeKey}`, validUnitIds, sourceHashByUnitId);
+    }
+    emittedRouteKeys.add(emitted.routeKey);
+  }
+
+  for (const routeKey of requiredRouteKeys) {
+    if (!emittedRouteKeys.has(routeKey)) {
+      throw new RouteUncitedError(routeKey);
+    }
+  }
+
+  for (const emitted of pack.choices) {
+    if (!allowedChoiceKeys.has(emitted.choiceKey)) {
+      throw new RouteChoiceMapUnknownCitationError(
+        emitted.choiceKey,
+        `choice ${emitted.choiceKey} (not in observed choice set)`,
+      );
+    }
+    if (!isValidChoiceKind(emitted.kind)) {
+      throw new RouteChoiceMapInvalidKindError(emitted.kind);
+    }
+    if (emitted.citedUnitIds.length === 0) {
+      throw new ChoiceUncitedError(emitted.choiceKey, "prompt");
+    }
+    for (const id of emitted.citedUnitIds) {
+      assertKnownCitation(id, `choice ${emitted.choiceKey}`, validUnitIds, sourceHashByUnitId);
+    }
+    if (emitted.options.length < 1) {
+      throw new ChoiceUncitedError(emitted.choiceKey, "prompt");
+    }
+    for (let optionPos = 0; optionPos < emitted.options.length; optionPos += 1) {
+      const optionEmitted = emitted.options[optionPos];
+      if (!optionEmitted) {
+        throw new RouteChoiceMapParseError(
+          `choice ${emitted.choiceKey} missing option at ${optionPos}`,
+        );
+      }
+      if (optionEmitted.optionIndex !== optionPos) {
+        throw new ChoiceOptionOutOfOrderError(
+          emitted.choiceKey,
+          optionPos,
+          optionEmitted.optionIndex,
+        );
+      }
+      const requiresTargetUnits =
+        emitted.kind === "RouteBranch" || emitted.kind === "SceneSelector";
+      if (requiresTargetUnits && optionEmitted.targetUnitIds.length === 0) {
+        throw new ChoiceUncitedError(
+          emitted.choiceKey,
+          "option",
+          `index=${optionPos} label="${optionEmitted.optionLabel}"`,
+        );
+      }
+      for (const id of optionEmitted.targetUnitIds) {
+        assertKnownCitation(
+          id,
+          `choice ${emitted.choiceKey} option ${optionPos} target`,
+          validUnitIds,
+          sourceHashByUnitId,
+        );
+      }
+      if (
+        emitted.kind === "RouteBranch" &&
+        optionEmitted.targetRouteKey !== undefined &&
+        !emittedRouteKeys.has(optionEmitted.targetRouteKey)
+      ) {
+        throw new UnknownRouteError(emitted.choiceKey, optionEmitted.targetRouteKey);
+      }
+    }
+  }
+}
+
+function assertKnownCitation(
+  id: string,
+  context: string,
+  validUnitIds: ReadonlySet<string>,
+  sourceHashByUnitId: ReadonlyMap<string, string>,
+): void {
+  if (!validUnitIds.has(id)) {
+    throw new RouteChoiceMapUnknownCitationError(id, context);
+  }
+  if (!sourceHashByUnitId.get(id)) {
+    throw new RouteChoiceMapUnknownCitationError(id, `${context} (no source hash)`);
+  }
+}
+
 function parseProviderPack(content: string): ProviderEmittedPack {
   let parsed: unknown;
   try {
@@ -344,9 +362,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     const routeKey = typeof row.routeKey === "string" ? row.routeKey : null;
     const routeTitle = typeof row.routeTitle === "string" ? row.routeTitle : null;
     const routeSummary = typeof row.routeSummary === "string" ? row.routeSummary : null;
-    const citedUnitIds = Array.isArray(row.citedUnitIds)
-      ? row.citedUnitIds.filter((id): id is string => typeof id === "string")
-      : null;
+    const citedUnitIds = parseStringArray(row.citedUnitIds);
     if (
       routeKey === null ||
       routeTitle === null ||
@@ -367,9 +383,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     const kindRaw = typeof row.kind === "string" ? row.kind : null;
     const fromRouteKey = typeof row.fromRouteKey === "string" ? row.fromRouteKey : undefined;
     const promptSummary = typeof row.promptSummary === "string" ? row.promptSummary : null;
-    const citedUnitIds = Array.isArray(row.citedUnitIds)
-      ? row.citedUnitIds.filter((id): id is string => typeof id === "string")
-      : null;
+    const citedUnitIds = parseStringArray(row.citedUnitIds);
     if (choiceKey === null || kindRaw === null || promptSummary === null || citedUnitIds === null) {
       throw new RouteChoiceMapParseError("output.choices entry missing required field");
     }
@@ -390,9 +404,7 @@ function parseProviderPack(content: string): ProviderEmittedPack {
       const optionLabel = typeof opt.optionLabel === "string" ? opt.optionLabel : null;
       const targetRouteKey =
         typeof opt.targetRouteKey === "string" ? opt.targetRouteKey : undefined;
-      const targetUnitIds = Array.isArray(opt.targetUnitIds)
-        ? opt.targetUnitIds.filter((id): id is string => typeof id === "string")
-        : null;
+      const targetUnitIds = parseStringArray(opt.targetUnitIds);
       if (optionIndex === null || optionLabel === null || targetUnitIds === null) {
         throw new RouteChoiceMapParseError("option entry missing required field");
       }
@@ -413,6 +425,16 @@ function parseProviderPack(content: string): ProviderEmittedPack {
     });
   }
   return { routes, choices };
+}
+
+function parseStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const parsed: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    parsed.push(entry);
+  }
+  return parsed;
 }
 
 function isValidChoiceKind(value: string): value is ChoiceKind {
