@@ -2,14 +2,11 @@ import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
-  characterBioEvidence,
-  characterBioStatusValues,
-  characterBios,
-  characterRelationshipEvidence,
-  characterRelationshipStatusValues,
-  characterRelationships,
+  contextArtifactCategoryValues,
   contextArtifactStatusValues,
   contextArtifacts,
+  contextArtifactSourceUnits,
+  contextEntryVersions,
   localeBranches,
   projects,
   sourceUnits,
@@ -21,12 +18,9 @@ import {
   wikiBrandContexts,
 } from "../schema.js";
 import type {
-  CharacterBioStatus,
-  CharacterRelationshipDirection,
-  CharacterRelationshipKind,
-  CharacterRelationshipStatus,
   ContextArtifactCategory,
   ContextArtifactStatus,
+  ContextEntryVersionCitation,
   TerminologyAliasKind,
   TerminologySourceReferenceKind,
   TerminologyTermKind,
@@ -42,6 +36,27 @@ export const wikiEntryKindValues = {
 } as const;
 
 export type WikiEntryKind = (typeof wikiEntryKindValues)[keyof typeof wikiEntryKindValues];
+
+/**
+ * The wiki is a durable read projection over central context entries. These
+ * values deliberately remain stable even though the retired character-agent
+ * tables no longer own their own enum types.
+ */
+export type CharacterBioStatus = "Fresh" | "Stale";
+
+export type CharacterRelationshipStatus = "Fresh" | "Stale";
+
+export type CharacterRelationshipKind =
+  | "FamilyRelation"
+  | "Romantic"
+  | "Friendship"
+  | "Mentor"
+  | "Rivalry"
+  | "Allegiance"
+  | "Antagonism"
+  | "Other";
+
+export type CharacterRelationshipDirection = "Symmetric" | "FromAToB";
 
 export type WikiEntriesFilter = {
   projectId: string;
@@ -88,7 +103,10 @@ export type WikiEntryScope = {
 };
 
 export type WikiCharacterRevision = {
+  /** Stable central ContextEntry id, retained under the legacy field name. */
   characterBioId: string;
+  /** Immutable snapshot id for this historical revision. */
+  contextEntryVersionId: string | null;
   sourceRevisionId: string;
   status: CharacterBioStatus;
   generatedAt: Date;
@@ -116,7 +134,10 @@ export type WikiCharacterEntry = {
   title: string;
   characterId: string;
   bio: {
+    /** Stable central ContextEntry id, retained under the legacy field name. */
     characterBioId: string;
+    /** The immutable version selected for this rendered bio. */
+    contextEntryVersionId: string | null;
     locale: string;
     text: string;
     status: CharacterBioStatus;
@@ -298,50 +319,16 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     filter: WikiEntriesFilter,
     sources: ScopedWikiSource[],
   ): Promise<WikiCharacterEntry[]> {
-    const bioRows: Array<ScopedRow<typeof characterBios.$inferSelect>> = [];
-    for (const source of sources) {
-      const conditions = [
-        eq(characterBios.projectId, source.projectId),
-        eq(characterBios.localeBranchId, source.localeBranchId),
-      ];
-      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
-        conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
-      }
-      const rows = await this.db
-        .select()
-        .from(characterBios)
-        .where(and(...conditions))
-        .orderBy(asc(characterBios.characterId), desc(characterBios.generatedAt));
-      bioRows.push(...rows.map((row) => ({ ...row, wikiSource: source })));
-    }
+    const projectionSet = await this.loadCharacterArtifactProjections(filter, sources);
+    const bioRows = projectionSet.projections.filter(isCharacterBioProjection);
     if (bioRows.length === 0) {
       return [];
     }
 
-    const bioIds = bioRows.map((row) => row.characterBioId);
-    const citationRows = await this.db
-      .select({
-        characterBioId: characterBioEvidence.characterBioId,
-        bridgeUnitId: characterBioEvidence.bridgeUnitId,
-        citedSourceHash: characterBioEvidence.citedSourceHash,
-        citeOrdinal: characterBioEvidence.citeOrdinal,
-        sourceUnitKey: sourceUnits.sourceUnitKey,
-        occurrenceId: sourceUnits.occurrenceId,
-      })
-      .from(characterBioEvidence)
-      .leftJoin(sourceUnits, eq(sourceUnits.bridgeUnitId, characterBioEvidence.bridgeUnitId))
-      .where(inArray(characterBioEvidence.characterBioId, bioIds))
-      .orderBy(asc(characterBioEvidence.characterBioId), asc(characterBioEvidence.citeOrdinal));
-    const citationsByBio = new Map<string, WikiCitation[]>();
-    for (const row of citationRows) {
-      pushMap(citationsByBio, row.characterBioId, {
-        bridgeUnitId: row.bridgeUnitId,
-        sourceUnitKey: row.sourceUnitKey,
-        occurrenceId: row.occurrenceId,
-        citedSourceHash: row.citedSourceHash,
-        citeOrdinal: row.citeOrdinal,
-      });
-    }
+    const citationsByArtifact = await this.loadArtifactCitations(
+      projectionSet.artifacts.map((row) => row.contextArtifactId),
+    );
+    const citationsByVersion = await this.loadVersionCitations(bioRows);
 
     const relationshipRows = await this.loadRelationships(filter, sources);
     const relationshipsByCharacter = new Map<string, WikiCharacterRelationship[]>();
@@ -362,22 +349,28 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
       });
     }
 
-    const byCharacter = new Map<string, Array<ScopedRow<typeof characterBios.$inferSelect>>>();
+    const byCharacter = new Map<string, CharacterArtifactProjection[]>();
     for (const row of bioRows) {
-      const existing = byCharacter.get(row.characterId);
+      const characterId = characterIdForBio(row.data);
+      if (characterId === undefined) {
+        continue;
+      }
+      const existing = byCharacter.get(characterId);
       if (existing !== undefined && existing[0]?.wikiSource !== row.wikiSource) {
         continue;
       }
-      pushMap(byCharacter, row.characterId, row);
+      pushMap(byCharacter, characterId, row);
     }
 
     const entries: WikiCharacterEntry[] = [];
     for (const [characterId, revisions] of byCharacter.entries()) {
-      const current =
-        revisions.find((row) => row.status === characterBioStatusValues.fresh) ?? revisions[0];
+      const current = selectCurrentCharacterProjection(revisions);
       if (current === undefined) {
         continue;
       }
+      const versionRows = revisions.flatMap((row) =>
+        versionsForProjection(row, projectionSet.versionsByArtifact, filter),
+      );
       entries.push({
         entryId: `character:${characterId}`,
         kind: wikiEntryKindValues.character,
@@ -388,22 +381,21 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
         title: characterId,
         characterId,
         bio: {
-          characterBioId: current.characterBioId,
-          locale: current.bioLocale,
-          text: current.bioText,
-          status: current.status as CharacterBioStatus,
-          stale: current.status !== characterBioStatusValues.fresh,
+          characterBioId: current.contextArtifactId,
+          contextEntryVersionId: current.contextEntryVersionId,
+          locale: stringValue(current.data.bioLocale) ?? "",
+          text: current.body,
+          status: normalizedCharacterStatus(current.status),
+          stale: current.status !== contextArtifactStatusValues.active,
           generatedAt: current.generatedAt,
         },
-        appearances: citationsByBio.get(current.characterBioId) ?? [],
+        appearances:
+          (current.citationSnapshot === null
+            ? citationsByArtifact.get(current.contextArtifactId)
+            : citationsByVersion.get(current.citationKey)) ?? [],
         related: relatedByCharacter.get(characterId) ?? [],
         relationships: relationshipsByCharacter.get(characterId) ?? [],
-        revisions: revisions.map((row) => ({
-          characterBioId: row.characterBioId,
-          sourceRevisionId: row.sourceRevisionId,
-          status: row.status as CharacterBioStatus,
-          generatedAt: row.generatedAt,
-        })),
+        revisions: wikiCharacterRevisions(versionRows, revisions),
       });
     }
     return entries;
@@ -413,70 +405,29 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     filter: WikiEntriesFilter,
     sources: ScopedWikiSource[],
   ): Promise<Array<WikiCharacterRelationship & { fromCharacterId: string }>> {
-    const rows: Array<typeof characterRelationships.$inferSelect> = [];
-    for (const source of sources) {
-      const conditions = [
-        eq(characterRelationships.projectId, source.projectId),
-        eq(characterRelationships.localeBranchId, source.localeBranchId),
-      ];
-      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
-        conditions.push(eq(characterRelationships.sourceRevisionId, filter.sourceRevisionId));
-      }
-      rows.push(
-        ...(await this.db
-          .select()
-          .from(characterRelationships)
-          .where(and(...conditions))
-          .orderBy(
-            asc(characterRelationships.fromCharacterId),
-            asc(characterRelationships.toCharacterId),
-          )),
-      );
-    }
+    const projectionSet = await this.loadCharacterArtifactProjections(filter, sources);
+    const rows = projectionSet.projections.filter(isCharacterRelationshipProjection);
     if (rows.length === 0) {
       return [];
     }
-    const ids = rows.map((row) => row.characterRelationshipId);
-    const citationRows = await this.db
-      .select({
-        characterRelationshipId: characterRelationshipEvidence.characterRelationshipId,
-        bridgeUnitId: characterRelationshipEvidence.bridgeUnitId,
-        citedSourceHash: characterRelationshipEvidence.citedSourceHash,
-        citeOrdinal: characterRelationshipEvidence.citeOrdinal,
-        sourceUnitKey: sourceUnits.sourceUnitKey,
-        occurrenceId: sourceUnits.occurrenceId,
-      })
-      .from(characterRelationshipEvidence)
-      .leftJoin(
-        sourceUnits,
-        eq(sourceUnits.bridgeUnitId, characterRelationshipEvidence.bridgeUnitId),
-      )
-      .where(inArray(characterRelationshipEvidence.characterRelationshipId, ids))
-      .orderBy(
-        asc(characterRelationshipEvidence.characterRelationshipId),
-        asc(characterRelationshipEvidence.citeOrdinal),
-      );
-    const citationsByRelationship = new Map<string, WikiCitation[]>();
-    for (const row of citationRows) {
-      pushMap(citationsByRelationship, row.characterRelationshipId, {
-        bridgeUnitId: row.bridgeUnitId,
-        sourceUnitKey: row.sourceUnitKey,
-        occurrenceId: row.occurrenceId,
-        citedSourceHash: row.citedSourceHash,
-        citeOrdinal: row.citeOrdinal,
-      });
-    }
+    const citationsByArtifact = await this.loadArtifactCitations(
+      projectionSet.artifacts.map((row) => row.contextArtifactId),
+    );
+    const citationsByVersion = await this.loadVersionCitations(rows);
     return rows.map((row) => ({
-      fromCharacterId: row.fromCharacterId,
-      characterRelationshipId: row.characterRelationshipId,
-      toCharacterId: row.toCharacterId,
-      kind: row.kind,
-      direction: row.direction,
-      descriptor: row.descriptor,
-      descriptorLocale: row.descriptorLocale,
-      status: row.status as CharacterRelationshipStatus,
+      fromCharacterId: stringValue(row.data.fromCharacterId) ?? "",
+      characterRelationshipId: row.contextArtifactId,
+      toCharacterId: stringValue(row.data.toCharacterId) ?? "",
+      kind: relationshipKind(row.data.kind),
+      direction: relationshipDirection(row.data.direction),
+      descriptor: row.body,
+      descriptorLocale: stringValue(row.data.descriptorLocale) ?? "",
+      status: normalizedCharacterStatus(row.status),
       generatedAt: row.generatedAt,
-      citations: citationsByRelationship.get(row.characterRelationshipId) ?? [],
+      citations:
+        (row.citationSnapshot === null
+          ? citationsByArtifact.get(row.contextArtifactId)
+          : citationsByVersion.get(row.citationKey)) ?? [],
     }));
   }
 
@@ -597,24 +548,159 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
     filter: WikiEntriesFilter,
     sources: ScopedWikiSource[],
   ): Promise<Set<string>> {
+    const projectionSet = await this.loadCharacterArtifactProjections(filter, sources);
     const ids = new Set<string>();
-    for (const source of sources) {
-      const conditions = [
-        eq(characterBios.projectId, source.projectId),
-        eq(characterBios.localeBranchId, source.localeBranchId),
-      ];
-      if (filter.sourceRevisionId !== undefined && source.inheritance === "local") {
-        conditions.push(eq(characterBios.sourceRevisionId, filter.sourceRevisionId));
-      }
-      const rows = await this.db
-        .select({ characterId: characterBios.characterId })
-        .from(characterBios)
-        .where(and(...conditions));
-      for (const row of rows) {
-        ids.add(row.characterId);
+    for (const row of projectionSet.projections) {
+      const characterId = characterIdForBio(row.data);
+      if (characterId !== undefined) {
+        ids.add(characterId);
       }
     }
     return ids;
+  }
+
+  private async loadCharacterArtifactProjections(
+    filter: WikiEntriesFilter,
+    sources: ScopedWikiSource[],
+  ): Promise<CharacterArtifactProjectionSet> {
+    const artifacts: ScopedContextArtifactRow[] = [];
+    for (const source of sources) {
+      const rows = await this.db
+        .select()
+        .from(contextArtifacts)
+        .where(
+          and(
+            eq(contextArtifacts.projectId, source.projectId),
+            eq(contextArtifacts.localeBranchId, source.localeBranchId),
+            eq(contextArtifacts.category, contextArtifactCategoryValues.characterNote),
+          ),
+        )
+        .orderBy(asc(contextArtifacts.title), desc(contextArtifacts.updatedAt));
+      artifacts.push(...rows.map((row) => ({ ...row, wikiSource: source })));
+    }
+    const versionsByArtifact = await this.loadArtifactVersions(
+      artifacts.map((artifact) => artifact.contextArtifactId),
+    );
+    return {
+      artifacts,
+      versionsByArtifact,
+      projections: artifacts.flatMap((artifact) =>
+        projectionsForArtifact(
+          artifact,
+          versionsByArtifact.get(artifact.contextArtifactId) ?? [],
+          filter,
+        ),
+      ),
+    };
+  }
+
+  private async loadArtifactVersions(
+    contextArtifactIds: string[],
+  ): Promise<Map<string, ContextEntryVersionRow[]>> {
+    const byArtifact = new Map<string, ContextEntryVersionRow[]>();
+    if (contextArtifactIds.length === 0) {
+      return byArtifact;
+    }
+    const rows = await this.db
+      .select()
+      .from(contextEntryVersions)
+      .where(inArray(contextEntryVersions.contextArtifactId, uniqueStrings(contextArtifactIds)))
+      .orderBy(
+        asc(contextEntryVersions.contextArtifactId),
+        asc(contextEntryVersions.createdAt),
+        asc(contextEntryVersions.contextEntryVersionId),
+      );
+    for (const row of rows) {
+      pushMap(byArtifact, row.contextArtifactId, row);
+    }
+    return byArtifact;
+  }
+
+  private async loadArtifactCitations(
+    contextArtifactIds: string[],
+  ): Promise<Map<string, WikiCitation[]>> {
+    const byArtifact = new Map<string, WikiCitation[]>();
+    const ids = uniqueStrings(contextArtifactIds);
+    if (ids.length === 0) {
+      return byArtifact;
+    }
+    const rows = await this.db
+      .select({
+        contextArtifactId: contextArtifactSourceUnits.contextArtifactId,
+        bridgeUnitId: contextArtifactSourceUnits.bridgeUnitId,
+        citedSourceHash: contextArtifactSourceUnits.sourceHash,
+        sourceUnitKey: sourceUnits.sourceUnitKey,
+        occurrenceId: sourceUnits.occurrenceId,
+      })
+      .from(contextArtifactSourceUnits)
+      .leftJoin(sourceUnits, eq(sourceUnits.bridgeUnitId, contextArtifactSourceUnits.bridgeUnitId))
+      .where(inArray(contextArtifactSourceUnits.contextArtifactId, ids))
+      .orderBy(
+        asc(contextArtifactSourceUnits.contextArtifactId),
+        asc(contextArtifactSourceUnits.bridgeUnitId),
+      );
+    for (const row of rows) {
+      const citeOrdinal = (byArtifact.get(row.contextArtifactId)?.length ?? 0) + 1;
+      pushMap(byArtifact, row.contextArtifactId, {
+        bridgeUnitId: row.bridgeUnitId,
+        sourceUnitKey: row.sourceUnitKey,
+        occurrenceId: row.occurrenceId,
+        citedSourceHash: row.citedSourceHash,
+        citeOrdinal,
+      });
+    }
+    return byArtifact;
+  }
+
+  private async loadVersionCitations(
+    projections: CharacterArtifactProjection[],
+  ): Promise<Map<string, WikiCitation[]>> {
+    const snapshots = projections.filter(
+      (
+        projection,
+      ): projection is CharacterArtifactProjection & {
+        citationSnapshot: ContextEntryVersionCitation[];
+      } => projection.citationSnapshot !== null,
+    );
+    const unitIds = uniqueStrings(
+      snapshots.flatMap((projection) =>
+        projection.citationSnapshot.map((citation) => citation.bridgeUnitId),
+      ),
+    );
+    const sourceUnitById = new Map<
+      string,
+      { sourceUnitKey: string; occurrenceId: string | null }
+    >();
+    if (unitIds.length > 0) {
+      const rows = await this.db
+        .select({
+          bridgeUnitId: sourceUnits.bridgeUnitId,
+          sourceUnitKey: sourceUnits.sourceUnitKey,
+          occurrenceId: sourceUnits.occurrenceId,
+        })
+        .from(sourceUnits)
+        .where(inArray(sourceUnits.bridgeUnitId, unitIds));
+      for (const row of rows) {
+        sourceUnitById.set(row.bridgeUnitId, row);
+      }
+    }
+    const result = new Map<string, WikiCitation[]>();
+    for (const projection of snapshots) {
+      result.set(
+        projection.citationKey,
+        projection.citationSnapshot.map((citation, index) => {
+          const sourceUnit = sourceUnitById.get(citation.bridgeUnitId);
+          return {
+            bridgeUnitId: citation.bridgeUnitId,
+            sourceUnitKey: sourceUnit?.sourceUnitKey ?? null,
+            occurrenceId: sourceUnit?.occurrenceId ?? null,
+            citedSourceHash: citation.sourceHash,
+            citeOrdinal: index + 1,
+          };
+        }),
+      );
+    }
+    return result;
   }
 
   private async resolveBrandContextScope(
@@ -750,6 +836,9 @@ export class ItotoriWikiReadmodelRepository implements ItotoriWikiReadmodelRepos
         .where(and(...conditions))
         .orderBy(asc(contextArtifacts.category), asc(contextArtifacts.title));
       for (const row of rows) {
+        if (isCharacterContextData(row.data)) {
+          continue;
+        }
         artifacts.push({
           contextArtifactId: row.contextArtifactId,
           projectId: row.projectId,
@@ -782,6 +871,32 @@ type ScopedWikiSource = {
 };
 
 type ScopedRow<T> = T & { wikiSource: ScopedWikiSource };
+
+type ScopedContextArtifactRow = ScopedRow<typeof contextArtifacts.$inferSelect>;
+
+type ContextEntryVersionRow = typeof contextEntryVersions.$inferSelect;
+
+type CharacterArtifactProjection = {
+  contextArtifactId: string;
+  contextEntryVersionId: string | null;
+  citationKey: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  status: string;
+  body: string;
+  data: Record<string, unknown>;
+  generatedAt: Date;
+  wikiSource: ScopedWikiSource;
+  /** Null means the current contextArtifactSourceUnits join is authoritative. */
+  citationSnapshot: ContextEntryVersionCitation[] | null;
+};
+
+type CharacterArtifactProjectionSet = {
+  artifacts: ScopedContextArtifactRow[];
+  versionsByArtifact: Map<string, ContextEntryVersionRow[]>;
+  projections: CharacterArtifactProjection[];
+};
 
 type ResolvedWikiBrandContextScope = {
   sources: ScopedWikiSource[];
@@ -857,6 +972,214 @@ function sourceKey(source: ScopedWikiSource): string {
   return `${source.projectId}\u0000${source.localeBranchId}`;
 }
 
+function projectionsForArtifact(
+  artifact: ScopedContextArtifactRow,
+  versions: ContextEntryVersionRow[],
+  filter: WikiEntriesFilter,
+): CharacterArtifactProjection[] {
+  if (filter.sourceRevisionId !== undefined && artifact.wikiSource.inheritance === "local") {
+    return versions
+      .filter((version) => version.sourceRevisionId === filter.sourceRevisionId)
+      .map((version) => projectionFromVersion(artifact.wikiSource, version));
+  }
+  return [projectionFromArtifact(artifact)];
+}
+
+function projectionFromArtifact(artifact: ScopedContextArtifactRow): CharacterArtifactProjection {
+  return {
+    contextArtifactId: artifact.contextArtifactId,
+    contextEntryVersionId: artifact.headVersionId,
+    citationKey: artifact.contextArtifactId,
+    projectId: artifact.projectId,
+    localeBranchId: artifact.localeBranchId,
+    sourceRevisionId: artifact.sourceRevisionId,
+    status: artifact.status,
+    body: artifact.body,
+    data: artifact.data,
+    generatedAt: generatedAt(artifact.data.generatedAt, artifact.updatedAt),
+    wikiSource: artifact.wikiSource,
+    citationSnapshot: null,
+  };
+}
+
+function projectionFromVersion(
+  wikiSource: ScopedWikiSource,
+  version: ContextEntryVersionRow,
+): CharacterArtifactProjection {
+  return {
+    contextArtifactId: version.contextArtifactId,
+    contextEntryVersionId: version.contextEntryVersionId,
+    citationKey: versionCitationKey(version.contextEntryVersionId),
+    projectId: version.projectId,
+    localeBranchId: version.localeBranchId,
+    sourceRevisionId: version.sourceRevisionId,
+    status: version.status,
+    body: version.body,
+    data: version.data,
+    generatedAt: generatedAt(version.data.generatedAt, version.createdAt),
+    wikiSource,
+    citationSnapshot: version.citations,
+  };
+}
+
+function isCharacterBioProjection(
+  projection: CharacterArtifactProjection,
+): projection is CharacterArtifactProjection {
+  return isCharacterBioData(projection.data) && characterIdForBio(projection.data) !== undefined;
+}
+
+function isCharacterRelationshipProjection(
+  projection: CharacterArtifactProjection,
+): projection is CharacterArtifactProjection {
+  return isCharacterRelationshipData(projection.data);
+}
+
+function characterIdForBio(data: Record<string, unknown>): string | undefined {
+  return isCharacterBioData(data) ? stringValue(data.characterId) : undefined;
+}
+
+/**
+ * `semanticKind` is canonical on current writes. The field-level fallback
+ * keeps pre-fix central entries (written by the first loop implementation)
+ * visible after the retired character tables are dropped.
+ */
+function isCharacterBioData(data: Record<string, unknown>): boolean {
+  const semanticKind = stringValue(data.semanticKind);
+  if (semanticKind !== undefined) {
+    return semanticKind === "character_bio";
+  }
+  return (
+    stringValue(data.characterId) !== undefined &&
+    stringValue(data.fromCharacterId) === undefined &&
+    stringValue(data.toCharacterId) === undefined
+  );
+}
+
+function isCharacterRelationshipData(data: Record<string, unknown>): boolean {
+  const semanticKind = stringValue(data.semanticKind);
+  if (semanticKind !== undefined && semanticKind !== "character_relationship") {
+    return false;
+  }
+  return (
+    stringValue(data.fromCharacterId) !== undefined && stringValue(data.toCharacterId) !== undefined
+  );
+}
+
+function isCharacterContextData(data: Record<string, unknown>): boolean {
+  return isCharacterBioData(data) || isCharacterRelationshipData(data);
+}
+
+function selectCurrentCharacterProjection(
+  projections: CharacterArtifactProjection[],
+): CharacterArtifactProjection | undefined {
+  return [...projections].sort((left, right) => {
+    const active =
+      Number(right.status === contextArtifactStatusValues.active) -
+      Number(left.status === contextArtifactStatusValues.active);
+    if (active !== 0) {
+      return active;
+    }
+    const generated = right.generatedAt.getTime() - left.generatedAt.getTime();
+    if (generated !== 0) {
+      return generated;
+    }
+    return right.citationKey.localeCompare(left.citationKey);
+  })[0];
+}
+
+function versionsForProjection(
+  projection: CharacterArtifactProjection,
+  versionsByArtifact: Map<string, ContextEntryVersionRow[]>,
+  filter: WikiEntriesFilter,
+): ContextEntryVersionRow[] {
+  return (versionsByArtifact.get(projection.contextArtifactId) ?? []).filter(
+    (version) =>
+      isCharacterBioData(version.data) &&
+      (filter.sourceRevisionId === undefined ||
+        projection.wikiSource.inheritance !== "local" ||
+        version.sourceRevisionId === filter.sourceRevisionId),
+  );
+}
+
+function wikiCharacterRevisions(
+  versionRows: ContextEntryVersionRow[],
+  fallbackRows: CharacterArtifactProjection[],
+): WikiCharacterRevision[] {
+  const uniqueVersions = new Map<string, ContextEntryVersionRow>();
+  for (const row of versionRows) {
+    uniqueVersions.set(row.contextEntryVersionId, row);
+  }
+  if (uniqueVersions.size === 0) {
+    return fallbackRows.map((row) => ({
+      characterBioId: row.contextArtifactId,
+      contextEntryVersionId: row.contextEntryVersionId,
+      sourceRevisionId: row.sourceRevisionId,
+      status: normalizedCharacterStatus(row.status),
+      generatedAt: row.generatedAt,
+    }));
+  }
+  return [...uniqueVersions.values()]
+    .sort((left, right) => {
+      const generated =
+        generatedAt(right.data.generatedAt, right.createdAt).getTime() -
+        generatedAt(left.data.generatedAt, left.createdAt).getTime();
+      return generated !== 0
+        ? generated
+        : right.contextEntryVersionId.localeCompare(left.contextEntryVersionId);
+    })
+    .map((row) => ({
+      characterBioId: row.contextArtifactId,
+      contextEntryVersionId: row.contextEntryVersionId,
+      sourceRevisionId: row.sourceRevisionId,
+      status: normalizedCharacterStatus(row.status),
+      generatedAt: generatedAt(row.data.generatedAt, row.createdAt),
+    }));
+}
+
+function versionCitationKey(contextEntryVersionId: string): string {
+  return `version:${contextEntryVersionId}`;
+}
+
+function normalizedCharacterStatus(value: string): CharacterBioStatus {
+  return value === contextArtifactStatusValues.active ? "Fresh" : "Stale";
+}
+
+function relationshipKind(value: unknown): CharacterRelationshipKind {
+  switch (value) {
+    case "FamilyRelation":
+    case "Romantic":
+    case "Friendship":
+    case "Mentor":
+    case "Rivalry":
+    case "Allegiance":
+    case "Antagonism":
+    case "Other":
+      return value;
+    default:
+      return "Other";
+  }
+}
+
+function relationshipDirection(value: unknown): CharacterRelationshipDirection {
+  return value === "FromAToB" ? "FromAToB" : "Symmetric";
+}
+
+function generatedAt(value: unknown, fallback: Date): Date {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function clampLimit(limit: number | undefined): number {
   if (limit === undefined) {
     return DEFAULT_LIMIT;
@@ -923,4 +1246,4 @@ function relatedCharactersForTerm(
   return refs;
 }
 
-export { terminologyTermStatusValues, characterRelationshipStatusValues };
+export { terminologyTermStatusValues };

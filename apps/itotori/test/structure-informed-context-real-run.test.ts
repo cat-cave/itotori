@@ -125,7 +125,7 @@ describe("itotori-structure-informed-context-building — real A/B improvement",
 
     const baseInput = (
       structuredContext: TranslationInvocationInput["structuredContext"],
-      contextArtifactRefs: string[],
+      contextArtifacts: NonNullable<TranslationInvocationInput["contextArtifacts"]>,
       units: TranslationBridgeUnit[],
     ): TranslationInvocationInput => ({
       draftJobId: `structctx-${SLICE_SCENE_ID}`,
@@ -138,7 +138,7 @@ describe("itotori-structure-informed-context-building — real A/B improvement",
       protectedSpansBySource: new Map(),
       glossary: [],
       styleGuide: [],
-      contextArtifactRefs,
+      contextArtifacts,
       structuredContext,
       modelProfile: {
         providerFamily: "openrouter",
@@ -162,10 +162,19 @@ describe("itotori-structure-informed-context-building — real A/B improvement",
     // bearing artifact under test — the injected structural context in the
     // prompt — is identical to what the agent would send.
     const resultA = await translateSlice(provider, baseInput(undefined, [], unitsNoSpeaker));
-    // Condition B — structure-informed context.
+    // Condition B — structure-informed context with resolved artifact content.
     const resultB = await translateSlice(
       provider,
-      baseInput(ctx, ctx.artifactRefs, unitsWithSpeaker),
+      baseInput(
+        ctx,
+        ctx.artifactRefs.map((ref) => ({
+          contextArtifactId: ref,
+          category: "scene_summary",
+          title: ref,
+          body: ctx.sceneSummaryText,
+        })),
+        unitsWithSpeaker,
+      ),
     );
 
     const zdrA = resultA.zdr;

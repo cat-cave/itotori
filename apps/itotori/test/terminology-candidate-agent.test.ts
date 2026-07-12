@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AuthorizationActor,
-  ExistsTerminologyTermBySurfaceFormInput,
-  ItotoriTerminologyCandidateRepositoryPort,
-} from "@itotori/db";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import { InMemoryContextArtifactRepository } from "../src/orchestrator/context-brain.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
   buildConflictIndex,
@@ -120,43 +116,15 @@ const successPackJson = JSON.stringify({
   ],
 });
 
-// ITOTORI-150 — a minimal repository stub whose only meaningful method is
-// `existsTerminologyTermBySurfaceForm` (the one queried by the agent's
-// pre-persist loop). Every other port method is unused by this path and
-// throws to keep the fixture honest.
-class SurfaceFormConflictRepository implements ItotoriTerminologyCandidateRepositoryPort {
-  public glossary = new Map<string, string>(); // surfaceForm -> termId
-  public lookupCalls = 0;
-
-  async existsTerminologyTermBySurfaceForm(
-    _actor: AuthorizationActor,
-    input: ExistsTerminologyTermBySurfaceFormInput,
-  ): Promise<string | null> {
-    this.lookupCalls += 1;
-    return this.glossary.get(input.surfaceForm) ?? null;
-  }
-
-  saveCandidate(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
-  loadCandidatesByProject(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
-  markCandidateStale(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
-  markCandidateRejected(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
-  markCandidatePromoted(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
-  currentSourceHashesForBridgeUnits(): never {
-    throw new Error("not used by the terminology-candidate agent pre-persist path");
-  }
+function glossaryLookup(glossary: Map<string, string>, counter?: { count: number }) {
+  return async (input: { projectId: string; surfaceForm: string }): Promise<string | null> => {
+    expect(input.projectId).toBe(inputFixture().projectId);
+    if (counter !== undefined) {
+      counter.count += 1;
+    }
+    return glossary.get(input.surfaceForm) ?? null;
+  };
 }
-
-const i150Actor: AuthorizationActor = { userId: "test-user" };
 
 describe("terminology-candidate prompt template", () => {
   it("is byte-stable across calls (same input -> same hash)", () => {
@@ -254,12 +222,11 @@ describe("generateTerminologyCandidates", () => {
         return requests.length === 1 ? invalidPack : successPackJson;
       },
     });
-    const repository = new SurfaceFormConflictRepository();
+    const lookupCalls = { count: 0 };
 
     const output = await generateTerminologyCandidates(input, {
       provider,
-      repository,
-      actor: i150Actor,
+      lookupExistingGlossaryTerm: glossaryLookup(new Map(), lookupCalls),
     });
 
     expect(output.candidates).toHaveLength(4);
@@ -268,9 +235,9 @@ describe("generateTerminologyCandidates", () => {
       "previous response failed with semantic_invalid",
     );
     expect(requests[1]?.messages.at(-1)?.content).toContain("unknown-bridge-unit");
-    // Repository/TOCTOU checks run only for the four candidates in the
+    // Glossary/TOCTOU checks run only for the four candidates in the
     // accepted pack, never for the rejected model response.
-    expect(repository.lookupCalls).toBe(4);
+    expect(lookupCalls.count).toBe(4);
   });
 
   it("is byte-stable across two invocations (same prompt hash)", async () => {
@@ -353,9 +320,9 @@ describe("generateTerminologyCandidates", () => {
     );
   });
 
-  it("ITOTORI-150: repository-side surface-form conflict throws ExistingGlossaryConflictError at pre-persist (no input-glossary conflict, no async round trip)", async () => {
+  it("ITOTORI-150: authoritative glossary lookup throws ExistingGlossaryConflictError at pre-persist (no input-glossary conflict, no async round trip)", async () => {
     // Empty input glossary: the conflictIndex path finds NOTHING, so this
-    // proves the repository-side check is what fires — closing the TOCTOU
+    // proves the authoritative glossary lookup is what fires — closing the TOCTOU
     // window (a curator inserted the term mid-run) synchronously at
     // pre-persist instead of asynchronously as RejectedByReviewer.
     const input: TerminologyCandidateInput = { ...inputFixture(), existingGlossary: [] };
@@ -374,19 +341,21 @@ describe("generateTerminologyCandidates", () => {
       modelId: input.modelProfile.modelId,
       generate: () => pack,
     });
-    const repository = new SurfaceFormConflictRepository();
-    repository.glossary.set("ハル", "019ed018-0000-7000-8000-000000000t01");
+    const glossary = new Map([["ハル", "019ed018-0000-7000-8000-000000000t01"]]);
     await expect(
-      generateTerminologyCandidates(input, { provider, repository, actor: i150Actor }),
+      generateTerminologyCandidates(input, {
+        provider,
+        lookupExistingGlossaryTerm: glossaryLookup(glossary),
+      }),
     ).rejects.toBeInstanceOf(ExistingGlossaryConflictError);
   });
 
-  it("ITOTORI-150 (prod path): runGenerateTerminologyCandidatesCli forwards repository+actor so the repository-side conflict check FIRES", async () => {
+  it("ITOTORI-150 (prod path): runGenerateTerminologyCandidatesCli forwards the authoritative glossary lookup", async () => {
     // Drive the PRODUCTION cli caller (which BUILDS the options internally) —
     // NOT the direct-options path above. Empty input glossary + a curator-inserted
-    // repository term proves the wiring in cli.ts forwards `deps.repository` +
-    // `deps.actor` into the agent options, so `existsTerminologyTermBySurfaceForm`
-    // runs on the real caller path and closes the TOCTOU window in prod.
+    // glossary term proves cli.ts forwards `deps.lookupExistingGlossaryTerm`
+    // into the agent options on the real caller path, closing the TOCTOU window
+    // without reviving the retired terminology-candidate repository.
     const pack = JSON.stringify({
       candidates: [
         {
@@ -402,13 +371,13 @@ describe("generateTerminologyCandidates", () => {
       modelId: fakeModelProfile().modelId,
       generate: () => pack,
     });
-    const repository = new SurfaceFormConflictRepository();
-    repository.glossary.set("ハル", "019ed018-0000-7000-8000-000000000t01");
+    const glossary = new Map([["ハル", "019ed018-0000-7000-8000-000000000t01"]]);
     const deps: TerminologyCandidateCliDependencies = {
-      actor: i150Actor,
-      repository,
+      actor: { userId: "test-user" },
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
       provider,
-      // Empty existing glossary: only the repository-side check can catch the
+      lookupExistingGlossaryTerm: glossaryLookup(glossary),
+      // Empty existing glossary: only the authoritative lookup can catch the
       // conflict — so a throw here PROVES the repository wiring fired in prod.
       loadInputContext: async () => ({ units: unitsFixture(), existingGlossary: [] }),
     };

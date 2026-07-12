@@ -1,4 +1,5 @@
-import type { AuthorizationActor, ItotoriCharacterRelationshipRepositoryPort } from "@itotori/db";
+import type { AuthorizationActor, ItotoriContextArtifactRepositoryPort } from "@itotori/db";
+import { contextArtifactCategoryValues } from "@itotori/db";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
 import {
   resolveSemanticAgentProvider,
@@ -8,12 +9,14 @@ import {
   generateCharacterRelationships,
   type GenerateCharacterRelationshipsOptions,
 } from "./agent.js";
-import { persistCharacterBio, persistCharacterRelationship } from "./persistence.js";
-import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import {
-  markStaleCharacterArtifactsForRevision,
-  type CharacterStalenessScanResult,
-} from "./staleness.js";
+  artifactIsActiveForTemplate,
+  loadSemanticArtifacts,
+  persistCharacterBioInContext,
+  persistCharacterRelationshipInContext,
+} from "../semantic-context-store.js";
+import { characterNoteArtifactId } from "../../orchestrator/context-brain.js";
+import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
 import type {
   BridgeUnitForCharacter,
   CharacterBio,
@@ -52,7 +55,7 @@ export type GenerateCharacterRelationshipsCliResult = {
 
 export type CharacterRelationshipCliDependencies = {
   actor: AuthorizationActor;
-  repository: ItotoriCharacterRelationshipRepositoryPort;
+  contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
   provider: ModelProvider;
   loadInputContext: (
     actor: AuthorizationActor,
@@ -128,7 +131,7 @@ export async function runGenerateCharacterRelationshipsCli(
 
   const filteredCharacterId = input.characterIdFilter;
   if (filteredCharacterId !== undefined) {
-    for (const id of [...charactersToInclude]) {
+    for (const id of charactersToInclude) {
       if (id !== filteredCharacterId) {
         charactersToInclude.delete(id);
       }
@@ -137,18 +140,25 @@ export async function runGenerateCharacterRelationshipsCli(
 
   // Detect Fresh records up front so we can skip pure regeneration.
   if (!input.includeStale) {
-    for (const characterId of [...charactersToInclude]) {
-      const existing = await deps.repository.loadBioByCharacter(deps.actor, {
+    const existingArtifacts = await loadSemanticArtifacts(
+      { actor: deps.actor, repository: deps.contextArtifactRepository },
+      {
         projectId: input.projectId,
         localeBranchId: input.localeBranchId,
         sourceRevisionId: input.sourceRevisionId,
-        characterId,
-        promptTemplateVersion: PROMPT_TEMPLATE_VERSION_V1,
-      });
-      if (existing?.status === "Fresh") {
+        categories: [contextArtifactCategoryValues.characterNote],
+      },
+    );
+    for (const characterId of charactersToInclude) {
+      const existing = existingArtifacts.find(
+        (artifact) =>
+          artifact.contextArtifactId === characterNoteArtifactId(input.projectId, characterId) &&
+          artifactIsActiveForTemplate(artifact, PROMPT_TEMPLATE_VERSION_V1),
+      );
+      if (existing !== undefined) {
         charactersToInclude.delete(characterId);
         skippedFreshBioCount += 1;
-        log(`skip-fresh characterId=${characterId} bioId=${existing.characterBioId}`);
+        log(`skip-fresh characterId=${characterId} artifactId=${existing.contextArtifactId}`);
       }
     }
   }
@@ -188,7 +198,12 @@ export async function runGenerateCharacterRelationshipsCli(
     if (input.dryRun) {
       finalBios.push(bio);
     } else {
-      finalBios.push(await persistCharacterBio(deps.repository, deps.actor, bio));
+      finalBios.push(
+        await persistCharacterBioInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
+          bio,
+        ),
+      );
     }
     log(`bio characterId=${bio.characterId} bioId=${bio.id} cited=${bio.citedUnitIds.length}`);
   }
@@ -204,7 +219,10 @@ export async function runGenerateCharacterRelationshipsCli(
       finalRelationships.push(relationship);
     } else {
       finalRelationships.push(
-        await persistCharacterRelationship(deps.repository, deps.actor, relationship),
+        await persistCharacterRelationshipInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
+          relationship,
+        ),
       );
     }
     log(
@@ -224,14 +242,63 @@ export async function runGenerateCharacterRelationshipsCli(
 export async function runCheckCharacterRelationshipsCli(
   input: CheckCharacterRelationshipsCliInput,
   deps: CharacterRelationshipCliDependencies,
-): Promise<CharacterStalenessScanResult> {
+): Promise<CentralCharacterCheckResult> {
   const log = deps.log ?? noopLog;
-  const result = await markStaleCharacterArtifactsForRevision(deps.repository, deps.actor, {
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: input.sourceRevisionId,
-    markStale: input.markStale ?? false,
-  });
+  const artifacts = await loadSemanticArtifacts(
+    { actor: deps.actor, repository: deps.contextArtifactRepository },
+    {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      categories: [contextArtifactCategoryValues.characterNote],
+    },
+  );
+  const invalidated =
+    input.markStale === true
+      ? await deps.contextArtifactRepository.invalidateAffectedArtifacts(deps.actor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          reason: "standalone_cli_check",
+        })
+      : undefined;
+  const invalidatedSet = new Set(invalidated?.invalidatedArtifactIds ?? []);
+  const bioArtifacts = artifacts.filter(
+    (artifact) =>
+      typeof artifact.data.characterId === "string" &&
+      typeof artifact.data.fromCharacterId !== "string" &&
+      typeof artifact.data.toCharacterId !== "string",
+  );
+  const relationshipArtifacts = artifacts.filter(
+    (artifact) =>
+      typeof artifact.data.fromCharacterId === "string" &&
+      typeof artifact.data.toCharacterId === "string",
+  );
+  const result: CentralCharacterCheckResult = {
+    scannedBioCount: bioArtifacts.length,
+    scannedRelationshipCount: relationshipArtifacts.length,
+    driftedBios: bioArtifacts
+      .filter((artifact) => invalidatedSet.has(artifact.contextArtifactId))
+      .map((artifact) => ({
+        characterId: String(artifact.data.characterId),
+        characterBioId: artifact.contextArtifactId,
+        driftedBridgeUnitIds: artifact.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+      })),
+    driftedRelationships: relationshipArtifacts
+      .filter((artifact) => invalidatedSet.has(artifact.contextArtifactId))
+      .map((artifact) => ({
+        fromCharacterId: String(artifact.data.fromCharacterId),
+        toCharacterId: String(artifact.data.toCharacterId ?? ""),
+        characterRelationshipId: artifact.contextArtifactId,
+        driftedBridgeUnitIds: artifact.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+      })),
+    markedStaleBioCount: bioArtifacts.filter((artifact) =>
+      invalidatedSet.has(artifact.contextArtifactId),
+    ).length,
+    markedStaleRelationshipCount: relationshipArtifacts.filter((artifact) =>
+      invalidatedSet.has(artifact.contextArtifactId),
+    ).length,
+  };
   log(
     `scanned bios=${result.scannedBioCount} relationships=${result.scannedRelationshipCount} ` +
       `drifted bios=${result.driftedBios.length} relationships=${result.driftedRelationships.length} ` +
@@ -249,6 +316,24 @@ export async function runCheckCharacterRelationshipsCli(
   }
   return result;
 }
+
+export type CentralCharacterCheckResult = {
+  scannedBioCount: number;
+  scannedRelationshipCount: number;
+  driftedBios: Array<{
+    characterId: string;
+    characterBioId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  driftedRelationships: Array<{
+    fromCharacterId: string;
+    toCharacterId: string;
+    characterRelationshipId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  markedStaleBioCount: number;
+  markedStaleRelationshipCount: number;
+};
 
 function noopLog(_message: string): void {
   // intentionally empty

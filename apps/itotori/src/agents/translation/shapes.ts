@@ -148,6 +148,23 @@ export type TranslationProtectedSpanInput = {
 };
 
 /**
+ * One resolved context artifact supplied to the translation agent with
+ * REAL body content (node 6 context brain). Cite `contextArtifactId`
+ * verbatim in `citationRefs`.
+ */
+export type TranslationContextArtifact = {
+  contextArtifactId: string;
+  category: string;
+  title: string;
+  body: string;
+  /** Immutable ContextEntryVersion identity when the artifact came from the central store. */
+  contextEntryVersionId?: string;
+  /** Content integrity hash; this verifies bytes and is not a version identity. */
+  contentHash?: string;
+  data?: Record<string, unknown>;
+};
+
+/**
  * Strictly-typed input to `TranslationAgent.invokeTranslation`. The
  * `draftJobId` references the row owned by ITOTORI-074; the
  * `draftJobAttemptId` distinguishes retry attempts so diagnostic
@@ -171,11 +188,13 @@ export type TranslationInvocationInput = {
   glossary: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide: ReadonlyArray<TranslationStyleGuideRule>;
   /**
-   * Context artifact ids the agent is permitted to cite via
-   * `TranslationDraft.citationRefs`. Glossary `termId`s are also
-   * permitted citations and need not be repeated here.
+   * Resolved context artifacts with REAL body content the agent may consult
+   * and cite via `TranslationDraft.citationRefs` (cite `contextArtifactId`
+   * verbatim). Glossary `termId`s are also permitted citations. The prompt
+   * renders each artifact's title + body — never bare id lists. Empty /
+   * omitted means no enrichment content for this unit.
    */
-  contextArtifactRefs?: ReadonlyArray<string>;
+  contextArtifacts?: ReadonlyArray<TranslationContextArtifact>;
   /**
    * itotori-structure-informed-context-building — the structurally-grounded
    * context injected from the Kaifuu/Utsushi decode: the scene summary, the
@@ -185,8 +204,8 @@ export type TranslationInvocationInput = {
    * decode, NOT an LLM guess). When present the prompt template renders a
    * dedicated "Structure-informed context" block; when ABSENT the prompt is
    * byte-identical to the pre-feature template (the no-structure baseline).
-   * Its `artifactRefs` should also be listed in `contextArtifactRefs` so the
-   * agent may cite them.
+   * Structure artifact ids should also appear in `contextArtifacts` so the
+   * agent may cite them with their resolved content.
    */
   structuredContext?: StructuredContextInjection | undefined;
   /**
@@ -352,8 +371,8 @@ export class TranslationUnknownBridgeUnitError extends Error {
 
 /**
  * A `TranslationDraft.citationRefs` entry does not resolve to any
- * glossary `termId` or `contextArtifactRefs` member. Forces every
- * draft citation to be traceable.
+ * glossary `termId` or `contextArtifacts[].contextArtifactId` member.
+ * Forces every draft citation to be traceable.
  */
 export class TranslationUnknownCitationError extends Error {
   constructor(

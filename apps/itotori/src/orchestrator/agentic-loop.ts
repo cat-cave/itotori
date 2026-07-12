@@ -23,7 +23,12 @@
 //     in the same change; this orchestrator is the only entry point.
 
 import { createHash } from "node:crypto";
-import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
+import type {
+  AuthorizationActor,
+  ContextArtifactSourceUnitInput,
+  ItotoriContextArtifactRepositoryPort,
+} from "@itotori/db";
+import { contextArtifactCategoryValues } from "@itotori/db";
 import {
   AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
   asNonBlankTargetText,
@@ -53,6 +58,14 @@ import { generateSceneSummary } from "../agents/scene-summary/agent.js";
 import { generateCharacterRelationships } from "../agents/character-relationship/agent.js";
 import { generateTerminologyCandidates } from "../agents/terminology-candidate/agent.js";
 import type { ExistingGlossaryEntry } from "../agents/terminology-candidate/shapes.js";
+import {
+  characterBioArtifactData,
+  characterRelationshipArtifactData,
+  routeChoiceArtifactData,
+  routeMapArtifactData,
+  sceneSummaryArtifactData,
+  terminologyCandidateArtifactData,
+} from "../agents/semantic-context-store.js";
 import { generateRouteChoiceMap } from "../agents/route-choice-map/agent.js";
 import {
   buildSliceStructuredContext,
@@ -65,6 +78,7 @@ import {
   TranslationPartialResultError,
   type PriorPassFeedback,
   type TranslationBridgeUnit,
+  type TranslationContextArtifact,
   type TranslationGlossaryEntry,
   type TranslationInvocationInput,
   type TranslationInvocationResult,
@@ -72,6 +86,24 @@ import {
   type TranslationStyleGuideRule,
   type TranslationWorkScopeContext,
 } from "../agents/translation/shapes.js";
+import {
+  buildUnitContextPacket,
+  characterNoteArtifactId,
+  characterRelationshipArtifactId,
+  CONTEXT_BRAIN_PRODUCER_VERSION,
+  findReusableArtifact,
+  persistTypedEnrichmentFailure,
+  retrieveActiveContextArtifacts,
+  routeMapArtifactId,
+  sceneSummaryArtifactId,
+  speakerLabelArtifactId,
+  speakerLabelsFromArtifacts,
+  speakerLabelToMap,
+  terminologyCandidateArtifactId,
+  upsertContextBrainArtifact,
+  type ResolvedContextArtifact,
+  type UnitContextPacket,
+} from "./context-brain.js";
 import { QaAgent } from "../agents/qa/agent.js";
 import {
   QA_PROMPT_TEMPLATE_VERSION_V1,
@@ -269,6 +301,36 @@ export type AgenticLoopAttemptOutcomeObserver = {
 };
 
 /**
+ * The semantic enrichment types that share a per-scene provider build.
+ *
+ * The key deliberately includes the type as well as the scene: a unit may
+ * legitimately skip one enrichment while another unit in that scene builds a
+ * different one, and those builds must never share a flight.
+ */
+export type ContextEnrichmentType =
+  | "scene-summary"
+  | "character-relationship"
+  | "terminology-candidate"
+  | "route-choice-map";
+
+/**
+ * Executor-scoped coordination port for scene-level semantic enrichment.
+ *
+ * Multiple units in one scene may be dispatched concurrently. For each
+ * `(scene, enrichmentType)` pair, the leader builds and persists the artifact;
+ * followers wait and reuse that durable result. The port intentionally
+ * coordinates only the critical build section rather than serializing
+ * translation / QA for every unit in the scene.
+ */
+export type ContextEnrichmentSingleFlight = {
+  run<T>(
+    sceneKey: string,
+    enrichmentType: ContextEnrichmentType,
+    build: () => Promise<T>,
+  ): Promise<{ value: T; shared: boolean }>;
+};
+
+/**
  * Explicit node-6 seam for the context that is resolved today but has not yet
  * been assigned immutable version identities by a persistent context store.
  * Keeping this discriminant alongside the empty refs means a reader can tell
@@ -293,13 +355,16 @@ export type OutcomeJournalContextRef = {
 };
 
 /**
- * Exact resolved context that was available to the current loop. This remains
- * a packet (rather than a new context-store schema) so the journal preserves
- * glossary, style, and work-scope provenance before node 6 exists.
+ * Exact resolved context that was available to the current loop. Carries the
+ * central-store packet (real artifact bodies + immutable version ids) plus glossary,
+ * style, and work-scope provenance frozen with the draft.
  */
 export type ResolvedOutcomeContextPacket = {
   structuredContext: StructuredContextInjection | null;
+  /** Stable artifact ids (for citation / join), derived from resolved content. */
   artifactRefs: string[];
+  /** Resolved content-bearing artifacts (bodies + provenance + revisions). */
+  artifacts: ResolvedContextArtifact[];
   glossary: TranslationGlossaryEntry[];
   styleGuide: StyleGuidePolicyV0Draft | null;
   styleGuideRules: TranslationStyleGuideRule[];
@@ -307,6 +372,8 @@ export type ResolvedOutcomeContextPacket = {
   priorPassFeedback: PriorPassFeedback | null;
   priorJournalRunId: string | null;
   contextVersionReferenceState: ContextVersionReferenceState;
+  /** Unit-scoped context packet identity (version map + speakers). */
+  unitContextPacket: UnitContextPacket | null;
 };
 
 /**
@@ -317,7 +384,7 @@ export type ResolvedOutcomeContextPacket = {
  */
 export type OutcomeJournalProvenance = {
   resolvedContextPacket: ResolvedOutcomeContextPacket | null;
-  contextArtifactRefs: string[];
+  contextArtifactIds: string[];
   /** Flattened for the normalized DB ref rows; see the typed state below. */
   contextVersionRefs: string[];
   contextVersionReferenceState: ContextVersionReferenceState;
@@ -362,7 +429,7 @@ export function readOutcomeJournalProvenance(value: unknown): OutcomeJournalProv
   }
   return {
     resolvedContextPacket: record.resolvedContextPacket ?? null,
-    contextArtifactRefs: stringArray(record.contextArtifactRefs),
+    contextArtifactIds: stringArray(record.contextArtifactIds),
     contextVersionRefs: contextVersionReferenceState.refs,
     contextVersionReferenceState,
     resolvedContextRefs: outcomeJournalContextRefs(record.resolvedContextRefs),
@@ -380,7 +447,7 @@ function emptyOutcomeJournalProvenance(): OutcomeJournalProvenance {
   const contextVersionReferenceState = pendingContextVersionReferenceState();
   return {
     resolvedContextPacket: null,
-    contextArtifactRefs: [],
+    contextArtifactIds: [],
     contextVersionRefs: contextVersionReferenceState.refs,
     contextVersionReferenceState,
     resolvedContextRefs: [],
@@ -391,8 +458,20 @@ function emptyOutcomeJournalProvenance(): OutcomeJournalProvenance {
 }
 
 function pendingContextVersionReferenceState(): ContextVersionReferenceState {
-  // TODO(p0-core-persistent-context-brain): populate once versioned context exists
   return { availability: "pending_persistent_context_brain", refs: [] };
+}
+
+function versionedContextReferenceState(
+  artifacts: ReadonlyArray<ResolvedContextArtifact>,
+): ContextVersionReferenceState {
+  const refs = artifacts
+    .filter((artifact) => artifact.status === "active" && artifact.contextEntryVersionId !== null)
+    .map((artifact) => `${artifact.contextArtifactId}@${artifact.contextEntryVersionId}`)
+    .sort();
+  if (refs.length === 0) {
+    return pendingContextVersionReferenceState();
+  }
+  return { availability: "versioned", refs };
 }
 
 function readContextVersionReferenceState(value: unknown): ContextVersionReferenceState {
@@ -456,6 +535,12 @@ export type AgenticLoopUnitInput = {
    * sibling evidence. May be empty for one-shot smoke tests.
    */
   sceneUnits?: ReadonlyArray<LocalizationUnitV02>;
+  /**
+   * Canonical scene grouping supplied by a project-level executor. When it is
+   * absent, the loop uses `sceneId` (or the source-unit key for one-shot
+   * callers), preserving the existing direct-loop behavior.
+   */
+  semanticSceneKey?: string;
   glossary: ReadonlyArray<TranslationGlossaryEntry>;
   /**
    * Protected spans pre-computed for the unit. Keyed by bridgeUnitId
@@ -535,17 +620,20 @@ export type AgenticLoopUnitInput = {
    */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
-   * ITOTORI-150 — the terminology-candidate repository the context stage's
-   * terminology-candidate agent queries for a repository-side pre-persist
-   * conflict check (`existsTerminologyTermBySurfaceForm`). When present, the
-   * agent runs the check with `actor` above, closing the TOCTOU window between
-   * input-context load and the candidate landing (a glossary term a curator
-   * inserted mid-run surfaces SYNCHRONOUSLY as an `ExistingGlossaryConflictError`
-   * dropped-enrichment rather than asynchronously at the next staleness scan).
-   * When absent (the synthetic smoke path, which has no DB) the enrichment runs
-   * without the repository check, exactly as before this seam.
+   * p0-core-persistent-context-brain — the CENTRAL context-artifact repository
+   * (source + sink + invalidation). Every semantic enrichment and speaker label
+   * is upserted here before drafting; subsequent units retrieve + reuse active
+   * revision-valid artifacts. When absent (synthetic smoke without a store) the
+   * loop still resolves content into the unit packet for the current unit only
+   * (ephemeral — no cross-unit reuse).
    */
-  terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
+  contextArtifactRepository?: ItotoriContextArtifactRepositoryPort;
+  /**
+   * Optional executor-scoped per-(scene, enrichment) mutex. The full-project
+   * executor supplies one shared instance so same-scene units cannot race a
+   * missing-artifact check into duplicate semantic-enrichment provider calls.
+   */
+  contextEnrichmentSingleFlight?: ContextEnrichmentSingleFlight;
   /**
    * Prior localization run feedback for THIS unit, threaded from the durable
    * journal so a pass N+1 run consumes pass N's accepted state + flagged-unit
@@ -660,16 +748,14 @@ export async function runAgenticLoopForUnit(
   const stages: StageAccumulator[] = [];
 
   // -------------------------- context stage --------------------------
-  // The REAL context stage (itotori-agentic-loop-real-context-stage):
-  //   (1) builds the DETERMINISTIC structure-informed context slice from the
-  //       decoded narrative structure (the always-available base), and
-  //       injects it into the translation prompt below; and
-  //   (2) runs the four semantic context agents LIVE (scene-summary,
-  //       character-relationship, terminology-candidate, route-choice-map) to
-  //       ENRICH the citable context. Each fires one real provider call whose
-  //       telemetry is captured; their produced artifact refs join the slice's.
-  // This SUPERSEDES the old `invokeContextLikeProbe`, which fired a provider
-  // call and DISCARDED its output so no context ever reached the translator.
+  // Persistent context brain (node 6):
+  //   (1) load active revision-valid artifacts from the central store;
+  //   (2) build DETERMINISTIC structure-informed context (always-available);
+  //   (3) run ONLY missing/stale semantic enrichment via supervisor-routed
+  //       agents; upsert every usable result (content + citations +
+  //       provenance + revision) — or a typed failure record — into the
+  //       central store before drafting;
+  //   (4) freeze a content-bearing ContextPacket for this unit.
   const contextStage = startStage("context");
   const contextResult = await invokeSemanticContextStage({
     input,
@@ -681,9 +767,9 @@ export async function runAgenticLoopForUnit(
   for (const invocation of contextResult.telemetry) {
     pushInvocation(contextStage, invocation);
   }
-  // Best-effort semantic enrichment: agents whose live output threw / was
-  // malformed / uncitable are recorded here (never fail the unit). The
-  // deterministic structure-informed context below is still injected.
+  // Typed enrichment failures (never silent): each dropped agent has a
+  // persisted failure record when the store is wired; stage telemetry names
+  // agent + reason.
   contextStage.droppedEnrichments = contextResult.droppedEnrichments;
   contextStage.outcome =
     contextResult.droppedEnrichments.length > 0
@@ -692,26 +778,50 @@ export async function runAgenticLoopForUnit(
   stages.push(contextStage);
 
   // ----------------------- pre-translation stage ---------------------
+  // Speaker labels are resolved against the central store (reuse) then
+  // upserted BEFORE drafting so the packet + next unit see them.
   const preStage = startStage("pre_translation");
-  const speakerLabelProvider = providerFactory({
-    stage: "pre_translation",
-    agentLabel: "speaker-label",
-    pair: pairPolicy.preTranslation.speakerLabel,
-  });
-  let speakerLabelResult: SpeakerLabelInvocationResult;
-  try {
-    speakerLabelResult = await invokeSpeakerLabelStage({
-      provider: speakerLabelProvider,
+  const existingSpeakerLabels = speakerLabelToMap(contextResult.contextPacket.speakers);
+  const existingLabel = existingSpeakerLabels.get(input.unit.bridgeUnitId);
+  let contextPacket: UnitContextPacket;
+  if (existingLabel !== undefined) {
+    // A durable label for THIS unit is already part of the resolved packet.
+    // Prefer it outright: passing it back through the model would still spend
+    // a provider call and risks overwriting an established identity.
+    contextPacket = contextResult.contextPacket;
+    preStage.outcome = "reused:existing-speaker-label";
+  } else {
+    const speakerLabelProvider = providerFactory({
+      stage: "pre_translation",
+      agentLabel: "speaker-label",
       pair: pairPolicy.preTranslation.speakerLabel,
+    });
+    let speakerLabelResult: SpeakerLabelInvocationResult;
+    try {
+      speakerLabelResult = await invokeSpeakerLabelStage({
+        provider: speakerLabelProvider,
+        pair: pairPolicy.preTranslation.speakerLabel,
+        input,
+        policy,
+        existingSpeakerLabels,
+      });
+    } catch (error) {
+      markJournalAttemptFailure(input, "pre_translation", "speaker-label", error, "pause");
+      throw error;
+    }
+    const persistedSpeakerArtifacts = await persistSpeakerLabelsToContextBrain({
       input,
       policy,
+      labels: speakerLabelResult.labels,
     });
-  } catch (error) {
-    markJournalAttemptFailure(input, "pre_translation", "speaker-label", error, "pause");
-    throw error;
+    contextPacket = mergeSpeakerArtifactsIntoPacket(
+      contextResult.contextPacket,
+      persistedSpeakerArtifacts,
+      speakerLabelResult.labels,
+    );
+    pushInvocation(preStage, providerTelemetryFromSpeakerLabel(speakerLabelResult, pairPolicy));
+    preStage.outcome = "succeeded";
   }
-  pushInvocation(preStage, providerTelemetryFromSpeakerLabel(speakerLabelResult, pairPolicy));
-  preStage.outcome = "succeeded";
   stages.push(preStage);
 
   // --------------------------- translation ---------------------------
@@ -730,7 +840,7 @@ export async function runAgenticLoopForUnit(
       policy,
       agentLabel: "translation-primary",
       structuredContext: contextResult.structuredContext,
-      contextArtifactRefs: contextResult.contextArtifactRefs,
+      contextArtifacts: translationContextArtifactsFromPacket(contextPacket),
       workScopeContext: input.workScopeContext,
       // Prior-run feedback is optional caller context; it never becomes a
       // durable persistence authority for this execution.
@@ -833,14 +943,14 @@ export async function runAgenticLoopForUnit(
           repairAttempts: 0,
           maxRepairAttempts: policy.maxRepairAttempts,
           journal: outcomeJournalProvenance({
-            contextArtifactRefs: contextResult.contextArtifactRefs,
+            contextPacket,
             structuredContext: contextResult.structuredContext,
             glossary: input.glossary,
             styleGuide: input.styleGuide,
             workScopeContext: input.workScopeContext,
             priorPassFeedback: input.priorPassFeedback,
             priorJournalRunId: input.priorJournalRunId,
-            speakerLabels: speakerLabelResult.labels,
+            speakerLabels: contextPacket.speakers,
             qaFindings: [],
             writtenFindings: outcomeFindings,
             selectedCandidateCitationRefs: primaryDraftCitationRefs,
@@ -857,7 +967,7 @@ export async function runAgenticLoopForUnit(
       bundle: shortCircuitBundle,
       qaFindings: [],
       deterministicViolations: deterministicResult.violations,
-      contextArtifactRefs: contextResult.contextArtifactRefs,
+      contextArtifactIds: contextPacket.artifacts.map((a) => a.contextArtifactId),
       citationRefs: primaryDraftCitationRefs,
       structuredContext: contextResult.structuredContext,
     });
@@ -991,10 +1101,10 @@ export async function runAgenticLoopForUnit(
           input,
           policy,
           agentLabel: `repair-primary[${attempt}]`,
-          // Repair re-translates carrying the SAME structure-informed context so
+          // Repair re-translates carrying the SAME resolved context packet so
           // the retry is still branch/scene/speaker aware, not context-stripped.
           structuredContext: contextResult.structuredContext,
-          contextArtifactRefs: contextResult.contextArtifactRefs,
+          contextArtifacts: translationContextArtifactsFromPacket(contextPacket),
           workScopeContext: input.workScopeContext,
           // Keep the prior-run feedback on every repair
           // attempt so the retry keeps addressing the flagged issue.
@@ -1151,14 +1261,14 @@ export async function runAgenticLoopForUnit(
         maxRepairAttempts: policy.maxRepairAttempts,
         selectedKind: selectedCandidate.kind,
         journal: outcomeJournalProvenance({
-          contextArtifactRefs: contextResult.contextArtifactRefs,
+          contextPacket,
           structuredContext: contextResult.structuredContext,
           glossary: input.glossary,
           styleGuide: input.styleGuide,
           workScopeContext: input.workScopeContext,
           priorPassFeedback: input.priorPassFeedback,
           priorJournalRunId: input.priorJournalRunId,
-          speakerLabels: speakerLabelResult.labels,
+          speakerLabels: contextPacket.speakers,
           qaFindings,
           writtenFindings: outcomeFindings,
           selectedCandidateCitationRefs,
@@ -1175,7 +1285,7 @@ export async function runAgenticLoopForUnit(
     bundle: finalBundle,
     qaFindings,
     deterministicViolations: deterministicResult.violations,
-    contextArtifactRefs: contextResult.contextArtifactRefs,
+    contextArtifactIds: contextPacket.artifacts.map((a) => a.contextArtifactId),
     citationRefs: selectedCandidateCitationRefs,
     // wiki-structure-context-feed — pass the structure-informed injection so
     // the decision record carries the exact texts that fed the draft.
@@ -1196,7 +1306,7 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
   bundle: AgenticLoopBundle;
   qaFindings: ReadonlyArray<QaFinding>;
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
-  contextArtifactRefs: ReadonlyArray<string>;
+  contextArtifactIds: ReadonlyArray<string>;
   citationRefs: ReadonlyArray<string>;
   structuredContext?: StructuredContextInjection | undefined;
 }): Promise<void> {
@@ -1212,7 +1322,7 @@ async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
     sourceRevisionId: args.input.sourceRevisionId,
     qaFindings: args.qaFindings,
     deterministicViolations: args.deterministicViolations,
-    contextArtifactRefs: args.contextArtifactRefs,
+    contextArtifactIds: args.contextArtifactIds,
     citationRefs: args.citationRefs,
     now: args.now,
     ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
@@ -1363,7 +1473,7 @@ function writtenFindingFromQa(
  * model can render recommendation and agent rationale independently.
  */
 function outcomeJournalProvenance(args: {
-  contextArtifactRefs: ReadonlyArray<string>;
+  contextPacket: UnitContextPacket;
   structuredContext: StructuredContextInjection | undefined;
   glossary: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide: StyleGuidePolicyV0Draft | undefined;
@@ -1390,20 +1500,26 @@ function outcomeJournalProvenance(args: {
       ...(rawFinding.draftSpan !== undefined ? { draftSpan: { ...rawFinding.draftSpan } } : {}),
     });
   }
-  const contextVersionReferenceState = pendingContextVersionReferenceState();
-  const artifactRefs = [...new Set(args.contextArtifactRefs)].sort();
+  const contextVersionReferenceState = versionedContextReferenceState(args.contextPacket.artifacts);
+  const artifactRefs = args.contextPacket.artifacts.map((a) => a.contextArtifactId).sort();
   const glossary = args.glossary.map((entry) => ({ ...entry }));
   const styleGuide = cloneStyleGuide(args.styleGuide);
   const styleGuideRules = resolveStyleGuideRules(args.styleGuide).map((rule) => ({ ...rule }));
   const workScope = cloneWorkScopeContext(args.workScopeContext);
   const priorPassFeedback = clonePriorPassFeedback(args.priorPassFeedback);
   return {
-    // This is the exact immutable context resolved for the unit by the current
-    // loop. The packet preserves the current glossary/style/scope surface;
-    // version identities remain the explicit node-6 seam below.
+    // Exact immutable context resolved for the unit: content-bearing artifacts
+    // with durable version ids, frozen with the draft outcome.
     resolvedContextPacket: {
       structuredContext: args.structuredContext ?? null,
       artifactRefs,
+      artifacts: args.contextPacket.artifacts.map((artifact) => ({
+        ...artifact,
+        data: { ...artifact.data },
+        provenance: { ...artifact.provenance },
+        citations: artifact.citations.map((c) => ({ ...c })),
+        ...(artifact.failure !== undefined ? { failure: { ...artifact.failure } } : {}),
+      })),
       glossary,
       styleGuide,
       styleGuideRules,
@@ -1411,8 +1527,23 @@ function outcomeJournalProvenance(args: {
       priorPassFeedback,
       priorJournalRunId: args.priorJournalRunId ?? null,
       contextVersionReferenceState,
+      unitContextPacket: {
+        unitId: args.contextPacket.unitId,
+        resolvedFromVersions: { ...args.contextPacket.resolvedFromVersions },
+        artifacts: args.contextPacket.artifacts.map((artifact) => ({
+          ...artifact,
+          data: { ...artifact.data },
+          provenance: { ...artifact.provenance },
+          citations: artifact.citations.map((c) => ({ ...c })),
+          ...(artifact.failure !== undefined ? { failure: { ...artifact.failure } } : {}),
+        })),
+        speakers: args.contextPacket.speakers.map((label) => ({
+          ...label,
+          evidenceRefs: label.evidenceRefs.slice(),
+        })),
+      },
     },
-    contextArtifactRefs: artifactRefs,
+    contextArtifactIds: artifactRefs,
     contextVersionRefs: contextVersionReferenceState.refs,
     contextVersionReferenceState,
     resolvedContextRefs: resolvedContextRefs({
@@ -1613,11 +1744,12 @@ export function fakeSemanticContextContent(agentLabel: string): string {
 type SemanticContextStageResult = {
   telemetry: RawProviderTelemetry[];
   structuredContext?: StructuredContextInjection | undefined;
-  contextArtifactRefs: string[];
+  /** Content-bearing packet resolved for this unit (ids + bodies + versions). */
+  contextPacket: UnitContextPacket;
   /**
-   * Best-effort semantic agents that were DROPPED (threw / malformed /
-   * uncitable pack). Empty on the all-succeed path. Each entry names the
-   * dropped agent and why, so enrichment loss is telemetry, never silent.
+   * Best-effort semantic agents that failed after supervisor retry. Each entry
+   * names the agent + reason; a typed failure record is also persisted to the
+   * central store when wired (never a silent drop).
    */
   droppedEnrichments: DroppedContextEnrichment[];
 };
@@ -1638,36 +1770,82 @@ function describeEnrichmentDrop(error: unknown): string {
 
 /**
  * Run ONE best-effort semantic enrichment agent. A thrown error / malformed /
- * uncitable pack is CAUGHT and recorded as a dropped-enrichment signal; the
- * unit then PROCEEDS on the deterministic structure context + whichever agents
- * DID succeed. Telemetry + artifact refs are only committed on success, so a
- * dropped agent contributes neither a citable ref nor a phantom invocation.
+ * uncitable pack is CAUGHT; a typed failure record is persisted to the central
+ * store; the unit PROCEEDS on deterministic structure + whichever agents DID
+ * succeed. Telemetry + resolved artifacts are only committed on success.
  */
 async function runBestEffortEnrichment(
-  agentLabel: string,
+  agentLabel: ContextEnrichmentType,
   sink: {
     telemetry: RawProviderTelemetry[];
-    artifactRefs: Set<string>;
+    artifacts: ResolvedContextArtifact[];
     droppedEnrichments: DroppedContextEnrichment[];
     attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
+    input: AgenticLoopUnitInput;
+    policy: AgenticLoopPolicy;
+    contextEnrichmentSingleFlight: ContextEnrichmentSingleFlight | undefined;
+    sceneKey: string;
   },
-  run: () => Promise<{ telemetry: RawProviderTelemetry; refs: string[] }>,
+  run: () => Promise<{ telemetry: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
 ): Promise<void> {
-  try {
-    const { telemetry, refs } = await run();
-    sink.telemetry.push(telemetry);
-    for (const ref of refs) {
-      sink.artifactRefs.add(ref);
+  const runOnce = async (): Promise<void> => {
+    try {
+      const { telemetry, artifacts } = await run();
+      sink.telemetry.push(telemetry);
+      for (const artifact of artifacts) {
+        sink.artifacts.push(artifact);
+      }
+    } catch (error) {
+      rethrowOperationalInvocation(error);
+      sink.attemptOutcomeObserver?.markFailedAttempt({
+        stage: "context",
+        agentLabel,
+        error,
+        retryDecision: "advance",
+      });
+      const failure = await persistTypedEnrichmentFailure({
+        repository: sink.input.contextArtifactRepository,
+        actor: sink.input.actor,
+        projectId: sink.policy.projectId,
+        localeBranchId: sink.policy.localeBranchId,
+        sourceRevisionId: sink.input.sourceRevisionId,
+        bridgeUnitId: sink.input.unit.bridgeUnitId,
+        agentLabel,
+        error,
+      });
+      sink.droppedEnrichments.push({
+        agentLabel,
+        reason: failure.contextArtifactId
+          ? `${failure.code}: ${failure.reason} (failureArtifact=${failure.contextArtifactId})`
+          : `${failure.code}: ${failure.reason}`,
+      });
     }
-  } catch (error) {
-    rethrowOperationalInvocation(error);
-    sink.attemptOutcomeObserver?.markFailedAttempt({
-      stage: "context",
-      agentLabel,
-      error,
-      retryDecision: "advance",
-    });
-    sink.droppedEnrichments.push({ agentLabel, reason: describeEnrichmentDrop(error) });
+  };
+
+  if (sink.contextEnrichmentSingleFlight === undefined) {
+    await runOnce();
+    return;
+  }
+
+  const artifactsBefore = sink.artifacts.length;
+  const dropsBefore = sink.droppedEnrichments.length;
+  const sharedBuild = await sink.contextEnrichmentSingleFlight.run(
+    sink.sceneKey,
+    agentLabel,
+    async () => {
+      await runOnce();
+      return {
+        artifacts: sink.artifacts.slice(artifactsBefore),
+        droppedEnrichments: sink.droppedEnrichments.slice(dropsBefore),
+      };
+    },
+  );
+  // The leader already wrote its own telemetry/artifact state. Followers
+  // receive only the durable context result: charging the same physical
+  // provider call to every waiting unit would corrupt run accounting.
+  if (sharedBuild.shared) {
+    sink.artifacts.push(...sharedBuild.value.artifacts);
+    sink.droppedEnrichments.push(...sharedBuild.value.droppedEnrichments);
   }
 }
 
@@ -1689,6 +1867,90 @@ function toExistingGlossaryEntries(
   }));
 }
 
+/**
+ * Persist an explicit, reusable semantic result when an agent correctly finds
+ * no character, terminology, or route content. A successful empty pack is
+ * neither a failed enrichment nor an omitted side effect: it is an honest
+ * context record that prevents silently repeating the same work.
+ */
+async function persistSemanticNoContentArtifact(args: {
+  input: AgenticLoopUnitInput;
+  policy: AgenticLoopPolicy;
+  contextArtifactId: string;
+  category: string;
+  agentLabel: string;
+  title: string;
+  reason: string;
+  sceneKey: string;
+  sourceUnits: ContextArtifactSourceUnitInput[];
+}): Promise<ResolvedContextArtifact> {
+  return upsertContextBrainArtifact({
+    repository: args.input.contextArtifactRepository,
+    actor: args.input.actor,
+    input: {
+      contextArtifactId: args.contextArtifactId,
+      projectId: args.policy.projectId,
+      localeBranchId: args.policy.localeBranchId,
+      sourceRevisionId: args.input.sourceRevisionId,
+      category: args.category,
+      title: args.title,
+      body: args.reason,
+      data: {
+        sceneKey: args.sceneKey,
+        semanticResult: {
+          kind: "no_content",
+          agentLabel: args.agentLabel,
+          reason: args.reason,
+        },
+        citedUnitIds: args.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId),
+        citedUnitHashes: args.sourceUnits.map((sourceUnit) =>
+          typeof sourceUnit.metadata?.sourceHash === "string" ? sourceUnit.metadata.sourceHash : "",
+        ),
+      },
+      producedByAgent: args.agentLabel,
+      producerVersion: CONTEXT_BRAIN_PRODUCER_VERSION,
+      provenance: {
+        kind: "semantic_no_content",
+        agentLabel: args.agentLabel,
+      },
+      sourceUnits: args.sourceUnits,
+    },
+  });
+}
+
+/**
+ * Invalidation is a correctness boundary, not best-effort housekeeping. A
+ * failed invalidation leaves the caller unable to distinguish fresh context
+ * from stale context, so stop the loop rather than draft against a possibly
+ * obsolete packet.
+ */
+async function invalidateContextArtifactsBeforeReuse(args: {
+  repository: ItotoriContextArtifactRepositoryPort | undefined;
+  actor: AuthorizationActor;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+}): Promise<void> {
+  if (args.repository === undefined) {
+    return;
+  }
+  const invalidation = await args.repository.invalidateAffectedArtifacts(args.actor, {
+    projectId: args.projectId,
+    localeBranchId: args.localeBranchId,
+    sourceRevisionId: args.sourceRevisionId,
+    reason: "agentic_loop_source_or_dependency_changed",
+  });
+  if (invalidation.status === "completed") {
+    return;
+  }
+  const diagnostics = invalidation.diagnostics
+    .map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`)
+    .join("; ");
+  throw new AgenticLoopInvariantError(
+    `context-artifact invalidation failed before reuse${diagnostics.length > 0 ? `: ${diagnostics}` : ""}`,
+  );
+}
+
 async function invokeSemanticContextStage(args: {
   input: AgenticLoopUnitInput;
   policy: AgenticLoopPolicy;
@@ -1698,22 +1960,93 @@ async function invokeSemanticContextStage(args: {
 }): Promise<SemanticContextStageResult> {
   const { input, policy, pairPolicy, providerFactory, now } = args;
   const telemetry: RawProviderTelemetry[] = [];
-  const artifactRefs = new Set<string>();
+  const resolvedArtifacts: ResolvedContextArtifact[] = [];
   const droppedEnrichments: DroppedContextEnrichment[] = [];
+  const sceneKey =
+    input.semanticSceneKey ??
+    (input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey);
   const sink = {
     telemetry,
-    artifactRefs,
+    artifacts: resolvedArtifacts,
     droppedEnrichments,
+    input,
+    policy,
+    contextEnrichmentSingleFlight: input.contextEnrichmentSingleFlight,
+    sceneKey,
     ...(input.attemptOutcomeObserver !== undefined
       ? { attemptOutcomeObserver: input.attemptOutcomeObserver }
       : {}),
   };
+  const evidenceUnits = [
+    buildSemanticBridgeUnit(input.unit),
+    ...(input.sceneUnits ?? []).map(buildSemanticBridgeUnit),
+  ];
+  const evidenceHashes = new Map(evidenceUnits.map((unit) => [unit.bridgeUnitId, unit.sourceHash]));
+  const sourceUnitCitations = evidenceUnits.map((unit) => ({
+    bridgeUnitId: unit.bridgeUnitId,
+    citation: unit.sourceUnitKey,
+    metadata: { sourceHash: unit.sourceHash },
+  }));
 
-  // (a) DETERMINISTIC base — the structure-informed context slice. This is the
-  //     LOAD-BEARING, never-failing artifact: it is built + injected regardless
-  //     of whether any of the (b) best-effort semantic agents succeed. A bad
-  //     structure input is a real invariant error and is NOT swallowed here —
-  //     only the LLM enrichment in (b) is best-effort.
+  // (0) SOURCE — invalidate changed source/dependency artifacts BEFORE any
+  // retrieval. Otherwise a reimport can leave an active row that looks reusable
+  // to this loop even though one of its cited units changed.
+  await invalidateContextArtifactsBeforeReuse({
+    repository: input.contextArtifactRepository,
+    actor: input.actor,
+    projectId: policy.projectId,
+    localeBranchId: policy.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+  });
+
+  // Load active artifacts already in the central store for reuse.
+  const storedArtifacts = await retrieveActiveContextArtifacts({
+    repository: input.contextArtifactRepository,
+    actor: input.actor,
+    projectId: policy.projectId,
+    localeBranchId: policy.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+    categories: [
+      contextArtifactCategoryValues.sceneSummary,
+      contextArtifactCategoryValues.characterNote,
+      contextArtifactCategoryValues.routeMap,
+      contextArtifactCategoryValues.terminologyCandidate,
+      contextArtifactCategoryValues.speakerLabel,
+    ],
+    // Prefer unit-scoped matches; also retrieve scene-level without unit filter
+    // via a second broader pull when the store is present.
+    bridgeUnitIds: evidenceUnits.map((unit) => unit.bridgeUnitId),
+    limit: 50,
+  });
+  const storedById = new Map(storedArtifacts.map((a) => [a.contextArtifactId, a]));
+  // Broader retrieval (scene/project scope) for artifacts not unit-cited yet.
+  if (input.contextArtifactRepository !== undefined) {
+    const broader = await retrieveActiveContextArtifacts({
+      repository: input.contextArtifactRepository,
+      actor: input.actor,
+      projectId: policy.projectId,
+      localeBranchId: policy.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      categories: [
+        contextArtifactCategoryValues.sceneSummary,
+        contextArtifactCategoryValues.characterNote,
+        contextArtifactCategoryValues.routeMap,
+        contextArtifactCategoryValues.terminologyCandidate,
+        contextArtifactCategoryValues.speakerLabel,
+      ],
+      limit: 50,
+    });
+    for (const artifact of broader) {
+      if (!storedById.has(artifact.contextArtifactId)) {
+        storedById.set(artifact.contextArtifactId, artifact);
+        storedArtifacts.push(artifact);
+      }
+    }
+  }
+
+  // (a) DETERMINISTIC base — structure-informed context slice. Always available
+  //     when narrative structure is supplied; never an LLM guess. Content is
+  //     also projected into the resolved packet so the prompt cites real text.
   let structuredContext: StructuredContextInjection | undefined;
   if (input.narrativeStructure !== undefined) {
     if (input.sceneId === undefined) {
@@ -1721,166 +2054,705 @@ async function invokeSemanticContextStage(args: {
         "narrativeStructure supplied without sceneId: cannot select the unit's scene slice",
       );
     }
-    const artifacts = buildStructureContextArtifacts(input.narrativeStructure);
-    structuredContext = buildSliceStructuredContext(artifacts, input.sceneId);
-    for (const ref of structuredContext.artifactRefs) {
-      artifactRefs.add(ref);
+    const structureArtifacts = buildStructureContextArtifacts(input.narrativeStructure);
+    structuredContext = buildSliceStructuredContext(structureArtifacts, input.sceneId);
+    for (const structureEntry of structuredContextToResolvedArtifacts(
+      structuredContext,
+      policy.projectId,
+    )) {
+      resolvedArtifacts.push(structureEntry);
     }
   }
 
-  // (b) LIVE enrichment — the four semantic agents, each BEST-EFFORT. A live
-  //     failure (thrown error / malformed / uncitable pack — the first live
-  //     real-run hit exactly this) is caught, recorded as a dropped-enrichment
-  //     signal, and the unit proceeds on (a) + whichever agents succeeded. The
-  //     unit NEVER fails solely because a semantic agent produced a bad pack.
-  const units = [buildSemanticBridgeUnit(input.unit)];
+  const units = evidenceUnits;
   const roster = deriveCharacterRoster(input);
 
+  // (b) LIVE enrichment — only MISSING/STALE agents fire. Success → upsert
+  //     content to the central store BEFORE drafting. Failure → typed failure
+  //     record (never silent).
+
   // scene-summary.
-  await runBestEffortEnrichment("scene-summary", sink, async () => {
-    const pair = pairPolicy.context.sceneSummary;
-    const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
-    const output = await generateSceneSummary(
-      {
-        projectId: policy.projectId,
-        localeBranchId: policy.localeBranchId,
-        sourceRevisionId: input.unit.sourceRevision.revisionId,
-        sourceLocale: policy.sourceLocale,
-        sceneId: input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey,
-        units,
-        glossaryExcerpt: [],
-        modelProfile: semanticModelProfile(provider, pair),
-        now,
-      },
-      { provider },
-    );
-    return {
-      telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "scene-summary"),
-      refs: [`scene-summary:${output.summary.id}`],
-    };
+  const sceneArtifactId = sceneSummaryArtifactId(policy.projectId, sceneKey);
+  const reusableScene = findReusableArtifact({
+    artifacts: storedArtifacts,
+    contextArtifactId: sceneArtifactId,
+    expectedSourceHashes: evidenceHashes,
   });
+  if (reusableScene !== undefined) {
+    resolvedArtifacts.push(reusableScene);
+  } else {
+    const buildSceneSummary = async (): Promise<void> => {
+      await runBestEffortEnrichment("scene-summary", sink, async () => {
+        const pair = pairPolicy.context.sceneSummary;
+        const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
+        const output = await generateSceneSummary(
+          {
+            projectId: policy.projectId,
+            localeBranchId: policy.localeBranchId,
+            sourceRevisionId: input.sourceRevisionId,
+            sourceLocale: policy.sourceLocale,
+            sceneId: sceneKey,
+            units,
+            glossaryExcerpt: [],
+            modelProfile: semanticModelProfile(provider, pair),
+            now,
+          },
+          { provider },
+        );
+        const artifact = await upsertContextBrainArtifact({
+          repository: input.contextArtifactRepository,
+          actor: input.actor,
+          input: {
+            contextArtifactId: sceneArtifactId,
+            projectId: policy.projectId,
+            localeBranchId: policy.localeBranchId,
+            sourceRevisionId: input.sourceRevisionId,
+            category: contextArtifactCategoryValues.sceneSummary,
+            title: `Scene summary ${sceneKey}`,
+            body: output.summary.summaryText,
+            data: sceneSummaryArtifactData(output.summary),
+            producedByAgent: "scene-summary",
+            producerVersion: output.summary.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+            provenance: {
+              kind: "semantic_enrichment",
+              agentLabel: "scene-summary",
+              promptHash: output.summary.promptHash,
+              providerRunId: output.providerRun.runId,
+            },
+            sourceUnits:
+              output.summary.citedUnitIds.length > 0
+                ? output.summary.citedUnitIds.map((bridgeUnitId, index) => ({
+                    bridgeUnitId,
+                    citation: `scene-summary:${sceneKey}`,
+                    metadata: {
+                      sourceHash: output.summary.citedUnitHashes[index] ?? "",
+                    },
+                  }))
+                : sourceUnitCitations,
+          },
+        });
+        return {
+          telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "scene-summary"),
+          artifacts: [artifact],
+        };
+      });
+    };
+    await buildSceneSummary();
+  }
 
   // character-relationship — only when a character anchor exists.
   if (roster.length > 0 || buildSemanticBridgeUnit(input.unit).speaker !== undefined) {
-    await runBestEffortEnrichment("character-relationship", sink, async () => {
-      const pair = pairPolicy.context.characterRelationship;
+    const noContentCharacterArtifactId = characterNoteArtifactId(
+      policy.projectId,
+      `no-content:${sceneKey}`,
+    );
+    const reusableNoContentCharacter = findReusableArtifact({
+      artifacts: storedArtifacts,
+      contextArtifactId: noContentCharacterArtifactId,
+      expectedSourceHashes: evidenceHashes,
+    });
+    const rosterIds = roster.map((entry) => entry.characterId);
+    // Relationships have their own central identities, separate from bios.
+    // Reuse any that touch the current roster before deciding whether the
+    // character agent needs to run; otherwise a standalone/live relationship
+    // row would exist durably yet disappear from the next unit packet.
+    const reusableRelationships = reusableCharacterRelationshipArtifacts({
+      artifacts: storedArtifacts,
+      rosterCharacterIds: rosterIds,
+      expectedSourceHashes: evidenceHashes,
+    });
+    const missingCharacterIds = rosterIds.filter((characterId) => {
+      const id = characterNoteArtifactId(policy.projectId, characterId);
+      return (
+        findReusableArtifact({
+          artifacts: storedArtifacts,
+          contextArtifactId: id,
+          expectedSourceHashes: evidenceHashes,
+        }) === undefined
+      );
+    });
+    // Reuse any already-stored character notes for this roster.
+    for (const characterId of rosterIds) {
+      const id = characterNoteArtifactId(policy.projectId, characterId);
+      const reusable = findReusableArtifact({
+        artifacts: storedArtifacts,
+        contextArtifactId: id,
+        expectedSourceHashes: evidenceHashes,
+      });
+      if (reusable !== undefined) {
+        resolvedArtifacts.push(reusable);
+      }
+    }
+    resolvedArtifacts.push(...reusableRelationships);
+    if (reusableNoContentCharacter !== undefined) {
+      resolvedArtifacts.push(reusableNoContentCharacter);
+    } else if (missingCharacterIds.length > 0 || rosterIds.length === 0) {
+      await runBestEffortEnrichment("character-relationship", sink, async () => {
+        const pair = pairPolicy.context.characterRelationship;
+        const provider = providerFactory({
+          stage: "context",
+          agentLabel: "character-relationship",
+          pair,
+        });
+        const output = await generateCharacterRelationships(
+          {
+            projectId: policy.projectId,
+            localeBranchId: policy.localeBranchId,
+            sourceRevisionId: input.sourceRevisionId,
+            sourceLocale: policy.sourceLocale,
+            units,
+            curatedCharacters: roster,
+            glossaryExcerpt: [],
+            modelProfile: semanticModelProfile(provider, pair),
+            now,
+          },
+          { provider },
+        );
+        const artifacts: ResolvedContextArtifact[] = [];
+        for (const bio of output.bios) {
+          artifacts.push(
+            await upsertContextBrainArtifact({
+              repository: input.contextArtifactRepository,
+              actor: input.actor,
+              input: {
+                contextArtifactId: characterNoteArtifactId(policy.projectId, bio.characterId),
+                projectId: policy.projectId,
+                localeBranchId: policy.localeBranchId,
+                sourceRevisionId: input.sourceRevisionId,
+                category: contextArtifactCategoryValues.characterNote,
+                title: `Character: ${bio.characterId}`,
+                body: bio.bioText,
+                data: characterBioArtifactData(bio),
+                producedByAgent: "character-relationship",
+                producerVersion: bio.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+                provenance: {
+                  kind: "semantic_enrichment",
+                  agentLabel: "character-relationship",
+                  providerRunId: output.providerRun.runId,
+                },
+                sourceUnits:
+                  bio.citedUnitIds.length > 0
+                    ? bio.citedUnitIds.map((bridgeUnitId, index) => ({
+                        bridgeUnitId,
+                        citation: `character:${bio.characterId}`,
+                        metadata: { sourceHash: bio.citedUnitHashes[index] ?? "" },
+                      }))
+                    : sourceUnitCitations,
+              },
+            }),
+          );
+        }
+        for (const rel of output.relationships) {
+          const relKey = `${rel.fromCharacterId}->${rel.toCharacterId}:${rel.kind}`;
+          artifacts.push(
+            await upsertContextBrainArtifact({
+              repository: input.contextArtifactRepository,
+              actor: input.actor,
+              input: {
+                contextArtifactId: characterRelationshipArtifactId(policy.projectId, relKey),
+                projectId: policy.projectId,
+                localeBranchId: policy.localeBranchId,
+                sourceRevisionId: input.sourceRevisionId,
+                category: contextArtifactCategoryValues.characterNote,
+                title: `Relationship: ${relKey}`,
+                body: rel.descriptor,
+                data: characterRelationshipArtifactData(rel),
+                producedByAgent: "character-relationship",
+                producerVersion: rel.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+                provenance: {
+                  kind: "semantic_enrichment",
+                  agentLabel: "character-relationship",
+                  providerRunId: output.providerRun.runId,
+                },
+                sourceUnits:
+                  rel.citedUnitIds.length > 0
+                    ? rel.citedUnitIds.map((bridgeUnitId, index) => ({
+                        bridgeUnitId,
+                        citation: `character-rel:${relKey}`,
+                        metadata: { sourceHash: rel.citedUnitHashes[index] ?? "" },
+                      }))
+                    : sourceUnitCitations,
+              },
+            }),
+          );
+        }
+        if (artifacts.length === 0) {
+          artifacts.push(
+            await persistSemanticNoContentArtifact({
+              input,
+              policy,
+              contextArtifactId: noContentCharacterArtifactId,
+              category: contextArtifactCategoryValues.characterNote,
+              agentLabel: "character-relationship",
+              title: `No character relationships: scene ${sceneKey}`,
+              reason: "No character bios or relationships were found for this scene evidence.",
+              sceneKey,
+              sourceUnits: sourceUnitCitations,
+            }),
+          );
+        }
+        return {
+          telemetry: providerTelemetryFromSemanticRun(
+            output.providerRun,
+            pair,
+            "character-relationship",
+          ),
+          artifacts,
+        };
+      });
+    }
+  }
+
+  // terminology-candidate — reuse existing candidates when present; otherwise generate.
+  const noContentTerminologyArtifactId = terminologyCandidateArtifactId(
+    policy.projectId,
+    `no-content:${sceneKey}`,
+  );
+  const reusableNoContentTerminology = findReusableArtifact({
+    artifacts: storedArtifacts,
+    contextArtifactId: noContentTerminologyArtifactId,
+    expectedSourceHashes: evidenceHashes,
+  });
+  const existingTermArtifacts = storedArtifacts.filter(
+    (artifact) =>
+      artifact.category === contextArtifactCategoryValues.terminologyCandidate &&
+      artifact.semanticResult.kind === "content",
+  );
+  if (existingTermArtifacts.length > 0) {
+    for (const artifact of existingTermArtifacts) {
+      resolvedArtifacts.push(artifact);
+    }
+  } else if (reusableNoContentTerminology !== undefined) {
+    resolvedArtifacts.push(reusableNoContentTerminology);
+  } else {
+    await runBestEffortEnrichment("terminology-candidate", sink, async () => {
+      const pair = pairPolicy.context.terminologyCandidate;
       const provider = providerFactory({
         stage: "context",
-        agentLabel: "character-relationship",
+        agentLabel: "terminology-candidate",
         pair,
       });
-      const output = await generateCharacterRelationships(
+      const output = await generateTerminologyCandidates(
         {
           projectId: policy.projectId,
           localeBranchId: policy.localeBranchId,
-          sourceRevisionId: input.unit.sourceRevision.revisionId,
+          sourceRevisionId: input.sourceRevisionId,
           sourceLocale: policy.sourceLocale,
           units,
-          curatedCharacters: roster,
-          glossaryExcerpt: [],
+          existingGlossary: toExistingGlossaryEntries(input.glossary),
           modelProfile: semanticModelProfile(provider, pair),
           now,
         },
         { provider },
       );
-      const refs: string[] = [];
-      for (const bio of output.bios) {
-        refs.push(`character-bio:${bio.characterId}`);
+      const artifacts: ResolvedContextArtifact[] = [];
+      for (const candidate of output.candidates) {
+        artifacts.push(
+          await upsertContextBrainArtifact({
+            repository: input.contextArtifactRepository,
+            actor: input.actor,
+            input: {
+              contextArtifactId: terminologyCandidateArtifactId(
+                policy.projectId,
+                candidate.surfaceForm,
+              ),
+              projectId: policy.projectId,
+              localeBranchId: policy.localeBranchId,
+              sourceRevisionId: input.sourceRevisionId,
+              category: contextArtifactCategoryValues.terminologyCandidate,
+              title: `Term candidate: ${candidate.surfaceForm}`,
+              body: `${candidate.surfaceForm} (${candidate.kind}): ${candidate.rationale}`,
+              data: terminologyCandidateArtifactData(candidate),
+              producedByAgent: "terminology-candidate",
+              producerVersion: candidate.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+              provenance: {
+                kind: "semantic_enrichment",
+                agentLabel: "terminology-candidate",
+                providerRunId: output.providerRun.runId,
+              },
+              sourceUnits:
+                candidate.citedUnitIds.length > 0
+                  ? candidate.citedUnitIds.map((bridgeUnitId, index) => ({
+                      bridgeUnitId,
+                      citation: `terminology-candidate:${candidate.surfaceForm}`,
+                      metadata: {
+                        sourceHash: candidate.citedUnitHashes[index] ?? "",
+                      },
+                    }))
+                  : sourceUnitCitations,
+            },
+          }),
+        );
       }
-      for (const rel of output.relationships) {
-        refs.push(`character-rel:${rel.fromCharacterId}->${rel.toCharacterId}`);
+      if (artifacts.length === 0) {
+        artifacts.push(
+          await persistSemanticNoContentArtifact({
+            input,
+            policy,
+            contextArtifactId: noContentTerminologyArtifactId,
+            category: contextArtifactCategoryValues.terminologyCandidate,
+            agentLabel: "terminology-candidate",
+            title: `No terminology candidates: scene ${sceneKey}`,
+            reason: "No terminology candidates were found for this scene evidence.",
+            sceneKey,
+            sourceUnits: sourceUnitCitations,
+          }),
+        );
       }
       return {
         telemetry: providerTelemetryFromSemanticRun(
           output.providerRun,
           pair,
-          "character-relationship",
+          "terminology-candidate",
         ),
-        refs,
+        artifacts,
       };
     });
   }
 
-  // terminology-candidate.
-  await runBestEffortEnrichment("terminology-candidate", sink, async () => {
-    const pair = pairPolicy.context.terminologyCandidate;
-    const provider = providerFactory({
-      stage: "context",
-      agentLabel: "terminology-candidate",
-      pair,
-    });
-    const output = await generateTerminologyCandidates(
-      {
-        projectId: policy.projectId,
-        localeBranchId: policy.localeBranchId,
-        sourceRevisionId: input.unit.sourceRevision.revisionId,
-        sourceLocale: policy.sourceLocale,
-        units,
-        // The run's ACTIVE glossary (caller-resolved, already threaded in as
-        // `input.glossary` for translation + QA) IS the existing-glossary the
-        // pre-persist in-memory conflict index must consult — reachable here, so
-        // forward it instead of the former inert `[]`.
-        existingGlossary: toExistingGlossaryEntries(input.glossary),
-        modelProfile: semanticModelProfile(provider, pair),
-        now,
-      },
-      {
-        provider,
-        // ITOTORI-150 — forward the repository + actor so the repository-side
-        // `existsTerminologyTermBySurfaceForm` pre-persist check RUNS in
-        // production, closing the TOCTOU window even when the in-memory glossary
-        // above missed a term a curator inserted mid-run.
-        ...(input.terminologyCandidateRepository !== undefined
-          ? { repository: input.terminologyCandidateRepository, actor: input.actor }
-          : {}),
-      },
-    );
-    return {
-      telemetry: providerTelemetryFromSemanticRun(
-        output.providerRun,
-        pair,
-        "terminology-candidate",
-      ),
-      refs: output.candidates.map((candidate) => `terminology-candidate:${candidate.surfaceForm}`),
-    };
-  });
-
   // route-choice-map.
-  await runBestEffortEnrichment("route-choice-map", sink, async () => {
-    const pair = pairPolicy.context.routeChoiceMap;
-    const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
-    const output = await generateRouteChoiceMap(
-      {
-        projectId: policy.projectId,
-        localeBranchId: policy.localeBranchId,
-        sourceRevisionId: input.unit.sourceRevision.revisionId,
-        sourceLocale: policy.sourceLocale,
-        units,
-        curatedRoutes: [],
-        modelProfile: semanticModelProfile(provider, pair),
-        now,
-      },
-      { provider },
-    );
-    const refs: string[] = [];
-    for (const route of output.routes) {
-      refs.push(`route:${route.routeKey}`);
-    }
-    for (const choice of output.choices) {
-      refs.push(`choice:${choice.choiceKey}`);
-    }
-    return {
-      telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "route-choice-map"),
-      refs,
-    };
+  const noContentRouteArtifactId = routeMapArtifactId(policy.projectId, `no-content:${sceneKey}`);
+  const reusableNoContentRoute = findReusableArtifact({
+    artifacts: storedArtifacts,
+    contextArtifactId: noContentRouteArtifactId,
+    expectedSourceHashes: evidenceHashes,
   });
+  const existingRouteArtifacts = storedArtifacts.filter(
+    (artifact) =>
+      artifact.category === contextArtifactCategoryValues.routeMap &&
+      artifact.semanticResult.kind === "content",
+  );
+  if (existingRouteArtifacts.length > 0) {
+    for (const artifact of existingRouteArtifacts) {
+      resolvedArtifacts.push(artifact);
+    }
+  } else if (reusableNoContentRoute !== undefined) {
+    resolvedArtifacts.push(reusableNoContentRoute);
+  } else {
+    await runBestEffortEnrichment("route-choice-map", sink, async () => {
+      const pair = pairPolicy.context.routeChoiceMap;
+      const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
+      const output = await generateRouteChoiceMap(
+        {
+          projectId: policy.projectId,
+          localeBranchId: policy.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          sourceLocale: policy.sourceLocale,
+          units,
+          curatedRoutes: [],
+          modelProfile: semanticModelProfile(provider, pair),
+          now,
+        },
+        { provider },
+      );
+      const artifacts: ResolvedContextArtifact[] = [];
+      for (const route of output.routes) {
+        artifacts.push(
+          await upsertContextBrainArtifact({
+            repository: input.contextArtifactRepository,
+            actor: input.actor,
+            input: {
+              contextArtifactId: routeMapArtifactId(policy.projectId, route.routeKey),
+              projectId: policy.projectId,
+              localeBranchId: policy.localeBranchId,
+              sourceRevisionId: input.sourceRevisionId,
+              category: contextArtifactCategoryValues.routeMap,
+              title: route.routeTitle || `Route: ${route.routeKey}`,
+              body: route.routeSummary,
+              data: routeMapArtifactData(route),
+              producedByAgent: "route-choice-map",
+              producerVersion: route.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+              provenance: {
+                kind: "semantic_enrichment",
+                agentLabel: "route-choice-map",
+                providerRunId: output.providerRun.runId,
+              },
+              sourceUnits:
+                route.citedUnitIds.length > 0
+                  ? route.citedUnitIds.map((bridgeUnitId, index) => ({
+                      bridgeUnitId,
+                      citation: `route:${route.routeKey}`,
+                      metadata: { sourceHash: route.citedUnitHashes[index] ?? "" },
+                    }))
+                  : sourceUnitCitations,
+            },
+          }),
+        );
+      }
+      for (const choice of output.choices) {
+        artifacts.push(
+          await upsertContextBrainArtifact({
+            repository: input.contextArtifactRepository,
+            actor: input.actor,
+            input: {
+              contextArtifactId: routeMapArtifactId(policy.projectId, `choice:${choice.choiceKey}`),
+              projectId: policy.projectId,
+              localeBranchId: policy.localeBranchId,
+              sourceRevisionId: input.sourceRevisionId,
+              category: contextArtifactCategoryValues.routeMap,
+              title: `Choice: ${choice.choiceKey}`,
+              body: choice.promptSummary,
+              data: routeChoiceArtifactData(choice),
+              producedByAgent: "route-choice-map",
+              producerVersion: choice.promptTemplateVersion || CONTEXT_BRAIN_PRODUCER_VERSION,
+              provenance: {
+                kind: "semantic_enrichment",
+                agentLabel: "route-choice-map",
+                providerRunId: output.providerRun.runId,
+              },
+              sourceUnits:
+                choice.citedUnitIds.length > 0
+                  ? choice.citedUnitIds.map((bridgeUnitId, index) => ({
+                      bridgeUnitId,
+                      citation: `choice:${choice.choiceKey}`,
+                      metadata: { sourceHash: choice.citedUnitHashes[index] ?? "" },
+                    }))
+                  : sourceUnitCitations,
+            },
+          }),
+        );
+      }
+      if (artifacts.length === 0) {
+        artifacts.push(
+          await persistSemanticNoContentArtifact({
+            input,
+            policy,
+            contextArtifactId: noContentRouteArtifactId,
+            category: contextArtifactCategoryValues.routeMap,
+            agentLabel: "route-choice-map",
+            title: `No route map: scene ${sceneKey}`,
+            reason: "No route or choice-map content was found for this scene evidence.",
+            sceneKey,
+            sourceUnits: sourceUnitCitations,
+          }),
+        );
+      }
+      return {
+        telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "route-choice-map"),
+        artifacts,
+      };
+    });
+  }
+
+  // Speaker labels already in the store are available for reuse by the
+  // pre-translation stage (and included in the packet).
+  const reusedSpeakers = speakerLabelsFromArtifacts(storedArtifacts);
+
+  // Deduplicate artifacts by id (reuse + generate can overlap on structure).
+  const deduped = dedupeResolvedArtifacts(resolvedArtifacts);
 
   return {
     telemetry,
     structuredContext,
-    contextArtifactRefs: [...artifactRefs].sort(),
+    contextPacket: buildUnitContextPacket({
+      unitId: input.unit.bridgeUnitId,
+      artifacts: deduped,
+      speakers: reusedSpeakers,
+    }),
     droppedEnrichments,
   };
+}
+
+function reusableCharacterRelationshipArtifacts(args: {
+  artifacts: ReadonlyArray<ResolvedContextArtifact>;
+  rosterCharacterIds: ReadonlyArray<string>;
+  expectedSourceHashes: ReadonlyMap<string, string>;
+}): ResolvedContextArtifact[] {
+  const rosterIds = new Set(args.rosterCharacterIds);
+  if (rosterIds.size === 0) {
+    return [];
+  }
+  const reusable: ResolvedContextArtifact[] = [];
+  for (const artifact of args.artifacts) {
+    if (
+      artifact.category !== contextArtifactCategoryValues.characterNote ||
+      artifact.semanticResult.kind !== "content"
+    ) {
+      continue;
+    }
+    // `semanticKind` is canonical on new writes. The paired endpoint fields
+    // keep already-persisted central rows readable during the transition.
+    const fromCharacterId = artifact.data.fromCharacterId;
+    const toCharacterId = artifact.data.toCharacterId;
+    const isRelationship =
+      artifact.data.semanticKind === "character_relationship" ||
+      (typeof fromCharacterId === "string" && typeof toCharacterId === "string");
+    if (
+      !isRelationship ||
+      typeof fromCharacterId !== "string" ||
+      typeof toCharacterId !== "string" ||
+      (!rosterIds.has(fromCharacterId) && !rosterIds.has(toCharacterId))
+    ) {
+      continue;
+    }
+    const current = findReusableArtifact({
+      artifacts: args.artifacts,
+      contextArtifactId: artifact.contextArtifactId,
+      expectedSourceHashes: args.expectedSourceHashes,
+    });
+    if (current !== undefined) {
+      reusable.push(current);
+    }
+  }
+  return reusable;
+}
+
+function structuredContextToResolvedArtifacts(
+  structured: StructuredContextInjection,
+  projectId: string,
+): ResolvedContextArtifact[] {
+  const entries: ResolvedContextArtifact[] = [];
+  // Project structure-informed texts as citable content entries so the
+  // translation prompt never lists bare structure refs without bodies.
+  const sceneId = String(structured.sceneId);
+  entries.push({
+    contextArtifactId: `structure:scene-summary:${sceneId}`,
+    category: "scene_summary",
+    title: `Structure scene summary ${sceneId}`,
+    body: structured.sceneSummaryText,
+    data: { origin: "structure_informed", sceneId: structured.sceneId },
+    contentHash: `structure:${createHash("sha256").update(structured.sceneSummaryText).digest("hex").slice(0, 16)}`,
+    status: "active",
+    producedByAgent: "structure-informed-context",
+    producerVersion: "utsushi.narrative-structure.v1",
+    provenance: { kind: "structure_informed", projectId },
+    citations: [],
+    contextEntryVersionId: null,
+    semanticResult: { kind: "content" },
+  });
+  entries.push({
+    contextArtifactId: `structure:route-branch-map:${sceneId}`,
+    category: "route_map",
+    title: `Structure route position ${sceneId}`,
+    body: structured.routePositionText,
+    data: { origin: "structure_informed", sceneId: structured.sceneId },
+    contentHash: `structure:${createHash("sha256").update(structured.routePositionText).digest("hex").slice(0, 16)}`,
+    status: "active",
+    producedByAgent: "structure-informed-context",
+    producerVersion: "utsushi.narrative-structure.v1",
+    provenance: { kind: "structure_informed", projectId },
+    citations: [],
+    contextEntryVersionId: null,
+    semanticResult: { kind: "content" },
+  });
+  entries.push({
+    contextArtifactId: `structure:character-arcs:${sceneId}`,
+    category: "character_note",
+    title: `Structure character arcs ${sceneId}`,
+    body: structured.characterArcsText,
+    data: { origin: "structure_informed", sceneId: structured.sceneId },
+    contentHash: `structure:${createHash("sha256").update(structured.characterArcsText).digest("hex").slice(0, 16)}`,
+    status: "active",
+    producedByAgent: "structure-informed-context",
+    producerVersion: "utsushi.narrative-structure.v1",
+    provenance: { kind: "structure_informed", projectId },
+    citations: [],
+    contextEntryVersionId: null,
+    semanticResult: { kind: "content" },
+  });
+  return entries;
+}
+
+function dedupeResolvedArtifacts(
+  artifacts: ReadonlyArray<ResolvedContextArtifact>,
+): ResolvedContextArtifact[] {
+  const byId = new Map<string, ResolvedContextArtifact>();
+  for (const artifact of artifacts) {
+    byId.set(artifact.contextArtifactId, artifact);
+  }
+  return [...byId.values()].sort((left, right) =>
+    left.contextArtifactId.localeCompare(right.contextArtifactId),
+  );
+}
+
+function translationContextArtifactsFromPacket(
+  packet: UnitContextPacket,
+): TranslationContextArtifact[] {
+  return packet.artifacts
+    .filter((artifact) => artifact.status === "active" && artifact.body.trim().length > 0)
+    .map((artifact) => ({
+      contextArtifactId: artifact.contextArtifactId,
+      category: String(artifact.category),
+      title: artifact.title,
+      body: artifact.body,
+      ...(artifact.contextEntryVersionId !== null
+        ? { contextEntryVersionId: artifact.contextEntryVersionId }
+        : {}),
+      contentHash: artifact.contentHash,
+      data: { ...artifact.data },
+    }));
+}
+
+function mergeSpeakerArtifactsIntoPacket(
+  packet: UnitContextPacket,
+  speakerArtifacts: ReadonlyArray<ResolvedContextArtifact>,
+  labels: ReadonlyArray<SpeakerLabel>,
+): UnitContextPacket {
+  return buildUnitContextPacket({
+    unitId: packet.unitId,
+    artifacts: dedupeResolvedArtifacts([...packet.artifacts, ...speakerArtifacts]),
+    speakers: labels.length > 0 ? labels : packet.speakers,
+  });
+}
+
+async function persistSpeakerLabelsToContextBrain(args: {
+  input: AgenticLoopUnitInput;
+  policy: AgenticLoopPolicy;
+  labels: ReadonlyArray<SpeakerLabel>;
+}): Promise<ResolvedContextArtifact[]> {
+  const artifacts: ResolvedContextArtifact[] = [];
+  for (const label of args.labels) {
+    const body = formatSpeakerLabelBody(label);
+    artifacts.push(
+      await upsertContextBrainArtifact({
+        repository: args.input.contextArtifactRepository,
+        actor: args.input.actor,
+        input: {
+          contextArtifactId: speakerLabelArtifactId(args.policy.projectId, label.bridgeUnitId),
+          projectId: args.policy.projectId,
+          localeBranchId: args.policy.localeBranchId,
+          sourceRevisionId: args.input.sourceRevisionId,
+          category: contextArtifactCategoryValues.speakerLabel,
+          title: `Speaker label: ${label.bridgeUnitId}`,
+          body,
+          data: { speakerLabel: label },
+          producedByAgent: "speaker-label",
+          producerVersion: SPEAKER_LABEL_PROMPT_TEMPLATE_VERSION_V1,
+          provenance: {
+            kind: "speaker_label",
+            agentLabel: "speaker-label",
+            confidence: label.confidence,
+          },
+          sourceUnits: [
+            {
+              bridgeUnitId: label.bridgeUnitId,
+              citation: `speaker-label:${label.bridgeUnitId}`,
+              metadata: { sourceHash: args.input.unit.sourceHash },
+            },
+          ],
+        },
+      }),
+    );
+  }
+  return artifacts;
+}
+
+function formatSpeakerLabelBody(label: SpeakerLabel): string {
+  const identity = label.speakerId;
+  switch (identity.kind) {
+    case "named":
+      return `Speaker: ${identity.displayName} (characterId=${identity.characterId}, confidence=${label.confidence})`;
+    case "narration":
+      return `Speaker: narration (confidence=${label.confidence})`;
+    case "unknown_to_reader":
+      return `Speaker: unknown to reader as ${identity.maskedDisplayName} (confidence=${label.confidence})`;
+    case "unknown_to_parser":
+      return `Speaker: unknown to parser (${identity.reason}, confidence=${label.confidence})`;
+    default: {
+      const _exhaustive: never = identity;
+      return `Speaker: ${JSON.stringify(_exhaustive)}`;
+    }
+  }
 }
 
 /** The common (modelId, providerId)-driven model profile for every semantic agent. */
@@ -2001,6 +2873,8 @@ async function invokeSpeakerLabelStage(args: {
   pair: PairChoice;
   input: AgenticLoopUnitInput;
   policy: AgenticLoopPolicy;
+  /** Labels already loaded from the central context store for reuse. */
+  existingSpeakerLabels: Map<string, SpeakerLabel>;
 }): Promise<SpeakerLabelInvocationResult> {
   const agent = new SpeakerLabelAgent({ provider: args.provider });
   const labelInput: SpeakerLabelInvocationInput = {
@@ -2016,7 +2890,9 @@ async function invokeSpeakerLabelStage(args: {
       },
     ],
     knownCharacters: args.input.knownCharacters ?? [],
-    existingSpeakerLabels: new Map(),
+    // Persist-and-reuse: prior labels from the central store seed the agent
+    // so it does not re-label units that already have a durable speaker label.
+    existingSpeakerLabels: args.existingSpeakerLabels,
     promptTemplateVersion: SPEAKER_LABEL_PROMPT_TEMPLATE_VERSION_V1,
     modelMetadata: {
       providerFamily: providerFamilyOf(args.provider),
@@ -2098,8 +2974,11 @@ async function invokeTranslationStage(args: {
    * draft carries the KNOWN scene summary / route position / speaker arcs.
    */
   structuredContext?: StructuredContextInjection | undefined;
-  /** Citable artifact refs (the slice's refs + the semantic agents' refs). */
-  contextArtifactRefs?: ReadonlyArray<string>;
+  /**
+   * Resolved content-bearing context artifacts (bodies + ids + versions).
+   * The prompt renders the CONTENT; citations use contextArtifactId.
+   */
+  contextArtifacts?: ReadonlyArray<TranslationContextArtifact>;
   workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
    * Prior-run feedback for this unit, rendered into the
@@ -2166,12 +3045,10 @@ async function invokeTranslationStage(args: {
     // against the ACTIVE style-guide policy (deterministic flatten of the
     // caller-resolved version). Empty only when no active policy is threaded.
     styleGuide: resolveStyleGuideRules(args.input.styleGuide),
-    // itotori-agentic-loop-real-context-stage — the translator now RECEIVES the
-    // structure-informed context (the discard-probe is gone). `structuredContext`
-    // renders the decoded scene/route/speaker block into the prompt;
-    // `contextArtifactRefs` are the citable refs (the slice's + the semantic
-    // agents' enrichment).
-    contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
+    // Persistent context brain — translator receives resolved CONTENT (bodies +
+    // titles + content integrity hashes), never bare id lists. `structuredContext` still
+    // renders the deterministic structure block when present.
+    contextArtifacts: [...(args.contextArtifacts ?? [])],
     ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
     ...(args.workScopeContext !== undefined ? { workScopeContext: args.workScopeContext } : {}),
     ...(args.priorPassFeedback !== undefined ? { priorPassFeedback: args.priorPassFeedback } : {}),

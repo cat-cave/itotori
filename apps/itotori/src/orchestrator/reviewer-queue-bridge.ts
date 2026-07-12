@@ -92,8 +92,8 @@ export type AgenticLoopBridgeInput = {
   sourceRevisionId: string;
   qaFindings: ReadonlyArray<QaFinding>;
   deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
-  /** Citable context artifact refs (structure slice + live semantic enrichment). */
-  contextArtifactRefs: ReadonlyArray<string>;
+  /** Citable context artifact IDs (structure slice + live semantic enrichment). */
+  contextArtifactIds: ReadonlyArray<string>;
   /** Citation refs selected by the draft the reviewer sees. */
   citationRefs: ReadonlyArray<string>;
   /**
@@ -199,7 +199,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
       localeBranchId: bundle.localeBranchId,
     },
     context: {
-      contextArtifactRefs: [...input.contextArtifactRefs],
+      contextArtifactIds: [...input.contextArtifactIds],
       citationRefs: [...input.citationRefs],
       ...(input.sceneId !== undefined ? { sceneId: input.sceneId } : {}),
       // wiki-structure-context-feed — persist the structure-informed injection
@@ -261,7 +261,7 @@ export function buildAgenticLoopReviewerQueueItemInput(
   const firstFindingId = input.qaFindings[0]?.findingId;
   const affectedArtifactIds = [
     unit.bridgeUnitId,
-    ...input.contextArtifactRefs,
+    ...input.contextArtifactIds,
     ...input.citationRefs,
     ...input.qaFindings.map((finding) => `qa-finding:${finding.findingId}`),
   ];

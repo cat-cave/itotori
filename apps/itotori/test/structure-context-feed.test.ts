@@ -71,7 +71,7 @@ describe("buildStructureContextFeedFromInjection", () => {
   it("builds a fedTheDraft feed with scene summary / route / character arcs the translator saw", () => {
     const feed = buildStructureContextFeedFromInjection({
       structuredContext: INJECTION,
-      contextArtifactRefs: [...INJECTION.artifactRefs, "terminology-candidate:世界"],
+      contextArtifactIds: [...INJECTION.artifactRefs, "terminology-candidate:世界"],
       citationRefs: ["glossary:term-yusha"],
       sceneId: 6010,
     });
@@ -103,7 +103,7 @@ describe("buildStructureContextFeedFromInjection", () => {
 
   it("surfaces bare artifact refs when no structured injection was stored", () => {
     const feed = buildStructureContextFeedFromInjection({
-      contextArtifactRefs: ["scene-summary:6010", "character-arc:Hero"],
+      contextArtifactIds: ["scene-summary:6010", "character-arc:Hero"],
       sceneId: 6010,
     });
     expect(feed).not.toBeNull();
@@ -114,7 +114,7 @@ describe("buildStructureContextFeedFromInjection", () => {
 
   it("surfaces draft citationRefs as glossary feed items even when they are not context artifacts", () => {
     const feed = buildStructureContextFeedFromInjection({
-      contextArtifactRefs: ["scene-summary:6010"],
+      contextArtifactIds: ["scene-summary:6010"],
       citationRefs: ["term-yusha"],
       sceneId: 6010,
     });
@@ -130,7 +130,7 @@ describe("buildStructureContextFeedFromInjection", () => {
   it("returns null when nothing is available", () => {
     expect(
       buildStructureContextFeedFromInjection({
-        contextArtifactRefs: [],
+        contextArtifactIds: [],
       }),
     ).toBeNull();
   });
@@ -143,7 +143,7 @@ describe("extractDecisionRecordStructureContext + build from decision context", 
       decisionRecord: {
         schemaVersion: "itotori.agentic-loop-decision-record.v1",
         context: {
-          contextArtifactRefs: INJECTION.artifactRefs,
+          contextArtifactIds: INJECTION.artifactRefs,
           citationRefs: ["term-yusha"],
           sceneId: 6010,
           structuredContext: structuredContextForDecisionRecord(INJECTION),
@@ -169,7 +169,7 @@ describe("extractDecisionRecordStructureContext + build from decision context", 
     expect(extractDecisionRecordStructureContext({})).toBeNull();
     expect(
       extractDecisionRecordStructureContext({
-        decisionRecord: { context: { contextArtifactRefs: [] } },
+        decisionRecord: { context: { contextArtifactIds: [] } },
       }),
     ).toBeNull();
   });

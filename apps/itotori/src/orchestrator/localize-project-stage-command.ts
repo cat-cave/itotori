@@ -76,7 +76,7 @@
 // refusal pattern in reverse: the smoke command refuses live; this
 // command refuses anything that isn't live.
 
-import type { AuthorizationActor } from "@itotori/db";
+import type { AuthorizationActor, ItotoriContextArtifactRepositoryPort } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
   isLocaleTaggedSourceEcho,
@@ -185,6 +185,20 @@ export type LocalizeProjectStageArgs = {
    * which has no durable reservation/accounting boundary.
    */
   supervision: LocalizeProjectStageSupervision;
+  /**
+   * The central durable context store. Production always supplies the real
+   * Postgres implementation after importing the bridge scope; test-only
+   * callers explicitly inject an in-memory implementation of the SAME port.
+   */
+  contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
+  /** Provision the project / branch / source-unit graph before central writes. */
+  prepareContextScope?: (input: {
+    actor: AuthorizationActor;
+    bridge: BridgeBundleV02;
+    projectId: string;
+    localeBranchId: string;
+    targetLocale: string;
+  }) => Promise<void>;
   log?: (message: string) => void;
   /**
    * Maximum repair attempts the loop is allowed. Defaults to 1.
@@ -236,12 +250,16 @@ export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Er
   }
 }
 
-const DEFAULT_UNIT_INDEX = 0;
-// The selected unit's stage bundle remains distinct from a whole-project
-// outcome, so keep its bundle source revision stable while the live wrapper
-// provisions the durable run scope from the bridge's real source revision.
-const LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID = "localize-project-stage-bundle-revision";
+export class LocalizeProjectContextStoreRequiredError extends Error {
+  constructor() {
+    super(
+      "localize-project-stage refused: the live path requires the central context-artifact repository and an imported bridge scope",
+    );
+    this.name = "LocalizeProjectContextStoreRequiredError";
+  }
+}
 
+const DEFAULT_UNIT_INDEX = 0;
 // Re-export so the test surface and any external integrators get the
 // version-mismatch error from the same place they used to import the
 // command-level error.
@@ -412,9 +430,28 @@ export async function runLocalizeProjectStageCommand(
       ? new LocalProviderRunArtifactRecorder(args.providerRunArtifactDirectory)
       : undefined;
 
+  const projectId = bridge.bridgeId;
+  const localeBranchId = `branch:${unit.sourceRevision.revisionId}`;
+  // Context artifacts are scoped to the current source BUNDLE revision, the
+  // same revision `ItotoriProjectRepository.importSourceBundle` installs on
+  // the locale branch. A unit-level content revision is citation evidence,
+  // not the branch's FK scope.
+  const sourceRevisionId = bridge.sourceBundleRevision.revisionId;
+  await args.prepareContextScope?.({
+    actor: args.actor,
+    bridge,
+    projectId,
+    localeBranchId,
+    targetLocale: "en-US",
+  });
+  const contextArtifactRepository = args.contextArtifactRepository;
+  if (contextArtifactRepository === undefined) {
+    throw new LocalizeProjectContextStoreRequiredError();
+  }
+
   const policy: AgenticLoopPolicy = {
-    projectId: bridge.bridgeId,
-    localeBranchId: `branch:${unit.sourceRevision.revisionId}`,
+    projectId,
+    localeBranchId,
     sourceLocale: bridge.sourceLocale,
     targetLocale: "en-US",
     maxRepairAttempts: args.maxRepairAttempts ?? 1,
@@ -434,7 +471,7 @@ export async function runLocalizeProjectStageCommand(
 
   const input: AgenticLoopUnitInput = {
     unit,
-    sourceRevisionId: LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID,
+    sourceRevisionId,
     sceneUnits: [],
     // itotori-live-loop-style-glossary-injection — feed the caller-resolved
     // ACTIVE glossary + style-guide into the live loop (empty when unset).
@@ -444,6 +481,7 @@ export async function runLocalizeProjectStageCommand(
     ...(args.styleGuide !== undefined ? { styleGuide: args.styleGuide } : {}),
     ...(narrativeStructure !== undefined ? { narrativeStructure, sceneId } : {}),
     actor: args.actor,
+    contextArtifactRepository,
   };
 
   // Single primary-pair run. On the wire, the provider sends

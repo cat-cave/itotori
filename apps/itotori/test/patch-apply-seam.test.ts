@@ -513,7 +513,7 @@ function fakeJournal(
     const provenance = {
       journal: {
         resolvedContextPacket: { fixture: true, unitId: unit.unitId },
-        contextArtifactRefs: [`context:${unit.unitId}`],
+        contextArtifactIds: [`context:${unit.unitId}`],
         contextVersionRefs: [],
         selectedCandidateCitationRefs: [`citation:${unit.unitId}`],
         speakerLabels: [],

@@ -18,6 +18,7 @@
 import { join } from "node:path";
 import {
   ItotoriAssetLocalizationDecisionRepository,
+  ItotoriContextArtifactRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
@@ -263,6 +264,7 @@ export async function runLocalizeFullProjectLive(
 
     const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
     const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+    const contextArtifactRepo = new ItotoriContextArtifactRepository(context.db);
     const assetDecisionRepo = new ItotoriAssetLocalizationDecisionRepository(context.db);
     // itotori-translation-scope-configuration-ui — the SAME repository the
     // `settings.translationScope.save` API route persists through, so a
@@ -318,6 +320,7 @@ export async function runLocalizeFullProjectLive(
             sinks: { journal: dbAdapter, patchExport: patchSink },
             journalHistory: journalRepo,
             reviewerQueue: { repository: reviewerQueueRepo },
+            contextArtifactRepository: contextArtifactRepo,
             translationScopeSettings: {
               resolveScope: (projectId, localeBranchId) =>
                 translationScopeSettingsRepo.resolveScope(projectId, localeBranchId),

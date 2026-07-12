@@ -3422,7 +3422,7 @@ function assertReviewerDetailStructureContextFeed(value: unknown, label: string)
     "whyHeading",
     "sceneId",
     "items",
-    "contextArtifactRefs",
+    "contextArtifactIds",
     "citationRefs",
     "fedTheDraft",
   ]);
@@ -3446,7 +3446,7 @@ function assertReviewerDetailStructureContextFeed(value: unknown, label: string)
     assertString(item.body, `${label}.items[${index}].body`);
     assertString(item.feedRole, `${label}.items[${index}].feedRole`);
   }
-  asArray(feed.contextArtifactRefs, `${label}.contextArtifactRefs`);
+  asArray(feed.contextArtifactIds, `${label}.contextArtifactIds`);
   asArray(feed.citationRefs, `${label}.citationRefs`);
 }
 

@@ -196,7 +196,7 @@ describe("Translation prompt — no translator-notes instruction", () => {
       protectedSpansBySource: new Map(),
       glossary: [],
       styleGuide: [],
-      contextArtifactRefs: [],
+      contextArtifacts: [],
       modelProfile: {
         providerFamily: "fake",
         modelId: "itotori-fake-translation-v0",

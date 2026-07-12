@@ -310,7 +310,7 @@ export async function loadReviewerDetailContext(
 
   // wiki-structure-context-feed — prefer the loader-supplied feed; fall back
   // to extracting from the agentic-loop decision record on the queue item
-  // payload (the live path stores contextArtifactRefs + structuredContext
+  // payload (the live path stores contextArtifactIds + structuredContext
   // there). A draft without a feed is a provenance gap: the reviewer cannot
   // see WHY the draft chose its wording.
   let structureContextFeed =

@@ -38,8 +38,10 @@ import {
   migrate,
   reviewerQueueItemStateValues,
   type AuthorizationActor,
+  type ContextArtifactInvalidationResult,
   type CreateReviewerQueueItemInput,
   type DatabaseContext,
+  type InvalidateContextArtifactsInput,
   type ItotoriReviewerQueueRepositoryPort,
   type ReviewerQueueItemRecord,
 } from "@itotori/db";
@@ -48,6 +50,10 @@ import {
   fakeSemanticContextContent,
   type AgenticLoopProviderFactory,
 } from "../src/orchestrator/agentic-loop.js";
+import {
+  InMemoryContextArtifactRepository,
+  sceneSummaryArtifactId,
+} from "../src/orchestrator/context-brain.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
@@ -198,6 +204,28 @@ class InMemorySinks {
       this.patchExports.push(record);
     },
   };
+}
+
+/** Records the stale rows observed at the live invalidation boundary. */
+class RecordingContextArtifactRepository extends InMemoryContextArtifactRepository {
+  readonly invalidations: Array<{
+    input: InvalidateContextArtifactsInput;
+    staleArtifactIds: string[];
+  }> = [];
+
+  override async invalidateAffectedArtifacts(
+    actor: AuthorizationActor,
+    input: InvalidateContextArtifactsInput,
+  ): Promise<ContextArtifactInvalidationResult> {
+    const result = await super.invalidateAffectedArtifacts(actor, input);
+    this.invalidations.push({
+      input,
+      staleArtifactIds: this.listAll()
+        .filter((artifact) => artifact.status === "stale")
+        .map((artifact) => artifact.contextArtifactId),
+    });
+    return result;
+  }
 }
 
 // --- Fixtures ---------------------------------------------------------------
@@ -819,6 +847,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
         availability: "pending_persistent_context_brain",
         refs: [],
       },
+      artifacts: expect.any(Array),
     });
     expect(afterJournal?.contextRefs).toEqual(
       expect.arrayContaining([
@@ -960,11 +989,24 @@ function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): st
 function instrumentedFactory(opts: {
   meter: ConcurrencyMeter;
   delayMs: number;
+  sceneSummaryCalls?: { count: number };
+  semanticEnrichmentCalls?: Record<string, { count: number }>;
 }): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) => {
     const inner = new FakeModelProvider({
       providerName: `driven-conc-${stage}-${agentLabel}`,
-      generate: (request: ModelInvocationRequest): string => drivenGenerate(agentLabel, request),
+      generate: (request: ModelInvocationRequest): string => {
+        if (request.taskKind === "experiment") {
+          const enrichmentCalls = opts.semanticEnrichmentCalls?.[agentLabel];
+          if (enrichmentCalls !== undefined) {
+            enrichmentCalls.count += 1;
+          }
+          if (agentLabel === "scene-summary" && opts.sceneSummaryCalls !== undefined) {
+            opts.sceneSummaryCalls.count += 1;
+          }
+        }
+        return drivenGenerate(agentLabel, request);
+      },
     });
     return new InstrumentedProvider(inner, opts.meter, opts.delayMs);
   };
@@ -1029,6 +1071,171 @@ function concurrencyBaseInput(args: {
 describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
   it("exposes a conservative default concurrency", () => {
     expect(DEFAULT_DRIVEN_CONCURRENCY).toBe(8);
+  });
+
+  it("single-flights one persisted build per enrichment type for eight concurrent same-scene units", async () => {
+    const UNIT_COUNT = 8;
+    const semanticEnrichmentCalls = {
+      "scene-summary": { count: 0 },
+      "character-relationship": { count: 0 },
+      "terminology-candidate": { count: 0 },
+      "route-choice-map": { count: 0 },
+    };
+    const meter = new ConcurrencyMeter();
+    const sinks = new InMemorySinks();
+    const contextArtifacts = new InMemoryContextArtifactRepository();
+    const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+
+    const result = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge,
+        factory: instrumentedFactory({
+          meter,
+          // Keep the leader in-flight long enough for every worker to perform
+          // its initial empty-store lookup. Without per-(scene, enrichment)
+          // single-flight, each worker would invoke every semantic provider.
+          delayMs: 20,
+          semanticEnrichmentCalls,
+        }),
+        sinks,
+      }),
+      contextArtifactRepository: contextArtifacts,
+      concurrency: UNIT_COUNT,
+    });
+
+    expect(result.unitsRun).toBe(UNIT_COUNT);
+    expect(semanticEnrichmentCalls).toEqual({
+      "scene-summary": { count: 1 },
+      "character-relationship": { count: 1 },
+      "terminology-candidate": { count: 1 },
+      "route-choice-map": { count: 1 },
+    });
+    expect(
+      contextArtifacts
+        .listAll()
+        .find(
+          (artifact) =>
+            artifact.contextArtifactId === sceneSummaryArtifactId(PROJECT_ID, String(SCENE_ID)),
+        ),
+    ).toEqual(
+      expect.objectContaining({
+        status: "active",
+        producedByAgent: "scene-summary",
+      }),
+    );
+  });
+
+  it("invalidates changed-source context before rebuilding instead of stale-reusing it", async () => {
+    const UPDATED_REVISION_ID = "019ed0cc-0000-7000-8000-0000000000f6";
+    const sceneSummaryCalls = { count: 0 };
+    const meter = new ConcurrencyMeter();
+    const contextArtifacts = new RecordingContextArtifactRepository();
+    const { bridge: initialBridge } = makeManyUnitBridge(1);
+    const originalUnit = initialBridge.units[0];
+    if (originalUnit === undefined) {
+      throw new Error("invalidation fixture requires one bridge unit");
+    }
+    const factory = instrumentedFactory({ meter, delayMs: 0, sceneSummaryCalls });
+
+    const first = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge: initialBridge,
+        factory,
+        sinks: new InMemorySinks(),
+      }),
+      contextArtifactRepository: contextArtifacts,
+      concurrency: 1,
+    });
+    expect(first.unitsRun).toBe(1);
+
+    const sceneArtifactId = sceneSummaryArtifactId(PROJECT_ID, String(SCENE_ID));
+    const originalArtifact = contextArtifacts
+      .listAll()
+      .find((artifact) => artifact.contextArtifactId === sceneArtifactId);
+    if (originalArtifact === undefined) {
+      throw new Error("first driven unit did not persist its scene summary");
+    }
+    const originalContentHash = originalArtifact.contentHash;
+
+    // The loop invokes invalidation on every live context read, but an
+    // unchanged source revision must remain reusable. This guards against
+    // accidentally passing every current bridgeUnitId as an explicit manual
+    // invalidation target.
+    const reused = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge: initialBridge,
+        factory,
+        sinks: new InMemorySinks(),
+      }),
+      contextArtifactRepository: contextArtifacts,
+      concurrency: 1,
+    });
+    expect(reused.unitsRun).toBe(1);
+    expect(sceneSummaryCalls.count).toBe(1);
+    const unchangedInvalidation =
+      contextArtifacts.invalidations[contextArtifacts.invalidations.length - 1];
+    expect(unchangedInvalidation).toEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({ sourceRevisionId: REVISION_ID }),
+        staleArtifactIds: expect.not.arrayContaining([sceneArtifactId]),
+      }),
+    );
+
+    const updatedUnit: LocalizationUnitV02 = {
+      ...originalUnit,
+      sourceRevision: {
+        ...originalUnit.sourceRevision,
+        revisionId: UPDATED_REVISION_ID,
+      },
+      patchRef: {
+        ...originalUnit.patchRef,
+        sourceRevision: {
+          ...originalUnit.patchRef.sourceRevision,
+          revisionId: UPDATED_REVISION_ID,
+        },
+      },
+    };
+    const updatedBridge = {
+      ...initialBridge,
+      units: [updatedUnit],
+    } as unknown as BridgeBundleV02;
+
+    const rebuilt = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge: updatedBridge,
+        factory,
+        sinks: new InMemorySinks(),
+      }),
+      sourceRevisionId: UPDATED_REVISION_ID,
+      contextArtifactRepository: contextArtifacts,
+      concurrency: 1,
+    });
+
+    expect(rebuilt.unitsRun).toBe(1);
+    expect(sceneSummaryCalls.count).toBe(2);
+    const latestInvalidation =
+      contextArtifacts.invalidations[contextArtifacts.invalidations.length - 1];
+    expect(latestInvalidation).toEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          sourceRevisionId: UPDATED_REVISION_ID,
+          reason: "agentic_loop_source_or_dependency_changed",
+        }),
+        staleArtifactIds: expect.arrayContaining([sceneArtifactId]),
+      }),
+    );
+    const rebuiltArtifact = contextArtifacts
+      .listAll()
+      .find((artifact) => artifact.contextArtifactId === sceneArtifactId);
+    expect(rebuiltArtifact).toEqual(
+      expect.objectContaining({
+        status: "active",
+        sourceRevisionId: UPDATED_REVISION_ID,
+      }),
+    );
+    // A revision change is stale even when the cited bytes and content hash
+    // remain identical.
+    expect(rebuiltArtifact?.contentHash).toBe(originalContentHash);
   });
 
   it("runs units CONCURRENTLY up to the bound (counter reaches K) with a wall-clock speedup", async () => {

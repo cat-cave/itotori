@@ -146,6 +146,7 @@ export type {
   GlossaryReviewItemState,
   ContextArtifactCategory,
   ContextArtifactStatus,
+  ContextEntryVersionCitation,
   ExactSearchSourceArtifactType,
   TranslationMemoryMatchKind,
   TranslationMemoryReuseStatus,
@@ -464,11 +465,30 @@ export type {
   ContextArtifactRetrievalResult,
   ContextArtifactSourceUnitInput,
   ContextArtifactSourceUnitRecord,
+  ContextEntryVersionRecord,
   InvalidateContextArtifactsInput,
   ItotoriContextArtifactRepositoryPort,
+  ListContextEntryVersionsInput,
   RetrieveContextArtifactsInput,
   UpsertContextArtifactInput,
 } from "./repositories/context-artifact-repository.js";
+export { ItotoriSourceUnitRepository } from "./repositories/source-unit-repository.js";
+export type {
+  ItotoriSourceUnitRepositoryPort,
+  LoadCurrentSourceHashesInput as LoadSourceUnitCurrentHashesInput,
+  LoadSourceUnitsForScopeInput,
+  LoadSourceUnitsInput,
+  SourceUnitTextRecord,
+} from "./repositories/source-unit-repository.js";
+export { ItotoriSemanticContextReadRepository } from "./repositories/semantic-context-read-repository.js";
+export type {
+  ContextRouteChoice,
+  ContextRouteChoiceOption,
+  ContextRouteMap,
+  ContextSceneSummary,
+  LoadCentralSemanticContextQuery,
+  SemanticContextCitation,
+} from "./repositories/semantic-context-read-repository.js";
 export {
   exactSearchDiagnosticCodeValues,
   exactSearchToolName,
@@ -772,110 +792,6 @@ export type {
   CatalogRecordedStorefrontResponse,
   CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
-export {
-  ItotoriSceneSummaryRepository,
-  sceneSummaryInvalidatedReasonValues,
-  sceneSummaryStatusValues,
-} from "./repositories/scene-summary-repository.js";
-export type {
-  BridgeUnitTextRecord,
-  ItotoriSceneSummaryRepositoryPort,
-  LoadBridgeUnitsForSummaryInput,
-  LoadCurrentSourceHashesInput,
-  LoadSceneSummariesQuery,
-  LoadSceneSummaryByScene,
-  MarkSceneSummaryStaleInput,
-  SaveSceneSummaryInput,
-  SceneSummaryCitationRecord,
-  SceneSummaryInvalidatedReason,
-  SceneSummaryRecord,
-  SceneSummaryStatus,
-} from "./repositories/scene-summary-repository.js";
-export {
-  ItotoriCharacterRelationshipRepository,
-  characterBioStatusValues,
-  characterRelationshipDirectionList,
-  characterRelationshipDirectionValues,
-  characterRelationshipInvalidatedReasonValues,
-  characterRelationshipKindList,
-  characterRelationshipKindValues,
-  characterRelationshipStatusValues,
-} from "./repositories/character-relationship-repository.js";
-export {
-  ItotoriRouteChoiceMapRepository,
-  routeChoiceKindList,
-  routeChoiceKindValues,
-  routeChoiceStatusValues,
-  routeEvidenceSubjectKindValues,
-  routeInvalidatedReasonValues,
-  routeMapStatusValues,
-} from "./repositories/route-choice-map-repository.js";
-export type {
-  ItotoriRouteChoiceMapRepositoryPort,
-  LoadRouteChoicesQuery,
-  LoadRouteMapsQuery,
-  LoadCurrentSourceHashesInput as LoadRouteChoiceMapCurrentSourceHashesInput,
-  MarkRouteChoiceStaleInput,
-  MarkRouteMapStaleInput,
-  RouteCitationRecord,
-  RouteChoiceOptionRecord,
-  RouteChoiceRecord,
-  RouteMapRecord,
-  SaveRouteChoiceInput,
-  SaveRouteMapInput,
-} from "./repositories/route-choice-map-repository.js";
-export type {
-  RouteChoiceKind,
-  RouteChoiceStatus,
-  RouteEvidenceSubjectKind,
-  RouteInvalidatedReason,
-  RouteMapStatus,
-} from "./schema.js";
-export type {
-  CharacterBioRecord,
-  CharacterCitationRecord,
-  CharacterRelationshipRecord,
-  ItotoriCharacterRelationshipRepositoryPort,
-  LoadCharacterBioByCharacter,
-  LoadCharacterBiosQuery,
-  LoadCharacterRelationshipsQuery,
-  LoadCurrentSourceHashesInput as LoadCharacterRelationshipCurrentSourceHashesInput,
-  MarkCharacterBioStaleInput,
-  MarkCharacterRelationshipStaleInput,
-  SaveCharacterBioInput,
-  SaveCharacterRelationshipInput,
-} from "./repositories/character-relationship-repository.js";
-export type {
-  CharacterBioStatus,
-  CharacterRelationshipDirection,
-  CharacterRelationshipInvalidatedReason,
-  CharacterRelationshipKind,
-  CharacterRelationshipStatus,
-} from "./schema.js";
-export {
-  ItotoriTerminologyCandidateRepository,
-  countTerminologyTerms,
-  terminologyCandidateInvalidatedReasonValues,
-  terminologyCandidateKindList,
-  terminologyCandidateKindValues,
-  terminologyCandidateStatusValues,
-} from "./repositories/terminology-candidate-repository.js";
-export type {
-  ExistsTerminologyTermBySurfaceFormInput,
-  ItotoriTerminologyCandidateRepositoryPort,
-  LoadTerminologyCandidatesQuery,
-  LoadCurrentSourceHashesInput as LoadTerminologyCandidateCurrentSourceHashesInput,
-  MarkTerminologyCandidatePromotedInput,
-  MarkTerminologyCandidateStaleInput,
-  SaveTerminologyCandidateInput,
-  TerminologyCandidateCitationRecord,
-  TerminologyCandidateRecord,
-} from "./repositories/terminology-candidate-repository.js";
-export type {
-  TerminologyCandidateInvalidatedReason,
-  TerminologyCandidateKind,
-  TerminologyCandidateStatus,
-} from "./schema.js";
 export {
   DraftJobRepositoryError,
   ItotoriDraftJobRepository,

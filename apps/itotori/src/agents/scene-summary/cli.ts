@@ -1,19 +1,26 @@
 import type {
   AuthorizationActor,
-  ItotoriSceneSummaryRepositoryPort,
+  ItotoriContextArtifactRepositoryPort,
+  ItotoriSourceUnitRepositoryPort,
   ItotoriTranslationBatchRepositoryPort,
   TranslationBatchRecord,
 } from "@itotori/db";
+import { contextArtifactCategoryValues } from "@itotori/db";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
 import {
   resolveSemanticAgentProvider,
   type SemanticAgentLiveProviderOptions,
 } from "../../providers/fake.js";
 import type { GlossaryRef } from "../../batch-planner/shapes.js";
+import {
+  artifactDataString,
+  artifactIsActiveForTemplate,
+  loadSemanticArtifacts,
+  persistSceneSummaryInContext,
+} from "../semantic-context-store.js";
+import { sceneSummaryArtifactId } from "../../orchestrator/context-brain.js";
 import { generateSceneSummary, type GenerateSceneSummaryOptions } from "./agent.js";
-import { persistSceneSummary } from "./persistence.js";
 import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
-import { markStaleSummariesForRevision, type StalenessScanResult } from "./staleness.js";
 import type {
   BridgeUnitForSummary,
   PriorSummaryRef,
@@ -59,7 +66,8 @@ export type SceneSummaryCliRow = {
 export type SceneSummaryCliDependencies = {
   actor: AuthorizationActor;
   batchRepository: ItotoriTranslationBatchRepositoryPort;
-  summaryRepository: ItotoriSceneSummaryRepositoryPort;
+  sourceUnitRepository: ItotoriSourceUnitRepositoryPort;
+  contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
   provider: ModelProvider;
   log?: (message: string) => void;
   now?: () => Date;
@@ -117,7 +125,7 @@ export async function runGenerateSceneSummariesCli(
       }
     }
   }
-  const unitTextById = await deps.summaryRepository.loadBridgeUnitsForSummary(deps.actor, {
+  const unitTextById = await deps.sourceUnitRepository.loadSourceUnits(deps.actor, {
     bridgeUnitIds: [...bridgeUnitIdsNeeded],
   });
 
@@ -125,30 +133,43 @@ export async function runGenerateSceneSummariesCli(
     // Resolve skip-vs-generate decision once per scene (the per-scene upsert
     // key would otherwise make every segment after the first observe its own
     // freshly-saved row).
-    const existing = await deps.summaryRepository.loadSummaryByScene(deps.actor, {
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      sceneId: scene.sceneId,
-      promptTemplateVersion: PROMPT_TEMPLATE_VERSION_V1,
-    });
-    const sceneFresh = existing?.status === "Fresh";
+    const existingArtifacts = await loadSemanticArtifacts(
+      { actor: deps.actor, repository: deps.contextArtifactRepository },
+      {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        sourceRevisionId: input.sourceRevisionId,
+        categories: [contextArtifactCategoryValues.sceneSummary],
+      },
+    );
+    const existing = existingArtifacts.find(
+      (artifact) =>
+        artifact.contextArtifactId === sceneSummaryArtifactId(input.projectId, scene.sceneId) &&
+        artifactIsActiveForTemplate(artifact, PROMPT_TEMPLATE_VERSION_V1),
+    );
+    const sceneFresh = existing !== undefined;
     if (sceneFresh && !input.includeStale) {
+      const citedUnitIds = Array.isArray(existing.data.citedUnitIds)
+        ? existing.data.citedUnitIds.filter((entry): entry is string => typeof entry === "string")
+        : existing.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId);
+      const inputTokenEstimate =
+        typeof existing.data.inputTokenEstimate === "number" ? existing.data.inputTokenEstimate : 0;
       result.rows.push({
         sceneId: scene.sceneId,
         unitCount: scene.segments.reduce((acc, s) => acc + s.units.length, 0),
-        citedUnits: existing.citations.length,
-        tokens: existing.inputTokenEstimate,
+        citedUnits: citedUnitIds.length,
+        tokens: inputTokenEstimate,
         status: "skipped",
-        summaryId: existing.sceneSummaryId,
+        summaryId: existing.contextArtifactId,
+        summaryText: existing.body,
       });
       result.skipped += 1;
       log(
         formatRow(
           scene.sceneId,
           scene.segments.reduce((acc, s) => acc + s.units.length, 0),
-          existing.citations.length,
-          existing.inputTokenEstimate,
+          citedUnitIds.length,
+          inputTokenEstimate,
           "skipped",
         ),
       );
@@ -194,9 +215,8 @@ export async function runGenerateSceneSummariesCli(
 
       let savedSummary: SceneSummary = output.summary;
       if (!input.dryRun) {
-        savedSummary = await persistSceneSummary(
-          deps.summaryRepository,
-          deps.actor,
+        savedSummary = await persistSceneSummaryInContext(
+          { actor: deps.actor, repository: deps.contextArtifactRepository },
           output.summary,
         );
       }
@@ -237,14 +257,48 @@ export async function runGenerateSceneSummariesCli(
 export async function runCheckSceneSummariesCli(
   input: CheckSceneSummariesCliInput,
   deps: SceneSummaryCliDependencies,
-): Promise<StalenessScanResult> {
+): Promise<CentralSceneSummaryCheckResult> {
   const log = deps.log ?? noopLog;
-  const result = await markStaleSummariesForRevision(deps.summaryRepository, deps.actor, {
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: input.sourceRevisionId,
-    markStale: input.markStale ?? false,
-  });
+  const artifacts = await loadSemanticArtifacts(
+    { actor: deps.actor, repository: deps.contextArtifactRepository },
+    {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: input.sourceRevisionId,
+      categories: [contextArtifactCategoryValues.sceneSummary],
+    },
+  );
+  const invalidated =
+    input.markStale === true
+      ? await deps.contextArtifactRepository.invalidateAffectedArtifacts(deps.actor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          reason: "standalone_cli_check",
+        })
+      : undefined;
+  const result: CentralSceneSummaryCheckResult = {
+    scannedSummaryCount: artifacts.length,
+    driftedSummaries: (invalidated?.invalidatedArtifactIds ?? []).flatMap((contextArtifactId) => {
+      const artifact = artifacts.find(
+        (candidate) => candidate.contextArtifactId === contextArtifactId,
+      );
+      const sceneId = artifact === undefined ? undefined : artifactDataString(artifact, "sceneId");
+      return sceneId === undefined
+        ? []
+        : [
+            {
+              sceneId,
+              sceneSummaryId: contextArtifactId,
+              driftedBridgeUnitIds:
+                artifact?.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId) ?? [],
+            },
+          ];
+    }),
+    markedStaleCount: artifacts.filter((artifact) =>
+      (invalidated?.invalidatedArtifactIds ?? []).includes(artifact.contextArtifactId),
+    ).length,
+  };
   log(
     `scanned=${result.scannedSummaryCount} drifted=${result.driftedSummaries.length} marked_stale=${result.markedStaleCount}`,
   );
@@ -255,6 +309,16 @@ export async function runCheckSceneSummariesCli(
   }
   return result;
 }
+
+export type CentralSceneSummaryCheckResult = {
+  scannedSummaryCount: number;
+  driftedSummaries: Array<{
+    sceneId: string;
+    sceneSummaryId: string;
+    driftedBridgeUnitIds: string[];
+  }>;
+  markedStaleCount: number;
+};
 
 export function freshSceneSummaryRefs(
   records: Array<{

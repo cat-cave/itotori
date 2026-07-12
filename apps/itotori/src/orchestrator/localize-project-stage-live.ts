@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  ItotoriContextArtifactRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriProjectRepository,
   bootstrapLocalUser,
@@ -25,7 +26,7 @@ import type { DrivenJournalRunPlan } from "./project-driven-executor.js";
 
 export type RunLocalizeProjectStageLiveArgs = Omit<
   LocalizeProjectStageArgs,
-  "actor" | "supervision"
+  "actor" | "supervision" | "contextArtifactRepository" | "prepareContextScope"
 > & {
   /** Exact durable run cap; omit it for an unlimited, still-accounted run. */
   budgetCapUsd?: number;
@@ -45,13 +46,28 @@ export async function runLocalizeProjectStageLive(args: RunLocalizeProjectStageL
   try {
     const actor = await bootstrapLocalUser(context.db);
     const projectRepository = new ItotoriProjectRepository(context.db);
-    await projectRepository.ensureRunProjectScope(actor, {
+    const prepareContextScope: NonNullable<
+      LocalizeProjectStageArgs["prepareContextScope"]
+    > = async (input) => {
+      await projectRepository.importSourceBundle(input.actor, {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        targetLocale: input.targetLocale,
+        drafts: {},
+        bridge: input.bridge,
+      });
+    };
+    // Import the real bridge before creating the durable journal run. The
+    // journal uses the bridge's authoritative source revision rather than a
+    // synthetic placeholder revision.
+    await prepareContextScope({
+      actor,
       projectId: scope.projectId,
       localeBranchId: scope.localeBranchId,
-      sourceRevisionId: scope.sourceRevisionId,
-      sourceLocale: scope.sourceLocale,
       targetLocale: "en-US",
+      bridge: scope.bridge,
     });
+    const contextArtifactRepository = new ItotoriContextArtifactRepository(context.db);
 
     const journal = new ItotoriLocalizationJournalRepository(context.db);
     const adapter = new DrivenJournalPersistenceAdapter(journal, { actor });
@@ -61,6 +77,8 @@ export async function runLocalizeProjectStageLive(args: RunLocalizeProjectStageL
       return await runLocalizeProjectStageCommand({
         ...args,
         actor,
+        contextArtifactRepository,
+        prepareContextScope,
         supervision: {
           runId: scope.runId,
           lifecycle: adapter,
@@ -87,7 +105,7 @@ function stageRunScope(args: RunLocalizeProjectStageLiveArgs): {
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
-  sourceLocale: string;
+  bridge: BridgeBundleV02;
   plan: DrivenJournalRunPlan;
 } {
   const rawBridge = args.io.readJson(args.bridgePath);
@@ -114,8 +132,8 @@ function stageRunScope(args: RunLocalizeProjectStageLiveArgs): {
   const { pairPolicy } = parseLocalizeProjectPairPolicy(args.io.readJson(args.pairPolicyPath));
   const runId = `localize-project-stage-run-${randomUUID()}`;
   const projectId = bridge.bridgeId;
-  const sourceRevisionId = unit.sourceRevision.revisionId;
-  const localeBranchId = `branch:${sourceRevisionId}`;
+  const sourceRevisionId = bridge.sourceBundleRevision.revisionId;
+  const localeBranchId = `branch:${unit.sourceRevision.revisionId}`;
   const plan: DrivenJournalRunPlan = {
     run: {
       runId,
@@ -143,7 +161,7 @@ function stageRunScope(args: RunLocalizeProjectStageLiveArgs): {
     projectId,
     localeBranchId,
     sourceRevisionId,
-    sourceLocale: bridge.sourceLocale,
+    bridge,
     plan,
   };
 }

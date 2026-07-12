@@ -574,6 +574,19 @@ export const contextArtifactStatusValues = {
 export type ContextArtifactStatus =
   (typeof contextArtifactStatusValues)[keyof typeof contextArtifactStatusValues];
 
+/**
+ * Immutable citation snapshot retained on a ContextEntryVersion. Unlike the
+ * current artifact-source join, this survives a later upsert that replaces the
+ * entry's current citations, so a frozen ContextPacket can be reconstructed.
+ */
+export type ContextEntryVersionCitation = {
+  bridgeUnitId: string;
+  sourceRevisionId: string;
+  sourceHash: string;
+  citation: string;
+  metadata: Record<string, unknown>;
+};
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -1983,6 +1996,10 @@ export const contextArtifacts = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
+    // The mutable ContextEntry head. Its database FK to contextEntryVersions
+    // is declared by migration 0083 rather than here because the two tables
+    // are mutually referential.
+    headVersionId: text("head_version_id"),
     invalidatedReason: text("invalidated_reason"),
     invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
     createdByUserId: text("created_by_user_id").references(() => users.userId, {
@@ -2005,6 +2022,109 @@ export const contextArtifacts = pgTable(
       table.category,
       table.contentHash,
     ),
+    // Target key for the ContextEntryVersion entry-scope and head-pointer
+    // composite foreign keys declared in migration 0083.
+    unique("itotori_context_artifacts_scope_key").on(
+      table.contextArtifactId,
+      table.projectId,
+      table.localeBranchId,
+    ),
+  ],
+);
+
+/**
+ * Append-only ContextEntryVersion history. `contextArtifacts` is the mutable
+ * entry/head projection used by current retrieval; every upsert writes a full
+ * snapshot here so prior ContextPackets remain reconstructable by version id.
+ */
+export const contextEntryVersions = pgTable(
+  "itotori_context_entry_versions",
+  {
+    contextEntryVersionId: text("context_entry_version_id").primaryKey(),
+    contextArtifactId: text("context_artifact_id").notNull(),
+    projectId: text("project_id").notNull(),
+    localeBranchId: text("locale_branch_id").notNull(),
+    parentVersionId: text("parent_version_id"),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    category: text("category").notNull(),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    normalizedTitle: text("normalized_title").notNull(),
+    body: text("body").notNull(),
+    data: jsonb("data")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    producedByAgent: text("produced_by_agent"),
+    producedByTool: text("produced_by_tool"),
+    producerVersion: text("producer_version").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    citations: jsonb("citations")
+      .$type<ContextEntryVersionCitation[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    affectedUnitIds: jsonb("affected_unit_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    invalidatedReason: text("invalidated_reason"),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_context_entry_versions_scope_key").on(
+      table.contextEntryVersionId,
+      table.contextArtifactId,
+      table.projectId,
+      table.localeBranchId,
+    ),
+    index("itotori_context_entry_versions_entry_created_idx").on(
+      table.contextArtifactId,
+      table.createdAt,
+    ),
+    index("itotori_context_entry_versions_parent_idx").on(table.parentVersionId),
+    index("itotori_context_entry_versions_branch_created_idx").on(
+      table.localeBranchId,
+      table.createdAt,
+    ),
+    // A history row belongs to the same entry/project/branch as its mutable
+    // head projection. The migration owns this constraint too, but retaining
+    // it here makes the Drizzle model describe the durable boundary.
+    foreignKey({
+      columns: [table.contextArtifactId, table.projectId, table.localeBranchId],
+      foreignColumns: [
+        contextArtifacts.contextArtifactId,
+        contextArtifacts.projectId,
+        contextArtifacts.localeBranchId,
+      ],
+      name: "itotori_context_entry_versions_entry_scope_fkey",
+    }).onDelete("cascade"),
+    // A parent can only be an earlier version of this exact entry scope;
+    // version lineage can never cross entries, projects, or locale branches.
+    foreignKey({
+      columns: [
+        table.parentVersionId,
+        table.contextArtifactId,
+        table.projectId,
+        table.localeBranchId,
+      ],
+      foreignColumns: [
+        table.contextEntryVersionId,
+        table.contextArtifactId,
+        table.projectId,
+        table.localeBranchId,
+      ],
+      name: "itotori_context_entry_versions_parent_scope_fkey",
+    }).onDelete("cascade"),
   ],
 );
 
@@ -3422,95 +3542,6 @@ export const conformanceFindings = pgTable(
   (table) => [index("itotori_conformance_findings_run_idx").on(table.conformanceRunId)],
 );
 
-export const sceneSummaryStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-} as const;
-
-export type SceneSummaryStatus =
-  (typeof sceneSummaryStatusValues)[keyof typeof sceneSummaryStatusValues];
-
-export const sceneSummaryInvalidatedReasonValues = {
-  sourceHashDrift: "source_hash_drift",
-  templateVersionBump: "template_version_bump",
-  manual: "manual",
-} as const;
-
-export type SceneSummaryInvalidatedReason =
-  (typeof sceneSummaryInvalidatedReasonValues)[keyof typeof sceneSummaryInvalidatedReasonValues];
-
-export const sceneSummaries = pgTable(
-  "itotori_scene_summaries",
-  {
-    sceneSummaryId: text("scene_summary_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    sceneId: text("scene_id").notNull(),
-    summaryLocale: text("summary_locale").notNull(),
-    summaryText: text("summary_text").notNull(),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    inputTokenEstimate: integer("input_token_estimate").notNull(),
-    completionTokens: integer("completion_tokens").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_scene_summaries_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.sceneId,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_scene_summaries_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_scene_summaries_scene_idx").on(table.sceneId),
-  ],
-);
-
-export const sceneSummaryCitedUnits = pgTable(
-  "itotori_scene_summary_cited_units",
-  {
-    sceneSummaryId: text("scene_summary_id")
-      .notNull()
-      .references(() => sceneSummaries.sceneSummaryId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    citedSourceHash: text("cited_source_hash").notNull(),
-    citeOrdinal: integer("cite_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.sceneSummaryId, table.bridgeUnitId] }),
-    index("itotori_scene_summary_cited_units_bridge_unit_idx").on(
-      table.bridgeUnitId,
-      table.citedSourceHash,
-    ),
-    index("itotori_scene_summary_cited_units_ordinal_idx").on(
-      table.sceneSummaryId,
-      table.citeOrdinal,
-    ),
-  ],
-);
-
 // KAIFUU-053: capability-leveled engine detector registry persistence.
 // The Postgres enums (`capability_level_enum`,
 // `capability_level_status_kind`) are created in migration
@@ -3615,496 +3646,6 @@ export const engineCapabilityEvidence = pgTable(
     index("itotori_engine_capability_evidence_source_idx").on(
       table.evidenceSource,
       table.evidenceKind,
-    ),
-  ],
-);
-
-// ITOTORI-014: character relationship agent persistence.
-//
-// Three tables back the character bio + relationship pack a project owns at
-// a given (project, locale branch, source revision, prompt template) tuple.
-// The bio and relationship tables share lifecycle semantics with
-// itotori_scene_summaries: a Fresh row is the latest valid artifact; a Stale
-// row records the prior state for audit after a source-hash drift or
-// template-version bump invalidates it.
-
-export const characterBioStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-} as const;
-
-export type CharacterBioStatus =
-  (typeof characterBioStatusValues)[keyof typeof characterBioStatusValues];
-
-export const characterRelationshipStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-} as const;
-
-export type CharacterRelationshipStatus =
-  (typeof characterRelationshipStatusValues)[keyof typeof characterRelationshipStatusValues];
-
-export const characterRelationshipInvalidatedReasonValues = {
-  sourceHashDrift: "source_hash_drift",
-  templateVersionBump: "template_version_bump",
-  manual: "manual",
-} as const;
-
-export type CharacterRelationshipInvalidatedReason =
-  (typeof characterRelationshipInvalidatedReasonValues)[keyof typeof characterRelationshipInvalidatedReasonValues];
-
-export const characterRelationshipKindValues = {
-  familyRelation: "FamilyRelation",
-  romantic: "Romantic",
-  friendship: "Friendship",
-  mentor: "Mentor",
-  rivalry: "Rivalry",
-  allegiance: "Allegiance",
-  antagonism: "Antagonism",
-  other: "Other",
-} as const;
-
-export type CharacterRelationshipKind =
-  (typeof characterRelationshipKindValues)[keyof typeof characterRelationshipKindValues];
-
-export const characterRelationshipDirectionValues = {
-  symmetric: "Symmetric",
-  fromAToB: "FromAToB",
-} as const;
-
-export type CharacterRelationshipDirection =
-  (typeof characterRelationshipDirectionValues)[keyof typeof characterRelationshipDirectionValues];
-
-export const characterBios = pgTable(
-  "itotori_character_bios",
-  {
-    characterBioId: text("character_bio_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    characterId: text("character_id").notNull(),
-    bioLocale: text("bio_locale").notNull(),
-    bioText: text("bio_text").notNull(),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    inputTokenEstimate: integer("input_token_estimate").notNull(),
-    completionTokens: integer("completion_tokens").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_character_bios_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.characterId,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_character_bios_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_character_bios_character_idx").on(table.characterId),
-  ],
-);
-
-export const characterBioEvidence = pgTable(
-  "itotori_character_bio_evidence",
-  {
-    characterBioId: text("character_bio_id")
-      .notNull()
-      .references(() => characterBios.characterBioId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    citedSourceHash: text("cited_source_hash").notNull(),
-    citeOrdinal: integer("cite_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.characterBioId, table.bridgeUnitId] }),
-    index("itotori_character_bio_evidence_bridge_unit_idx").on(
-      table.bridgeUnitId,
-      table.citedSourceHash,
-    ),
-    index("itotori_character_bio_evidence_ordinal_idx").on(table.characterBioId, table.citeOrdinal),
-  ],
-);
-
-export const characterRelationships = pgTable(
-  "itotori_character_relationships",
-  {
-    characterRelationshipId: text("character_relationship_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    fromCharacterId: text("from_character_id").notNull(),
-    toCharacterId: text("to_character_id").notNull(),
-    kind: text("kind").$type<CharacterRelationshipKind>().notNull(),
-    direction: text("direction").$type<CharacterRelationshipDirection>().notNull(),
-    descriptor: text("descriptor").notNull(),
-    descriptorLocale: text("descriptor_locale").notNull(),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_character_relationships_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.fromCharacterId,
-      table.toCharacterId,
-      table.kind,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_character_relationships_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_character_relationships_from_idx").on(table.fromCharacterId),
-    index("itotori_character_relationships_to_idx").on(table.toCharacterId),
-  ],
-);
-
-export const characterRelationshipEvidence = pgTable(
-  "itotori_character_relationship_evidence",
-  {
-    characterRelationshipId: text("character_relationship_id")
-      .notNull()
-      .references(() => characterRelationships.characterRelationshipId, {
-        onDelete: "cascade",
-      }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    citedSourceHash: text("cited_source_hash").notNull(),
-    citeOrdinal: integer("cite_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.characterRelationshipId, table.bridgeUnitId] }),
-    index("itotori_character_relationship_evidence_bridge_unit_idx").on(
-      table.bridgeUnitId,
-      table.citedSourceHash,
-    ),
-    index("itotori_character_relationship_evidence_ordinal_idx").on(
-      table.characterRelationshipId,
-      table.citeOrdinal,
-    ),
-  ],
-);
-
-// ---------------------------------------------------------------------
-// ITOTORI-015 — route + choice map agent
-// ---------------------------------------------------------------------
-
-export const routeMapStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-} as const;
-
-export type RouteMapStatus = (typeof routeMapStatusValues)[keyof typeof routeMapStatusValues];
-
-export const routeChoiceStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-} as const;
-
-export type RouteChoiceStatus =
-  (typeof routeChoiceStatusValues)[keyof typeof routeChoiceStatusValues];
-
-export const routeInvalidatedReasonValues = {
-  sourceHashDrift: "source_hash_drift",
-  templateVersionBump: "template_version_bump",
-  unknownRouteTarget: "unknown_route_target",
-  manual: "manual",
-} as const;
-
-export type RouteInvalidatedReason =
-  (typeof routeInvalidatedReasonValues)[keyof typeof routeInvalidatedReasonValues];
-
-export const routeChoiceKindValues = {
-  routeBranch: "RouteBranch",
-  flagToggle: "FlagToggle",
-  sceneSelector: "SceneSelector",
-  cosmetic: "Cosmetic",
-  other: "Other",
-} as const;
-
-export type RouteChoiceKind = (typeof routeChoiceKindValues)[keyof typeof routeChoiceKindValues];
-
-export const routeEvidenceSubjectKindValues = {
-  route: "route",
-  choice: "choice",
-  choiceOption: "choice_option",
-} as const;
-
-export type RouteEvidenceSubjectKind =
-  (typeof routeEvidenceSubjectKindValues)[keyof typeof routeEvidenceSubjectKindValues];
-
-export const routeMaps = pgTable(
-  "itotori_route_maps",
-  {
-    routeMapId: text("route_map_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    routeKey: text("route_key").notNull(),
-    routeTitle: text("route_title").notNull(),
-    mapLocale: text("map_locale").notNull(),
-    routeSummary: text("route_summary").notNull(),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    inputTokenEstimate: integer("input_token_estimate").notNull(),
-    completionTokens: integer("completion_tokens").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_route_maps_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.routeKey,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_route_maps_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_route_maps_route_key_idx").on(table.routeKey),
-  ],
-);
-
-export const routeChoices = pgTable(
-  "itotori_route_choices",
-  {
-    routeChoiceId: text("route_choice_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    choiceKey: text("choice_key").notNull(),
-    kind: text("kind").$type<RouteChoiceKind>().notNull(),
-    fromRouteKey: text("from_route_key"),
-    promptSummary: text("prompt_summary").notNull(),
-    mapLocale: text("map_locale").notNull(),
-    options: jsonb("options").notNull(),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_route_choices_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.choiceKey,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_route_choices_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_route_choices_choice_key_idx").on(table.choiceKey),
-    index("itotori_route_choices_from_route_key_idx").on(table.fromRouteKey),
-  ],
-);
-
-export const routeEvidence = pgTable(
-  "itotori_route_evidence",
-  {
-    routeEvidenceId: text("route_evidence_id").primaryKey(),
-    subjectKind: text("subject_kind").$type<RouteEvidenceSubjectKind>().notNull(),
-    routeMapId: text("route_map_id").references(() => routeMaps.routeMapId, {
-      onDelete: "cascade",
-    }),
-    routeChoiceId: text("route_choice_id").references(() => routeChoices.routeChoiceId, {
-      onDelete: "cascade",
-    }),
-    choiceOptionId: text("choice_option_id"),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    citedSourceHash: text("cited_source_hash").notNull(),
-    citeOrdinal: integer("cite_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_route_evidence_by_route_idx").on(table.routeMapId, table.bridgeUnitId),
-    index("itotori_route_evidence_by_choice_idx").on(table.routeChoiceId, table.bridgeUnitId),
-    index("itotori_route_evidence_bridge_unit_idx").on(table.bridgeUnitId, table.citedSourceHash),
-  ],
-);
-
-// ---------------------------------------------------------------------
-// ITOTORI-016 — terminology candidate agent
-// ---------------------------------------------------------------------
-
-export const terminologyCandidateStatusValues = {
-  fresh: "Fresh",
-  stale: "Stale",
-  promoted: "Promoted",
-  rejectedByReviewer: "RejectedByReviewer",
-} as const;
-
-export type TerminologyCandidateStatus =
-  (typeof terminologyCandidateStatusValues)[keyof typeof terminologyCandidateStatusValues];
-
-export const terminologyCandidateInvalidatedReasonValues = {
-  sourceHashDrift: "source_hash_drift",
-  templateVersionBump: "template_version_bump",
-  glossaryConflictPostPersist: "glossary_conflict_post_persist",
-  manual: "manual",
-} as const;
-
-export type TerminologyCandidateInvalidatedReason =
-  (typeof terminologyCandidateInvalidatedReasonValues)[keyof typeof terminologyCandidateInvalidatedReasonValues];
-
-export const terminologyCandidateKindValues = {
-  properNoun: "ProperNoun",
-  titleOrHonorific: "TitleOrHonorific",
-  technicalTerm: "TechnicalTerm",
-  catchphrase: "Catchphrase",
-  soundEffect: "SoundEffect",
-  writtenSign: "WrittenSign",
-  other: "Other",
-} as const;
-
-export type TerminologyCandidateKind =
-  (typeof terminologyCandidateKindValues)[keyof typeof terminologyCandidateKindValues];
-
-export const terminologyCandidates = pgTable(
-  "itotori_terminology_candidates",
-  {
-    terminologyCandidateId: text("terminology_candidate_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    kind: text("kind").$type<TerminologyCandidateKind>().notNull(),
-    surfaceForm: text("surface_form").notNull(),
-    surfaceLocale: text("surface_locale").notNull(),
-    rationale: text("rationale").notNull(),
-    readingHint: text("reading_hint"),
-    conflictingTerminologyTermId: text("conflicting_terminology_term_id").references(
-      () => terminologyTerms.termId,
-      { onDelete: "set null" },
-    ),
-    modelProviderFamily: text("model_provider_family").notNull(),
-    modelId: text("model_id").notNull(),
-    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
-    modelMaxOutputTokens: integer("model_max_output_tokens"),
-    promptTemplateVersion: text("prompt_template_version").notNull(),
-    promptHash: text("prompt_hash").notNull(),
-    inputTokenEstimate: integer("input_token_estimate").notNull(),
-    completionTokens: integer("completion_tokens").notNull(),
-    status: text("status").notNull(),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    invalidatedReason: text("invalidated_reason"),
-    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_terminology_candidates_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.surfaceForm,
-      table.kind,
-      table.promptTemplateVersion,
-    ),
-    index("itotori_terminology_candidates_status_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.status,
-    ),
-    index("itotori_terminology_candidates_surface_idx").on(table.surfaceForm),
-  ],
-);
-
-export const terminologyCandidateEvidence = pgTable(
-  "itotori_terminology_candidate_evidence",
-  {
-    terminologyCandidateId: text("terminology_candidate_id")
-      .notNull()
-      .references(() => terminologyCandidates.terminologyCandidateId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    citedSourceHash: text("cited_source_hash").notNull(),
-    citeOrdinal: integer("cite_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.terminologyCandidateId, table.bridgeUnitId] }),
-    index("itotori_terminology_candidate_evidence_bridge_unit_idx").on(
-      table.bridgeUnitId,
-      table.citedSourceHash,
-    ),
-    index("itotori_terminology_candidate_evidence_ordinal_idx").on(
-      table.terminologyCandidateId,
-      table.citeOrdinal,
     ),
   ],
 );

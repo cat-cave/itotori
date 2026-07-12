@@ -26,7 +26,7 @@
 //      divergence → TranslationProtectedSpanViolationError naming the
 //      bridgeUnitId + spanRef + closed-enum reason.
 //   7. Every citationRef must resolve to a glossary termId or to a
-//      contextArtifactRef → otherwise TranslationUnknownCitationError.
+//      contextArtifacts[].contextArtifactId → otherwise TranslationUnknownCitationError.
 //   8. If the provider reported a finish reason that indicates a
 //      partial response (length / stop-sequence / content-filter), or
 //      content was null, throw `TranslationPartialResultError` — never
@@ -329,7 +329,9 @@ export class TranslationAgent {
     input: TranslationInvocationInput,
   ): void {
     const knownGlossary = new Set(input.glossary.map((entry) => entry.termId));
-    const knownArtifacts = new Set(input.contextArtifactRefs ?? []);
+    const knownArtifacts = new Set(
+      (input.contextArtifacts ?? []).map((artifact) => artifact.contextArtifactId),
+    );
     for (const draft of parsed.drafts) {
       for (const ref of draft.citationRefs) {
         if (!knownGlossary.has(ref) && !knownArtifacts.has(ref)) {

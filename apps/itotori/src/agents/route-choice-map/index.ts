@@ -13,22 +13,6 @@ export {
   type RenderedPrompt,
 } from "./prompt-template.js";
 export {
-  persistRouteChoice,
-  persistRouteMap,
-  recordToRouteChoice,
-  recordToRouteMap,
-  routeChoiceToSaveInput,
-  routeMapToSaveInput,
-} from "./persistence.js";
-export {
-  markStaleRouteChoiceArtifactsForRevision,
-  type DanglingRouteTarget,
-  type RouteChoiceDrift,
-  type RouteChoiceStalenessScanInput,
-  type RouteChoiceStalenessScanResult,
-  type RouteMapDrift,
-} from "./staleness.js";
-export {
   resolveRouteChoiceMapProvider,
   runCheckRouteMapsCli,
   runGenerateRouteMapsCli,
@@ -36,6 +20,7 @@ export {
   type GenerateRouteMapsCliInput,
   type GenerateRouteMapsCliResult,
   type RouteChoiceMapCliDependencies,
+  type CentralRouteCheckResult,
 } from "./cli.js";
 export {
   ROUTE_CHOICE_KINDS,

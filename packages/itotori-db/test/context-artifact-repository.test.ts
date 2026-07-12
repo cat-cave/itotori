@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
-import { sourceBundles, sourceRevisions, sourceUnits } from "../src/schema.js";
+import { sourceRevisions, sourceUnits } from "../src/schema.js";
 import {
   ContextArtifactRepositoryError,
   contextArtifactCategoryValues,
@@ -12,6 +12,7 @@ import {
   contextArtifactToolVersion,
   ItotoriContextArtifactRepository,
 } from "../src/repositories/context-artifact-repository.js";
+import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
@@ -62,13 +63,13 @@ describe("ItotoriContextArtifactRepository", () => {
       expect(artifact.sourceUnits).toEqual([
         expect.objectContaining({
           bridgeUnitId: "unit-mira",
-          sourceRevisionId: "bridge-context:bundle-revision",
+          sourceRevisionId: "bridge-context:unit:unit-mira",
           sourceHash: "hash:mira",
           citation: "scene.002.mira",
         }),
         expect.objectContaining({
           bridgeUnitId: "unit-opening",
-          sourceRevisionId: "bridge-context:bundle-revision",
+          sourceRevisionId: "bridge-context:unit:unit-opening",
           sourceHash: "hash:opening",
           citation: "scene.001.opening",
         }),
@@ -93,6 +94,169 @@ describe("ItotoriContextArtifactRepository", () => {
           }),
         ],
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("numbers central semantic citations independently for each artifact", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+      for (const input of [
+        {
+          contextArtifactId: "context-artifact-citations-a",
+          sceneId: "scene-a",
+          sourceUnits: [
+            { bridgeUnitId: "unit-opening", citation: "scene-a.opening" },
+            { bridgeUnitId: "unit-mira", citation: "scene-a.mira" },
+          ],
+        },
+        {
+          contextArtifactId: "context-artifact-citations-b",
+          sceneId: "scene-b",
+          sourceUnits: [
+            { bridgeUnitId: "unit-mira", citation: "scene-b.mira" },
+            { bridgeUnitId: "unit-route", citation: "scene-b.route" },
+          ],
+        },
+      ]) {
+        await repository.upsertArtifact(localActor, {
+          contextArtifactId: input.contextArtifactId,
+          projectId: "project-context",
+          localeBranchId: "locale-en-us",
+          sourceRevisionId: "bridge-context:bundle-revision",
+          category: contextArtifactCategoryValues.sceneSummary,
+          title: input.sceneId,
+          body: input.sceneId,
+          data: { semanticKind: "scene_summary", sceneId: input.sceneId },
+          producedByTool: "semantic-context-read-test",
+          producerVersion: "1.0.0",
+          sourceUnits: input.sourceUnits,
+        });
+      }
+
+      const summaries = await new ItotoriSemanticContextReadRepository(
+        context.db,
+      ).loadSceneSummaries(localActor, {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+      });
+      expect(
+        summaries.map((summary) => summary.citations.map((citation) => citation.citeOrdinal)),
+      ).toEqual([
+        [1, 2],
+        [1, 2],
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("retains immutable ContextEntryVersion lineage when an entry is upserted twice", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+
+      const first = await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-versioned-opening",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Opening scene",
+        body: "The first version records the station meeting.",
+        data: { revision: "first" },
+        producedByAgent: "agent.scene-summarizer",
+        producerVersion: "1.0.0",
+        provenance: { runId: "run-context-version-1" },
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+
+      const second = await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-versioned-opening",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Opening scene",
+        body: "The first version records the station meeting.",
+        data: { revision: "first" },
+        producedByAgent: "agent.scene-summarizer",
+        producerVersion: "1.0.0",
+        provenance: { runId: "run-context-version-2" },
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+
+      expect(first.headVersionId).toEqual(expect.any(String));
+      expect(second.headVersionId).toEqual(expect.any(String));
+      expect(second.headVersionId).not.toBe(first.headVersionId);
+      // A content hash attests bytes; it is not a version identity. Repeating
+      // the same body/citation snapshot still advances an append-only lineage.
+      expect(second.contentHash).toBe(first.contentHash);
+
+      const versions = await repository.listEntryVersions(localActor, {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        contextArtifactId: "context-artifact-versioned-opening",
+      });
+
+      // Both packet snapshots remain available after the mutable entry head
+      // advances, even though their content hash is intentionally identical.
+      expect(versions).toEqual([
+        expect.objectContaining({
+          contextEntryVersionId: first.headVersionId,
+          parentVersionId: null,
+          body: "The first version records the station meeting.",
+          data: { revision: "first" },
+          citations: [
+            expect.objectContaining({
+              bridgeUnitId: "unit-opening",
+              citation: "scene.001.opening",
+              sourceHash: "hash:opening",
+            }),
+          ],
+          affectedUnitIds: ["unit-opening"],
+        }),
+        expect.objectContaining({
+          contextEntryVersionId: second.headVersionId,
+          parentVersionId: first.headVersionId,
+          body: "The first version records the station meeting.",
+          data: { revision: "first" },
+          provenance: expect.objectContaining({ runId: "run-context-version-2" }),
+          citations: [
+            expect.objectContaining({
+              bridgeUnitId: "unit-opening",
+              citation: "scene.001.opening",
+              sourceHash: "hash:opening",
+            }),
+          ],
+          affectedUnitIds: ["unit-opening"],
+        }),
+      ]);
+
+      await expect(
+        context.pool.query(
+          "update itotori_context_entry_versions set body = $1 where context_entry_version_id = $2",
+          ["rewritten history", first.headVersionId],
+        ),
+      ).rejects.toThrow(/append-only/);
+
+      // Entry removal is the only sanctioned history cleanup: its cascade may
+      // delete the immutable rows, while direct version deletion is rejected.
+      await context.pool.query(
+        "delete from itotori_context_artifacts where context_artifact_id = $1",
+        ["context-artifact-versioned-opening"],
+      );
+      await expect(
+        repository.listEntryVersions(localActor, {
+          projectId: "project-context",
+          localeBranchId: "locale-en-us",
+          contextArtifactId: "context-artifact-versioned-opening",
+        }),
+      ).resolves.toEqual([]);
     } finally {
       await context.close();
     }
@@ -150,29 +314,25 @@ describe("ItotoriContextArtifactRepository", () => {
     }
   });
 
-  it("invalidates active artifacts when cited source units change and hides stale artifacts by default", async () => {
+  it("invalidates and rebuilds a cited artifact when only its source revision changes", async () => {
     const context = await isolatedMigratedContext();
     try {
       await seedContextProject(context.db);
       const repository = new ItotoriContextArtifactRepository(context.db);
       await seedArtifacts(repository);
 
-      await advanceContextSourceRevision(context.db);
+      await advanceCitedUnitSourceRevision(context.db);
 
       const invalidated = await repository.invalidateAffectedArtifacts(localActor, {
         projectId: "project-context",
         localeBranchId: "locale-en-us",
-        reason: "source_reimport",
+        reason: "source_revision_changed",
       });
       expect(invalidated).toMatchObject({
         status: "completed",
-        sourceRevisionId: "bridge-context:bundle-revision:v2",
-        invalidatedCount: 3,
-        invalidatedArtifactIds: expect.arrayContaining([
-          "context-artifact-opening",
-          "context-artifact-mira",
-          "context-artifact-route",
-        ]),
+        sourceRevisionId: "bridge-context:bundle-revision",
+        invalidatedCount: 1,
+        invalidatedArtifactIds: ["context-artifact-opening"],
       });
 
       await expect(
@@ -195,43 +355,45 @@ describe("ItotoriContextArtifactRepository", () => {
         expect.objectContaining({
           contextArtifactId: "context-artifact-opening",
           status: contextArtifactStatusValues.stale,
-          invalidatedReason: "source_reimport",
+          invalidatedReason: "source_revision_changed",
         }),
       ]);
 
-      await expect(
-        repository.retrieveArtifacts(localActor, {
-          projectId: "project-context",
-          localeBranchId: "locale-en-us",
-          sourceRevisionId: "bridge-context:bundle-revision",
-          categories: [contextArtifactCategoryValues.sceneSummary],
-          query: "station",
-          includeStale: true,
-        }),
-      ).resolves.toMatchObject({
-        status: "completed",
+      const rebuilt = await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-opening",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
         sourceRevisionId: "bridge-context:bundle-revision",
-        matches: [
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Opening station",
+        body: "The opening at the station establishes Mira and the hero before the route split.",
+        producedByAgent: "agent.scene-summaries",
+        producerVersion: "1.0.0",
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+      expect(rebuilt).toMatchObject({
+        status: contextArtifactStatusValues.active,
+        sourceRevisionId: "bridge-context:bundle-revision",
+        sourceUnits: [
           expect.objectContaining({
-            contextArtifactId: "context-artifact-opening",
-            status: contextArtifactStatusValues.stale,
+            bridgeUnitId: "unit-opening",
+            sourceRevisionId: "bridge-context:unit:unit-opening:v2",
+            // The test changes no bytes: revision identity alone invalidates.
+            sourceHash: "hash:opening",
           }),
         ],
       });
 
       await expect(
-        repository.retrieveArtifacts(localActor, {
+        repository.invalidateAffectedArtifacts(localActor, {
           projectId: "project-context",
           localeBranchId: "locale-en-us",
-          sourceRevisionId: "bridge-context:bundle-revision",
+          reason: "revision_recheck",
         }),
       ).resolves.toMatchObject({
-        status: "failed",
-        diagnostics: [
-          expect.objectContaining({
-            code: contextArtifactDiagnosticCodeValues.staleSourceRevision,
-          }),
-        ],
+        status: "completed",
+        invalidatedCount: 0,
+        invalidatedArtifactIds: [],
       });
     } finally {
       await context.close();
@@ -298,7 +460,7 @@ describe("ItotoriContextArtifactRepository", () => {
             citations: [
               expect.objectContaining({
                 bridgeUnitId: "unit-mira",
-                sourceRevisionId: "bridge-context:bundle-revision",
+                sourceRevisionId: "bridge-context:unit:unit-mira",
                 sourceHash: "hash:mira",
                 citation: "scene.002.mira",
               }),
@@ -514,41 +676,24 @@ async function seedContextProject(
   await repository.importSourceBundle(localActor, contextProjectFixture(overrides));
 }
 
-async function advanceContextSourceRevision(
+async function advanceCitedUnitSourceRevision(
   db: ConstructorParameters<typeof ItotoriProjectRepository>[0],
 ): Promise<void> {
   await db
     .insert(sourceRevisions)
-    .values([
-      {
-        sourceRevisionId: "bridge-context:bundle-revision:v2",
-        projectId: "project-context",
-        revisionKind: "content_hash",
-        value: "hash:bundle-v2",
-      },
-      {
-        sourceRevisionId: "bridge-context:unit:unit-opening:v2",
-        projectId: "project-context",
-        revisionKind: "content_hash",
-        value: "hash:opening-v2",
-      },
-    ])
-    .onConflictDoNothing();
-
-  await db
-    .update(sourceBundles)
-    .set({
-      sourceBundleRevisionId: "bridge-context:bundle-revision:v2",
-      sourceBundleHash: "hash:bundle-v2",
+    .values({
+      sourceRevisionId: "bridge-context:unit:unit-opening:v2",
+      projectId: "project-context",
+      revisionKind: "content_hash",
+      // Deliberately byte-identical to the first revision.
+      value: "hash:opening",
     })
-    .where(eq(sourceBundles.sourceBundleId, "bridge-context"));
+    .onConflictDoNothing();
 
   await db
     .update(sourceUnits)
     .set({
       sourceRevisionId: "bridge-context:unit:unit-opening:v2",
-      sourceHash: "hash:opening-v2",
-      sourceText: "Opening revised",
     })
     .where(eq(sourceUnits.bridgeUnitId, "unit-opening"));
 }

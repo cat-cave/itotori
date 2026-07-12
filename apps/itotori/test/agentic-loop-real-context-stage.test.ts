@@ -4,7 +4,7 @@
 // SUPERSEDES `genaudit1-01-agentic-loop-context-probe-coerces-mis` and
 // `itotori-semantic-agent-clis-no-fake-context-on-real-path`: the old
 // `invokeContextLikeProbe` (which fired a provider call and DISCARDED its
-// output, leaving `contextArtifactRefs: []`) is gone. The context stage now
+// output, leaving `contextArtifactIds: []`) is gone. The context stage now
 //   (a) builds the DETERMINISTIC structure-informed context slice from the
 //       decoded `NarrativeStructure` and injects it into the translation
 //       prompt (scene summary + route/branch position + speaker character
@@ -15,20 +15,16 @@
 //   1. Unit/integration (mock LLM): the translation stage PROVABLY receives
 //      the decoded scene / route / speaker structure in its prompt, and the
 //      four semantic agents all ran. Deterministic, runs in CI.
-//   2. Opt-in real-provider configuration: the direct loop has no durable
-//      cost-admission authority, so its first OpenRouter invocation must pause
-//      before the capturing transport can emit a network request.
+//   2. Opt-in real-provider configuration: the loop runs through the same
+//      supervisor-routed cost-admission boundary as production before any
+//      OpenRouter invocation, then proves the live context enrichment.
 
 import { readFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type {
-  AuthorizationActor,
-  ExistsTerminologyTermBySurfaceFormInput,
-  ItotoriTerminologyCandidateRepositoryPort,
-} from "@itotori/db";
+import type { AuthorizationActor } from "@itotori/db";
 import type { AgenticLoopBundle, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
@@ -37,6 +33,8 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
 } from "../src/orchestrator/agentic-loop.js";
+import { capturePhysicalProviderAttempts } from "../src/orchestrator/attempt-outcome-journal.js";
+import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   LocalProviderRunArtifactRecorder,
@@ -289,8 +287,11 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     expect(prompt).toContain("dispatches to scene 6020");
     // Speaker character arc.
     expect(prompt).toContain("speaks");
-    // contextArtifactRefs are non-empty and citable.
-    expect(prompt).toContain("Context artifacts available for citation:");
+    // Resolved context artifacts carry REAL content (not bare ids).
+    expect(prompt).toContain("Context artifacts (resolved content):");
+    expect(prompt).toContain(`structure:scene-summary:${SCENE_ID}`);
+    expect(prompt).toContain(`structure:route-branch-map:${SCENE_ID}`);
+    // Structure-informed citation line still names the deterministic refs.
     expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
     expect(prompt).toContain("route-branch-map");
 
@@ -324,48 +325,13 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     expect(contextStage?.invocations.length).toBe(4);
   });
 
-  it("ITOTORI-150 (prod path): the loop forwards the terminology-candidate repository so the repository-side conflict check FIRES", async () => {
-    // A repository spy whose only meaningful method records + answers
-    // `existsTerminologyTermBySurfaceForm`. If the loop wiring forwards it
-    // (with `input.actor`), the terminology-candidate agent's pre-persist check
-    // queries it in production — closing the TOCTOU window. Every other port
-    // method throws (unused on this path) to keep the fixture honest.
-    const repoCalls: ExistsTerminologyTermBySurfaceFormInput[] = [];
-    const repository: ItotoriTerminologyCandidateRepositoryPort = {
-      async existsTerminologyTermBySurfaceForm(
-        actor: AuthorizationActor,
-        queryInput: ExistsTerminologyTermBySurfaceFormInput,
-      ): Promise<string | null> {
-        expect(actor).toBe(ACTOR); // the loop forwarded `input.actor`, not some default
-        repoCalls.push(queryInput);
-        return queryInput.surfaceForm === "ハル" ? "019ed079-1000-7000-8000-00000000t001" : null;
-      },
-      saveCandidate: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-      loadCandidatesByProject: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-      markCandidateStale: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-      markCandidateRejected: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-      markCandidatePromoted: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-      currentSourceHashesForBridgeUnits: () => {
-        throw new Error("unused on the loop's terminology-candidate path");
-      },
-    } as unknown as ItotoriTerminologyCandidateRepositoryPort;
-
+  it("ITOTORI-150 (prod path): active glossary context rejects duplicate terminology without a retired candidate repository", async () => {
     const unit = makeUnit("ハル、おはよう。");
     // A factory whose terminology-candidate agent emits a candidate whose
-    // surfaceForm ("ハル") matches the curator-inserted repository term. The
-    // supervised semantic-grounding check first proves the cited surface
-    // appears in the source; the asynchronous repository check then catches
-    // the curator-inserted conflict before candidate persistence.
+    // surfaceForm ("ハル") matches the active glossary term. The supervised
+    // semantic-grounding check first proves the cited surface appears in the
+    // source, then the central glossary context rejects the duplicate before
+    // the candidate is projected into the central artifact store.
     const factory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
       new FakeModelProvider({
         providerName: `i150-loop-fake:${stage}:${agentLabel}`,
@@ -413,25 +379,23 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
       unit,
       sourceRevisionId: REVISION_ID,
       sceneUnits: [],
-      glossary: [],
+      glossary: [
+        {
+          termId: "019ed079-1000-7000-8000-00000000t001",
+          preferredSourceForm: "ハル",
+          preferredTargetForm: "Haru",
+        },
+      ],
       protectedSpans: [],
       knownCharacters: [],
       actor: ACTOR,
-      terminologyCandidateRepository: repository,
     };
 
     const bundle = await runAgenticLoopForUnit(input, DEV_POLICY, makePolicy(), factory);
 
-    // (1) PROOF the wiring fired: the repository-side check was queried in prod
-    //     with the emitted surfaceForm + the run's real projectId.
-    expect(repoCalls).toContainEqual({
-      projectId: makePolicy().projectId,
-      surfaceForm: "ハル",
-    });
-
-    // (2) The conflict surfaced SYNCHRONOUSLY as a dropped enrichment (the
-    //     best-effort loop catches the ExistingGlossaryConflictError) — not
-    //     asynchronously at the next staleness scan.
+    // The conflict surfaced synchronously as a dropped enrichment (the
+    // best-effort loop catches ExistingGlossaryConflictError) rather than
+    // creating a parallel terminology-candidate record.
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
     const dropped = contextStage?.droppedEnrichments ?? [];
     const terminologyDrop = dropped.find((d) => d.agentLabel === "terminology-candidate");
@@ -444,7 +408,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Opt-in boundary proof — real ZDR OpenRouter configuration, no network call.
+// Opt-in live proof — real ZDR OpenRouter configuration, cost-admitted.
 // ---------------------------------------------------------------------------
 
 const LIVE_ENABLED =
@@ -453,14 +417,18 @@ const LIVE_ENABLED =
   process.env.OPENROUTER_API_KEY.length > 0 &&
   process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1";
 
+const LIVE_BUDGET_CAP_USD = 1.0;
+
 /** Provider wrapper that records every request + result for the live proof. */
 function capturingLiveProvider(
   inner: ModelProvider,
   requests: ModelInvocationRequest[],
   results: ModelInvocationResult[],
 ): ModelProvider {
+  const preflightInvocation = inner.preflightInvocation?.bind(inner);
   return {
     descriptor: inner.descriptor,
+    ...(preflightInvocation === undefined ? {} : { preflightInvocation }),
     invoke: async (request: ModelInvocationRequest): Promise<ModelInvocationResult> => {
       requests.push(request);
       const result = await inner.invoke(request);
@@ -470,13 +438,13 @@ function capturingLiveProvider(
   };
 }
 
-describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", () => {
-  it("refuses the configured OpenRouter route before its capturing transport runs", async () => {
+describe("itotori-agentic-loop-real-context-stage (live)", () => {
+  it("runs a cost-admitted OpenRouter loop whose translation prompt carries decoded context", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
         "[realctx-live] skipping — set ITOTORI_REALCTX_LIVE=1, OPENROUTER_API_KEY, and " +
-          "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 to exercise the guard (optional: ITOTORI_REALCTX_STRUCTURE_JSON=<path>, ITOTORI_REALCTX_SCENE=<id>)",
+          "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 to run it (optional: ITOTORI_REALCTX_STRUCTURE_JSON=<path>, ITOTORI_REALCTX_SCENE=<id>)",
       );
       return;
     }
@@ -517,6 +485,22 @@ describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", (
     });
     const factory: AgenticLoopProviderFactory = () =>
       capturingLiveProvider(provider, requests, results);
+    const admittedAttemptIds: string[] = [];
+    // The live proof takes the production-bound supervisor path. `DEV_POLICY`
+    // supplies each invocation's explicit maximumBillableCostUsd ceiling; this
+    // test-only sink records every admission without bypassing that guard.
+    const costAdmission: InvocationCostAdmission = {
+      admit: async ({ attempt }) => {
+        admittedAttemptIds.push(attempt.attemptId);
+        return { admitted: true };
+      },
+    };
+    const supervisedAttempts = capturePhysicalProviderAttempts({
+      runId: "realctx-live-run",
+      bridgeUnitId: unit.bridgeUnitId,
+      source: factory,
+      costAdmission,
+    });
 
     const input: AgenticLoopUnitInput = {
       unit,
@@ -530,16 +514,49 @@ describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", (
       actor: ACTOR,
     };
 
-    await expect(
-      runAgenticLoopForUnit(input, DEV_POLICY, makePolicy(), factory),
-    ).rejects.toMatchObject({
-      name: "InvocationOperationalPauseError",
-      blocker: {
-        kind: "budget_cap",
-        detail: expect.stringContaining("durable cost-admission"),
-      },
-    });
-    expect(requests).toEqual([]);
-    expect(results).toEqual([]);
+    const bundle = await runAgenticLoopForUnit(
+      { ...input, attemptOutcomeObserver: supervisedAttempts.attemptOutcomeObserver },
+      DEV_POLICY,
+      makePolicy(),
+      supervisedAttempts.providerFactory,
+    );
+    supervisedAttempts.markSuccessful();
+    expect(admittedAttemptIds).toHaveLength(results.length);
+
+    // The four semantic context agents ran LIVE (real openrouter proof ids).
+    const contextStage = bundle.stages.find((s) => s.stageName === "context");
+    expect(contextStage?.invocations.length).toBe(4);
+    for (const inv of contextStage?.invocations ?? []) {
+      expect(inv.providerProofId).toMatch(/^openrouter-/u);
+      // Real cost, from usage.cost.
+      expect(Number(inv.costUsd)).toBeGreaterThanOrEqual(0);
+    }
+
+    // The translation prompt PROVABLY carried the decoded structure.
+    const translationRequest = requests.find((r) => r.taskKind === "draft_translation");
+    expect(translationRequest).toBeDefined();
+    const userMessage = translationRequest?.messages?.find((m) => m.role === "user");
+    const prompt = userMessage?.content ?? "";
+    expect(prompt).toContain("Structure-informed context");
+    expect(prompt).toContain(`Scene ${sceneId}`);
+    expect(prompt).toContain("route position");
+    expect(prompt).toContain("Context artifacts (resolved content):");
+
+    // ZDR enforced on the wire + real cost recorded; budget cap respected.
+    let totalCostUsd = 0;
+    for (const result of results) {
+      expect(result.providerRun.routingPosture.zdr).toBe(true);
+      expect(result.providerRun.routingPosture.data_collection).toBe("deny");
+      expect(result.providerRun.cost.costKind).toBe("billed");
+      totalCostUsd += (result.providerRun.cost.amountMicrosUsd ?? 0) / 1_000_000;
+    }
+    expect(totalCostUsd).toBeGreaterThan(0);
+    expect(totalCostUsd).toBeLessThanOrEqual(LIVE_BUDGET_CAP_USD);
+
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[realctx-live] scene=${sceneId} calls=${results.length} totalCost=$${totalCostUsd.toFixed(6)} ` +
+        `zdr=true semanticAgents=4 finalOutcome=${bundle.writtenOutcome.status}`,
+    );
   }, 180_000);
 });

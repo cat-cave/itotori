@@ -3,11 +3,6 @@ import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
 import {
-  ItotoriCharacterRelationshipRepository,
-  characterRelationshipDirectionValues,
-  characterRelationshipKindValues,
-} from "../src/repositories/character-relationship-repository.js";
-import {
   defaultWorkspaceId,
   ItotoriProjectRepository,
 } from "../src/repositories/project-repository.js";
@@ -39,70 +34,34 @@ describe("ItotoriWikiReadmodelRepository", () => {
         bridge: bridgeFixture(),
       });
 
-      const characters = new ItotoriCharacterRelationshipRepository(context.db);
-      await characters.saveBio(actor, {
-        characterBioId: "wiki-bio-hero",
+      const artifacts = new ItotoriContextArtifactRepository(context.db);
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-bio-hero",
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
         sourceRevisionId: SOURCE_REVISION_ID,
         characterId: "勇者",
-        bioLocale: "ja-JP",
         bioText: "村を守る主人公。",
-        modelProviderFamily: "fake",
-        modelId: "itotori-fake-character-v0",
-        modelContextWindowTokens: 16000,
-        modelMaxOutputTokens: 1024,
-        promptTemplateVersion: "wiki-character-v1",
-        promptHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        inputTokenEstimate: 100,
-        completionTokens: 50,
-        generatedAt: GENERATED_AT,
-        citations: [
-          { bridgeUnitId: "wiki-unit-1", citedSourceHash: "hash-unit-1", citeOrdinal: 1 },
-        ],
+        bridgeUnitId: "wiki-unit-1",
       });
-      await characters.saveBio(actor, {
-        characterBioId: "wiki-bio-princess",
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-bio-princess",
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
         sourceRevisionId: SOURCE_REVISION_ID,
         characterId: "王女",
-        bioLocale: "ja-JP",
         bioText: "城の継承者。",
-        modelProviderFamily: "fake",
-        modelId: "itotori-fake-character-v0",
-        modelContextWindowTokens: 16000,
-        modelMaxOutputTokens: 1024,
-        promptTemplateVersion: "wiki-character-v1",
-        promptHash: "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-        inputTokenEstimate: 100,
-        completionTokens: 50,
-        generatedAt: GENERATED_AT,
-        citations: [
-          { bridgeUnitId: "wiki-unit-2", citedSourceHash: "hash-unit-2", citeOrdinal: 1 },
-        ],
+        bridgeUnitId: "wiki-unit-2",
       });
-      await characters.saveRelationship(actor, {
-        characterRelationshipId: "wiki-rel-hero-princess",
+      await saveCharacterRelationship(artifacts, {
+        contextArtifactId: "wiki-rel-hero-princess",
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
         sourceRevisionId: SOURCE_REVISION_ID,
         fromCharacterId: "勇者",
         toCharacterId: "王女",
-        kind: characterRelationshipKindValues.friendship,
-        direction: characterRelationshipDirectionValues.symmetric,
         descriptor: "幼なじみ",
-        descriptorLocale: "ja-JP",
-        modelProviderFamily: "fake",
-        modelId: "itotori-fake-character-v0",
-        modelContextWindowTokens: 16000,
-        modelMaxOutputTokens: 1024,
-        promptTemplateVersion: "wiki-character-v1",
-        promptHash: "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-        generatedAt: GENERATED_AT,
-        citations: [
-          { bridgeUnitId: "wiki-unit-2", citedSourceHash: "hash-unit-2", citeOrdinal: 1 },
-        ],
+        bridgeUnitId: "wiki-unit-2",
       });
 
       const terminology = new ItotoriTerminologyRepository(context.db);
@@ -144,7 +103,7 @@ describe("ItotoriWikiReadmodelRepository", () => {
         refKind: "character",
         refId: "王女",
         label: "王女",
-        relation: characterRelationshipKindValues.friendship,
+        relation: "Friendship",
       });
       expect(hero?.kind === "character" ? hero.appearances[0]?.sourceUnitKey : null).toBe(
         "scene.001.line.001",
@@ -199,49 +158,25 @@ describe("ItotoriWikiReadmodelRepository", () => {
         bridge: bridgeFixture({ bridgeId: "bridge-wiki-brand-fandisk", unitPrefix: "fandisk" }),
       });
 
-      const characters = new ItotoriCharacterRelationshipRepository(context.db);
-      await characters.saveBio(actor, {
-        characterBioId: "wiki-brand-bio-rin",
+      const artifacts = new ItotoriContextArtifactRepository(context.db);
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-brand-bio-rin",
         projectId: baseProjectId,
         localeBranchId: baseBranchId,
         sourceRevisionId: baseRevisionId,
         characterId: "凛",
-        bioLocale: "ja-JP",
         bioText: "本編で主人公を支える幼なじみ。",
-        modelProviderFamily: "fake",
-        modelId: "itotori-fake-character-v0",
-        modelContextWindowTokens: 16000,
-        modelMaxOutputTokens: 1024,
-        promptTemplateVersion: "wiki-character-v1",
-        promptHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        inputTokenEstimate: 100,
-        completionTokens: 50,
-        generatedAt: GENERATED_AT,
-        citations: [
-          { bridgeUnitId: "base-unit-1", citedSourceHash: "hash-base-1", citeOrdinal: 1 },
-        ],
+        bridgeUnitId: "base-unit-1",
       });
-      await characters.saveRelationship(actor, {
-        characterRelationshipId: "wiki-brand-rel-rin-mei",
+      await saveCharacterRelationship(artifacts, {
+        contextArtifactId: "wiki-brand-rel-rin-mei",
         projectId: baseProjectId,
         localeBranchId: baseBranchId,
         sourceRevisionId: baseRevisionId,
         fromCharacterId: "凛",
         toCharacterId: "芽衣",
-        kind: characterRelationshipKindValues.friendship,
-        direction: characterRelationshipDirectionValues.symmetric,
         descriptor: "本編から続く親友",
-        descriptorLocale: "ja-JP",
-        modelProviderFamily: "fake",
-        modelId: "itotori-fake-character-v0",
-        modelContextWindowTokens: 16000,
-        modelMaxOutputTokens: 1024,
-        promptTemplateVersion: "wiki-character-v1",
-        promptHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        generatedAt: GENERATED_AT,
-        citations: [
-          { bridgeUnitId: "base-unit-2", citedSourceHash: "hash-base-2", citeOrdinal: 1 },
-        ],
+        bridgeUnitId: "base-unit-2",
       });
 
       const terminology = new ItotoriTerminologyRepository(context.db);
@@ -384,7 +319,240 @@ describe("ItotoriWikiReadmodelRepository", () => {
       await context.close();
     }
   });
+
+  it("projects character history from immutable central entry versions", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await new ItotoriProjectRepository(context.db).importSourceBundle(actor, {
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        targetLocale: "en-US",
+        drafts: {},
+        bridge: bridgeFixture(),
+      });
+
+      const artifacts = new ItotoriContextArtifactRepository(context.db);
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-bio-versioned-hero",
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        sourceRevisionId: SOURCE_REVISION_ID,
+        characterId: "勇者",
+        bioText: "最初の人物像。",
+        bridgeUnitId: "wiki-unit-1",
+        generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+      });
+
+      const revisedSourceRevisionId = "bridge-wiki-readmodel-v2:bundle-revision";
+      await new ItotoriProjectRepository(context.db).importSourceBundle(actor, {
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        targetLocale: "en-US",
+        drafts: {},
+        bridge: bridgeFixture({ bridgeId: "bridge-wiki-readmodel-v2", unitPrefix: "wiki-v2" }),
+      });
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-bio-versioned-hero",
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        sourceRevisionId: revisedSourceRevisionId,
+        characterId: "勇者",
+        bioText: "更新された人物像。",
+        bridgeUnitId: "wiki-v2-unit-2",
+        generatedAt: new Date("2026-07-07T00:00:00.000Z"),
+      });
+
+      const entry = (
+        await new ItotoriWikiReadmodelRepository(context.db).loadEntries(actor, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          kind: wikiEntryKindValues.character,
+        })
+      ).entries.find((candidate) => candidate.entryId === "character:勇者");
+
+      expect(entry).toMatchObject({
+        kind: wikiEntryKindValues.character,
+        bio: {
+          characterBioId: "wiki-bio-versioned-hero",
+          text: "更新された人物像。",
+        },
+      });
+      const character = entry?.kind === wikiEntryKindValues.character ? entry : undefined;
+      expect(character?.appearances[0]?.bridgeUnitId).toBe("wiki-v2-unit-2");
+      expect(character?.revisions).toHaveLength(2);
+      expect(
+        new Set(character?.revisions.map((revision) => revision.contextEntryVersionId)).size,
+      ).toBe(2);
+
+      const historicalEntry = (
+        await new ItotoriWikiReadmodelRepository(context.db).loadEntries(actor, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          kind: wikiEntryKindValues.character,
+        })
+      ).entries.find((candidate) => candidate.entryId === "character:勇者");
+      const historical =
+        historicalEntry?.kind === wikiEntryKindValues.character ? historicalEntry : undefined;
+      expect(historical?.bio.text).toBe("最初の人物像。");
+      expect(historical?.appearances[0]?.bridgeUnitId).toBe("wiki-unit-1");
+      expect(historical?.revisions).toHaveLength(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps pre-semanticKind central character heads and history visible", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await new ItotoriProjectRepository(context.db).importSourceBundle(actor, {
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        targetLocale: "en-US",
+        drafts: {},
+        bridge: bridgeFixture(),
+      });
+      const artifacts = new ItotoriContextArtifactRepository(context.db);
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-legacy-central-bio",
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        sourceRevisionId: SOURCE_REVISION_ID,
+        characterId: "和人",
+        bioText: "最初の中央人物像。",
+        bridgeUnitId: "wiki-unit-1",
+        generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+        semanticKind: false,
+      });
+      await saveCharacterRelationship(artifacts, {
+        contextArtifactId: "wiki-legacy-central-relationship",
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        sourceRevisionId: SOURCE_REVISION_ID,
+        fromCharacterId: "和人",
+        toCharacterId: "ステラ",
+        descriptor: "幼なじみ",
+        bridgeUnitId: "wiki-unit-2",
+        semanticKind: false,
+      });
+      await saveCharacterBio(artifacts, {
+        contextArtifactId: "wiki-legacy-central-bio",
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        sourceRevisionId: SOURCE_REVISION_ID,
+        characterId: "和人",
+        bioText: "更新された中央人物像。",
+        bridgeUnitId: "wiki-unit-1",
+        generatedAt: new Date("2026-07-07T00:00:00.000Z"),
+        semanticKind: false,
+      });
+
+      const entries = await new ItotoriWikiReadmodelRepository(context.db).loadEntries(actor, {
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        kind: wikiEntryKindValues.character,
+      });
+      const character = entries.entries.find((entry) => entry.entryId === "character:和人");
+      expect(character).toMatchObject({
+        kind: wikiEntryKindValues.character,
+        bio: { text: "更新された中央人物像。" },
+        relationships: [
+          expect.objectContaining({ toCharacterId: "ステラ", descriptor: "幼なじみ" }),
+        ],
+      });
+      expect(character?.kind === "character" ? character.revisions : []).toHaveLength(2);
+    } finally {
+      await context.close();
+    }
+  });
 });
+
+type CharacterBioFixtureInput = {
+  contextArtifactId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  characterId: string;
+  bioText: string;
+  bridgeUnitId: string;
+  generatedAt?: Date;
+  /** Simulates central entries written before semanticKind was standardized. */
+  semanticKind?: boolean;
+};
+
+async function saveCharacterBio(
+  repository: ItotoriContextArtifactRepository,
+  input: CharacterBioFixtureInput,
+): Promise<void> {
+  await repository.upsertArtifact(actor, {
+    contextArtifactId: input.contextArtifactId,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+    category: "character_note",
+    title: `Character: ${input.characterId}`,
+    body: input.bioText,
+    data: {
+      ...(input.semanticKind === false ? {} : { semanticKind: "character_bio" }),
+      characterId: input.characterId,
+      bioLocale: "ja-JP",
+      citedUnitIds: [input.bridgeUnitId],
+      promptTemplateVersion: "wiki-character-v1",
+      generatedAt: (input.generatedAt ?? GENERATED_AT).toISOString(),
+    },
+    producedByTool: "wiki-readmodel-test",
+    producerVersion: "wiki-character-v1",
+    sourceUnits: [{ bridgeUnitId: input.bridgeUnitId, citation: `character:${input.characterId}` }],
+  });
+}
+
+type CharacterRelationshipFixtureInput = {
+  contextArtifactId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  fromCharacterId: string;
+  toCharacterId: string;
+  descriptor: string;
+  bridgeUnitId: string;
+  generatedAt?: Date;
+  /** Simulates central entries written before semanticKind was standardized. */
+  semanticKind?: boolean;
+};
+
+async function saveCharacterRelationship(
+  repository: ItotoriContextArtifactRepository,
+  input: CharacterRelationshipFixtureInput,
+): Promise<void> {
+  await repository.upsertArtifact(actor, {
+    contextArtifactId: input.contextArtifactId,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+    category: "character_note",
+    title: `Relationship: ${input.fromCharacterId}->${input.toCharacterId}:Friendship`,
+    body: input.descriptor,
+    data: {
+      ...(input.semanticKind === false ? {} : { semanticKind: "character_relationship" }),
+      fromCharacterId: input.fromCharacterId,
+      toCharacterId: input.toCharacterId,
+      kind: "Friendship",
+      direction: "Symmetric",
+      descriptorLocale: "ja-JP",
+      citedUnitIds: [input.bridgeUnitId],
+      promptTemplateVersion: "wiki-character-v1",
+      generatedAt: (input.generatedAt ?? GENERATED_AT).toISOString(),
+    },
+    producedByTool: "wiki-readmodel-test",
+    producerVersion: "wiki-character-v1",
+    sourceUnits: [
+      {
+        bridgeUnitId: input.bridgeUnitId,
+        citation: `character-relationship:${input.fromCharacterId}->${input.toCharacterId}`,
+      },
+    ],
+  });
+}
 
 function bridgeFixture({
   bridgeId = "bridge-wiki-readmodel",

@@ -76,7 +76,7 @@ function feedContext(overrides: Partial<ReviewerDetailContext> = {}): ReviewerDe
           feedRole: "Fed the draft's speaker voice consistency (structure-informed injection).",
         },
       ],
-      contextArtifactRefs: ["character-arc:勇者", "route-branch-map", "scene-summary:6010"],
+      contextArtifactIds: ["character-arc:勇者", "route-branch-map", "scene-summary:6010"],
     }),
     diagnostics: [],
     ...overrides,

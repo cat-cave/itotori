@@ -31,6 +31,12 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
 } from "../src/orchestrator/agentic-loop.js";
+import {
+  characterRelationshipArtifactId,
+  EnrichmentFailurePersistenceError,
+  InMemoryContextArtifactRepository,
+  persistTypedEnrichmentFailure,
+} from "../src/orchestrator/context-brain.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
@@ -365,5 +371,220 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     // Deterministic context + all semantic refs present.
     const prompt = captured[0] ?? "";
     expect(prompt).toContain("Structure-informed context");
+  });
+
+  it("persists explicit no-content records for valid empty semantic packs", async () => {
+    const unit = makeUnit("おはよう。");
+    const store = new InMemoryContextArtifactRepository();
+    const bundle = await runAgenticLoopForUnit(
+      { ...makeInput(unit), contextArtifactRepository: store },
+      DEV_POLICY,
+      makePolicy(),
+      makeFactory(unit, [], {}),
+    );
+
+    const contextStage = bundle.stages.find((stage) => stage.stageName === "context");
+    expect(contextStage?.droppedEnrichments).toBeUndefined();
+    const noContentRecords = store.listAll().filter((artifact) => {
+      const semanticResult = artifact.data.semanticResult;
+      return (
+        typeof semanticResult === "object" &&
+        semanticResult !== null &&
+        !Array.isArray(semanticResult) &&
+        (semanticResult as { kind?: unknown }).kind === "no_content"
+      );
+    });
+    expect(noContentRecords).toHaveLength(3);
+    expect(noContentRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: "character_note", status: "active" }),
+        expect.objectContaining({ category: "terminology_candidate", status: "active" }),
+        expect.objectContaining({ category: "route_map", status: "active" }),
+      ]),
+    );
+    for (const record of noContentRecords) {
+      expect(record.body.trim()).not.toHaveLength(0);
+      expect(record.data.semanticResult).toEqual(
+        expect.objectContaining({ kind: "no_content", agentLabel: expect.any(String) }),
+      );
+      expect(record.sourceUnits).not.toHaveLength(0);
+    }
+  });
+
+  it("reuses a persisted character relationship on the next loop without a duplicate agent call", async () => {
+    const unit = makeUnit("おはよう。");
+    const store = new InMemoryContextArtifactRepository();
+    const policy = makePolicy();
+    const captured: string[] = [];
+    const baseFactory = makeFactory(unit, captured, {});
+    let characterAgentCalls = 0;
+    const factory: AgenticLoopProviderFactory = (args) => {
+      if (args.stage !== "context" || args.agentLabel !== "character-relationship") {
+        return baseFactory(args);
+      }
+      return new FakeModelProvider({
+        providerName: "character-relationship-reuse-fixture",
+        generate: () => {
+          characterAgentCalls += 1;
+          return JSON.stringify({
+            bios: [
+              {
+                characterId: SPEAKER_NAME,
+                bioText: "和人は物語の主人公。",
+                citedUnitIds: [unit.bridgeUnitId],
+              },
+              {
+                characterId: "ステラ",
+                bioText: "ステラは和人の幼なじみ。",
+                citedUnitIds: [unit.bridgeUnitId],
+              },
+            ],
+            relationships: [
+              {
+                fromCharacterId: SPEAKER_NAME,
+                toCharacterId: "ステラ",
+                kind: "Friendship",
+                direction: "Symmetric",
+                descriptor: "和人とステラは幼なじみ。",
+                citedUnitIds: [unit.bridgeUnitId],
+              },
+            ],
+          });
+        },
+      });
+    };
+    const input: AgenticLoopUnitInput = {
+      ...makeInput(unit),
+      knownCharacters: [
+        {
+          characterId: SPEAKER_NAME,
+          displayName: SPEAKER_NAME,
+          bioLocale: "ja-JP",
+          bioText: "",
+          hiddenFromReader: false,
+        },
+        {
+          characterId: "ステラ",
+          displayName: "ステラ",
+          bioLocale: "ja-JP",
+          bioText: "",
+          hiddenFromReader: false,
+        },
+      ],
+      contextArtifactRepository: store,
+    };
+
+    await runAgenticLoopForUnit(input, DEV_POLICY, policy, factory);
+    const relationshipId = characterRelationshipArtifactId(
+      policy.projectId,
+      `${SPEAKER_NAME}->ステラ:Friendship`,
+    );
+    const persisted = store
+      .listAll()
+      .find((artifact) => artifact.contextArtifactId === relationshipId);
+    expect(persisted).toMatchObject({
+      body: "和人とステラは幼なじみ。",
+      data: expect.objectContaining({
+        semanticKind: "character_relationship",
+        descriptorLocale: "ja-JP",
+        promptTemplateVersion: expect.any(String),
+        promptHash: expect.any(String),
+        modelProfile: expect.any(Object),
+      }),
+    });
+
+    await runAgenticLoopForUnit(input, DEV_POLICY, policy, factory);
+    expect(characterAgentCalls).toBe(1);
+    expect(captured.at(-1)).toContain("和人とステラは幼なじみ。");
+  });
+
+  it("reuses an existing speaker label for the same unit without another provider invocation", async () => {
+    const unit = makeUnit("おはよう。");
+    const store = new InMemoryContextArtifactRepository();
+    const baseFactory = makeFactory(unit, [], {});
+    let speakerProviderCalls = 0;
+    const factory: AgenticLoopProviderFactory = (args) => {
+      const provider = baseFactory(args);
+      if (args.stage !== "pre_translation" || args.agentLabel !== "speaker-label") {
+        return provider;
+      }
+      return {
+        descriptor: provider.descriptor,
+        invoke: async (request) => {
+          speakerProviderCalls += 1;
+          return provider.invoke(request);
+        },
+      };
+    };
+
+    await runAgenticLoopForUnit(
+      { ...makeInput(unit), contextArtifactRepository: store },
+      DEV_POLICY,
+      makePolicy(),
+      factory,
+    );
+    const reused = await runAgenticLoopForUnit(
+      { ...makeInput(unit), contextArtifactRepository: store },
+      DEV_POLICY,
+      makePolicy(),
+      factory,
+    );
+
+    expect(speakerProviderCalls).toBe(1);
+    expect(reused.stages.find((stage) => stage.stageName === "pre_translation")).toMatchObject({
+      outcome: "reused:existing-speaker-label",
+      invocations: [],
+    });
+  });
+
+  it("surfaces a typed error when a failure record cannot be persisted", async () => {
+    const repository: NonNullable<AgenticLoopUnitInput["contextArtifactRepository"]> = {
+      upsertArtifact: async () => {
+        throw new Error("Postgres unavailable");
+      },
+      invalidateAffectedArtifacts: async () => ({
+        status: "completed",
+        projectId: "unused",
+        localeBranchId: "unused",
+        sourceRevisionId: null,
+        invalidatedCount: 0,
+        invalidatedArtifactIds: [],
+        diagnostics: [],
+      }),
+      retrieveArtifacts: async () => ({
+        status: "completed",
+        toolName: "tool.context-artifacts",
+        toolVersion: "1.0.0",
+        projectId: "unused",
+        localeBranchId: "unused",
+        sourceRevisionId: null,
+        query: null,
+        normalizedQuery: null,
+        categories: [],
+        matches: [],
+        diagnostics: [],
+      }),
+    };
+
+    const failure = await persistTypedEnrichmentFailure({
+      repository,
+      actor: ACTOR,
+      projectId: "019ed079-1000-7000-8000-0000000sr010",
+      localeBranchId: "019ed079-1000-7000-8000-0000000sr011",
+      sourceRevisionId: REVISION_ID,
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      agentLabel: "scene-summary",
+      error: new Error("provider response malformed"),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(EnrichmentFailurePersistenceError);
+    expect(failure).toMatchObject({
+      attemptedFailure: {
+        agentLabel: "scene-summary",
+      },
+    });
+    expect(failure).not.toHaveProperty("contextArtifactId");
   });
 });

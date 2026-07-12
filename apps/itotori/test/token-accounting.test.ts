@@ -203,7 +203,15 @@ function inputFixture(): TranslationInvocationInput {
       },
     ],
     styleGuide: [{ ruleId: "tone-001", section: "tone", guidance: "Use a formal register." }],
-    contextArtifactRefs: ["context-artifact:scene-summary-001"],
+    contextArtifacts: [
+      {
+        contextArtifactId: "context-artifact:scene-summary-001",
+        category: "scene_summary",
+        title: "Scene summary 001",
+        body: "The hero meets Mira at the station before the route split.",
+        contentHash: "sha256:fixture-scene-summary-001",
+      },
+    ],
     modelProfile: fakeModelProfile(),
     promptTemplateVersion: "itotori-translation-agent-v1",
     now: FIXED_NOW,

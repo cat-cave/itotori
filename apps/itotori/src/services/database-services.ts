@@ -15,6 +15,7 @@ import {
   ItotoriCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
+  ItotoriContextArtifactRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriLocalizationPassRunConfigRepository,
   ItotoriModelLedgerRepository,
@@ -23,9 +24,9 @@ import {
   ItotoriPrincipalRepository,
   ItotoriProjectRepository,
   ItotoriReviewerQueueRepository,
-  ItotoriRouteChoiceMapRepository,
   ItotoriSceneCoverageRepository,
-  ItotoriSceneSummaryRepository,
+  ItotoriSemanticContextReadRepository,
+  ItotoriSourceUnitRepository,
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideService,
   ItotoriStyleGuideRepository,
@@ -114,6 +115,10 @@ import {
   resolveSceneSummaryProvider,
   type SceneSummaryCliDependencies,
 } from "../agents/scene-summary/index.js";
+import {
+  resolveCharacterRelationshipProvider,
+  type CharacterRelationshipCliDependencies,
+} from "../agents/character-relationship/index.js";
 import type { ProviderFamily } from "../providers/types.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import type {
@@ -163,6 +168,7 @@ import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
 import type { TelemetryQuery } from "../telemetry/queries.js";
 import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { AuthorizationActor, ItotoriDatabase } from "@itotori/db";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   SceneCoverageService,
   type SceneCoverageServicePort,
@@ -231,6 +237,26 @@ export type ItotoriApplicationServices = {
     defaultProviderId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
+  };
+  characterRelationship: {
+    cliDependencies(
+      provider: ProviderFamily,
+      providerRunsDir?: string,
+    ): Promise<CharacterRelationshipCliDependencies>;
+    defaultModelId: string;
+    defaultProviderId: string;
+    defaultProviderFamily: ProviderFamily;
+    defaultContextWindowTokens: number;
+  };
+  localizeProjectStage: {
+    contextArtifactRepository: ItotoriContextArtifactRepository;
+    prepareContextScope(input: {
+      actor: AuthorizationActor;
+      bridge: BridgeBundleV02;
+      projectId: string;
+      localeBranchId: string;
+      targetLocale: string;
+    }): Promise<void>;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
   assetDecisions: Omit<AssetDecisionsCliPort, "loadActiveDecisions"> & {
@@ -704,9 +730,10 @@ export async function withDatabaseItotoriServices<T>(
       translationMemoryRepository,
     );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
-    const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
+    const contextArtifactRepository = new ItotoriContextArtifactRepository(context.db);
+    const sourceUnitRepository = new ItotoriSourceUnitRepository(context.db);
+    const semanticContextReadRepository = new ItotoriSemanticContextReadRepository(context.db);
     const sceneCoverageRepository = new ItotoriSceneCoverageRepository(context.db);
-    const routeChoiceMapRepository = new ItotoriRouteChoiceMapRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
@@ -750,9 +777,13 @@ export async function withDatabaseItotoriServices<T>(
         getDashboardStatus: () => projectRepository.getDashboardStatus(),
         listLocaleBranchIdentities: (projectId) =>
           projectRepository.listLocaleBranchIdentities(projectId),
-        loadSceneSummaries: (query) => sceneSummaryRepository.loadSummaries(localUserActor, query),
+        loadSceneSummaries: (query) =>
+          semanticContextReadRepository.loadSceneSummaries(localUserActor, {
+            ...query,
+            includeStale: true,
+          }),
         loadBridgeUnitsForSummary: (bridgeUnitIds) =>
-          sceneSummaryRepository.loadBridgeUnitsForSummary(localUserActor, { bridgeUnitIds }),
+          sourceUnitRepository.loadSourceUnits(localUserActor, { bridgeUnitIds }),
         loadActiveAssetDecisions: (projectId, localeBranchId) =>
           assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
         loadCandidateAssets: (projectId, localeBranchId) =>
@@ -910,7 +941,8 @@ export async function withDatabaseItotoriServices<T>(
         cliDependencies: async (providerFamily, providerRunsDir) => ({
           actor: localUserActor,
           batchRepository: translationBatchRepository,
-          summaryRepository: sceneSummaryRepository,
+          sourceUnitRepository,
+          contextArtifactRepository,
           provider: resolveSceneSummaryProvider(
             providerFamily,
             providerRunsDir === undefined
@@ -936,6 +968,51 @@ export async function withDatabaseItotoriServices<T>(
         defaultProviderId: "anthropic",
         defaultProviderFamily: "openrouter",
         defaultContextWindowTokens: 16000,
+      },
+      characterRelationship: {
+        cliDependencies: async (providerFamily, providerRunsDir) => ({
+          actor: localUserActor,
+          contextArtifactRepository,
+          provider: resolveCharacterRelationshipProvider(
+            providerFamily,
+            providerRunsDir === undefined
+              ? undefined
+              : { artifactRecorder: new LocalProviderRunArtifactRecorder(providerRunsDir) },
+          ),
+          loadInputContext: async (_actor, input) => {
+            const units = await sourceUnitRepository.loadSourceUnitsForScope(localUserActor, {
+              projectId: input.projectId,
+              localeBranchId: input.localeBranchId,
+            });
+            return {
+              units: units.map((unit) => ({
+                bridgeUnitId: unit.bridgeUnitId,
+                sourceUnitKey: unit.sourceUnitKey,
+                sourceText: unit.sourceText,
+                sourceHash: unit.sourceHash,
+                ...(unit.speaker === null ? {} : { speaker: unit.speaker }),
+              })),
+              curatedCharacters: [],
+              glossaryExcerpt: [],
+            };
+          },
+        }),
+        defaultModelId: "anthropic/claude-3-5-sonnet",
+        defaultProviderId: "anthropic",
+        defaultProviderFamily: "openrouter",
+        defaultContextWindowTokens: 16000,
+      },
+      localizeProjectStage: {
+        contextArtifactRepository,
+        prepareContextScope: async (input) => {
+          await projectRepository.importSourceBundle(input.actor, {
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            targetLocale: input.targetLocale,
+            drafts: {},
+            bridge: input.bridge,
+          });
+        },
       },
       engineCapabilityReports: new EngineCapabilityReportService(
         engineCapabilityReportRepository,
@@ -1152,21 +1229,11 @@ export async function withDatabaseItotoriServices<T>(
         loadIdentity: () => principalRepository.loadActorIdentity(localUserActor),
       },
       playRouteMap: new RouteMapReadModelService({
-        routeMaps: {
-          loadRouteMapsByProject: (actor, query) =>
-            routeChoiceMapRepository.loadRouteMapsByProject(actor, query),
-          loadRouteChoicesByProject: (actor, query) =>
-            routeChoiceMapRepository.loadRouteChoicesByProject(actor, query),
-        },
+        contextArtifacts: semanticContextReadRepository,
       }),
       sceneCoverage: new SceneCoverageService({
         coverage: sceneCoverageRepository,
-        routeMaps: {
-          loadRouteMapsByProject: (actor, query) =>
-            routeChoiceMapRepository.loadRouteMapsByProject(actor, query),
-          loadRouteChoicesByProject: (actor, query) =>
-            routeChoiceMapRepository.loadRouteChoicesByProject(actor, query),
-        },
+        contextArtifacts: semanticContextReadRepository,
       }),
     });
   } finally {

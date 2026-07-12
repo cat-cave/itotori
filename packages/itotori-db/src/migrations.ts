@@ -388,6 +388,14 @@ export const migrations = [
     id: "0082_backfill_localization_run_cost_accounts",
     file: "0082_backfill_localization_run_cost_accounts.sql",
   },
+  {
+    id: "0083_context_entry_versions",
+    file: "0083_context_entry_versions.sql",
+  },
+  {
+    id: "0084_retire_legacy_semantic_agent_tables",
+    file: "0084_retire_legacy_semantic_agent_tables.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

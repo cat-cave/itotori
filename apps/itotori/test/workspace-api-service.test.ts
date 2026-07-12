@@ -10,15 +10,14 @@
 import { describe, expect, it } from "vitest";
 import type {
   AssetDecisionRecord,
-  BridgeUnitTextRecord,
   CandidateAssetRecord,
+  ContextSceneSummary,
   JobsRunTableReadModel,
-  LoadSceneSummariesQuery,
   LocaleBranchIdentity,
   ProjectDashboardStatus,
-  SceneSummaryRecord,
   SearchExactInput,
   SearchExactToolResult,
+  SourceUnitTextRecord,
   TerminologySearchInput,
   TerminologySearchReadModel,
 } from "@itotori/db";
@@ -143,34 +142,25 @@ function localeBranchIdentities(): LocaleBranchIdentity[] {
   ];
 }
 
-function sceneSummary(overrides: Partial<SceneSummaryRecord> = {}): SceneSummaryRecord {
+function sceneSummary(overrides: Partial<ContextSceneSummary> = {}): ContextSceneSummary {
   return {
-    sceneSummaryId: "scene-summary-1",
+    contextArtifactId: "scene-summary-1",
     projectId: PROJECT_ID,
     localeBranchId: BRANCH_ID,
     sourceRevisionId: SOURCE_REVISION_ID,
     sceneId: "scene.001",
     summaryLocale: "en-US",
     summaryText: "The heroine greets the protagonist at the school gate.",
-    modelProviderFamily: "fake",
-    modelId: "itotori-fake-scene-summary-v0",
-    modelContextWindowTokens: 16000,
-    modelMaxOutputTokens: null,
     promptTemplateVersion: "v1",
-    promptHash: "sha256:prompt",
-    inputTokenEstimate: 0,
-    completionTokens: 0,
     status: "Fresh",
     invalidatedAt: null,
-    invalidatedReason: null,
     generatedAt: NOW,
-    createdAt: NOW,
     citations: [{ bridgeUnitId: "bridge-unit-1", citedSourceHash: "sha256:u1", citeOrdinal: 0 }],
     ...overrides,
   };
 }
 
-function bridgeUnit(): BridgeUnitTextRecord {
+function bridgeUnit(): SourceUnitTextRecord {
   return {
     bridgeUnitId: "bridge-unit-1",
     sourceUnitKey: "scene.001.line.001",
@@ -373,7 +363,7 @@ function makeService(overrides: StubOverrides = {}): LocalizationWorkspaceApiSer
   const readPort: LocalizationWorkspaceReadPort = {
     getDashboardStatus: async () => dashboardStatus(),
     listLocaleBranchIdentities: async () => localeBranchIdentities(),
-    loadSceneSummaries: async (_query: LoadSceneSummariesQuery) => [sceneSummary()],
+    loadSceneSummaries: async () => [sceneSummary()],
     loadBridgeUnitsForSummary: async () => new Map([["bridge-unit-1", bridgeUnit()]]),
     loadActiveAssetDecisions: async (): Promise<AssetDecisionRecord[]> => [],
     loadCandidateAssets: async (): Promise<CandidateAssetRecord[]> => [
@@ -508,7 +498,7 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
     let requestedBridgeUnitIds: string[] = [];
     const summaries = Array.from({ length: 125 }, (_, index) =>
       sceneSummary({
-        sceneSummaryId: `scene-summary-${index}`,
+        contextArtifactId: `scene-summary-${index}`,
         sceneId: `scene.${String(index).padStart(3, "0")}`,
         summaryText: `Translated scene summary ${index}`,
       }),
@@ -548,7 +538,7 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
       loadSceneSummaries: async () => [
         sceneSummary(),
         sceneSummary({
-          sceneSummaryId: "scene-summary-other",
+          contextArtifactId: "scene-summary-other",
           sceneId: "scene.002",
           localeBranchId: OTHER_BRANCH_ID,
         }),
@@ -572,7 +562,7 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
     // its REQUIRED identity (sourceUnitKey / occurrenceId) must never be
     // substituted with the raw bridgeUnitId and marked cited:true.
     const service = makeService({
-      loadBridgeUnitsForSummary: async () => new Map<string, BridgeUnitTextRecord>(),
+      loadBridgeUnitsForSummary: async () => new Map<string, SourceUnitTextRecord>(),
     });
     const model = await service.loadSceneBrowse({
       projectId: PROJECT_ID,
@@ -598,7 +588,7 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
   it("does not emit an unresolved-cited-unit diagnostic when a resolved unit has a legitimately-absent speaker", async () => {
     const service = makeService({
       loadBridgeUnitsForSummary: async () =>
-        new Map<string, BridgeUnitTextRecord>([
+        new Map<string, SourceUnitTextRecord>([
           ["bridge-unit-1", { ...bridgeUnit(), speaker: null }],
         ]),
     });

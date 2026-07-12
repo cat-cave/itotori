@@ -12,21 +12,6 @@ export {
   type RenderedPrompt,
 } from "./prompt-template.js";
 export {
-  bioToSaveInput,
-  persistCharacterBio,
-  persistCharacterRelationship,
-  recordToBio,
-  recordToRelationship,
-  relationshipToSaveInput,
-} from "./persistence.js";
-export {
-  markStaleCharacterArtifactsForRevision,
-  type CharacterBioDrift,
-  type CharacterRelationshipDrift,
-  type CharacterStalenessScanInput,
-  type CharacterStalenessScanResult,
-} from "./staleness.js";
-export {
   resolveCharacterRelationshipProvider,
   runCheckCharacterRelationshipsCli,
   runGenerateCharacterRelationshipsCli,
@@ -34,6 +19,7 @@ export {
   type CheckCharacterRelationshipsCliInput,
   type GenerateCharacterRelationshipsCliInput,
   type GenerateCharacterRelationshipsCliResult,
+  type CentralCharacterCheckResult,
 } from "./cli.js";
 export {
   CHARACTER_RELATIONSHIP_DIRECTIONS,

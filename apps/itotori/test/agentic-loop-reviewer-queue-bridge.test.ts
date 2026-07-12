@@ -358,7 +358,7 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     expect(typeof record.draft.draftText).toBe("string");
     expect(record.draft.draftText).toBe(DRAFT_TEXT);
     expect(record.draft.draftStatus).toBe("written_with_qa_callout");
-    expect(Array.isArray(record.context.contextArtifactRefs)).toBe(true);
+    expect(Array.isArray(record.context.contextArtifactIds)).toBe(true);
     expect(record.context.citationRefs).toEqual([GLOSSARY_CITATION_REF]);
     // wiki-structure-context-feed — when a structured injection was available
     // it is persisted on the decision record so the reviewer detail UI can
