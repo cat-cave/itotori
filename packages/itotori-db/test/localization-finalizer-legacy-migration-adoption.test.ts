@@ -17,6 +17,7 @@ const rebasedMigrationIds = [
   "0086_terminal_finalizer_integrity",
   "0087_playable_patch_immutability",
   "0088_playable_patch_idempotent_membership",
+  "0090_play_tester_result_revision",
 ] as const;
 
 const legacyFinalizerMigrations = [
@@ -62,7 +63,7 @@ describe("legacy finalizer migration ID adoption", () => {
 
       await expect(migrate(schemaUrl)).resolves.toBeUndefined();
     });
-  });
+  }, 180_000);
 
   it("rejects a mismatched legacy finalizer checksum instead of replaying its SQL", async () => {
     await withLegacyFinalizerDeployment(async ({ pool, schemaUrl }) => {

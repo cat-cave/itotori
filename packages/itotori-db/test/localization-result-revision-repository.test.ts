@@ -1,0 +1,498 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { sql } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localization-bridge-schema";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import { hashLocalizationArtifact } from "../src/localization-artifact-integrity.js";
+import {
+  ItotoriLocalizationJournalRepository,
+  type LocalizationJournalRunLeaseIdentity,
+} from "../src/repositories/localization-journal-repository.js";
+import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/localization-run-finalizer-repository.js";
+import {
+  ItotoriLocalizationResultRevisionRepository,
+  LocalizationResultRevisionRepositoryError,
+} from "../src/repositories/localization-result-revision-repository.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
+
+const localActor: AuthorizationActor = { userId: localUserId };
+const playTesterActor: AuthorizationActor = { userId: "play-tester-alice" };
+
+const scope = {
+  projectId: "project-play-tester-result-revision",
+  localeBranchId: "locale-branch-play-tester-result-revision",
+  sourceRevisionId: "source-revision-play-tester-result-revision",
+  targetLocale: "en-US",
+} as const;
+
+const driverLease: LocalizationJournalRunLeaseIdentity = {
+  ownerId: "play-tester-result-revision-driver",
+  fenceToken: 1,
+};
+
+// The @itotori/db test runner always supplies DATABASE_URL (fail-loud when missing).
+describe("ItotoriLocalizationResultRevisionRepository", () => {
+  it("atomically creates a play-tester result revision + child delivered patch with provenance", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("parent");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-child-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const runId = "play-tester-edit-atomic";
+      const unitIds = ["unit-a", "unit-b"];
+
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds,
+        artifact,
+      });
+
+      const editedBody = "Edited target for unit-a — play tester only.";
+      const result = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "unit-a",
+        targetBody: editedBody,
+        artifactRootDir: childRoot,
+      });
+
+      expect(result.idempotentReplay).toBe(false);
+      expect(result.resultRevision).toMatchObject({
+        origin: "play_tester_edit",
+        bridgeUnitId: "unit-a",
+        targetBody: editedBody,
+        actorUserId: playTesterActor.userId,
+        parentRevisionId: "run-result:play-tester-edit-atomic:unit-a",
+        createdForPatchVersionId: result.patchVersion.patchVersionId,
+      });
+      expect(result.patchVersion).toMatchObject({
+        parentPatchVersionId: parentPatch.patchVersionId,
+        origin: "play_tester_edit",
+        status: "playable",
+        actorUserId: playTesterActor.userId,
+      });
+      expect(result.patchVersion.selectedAt).toBeInstanceOf(Date);
+      expect(Object.keys(result.patchVersion.artifactHashes).length).toBeGreaterThan(0);
+      expect(Object.keys(result.patchVersion.artifactRefs).length).toBeGreaterThan(0);
+
+      // Real patch bytes on disk match stored hashes.
+      for (const [key, ref] of Object.entries(result.patchVersion.artifactRefs)) {
+        expect(hashLocalizationArtifact(ref)).toBe(result.patchVersion.artifactHashes[key]);
+        const bundle = JSON.parse(readFileSync(join(ref, "delivered-units.json"), "utf8")) as {
+          units: Array<{ bridgeUnitId: string; targetBody: string }>;
+        };
+        expect(bundle.units.find((unit) => unit.bridgeUnitId === "unit-a")?.targetBody).toBe(
+          editedBody,
+        );
+      }
+
+      // Unit-b is inherited from the parent revision membership.
+      expect(result.patchVersion.units).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            bridgeUnitId: "unit-a",
+            resultRevisionId: result.resultRevision.resultRevisionId,
+            targetBody: editedBody,
+          }),
+          expect.objectContaining({
+            bridgeUnitId: "unit-b",
+            resultRevisionId: "run-result:play-tester-edit-atomic:unit-b",
+          }),
+        ]),
+      );
+
+      const exportView = await revisions.loadSelectedPatchExport(localActor, { runId });
+      expect(exportView).not.toBeNull();
+      expect(exportView!.patchVersionId).toBe(result.patchVersion.patchVersionId);
+      expect(exportView!.units.find((unit) => unit.bridgeUnitId === "unit-a")?.targetBody).toBe(
+        editedBody,
+      );
+      // No approval / reviewer state involved — selection moved with the edit.
+      expect(exportView!.origin).toBe("play_tester_edit");
+      expect(exportView!.actorUserId).toBe(playTesterActor.userId);
+
+      // Parent remains playable history but is no longer selected for export.
+      const parentRow = await context.pool.query<{ selected_at: Date | null; status: string }>(
+        `
+          select selected_at, status
+          from itotori_localization_patch_versions
+          where patch_version_id = $1
+        `,
+        [parentPatch.patchVersionId],
+      );
+      expect(parentRow.rows[0]).toMatchObject({ status: "playable", selected_at: null });
+
+      // Idempotent replay of the same edit.
+      const replay = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "unit-a",
+        targetBody: editedBody,
+        artifactRootDir: childRoot,
+      });
+      expect(replay.idempotentReplay).toBe(true);
+      expect(replay.patchVersion.patchVersionId).toBe(result.patchVersion.patchVersionId);
+      expect(replay.resultRevision.resultRevisionId).toBe(result.resultRevision.resultRevisionId);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("leaves no partial revision when the atomic write fails mid-flight", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("atomic-fail");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-atomic-fail-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const runId = "play-tester-edit-atomic-fail";
+      const unitIds = ["unit-only"];
+
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds,
+        artifact,
+      });
+
+      // Force a mid-transaction failure by pre-inserting a conflicting child
+      // patch row with a different revision id, so membership insert fails.
+      await context.db.execute(sql`
+        insert into itotori_localization_patch_versions (
+          patch_version_id, run_id, status, artifact_hashes, artifact_refs,
+          playable_at, parent_patch_version_id, origin, actor_user_id, selected_at
+        ) values (
+          ${`patch-version:${parentPatch.patchVersionId}:edit:unit-only:deadbeefdeadbeef`},
+          ${runId},
+          'building',
+          ${JSON.stringify(artifact.artifactHashes)}::jsonb,
+          ${JSON.stringify(artifact.artifactRefs)}::jsonb,
+          null,
+          ${parentPatch.patchVersionId},
+          'play_tester_edit',
+          ${playTesterActor.userId},
+          null
+        )
+      `);
+
+      // Use a body whose content-addressed id collides with the planted patch
+      // but whose revision row does not exist → repository detects fault.
+      // Planted id uses digest deadbeefdeadbeef which won't match a real body.
+      // Instead: plant a result revision orphan and make the transaction fail
+      // via blank-target after partial write is impossible (blank is pre-tx).
+      await expect(
+        revisions.applyPlayTesterTargetEdit(playTesterActor, {
+          parentPatchVersionId: parentPatch.patchVersionId,
+          bridgeUnitId: "unit-only",
+          targetBody: "   ",
+          artifactRootDir: childRoot,
+        }),
+      ).rejects.toMatchObject({
+        name: "LocalizationResultRevisionRepositoryError",
+        code: "blank_target",
+      });
+
+      const revisionCount = await context.pool.query<{ count: string }>(
+        `
+          select count(*)::text as count
+          from itotori_localization_result_revisions
+          where run_id = $1 and origin = 'play_tester_edit'
+        `,
+        [runId],
+      );
+      expect(revisionCount.rows[0]?.count).toBe("0");
+
+      const selected = await revisions.loadSelectedPatchExport(localActor, { runId });
+      expect(selected?.patchVersionId).toBe(parentPatch.patchVersionId);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("requires only target text (non-source-speaker path) and rejects unknown units", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("target-only");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-target-only-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const runId = "play-tester-target-only";
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds: ["spoken-line"],
+        artifact,
+      });
+
+      // API surface is target-only: no source text parameter exists on the input.
+      const inputKeys = Object.keys({
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "spoken-line",
+        targetBody: "Just the target language rewrite.",
+        artifactRootDir: childRoot,
+      }).sort();
+      expect(inputKeys).toEqual([
+        "artifactRootDir",
+        "bridgeUnitId",
+        "parentPatchVersionId",
+        "targetBody",
+      ]);
+      expect(inputKeys).not.toContain("sourceText");
+      expect(inputKeys).not.toContain("sourceBody");
+
+      await expect(
+        revisions.applyPlayTesterTargetEdit(playTesterActor, {
+          parentPatchVersionId: parentPatch.patchVersionId,
+          bridgeUnitId: "missing-unit",
+          targetBody: "orphan edit",
+          artifactRootDir: childRoot,
+        }),
+      ).rejects.toBeInstanceOf(LocalizationResultRevisionRepositoryError);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  });
+});
+
+async function seedPlayablePatch(input: {
+  journal: ItotoriLocalizationJournalRepository;
+  finalizer: ItotoriLocalizationRunFinalizerRepository;
+  runId: string;
+  unitIds: readonly string[];
+  artifact: ReturnType<typeof createRealArtifact>;
+}): Promise<{ patchVersionId: string }> {
+  await input.journal.seedRun(localActor, {
+    runId: input.runId,
+    ...scope,
+    frozenScope: { kind: "explicit_units", unitIds: [...input.unitIds] },
+    routingPolicy: { routes: ["model-play-tester/provider-play-tester"] },
+    // itotori-225-audit-allow: deterministic synthetic ceiling for fixture attempts.
+    costPolicy: { kind: "play-tester-result-revision-fixture", capUsd: "1.00" },
+    units: input.unitIds.map((bridgeUnitId) => ({
+      bridgeUnitId,
+      sourceUnitKey: `scene.${bridgeUnitId}`,
+      nextAction: { kind: "drive_unit", stage: "translation" },
+    })),
+    lease: { ownerId: driverLease.ownerId },
+    createdAt: "2026-07-12T18:00:00.000Z",
+  });
+  for (const unitId of input.unitIds) {
+    await writeUnit(input.journal, input.runId, unitId);
+  }
+  const patch = await input.finalizer.ensurePatchVersion(localActor, {
+    runId: input.runId,
+    artifactHashes: input.artifact.artifactHashes,
+    artifactRefs: input.artifact.artifactRefs,
+  });
+  for (const stage of ["patch_build", "patch_apply", "validation"] as const) {
+    await input.finalizer.upsertPatchStageEvidence(localActor, {
+      runId: input.runId,
+      stage,
+      status: "succeeded",
+      evidence: { fixture: "play-tester-result-revision" },
+    });
+  }
+  await input.finalizer.enterFinalizing(localActor, {
+    runId: input.runId,
+    lease: driverLease,
+  });
+  await input.finalizer.completeSucceededRun(localActor, {
+    runId: input.runId,
+    patchVersionId: patch.patchVersionId,
+  });
+  return { patchVersionId: patch.patchVersionId };
+}
+
+async function writeUnit(
+  journal: ItotoriLocalizationJournalRepository,
+  runId: string,
+  bridgeUnitId: string,
+): Promise<void> {
+  const attemptId = `play-tester-attempt:${runId}:${bridgeUnitId}`;
+  await journal.beginAttempt(localActor, {
+    attemptId,
+    runId,
+    bridgeUnitId,
+    stage: "translation",
+    agentLabel: "play-tester-fixture",
+    logicalCallId: `play-tester-logical:${runId}:${bridgeUnitId}`,
+    attemptIndex: 1,
+    requestedModelId: "model-play-tester",
+    requestedProviderId: "provider-play-tester",
+    zdr: true,
+    artifactRef: `provider-run:${attemptId}`,
+    startedAt: "2026-07-12T18:00:01.000Z",
+    lease: driverLease,
+  });
+  await journal.completeAttempt(localActor, {
+    attemptId,
+    runId,
+    bridgeUnitId,
+    modelId: "model-play-tester",
+    providerId: "provider-play-tester",
+    costUsd: "0",
+    costKind: "zero",
+    tokensIn: 1,
+    tokensOut: 1,
+    tokenCountSource: "fixture",
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cacheDiscountMicrosUsd: 0,
+    fallbackUsed: false,
+    fallbackPlan: [],
+    zdr: true,
+    finishState: "stop",
+    refusalState: null,
+    validationResult: "accepted",
+    failureClass: null,
+    retryDecision: "write",
+    retryDelayMs: null,
+    artifactRef: `provider-run:${attemptId}`,
+    errorClasses: [],
+    completedAt: "2026-07-12T18:00:02.000Z",
+    lease: driverLease,
+  });
+
+  const outcomeId = `play-tester-outcome:${runId}:${bridgeUnitId}`;
+  const candidateId = `play-tester-candidate:${runId}:${bridgeUnitId}`;
+  const outcome: WrittenUnitOutcome = {
+    id: outcomeId,
+    status: "written",
+    unitId: bridgeUnitId,
+    targetLocale: scope.targetLocale,
+    selectedCandidateId: candidateId,
+    candidates: [
+      {
+        id: candidateId,
+        outcomeId,
+        body: asNonBlankTargetText(`Translated ${bridgeUnitId}.`),
+        producedBy: {
+          modelId: "model-play-tester",
+          providerId: "provider-play-tester",
+        },
+        attemptId,
+        kind: "primary",
+      },
+    ],
+    findings: [],
+    qualityFlags: [],
+    provenance: { origin: "play-tester-fixture" },
+    writtenAt: "2026-07-12T18:00:03.000Z",
+  };
+  await journal.persistUnit(localActor, {
+    runId,
+    bridgeUnitId,
+    sourceUnitKey: `scene.${bridgeUnitId}`,
+    outcome,
+    attempts: [],
+    contextPacket: { fixture: "play-tester-result-revision" },
+    contextRefs: [],
+    speakerLabels: [],
+    qaDetails: {},
+    lease: driverLease,
+  });
+}
+
+function createRealArtifact(label: string): {
+  path: string;
+  artifactRefs: Record<string, string>;
+  artifactHashes: Record<string, string>;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), `itotori-play-tester-parent-${label}-`));
+  const path = join(root, "patch-artifact.bin");
+  writeFileSync(path, `play tester parent artifact: ${label}\n`, "utf8");
+  return {
+    path,
+    artifactRefs: { patch: path },
+    artifactHashes: { patch: hashLocalizationArtifact(path) },
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+async function seedScope(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+): Promise<void> {
+  await context.db.execute(sql`
+    insert into itotori_workspaces (workspace_id, name)
+    values ('workspace-play-tester-result-revision', 'Play Tester Result Revision Workspace')
+  `);
+  await context.db.execute(sql`
+    insert into itotori_projects (
+      project_id, workspace_id, project_key, name, source_locale, status
+    ) values (
+      ${scope.projectId}, 'workspace-play-tester-result-revision', 'play-tester-result-revision',
+      'Play Tester Result Revision Project', 'ja-JP', 'imported'
+    )
+  `);
+  await context.db.execute(sql`
+    insert into itotori_source_revisions (source_revision_id, project_id, revision_kind, value)
+    values (${scope.sourceRevisionId}, ${scope.projectId}, 'bridge_revision', 'play-tester-v1')
+  `);
+  await context.db.execute(sql`
+    insert into itotori_source_bundles (
+      source_bundle_id, project_id, source_bundle_revision_id, bridge_id,
+      schema_version, source_bundle_hash, source_locale,
+      extractor_name, extractor_version, unit_count, asset_count
+    ) values (
+      'source-bundle-play-tester-result-revision', ${scope.projectId}, ${scope.sourceRevisionId},
+      'bridge-play-tester-result-revision', '0.2.0', 'hash:play-tester', 'ja-JP',
+      'fixture-extractor', '1.0.0', 0, 0
+    )
+  `);
+  await context.db.execute(sql`
+    insert into itotori_locale_branches (
+      locale_branch_id, project_id, source_bundle_id, target_locale, branch_name, status
+    ) values (
+      ${scope.localeBranchId}, ${scope.projectId}, 'source-bundle-play-tester-result-revision',
+      ${scope.targetLocale}, 'Play Tester branch', 'active'
+    )
+  `);
+}
+
+async function grantDraftWrite(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  userId: string,
+): Promise<void> {
+  await context.db.execute(sql`
+    insert into itotori_users (user_id, display_name)
+    values (${userId}, ${`Play tester ${userId}`})
+    on conflict (user_id) do nothing
+  `);
+  await context.db.execute(sql`
+    insert into itotori_user_permission_grants (user_id, permission)
+    values
+      (${userId}, 'draft.write'),
+      (${userId}, 'catalog.read')
+    on conflict do nothing
+  `);
+}

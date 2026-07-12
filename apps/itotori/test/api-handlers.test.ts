@@ -5490,6 +5490,16 @@ function serviceFixture(): ItotoriApiServices {
         },
       ),
     },
+    playTesterResultRevision: {
+      editTarget: vi.fn(async () => {
+        throw new Error("playTesterResultRevision.editTarget not stubbed in this fixture");
+      }),
+      loadSelectedExport: vi.fn(async () => ({
+        schemaVersion: "play.selected_patch_export.v0.1" as const,
+        generatedAt: new Date("2026-06-30T00:00:00Z"),
+        export: null,
+      })),
+    },
     workspaceCorrections: {
       loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
         schemaVersion: "workspace.correction_preview.v0.1" as const,
@@ -5509,7 +5519,7 @@ function serviceFixture(): ItotoriApiServices {
         localeBranchId,
         batchId: "workspace-correction-batch-test",
         batchLabel: null,
-        submittedCount: permission.canManageQueue ? 1 : 0,
+        submittedCount: 0,
         edits: [],
         repairCandidateReportIds: [],
         decisionQueueReportIds: [],
@@ -5518,7 +5528,13 @@ function serviceFixture(): ItotoriApiServices {
         writebacks: [],
         scheduledRerunJobIds: [],
         diagnostics: permission.canManageQueue
-          ? []
+          ? [
+              {
+                code: "workspace_correction_legacy_queue_path_removed",
+                message:
+                  "Target-line correction via the reviewer queue / request_repair path is removed.",
+              },
+            ]
           : [
               {
                 code: "workspace_correction_mutation_permission_denied" as const,
@@ -6205,17 +6221,19 @@ describe("Itotori API handlers — workspace manual corrections (ITOTORI-118)", 
     );
   });
 
-  it("POST submit records corrections through the API when queue.manage is held", async () => {
+  it("POST submit refuses queue-path target corrections when queue.manage is held", async () => {
     const services = serviceFixture();
     const response = await handleItotoriApiRequest(
       { method: "POST", pathname: "/api/workspace/corrections", body: submitBody },
       services,
     );
     expect(response.statusCode).toBe(200);
-    expect((response.body as { submittedCount: number }).submittedCount).toBe(1);
+    expect((response.body as { submittedCount: number }).submittedCount).toBe(0);
     expect(services.workspaceCorrections.submitCorrections).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: "project-1", localeBranchId: "branch-1" }),
     );
+    const body = response.body as { diagnostics: Array<{ code: string }> };
+    expect(body.diagnostics[0]?.code).toBe("workspace_correction_legacy_queue_path_removed");
   });
 
   it("POST submit is refused (no mutation) when queue.manage is missing", async () => {

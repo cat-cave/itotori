@@ -18,6 +18,7 @@ import {
   ItotoriCatalogRepository,
   ItotoriContextArtifactRepository,
   ItotoriLocalizationJournalRepository,
+  ItotoriLocalizationResultRevisionRepository,
   ItotoriLocalizationPassRunConfigRepository,
   ItotoriModelLedgerRepository,
   ItotoriModelRoutingSettingsRepository,
@@ -151,6 +152,10 @@ import {
 } from "../workspace/correction-service.js";
 import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
 import {
+  PlayTesterResultRevisionService,
+  type PlayTesterResultRevisionServicePort,
+} from "../play/result-revision-service.js";
+import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
@@ -220,6 +225,8 @@ export type ItotoriApplicationServices = {
   workspaceCorrections: WorkspaceCorrectionServicePort;
   /** Direct play-tester shared-brain correction API + installed worker drain. */
   contextCorrections: ContextCorrectionServicePort;
+  /** Play-tester target edit → immutable result and delivered patch revision. */
+  playTesterResultRevision: PlayTesterResultRevisionServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -900,6 +907,10 @@ export async function withDatabaseItotoriServices<T>(
       },
       contextCorrections: contextCorrectionService,
     });
+    const resultRevisionRepository = new ItotoriLocalizationResultRevisionRepository(context.db);
+    const playTesterResultRevisionService = new PlayTesterResultRevisionService({
+      repository: resultRevisionRepository,
+    });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -970,6 +981,7 @@ export async function withDatabaseItotoriServices<T>(
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,
       contextCorrections: contextCorrectionService,
+      playTesterResultRevision: playTesterResultRevisionService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

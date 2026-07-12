@@ -5258,13 +5258,22 @@ export const translationCandidates = pgTable(
 );
 
 /**
- * Immutable selected-result revision materialized with a written outcome.
+ * Immutable selected-result revision materialized with a written outcome, or a
+ * later play-tester edit of that unit's target body.
  *
  * Patch membership references this row (including its outcome/run/unit scope)
  * instead of carrying a deterministic string that can exist without a
- * persisted revision. The selected-candidate FK makes the revision point at
- * the exact durable target body chosen by the outcome.
+ * persisted revision. Run-origin revisions keep a selected-candidate FK to the
+ * exact durable target body chosen by the outcome; play-tester edits retain the
+ * same candidate anchor for provenance while storing the edited target body.
  */
+export const localizationResultRevisionOriginValues = {
+  runWrittenOutcome: "run_written_outcome",
+  playTesterEdit: "play_tester_edit",
+} as const;
+export type LocalizationResultRevisionOrigin =
+  (typeof localizationResultRevisionOriginValues)[keyof typeof localizationResultRevisionOriginValues];
+
 export const localizationResultRevisions = pgTable(
   "itotori_localization_result_revisions",
   {
@@ -5274,11 +5283,13 @@ export const localizationResultRevisions = pgTable(
     bridgeUnitId: text("bridge_unit_id").notNull(),
     selectedCandidateId: text("selected_candidate_id").notNull(),
     targetBody: text("target_body").notNull(),
-    origin: text("origin").notNull(),
+    origin: text("origin").$type<LocalizationResultRevisionOrigin>().notNull(),
+    parentRevisionId: text("parent_revision_id"),
+    actorUserId: text("actor_user_id"),
+    createdForPatchVersionId: text("created_for_patch_version_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("itotori_localization_result_revisions_outcome_unique").on(table.journalOutcomeId),
     unique("itotori_localization_result_revisions_revision_scope_unique").on(
       table.resultRevisionId,
       table.journalOutcomeId,
@@ -5286,6 +5297,7 @@ export const localizationResultRevisions = pgTable(
       table.bridgeUnitId,
     ),
     index("itotori_localization_result_revisions_run_unit_idx").on(table.runId, table.bridgeUnitId),
+    index("itotori_localization_result_revisions_parent_idx").on(table.parentRevisionId),
     foreignKey({
       columns: [table.journalOutcomeId, table.runId, table.bridgeUnitId],
       foreignColumns: [
@@ -5393,7 +5405,20 @@ export const outcomeSpeakerLabels = pgTable(
   ],
 );
 
-/** One run-scoped PatchVersion with exact persisted result-revision membership. */
+/**
+ * One PatchVersion with exact persisted result-revision membership.
+ *
+ * Run-origin patches (node-5 finalizer) have no parent. Play-tester target
+ * edits create child delivered patch revisions under a playable parent; export
+ * uses the currently selected row (`selected_at`), never an approval state.
+ */
+export const localizationPatchVersionOriginValues = {
+  runFinalizer: "run_finalizer",
+  playTesterEdit: "play_tester_edit",
+} as const;
+export type LocalizationPatchVersionOrigin =
+  (typeof localizationPatchVersionOriginValues)[keyof typeof localizationPatchVersionOriginValues];
+
 export const localizationPatchVersions = pgTable(
   "itotori_localization_patch_versions",
   {
@@ -5405,16 +5430,23 @@ export const localizationPatchVersions = pgTable(
     artifactHashes: jsonb("artifact_hashes").$type<Record<string, string>>().notNull(),
     artifactRefs: jsonb("artifact_refs").$type<Record<string, string>>().notNull(),
     playableAt: timestamp("playable_at", { withTimezone: true }),
+    parentPatchVersionId: text("parent_patch_version_id"),
+    origin: text("origin")
+      .$type<LocalizationPatchVersionOrigin>()
+      .notNull()
+      .default("run_finalizer"),
+    actorUserId: text("actor_user_id"),
+    selectedAt: timestamp("selected_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("itotori_localization_patch_versions_run_unique").on(table.runId),
     unique("itotori_localization_patch_versions_id_run_unique").on(
       table.patchVersionId,
       table.runId,
     ),
     index("itotori_localization_patch_versions_run_status_idx").on(table.runId, table.status),
+    index("itotori_localization_patch_versions_parent_idx").on(table.parentPatchVersionId),
   ],
 );
 

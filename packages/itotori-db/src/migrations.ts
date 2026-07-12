@@ -457,6 +457,10 @@ export const migrations = [
     id: "0089_playtester_context_categories",
     file: "0089_playtester_context_categories.sql",
   },
+  {
+    id: "0090_play_tester_result_revision",
+    file: "0090_play_tester_result_revision.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

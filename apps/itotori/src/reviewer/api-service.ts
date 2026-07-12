@@ -115,9 +115,9 @@ export type ReviewerQueueApiServiceDeps = {
  * path (batch-of-one), so the state machine, actor-gating, and
  * consequence disclosure are identical to the batch route. Only the 5
  * per-item reviewer verbs are exposed here (accept/reject/defer/
- * escalate/request_repair — `edit` in the UI maps to request_repair per
- * the qa-kind taxonomy); the glossary/style/runtime-feedback verbs stay
- * batch/agentic-loop concerns.
+ * escalate/request_repair). Target-line *edits* are NOT request_repair —
+ * they are play-tester result revisions (p0-core-result-revision-hitl).
+ * The glossary/style/runtime-feedback verbs stay batch/agentic-loop concerns.
  */
 export type ReviewerSingleActionInput =
   | { action: "approve" }

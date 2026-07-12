@@ -502,6 +502,10 @@ const fixtureServices = {
     loadPreview: vi.fn(unused),
     submitCorrections: vi.fn(unused),
   },
+  playTesterResultRevision: {
+    editTarget: vi.fn(unused),
+    loadSelectedExport: vi.fn(unused),
+  },
   assetDecisions: {
     loadActiveDecisions: vi.fn(unused),
     loadCandidateAssets: vi.fn(unused),
