@@ -557,7 +557,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     method: "POST",
     pathTemplate: "/api/projects/{projectId}/launch-pass",
     operationId: "projectsLaunchPass",
-    summary: "Launch the next localization pass (folds queued corrections).",
+    summary: "Launch the next localization pass or cancel an existing durable run.",
     pathParams: ["projectId"],
     requestSchema: "ApiLaunchPassRequest",
     responseSchema: "ApiLaunchPassResponse",

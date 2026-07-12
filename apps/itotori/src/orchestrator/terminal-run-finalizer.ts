@@ -10,7 +10,22 @@ export const TERMINAL_RUN_SUMMARY_SCHEMA_VERSION = "itotori.localization-run-sum
 export const terminalRunStateValues = ["succeeded", "failed", "aborted", "paused"] as const;
 export type TerminalRunState = (typeof terminalRunStateValues)[number];
 
+/** Physical finalizer workers. Patch build/apply have distinct retry keys. */
 export const terminalFinalizerStageValues = [
+  "preflight",
+  "provider",
+  "unit",
+  "persistence",
+  "patch_build",
+  "patch_apply",
+  "validation",
+  "summary",
+  "cleanup",
+] as const;
+export type TerminalFinalizerStage = (typeof terminalFinalizerStageValues)[number];
+
+/** Public summaries deliberately collapse both physical patch workers. */
+export const terminalRunSummaryStageValues = [
   "preflight",
   "provider",
   "unit",
@@ -20,7 +35,7 @@ export const terminalFinalizerStageValues = [
   "summary",
   "cleanup",
 ] as const;
-export type TerminalFinalizerStage = (typeof terminalFinalizerStageValues)[number];
+export type TerminalRunSummaryStage = (typeof terminalRunSummaryStageValues)[number];
 
 export type TerminalStageStatus = "pending" | "succeeded" | "failed" | "skipped";
 
@@ -40,7 +55,7 @@ export type TerminalRunRootCause = {
     | "patch_fault"
     | "itotori_defect"
     | "finalizer_fault";
-  stage: TerminalFinalizerStage | null;
+  stage: TerminalRunSummaryStage | null;
   code: string;
   message: string;
 };
@@ -78,7 +93,7 @@ export type TerminalPatchVersion = {
 };
 
 export type TerminalRunStageEvidence = {
-  stage: TerminalFinalizerStage;
+  stage: TerminalRunSummaryStage;
   status: TerminalStageStatus;
   evidence: Record<string, unknown> | null;
   error: string | null;
@@ -159,9 +174,16 @@ export type TerminalFinalizerWorkerPorts = Partial<{
 
 /** Structural port so the core remains testable without a database import. */
 export type TerminalRunFinalizerPersistencePort = {
+  /**
+   * Acquire exclusive ownership of this run's finalizer. Production uses a
+   * session-scoped PostgreSQL advisory lock, so process/connection death
+   * releases ownership without relying on a filesystem lock or a heartbeat.
+   * `null` means another finalizer currently owns the run.
+   */
+  acquireRunLock?(runId: string): Promise<(() => Promise<void>) | null>;
   loadSnapshot(runId: string): Promise<TerminalRunSnapshot | null>;
   /** Reads an already-committed canonical projection for summary-only retries. */
-  loadTerminalSummary?(runId: string): Promise<TerminalRunSummary | null>;
+  loadTerminalSummary(runId: string): Promise<TerminalRunSummary | null>;
   enterFinalizing?(runId: string): Promise<void>;
   ensurePatchVersion?(input: {
     runId: string;
@@ -203,7 +225,7 @@ export type TerminalRunFinalizerInput = {
 export type TerminalRunFinalizerResult = {
   terminalStatus: TerminalRunState;
   summary: TerminalRunSummary;
-  committed: boolean;
+  committed: true;
 };
 
 /** A typed error lets a worker declare a resumable operational pause. */
@@ -211,6 +233,32 @@ export class TerminalRunOperationalBlockerError extends Error {
   constructor(readonly blocker: TerminalOperationalBlocker) {
     super(blocker.detail);
     this.name = "TerminalRunOperationalBlockerError";
+  }
+}
+
+/**
+ * The terminal transaction could not be confirmed after a bounded retry. No
+ * summary exists to project; the durable run status identifies the resume
+ * boundary a later finalizer invocation must continue from.
+ */
+export class TerminalRunCommitResumableError extends Error {
+  constructor(
+    readonly runId: string,
+    readonly durableRunStatus: TerminalRunSnapshot["runStatus"] | "unavailable",
+    readonly commitError: unknown,
+  ) {
+    super(
+      `terminal commit for ${runId} could not be confirmed; durable run remains ${durableRunStatus}`,
+    );
+    this.name = "TerminalRunCommitResumableError";
+  }
+}
+
+/** Another live finalizer owns this run; no worker or terminal write occurred. */
+export class TerminalRunFinalizerBusyError extends Error {
+  constructor(readonly runId: string) {
+    super(`terminal finalizer for ${runId} is already running`);
+    this.name = "TerminalRunFinalizerBusyError";
   }
 }
 
@@ -293,23 +341,47 @@ export function evaluateTerminalRunCoverage(
 }
 
 /**
- * Non-throwing outer terminalizer. A failed projection worker leaves the
- * canonical summary intact for its idempotent outbox retry; cleanup can never
- * replace an earlier root cause.
+ * All-path terminalizer. Worker faults become canonical terminal summaries;
+ * the one exception is an unconfirmed DB commit, which throws a typed
+ * resumable error and never invokes the summary projection worker. A failed
+ * projection leaves the canonical row intact for idempotent retry.
  */
 export async function finalizeTerminalRun(
   input: TerminalRunFinalizerInput,
 ): Promise<TerminalRunFinalizerResult> {
+  let releaseRunLock: (() => Promise<void>) | null | undefined;
+  try {
+    releaseRunLock = await input.persistence.acquireRunLock?.(input.runId);
+  } catch (error) {
+    throw new TerminalRunCommitResumableError(input.runId, "unavailable", error);
+  }
+  if (releaseRunLock === null) throw new TerminalRunFinalizerBusyError(input.runId);
+
+  try {
+    return await finalizeTerminalRunWithLock(input);
+  } finally {
+    // Releasing ownership is housekeeping, not a second terminal decision.
+    // A canonical result must never be hidden by an unlock/connection error.
+    try {
+      await releaseRunLock?.();
+    } catch {
+      // Session teardown still releases PostgreSQL advisory locks.
+    }
+  }
+}
+
+async function finalizeTerminalRunWithLock(
+  input: TerminalRunFinalizerInput,
+): Promise<TerminalRunFinalizerResult> {
   const now = input.now ?? (() => new Date());
   const workers = input.workers ?? {};
-  const stageEvidence = new Map<TerminalFinalizerStage, TerminalRunStageEvidence>();
+  const stageEvidence = new Map<TerminalRunSummaryStage, TerminalRunStageEvidence>();
   let snapshot: TerminalRunSnapshot | null = null;
   let state: TerminalRunState = "failed";
   let blocker: TerminalOperationalBlocker | null = null;
   let rootCause: TerminalRunRootCause | null = null;
   let cleanupError: string | null = null;
   let canonicalSummary: TerminalRunSummary | null = null;
-  let committed = false;
   let terminalAlreadyCommitted = false;
   let activeStage: TerminalFinalizerStage = "preflight";
 
@@ -319,8 +391,9 @@ export async function finalizeTerminalRun(
     evidence: Record<string, unknown> | null = null,
     error: string | null = null,
   ): Promise<void> => {
-    const record = { stage, status, evidence, error };
-    stageEvidence.set(stage, record);
+    const summaryStage = summaryStageFor(stage);
+    const record = { stage: summaryStage, status, evidence, error };
+    stageEvidence.set(summaryStage, record);
     await input.persistence.recordStage?.({
       runId: input.runId,
       stage,
@@ -337,7 +410,7 @@ export async function finalizeTerminalRun(
       state = "paused";
       rootCause = {
         kind: "operational_blocker",
-        stage,
+        stage: summaryStageFor(stage),
         code: error.blocker.kind,
         message: error.blocker.detail,
       };
@@ -346,8 +419,11 @@ export async function finalizeTerminalRun(
     const message = errorMessage(error);
     state = "failed";
     rootCause = {
-      kind: stage === "patch" || stage === "validation" ? "patch_fault" : "itotori_defect",
-      stage,
+      kind:
+        stage === "patch_build" || stage === "patch_apply" || stage === "validation"
+          ? "patch_fault"
+          : "itotori_defect",
+      stage: summaryStageFor(stage),
       code: errorCode(error),
       message,
     };
@@ -355,35 +431,48 @@ export async function finalizeTerminalRun(
 
   const runStage = async (
     stage: TerminalFinalizerStage,
+    beforeSuccess?: (result: TerminalPatchWorkerResult | void) => Promise<void>,
   ): Promise<TerminalPatchWorkerResult | void> => {
     activeStage = stage;
+    if (durableStageSucceeded(requireSnapshot(snapshot, input.runId), stage)) return undefined;
+    let result: TerminalPatchWorkerResult | void;
     try {
       const injected = input.stageFaults?.[stage];
       if (injected !== undefined) throw injected();
-      const result = await workers[stage]?.({
+      result = await workers[stage]?.({
         runId: input.runId,
         snapshot: requireSnapshot(snapshot, input.runId),
         ...(canonicalSummary === null ? {} : { summary: canonicalSummary }),
       });
-      await setStage(stage, "succeeded", result?.evidence ?? null);
-      return result;
-    } catch (error) {
+      await beforeSuccess?.(result);
+    } catch (workerError) {
+      // The worker fault is the root cause. Failure-evidence persistence is a
+      // secondary fault and must never replace what actually broke the stage.
+      failFrom(stage, workerError);
       try {
         // An operational blocker is deliberately resumable. Persist it as
         // pending-with-evidence rather than a terminal failed worker row, so
         // the same idempotency key can later become succeeded after resume.
         await setStage(
           stage,
-          error instanceof TerminalRunOperationalBlockerError ? "pending" : "failed",
+          workerError instanceof TerminalRunOperationalBlockerError ? "pending" : "failed",
           null,
-          errorMessage(error),
+          errorMessage(workerError),
         );
-      } catch (persistenceError) {
-        failFrom("persistence", persistenceError);
+      } catch {
+        // The original stage error is already retained in the in-memory
+        // evidence and root cause. The commit path may still persist it.
       }
-      failFrom(stage, error);
       return undefined;
     }
+
+    try {
+      await setStage(stage, "succeeded", result?.evidence ?? null);
+    } catch (persistenceError) {
+      failFrom("persistence", persistenceError);
+      return undefined;
+    }
+    return result;
   };
 
   try {
@@ -396,7 +485,7 @@ export async function finalizeTerminalRun(
     const existing =
       isTerminalRunState(snapshot.runStatus) &&
       !(input.cancelled && snapshot.runStatus === "paused")
-        ? await input.persistence.loadTerminalSummary?.(input.runId)
+        ? await input.persistence.loadTerminalSummary(input.runId)
         : undefined;
     if (existing !== null && existing !== undefined) {
       // A paused executor run has no summary yet; a paused finalizer run does.
@@ -407,16 +496,17 @@ export async function finalizeTerminalRun(
       state = existing.terminalStatus;
       rootCause = existing.rootCause;
       blocker = existing.blocker;
-      committed = true;
       terminalAlreadyCommitted = true;
     } else if (isTerminalRunState(snapshot.runStatus) && snapshot.runStatus !== "paused") {
       throw new Error(`terminal run ${input.runId} is missing its canonical summary`);
     } else {
-      const preflightFault = input.stageFaults?.preflight;
-      if (preflightFault !== undefined) throw preflightFault();
-      await setStage("preflight", "succeeded", {
-        frozenUnitCount: snapshot.frozenUnits.length,
-      });
+      if (!durableStageSucceeded(snapshot, "preflight")) {
+        const preflightFault = input.stageFaults?.preflight;
+        if (preflightFault !== undefined) throw preflightFault();
+        await setStage("preflight", "succeeded", {
+          frozenUnitCount: snapshot.frozenUnits.length,
+        });
+      }
 
       if (input.cancelled) {
         state = "aborted";
@@ -459,7 +549,7 @@ export async function finalizeTerminalRun(
           }
         }
         if (rootCause === null) {
-          activeStage = "patch";
+          activeStage = "patch_build";
           await input.persistence.enterFinalizing?.(input.runId);
           const coverage = evaluateTerminalRunCoverage(requireSnapshot(snapshot, input.runId));
           const memberships = coverage.frozenUnitIds.map((unitId) => {
@@ -483,22 +573,27 @@ export async function finalizeTerminalRun(
             artifactRefs: {},
           });
           if (patch !== undefined) snapshot = { ...requireSnapshot(snapshot, input.runId), patch };
-          const patchResult = await runStage("patch");
-          if (
-            rootCause === null &&
-            patchResult !== undefined &&
-            input.persistence.ensurePatchVersion !== undefined
-          ) {
+          const persistPatchArtifacts = async (
+            result: TerminalPatchWorkerResult | void,
+          ): Promise<void> => {
+            if (
+              result === undefined ||
+              (result.artifactHashes === undefined && result.artifactRefs === undefined) ||
+              input.persistence.ensurePatchVersion === undefined
+            )
+              return;
             const ensured = await input.persistence.ensurePatchVersion({
               runId: input.runId,
               frozenUnitIds: coverage.frozenUnitIds,
               memberships,
-              artifactHashes: patchResult.artifactHashes ?? {},
-              artifactRefs: patchResult.artifactRefs ?? {},
+              artifactHashes: result.artifactHashes ?? {},
+              artifactRefs: result.artifactRefs ?? {},
             });
             snapshot = { ...requireSnapshot(snapshot, input.runId), patch: ensured };
-          }
-          if (rootCause === null) await runStage("validation");
+          };
+          await runStage("patch_build", persistPatchArtifacts);
+          if (rootCause === null) await runStage("patch_apply", persistPatchArtifacts);
+          if (rootCause === null) await runStage("validation", persistPatchArtifacts);
           if (rootCause === null) {
             activeStage = "validation";
             snapshot = await input.persistence.loadSnapshot(input.runId);
@@ -528,14 +623,15 @@ export async function finalizeTerminalRun(
       }
     }
   } catch (error) {
+    failFrom(activeStage, error);
     try {
-      if (!stageEvidence.has(activeStage)) {
+      if (!stageEvidence.has(summaryStageFor(activeStage))) {
         await setStage(activeStage, "failed", null, errorMessage(error));
       }
     } catch {
-      // The outer fallback below still exposes the original root cause.
+      // The root cause above remains authoritative when evidence persistence
+      // independently fails.
     }
-    failFrom(activeStage, error);
   } finally {
     try {
       if (snapshot !== null && !terminalAlreadyCommitted) {
@@ -568,42 +664,20 @@ export async function finalizeTerminalRun(
         cleanupError,
         now,
       });
-      try {
-        canonicalSummary = await input.persistence.commitTerminal({
-          runId: input.runId,
-          terminalStatus: state,
-          rootCause: effectiveCause,
-          blocker: effectiveBlocker,
-          ...(finalSnapshot.patch === null
-            ? {}
-            : { patchVersionId: finalSnapshot.patch.patchVersionId }),
-          summary: provisional,
-        });
-        committed = true;
-      } catch (error) {
-        // There is no safe way to invent a durable terminal record if storage is
-        // unavailable. Return an inspectable failed projection rather than throw.
-        state = "failed";
-        const persistenceCause: TerminalRunRootCause = {
-          kind: "finalizer_fault",
-          stage: "persistence",
-          code: errorCode(error),
-          message: errorMessage(error),
-        };
-        canonicalSummary = buildTerminalRunSummary({
-          snapshot: finalSnapshot,
-          terminalStatus: state,
-          // A completed decision is not durable if this transaction failed.
-          // Preserve an earlier real fault, but never pair failed status with a
-          // fabricated completed root cause.
-          rootCause:
-            rootCause?.kind === "completed" ? persistenceCause : (rootCause ?? persistenceCause),
-          blocker: null,
-          stages: mergeStages(finalSnapshot.stages, stageEvidence),
-          cleanupError,
-          now,
-        });
-      }
+      canonicalSummary = await commitTerminalWithReconciliation(input.persistence, {
+        runId: input.runId,
+        terminalStatus: state,
+        rootCause: effectiveCause,
+        blocker: effectiveBlocker,
+        ...(finalSnapshot.patch === null
+          ? {}
+          : { patchVersionId: finalSnapshot.patch.patchVersionId }),
+        summary: provisional,
+      });
+      // The terminal transaction can replace a previously-succeeded summary
+      // outbox payload (for example paused epoch 1 -> succeeded epoch 2) and
+      // reset it to pending. Refresh before deciding whether delivery may skip.
+      snapshot = (await safeLoadSnapshot(input.persistence, input.runId)) ?? snapshot;
     }
 
     // The file is an outbox projection, never a second source of truth. A
@@ -616,24 +690,9 @@ export async function finalizeTerminalRun(
   }
 
   return {
-    terminalStatus: canonicalSummary?.terminalStatus ?? state,
-    summary:
-      canonicalSummary ??
-      buildTerminalRunSummary({
-        snapshot: emptySnapshot(input.runId),
-        terminalStatus: "failed",
-        rootCause: {
-          kind: "finalizer_fault",
-          stage: "summary",
-          code: "summary_unavailable",
-          message: "terminal finalizer could not produce a summary",
-        },
-        blocker: null,
-        stages: [],
-        cleanupError,
-        now,
-      }),
-    committed,
+    terminalStatus: requireCanonicalSummary(canonicalSummary, input.runId).terminalStatus,
+    summary: requireCanonicalSummary(canonicalSummary, input.runId),
+    committed: true,
   };
 }
 
@@ -702,13 +761,91 @@ export function buildTerminalRunSummary(input: {
 
 function mergeStages(
   durable: TerminalRunStageEvidence[],
-  current: ReadonlyMap<TerminalFinalizerStage, TerminalRunStageEvidence>,
+  current: ReadonlyMap<TerminalRunSummaryStage, TerminalRunStageEvidence>,
 ): TerminalRunStageEvidence[] {
   const byStage = new Map(durable.map((stage) => [stage.stage, stage] as const));
   for (const [stage, evidence] of current) byStage.set(stage, evidence);
-  return terminalFinalizerStageValues.map(
+  return terminalRunSummaryStageValues.map(
     (stage) => byStage.get(stage) ?? { stage, status: "skipped", evidence: null, error: null },
   );
+}
+
+function summaryStageFor(stage: TerminalFinalizerStage): TerminalRunSummaryStage {
+  return stage === "patch_build" || stage === "patch_apply" ? "patch" : stage;
+}
+
+function durableStageSucceeded(
+  snapshot: TerminalRunSnapshot,
+  stage: TerminalFinalizerStage,
+): boolean {
+  if (stage === "patch_build") return snapshot.patch?.buildSucceeded === true;
+  if (stage === "patch_apply") return snapshot.patch?.applySucceeded === true;
+  if (stage === "validation" && snapshot.patch?.validationSucceeded === true) return true;
+  const summaryStage = summaryStageFor(stage);
+  return snapshot.stages.some(
+    (evidence) => evidence.stage === summaryStage && evidence.status === "succeeded",
+  );
+}
+
+const TERMINAL_COMMIT_ATTEMPT_LIMIT = 2;
+
+async function commitTerminalWithReconciliation(
+  persistence: TerminalRunFinalizerPersistencePort,
+  input: Parameters<TerminalRunFinalizerPersistencePort["commitTerminal"]>[0],
+): Promise<TerminalRunSummary> {
+  let commitError: unknown = new Error("terminal commit was not attempted");
+  for (let attempt = 0; attempt < TERMINAL_COMMIT_ATTEMPT_LIMIT; attempt += 1) {
+    try {
+      return await persistence.commitTerminal(input);
+    } catch (error) {
+      commitError = error;
+      // A driver can lose its connection after PostgreSQL committed. Always
+      // reconcile the canonical row before retrying or declaring the run
+      // resumable; the database decision wins over the transport outcome.
+      const committed = await loadConfirmedTerminalSummary(
+        persistence,
+        input.runId,
+        input.terminalStatus,
+      );
+      if (committed !== null) return committed;
+    }
+  }
+
+  const durable = await safeLoadSnapshot(persistence, input.runId);
+  throw new TerminalRunCommitResumableError(
+    input.runId,
+    durable?.runStatus ?? "unavailable",
+    commitError,
+  );
+}
+
+async function loadConfirmedTerminalSummary(
+  persistence: TerminalRunFinalizerPersistencePort,
+  runId: string,
+  expectedStatus: TerminalRunState,
+): Promise<TerminalRunSummary | null> {
+  try {
+    const summary = await persistence.loadTerminalSummary(runId);
+    if (summary === null || summary.terminalStatus !== expectedStatus) return null;
+    const snapshot = await persistence.loadSnapshot(runId);
+    return snapshot?.runStatus === summary.terminalStatus ? summary : null;
+  } catch {
+    return null;
+  }
+}
+
+function requireCanonicalSummary(
+  summary: TerminalRunSummary | null,
+  runId: string,
+): TerminalRunSummary {
+  if (summary === null) {
+    throw new TerminalRunCommitResumableError(
+      runId,
+      "unavailable",
+      new Error("terminal commit returned without a canonical summary"),
+    );
+  }
+  return summary;
 }
 
 function coverageMessage(coverage: TerminalCoverageEvaluation): string {

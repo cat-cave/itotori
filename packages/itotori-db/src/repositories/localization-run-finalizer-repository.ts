@@ -2,18 +2,19 @@
 //
 // This repository owns the small set of facts that must move together at the
 // end of every localization run: exact PatchVersion membership, one canonical
-// summary projection, and the run-scoped finalizer outbox. It deliberately
-// does not implement future result-revision/HITL behavior; membership carries
-// a deterministic run-origin resultRevisionId seam until that node lands.
+// summary projection, and the run-scoped finalizer outbox. Every patch member
+// must point at a real persisted immutable result revision.
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
+import { verifyLocalizationArtifactManifest } from "../localization-artifact-integrity.js";
 import {
   localizationJournalCostReservations,
   localizationJournalLlmAttempts,
   localizationJournalRunUnits,
   localizationJournalRuns,
+  localizationResultRevisions,
   localizationPatchVersionUnits,
   localizationPatchVersions,
   localizationRunFinalizerOutbox,
@@ -275,6 +276,13 @@ export type TerminalizeLocalizationRunInput = {
   /** Required for a paused terminalization unless the current paused blocker is retained. */
   blocker?: LocalizationJournalOperationalBlocker;
   rootCause?: LocalizationRunFinalizerRootCause;
+  /**
+   * Explicit operator cancellation fences a live executor by atomically moving
+   * its running/paused/finalizing run to `aborted` and clearing the lease. This
+   * override is legal only for an `aborted` transition with a `cancelled` root
+   * cause; every other terminalization remains lease-owned.
+   */
+  operatorCancellation?: boolean;
 };
 
 export type CompleteSucceededLocalizationRunInput = Omit<
@@ -439,22 +447,40 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
 
     return this.db.transaction(async (tx) => {
       await requireRunInTx(tx, input.runId);
+      await tx.execute(sql`
+        select run_id
+        from itotori_localization_journal_runs
+        where run_id = ${input.runId}
+        for update
+      `);
       const coverage = await loadCoverageRowsInTx(tx, input.runId);
       const incomplete = coverage.filter(
         (row) =>
           row.journalOutcomeId === null ||
           row.selectedCandidateId === null ||
           row.selectedCandidateBody === null ||
-          row.selectedCandidateBody.trim().length === 0,
+          row.selectedCandidateBody.trim().length === 0 ||
+          row.resultRevisionId === null,
       );
       if (incomplete.length > 0) {
         throw new LocalizationRunFinalizerRepositoryError(
           "coverage_incomplete",
-          `run ${input.runId} lacks a valid non-blank selected candidate for ${incomplete
+          `run ${input.runId} lacks a valid selected candidate and persisted result revision for ${incomplete
             .map((row) => row.bridgeUnitId)
             .join(", ")}`,
         );
       }
+
+      // Serialize manifest/membership establishment against the success
+      // barrier. Without this row lock, a writer can observe `building`, wait
+      // behind terminalization, then append unverified refs after the patch
+      // has become playable.
+      await tx.execute(sql`
+        select patch_version_id
+        from itotori_localization_patch_versions
+        where run_id = ${input.runId}
+        for update
+      `);
 
       const existingRows = await tx
         .select()
@@ -486,10 +512,16 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
       } else {
         const mergedHashes = mergeStringRecords(existing.artifactHashes, artifactHashes, "hash");
         const mergedRefs = mergeStringRecords(existing.artifactRefs, artifactRefs, "artifact ref");
-        if (
+        const manifestChanged =
           !sameStringRecord(existing.artifactHashes, mergedHashes) ||
-          !sameStringRecord(existing.artifactRefs, mergedRefs)
-        ) {
+          !sameStringRecord(existing.artifactRefs, mergedRefs);
+        if (manifestChanged && existing.status !== "building") {
+          throw new LocalizationRunFinalizerRepositoryError(
+            "patch_conflict",
+            `cannot mutate artifact manifest for ${existing.status} patch ${patchVersionId}`,
+          );
+        }
+        if (manifestChanged) {
           await tx
             .update(localizationPatchVersions)
             .set({ artifactHashes: mergedHashes, artifactRefs: mergedRefs, updatedAt: new Date() })
@@ -525,7 +557,7 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
             runId: input.runId,
             bridgeUnitId: row.bridgeUnitId,
             journalOutcomeId: row.journalOutcomeId!,
-            resultRevisionId: resultRevisionIdFor(input.runId, row.bridgeUnitId),
+            resultRevisionId: row.resultRevisionId!,
             unitOrdinal: row.unitOrdinal,
             createdAt: new Date(),
           })),
@@ -675,8 +707,19 @@ async function terminalizeInTx(
   tx: JournalTransaction,
   input: TerminalizeLocalizationRunInput,
 ): Promise<LocalizationRunTerminalSummaryRecord> {
+  if (
+    input.operatorCancellation === true &&
+    (input.terminalStatus !== "aborted" || input.rootCause?.kind !== "cancelled")
+  ) {
+    throw new LocalizationRunFinalizerRepositoryError(
+      "invalid_input",
+      "operatorCancellation requires terminalStatus=aborted and rootCause.kind=cancelled",
+    );
+  }
   const run = await requireRunInTx(tx, input.runId);
-  await assertTerminalLeaseInTx(tx, run, input.lease);
+  if (input.operatorCancellation !== true) {
+    await assertTerminalLeaseInTx(tx, run, input.lease);
+  }
   const existingSummary = await loadTerminalSummaryInTx(tx, input.runId);
 
   if (
@@ -707,6 +750,13 @@ async function terminalizeInTx(
   let patchVersion: LocalizationRunFinalizerPatchVersionRecord | null = null;
   if (input.terminalStatus === "succeeded") {
     const patchVersionId = input.patchVersionId ?? patchVersionIdFor(input.runId);
+    await tx.execute(sql`
+      select patch_version_id
+      from itotori_localization_patch_versions
+      where run_id = ${input.runId}
+        and patch_version_id = ${patchVersionId}
+      for update
+    `);
     const patchRows = await tx
       .select()
       .from(localizationPatchVersions)
@@ -797,14 +847,20 @@ async function terminalizeInTx(
         // abort/pause paths still require either their live executor fence or
         // a deliberately released paused lease, so they cannot overwrite a
         // concurrent resume between read and terminal write.
-        run.status === "finalizing"
-          ? eq(localizationJournalRuns.status, "finalizing")
-          : terminalTransitionLeaseCondition(input.lease),
+        input.operatorCancellation === true
+          ? sql`true`
+          : run.status === "finalizing"
+            ? eq(localizationJournalRuns.status, "finalizing")
+            : terminalTransitionLeaseCondition(input.lease),
       ),
     )
     .returning();
   if (updateRows[0] === undefined) {
     const current = await requireRunInTx(tx, input.runId);
+    if (input.operatorCancellation === true && current.status === "aborted") {
+      const concurrentSummary = await loadTerminalSummaryInTx(tx, input.runId);
+      if (concurrentSummary !== null) return concurrentSummary;
+    }
     if (current.status === "running" || current.status === "paused") {
       throw new LocalizationRunFinalizerRepositoryError(
         "run_lease_lost",
@@ -869,7 +925,8 @@ async function assertSuccessBarrierInTx(
       row.journalOutcomeId === null ||
       row.selectedCandidateId === null ||
       row.selectedCandidateBody === null ||
-      row.selectedCandidateBody.trim().length === 0,
+      row.selectedCandidateBody.trim().length === 0 ||
+      row.resultRevisionId === null,
   );
   if (incomplete.length > 0) {
     throw new LocalizationRunFinalizerRepositoryError(
@@ -885,6 +942,14 @@ async function assertSuccessBarrierInTx(
     throw new LocalizationRunFinalizerRepositoryError(
       "coverage_incomplete",
       `succeeded run ${runId} requires patch artifact refs and hashes`,
+    );
+  }
+  try {
+    verifyLocalizationArtifactManifest(patch.artifactRefs, patch.artifactHashes);
+  } catch (error) {
+    throw new LocalizationRunFinalizerRepositoryError(
+      "coverage_incomplete",
+      `succeeded run ${runId} has an invalid patch artifact manifest: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const [attempts, reservations, stages] = await Promise.all([
@@ -1006,9 +1071,6 @@ async function loadSnapshotInTx(
           .from(localizationPatchVersionUnits)
           .where(eq(localizationPatchVersionUnits.patchVersionId, patchRow.patchVersionId))
           .orderBy(asc(localizationPatchVersionUnits.unitOrdinal));
-  const resultRevisions = new Map(
-    memberRows.map((row) => [row.journalOutcomeId, row.resultRevisionId]),
-  );
   const writtenUnitIds = new Set(
     coverageRows.filter((row) => row.journalOutcomeId !== null).map((row) => row.bridgeUnitId),
   );
@@ -1034,12 +1096,7 @@ async function loadSnapshotInTx(
           row.selectedCandidateId !== null &&
           row.selectedCandidateBody !== null &&
           row.selectedCandidateBody.trim().length > 0,
-        // Node 10 owns the actual revision row. The deterministic run-origin
-        // reference exists before PatchVersion construction so the coverage
-        // predicate can require it, and membership persists the same value.
-        resultRevisionId:
-          resultRevisions.get(row.journalOutcomeId!) ??
-          resultRevisionIdFor(runId, row.bridgeUnitId),
+        resultRevisionId: row.resultRevisionId,
       })),
     attempts: attemptRows.map((row) => ({
       attemptId: row.attemptId,
@@ -1075,6 +1132,7 @@ type CoverageRow = {
   outcomeId: string | null;
   selectedCandidateId: string | null;
   selectedCandidateBody: string | null;
+  resultRevisionId: string | null;
 };
 
 async function loadCoverageRowsInTx(
@@ -1089,6 +1147,7 @@ async function loadCoverageRowsInTx(
       outcomeId: writtenUnitOutcomes.outcomeId,
       selectedCandidateId: writtenUnitOutcomes.selectedCandidateId,
       selectedCandidateBody: translationCandidates.body,
+      resultRevisionId: localizationResultRevisions.resultRevisionId,
     })
     .from(localizationJournalRunUnits)
     .leftJoin(
@@ -1103,6 +1162,18 @@ async function loadCoverageRowsInTx(
       and(
         eq(translationCandidates.journalOutcomeId, writtenUnitOutcomes.journalOutcomeId),
         eq(translationCandidates.candidateId, writtenUnitOutcomes.selectedCandidateId),
+      ),
+    )
+    .leftJoin(
+      localizationResultRevisions,
+      and(
+        eq(localizationResultRevisions.journalOutcomeId, writtenUnitOutcomes.journalOutcomeId),
+        eq(localizationResultRevisions.runId, localizationJournalRunUnits.runId),
+        eq(localizationResultRevisions.bridgeUnitId, localizationJournalRunUnits.bridgeUnitId),
+        eq(
+          localizationResultRevisions.selectedCandidateId,
+          writtenUnitOutcomes.selectedCandidateId,
+        ),
       ),
     )
     .where(eq(localizationJournalRunUnits.runId, runId))
@@ -1351,9 +1422,18 @@ function projectTerminalSummaryStages(
     LocalizationRunTerminalSummaryStage,
     LocalizationRunTerminalSummary["stages"][number]
   >();
+  let patchBuild: LocalizationRunFinalizerOutboxRecord | undefined;
+  let patchApply: LocalizationRunFinalizerOutboxRecord | undefined;
   for (const entry of outbox) {
-    const stage: LocalizationRunTerminalSummaryStage =
-      entry.stage === "patch_build" || entry.stage === "patch_apply" ? "patch" : entry.stage;
+    if (entry.stage === "patch_build") {
+      patchBuild = entry;
+      continue;
+    }
+    if (entry.stage === "patch_apply") {
+      patchApply = entry;
+      continue;
+    }
+    const stage: LocalizationRunTerminalSummaryStage = entry.stage;
     const incoming = {
       stage,
       status: summaryStageStatus(entry.status),
@@ -1368,6 +1448,8 @@ function projectTerminalSummaryStages(
       byStage.set(stage, incoming);
     }
   }
+  const patch = projectCollapsedPatchStage(patchBuild, patchApply);
+  if (patch !== null) byStage.set("patch", patch);
   return localizationRunTerminalSummaryStageValues.map(
     (stage) =>
       byStage.get(stage) ?? {
@@ -1379,6 +1461,32 @@ function projectTerminalSummaryStages(
         error: null,
       },
   );
+}
+
+function projectCollapsedPatchStage(
+  build: LocalizationRunFinalizerOutboxRecord | undefined,
+  apply: LocalizationRunFinalizerOutboxRecord | undefined,
+): LocalizationRunTerminalSummary["stages"][number] | null {
+  if (build === undefined && apply === undefined) return null;
+  const failed = [build, apply].find((entry) => entry?.status === "failed");
+  if (failed !== undefined) return projectedPatchStage(failed, "failed");
+  if (build?.status === "succeeded" && apply?.status === "succeeded") {
+    return projectedPatchStage(apply, "succeeded");
+  }
+  const pending = [build, apply].find((entry) => entry?.status !== "succeeded");
+  return projectedPatchStage(pending ?? apply ?? build!, "pending");
+}
+
+function projectedPatchStage(
+  entry: LocalizationRunFinalizerOutboxRecord,
+  status: LocalizationRunTerminalSummaryStageStatus,
+): LocalizationRunTerminalSummary["stages"][number] {
+  return {
+    stage: "patch",
+    status,
+    evidence: entry.evidence,
+    error: entry.lastError,
+  };
 }
 
 function summaryStageStatus(
@@ -1414,7 +1522,8 @@ function assertExactPatchMembership(
       member.bridgeUnitId !== row.bridgeUnitId ||
       member.journalOutcomeId !== row.journalOutcomeId ||
       member.unitOrdinal !== row.unitOrdinal ||
-      member.resultRevisionId !== resultRevisionIdFor(runId, row.bridgeUnitId)
+      row.resultRevisionId === null ||
+      member.resultRevisionId !== row.resultRevisionId
     ) {
       throw new LocalizationRunFinalizerRepositoryError(
         "patch_conflict",
@@ -1654,10 +1763,6 @@ function assertNonBlank(value: string, label: string): void {
 
 export function patchVersionIdFor(runId: string): string {
   return `patch-version:${runId}`;
-}
-
-export function resultRevisionIdFor(runId: string, bridgeUnitId: string): string {
-  return `run-result:${runId}:${bridgeUnitId}`;
 }
 
 export function outboxIdempotencyKeyFor(

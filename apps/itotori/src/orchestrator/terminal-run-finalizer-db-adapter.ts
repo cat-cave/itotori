@@ -8,10 +8,9 @@
 import {
   ItotoriLocalizationRunFinalizerRepository,
   patchVersionIdFor,
-  resultRevisionIdFor,
   type AuthorizationActor,
+  type DatabaseContext,
   type LocalizationRunFinalizerRootCause,
-  type LocalizationRunFinalizerStage,
   type LocalizationRunFinalizerSnapshot,
   type LocalizationRunFinalizerOutboxStatus,
   type LocalizationRunTerminalSummary,
@@ -27,6 +26,7 @@ import type {
   TerminalRunStageEvidence,
   TerminalRunState,
   TerminalRunSummary,
+  TerminalRunSummaryStage,
   TerminalStageStatus,
 } from "./terminal-run-finalizer.js";
 
@@ -41,6 +41,17 @@ export type TerminalRunFinalizingHooks = {
   afterEnterFinalizing?: (runId: string) => Promise<void>;
 };
 
+export type TerminalRunFinalizerAdapterOptions = {
+  /** Authorizes the repository's explicit operator-cancellation transition. */
+  operatorCancellation?: boolean;
+  /**
+   * Production pool used to hold one session-scoped advisory lock for the
+   * complete finalizer invocation. This prevents concurrent build/apply
+   * workers while still releasing automatically on process/connection death.
+   */
+  runLockPool?: Pick<DatabaseContext["pool"], "connect">;
+};
+
 /** Binds the generic finalizer to the live, lease-aware DB repository. */
 export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersistencePort {
   constructor(
@@ -48,7 +59,46 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
     private readonly actor: AuthorizationActor,
     private readonly leaseFor?: TerminalRunLeaseResolver,
     private readonly hooks: TerminalRunFinalizingHooks = {},
+    private readonly options: TerminalRunFinalizerAdapterOptions = {},
   ) {}
+
+  async acquireRunLock(runId: string): Promise<(() => Promise<void>) | null> {
+    const pool = this.options.runLockPool;
+    if (pool === undefined) {
+      throw new Error("production terminal finalizer requires a PostgreSQL run-lock pool");
+    }
+    const client = await pool.connect();
+    const lockKey = `itotori:terminal-finalizer:${runId}`;
+    let acquired = false;
+    try {
+      const result = await client.query<{ acquired: boolean }>(
+        "select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired",
+        [lockKey],
+      );
+      acquired = result.rows[0]?.acquired === true;
+    } catch (error) {
+      client.release(error instanceof Error ? error : true);
+      throw error;
+    }
+    if (!acquired) {
+      client.release();
+      return null;
+    }
+
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      try {
+        await client.query("select pg_advisory_unlock(hashtextextended($1, 0))", [lockKey]);
+        client.release();
+      } catch (error) {
+        // Destroy a broken session so it cannot return to the pool while still
+        // owning the advisory lock. Disconnecting releases the lock server-side.
+        client.release(error instanceof Error ? error : true);
+      }
+    };
+  }
 
   async loadSnapshot(runId: string): Promise<TerminalRunSnapshot | null> {
     const snapshot = await this.repository.loadSnapshot(this.actor, runId);
@@ -85,8 +135,7 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
       input.memberships.length !== expectedIds.length ||
       input.memberships.some(
         (member, index) =>
-          member.unitId !== expectedIds[index] ||
-          member.resultRevisionId !== resultRevisionIdFor(input.runId, member.unitId),
+          member.unitId !== expectedIds[index] || member.resultRevisionId.trim().length === 0,
       )
     ) {
       throw new Error(
@@ -113,23 +162,19 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
     error?: string | null;
   }): Promise<void> {
     if (input.status === "skipped") return;
-    const stages: LocalizationRunFinalizerStage[] =
-      input.stage === "patch" ? ["patch_build", "patch_apply"] : [dbStage(input.stage)];
-    for (const stage of stages) {
-      await this.repository.upsertPatchStageEvidence(this.actor, {
-        runId: input.runId,
-        stage,
-        // A file-projection failure is explicitly retryable: the canonical
-        // summary is already durable, so summary delivery must not become an
-        // immutable failed row that blocks a later idempotent retry.
-        status:
-          input.stage === "summary" && input.status === "failed"
-            ? "retry_waiting"
-            : dbStageStatus(input.status),
-        ...(input.evidence === undefined ? {} : { evidence: input.evidence }),
-        ...(input.error === undefined ? {} : { lastError: input.error }),
-      });
-    }
+    await this.repository.upsertPatchStageEvidence(this.actor, {
+      runId: input.runId,
+      stage: input.stage,
+      // A file-projection failure is explicitly retryable: the canonical
+      // summary is already durable, so summary delivery must not become an
+      // immutable failed row that blocks a later idempotent retry.
+      status:
+        input.stage === "summary" && input.status === "failed"
+          ? "retry_waiting"
+          : dbStageStatus(input.status),
+      ...(input.evidence === undefined ? {} : { evidence: input.evidence }),
+      ...(input.error === undefined ? {} : { lastError: input.error }),
+    });
   }
 
   async commitTerminal(input: {
@@ -146,6 +191,11 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
       ...(input.patchVersionId === undefined ? {} : { patchVersionId: input.patchVersionId }),
       ...(lease === undefined ? {} : { lease }),
       ...(input.blocker === null ? {} : { blocker: input.blocker }),
+      ...(this.options.operatorCancellation === true &&
+      input.terminalStatus === "aborted" &&
+      input.rootCause.kind === "cancelled"
+        ? { operatorCancellation: true }
+        : {}),
       rootCause: rootCauseToDb(input.rootCause),
     };
     const record =
@@ -179,11 +229,7 @@ function snapshotFromDb(snapshot: LocalizationRunFinalizerSnapshot): TerminalRun
               body: outcome.selectedCandidateBody,
               valid: outcome.selectedCandidateValid,
             },
-      // Patch membership materializes this deterministic future-facing
-      // reference. Before then it is still the required run-origin result
-      // revision identity, not a fabricated target body.
-      resultRevisionId:
-        outcome.resultRevisionId ?? resultRevisionIdFor(snapshot.run.runId, outcome.bridgeUnitId),
+      resultRevisionId: outcome.resultRevisionId,
     })),
     attempts: snapshot.attempts.map((attempt) => ({
       attemptId: attempt.attemptId,
@@ -225,12 +271,19 @@ function patchFromDb(
 }
 
 function stagesFromDb(snapshot: LocalizationRunFinalizerSnapshot): TerminalRunStageEvidence[] {
-  const records = new Map<TerminalFinalizerStage, TerminalRunStageEvidence>();
+  const records = new Map<TerminalRunSummaryStage, TerminalRunStageEvidence>();
+  let patchBuild: LocalizationRunFinalizerSnapshot["outbox"][number] | undefined;
+  let patchApply: LocalizationRunFinalizerSnapshot["outbox"][number] | undefined;
   for (const entry of snapshot.outbox) {
-    const stage =
-      entry.stage === "patch_build" || entry.stage === "patch_apply"
-        ? "patch"
-        : coreStage(entry.stage);
+    if (entry.stage === "patch_build") {
+      patchBuild = entry;
+      continue;
+    }
+    if (entry.stage === "patch_apply") {
+      patchApply = entry;
+      continue;
+    }
+    const stage = entry.stage;
     const incoming: TerminalRunStageEvidence = {
       stage,
       status: coreStageStatus(entry.status),
@@ -242,19 +295,39 @@ function stagesFromDb(snapshot: LocalizationRunFinalizerSnapshot): TerminalRunSt
       records.set(stage, incoming);
     }
   }
+  const patch = collapsedPatchStage(patchBuild, patchApply);
+  if (patch !== null) records.set("patch", patch);
   return [...records.values()];
+}
+
+function collapsedPatchStage(
+  build: LocalizationRunFinalizerSnapshot["outbox"][number] | undefined,
+  apply: LocalizationRunFinalizerSnapshot["outbox"][number] | undefined,
+): TerminalRunStageEvidence | null {
+  if (build === undefined && apply === undefined) return null;
+  const failed = [build, apply].find((entry) => entry?.status === "failed");
+  if (failed !== undefined) return stageEvidenceFromPatchEntry(failed, "failed");
+  if (build?.status === "succeeded" && apply?.status === "succeeded") {
+    return stageEvidenceFromPatchEntry(apply, "succeeded");
+  }
+  const pending = [build, apply].find((entry) => entry?.status !== "succeeded");
+  return stageEvidenceFromPatchEntry(pending ?? apply ?? build!, "pending");
+}
+
+function stageEvidenceFromPatchEntry(
+  entry: LocalizationRunFinalizerSnapshot["outbox"][number],
+  status: TerminalStageStatus,
+): TerminalRunStageEvidence {
+  return {
+    stage: "patch",
+    status,
+    evidence: entry.evidence,
+    error: entry.lastError,
+  };
 }
 
 function stageRank(status: TerminalStageStatus): number {
   return status === "failed" ? 4 : status === "succeeded" ? 3 : status === "pending" ? 2 : 1;
-}
-
-function dbStage(stage: TerminalFinalizerStage): LocalizationRunFinalizerStage {
-  return stage === "patch" ? "patch_apply" : stage;
-}
-
-function coreStage(stage: LocalizationRunFinalizerStage): TerminalFinalizerStage {
-  return stage === "patch_build" || stage === "patch_apply" ? "patch" : stage;
 }
 
 function dbStageStatus(status: TerminalStageStatus): LocalizationRunFinalizerOutboxStatus {

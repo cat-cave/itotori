@@ -1,7 +1,11 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import { hashLocalizationArtifact } from "../src/localization-artifact-integrity.js";
 import {
   ItotoriLocalizationJournalRepository,
   type LocalizationJournalRunLeaseIdentity,
@@ -23,9 +27,10 @@ const driverLease: LocalizationJournalRunLeaseIdentity = {
   fenceToken: 1,
 };
 
-describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepository", () => {
+describe("ItotoriLocalizationRunFinalizerRepository", () => {
   it("succeeds despite a critical QA finding, stores one canonical summary, and replays idempotently", async () => {
     const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("critical-qa");
     try {
       await seedScope(context);
       const journal = new ItotoriLocalizationJournalRepository(context.db);
@@ -39,8 +44,8 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepos
 
       const patch = await repository.ensurePatchVersion(localActor, {
         runId,
-        artifactHashes: { patch: "sha256:terminal-finalizer-fixture" },
-        artifactRefs: { patch: "artifact:terminal-finalizer-fixture" },
+        artifactHashes: artifact.artifactHashes,
+        artifactRefs: artifact.artifactRefs,
       });
       await markPatchWorkersSucceeded(repository, runId);
       await repository.enterFinalizing(localActor, { runId, lease: driverLease });
@@ -102,7 +107,11 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepos
         first.summary,
       );
     } finally {
-      await context.close();
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+      }
     }
   });
 
@@ -132,8 +141,283 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepos
     }
   });
 
+  it("never synthesizes coverage when a written unit lacks its persisted result revision", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const runId = "finalizer-missing-result-revision";
+      const unitIds = [
+        "finalizer-missing-result-revision-unit-1",
+        "finalizer-missing-result-revision-unit-2",
+      ];
+
+      await journal.seedRun(localActor, seedRunInput(runId, unitIds));
+      await writeUnit(journal, runId, unitIds[0]!);
+      await writeUnit(journal, runId, unitIds[1]!);
+
+      const persisted = await repository.loadSnapshot(localActor, runId);
+      expect(persisted?.outcomes.map((outcome) => outcome.resultRevisionId)).toEqual([
+        `run-result:${runId}:${unitIds[0]}`,
+        `run-result:${runId}:${unitIds[1]}`,
+      ]);
+
+      await context.db.execute(sql`
+        delete from itotori_localization_result_revisions
+        where run_id = ${runId}
+          and bridge_unit_id = ${unitIds[1]!}
+      `);
+
+      const missingRevision = await repository.loadSnapshot(localActor, runId);
+      expect(
+        missingRevision?.outcomes.find((outcome) => outcome.bridgeUnitId === unitIds[1]),
+      ).toMatchObject({ resultRevisionId: null, selectedCandidateValid: true });
+
+      await expect(repository.ensurePatchVersion(localActor, { runId })).rejects.toMatchObject({
+        code: "coverage_incomplete",
+        message: expect.stringContaining(unitIds[1]!),
+      });
+      await repository.enterFinalizing(localActor, { runId, lease: driverLease });
+      await expect(repository.completeSucceededRun(localActor, { runId })).rejects.toMatchObject({
+        code: "coverage_incomplete",
+      });
+
+      const afterRejectedSuccess = await repository.loadSnapshot(localActor, runId);
+      expect(afterRejectedSuccess).toMatchObject({
+        run: { status: "finalizing" },
+        patch: null,
+        summary: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("enforces the patch-member result-revision foreign key at the SQL boundary", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const runId = "finalizer-result-revision-fkey";
+      const unitId = "finalizer-result-revision-fkey-unit";
+
+      await journal.seedRun(localActor, seedRunInput(runId, [unitId]));
+      await writeUnit(journal, runId, unitId);
+      const patch = await repository.ensurePatchVersion(localActor, { runId });
+
+      let captured: unknown;
+      try {
+        await context.db.execute(sql`
+          update itotori_localization_patch_version_units
+          set result_revision_id = 'missing-result-revision'
+          where patch_version_id = ${patch.patchVersionId}
+            and bridge_unit_id = ${unitId}
+        `);
+      } catch (error) {
+        captured = error;
+      }
+      expect(postgresErrorCodeOf(captured)).toBe("23503");
+
+      const afterRejectedUpdate = await repository.loadSnapshot(localActor, runId);
+      expect(afterRejectedUpdate?.patch?.units).toEqual([
+        expect.objectContaining({
+          bridgeUnitId: unitId,
+          resultRevisionId: `run-result:${runId}:${unitId}`,
+        }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a missing artifact ref and never marks its patch playable", async () => {
+    const context = await isolatedMigratedContext();
+    const artifactRoot = mkdtempSync(join(tmpdir(), "itotori-finalizer-missing-artifact-"));
+    try {
+      await seedScope(context);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const runId = "finalizer-missing-artifact";
+      const unitId = "finalizer-missing-artifact-unit";
+      const missingPath = join(artifactRoot, "does-not-exist.patch");
+
+      await journal.seedRun(localActor, seedRunInput(runId, [unitId]));
+      await writeUnit(journal, runId, unitId);
+      const patch = await repository.ensurePatchVersion(localActor, {
+        runId,
+        artifactRefs: { patch: missingPath },
+        artifactHashes: { patch: `sha256:${"0".repeat(64)}` },
+      });
+      await markPatchWorkersSucceeded(repository, runId);
+      await repository.enterFinalizing(localActor, { runId, lease: driverLease });
+
+      await expect(
+        repository.completeSucceededRun(localActor, {
+          runId,
+          patchVersionId: patch.patchVersionId,
+        }),
+      ).rejects.toMatchObject({
+        code: "coverage_incomplete",
+        message: expect.stringContaining("missing or unreadable"),
+      });
+
+      const afterRejectedSuccess = await repository.loadSnapshot(localActor, runId);
+      expect(afterRejectedSuccess).toMatchObject({
+        run: { status: "finalizing" },
+        patch: { status: "building", playableAt: null },
+        summary: null,
+      });
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        rmSync(artifactRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("rejects an artifact changed after hashing and never marks its patch playable", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("tampered");
+    try {
+      await seedScope(context);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const runId = "finalizer-tampered-artifact";
+      const unitId = "finalizer-tampered-artifact-unit";
+
+      await journal.seedRun(localActor, seedRunInput(runId, [unitId]));
+      await writeUnit(journal, runId, unitId);
+      const patch = await repository.ensurePatchVersion(localActor, {
+        runId,
+        artifactRefs: artifact.artifactRefs,
+        artifactHashes: artifact.artifactHashes,
+      });
+      writeFileSync(artifact.path, "tampered after the persisted hash was calculated\n", "utf8");
+      await markPatchWorkersSucceeded(repository, runId);
+      await repository.enterFinalizing(localActor, { runId, lease: driverLease });
+
+      await expect(
+        repository.completeSucceededRun(localActor, {
+          runId,
+          patchVersionId: patch.patchVersionId,
+        }),
+      ).rejects.toMatchObject({
+        code: "coverage_incomplete",
+        message: expect.stringContaining("hash mismatch"),
+      });
+
+      const afterRejectedSuccess = await repository.loadSnapshot(localActor, runId);
+      expect(afterRejectedSuccess).toMatchObject({
+        run: { status: "finalizing" },
+        patch: { status: "building", playableAt: null },
+        summary: null,
+      });
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+      }
+    }
+  });
+
+  it("freezes the verified manifest, membership, and stage evidence after playability", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("playable-immutable");
+    try {
+      await seedScope(context);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const runId = "finalizer-playable-immutable";
+      const unitId = "finalizer-playable-immutable-unit";
+      await journal.seedRun(localActor, seedRunInput(runId, [unitId]));
+      await writeUnit(journal, runId, unitId);
+      await expectDatabaseErrorContaining(
+        context.db.execute(sql`
+          update itotori_localization_result_revisions
+          set target_body = 'tampered revision body'
+          where run_id = ${runId}
+            and bridge_unit_id = ${unitId}
+        `),
+        "localization result revision",
+      );
+      const patch = await repository.ensurePatchVersion(localActor, {
+        runId,
+        artifactRefs: artifact.artifactRefs,
+        artifactHashes: artifact.artifactHashes,
+      });
+      await markPatchWorkersSucceeded(repository, runId);
+      await repository.enterFinalizing(localActor, { runId, lease: driverLease });
+      await repository.completeSucceededRun(localActor, {
+        runId,
+        patchVersionId: patch.patchVersionId,
+      });
+
+      const idempotentReplay = await repository.ensurePatchVersion(localActor, {
+        runId,
+        artifactRefs: artifact.artifactRefs,
+        artifactHashes: artifact.artifactHashes,
+      });
+      expect(idempotentReplay.status).toBe("playable");
+
+      await expect(
+        repository.ensurePatchVersion(localActor, {
+          runId,
+          artifactRefs: { bogus: join(artifact.path, "missing") },
+          artifactHashes: { bogus: `sha256:${"0".repeat(64)}` },
+        }),
+      ).rejects.toMatchObject({ code: "patch_conflict" });
+      await expectDatabaseErrorContaining(
+        context.db.execute(sql`
+          update itotori_localization_patch_versions
+          set artifact_refs = artifact_refs || ${JSON.stringify({ bogus: "/missing" })}::jsonb
+          where patch_version_id = ${patch.patchVersionId}
+        `),
+        "playable patch version",
+      );
+      await expectDatabaseErrorContaining(
+        context.db.execute(sql`
+          delete from itotori_localization_patch_version_units
+          where patch_version_id = ${patch.patchVersionId}
+            and bridge_unit_id = ${unitId}
+        `),
+        "membership for playable patch version",
+      );
+      await expectDatabaseErrorContaining(
+        context.db.execute(sql`
+          update itotori_localization_run_finalizer_outbox
+          set status = 'pending'
+          where run_id = ${runId}
+            and stage = 'patch_apply'
+        `),
+        "stage patch_apply for playable patch run",
+      );
+
+      const frozen = await repository.loadSnapshot(localActor, runId);
+      expect(frozen?.patch).toMatchObject({
+        status: "playable",
+        artifactRefs: artifact.artifactRefs,
+        artifactHashes: artifact.artifactHashes,
+        units: [expect.objectContaining({ bridgeUnitId: unitId })],
+      });
+      expect(frozen?.outbox.find((entry) => entry.stage === "patch_apply")?.status).toBe(
+        "succeeded",
+      );
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+      }
+    }
+  });
+
   it("keeps an operational patch blocker resumable without poisoning its outbox keys", async () => {
     const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("paused-resume");
     try {
       await seedScope(context);
       const journal = new ItotoriLocalizationJournalRepository(context.db);
@@ -163,8 +447,8 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepos
       await repository.enterFinalizing(localActor, { runId, lease: resumedLease });
       const patch = await repository.ensurePatchVersion(localActor, {
         runId,
-        artifactHashes: { patch: "sha256:resumed-terminal-finalizer-fixture" },
-        artifactRefs: { patch: "artifact:resumed-terminal-finalizer-fixture" },
+        artifactHashes: artifact.artifactHashes,
+        artifactRefs: artifact.artifactRefs,
       });
       await markPatchWorkersSucceeded(repository, runId);
       const completed = await repository.completeSucceededRun(localActor, {
@@ -184,10 +468,70 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationRunFinalizerRepos
       });
       expect(snapshot?.outbox.filter((entry) => entry.stage === "summary")).toHaveLength(1);
     } finally {
-      await context.close();
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+      }
     }
   });
 });
+
+function createRealArtifact(label: string): {
+  path: string;
+  artifactRefs: Record<string, string>;
+  artifactHashes: Record<string, string>;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), `itotori-finalizer-${label}-`));
+  const path = join(root, "patch-artifact.bin");
+  writeFileSync(path, `terminal finalizer artifact fixture: ${label}\n`, "utf8");
+  return {
+    path,
+    artifactRefs: { patch: path },
+    artifactHashes: { patch: hashLocalizationArtifact(path) },
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+function postgresErrorCodeOf(error: unknown): string | undefined {
+  let current = error;
+  const visited = new Set<unknown>();
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    visited.add(current);
+    if ("code" in current && typeof current.code === "string") return current.code;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return undefined;
+}
+
+async function expectDatabaseErrorContaining(
+  operation: PromiseLike<unknown>,
+  expectedMessage: string,
+): Promise<void> {
+  let captured: unknown;
+  try {
+    await operation;
+  } catch (error) {
+    captured = error;
+  }
+  expect(captured).toBeDefined();
+  expect(databaseErrorMessages(captured)).toContain(expectedMessage);
+}
+
+function databaseErrorMessages(error: unknown): string {
+  const messages: string[] = [];
+  let current = error;
+  const visited = new Set<unknown>();
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    visited.add(current);
+    if ("message" in current && typeof current.message === "string") {
+      messages.push(current.message);
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return messages.join("\n");
+}
 
 function seedRunInput(runId: string, unitIds: readonly string[]) {
   return {

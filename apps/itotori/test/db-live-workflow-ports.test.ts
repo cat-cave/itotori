@@ -176,6 +176,129 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
       });
     });
 
+    it("forwards operator cancellation to the DB-only live path without reading config or running a provider pass", async () => {
+      const io = {
+        readJson: vi.fn(() => {
+          throw new Error("cancellation must not read localization config");
+        }),
+        writeJson: vi.fn(),
+      };
+      const cancelRun = vi.fn(async () => ({
+        journalRunId: "localization-journal-run-cancel",
+        runState: "aborted" as const,
+      }));
+      const runLive = vi.fn(async () => {
+        throw new Error("cancellation must not invoke the provider live runner");
+      });
+      const liveRunner = createDbBackedLivePassRunner({
+        io,
+        cancelRun,
+        runLive,
+        now: () => new Date("2026-07-12T15:00:00.000Z"),
+      });
+      const passDriver = createDbBackedLocalizationPassDriver({
+        actor,
+        projectRepository: {
+          listLocaleBranchIdentities: async () => [branchIdentity("locale-en-us", "project-test")],
+        },
+        resolveRunConfig: async () => ({
+          configPath: "/must-not-be-read/project.localize.json",
+          runDir: "/runs/cancelled",
+        }),
+        runLive: liveRunner,
+      });
+      const service = new ItotoriProjectWorkflowService(
+        stubRepository(),
+        actor,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        passDriver,
+      );
+
+      const result = await service.launchNextLocalizationPass({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        resumeRunId: "localization-journal-run-cancel",
+        cancelled: true,
+      });
+
+      expect(result).toEqual({
+        outcome: "started",
+        journalRunId: "localization-journal-run-cancel",
+        startedAt: new Date("2026-07-12T15:00:00.000Z"),
+        terminalStatus: "aborted",
+      });
+      expect(cancelRun).toHaveBeenCalledWith({
+        runId: "localization-journal-run-cancel",
+        runDir: "/runs/cancelled",
+        io,
+        expectedScope: {
+          projectId: "project-test",
+          localeBranchId: "locale-en-us",
+        },
+      });
+      expect(runLive).not.toHaveBeenCalled();
+      expect(io.readJson).not.toHaveBeenCalled();
+    });
+
+    it("forwards a durable resume id through the production live-workflow adapter", async () => {
+      const readJson = vi.fn(() => {
+        throw new Error("a finalizing resume must not materialize registered config");
+      });
+      const io = { readJson, writeJson: vi.fn() };
+      const runLive = vi.fn(async () => ({
+        resumedFinalization: true as const,
+        result: {
+          journalRunId: "localization-journal-run-finalizing-resume",
+          runState: "succeeded" as const,
+          pausedBlocker: null,
+        },
+        terminalSummary: {} as never,
+      }));
+      const liveRunner = createDbBackedLivePassRunner({
+        io,
+        runLive,
+        now: () => new Date("2026-07-12T15:30:00.000Z"),
+      });
+
+      await expect(
+        liveRunner(
+          {
+            configPath: "/runs/project.localize.json",
+            runDir: "/runs/finalizing-resume",
+            dataRoot: "/games/source",
+            pairPolicyPath: "/runs/project.pair-policy.json",
+            modelId: "model-finalizing-resume",
+            providerId: "provider-finalizing-resume",
+          },
+          {
+            projectId: "project-test",
+            localeBranchId: "locale-en-us",
+            resumeRunId: "localization-journal-run-finalizing-resume",
+            actor,
+          },
+        ),
+      ).resolves.toEqual({
+        outcome: "started",
+        journalRunId: "localization-journal-run-finalizing-resume",
+        startedAt: new Date("2026-07-12T15:30:00.000Z"),
+      });
+      expect(runLive).toHaveBeenCalledWith({
+        configPath: "/runs/project.localize.json",
+        runDir: "/runs/finalizing-resume",
+        io,
+        resumeRunId: "localization-journal-run-finalizing-resume",
+        expectedResumeScope: {
+          projectId: "project-test",
+          localeBranchId: "locale-en-us",
+        },
+      });
+      expect(readJson).not.toHaveBeenCalled();
+    });
+
     it("refuses in-band when the branch does not belong to the project", async () => {
       const passDriver = createDbBackedLocalizationPassDriver({
         actor,

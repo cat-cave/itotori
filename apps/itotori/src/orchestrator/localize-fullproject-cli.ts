@@ -15,9 +15,9 @@
 // pair come from the config + its pair-policy, so the SAME wiring drives any
 // supported project.
 
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { randomUUID } from "node:crypto";
+import { join, resolve } from "node:path";
+import { assertPatchExportBundle } from "@itotori/localization-bridge-schema";
 import {
   ItotoriAssetLocalizationDecisionRepository,
   ItotoriContextArtifactRepository,
@@ -29,6 +29,7 @@ import {
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
+  hashLocalizationArtifact,
   localUserId,
   type AuthorizationActor,
 } from "@itotori/db";
@@ -49,7 +50,12 @@ import {
   type LocalizeFullProjectResult,
 } from "./localize-fullproject-command.js";
 import {
-  runWholeGamePatchExportAndApply,
+  applyWholeGamePatch,
+  buildWholeGamePatchExport,
+  validateWholeGamePatch,
+  type RunWholeGamePatchExportAndApplyArgs,
+  type WholeGamePatchApplyResult,
+  type WholeGamePatchBuildResult,
   type WholeGamePatchExportAndApplyResult,
 } from "./patch-apply-seam.js";
 import type { WholeGameRuntimeValidationAdmission } from "./wholegame-render-validation-seam.js";
@@ -58,7 +64,7 @@ import {
   runPipelineStepWithDiagnostic,
 } from "./pipeline-failure-diagnostic.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
-import type { DrivenPatchReport } from "./project-driven-executor.js";
+import type { DrivenPatchReport, ProjectDrivenExecutorResult } from "./project-driven-executor.js";
 import { DbTerminalRunFinalizerAdapter } from "./terminal-run-finalizer-db-adapter.js";
 import {
   finalizeTerminalRun,
@@ -73,8 +79,10 @@ export type RunLocalizeFullProjectLiveArgs = {
   /** Directory the patch export + provider-run artifacts + run summary land in. */
   runDir: string;
   io: LocalizeFullProjectIo;
-  /** Existing durable journal run to resume from its first pending unit. */
+  /** Existing paused executor run or finalizing terminal commit to resume. */
   resumeRunId?: string;
+  /** Workflow-owned scope fence for a server-originated resume request. */
+  expectedResumeScope?: { projectId: string; localeBranchId: string };
   /** Exact run-level USD cap persisted in the journal cost account. */
   costCapUsd?: number;
   /**
@@ -110,12 +118,30 @@ export type RunLocalizeFullProjectLiveArgs = {
   log?: (message: string) => void;
 };
 
-export type RunLocalizeFullProjectLiveResult = LocalizeFullProjectResult & {
+export type DrivenLocalizeFullProjectLiveResult = LocalizeFullProjectResult & {
   /** Present when the source + target roots drove the patch-apply seam. */
   patchApply?: WholeGamePatchExportAndApplyResult;
   /** The one canonical terminal projection, mirrored by run-summary.json. */
   terminalSummary: TerminalRunSummary;
+  /** Absent/false for a pass which invoked the driven executor in this process. */
+  resumedFinalization?: false;
 };
+
+/**
+ * Honest projection returned when a durable `finalizing` run is resumed.
+ * Executor-only counters are deliberately absent: this process never drove an
+ * executor and must not invent an in-memory executor report. The canonical DB
+ * summary contains every durable terminal fact the caller may report.
+ */
+export type ResumedTerminalFinalizationLiveResult = {
+  resumedFinalization: true;
+  result: Pick<ProjectDrivenExecutorResult, "journalRunId" | "runState" | "pausedBlocker">;
+  terminalSummary: TerminalRunSummary;
+};
+
+export type RunLocalizeFullProjectLiveResult =
+  | DrivenLocalizeFullProjectLiveResult
+  | ResumedTerminalFinalizationLiveResult;
 
 export class RuntimeValidationIncompleteError extends Error {
   readonly code = "runtime-validation-incomplete";
@@ -204,6 +230,14 @@ export function assertWholeGamePatchCoverage(
 export async function runLocalizeFullProjectLive(
   args: RunLocalizeFullProjectLiveArgs,
 ): Promise<RunLocalizeFullProjectLiveResult> {
+  // A process can lose its connection after every physical stage succeeded but
+  // before the terminal transaction was confirmed, or after the canonical row
+  // committed but before its file projection. Probe both durable boundaries
+  // before config/ZDR/provider setup: rerunning the driven executor is both
+  // unnecessary and explicitly refused by its terminal-state fence.
+  const resumedFinalization = await resumeDurableFinalizingRun(args);
+  if (resumedFinalization !== null) return resumedFinalization;
+
   // Privacy gate BEFORE any live byte.
   assertOpenRouterZdrAccount(process.env);
 
@@ -304,6 +338,8 @@ export async function runLocalizeFullProjectLive(
       artifactRecorder,
     });
     let patchApply: WholeGamePatchExportAndApplyResult | undefined;
+    let patchBuild: WholeGamePatchBuildResult | undefined;
+    let patchApplied: WholeGamePatchApplyResult | undefined;
     const terminalRunId = args.resumeRunId ?? `localization-journal-run-${randomUUID()}`;
     const terminalRepository = new ItotoriLocalizationRunFinalizerRepository(context.db);
     const terminalPersistence = new DbTerminalRunFinalizerAdapter(
@@ -322,6 +358,7 @@ export async function runLocalizeFullProjectLive(
         beforeEnterFinalizing: (runId) => dbAdapter.quiesceTerminalRunLeaseHeartbeat(runId),
         afterEnterFinalizing: (runId) => dbAdapter.forgetTerminalRunLease(runId),
       },
+      { runLockPool: context.pool },
     );
     let passResult: LocalizeFullProjectResult | undefined;
     let passError: unknown;
@@ -379,6 +416,55 @@ export async function runLocalizeFullProjectLive(
 
     let runtimeValidationError: RuntimeValidationIncompleteError | undefined;
     let patchWorkerError: unknown;
+    const requirePatchArgs = (): RunWholeGamePatchExportAndApplyArgs => {
+      if (passError !== undefined) throw passError;
+      if (passResult === undefined) {
+        throw new Error(`terminal finalizer has no executor result for ${terminalRunId}`);
+      }
+      if (
+        args.sourceRoot === undefined ||
+        args.sourceRoot.length === 0 ||
+        args.patchTargetRoot === undefined ||
+        args.patchTargetRoot.length === 0
+      ) {
+        throw new TerminalRunOperationalBlockerError({
+          kind: "itotori_bug",
+          detail: "patch build/apply awaits --source and --patch-target inputs",
+          evidence: `terminal-run:${terminalRunId};run-dir:${args.runDir}`,
+          raisedAt: new Date().toISOString(),
+          operatorAction: "supply the patch source and target roots, then resume this run",
+        });
+      }
+      assertWholeGamePatchCoverage(passResult.result.patchReport, args.allowPartialPatch ?? false);
+      const isRealLive = config.engineProfile === "reallive";
+      return {
+        actor,
+        engineProfile: config.engineProfile,
+        journal: journalRepo,
+        patchReport: passResult.result.patchReport,
+        rawBridge: args.io.readJson(config.bridgePath),
+        sourceRoot: args.sourceRoot,
+        targetRoot: args.patchTargetRoot,
+        translatedBundlePath: resolve(args.runDir, "translated-bridge.json"),
+        requestedBy: localUserId,
+        loadActiveDecisions: (a, projectId, localeBranchId) =>
+          assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
+        ...(isRealLive
+          ? {}
+          : { rpgMakerDeltaOutputPath: resolve(args.runDir, "rpgmaker-delta.kaifuu") }),
+        ...(isRealLive
+          ? {
+              renderValidation: {
+                artifactRoot: resolve(args.runDir, "wholegame-render-validation"),
+                redaction: "on" as const,
+                ...(args.nativeCli === undefined ? {} : { nativeCli: args.nativeCli }),
+                ...(args.log === undefined ? {} : { log: args.log }),
+              },
+            }
+          : {}),
+        ...(args.log === undefined ? {} : { log: args.log }),
+      };
+    };
     const finalization = await finalizeTerminalRun({
       runId: passResult?.result.journalRunId ?? terminalRunId,
       persistence: terminalPersistence,
@@ -387,36 +473,13 @@ export async function runLocalizeFullProjectLive(
         ? {}
         : { stageFaults: args.finalizerStageFaults }),
       workers: {
-        patch: async () => {
-          if (passError !== undefined) throw passError;
-          if (passResult === undefined) {
-            throw new Error(`terminal finalizer has no executor result for ${terminalRunId}`);
-          }
-          if (
-            args.sourceRoot === undefined ||
-            args.sourceRoot.length === 0 ||
-            args.patchTargetRoot === undefined ||
-            args.patchTargetRoot.length === 0
-          ) {
-            throw new TerminalRunOperationalBlockerError({
-              kind: "itotori_bug",
-              detail: "patch build/apply awaits --source and --patch-target inputs",
-              evidence: `terminal-run:${terminalRunId};run-dir:${args.runDir}`,
-              raisedAt: new Date().toISOString(),
-              operatorAction: "supply the patch source and target roots, then resume this run",
-            });
-          }
-          assertWholeGamePatchCoverage(
-            passResult.result.patchReport,
-            args.allowPartialPatch ?? false,
-          );
+        patch_build: async () => {
           try {
-            const rawBridge = args.io.readJson(config.bridgePath);
-            const isRealLive = config.engineProfile === "reallive";
-            patchApply = await runPipelineStepWithDiagnostic({
+            const patchArgs = requirePatchArgs();
+            patchBuild = await runPipelineStepWithDiagnostic({
               step: "localize.apply-patch",
               code: "unknown",
-              message: `localize-live: apply-patch failed: kaifuu patch / export-patch preflight aborted`,
+              message: `localize-live: build-patch failed: export-patch preflight aborted`,
               inputs: {
                 configPath: args.configPath,
                 runDir: args.runDir,
@@ -426,35 +489,46 @@ export async function runLocalizeFullProjectLive(
               },
               repro: { configPath: args.configPath, bridgePath: config.bridgePath },
               actor,
-              run: () =>
-                runWholeGamePatchExportAndApply({
-                  actor,
-                  engineProfile: config.engineProfile,
-                  journal: journalRepo,
-                  patchReport: passResult.result.patchReport,
-                  rawBridge,
-                  sourceRoot: args.sourceRoot!,
-                  targetRoot: args.patchTargetRoot!,
-                  translatedBundlePath: join(args.runDir, "translated-bridge.json"),
-                  requestedBy: localUserId,
-                  loadActiveDecisions: (a, projectId, localeBranchId) =>
-                    assetDecisionRepo.loadActiveDecisions(a, projectId, localeBranchId),
-                  ...(isRealLive
-                    ? {}
-                    : { rpgMakerDeltaOutputPath: join(args.runDir, "rpgmaker-delta.kaifuu") }),
-                  ...(isRealLive
-                    ? {
-                        renderValidation: {
-                          artifactRoot: join(args.runDir, "wholegame-render-validation"),
-                          redaction: "on",
-                          ...(args.nativeCli === undefined ? {} : { nativeCli: args.nativeCli }),
-                          ...(args.log === undefined ? {} : { log: args.log }),
-                        },
-                      }
-                    : {}),
-                  ...(args.log === undefined ? {} : { log: args.log }),
-                }),
+              run: () => buildWholeGamePatchExport(patchArgs),
             });
+          } catch (error) {
+            patchWorkerError = error;
+            throw error;
+          }
+          return terminalPatchBuildArtifacts({ args, patchBuild: patchBuild! });
+        },
+        patch_apply: async () => {
+          try {
+            const patchArgs = requirePatchArgs();
+            patchBuild ??= loadTerminalPatchBuild(args, terminalRunId);
+            patchApplied = await runPipelineStepWithDiagnostic({
+              step: "localize.apply-patch",
+              code: "unknown",
+              message: `localize-live: apply-patch failed: kaifuu patch aborted`,
+              inputs: {
+                configPath: args.configPath,
+                runDir: args.runDir,
+                projectId: config.projectId,
+                localeBranchId: config.localeBranchId,
+                engineProfile: config.engineProfile,
+              },
+              repro: { configPath: args.configPath, bridgePath: config.bridgePath },
+              actor,
+              run: () => applyWholeGamePatch(patchArgs, patchBuild!),
+            });
+          } catch (error) {
+            patchWorkerError = error;
+            throw error;
+          }
+          return terminalPatchApplyArtifacts({ args, config, patchApplied: patchApplied! });
+        },
+        validation: async () => {
+          try {
+            const patchArgs = requirePatchArgs();
+            patchBuild ??= loadTerminalPatchBuild(args, terminalRunId);
+            patchApplied ??= loadTerminalPatchApply(args, patchBuild);
+            const validation = validateWholeGamePatch(patchArgs);
+            patchApply = { ...patchApplied, ...validation };
           } catch (error) {
             patchWorkerError = error;
             throw error;
@@ -462,22 +536,11 @@ export async function runLocalizeFullProjectLive(
           if (patchApply.runtimeValidationAdmission?.kind === "runtime-validation-incomplete") {
             runtimeValidationError = new RuntimeValidationIncompleteError(
               patchApply.runtimeValidationAdmission,
-              args.patchTargetRoot,
+              args.patchTargetRoot!,
             );
+            throw runtimeValidationError;
           }
-          return terminalPatchArtifacts({ args, config, patchApply });
-        },
-        validation: async () => {
-          if (runtimeValidationError !== undefined) throw runtimeValidationError;
-          return {
-            evidence: {
-              engineProfile: config.engineProfile,
-              runtimeValidation:
-                patchApply?.renderValidation === undefined
-                  ? "structural-preflight"
-                  : "runtime-validated",
-            },
-          };
+          return terminalPatchValidationArtifacts({ args, config, patchApply: patchApply! });
         },
         summary: async ({ summary }) => {
           if (summary === undefined)
@@ -552,6 +615,111 @@ export async function runLocalizeFullProjectLive(
 }
 
 /**
+ * Resume only a durable post-executor boundary. Returning `null` means the
+ * requested run is still an executor-owned running/paused run with no canonical
+ * summary and the normal live path must handle it. Finalizing and terminal runs
+ * intentionally construct no provider, config, or patch input from process
+ * memory; terminal retries only reproject their canonical DB summary.
+ */
+async function resumeDurableFinalizingRun(
+  args: RunLocalizeFullProjectLiveArgs,
+): Promise<ResumedTerminalFinalizationLiveResult | null> {
+  const runId = args.resumeRunId;
+  if (runId === undefined || runId.trim().length === 0) return null;
+
+  const context = createDatabaseContext(databaseUrlFromEnv());
+  try {
+    await bootstrapLocalUser(context.db);
+    const actor: AuthorizationActor = { userId: localUserId };
+    const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+    const persistence = new DbTerminalRunFinalizerAdapter(
+      repository,
+      actor,
+      undefined,
+      {},
+      { runLockPool: context.pool },
+    );
+    const snapshot = await persistence.loadSnapshot(runId);
+    if (snapshot === null) return null;
+    const existingSummary = await persistence.loadTerminalSummary(runId);
+    const isCommittedTerminalBoundary =
+      snapshot.runStatus === "succeeded" ||
+      snapshot.runStatus === "failed" ||
+      snapshot.runStatus === "aborted" ||
+      (snapshot.runStatus === "paused" && existingSummary !== null);
+    if (snapshot.runStatus !== "finalizing" && !isCommittedTerminalBoundary) return null;
+    if (args.expectedResumeScope !== undefined) {
+      const durableRun = await new ItotoriLocalizationJournalRepository(context.db).loadRun(
+        actor,
+        runId,
+      );
+      if (
+        durableRun === null ||
+        durableRun.projectId !== args.expectedResumeScope.projectId ||
+        durableRun.localeBranchId !== args.expectedResumeScope.localeBranchId
+      ) {
+        throw new Error(`finalizing resume scope mismatch for durable run ${runId}`);
+      }
+    }
+
+    const finalization = await finalizeTerminalRun({
+      runId,
+      persistence,
+      ...(args.cancelled === undefined ? {} : { cancelled: args.cancelled }),
+      ...(args.finalizerStageFaults === undefined
+        ? {}
+        : { stageFaults: args.finalizerStageFaults }),
+      workers: {
+        // Every physical patch worker completed before an unconfirmed terminal
+        // commit. The core skips those durable succeeded outbox keys. If a DB
+        // row is unexpectedly incomplete, fail closed instead of manufacturing
+        // a successful no-op worker result in this executor-free path.
+        patch_build: () => {
+          throw new Error(`finalizing resume found incomplete patch_build for ${runId}`);
+        },
+        patch_apply: () => {
+          throw new Error(`finalizing resume found incomplete patch_apply for ${runId}`);
+        },
+        validation: () => {
+          throw new Error(`finalizing resume found incomplete validation for ${runId}`);
+        },
+        summary: ({ summary }) => {
+          if (summary === undefined) {
+            throw new Error("terminal summary worker received no canonical summary");
+          }
+          args.io.writeJson(join(args.runDir, "run-summary.json"), summary);
+          return { evidence: { path: join(args.runDir, "run-summary.json") } };
+        },
+      },
+    });
+
+    // A previously delivered summary outbox is correctly skipped by the core.
+    // An explicit operator resume still repairs a missing/stale local
+    // projection, using only the canonical row returned above.
+    if (
+      snapshot.stages.some((stage) => stage.stage === "summary" && stage.status === "succeeded")
+    ) {
+      args.io.writeJson(join(args.runDir, "run-summary.json"), finalization.summary);
+    }
+
+    if (finalization.terminalStatus === "failed") {
+      throw new TerminalRunFailedError(finalization.summary);
+    }
+    return {
+      resumedFinalization: true,
+      result: {
+        journalRunId: runId,
+        runState: finalization.terminalStatus,
+        pausedBlocker: finalization.summary.blocker,
+      },
+      terminalSummary: finalization.summary,
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+/**
  * Read the BCP-47 source locale off the run's bridge bundle (a top-level
  * `sourceLocale` on both the v0.1 and v0.2 BridgeBundle shapes). Used to
  * provision the project/source-bundle source locale from the real extracted
@@ -578,73 +746,130 @@ function readBridgeSourceLocale(rawBridge: unknown, bridgePath: string): string 
  * deliberately a small manifest of paths and hashes; no source or target text
  * is copied into a terminal summary.
  */
-function terminalPatchArtifacts(input: {
+function terminalPatchBuildArtifacts(input: {
+  args: RunLocalizeFullProjectLiveArgs;
+  patchBuild: WholeGamePatchBuildResult;
+}) {
+  const patchExportPath = resolve(input.args.runDir, "patch-export-bundle.json");
+  input.args.io.writeJson(patchExportPath, input.patchBuild.patchExportBundle);
+  const paths: Record<string, string> = {
+    translatedBridge: resolve(input.args.runDir, "translated-bridge.json"),
+    patchReport: resolve(input.args.runDir, "patch-report.json"),
+    patchExport: patchExportPath,
+  };
+  return terminalArtifactManifest(paths, {
+    patchVersionDraftCount: input.patchBuild.patchExportBundle.drafts.length,
+    step: "patch_build",
+  });
+}
+
+function terminalPatchApplyArtifacts(input: {
+  args: RunLocalizeFullProjectLiveArgs;
+  config: { engineProfile: "reallive" | "rpg-maker-mv-mz" };
+  patchApplied: WholeGamePatchApplyResult;
+}) {
+  const patchApplyPath = resolve(input.args.runDir, "patch-apply.json");
+  input.args.io.writeJson(patchApplyPath, input.patchApplied.apply);
+  const paths: Record<string, string> = {
+    patchApply: patchApplyPath,
+    patchTarget: resolve(requireArtifactPath(input.args.patchTargetRoot, "patch target")),
+  };
+  if (input.config.engineProfile === "rpg-maker-mv-mz") {
+    paths.rpgMakerDelta = resolve(input.args.runDir, "rpgmaker-delta.kaifuu");
+  }
+  return terminalArtifactManifest(paths, {
+    engineProfile: input.config.engineProfile,
+    step: "patch_apply",
+  });
+}
+
+function terminalPatchValidationArtifacts(input: {
   args: RunLocalizeFullProjectLiveArgs;
   config: { engineProfile: "reallive" | "rpg-maker-mv-mz" };
   patchApply: WholeGamePatchExportAndApplyResult;
-}): {
+}) {
+  const paths: Record<string, string> = {};
+  if (input.patchApply.renderValidation !== undefined) {
+    const runtimeValidationPath = resolve(input.args.runDir, "runtime-validation.json");
+    input.args.io.writeJson(runtimeValidationPath, input.patchApply.renderValidation);
+    paths.runtimeValidation = runtimeValidationPath;
+  }
+  if (input.patchApply.structuralValidation !== undefined) {
+    const structuralValidationPath = resolve(
+      input.args.runDir,
+      "rpgmaker-structural-validation.json",
+    );
+    input.args.io.writeJson(structuralValidationPath, input.patchApply.structuralValidation);
+    paths.structuralValidation = structuralValidationPath;
+  }
+  return terminalArtifactManifest(paths, {
+    engineProfile: input.config.engineProfile,
+    runtimeValidation:
+      input.patchApply.renderValidation !== undefined
+        ? "runtime-validated"
+        : input.patchApply.structuralValidation !== undefined
+          ? "structural-validated"
+          : "structural-preflight",
+    step: "validation",
+  });
+}
+
+function terminalArtifactManifest(
+  paths: Record<string, string>,
+  evidence: Record<string, unknown>,
+): {
   artifactHashes: Record<string, string>;
   artifactRefs: Record<string, string>;
   evidence: Record<string, unknown>;
 } {
-  const patchExportPath = join(input.args.runDir, "patch-export-bundle.json");
-  const patchApplyPath = join(input.args.runDir, "patch-apply.json");
-  input.args.io.writeJson(patchExportPath, input.patchApply.patchExportBundle);
-  input.args.io.writeJson(patchApplyPath, input.patchApply.apply);
-  const paths: Record<string, string> = {
-    translatedBridge: join(input.args.runDir, "translated-bridge.json"),
-    patchReport: join(input.args.runDir, "patch-report.json"),
-    patchExport: patchExportPath,
-    patchApply: patchApplyPath,
-    patchTarget: requireArtifactPath(input.args.patchTargetRoot, "patch target"),
-  };
-  if (input.config.engineProfile === "rpg-maker-mv-mz") {
-    paths.rpgMakerDelta = join(input.args.runDir, "rpgmaker-delta.kaifuu");
-  }
-  if (input.patchApply.renderValidation !== undefined) {
-    const runtimeValidationPath = join(input.args.runDir, "runtime-validation.json");
-    input.args.io.writeJson(runtimeValidationPath, input.patchApply.renderValidation);
-    paths.runtimeValidation = runtimeValidationPath;
-  }
   const artifactHashes = Object.fromEntries(
-    Object.entries(paths).map(([name, path]) => [name, hashArtifact(path)]),
+    Object.entries(paths).map(([name, path]) => [name, hashLocalizationArtifact(path)]),
   );
   return {
     artifactHashes,
     artifactRefs: paths,
     evidence: {
-      patchVersionDraftCount: input.patchApply.patchExportBundle.drafts.length,
-      engineProfile: input.config.engineProfile,
+      ...evidence,
       artifacts: Object.keys(paths).sort(),
     },
   };
+}
+
+function loadTerminalPatchBuild(
+  args: RunLocalizeFullProjectLiveArgs,
+  runId: string,
+): WholeGamePatchBuildResult {
+  const value = args.io.readJson(resolve(args.runDir, "patch-export-bundle.json"));
+  assertPatchExportBundle(value);
+  return {
+    patchExportBundle: value,
+    draftArtifactBundleId: `wholegame-run:${runId}`,
+  };
+}
+
+function loadTerminalPatchApply(
+  args: RunLocalizeFullProjectLiveArgs,
+  build: WholeGamePatchBuildResult,
+): WholeGamePatchApplyResult {
+  const value = args.io.readJson(resolve(args.runDir, "patch-apply.json"));
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    typeof (value as { command?: unknown }).command !== "string" ||
+    !Array.isArray((value as { args?: unknown }).args) ||
+    (value as { args: unknown[] }).args.some((entry) => typeof entry !== "string") ||
+    (value as { status?: unknown }).status !== 0 ||
+    typeof (value as { stdout?: unknown }).stdout !== "string" ||
+    typeof (value as { stderr?: unknown }).stderr !== "string"
+  ) {
+    throw new Error("terminal finalizer patch-apply receipt is malformed");
+  }
+  return { ...build, apply: value as WholeGamePatchApplyResult["apply"] };
 }
 
 function requireArtifactPath(path: string | undefined, label: string): string {
   if (path === undefined || path.trim().length === 0) {
     throw new Error(`terminal finalizer requires a non-blank ${label} artifact path`);
   }
-  return path;
-}
-
-function hashArtifact(path: string): string {
-  if (!existsSync(path)) throw new Error(`terminal finalizer artifact is missing: ${path}`);
-  const hash = createHash("sha256");
-  hashArtifactInto(hash, path, path);
-  return `sha256:${hash.digest("hex")}`;
-}
-
-function hashArtifactInto(hash: ReturnType<typeof createHash>, root: string, path: string): void {
-  const stat = lstatSync(path);
-  const relativePath = relative(root, path) || ".";
-  if (stat.isDirectory()) {
-    hash.update(`directory:${relativePath}\n`);
-    for (const child of readdirSync(path).sort()) {
-      hashArtifactInto(hash, root, join(path, child));
-    }
-    return;
-  }
-  if (!stat.isFile()) throw new Error(`terminal finalizer cannot hash non-file artifact ${path}`);
-  hash.update(`file:${relativePath}\n`);
-  hash.update(readFileSync(path));
+  return resolve(path);
 }

@@ -164,7 +164,7 @@ export type RunLocalizeGameArgs = {
   redaction?: "on" | "off";
   /** Durable run-level USD budget cap forwarded to the localize driver. */
   costCapUsd?: number;
-  /** Existing durable journal run to resume from its first pending unit. */
+  /** Existing paused executor run or finalizing terminal commit to resume. */
   resumeRunId?: string;
   /**
    * Optional client-side bounded-concurrency override (from `--concurrency`),
@@ -330,7 +330,11 @@ export async function runLocalizeGameCommand(
       renderEvidencePath,
     };
   }
-  if (localize.patchApply === undefined) {
+  if (
+    localize.resumedFinalization === true
+      ? !localize.terminalSummary.patch.playable
+      : localize.patchApply === undefined
+  ) {
     // The source + target are always passed here, so the driver MUST have
     // reached an applyable patch. If it did not, the vertical did not produce a
     // patched game — fail closed rather than "validate" an unpatched target.
@@ -340,9 +344,15 @@ export async function runLocalizeGameCommand(
       undefined,
     );
   }
-  log(
-    `[localize-game] stage 3/4 localize done (units=${localize.result.unitsRun} written=${localize.result.writtenOutcomeCount} cost=$${localize.result.totalUsageCostExactUsd} patched=${args.targetRoot})`,
-  );
+  if (localize.resumedFinalization === true) {
+    log(
+      `[localize-game] stage 3/4 finalization resumed (planned=${String(localize.terminalSummary.coverage.plannedUnitCount)} written=${String(localize.terminalSummary.coverage.writtenOutcomeCount)} patched=${args.targetRoot})`,
+    );
+  } else {
+    log(
+      `[localize-game] stage 3/4 localize done (units=${localize.result.unitsRun} written=${localize.result.writtenOutcomeCount} cost=$${localize.result.totalUsageCostExactUsd} patched=${args.targetRoot})`,
+    );
+  }
 
   // -------- Stage 4: VALIDATE the patched target (utsushi replay + render) ----
   // The kaifuu patch (stage 3) materializes ONLY the patched Seen.txt into the

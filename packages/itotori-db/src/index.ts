@@ -880,8 +880,12 @@ export {
   LOCALIZATION_RUN_TERMINAL_SUMMARY_SCHEMA_VERSION,
   outboxIdempotencyKeyFor,
   patchVersionIdFor,
-  resultRevisionIdFor,
 } from "./repositories/localization-run-finalizer-repository.js";
+export {
+  LocalizationArtifactIntegrityError,
+  hashLocalizationArtifact,
+  verifyLocalizationArtifactManifest,
+} from "./localization-artifact-integrity.js";
 export type {
   CompleteSucceededLocalizationRunInput,
   EnsureLocalizationPatchVersionInput,

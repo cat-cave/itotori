@@ -22,6 +22,7 @@ import {
   localizationJournalCostReservations,
   localizationJournalLlmAttempts,
   localizationJournalRunCostAccounts,
+  localizationResultRevisions,
   localizationJournalRuns,
   localizationJournalRunUnits,
   outcomeContextRefs,
@@ -1543,6 +1544,22 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         })),
       );
 
+      // Materialize the immutable selected result in the same transaction as
+      // its outcome/candidates. Finalizer coverage reads only this persisted
+      // row; it never turns a written outcome into a synthetic revision later.
+      await tx.insert(localizationResultRevisions).values({
+        resultRevisionId: localizationResultRevisionIdFor(input.runId, input.bridgeUnitId),
+        journalOutcomeId,
+        runId: input.runId,
+        bridgeUnitId: input.bridgeUnitId,
+        selectedCandidateId: input.outcome.selectedCandidateId,
+        targetBody: input.outcome.candidates.find(
+          (candidate) => candidate.id === input.outcome.selectedCandidateId,
+        )!.body,
+        origin: "run_written_outcome",
+        createdAt: writtenAt,
+      });
+
       if (input.outcome.findings.length > 0) {
         await tx.insert(writtenQaFindings).values(
           input.outcome.findings.map((finding, findingOrdinal) => {
@@ -2340,6 +2357,10 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       rows: rows.map(jobsRunTableRowFromCompletedAttempt),
     };
   }
+}
+
+function localizationResultRevisionIdFor(runId: string, bridgeUnitId: string): string {
+  return `run-result:${runId}:${bridgeUnitId}`;
 }
 
 type CompletedJobsAttemptRow = {

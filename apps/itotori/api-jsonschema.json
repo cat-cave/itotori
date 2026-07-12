@@ -825,7 +825,13 @@
     "ApiLaunchPassRequest": {
       "additionalProperties": true,
       "properties": {
+        "cancelled": {
+          "type": "boolean"
+        },
         "localeBranchId": {
+          "type": "string"
+        },
+        "resumeRunId": {
           "type": "string"
         }
       },

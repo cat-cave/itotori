@@ -1221,6 +1221,9 @@ async function routeItotoriApiRequest(
       const outcome = await services.projectWorkflow.launchNextLocalizationPass({
         projectId: scope.projectId,
         localeBranchId: scope.localeBranchId,
+        ...(body.cancelled === true
+          ? { cancelled: true as const, resumeRunId: body.resumeRunId }
+          : {}),
       });
       return ok("projects.launchPass", launchPassResponseBody(outcome));
     }

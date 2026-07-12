@@ -824,7 +824,13 @@
       "ApiLaunchPassRequest": {
         "additionalProperties": true,
         "properties": {
+          "cancelled": {
+            "type": "boolean"
+          },
           "localeBranchId": {
+            "type": "string"
+          },
+          "resumeRunId": {
             "type": "string"
           }
         },
@@ -6102,7 +6108,7 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Launch the next localization pass (folds queued corrections).",
+        "summary": "Launch the next localization pass or cancel an existing durable run.",
         "x-itotoriRouteId": "projects.launchPass"
       }
     },

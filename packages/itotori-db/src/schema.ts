@@ -5257,6 +5257,52 @@ export const translationCandidates = pgTable(
 );
 
 /**
+ * Immutable selected-result revision materialized with a written outcome.
+ *
+ * Patch membership references this row (including its outcome/run/unit scope)
+ * instead of carrying a deterministic string that can exist without a
+ * persisted revision. The selected-candidate FK makes the revision point at
+ * the exact durable target body chosen by the outcome.
+ */
+export const localizationResultRevisions = pgTable(
+  "itotori_localization_result_revisions",
+  {
+    resultRevisionId: text("result_revision_id").primaryKey(),
+    journalOutcomeId: text("journal_outcome_id").notNull(),
+    runId: text("run_id").notNull(),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    selectedCandidateId: text("selected_candidate_id").notNull(),
+    targetBody: text("target_body").notNull(),
+    origin: text("origin").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_localization_result_revisions_outcome_unique").on(table.journalOutcomeId),
+    unique("itotori_localization_result_revisions_revision_scope_unique").on(
+      table.resultRevisionId,
+      table.journalOutcomeId,
+      table.runId,
+      table.bridgeUnitId,
+    ),
+    index("itotori_localization_result_revisions_run_unit_idx").on(table.runId, table.bridgeUnitId),
+    foreignKey({
+      columns: [table.journalOutcomeId, table.runId, table.bridgeUnitId],
+      foreignColumns: [
+        writtenUnitOutcomes.journalOutcomeId,
+        writtenUnitOutcomes.runId,
+        writtenUnitOutcomes.bridgeUnitId,
+      ],
+      name: "itotori_localization_result_revisions_outcome_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.journalOutcomeId, table.selectedCandidateId],
+      foreignColumns: [translationCandidates.journalOutcomeId, translationCandidates.candidateId],
+      name: "itotori_localization_result_revisions_selected_candidate_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+/**
  * Candidate-scoped permanent QA annotations. The raw QA detail fields are
  * deliberately normalized alongside the concise written finding so the read
  * surface can render rationale/evidence without parsing a note or an opaque
@@ -5346,11 +5392,7 @@ export const outcomeSpeakerLabels = pgTable(
   ],
 );
 
-/**
- * One minimal PatchVersion per execution run. Result-revision lineage belongs
- * to a later node; this row and its exact unit membership are the stable
- * foundation that node will extend.
- */
+/** One run-scoped PatchVersion with exact persisted result-revision membership. */
 export const localizationPatchVersions = pgTable(
   "itotori_localization_patch_versions",
   {
@@ -5383,8 +5425,6 @@ export const localizationPatchVersionUnits = pgTable(
     runId: text("run_id").notNull(),
     bridgeUnitId: text("bridge_unit_id").notNull(),
     journalOutcomeId: text("journal_outcome_id").notNull(),
-    // This deterministic seam is deliberately not a full result-revision
-    // table. It lets the coverage predicate require a result reference today.
     resultRevisionId: text("result_revision_id").notNull(),
     unitOrdinal: integer("unit_ordinal").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -5415,6 +5455,16 @@ export const localizationPatchVersionUnits = pgTable(
       ],
       name: "itotori_localization_patch_version_units_outcome_fkey",
     }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.resultRevisionId, table.journalOutcomeId, table.runId, table.bridgeUnitId],
+      foreignColumns: [
+        localizationResultRevisions.resultRevisionId,
+        localizationResultRevisions.journalOutcomeId,
+        localizationResultRevisions.runId,
+        localizationResultRevisions.bridgeUnitId,
+      ],
+      name: "itotori_localization_patch_version_units_result_revision_fkey",
+    }),
   ],
 );
 
