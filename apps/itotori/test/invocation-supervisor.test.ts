@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   executeModelInvocation,
+  executeStructuredInvocation,
   InvocationRetryCeilingError,
   InvocationSupervisor,
   supervisedModelProvider,
@@ -425,6 +426,87 @@ describe("InvocationSupervisor failure matrix", () => {
 
     expect(result.content).toBe("Usable plain-text response.");
     expect(provider.requests).toHaveLength(3);
+  });
+
+  it("refuses every unbound paid standalone call before provider preparation or dispatch", async () => {
+    let preflightCalls = 0;
+    let dispatchCalls = 0;
+    const provider: ModelProvider = {
+      // The root guard keys off the shipped paid-provider family rather than
+      // a test-only class, so this proves an OpenRouter descriptor cannot use
+      // either helper's standalone supervisor fallback.
+      descriptor: { ...new FakeModelProvider().descriptor, family: "openrouter" },
+      preflightInvocation: async () => {
+        preflightCalls += 1;
+        return { admitted: true };
+      },
+      invoke: async () => {
+        dispatchCalls += 1;
+        return await new FakeModelProvider({ generate: () => "must not run" }).invoke(request());
+      },
+    };
+
+    await expect(executeModelInvocation(provider, request())).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("durable cost-admission"),
+      },
+    });
+    await expect(
+      executeStructuredInvocation(provider, {
+        request: request(),
+        parse: (raw) => raw,
+        validateParsed: () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "budget_cap" },
+    });
+
+    expect(preflightCalls).toBe(0);
+    expect(dispatchCalls).toBe(0);
+  });
+
+  it("refuses a paid bound supervisor with admission but no hard bill ceiling", async () => {
+    let preflightCalls = 0;
+    let dispatchCalls = 0;
+    let admissionCalls = 0;
+    const provider: ModelProvider = {
+      descriptor: { ...new FakeModelProvider().descriptor, family: "openrouter" },
+      preflightInvocation: async () => {
+        preflightCalls += 1;
+        return { admitted: true };
+      },
+      invoke: async () => {
+        dispatchCalls += 1;
+        return await new FakeModelProvider({ generate: () => "must not run" }).invoke(request());
+      },
+    };
+    const { maximumBillableCostUsd: _omittedCeiling, ...contextWithoutCeiling } = context();
+    const bound = supervisedModelProvider(
+      new InvocationSupervisor({
+        provider,
+        context: contextWithoutCeiling,
+        costAdmission: {
+          admit: async () => {
+            admissionCalls += 1;
+            return { admitted: true };
+          },
+        },
+      }),
+    );
+
+    await expect(executeModelInvocation(bound, request())).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("maximumBillableCostUsd"),
+      },
+    });
+    expect(admissionCalls).toBe(0);
+    expect(preflightCalls).toBe(0);
+    expect(dispatchCalls).toBe(0);
   });
 
   it.each([

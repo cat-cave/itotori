@@ -468,6 +468,12 @@ export async function runLocalizeFullProjectCommand(
   );
 
   const concurrency = resolveDrivenConcurrency(args.concurrency, config.concurrency);
+  // A durable resume owns its already-frozen policy. Do not let a config or
+  // omitted CLI flag reconstruct a null cap during this command-level wiring;
+  // the executor independently reloads the persisted policy as defense in
+  // depth for programmatic callers.
+  const budgetCapUsd =
+    args.resumeRunId === undefined ? (args.budgetCapUsd ?? config.budgetCapUsd) : undefined;
 
   const executorInput: ProjectDrivenExecutorInput = {
     bridge,
@@ -494,9 +500,7 @@ export async function runLocalizeFullProjectCommand(
     ...(deps.styleGuide !== undefined ? { styleGuide: deps.styleGuide } : {}),
     ...(resolveUnitContext !== undefined ? { resolveUnitContext } : {}),
     ...(config.maxUnits !== undefined ? { maxUnits: config.maxUnits } : {}),
-    ...((args.budgetCapUsd ?? config.budgetCapUsd) !== undefined
-      ? { budgetCapUsd: args.budgetCapUsd ?? config.budgetCapUsd }
-      : {}),
+    ...(budgetCapUsd !== undefined ? { budgetCapUsd } : {}),
     ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
     // `--concurrency` CLI override wins over the config value; falls back to
     // the config's `concurrency`, then the executor's DEFAULT_DRIVEN_CONCURRENCY.

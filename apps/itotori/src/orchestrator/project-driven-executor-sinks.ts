@@ -22,6 +22,7 @@ import {
 } from "@itotori/db";
 import type {
   DrivenJournalResumeState,
+  DrivenJournalCostPolicy,
   DrivenJournalRunPlan,
   DrivenUnitJournalRecord,
   DrivenUnitJournalSink,
@@ -169,6 +170,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     ]);
     if (run === null) throw new Error(`cannot resume missing journal run ${runId}`);
     return {
+      costPolicy: drivenJournalCostPolicyFromRecord(run.costPolicy, runId),
       status: run.status,
       pausedBlocker: run.pausedBlocker,
       leaseOwnerId: run.leaseOwnerId,
@@ -599,6 +601,42 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     // an unobserved database operation.
     await heartbeat.renewalInFlight;
   }
+}
+
+/**
+ * A resumed executor must replay the policy the repository persisted, not a
+ * config/CLI reconstruction. Validate the narrow driven-run contract here,
+ * but keep every persisted field so a future policy addition remains stable
+ * across an idempotent resume seed.
+ */
+function drivenJournalCostPolicyFromRecord(
+  costPolicy: Record<string, unknown> | null,
+  runId: string,
+): DrivenJournalCostPolicy {
+  if (costPolicy === null) {
+    throw new Error(`cannot resume journal run ${runId}: persisted cost policy is missing`);
+  }
+  if (costPolicy.reservation !== "node_4_seam") {
+    throw new Error(
+      `cannot resume journal run ${runId}: unsupported persisted cost reservation policy`,
+    );
+  }
+  const budgetCapUsd = costPolicy.budgetCapUsd;
+  if (
+    budgetCapUsd !== null &&
+    typeof budgetCapUsd !== "string" &&
+    (typeof budgetCapUsd !== "number" || !Number.isFinite(budgetCapUsd) || budgetCapUsd < 0)
+  ) {
+    throw new Error(`cannot resume journal run ${runId}: persisted budget cap is invalid`);
+  }
+  if (typeof budgetCapUsd === "string" && budgetCapUsd.trim().length === 0) {
+    throw new Error(`cannot resume journal run ${runId}: persisted budget cap is invalid`);
+  }
+  return {
+    ...costPolicy,
+    reservation: "node_4_seam",
+    budgetCapUsd,
+  };
 }
 
 /**

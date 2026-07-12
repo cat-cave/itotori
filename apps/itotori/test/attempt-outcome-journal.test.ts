@@ -17,6 +17,7 @@ describe("capturePhysicalProviderAttempts", () => {
       { code: "EROFS" },
     );
     let physicalCallCount = 0;
+    let admissionCount = 0;
     let artifact: ProviderRunArtifact | undefined;
     const provider = new OpenRouterProvider({
       modelId: DEV_PAIR.modelId,
@@ -59,6 +60,16 @@ describe("capturePhysicalProviderAttempts", () => {
       runId: "journal-run-post-call-artifact-error",
       bridgeUnitId: "bridge-unit-post-call-artifact-error",
       source: () => provider,
+      // The capture wrapper is the production-bound supervisor seam. Supply
+      // an explicit test admission so this OpenRouter-descriptor fixture
+      // proves the post-call journal behavior without bypassing the root
+      // paid-provider guard.
+      costAdmission: {
+        admit: async () => {
+          admissionCount += 1;
+          return { admitted: true };
+        },
+      },
     });
     const capturingProvider = captured.providerFactory({
       stage: "translation",
@@ -74,6 +85,7 @@ describe("capturePhysicalProviderAttempts", () => {
       causeValue: artifactPersistenceError,
     });
     expect(physicalCallCount).toBe(1);
+    expect(admissionCount).toBe(1);
     expect(artifact?.run.status).toBe("succeeded");
 
     // This mirrors the failed-unit path before its attempts are sent to the

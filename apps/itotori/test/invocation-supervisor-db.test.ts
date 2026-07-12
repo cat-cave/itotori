@@ -235,13 +235,17 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
     }
   });
 
-  it("accounts for paid uncapped executor calls and permits adding a later cap", async () => {
+  it("resumes a previously unlimited run with its raised persisted cap and enforces it", async () => {
     const context = await isolatedMigratedContext();
     try {
       await seedScope(context.pool);
       const repository = new ItotoriLocalizationJournalRepository(context.db);
       const calls = new Map<string, number>();
       const patches: DrivenPatchExportRecord[] = [];
+      const firstJournal = new DrivenJournalPersistenceAdapter(repository, {
+        actor: ACTOR,
+        driverId: "atomic-cost-uncapped-driver",
+      });
       const result = await runProjectDrivenExecutor({
         ...executorInput(providerFactory(calls, ATOMIC_SUB_MICRO_BILLED_COST)),
         pairPolicy: atomicCostPairPolicy(),
@@ -249,10 +253,7 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
         // Deliberately omit budgetCapUsd. The durable adapter must still
         // reserve/reconcile every physical call against an unlimited account.
         sinks: {
-          journal: new DrivenJournalPersistenceAdapter(repository, {
-            actor: ACTOR,
-            driverId: "atomic-cost-uncapped-driver",
-          }),
+          journal: firstJournal,
           patchExport: { exportPatch: async (record) => void patches.push(record) },
         },
       });
@@ -276,15 +277,62 @@ describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/r
         ]),
       );
 
+      // Make the intentionally partial unlimited run resumable without
+      // fabricating a budget pause. The first adapter owns its live fence, so
+      // exercise the same durable pause/release boundary an operator reaches
+      // after a provider outage before assigning a finite cap.
+      await firstJournal.pauseRun(result.journalRunId, {
+        kind: "provider_outage",
+        detail: "test fixture pauses the partial unlimited run before cap raise",
+        evidence: "test:unlimited-cap-raise-resume",
+        raisedAt: "2026-07-12T12:00:00.000Z",
+        operatorAction: "raise the run cost cap, then resume",
+      });
+      await firstJournal.releasePausedRunLease(result.journalRunId);
+
       const addedCap = addDecimalUsd(
-        account?.spentCostUsd ?? "0",
-        ATOMIC_UNCAPPED_CAP_HEADROOM_USD,
+        String(account?.spentCostUsd ?? "0"),
+        ATOMIC_SUB_MICRO_BILLED_COST.amountUsd,
       );
       await expect(
         repository.raiseRunCostCap(ACTOR, result.journalRunId, addedCap),
       ).resolves.toMatchObject({ capUsd: addedCap, spentCostUsd: account?.spentCostUsd });
       expect(await repository.loadRun(ACTOR, result.journalRunId)).toMatchObject({
         costPolicy: expect.objectContaining({ budgetCapUsd: addedCap }),
+      });
+
+      const resumedCalls = new Map<string, number>();
+      const resumed = await runProjectDrivenExecutor({
+        ...executorInput(providerFactory(resumedCalls, ATOMIC_SUB_MICRO_BILLED_COST)),
+        pairPolicy: atomicCostPairPolicy(),
+        resumeRunId: result.journalRunId,
+        // Deliberately omit budgetCapUsd. Rebuilding null from this call would
+        // produce run_seed_conflict; the persisted exact string must instead
+        // seed the resume and stop after its one-call headroom.
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, {
+            actor: ACTOR,
+            driverId: "atomic-cost-uncapped-resume-driver",
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+
+      expect(resumed).toMatchObject({
+        journalRunId: result.journalRunId,
+        runState: "paused",
+        pausedBlocker: { kind: "budget_cap" },
+        budgetStopped: true,
+        patchExportCount: 0,
+      });
+      expect(resumedCalls.get("__all__")).toBe(1);
+      expect(await repository.loadRun(ACTOR, result.journalRunId)).toMatchObject({
+        costPolicy: expect.objectContaining({ budgetCapUsd: addedCap }),
+      });
+      expect(await repository.loadRunCostAccount(ACTOR, result.journalRunId)).toMatchObject({
+        capUsd: addedCap,
+        spentCostUsd: addedCap,
+        reservedCostUsd: "0",
       });
     } finally {
       await context.close();
@@ -1203,7 +1251,6 @@ const ATOMIC_COST_LEASE = { ownerId: "atomic-cost-driver", fenceToken: 1 } as co
 const ATOMIC_COST_INITIAL_CAP_USD = 0.00000098; // itotori-225-audit-allow: focused live-DB fixture cap admits exactly two 0.49-micro reservations before testing atomic budget pause
 const ATOMIC_COST_RAISED_CAP_USD = 0.0001; // itotori-225-audit-allow: focused live-DB fixture cap raise leaves room for the complete two-unit executor resume
 const ATOMIC_SUB_MICRO_MAX_USD = 0.00000049; // itotori-225-audit-allow: pair-policy fixture exposes an exact sub-micro worst case to the durable reservation seam
-const ATOMIC_UNCAPPED_CAP_HEADROOM_USD = "0.00000001"; // itotori-225-audit-allow: exact post-run headroom proves a previously unlimited account can accept a finite cap above observed spend
 const ATOMIC_SUB_MICRO_BILLED_COST: ProviderCost = {
   costKind: "billed",
   currency: "USD",

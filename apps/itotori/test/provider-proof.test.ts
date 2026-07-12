@@ -10,8 +10,6 @@ import {
   runProviderProof,
   runProviderProofCommand,
   runRecordedProviderProof,
-  type ProviderProofAttemptSource,
-  type ProviderProofFixture,
 } from "../src/provider-proof/index.js";
 
 function clone<T>(value: T): T {
@@ -202,7 +200,7 @@ describe("provider-proof harness (live mode opt-in)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("runs a bounded live proof against a mocked ZDR OpenRouter with real billed cost", async () => {
+  it("refuses an unadmitted live OpenRouter proof before its mocked fetch", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { messages: Array<{ content: string }> };
       const isDraft = body.messages[0]!.content.includes("StructuredTranslationDraftOutput");
@@ -244,29 +242,24 @@ describe("provider-proof harness (live mode opt-in)", () => {
       });
     }) as unknown as typeof fetch;
 
-    const result = await runProviderProofCommand({
-      mode: "live",
-      env: {
-        [PROVIDER_PROOF_LIVE_FLAG]: "1",
-        OPENROUTER_API_KEY: "test-key",
-        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+    await expect(
+      runProviderProofCommand({
+        mode: "live",
+        env: {
+          [PROVIDER_PROOF_LIVE_FLAG]: "1",
+          OPENROUTER_API_KEY: "test-key",
+          OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        },
+        fetch: fetchMock,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("durable cost-admission"),
       },
-      fetch: fetchMock,
     });
-
-    expect(result.status).toBe("passed");
-    if (result.status !== "passed") throw new Error("expected pass");
-    expect(result.bundle.mode).toBe("live");
-    expect(result.bundle.zdr).toEqual({ accountAssertion: "asserted", perRequestZdr: true });
-    expect(result.bundle.ledger).toHaveLength(2);
-    for (const row of result.bundle.ledger) {
-      expect(row.costAmount).toBe("0.00001");
-      expect(row.tokensIn).toBe(30);
-      expect(row.tokensOut).toBe(18);
-      expect(row.servedProvider).toBe("fireworks");
-    }
-    // 2 calls: one draft, one QA (a single bounded unit).
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

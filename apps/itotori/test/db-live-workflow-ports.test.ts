@@ -53,21 +53,19 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
       expect(provider.descriptor.providerName).toBe(DEV_PAIR.providerId);
     });
 
-    it("draftProject REACHES the real live provider port (ZDR-gated), never DraftProviderNotConfiguredError", async () => {
-      // The injected provider is the SAME one the DB service factory wires. With
-      // the account-wide ZDR posture unasserted (env: {}), the deferred real
-      // OpenRouterModelProvider constructed on first invoke throws
-      // AccountZdrAssertionError — proving draftProject reached the REAL live
-      // provider (fail-closed), NOT the old dead-button
-      // DraftProviderNotConfiguredError and NOT a fake, zero-cost draft.
+    it("refuses the unadmitted real provider before lazy OpenRouter construction", async () => {
+      // The injected provider is the SAME one the DB service factory wires.
+      // It deliberately has no durable run-cost sink, so the universal
+      // invocation boundary must fail before preflight can lazily construct
+      // an OpenRouter transport (or reach the ZDR/API-key gate).
       const provider = createDbBackedDraftModelProvider({
         env: {},
         artifactRecorder: noopRecorder(),
       });
       const service = new ItotoriProjectWorkflowService(stubRepository(), actor, provider);
 
-      await expect(service.draftProject(projectFixture(), "fr-FR")).rejects.toBeInstanceOf(
-        AccountZdrAssertionError,
+      await expect(service.draftProject(projectFixture(), "fr-FR")).rejects.toThrow(
+        /durable cost-admission sink/u,
       );
       await expect(service.draftProject(projectFixture(), "fr-FR")).rejects.not.toBeInstanceOf(
         DraftProviderNotConfiguredError,

@@ -1,4 +1,4 @@
-// itotori-structured-output-plain-json-fallback-under-zdr — REAL ZDR proof.
+// itotori-structured-output-plain-json-fallback-under-zdr — paid boundary proof.
 //
 // THE pilot blocker: before this node the PRODUCTION TranslationAgent resolved
 // structured output to `json_object` for the DEV_PAIR, which is UNROUTABLE
@@ -13,16 +13,14 @@
 //
 // This test drives a real translate request through the ACTUAL
 // `TranslationAgent.invokeTranslation` (not a bespoke harness) under
-// ZDR/DEV_PAIR and asserts it now SUCCEEDS: HTTP 200 (no throw), a
-// schema-valid parsed draft, real `usage.cost`, zdr:true confirmed on the
-// response, and the served (model,provider) pair recorded. The production
-// selector must have chosen `plain_json` (structuredOutputMode on the run).
+// ZDR/DEV_PAIR. The standalone agent has no durable cost-admission sink, so
+// it must refuse before any paid OpenRouter dispatch; a durable driven run is
+// the production path for the same selector proof.
 //
 // Gated on ITOTORI_ZDR_PLAINJSON_LIVE=1 + OPENROUTER_API_KEY +
 // OPENROUTER_ZDR_ACCOUNT_ASSERTED=1. Unset → visible skip (no silent pass), so
 // `pnpm test` in CI skips it. Budget: ONE small call, capped at $1.00.
 
-import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   OpenRouterProvider,
@@ -41,12 +39,11 @@ const LIVE_ENABLED =
   typeof process.env.OPENROUTER_API_KEY === "string" &&
   process.env.OPENROUTER_API_KEY.length > 0;
 
-const BUDGET_CAP_USD = 1.0;
 const PER_CALL_MAX_PRICE_USD = 0.5;
 const FIXED_ACTOR = { userId: "local-user" };
 
-describe("plain-json-fallback-under-zdr — real ZDR run through the PRODUCTION TranslationAgent", () => {
-  it("succeeds (HTTP 200, not 404) via the plain_json fallback with a schema-valid result, real cost, and zdr:true", async () => {
+describe("plain-json-fallback-under-zdr — standalone paid-agent boundary", () => {
+  it("refuses before paid dispatch without a durable cost-admission sink", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -127,54 +124,12 @@ describe("plain-json-fallback-under-zdr — real ZDR run through the PRODUCTION 
       promptTemplateVersion: TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
     };
 
-    // Before the fix this THREW ModelProviderError(provider_http_error) with a
-    // 404 envelope. After the fix it returns a validated result.
-    const result = await agent.invokeTranslation(FIXED_ACTOR, input);
-    const run = result.modelMetadata.providerRun;
-
-    // (1) HTTP 200, schema-valid parsed drafts (invokeTranslation only returns
-    // after parseWithBoundedRepair + the full strict schema + protected-span +
-    // citation validation succeed).
-    expect(run.status).toBe("succeeded");
-    expect(result.drafts.length).toBeGreaterThan(0);
-
-    // (2) the PRODUCTION selector resolved to plain_json — the fallback path.
-    expect(run.structuredOutputMode).toBe("plain_json");
-
-    // (3) real usage.cost, billed, within budget.
-    expect(run.cost.costKind).toBe("billed");
-    const costUsd = (run.cost.amountMicrosUsd ?? 0) / 1_000_000;
-    expect(costUsd).toBeGreaterThan(0);
-    expect(costUsd).toBeLessThanOrEqual(BUDGET_CAP_USD);
-
-    // (4) zdr:true confirmed on the response posture (+ data_collection deny).
-    expect(run.routingPosture?.zdr).toBe(true);
-    expect(run.routingPosture?.data_collection).toBe("deny");
-    // The plain fallback must NOT have narrowed the pool.
-    expect(run.routingPosture?.require_parameters).toBe(false);
-
-    // (5) the served (model, provider) pair.
-    const servedPair = {
-      model: run.provider.actualModelId,
-      provider: run.provider.upstreamProvider,
-    };
-    expect(servedPair.model.length).toBeGreaterThan(0);
-
-    const summary = {
-      node: "itotori-structured-output-plain-json-fallback-under-zdr",
-      httpStatus: 200,
-      structuredOutputMode: run.structuredOutputMode,
-      draftCount: result.drafts.length,
-      costUsd,
-      zdr: run.routingPosture?.zdr,
-      dataCollection: run.routingPosture?.data_collection,
-      requireParameters: run.routingPosture?.require_parameters,
-      servedPair,
-      finishReasonOk: true,
-    };
-    const reportPath = env.ITOTORI_ZDR_PLAINJSON_REPORT ?? "/tmp/zdr-plainjson-real-run.json";
-    writeFileSync(reportPath, JSON.stringify(summary, null, 2), "utf8");
-    // eslint-disable-next-line no-console
-    console.log(`[zdr-plainjson] ${JSON.stringify(summary)} report=${reportPath}`);
+    await expect(agent.invokeTranslation(FIXED_ACTOR, input)).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("durable cost-admission"),
+      },
+    });
   }, 120_000);
 });

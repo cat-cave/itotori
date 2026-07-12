@@ -610,6 +610,24 @@ export class InvocationSupervisor {
     Extract<Awaited<ReturnType<InvocationCostAdmission["admit"]>>, { admitted: true }> | undefined
   > {
     const costAdmission = this.options.costAdmission;
+    // `executeModelInvocation` and `executeStructuredInvocation` both use
+    // `supervisorFor`'s standalone fallback when their provider was not
+    // explicitly bound to a durable supervisor. That fallback is useful for
+    // fake/recorded/local providers, but it must never turn an OpenRouter
+    // transport into an unaccounted paid dispatch. Check before provider
+    // preparation: preflight can lazily construct the physical transport or
+    // consume a rate token, neither of which belongs on a refused call.
+    if (
+      providerRequiresDurableCostAdmission(this.options.provider) &&
+      costAdmission === undefined
+    ) {
+      await this.pauseAndThrow(
+        "budget_cap",
+        "paid provider invocation requires a durable cost-admission sink before dispatch",
+        `cost-admission:${this.context.runId};attempt:${attempt.attemptId};sink:missing`,
+        "run this paid invocation through a durable cost-admission boundary with a maximumBillableCostUsd ceiling",
+      );
+    }
     // `maxPriceUsd` is a provider-pricing preference/filter, not a proved
     // upper bound on what a provider can settle. Do not turn it (or the legacy
     // `maximumCostUsd` alias) into a reservation value. A durable paid call
@@ -1022,6 +1040,18 @@ function supervisorFor(provider: ModelProvider): InvocationSupervisor {
     return (provider as SupervisorBoundProvider)[SUPERVISOR_BINDING];
   }
   return new InvocationSupervisor({ provider });
+}
+
+/**
+ * OpenRouter is the only shipped provider family that can incur a remote
+ * provider bill. The remaining families are explicitly fake, recorded, or
+ * local-only transports (see ProviderFamily), so they can use the standalone
+ * supervisor for fixtures and non-paid local work without manufacturing a
+ * journal run. Keep this discriminator at the invocation boundary rather
+ * than trusting individual callers to remember a cost wrapper.
+ */
+function providerRequiresDurableCostAdmission(provider: ModelProvider): boolean {
+  return provider.descriptor.family === "openrouter";
 }
 
 function standaloneContext(): InvocationSupervisorContext {

@@ -252,6 +252,19 @@ export type DrivenPlannedRunUnit = {
   nextAction: { kind: "drive_unit"; stage: "context" };
 };
 
+/**
+ * Frozen cost policy for a driven run. A cap raised through the repository is
+ * persisted as an exact decimal string, so resumes must retain that string
+ * verbatim instead of coercing it back through a floating-point CLI value.
+ * The index signature preserves future persisted policy fields during a
+ * resume seed as well.
+ */
+export type DrivenJournalCostPolicy = {
+  budgetCapUsd: number | string | null;
+  reservation: "node_4_seam";
+  [key: string]: unknown;
+};
+
 /** Immutable launch facts persisted atomically with every planned unit. */
 export type DrivenJournalRunPlan = {
   run: DrivenJournalRunRecord;
@@ -260,11 +273,13 @@ export type DrivenJournalRunPlan = {
     bridgeUnitIds: string[];
   };
   routingPolicy: PairPolicy;
-  costPolicy: { budgetCapUsd: number | null; reservation: "node_4_seam" };
+  costPolicy: DrivenJournalCostPolicy;
   units: DrivenPlannedRunUnit[];
 };
 
 export type DrivenJournalResumeState = {
+  /** Persisted verbatim so a resume never rebuilds a raised cap as null. */
+  costPolicy: DrivenJournalCostPolicy;
   status: "running" | "paused" | "finalizing" | "succeeded" | "failed" | "aborted";
   pausedBlocker: OperationalBlocker | null;
   leaseOwnerId: string | null;
@@ -690,26 +705,6 @@ export async function runProjectDrivenExecutor(
     `project-driven-executor: enumerated ${unitsEnumerated} unit(s); ${unitsInScope} in scope (${translationScope})`,
   );
 
-  // Freeze and seed the COMPLETE scope before any provider is constructed or
-  // dispatched. Pending rows carry identity + next action only—never source
-  // text or a fabricated candidate.
-  const runPlan: DrivenJournalRunPlan = {
-    run: journalRun,
-    frozenScope: {
-      translationScope,
-      bridgeUnitIds: enumerated.map((entry) => entry.unit.bridgeUnitId),
-    },
-    routingPolicy: input.pairPolicy,
-    costPolicy: {
-      budgetCapUsd: input.budgetCapUsd ?? null,
-      reservation: "node_4_seam",
-    },
-    units: enumerated.map((entry) => ({
-      bridgeUnitId: entry.unit.bridgeUnitId,
-      sourceUnitKey: entry.unit.sourceUnitKey,
-      nextAction: { kind: "drive_unit", stage: "context" },
-    })),
-  };
   let resumeState: DrivenJournalResumeState | undefined;
   if (input.resumeRunId !== undefined) {
     if (
@@ -727,6 +722,30 @@ export async function runProjectDrivenExecutor(
       );
     }
   }
+
+  // Freeze and seed the COMPLETE scope before any provider is constructed or
+  // dispatched. Pending rows carry identity + next action only—never source
+  // text or a fabricated candidate. A resumed run is governed by its durable
+  // policy, not the present CLI/config arguments: a previous cap raise stores
+  // an exact decimal string and rebuilding `null` here would both erase that
+  // authority and trip the repository's run_seed_conflict protection.
+  const runPlan: DrivenJournalRunPlan = {
+    run: journalRun,
+    frozenScope: {
+      translationScope,
+      bridgeUnitIds: enumerated.map((entry) => entry.unit.bridgeUnitId),
+    },
+    routingPolicy: input.pairPolicy,
+    costPolicy: resumeState?.costPolicy ?? {
+      budgetCapUsd: input.budgetCapUsd ?? null,
+      reservation: "node_4_seam",
+    },
+    units: enumerated.map((entry) => ({
+      bridgeUnitId: entry.unit.bridgeUnitId,
+      sourceUnitKey: entry.unit.sourceUnitKey,
+      nextAction: { kind: "drive_unit", stage: "context" },
+    })),
+  };
 
   // New runs are atomically established here. Existing runs are re-seeded
   // idempotently to verify the frozen scope/policies before any resumed call.

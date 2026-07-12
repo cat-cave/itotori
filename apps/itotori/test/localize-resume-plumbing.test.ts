@@ -46,6 +46,9 @@ describe("localize resume operator plumbing", () => {
         bridgePath,
         pairPolicyPath,
         maxUnits: 1,
+        // A resume must ignore this stale config value and re-seed from the
+        // raised policy returned by the durable journal below.
+        budgetCapUsd: 0.00002,
       }),
     );
 
@@ -55,6 +58,7 @@ describe("localize resume operator plumbing", () => {
     let resumed = false;
     const journal = {
       loadResumeState: async () => ({
+        costPolicy: { reservation: "node_4_seam", budgetCapUsd: "0.0001" },
         status: resumed ? ("running" as const) : ("paused" as const),
         pausedBlocker: null,
         leaseOwnerId: resumed ? "resume-plumbing-driver" : null,
@@ -113,6 +117,7 @@ describe("localize resume operator plumbing", () => {
       pausedBlocker: OperationalBlocker | null;
     };
     expect(plannedRun?.run.runId).toBe(resumeRunId);
+    expect(plannedRun?.costPolicy).toEqual({ reservation: "node_4_seam", budgetCapUsd: "0.0001" });
     expect(output.result.journalRunId).toBe(resumeRunId);
     expect(output.result.runState).toBe("paused");
     expect(output.result.pausedBlocker).toEqual(persistedBlocker);

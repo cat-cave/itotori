@@ -158,7 +158,7 @@ describe("raw-mtl-baseline proof (live mode opt-in)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("runs a bounded live baseline against a mocked ZDR OpenRouter with real billed cost", async () => {
+  it("refuses an unadmitted live OpenRouter baseline before its mocked fetch", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { messages: Array<{ content: string }> };
       const isDraft = body.messages[0]!.content.includes("raw machine-translation baseline");
@@ -200,36 +200,24 @@ describe("raw-mtl-baseline proof (live mode opt-in)", () => {
       });
     }) as unknown as typeof fetch;
 
-    const result = await runRawMtlBaselineProofCommand({
-      mode: "live",
-      env: {
-        [RAW_MTL_BASELINE_LIVE_FLAG]: "1",
-        OPENROUTER_API_KEY: "test-key",
-        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+    await expect(
+      runRawMtlBaselineProofCommand({
+        mode: "live",
+        env: {
+          [RAW_MTL_BASELINE_LIVE_FLAG]: "1",
+          OPENROUTER_API_KEY: "test-key",
+          OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+        },
+        fetch: fetchMock,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("durable cost-admission"),
       },
-      fetch: fetchMock,
     });
-
-    expect(result.status).toBe("passed");
-    if (result.status !== "passed") throw new Error("expected pass");
-    const { artifact } = result;
-    // Same artifact + ledger + quality schema as recorded mode, just live.
-    expect(artifact.mode).toBe("live");
-    expect(artifact.systemKind).toBe("raw_mtl_baseline");
-    expect(() => assertRawMtlBaselineProofArtifact(artifact)).not.toThrow();
-    expect(artifact.baselineBundle.zdr).toEqual({
-      accountAssertion: "asserted",
-      perRequestZdr: true,
-    });
-    expect(artifact.benchmark.ledger).toHaveLength(2);
-    for (const row of artifact.benchmark.ledger) {
-      expect(row.costAmount).toBe("0.00001");
-      expect(row.tokensIn).toBe(30);
-      expect(row.tokensOut).toBe(18);
-      expect(row.servedProvider).toBe("fireworks");
-    }
-    // 2 calls: one draft, one QA (a single bounded unit).
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

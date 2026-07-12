@@ -1,6 +1,5 @@
 // itotori-db-draft-route-provider-not-wired — the DRAFT HTTP boundary must
-// surface provider configuration refusal in-band, while a configured route
-// must reach the real deferred ZDR provider and record the live serve.
+// surface provider and paid-cost-admission refusals in-band.
 
 import type { AddressInfo } from "node:net";
 import {
@@ -11,9 +10,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { assertItotoriApiResponse, type ApiDraftBranchResponse } from "../src/api-schema.js";
 import {
-  DEV_PAIR,
   OpenRouterModelProvider,
-  type ModelInvocationResult,
   type ModelProvider,
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
@@ -48,7 +45,7 @@ const unconfiguredDraftCases: ReadonlyArray<{
 }> = [
   {
     label: "the account ZDR assertion is missing",
-    expectedMessage: "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 is required",
+    expectedMessage: "durable cost-admission sink",
     provider: (artifactRecorder) =>
       createDbBackedDraftModelProvider({
         env: {},
@@ -57,7 +54,7 @@ const unconfiguredDraftCases: ReadonlyArray<{
   },
   {
     label: "the OpenRouter API key is missing",
-    expectedMessage: "OPENROUTER_API_KEY",
+    expectedMessage: "durable cost-admission sink",
     provider: (artifactRecorder) =>
       createDbBackedDraftModelProvider({
         env: { OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
@@ -96,7 +93,7 @@ describe("projects.draft HTTP boundary", () => {
     },
   );
 
-  it("drives a real ZDR draft through projects.draft and records its served pair and usage.cost", async () => {
+  it("refuses an opt-in live draft before OpenRouter invocation without a durable cost sink", async () => {
     const liveEnabled =
       typeof process.env.OPENROUTER_API_KEY === "string" &&
       process.env.OPENROUTER_API_KEY.length > 0;
@@ -129,44 +126,12 @@ describe("projects.draft HTTP boundary", () => {
       expect(response.status).toBe(200);
       assertItotoriApiResponse("branches.draft", response.body);
       const draftResponse = response.body as ApiDraftBranchResponse;
-      expect(draftResponse.outcome).toBe("drafted");
-      expect(draftResponse.project).not.toBeNull();
-      expect(draftResponse.status).not.toBeNull();
-      expect(draftResponse.refusalMessage).toBeNull();
-
-      expect(invokeSpy).toHaveBeenCalledTimes(1);
-      const invocation = invokeSpy.mock.results[0];
-      expect(invocation?.type).toBe("return");
-      const result = await (invocation?.value as Promise<ModelInvocationResult>);
-      expect(result.providerRun.status).toBe("succeeded");
-      expect(result.content).toBeTruthy();
-      expect(result.providerRun.provider.requestedModelId).toBe(DEV_PAIR.modelId);
-      expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
-      expect(result.providerRun.provider.actualModelId).toBeTruthy();
-      expect(result.providerRun.provider.upstreamProvider).toBeTruthy();
-      expect(result.providerRun.routingPosture.zdr).toBe(true);
-      expect(result.providerRun.routingPosture.data_collection).toBe("deny");
-
-      const usageCost = result.providerRun.usageResponseJson.cost;
-      expect(Number.isFinite(Number(usageCost))).toBe(true);
-      expect(Number(usageCost)).toBeGreaterThanOrEqual(0);
-      expect(result.providerRun.cost.costKind).toBe("billed");
-      expect(recordedArtifacts).toHaveLength(1);
-      expect(recordedArtifacts[0]?.run).toEqual(result.providerRun);
-
-      const draftedText = result.content as string;
-      expect(draftResponse.project?.drafts["bridge-unit-1"]).toBe(draftedText);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[draft-route-live] ${JSON.stringify({
-          servedPair: {
-            modelId: result.providerRun.provider.actualModelId,
-            providerId: result.providerRun.provider.upstreamProvider,
-          },
-          usageCost,
-          draftedText: draftedText.replace(/\s+/gu, " ").slice(0, 160),
-        })}`,
-      );
+      expect(draftResponse.outcome).toBe("refused");
+      expect(draftResponse.project).toBeNull();
+      expect(draftResponse.status).toBeNull();
+      expect(draftResponse.refusalMessage).toContain("durable cost-admission sink");
+      expect(invokeSpy).not.toHaveBeenCalled();
+      expect(recordedArtifacts).toEqual([]);
     } finally {
       invokeSpy.mockRestore();
     }

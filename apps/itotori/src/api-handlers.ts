@@ -171,6 +171,7 @@ import {
 } from "./services/project-mutation-scope.js";
 import { AccountZdrAssertionError } from "./providers/account-zdr.js";
 import { OpenRouterMissingApiKeyError } from "./providers/openrouter.js";
+import { InvocationOperationalPauseError } from "./orchestrator/invocation-supervisor.js";
 import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.js";
 import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
@@ -3466,8 +3467,9 @@ function methodNotAllowed(allowedMethods: string[]): ApiJsonResponse {
 /**
  * The live draft provider is deferred until the first invocation, so these
  * configuration failures can surface from either the workflow's missing-port
- * guard or the real provider constructor. They are all actionable domain
- * refusals for `branches.draft`, not malformed requests or server faults.
+ * guard, the real provider constructor, or the root paid-invocation boundary.
+ * They are all actionable domain refusals for `branches.draft`, not malformed
+ * requests or server faults.
  */
 function draftProviderConfigurationResponse(
   request: ItotoriApiRequest,
@@ -3493,6 +3495,13 @@ function draftProviderConfigurationRefusal(error: unknown): string | null {
     error instanceof DraftProviderNotConfiguredError ||
     error instanceof AccountZdrAssertionError ||
     error instanceof OpenRouterMissingApiKeyError
+  ) {
+    return error.message;
+  }
+  if (
+    error instanceof InvocationOperationalPauseError &&
+    error.blocker.kind === "budget_cap" &&
+    error.blocker.detail.includes("durable cost-admission")
   ) {
     return error.message;
   }
