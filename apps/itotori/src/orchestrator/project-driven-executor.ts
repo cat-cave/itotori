@@ -69,6 +69,7 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
   type ContextEnrichmentSingleFlight,
+  type ContextEnrichmentType,
   type PairPolicy,
 } from "./agentic-loop.js";
 import {
@@ -631,32 +632,48 @@ export const DEFAULT_DRIVEN_CONCURRENCY = 8;
 export const MAX_DRIVEN_CONCURRENCY = 16;
 
 /**
- * One executor owns one fixed project / branch / source revision, so a scene
- * key is sufficient to identify a shared enrichment build. The map holds only
- * in-flight work: once the leader has persisted its artifact, later units use
- * the normal central-store retrieval path. Rejections clear the flight too, so
- * a transient provider/persistence error never leaves a poisoned lock behind.
+ * One executor owns one fixed project / branch / source revision. Flights are
+ * keyed by both scene and enrichment type, so a character build can never
+ * collide with a route build for the same scene. The map holds only in-flight
+ * work: once the leader has persisted its artifact, later units use the normal
+ * central-store retrieval path. Rejections clear the flight too, so a transient
+ * provider/persistence error never leaves a poisoned lock behind.
  */
 class SceneContextEnrichmentSingleFlight implements ContextEnrichmentSingleFlight {
-  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly inFlight = new Map<ContextEnrichmentType, Map<string, Promise<unknown>>>();
 
-  async run<T>(sceneKey: string, build: () => Promise<T>): Promise<{ value: T; shared: boolean }> {
-    const existing = this.inFlight.get(sceneKey);
+  async run<T>(
+    sceneKey: string,
+    enrichmentType: ContextEnrichmentType,
+    build: () => Promise<T>,
+  ): Promise<{ value: T; shared: boolean }> {
+    const flightsForType = this.inFlight.get(enrichmentType);
+    const existing = flightsForType?.get(sceneKey);
     if (existing !== undefined) {
       return { value: (await existing) as T, shared: true };
     }
 
     const leader = build();
-    this.inFlight.set(sceneKey, leader);
+    const activeFlights = flightsForType ?? new Map<string, Promise<unknown>>();
+    if (flightsForType === undefined) {
+      this.inFlight.set(enrichmentType, activeFlights);
+    }
+    activeFlights.set(sceneKey, leader);
     void leader.then(
       () => {
-        if (this.inFlight.get(sceneKey) === leader) {
-          this.inFlight.delete(sceneKey);
+        if (activeFlights.get(sceneKey) === leader) {
+          activeFlights.delete(sceneKey);
+          if (activeFlights.size === 0) {
+            this.inFlight.delete(enrichmentType);
+          }
         }
       },
       () => {
-        if (this.inFlight.get(sceneKey) === leader) {
-          this.inFlight.delete(sceneKey);
+        if (activeFlights.get(sceneKey) === leader) {
+          activeFlights.delete(sceneKey);
+          if (activeFlights.size === 0) {
+            this.inFlight.delete(enrichmentType);
+          }
         }
       },
     );

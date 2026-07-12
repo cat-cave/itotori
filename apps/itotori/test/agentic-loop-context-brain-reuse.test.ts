@@ -375,6 +375,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           maxRepairAttempts: 0,
           sinks: {
             journal: {
+              // Node 4 requires every driven run to choose an explicit
+              // admission authority, including this recorded-provider fixture.
+              createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
               persistUnitJournal: async (record) => {
                 journalUnits.push(record);
               },

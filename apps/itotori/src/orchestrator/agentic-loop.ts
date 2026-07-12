@@ -301,15 +301,33 @@ export type AgenticLoopAttemptOutcomeObserver = {
 };
 
 /**
+ * The semantic enrichment types that share a per-scene provider build.
+ *
+ * The key deliberately includes the type as well as the scene: a unit may
+ * legitimately skip one enrichment while another unit in that scene builds a
+ * different one, and those builds must never share a flight.
+ */
+export type ContextEnrichmentType =
+  | "scene-summary"
+  | "character-relationship"
+  | "terminology-candidate"
+  | "route-choice-map";
+
+/**
  * Executor-scoped coordination port for scene-level semantic enrichment.
  *
- * Multiple units in one scene may be dispatched concurrently. The leader
- * builds and persists the scene summary; followers wait and reuse that durable
- * result. The port intentionally coordinates only the critical build section
- * rather than serializing translation / QA for every unit in the scene.
+ * Multiple units in one scene may be dispatched concurrently. For each
+ * `(scene, enrichmentType)` pair, the leader builds and persists the artifact;
+ * followers wait and reuse that durable result. The port intentionally
+ * coordinates only the critical build section rather than serializing
+ * translation / QA for every unit in the scene.
  */
 export type ContextEnrichmentSingleFlight = {
-  run<T>(sceneKey: string, build: () => Promise<T>): Promise<{ value: T; shared: boolean }>;
+  run<T>(
+    sceneKey: string,
+    enrichmentType: ContextEnrichmentType,
+    build: () => Promise<T>,
+  ): Promise<{ value: T; shared: boolean }>;
 };
 
 /**
@@ -611,9 +629,9 @@ export type AgenticLoopUnitInput = {
    */
   contextArtifactRepository?: ItotoriContextArtifactRepositoryPort;
   /**
-   * Optional executor-scoped scene mutex. The full-project executor supplies
-   * one shared instance so same-scene units cannot race a missing-artifact
-   * check into duplicate scene-summary provider calls.
+   * Optional executor-scoped per-(scene, enrichment) mutex. The full-project
+   * executor supplies one shared instance so same-scene units cannot race a
+   * missing-artifact check into duplicate semantic-enrichment provider calls.
    */
   contextEnrichmentSingleFlight?: ContextEnrichmentSingleFlight;
   /**
@@ -1757,7 +1775,7 @@ function describeEnrichmentDrop(error: unknown): string {
  * succeed. Telemetry + resolved artifacts are only committed on success.
  */
 async function runBestEffortEnrichment(
-  agentLabel: string,
+  agentLabel: ContextEnrichmentType,
   sink: {
     telemetry: RawProviderTelemetry[];
     artifacts: ResolvedContextArtifact[];
@@ -1765,39 +1783,69 @@ async function runBestEffortEnrichment(
     attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
     input: AgenticLoopUnitInput;
     policy: AgenticLoopPolicy;
+    contextEnrichmentSingleFlight: ContextEnrichmentSingleFlight | undefined;
+    sceneKey: string;
   },
   run: () => Promise<{ telemetry: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
 ): Promise<void> {
-  try {
-    const { telemetry, artifacts } = await run();
-    sink.telemetry.push(telemetry);
-    for (const artifact of artifacts) {
-      sink.artifacts.push(artifact);
+  const runOnce = async (): Promise<void> => {
+    try {
+      const { telemetry, artifacts } = await run();
+      sink.telemetry.push(telemetry);
+      for (const artifact of artifacts) {
+        sink.artifacts.push(artifact);
+      }
+    } catch (error) {
+      rethrowOperationalInvocation(error);
+      sink.attemptOutcomeObserver?.markFailedAttempt({
+        stage: "context",
+        agentLabel,
+        error,
+        retryDecision: "advance",
+      });
+      const failure = await persistTypedEnrichmentFailure({
+        repository: sink.input.contextArtifactRepository,
+        actor: sink.input.actor,
+        projectId: sink.policy.projectId,
+        localeBranchId: sink.policy.localeBranchId,
+        sourceRevisionId: sink.input.sourceRevisionId,
+        bridgeUnitId: sink.input.unit.bridgeUnitId,
+        agentLabel,
+        error,
+      });
+      sink.droppedEnrichments.push({
+        agentLabel,
+        reason: failure.contextArtifactId
+          ? `${failure.code}: ${failure.reason} (failureArtifact=${failure.contextArtifactId})`
+          : `${failure.code}: ${failure.reason}`,
+      });
     }
-  } catch (error) {
-    rethrowOperationalInvocation(error);
-    sink.attemptOutcomeObserver?.markFailedAttempt({
-      stage: "context",
-      agentLabel,
-      error,
-      retryDecision: "advance",
-    });
-    const failure = await persistTypedEnrichmentFailure({
-      repository: sink.input.contextArtifactRepository,
-      actor: sink.input.actor,
-      projectId: sink.policy.projectId,
-      localeBranchId: sink.policy.localeBranchId,
-      sourceRevisionId: sink.input.sourceRevisionId,
-      bridgeUnitId: sink.input.unit.bridgeUnitId,
-      agentLabel,
-      error,
-    });
-    sink.droppedEnrichments.push({
-      agentLabel,
-      reason: failure.contextArtifactId
-        ? `${failure.code}: ${failure.reason} (failureArtifact=${failure.contextArtifactId})`
-        : `${failure.code}: ${failure.reason}`,
-    });
+  };
+
+  if (sink.contextEnrichmentSingleFlight === undefined) {
+    await runOnce();
+    return;
+  }
+
+  const artifactsBefore = sink.artifacts.length;
+  const dropsBefore = sink.droppedEnrichments.length;
+  const sharedBuild = await sink.contextEnrichmentSingleFlight.run(
+    sink.sceneKey,
+    agentLabel,
+    async () => {
+      await runOnce();
+      return {
+        artifacts: sink.artifacts.slice(artifactsBefore),
+        droppedEnrichments: sink.droppedEnrichments.slice(dropsBefore),
+      };
+    },
+  );
+  // The leader already wrote its own telemetry/artifact state. Followers
+  // receive only the durable context result: charging the same physical
+  // provider call to every waiting unit would corrupt run accounting.
+  if (sharedBuild.shared) {
+    sink.artifacts.push(...sharedBuild.value.artifacts);
+    sink.droppedEnrichments.push(...sharedBuild.value.droppedEnrichments);
   }
 }
 
@@ -1903,11 +1951,6 @@ async function invalidateContextArtifactsBeforeReuse(args: {
   );
 }
 
-type SharedSceneSummaryBuild = {
-  artifacts: ResolvedContextArtifact[];
-  droppedEnrichments: DroppedContextEnrichment[];
-};
-
 async function invokeSemanticContextStage(args: {
   input: AgenticLoopUnitInput;
   policy: AgenticLoopPolicy;
@@ -1919,20 +1962,21 @@ async function invokeSemanticContextStage(args: {
   const telemetry: RawProviderTelemetry[] = [];
   const resolvedArtifacts: ResolvedContextArtifact[] = [];
   const droppedEnrichments: DroppedContextEnrichment[] = [];
+  const sceneKey =
+    input.semanticSceneKey ??
+    (input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey);
   const sink = {
     telemetry,
     artifacts: resolvedArtifacts,
     droppedEnrichments,
     input,
     policy,
+    contextEnrichmentSingleFlight: input.contextEnrichmentSingleFlight,
+    sceneKey,
     ...(input.attemptOutcomeObserver !== undefined
       ? { attemptOutcomeObserver: input.attemptOutcomeObserver }
       : {}),
   };
-
-  const sceneKey =
-    input.semanticSceneKey ??
-    (input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey);
   const evidenceUnits = [
     buildSemanticBridgeUnit(input.unit),
     ...(input.sceneUnits ?? []).map(buildSemanticBridgeUnit),
@@ -2037,9 +2081,7 @@ async function invokeSemanticContextStage(args: {
   if (reusableScene !== undefined) {
     resolvedArtifacts.push(reusableScene);
   } else {
-    const buildSceneSummary = async (): Promise<SharedSceneSummaryBuild> => {
-      const artifactsBefore = resolvedArtifacts.length;
-      const dropsBefore = droppedEnrichments.length;
+    const buildSceneSummary = async (): Promise<void> => {
       await runBestEffortEnrichment("scene-summary", sink, async () => {
         const pair = pairPolicy.context.sceneSummary;
         const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
@@ -2094,27 +2136,8 @@ async function invokeSemanticContextStage(args: {
           artifacts: [artifact],
         };
       });
-      return {
-        artifacts: resolvedArtifacts.slice(artifactsBefore),
-        droppedEnrichments: droppedEnrichments.slice(dropsBefore),
-      };
     };
-
-    if (input.contextEnrichmentSingleFlight === undefined) {
-      await buildSceneSummary();
-    } else {
-      const sharedBuild = await input.contextEnrichmentSingleFlight.run(
-        sceneKey,
-        buildSceneSummary,
-      );
-      // The leader already wrote its own telemetry/artifact state. Followers
-      // receive only the durable context result: charging the same physical
-      // provider call to every waiting unit would corrupt run accounting.
-      if (sharedBuild.shared) {
-        resolvedArtifacts.push(...sharedBuild.value.artifacts);
-        droppedEnrichments.push(...sharedBuild.value.droppedEnrichments);
-      }
-    }
+    await buildSceneSummary();
   }
 
   // character-relationship — only when a character anchor exists.

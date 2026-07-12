@@ -2882,6 +2882,7 @@ async function staleContextArtifactsAfterSourceImport(
             where casu.context_artifact_id = ${contextArtifacts.contextArtifactId}
               and (
                 su.bridge_unit_id is null
+                or su.removed_at is not null
                 or su.source_revision_id <> casu.source_revision_id
                 or su.source_hash <> casu.source_hash
               )

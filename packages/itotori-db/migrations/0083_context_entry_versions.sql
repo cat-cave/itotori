@@ -11,9 +11,23 @@
 alter table itotori_context_artifacts
   add column if not exists head_version_id text;
 
-alter table itotori_context_artifacts
-  add constraint itotori_context_artifacts_scope_key
-  unique (context_artifact_id, project_id, locale_branch_id);
+-- Some pre-versioned deployments already received this supporting key through
+-- schema provisioning. Preserve that compatible key instead of failing the
+-- forward migration on its relation name; fresh installs create it here.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'itotori_context_artifacts_scope_key'
+      and conrelid = 'itotori_context_artifacts'::regclass
+  ) then
+    alter table itotori_context_artifacts
+      add constraint itotori_context_artifacts_scope_key
+      unique (context_artifact_id, project_id, locale_branch_id);
+  end if;
+end;
+$$;
 
 create table if not exists itotori_context_entry_versions (
   context_entry_version_id text primary key,
@@ -174,21 +188,32 @@ where ca.head_version_id is null
   and cev.project_id = ca.project_id
   and cev.locale_branch_id = ca.locale_branch_id;
 
-alter table itotori_context_artifacts
-  add constraint itotori_context_artifacts_head_version_scope_fkey
-  foreign key (head_version_id, context_artifact_id, project_id, locale_branch_id)
-  references itotori_context_entry_versions(
-    context_entry_version_id,
-    context_artifact_id,
-    project_id,
-    locale_branch_id
-  )
-  deferrable initially deferred;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'itotori_context_artifacts_head_version_scope_fkey'
+      and conrelid = 'itotori_context_artifacts'::regclass
+  ) then
+    alter table itotori_context_artifacts
+      add constraint itotori_context_artifacts_head_version_scope_fkey
+      foreign key (head_version_id, context_artifact_id, project_id, locale_branch_id)
+      references itotori_context_entry_versions(
+        context_entry_version_id,
+        context_artifact_id,
+        project_id,
+        locale_branch_id
+      )
+      deferrable initially deferred;
+  end if;
+end;
+$$;
 
 -- Version snapshots are immutable. The only sanctioned deletion is a cascade
 -- from deleting the owning ContextEntry; its before-delete trigger marks the
 -- transaction so a raw delete cannot silently rewrite history.
-create function itotori_context_entry_versions_append_only()
+create or replace function itotori_context_entry_versions_append_only()
 returns trigger
 language plpgsql
 as $$
@@ -203,11 +228,14 @@ begin
 end;
 $$;
 
+drop trigger if exists itotori_context_entry_versions_append_only_trigger
+  on itotori_context_entry_versions;
+
 create trigger itotori_context_entry_versions_append_only_trigger
 before update or delete on itotori_context_entry_versions
 for each row execute function itotori_context_entry_versions_append_only();
 
-create function itotori_context_artifacts_prepare_version_prune()
+create or replace function itotori_context_artifacts_prepare_version_prune()
 returns trigger
 language plpgsql
 as $$
@@ -216,6 +244,9 @@ begin
   return old;
 end;
 $$;
+
+drop trigger if exists itotori_context_artifacts_prepare_version_prune_trigger
+  on itotori_context_artifacts;
 
 create trigger itotori_context_artifacts_prepare_version_prune_trigger
 before delete on itotori_context_artifacts

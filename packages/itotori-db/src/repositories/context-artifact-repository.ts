@@ -290,7 +290,10 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       }
       return {
         bridgeUnitId: sourceUnit.bridgeUnitId,
-        sourceRevisionId: input.sourceRevisionId,
+        // The artifact is scoped to the bundle revision, but each citation
+        // must retain the exact source-unit revision it was built from. A
+        // byte-identical unit revision is still distinct provenance.
+        sourceRevisionId: row.sourceRevisionId,
         sourceHash: row.sourceHash,
         citation: sourceUnit.citation,
         metadata: sourceUnit.metadata ?? {},
@@ -482,7 +485,11 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
             return true;
           }
           const current = currentById.get(source.bridgeUnitId);
-          return current === undefined || current.sourceHash !== source.sourceHash;
+          return (
+            current === undefined ||
+            current.sourceRevisionId !== source.sourceRevisionId ||
+            current.sourceHash !== source.sourceHash
+          );
         });
       })
       .map((artifact) => artifact.contextArtifactId);

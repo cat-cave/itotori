@@ -990,13 +990,18 @@ function instrumentedFactory(opts: {
   meter: ConcurrencyMeter;
   delayMs: number;
   sceneSummaryCalls?: { count: number };
+  semanticEnrichmentCalls?: Record<string, { count: number }>;
 }): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) => {
     const inner = new FakeModelProvider({
       providerName: `driven-conc-${stage}-${agentLabel}`,
       generate: (request: ModelInvocationRequest): string => {
-        if (request.taskKind === "experiment" && agentLabel === "scene-summary") {
-          if (opts.sceneSummaryCalls !== undefined) {
+        if (request.taskKind === "experiment") {
+          const enrichmentCalls = opts.semanticEnrichmentCalls?.[agentLabel];
+          if (enrichmentCalls !== undefined) {
+            enrichmentCalls.count += 1;
+          }
+          if (agentLabel === "scene-summary" && opts.sceneSummaryCalls !== undefined) {
             opts.sceneSummaryCalls.count += 1;
           }
         }
@@ -1068,9 +1073,14 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(DEFAULT_DRIVEN_CONCURRENCY).toBe(8);
   });
 
-  it("single-flights one persisted scene-summary build for concurrent same-scene units", async () => {
-    const UNIT_COUNT = 5;
-    const sceneSummaryCalls = { count: 0 };
+  it("single-flights one persisted build per enrichment type for eight concurrent same-scene units", async () => {
+    const UNIT_COUNT = 8;
+    const semanticEnrichmentCalls = {
+      "scene-summary": { count: 0 },
+      "character-relationship": { count: 0 },
+      "terminology-candidate": { count: 0 },
+      "route-choice-map": { count: 0 },
+    };
     const meter = new ConcurrencyMeter();
     const sinks = new InMemorySinks();
     const contextArtifacts = new InMemoryContextArtifactRepository();
@@ -1082,10 +1092,10 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
         factory: instrumentedFactory({
           meter,
           // Keep the leader in-flight long enough for every worker to perform
-          // its initial empty-store lookup. Without the scene single-flight,
-          // each of these units would invoke the scene-summary provider.
+          // its initial empty-store lookup. Without per-(scene, enrichment)
+          // single-flight, each worker would invoke every semantic provider.
           delayMs: 20,
-          sceneSummaryCalls,
+          semanticEnrichmentCalls,
         }),
         sinks,
       }),
@@ -1094,7 +1104,12 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     });
 
     expect(result.unitsRun).toBe(UNIT_COUNT);
-    expect(sceneSummaryCalls.count).toBe(1);
+    expect(semanticEnrichmentCalls).toEqual({
+      "scene-summary": { count: 1 },
+      "character-relationship": { count: 1 },
+      "terminology-candidate": { count: 1 },
+      "route-choice-map": { count: 1 },
+    });
     expect(
       contextArtifacts
         .listAll()
@@ -1168,8 +1183,6 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
 
     const updatedUnit: LocalizationUnitV02 = {
       ...originalUnit,
-      sourceText: "改訂された朝の挨拶。",
-      sourceHash: "src-hash-updated-source",
       sourceRevision: {
         ...originalUnit.sourceRevision,
         revisionId: UPDATED_REVISION_ID,
@@ -1220,7 +1233,9 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
         sourceRevisionId: UPDATED_REVISION_ID,
       }),
     );
-    expect(rebuiltArtifact?.contentHash).not.toBe(originalContentHash);
+    // A revision change is stale even when the cited bytes and content hash
+    // remain identical.
+    expect(rebuiltArtifact?.contentHash).toBe(originalContentHash);
   });
 
   it("runs units CONCURRENTLY up to the bound (counter reaches K) with a wall-clock speedup", async () => {
