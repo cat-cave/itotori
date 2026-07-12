@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,15 +17,48 @@ import {
   type AuthorizationActor,
   type LocalizationJournalRunLeaseIdentity,
 } from "@itotori/db";
-import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localization-bridge-schema";
+import {
+  asNonBlankTargetText,
+  SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+  STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+  STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+  type BridgeBundleV02,
+  type LocalizationUnitV02,
+  type WrittenUnitOutcome,
+} from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliDependencies } from "../src/cli-handlers.js";
+import {
+  fakeSemanticContextContent,
+  type AgenticLoopProviderFactory,
+} from "../src/orchestrator/agentic-loop.js";
+import {
+  runLocalizeFullProjectLive,
+  type RunLocalizeFullProjectLiveArgs,
+} from "../src/orchestrator/localize-fullproject-cli.js";
+import type { LocalizeFullProjectConfig } from "../src/orchestrator/localize-fullproject-command.js";
+import { parseLocalizeProjectPairPolicy } from "../src/orchestrator/localize-project-stage-command.js";
+import {
+  applyWholeGamePatch,
+  buildWholeGamePatchExport,
+} from "../src/orchestrator/patch-apply-seam.js";
+import {
+  runProjectDrivenExecutor,
+  type ProjectDrivenExecutorResult,
+} from "../src/orchestrator/project-driven-executor.js";
+import {
+  DrivenJournalPersistenceAdapter,
+  FsDrivenPatchExportSink,
+} from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DbTerminalRunFinalizerAdapter } from "../src/orchestrator/terminal-run-finalizer-db-adapter.js";
 import {
   finalizeTerminalRun,
   type TerminalFinalizerWorkerPorts,
   type TerminalRunFinalizerPersistencePort,
 } from "../src/orchestrator/terminal-run-finalizer.js";
+import { FakeModelProvider } from "../src/providers/fake.js";
+import { DEV_PAIR } from "../src/providers/dev-pair.js";
+import type { ModelInvocationRequest } from "../src/providers/types.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
@@ -31,6 +72,9 @@ const scope = {
   sourceRevisionId: "revision-terminal-finalizer-live-resume",
   targetLocale: "en-US",
 } as const;
+const RESUME_UNIT_ONE = "019ef200-0000-7000-8000-000000000001";
+const RESUME_UNIT_TWO = "019ef200-0000-7000-8000-000000000002";
+const RESUME_UNIT_THREE = "019ef200-0000-7000-8000-000000000003";
 
 describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", () => {
   it("finishes an unconfirmed finalizing commit without config, provider, or executor work", async () => {
@@ -109,6 +153,35 @@ describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", 
         throw new Error("finalizing resume must not read config or bridge input");
       });
       process.env.DATABASE_URL = context.databaseUrl;
+      const summaryPath = join(runDir, "run-summary.json");
+      writeFileSync(summaryPath, '{"stale":true}\n');
+      const commitFailure = vi
+        .spyOn(ItotoriLocalizationRunFinalizerRepository.prototype, "completeSucceededRun")
+        .mockRejectedValue(new Error("injected resumed terminal commit outage"));
+      try {
+        await expect(
+          runItotoriCliCommand(
+            [
+              "localize",
+              "--config",
+              "/must-not-be-read/localize.config.json",
+              "--resume-run-id",
+              runId,
+              "--run-dir",
+              runDir,
+            ],
+            cliDependencies(readJson),
+          ),
+        ).rejects.toThrow(/terminal commit.*could not be confirmed/u);
+      } finally {
+        commitFailure.mockRestore();
+      }
+      expect(await repository.loadSnapshot(actor, runId)).toMatchObject({
+        run: { status: "finalizing" },
+      });
+      expect(await repository.loadTerminalSummary(actor, runId)).toBeNull();
+      expect(existsSync(summaryPath)).toBe(false);
+
       await runItotoriCliCommand(
         [
           "localize",
@@ -135,12 +208,10 @@ describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", 
       });
       expect(resumedSnapshot?.run.status).toBe("succeeded");
       expect(readJson).not.toHaveBeenCalled();
-      expect(JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as unknown).toEqual(
-        canonical?.summary,
-      );
+      expect(JSON.parse(readFileSync(summaryPath, "utf8")) as unknown).toEqual(canonical?.summary);
       expect(stdout.join("")).toContain('"resumedFinalization": true');
 
-      writeFileSync(join(runDir, "run-summary.json"), '{"stale":true}\n');
+      writeFileSync(summaryPath, '{"stale":true}\n');
       await runItotoriCliCommand(
         [
           "localize",
@@ -153,9 +224,7 @@ describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", 
         ],
         cliDependencies(readJson),
       );
-      expect(JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as unknown).toEqual(
-        canonical?.summary,
-      );
+      expect(JSON.parse(readFileSync(summaryPath, "utf8")) as unknown).toEqual(canonical?.summary);
       expect(readJson).not.toHaveBeenCalled();
       const summaryRows = await context.pool.query<{ count: number }>(
         `select count(*)::int as count
@@ -176,7 +245,637 @@ describe.skipIf(!process.env.DATABASE_URL)("shipped terminal finalizer resume", 
       await context.close();
     }
   });
+
+  it("recovers RPG Maker outputs left before patch-apply evidence and completes idempotently", async () => {
+    const context = await isolatedMigratedContext();
+    const root = mkdtempSync(join(tmpdir(), "itotori-finalizer-apply-recovery-"));
+    const runDir = join(root, "run");
+    mkdirSync(runDir, { recursive: true });
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    const originalKaifuuBin = process.env.ITOTORI_KAIFUU_BIN;
+    try {
+      await seedScope(context);
+      const fixture = materializeResumeProject(root, [RESUME_UNIT_ONE]);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const runId = "terminal-finalizer-live-resume-incomplete-apply";
+      const initial = await runExecutorFixture({
+        journal,
+        runDir,
+        runId,
+        bridge: fixture.bridge,
+        pairPolicy: fixture.pairPolicy,
+        providerFactory: resumeProviderFactory(new Map()),
+      });
+      expect(initial.result).toMatchObject({
+        journalRunId: runId,
+        runState: "running",
+        patchReport: { coverageComplete: true },
+      });
+
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const finalizingAdapter = new DbTerminalRunFinalizerAdapter(
+        repository,
+        actor,
+        () => initial.adapter.getActiveRunLease(runId),
+        {
+          beforeEnterFinalizing: (id) => initial.adapter.quiesceTerminalRunLeaseHeartbeat(id),
+          afterEnterFinalizing: (id) => initial.adapter.forgetTerminalRunLease(id),
+        },
+        { runLockPool: context.pool },
+      );
+      await finalizingAdapter.enterFinalizing(runId);
+      const build = await buildWholeGamePatchExport({
+        actor,
+        engineProfile: "rpg-maker-mv-mz",
+        journal,
+        patchReport: initial.result.patchReport,
+        rawBridge: fixture.bridge,
+        sourceRoot: fixture.sourceRoot,
+        targetRoot: fixture.targetRoot,
+        rpgMakerDeltaOutputPath: fixture.deltaPath,
+        translatedBundlePath: join(runDir, "translated-bridge.json"),
+        requestedBy: localUserId,
+        loadActiveDecisions: async () => [],
+      });
+      const patchExportPath = join(runDir, "patch-export-bundle.json");
+      fsIo().writeJson(patchExportPath, build.patchExportBundle);
+      const artifactRefs = {
+        translatedBridge: join(runDir, "translated-bridge.json"),
+        patchReport: join(runDir, "patch-report.json"),
+        patchExport: patchExportPath,
+      };
+      await repository.ensurePatchVersion(actor, {
+        runId,
+        artifactRefs,
+        artifactHashes: Object.fromEntries(
+          Object.entries(artifactRefs).map(([key, path]) => [key, hashLocalizationArtifact(path)]),
+        ),
+      });
+      await repository.upsertPatchStageEvidence(actor, {
+        runId,
+        stage: "patch_build",
+        status: "succeeded",
+        evidence: { fixture: "crash-after-apply-output", step: "patch_build" },
+      });
+
+      materializeRpgMakerOutputs(fixture.targetRoot, fixture.deltaPath);
+      const fakeKaifuu = installFakeKaifuu(root);
+      process.env.DATABASE_URL = context.databaseUrl;
+      process.env.ITOTORI_KAIFUU_BIN = fakeKaifuu.binPath;
+      const liveArgs: RunLocalizeFullProjectLiveArgs = {
+        configPath: fixture.configPath,
+        runDir,
+        io: fsIo(),
+        resumeRunId: runId,
+        sourceRoot: fixture.sourceRoot,
+        patchTargetRoot: fixture.targetRoot,
+      };
+      const resumed = await runLocalizeFullProjectLive(liveArgs);
+
+      expect(resumed).toMatchObject({
+        resumedFinalization: true,
+        result: { journalRunId: runId, runState: "succeeded" },
+        terminalSummary: { terminalStatus: "succeeded", patch: { playable: true } },
+      });
+      const snapshot = await repository.loadSnapshot(actor, runId);
+      const canonical = await repository.loadTerminalSummary(actor, runId);
+      expect(snapshot?.run.status).toBe("succeeded");
+      expect(snapshot?.outbox).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stage: "patch_build", status: "succeeded" }),
+          expect.objectContaining({ stage: "patch_apply", status: "succeeded" }),
+          expect.objectContaining({ stage: "validation", status: "succeeded" }),
+        ]),
+      );
+      expect(readInvocationCount(fakeKaifuu.logPath)).toBe(1);
+      expect(JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as unknown).toEqual(
+        canonical?.summary,
+      );
+
+      await runLocalizeFullProjectLive(liveArgs);
+      expect(readInvocationCount(fakeKaifuu.logPath)).toBe(1);
+      expect((await repository.loadTerminalSummary(actor, runId))?.summaryEpoch).toBe(1);
+    } finally {
+      restoreEnv("DATABASE_URL", originalDatabaseUrl);
+      restoreEnv("ITOTORI_KAIFUU_BIN", originalKaifuuBin);
+      rmSync(root, { recursive: true, force: true });
+      await context.close();
+    }
+  });
+
+  it("adopts durable build/apply manifests left before their stage evidence", async () => {
+    const context = await isolatedMigratedContext();
+    const root = mkdtempSync(join(tmpdir(), "itotori-finalizer-manifest-recovery-"));
+    const runDir = join(root, "run");
+    mkdirSync(runDir, { recursive: true });
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    const originalKaifuuBin = process.env.ITOTORI_KAIFUU_BIN;
+    try {
+      await seedScope(context);
+      const fixture = materializeResumeProject(root, [RESUME_UNIT_ONE]);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const runId = "terminal-finalizer-live-resume-durable-manifests";
+      const initial = await runExecutorFixture({
+        journal,
+        runDir,
+        runId,
+        bridge: fixture.bridge,
+        pairPolicy: fixture.pairPolicy,
+        providerFactory: resumeProviderFactory(new Map()),
+      });
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const finalizingAdapter = new DbTerminalRunFinalizerAdapter(
+        repository,
+        actor,
+        () => initial.adapter.getActiveRunLease(runId),
+        {
+          beforeEnterFinalizing: (id) => initial.adapter.quiesceTerminalRunLeaseHeartbeat(id),
+          afterEnterFinalizing: (id) => initial.adapter.forgetTerminalRunLease(id),
+        },
+        { runLockPool: context.pool },
+      );
+      await finalizingAdapter.enterFinalizing(runId);
+      const patchArgs = {
+        actor,
+        engineProfile: "rpg-maker-mv-mz" as const,
+        journal,
+        patchReport: initial.result.patchReport,
+        rawBridge: fixture.bridge,
+        sourceRoot: fixture.sourceRoot,
+        targetRoot: fixture.targetRoot,
+        rpgMakerDeltaOutputPath: fixture.deltaPath,
+        translatedBundlePath: join(runDir, "translated-bridge.json"),
+        requestedBy: localUserId,
+        loadActiveDecisions: async () => [],
+      };
+      const build = await buildWholeGamePatchExport(patchArgs);
+      const patchExportPath = join(runDir, "patch-export-bundle.json");
+      fsIo().writeJson(patchExportPath, build.patchExportBundle);
+      const applied = applyWholeGamePatch(
+        {
+          ...patchArgs,
+          runProcess: (_command, processArgs) => {
+            const target = processArgs[processArgs.indexOf("--patched-data-output") + 1]!;
+            const delta = processArgs[processArgs.indexOf("--delta-output") + 1]!;
+            materializeRpgMakerOutputs(target, delta);
+            return { status: 0, stdout: "initial durable apply", stderr: "" };
+          },
+        },
+        build,
+      );
+      const patchApplyPath = join(runDir, "patch-apply.json");
+      fsIo().writeJson(patchApplyPath, applied.apply);
+      const artifactRefs = {
+        translatedBridge: join(runDir, "translated-bridge.json"),
+        patchReport: join(runDir, "patch-report.json"),
+        patchExport: patchExportPath,
+        patchApply: patchApplyPath,
+        patchTarget: fixture.targetRoot,
+        rpgMakerDelta: fixture.deltaPath,
+      };
+      const artifactHashes = Object.fromEntries(
+        Object.entries(artifactRefs).map(([key, path]) => [key, hashLocalizationArtifact(path)]),
+      );
+      await repository.ensurePatchVersion(actor, { runId, artifactRefs, artifactHashes });
+      expect((await repository.loadSnapshot(actor, runId))?.outbox).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stage: "patch_build", status: "pending" }),
+          expect.objectContaining({ stage: "patch_apply", status: "pending" }),
+        ]),
+      );
+      const patchExportBytes = readFileSync(patchExportPath, "utf8");
+      const patchApplyBytes = readFileSync(patchApplyPath, "utf8");
+
+      const fakeKaifuu = installFakeKaifuu(root);
+      process.env.DATABASE_URL = context.databaseUrl;
+      process.env.ITOTORI_KAIFUU_BIN = fakeKaifuu.binPath;
+      const resumed = await runLocalizeFullProjectLive({
+        configPath: fixture.configPath,
+        runDir,
+        io: fsIo(),
+        resumeRunId: runId,
+        sourceRoot: fixture.sourceRoot,
+        patchTargetRoot: fixture.targetRoot,
+      });
+
+      expect(resumed).toMatchObject({
+        resumedFinalization: true,
+        result: { runState: "succeeded" },
+        terminalSummary: { patch: { playable: true } },
+      });
+      expect(readInvocationCount(fakeKaifuu.logPath)).toBe(0);
+      expect(readFileSync(patchExportPath, "utf8")).toBe(patchExportBytes);
+      expect(readFileSync(patchApplyPath, "utf8")).toBe(patchApplyBytes);
+      const completed = await repository.loadSnapshot(actor, runId);
+      expect(completed?.patch?.artifactHashes).toMatchObject(artifactHashes);
+      expect(completed?.outbox).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stage: "patch_build", status: "succeeded" }),
+          expect.objectContaining({ stage: "patch_apply", status: "succeeded" }),
+          expect.objectContaining({ stage: "validation", status: "succeeded" }),
+        ]),
+      );
+    } finally {
+      restoreEnv("DATABASE_URL", originalDatabaseUrl);
+      restoreEnv("ITOTORI_KAIFUU_BIN", originalKaifuuBin);
+      rmSync(root, { recursive: true, force: true });
+      await context.close();
+    }
+  });
+
+  it("re-drives pending executor units when a paused run already has a summary", async () => {
+    const context = await isolatedMigratedContext();
+    const root = mkdtempSync(join(tmpdir(), "itotori-finalizer-paused-resume-"));
+    const runDir = join(root, "run");
+    mkdirSync(runDir, { recursive: true });
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    const originalZdrAssertion = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+    try {
+      await seedScope(context);
+      const fixture = materializeResumeProject(root, [
+        RESUME_UNIT_ONE,
+        RESUME_UNIT_TWO,
+        RESUME_UNIT_THREE,
+      ]);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const runId = "terminal-finalizer-live-resume-paused-summary";
+      const firstCalls = new Map<string, number>();
+      const first = await runExecutorFixture({
+        journal,
+        runDir,
+        runId,
+        bridge: fixture.bridge,
+        pairPolicy: fixture.pairPolicy,
+        providerFactory: resumeProviderFactory(firstCalls),
+        pauseUnitId: RESUME_UNIT_TWO,
+      });
+      expect(first.result.runState).toBe("paused");
+      expect(firstCalls.get(RESUME_UNIT_ONE)).toBeGreaterThan(0);
+      expect(firstCalls.get(RESUME_UNIT_TWO) ?? 0).toBe(0);
+
+      const repository = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const paused = await finalizeTerminalRun({
+        runId,
+        persistence: new DbTerminalRunFinalizerAdapter(
+          repository,
+          actor,
+          undefined,
+          {},
+          { runLockPool: context.pool },
+        ),
+        workers: {
+          summary: ({ summary }) => {
+            if (summary === undefined) throw new Error("paused finalizer omitted its summary");
+            fsIo().writeJson(join(runDir, "run-summary.json"), summary);
+          },
+        },
+      });
+      expect(paused).toMatchObject({
+        terminalStatus: "paused",
+        summary: {
+          summaryEpoch: 1,
+          coverage: { missingUnitIds: [RESUME_UNIT_TWO, RESUME_UNIT_THREE] },
+        },
+      });
+      expect(
+        (await journal.loadRunUnits(actor, runId)).map((unit) => [unit.bridgeUnitId, unit.state]),
+      ).toEqual([
+        [RESUME_UNIT_ONE, "written"],
+        [RESUME_UNIT_TWO, "pending"],
+        [RESUME_UNIT_THREE, "pending"],
+      ]);
+
+      process.env.DATABASE_URL = context.databaseUrl;
+      process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED = "1";
+      const summaryPath = join(runDir, "run-summary.json");
+      const liveIo = fsIo();
+      const liveArgs = {
+        configPath: fixture.configPath,
+        runDir,
+        io: {
+          ...liveIo,
+          writeJson: (path: string, value: unknown) => {
+            if (path === summaryPath) {
+              throw new Error("injected resumed pause summary projection failure");
+            }
+            liveIo.writeJson(path, value);
+          },
+        },
+        resumeRunId: runId,
+      } satisfies RunLocalizeFullProjectLiveArgs;
+      const repausedCalls = new Map<string, number>();
+      const repaused = await runLocalizeFullProjectLive({
+        ...liveArgs,
+        providerFactoryOverride: resumeProviderFactory(repausedCalls, RESUME_UNIT_THREE),
+      });
+
+      expect(repaused.resumedFinalization).not.toBe(true);
+      expect(repaused.result).toMatchObject({ journalRunId: runId, runState: "paused" });
+      expect(repausedCalls.get(RESUME_UNIT_ONE) ?? 0).toBe(0);
+      expect(repausedCalls.get(RESUME_UNIT_TWO)).toBeGreaterThan(0);
+      expect(repausedCalls.get(RESUME_UNIT_THREE)).toBeGreaterThan(0);
+      expect(
+        (await journal.loadRunUnits(actor, runId)).map((unit) => [unit.bridgeUnitId, unit.state]),
+      ).toEqual([
+        [RESUME_UNIT_ONE, "written"],
+        [RESUME_UNIT_TWO, "written"],
+        [RESUME_UNIT_THREE, "pending"],
+      ]);
+      const repausedCanonical = await repository.loadTerminalSummary(actor, runId);
+      expect(repausedCanonical).toMatchObject({
+        terminalStatus: "paused",
+        summaryEpoch: 2,
+        summary: {
+          terminalStatus: "paused",
+          rootCause: { kind: "operational_blocker", code: "provider_outage" },
+          coverage: { missingUnitIds: [RESUME_UNIT_THREE] },
+          stages: expect.arrayContaining([
+            expect.objectContaining({
+              stage: "summary",
+              status: "pending",
+              evidence: null,
+              error: null,
+            }),
+          ]),
+        },
+      });
+      expect((await repository.loadSnapshot(actor, runId))?.outbox).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: "summary",
+            status: "retry_waiting",
+            lastError: expect.stringContaining("injected resumed pause summary projection failure"),
+          }),
+        ]),
+      );
+      expect(existsSync(summaryPath)).toBe(false);
+    } finally {
+      restoreEnv("DATABASE_URL", originalDatabaseUrl);
+      restoreEnv("OPENROUTER_ZDR_ACCOUNT_ASSERTED", originalZdrAssertion);
+      rmSync(root, { recursive: true, force: true });
+      await context.close();
+    }
+  });
 });
+
+function fsIo(): RunLocalizeFullProjectLiveArgs["io"] {
+  return {
+    readJson: (path) => JSON.parse(readFileSync(path, "utf8")) as unknown,
+    writeJson: (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`),
+  };
+}
+
+function materializeResumeProject(
+  root: string,
+  unitIds: readonly string[],
+): {
+  configPath: string;
+  bridge: BridgeBundleV02;
+  pairPolicy: ReturnType<typeof parseLocalizeProjectPairPolicy>["pairPolicy"];
+  sourceRoot: string;
+  targetRoot: string;
+  deltaPath: string;
+} {
+  const bridge = resumeBridge(unitIds);
+  const bridgePath = join(root, "bridge.json");
+  const pairPolicyPath = join(root, "pair-policy.json");
+  const configPath = join(root, "localize.config.json");
+  const sourceRoot = join(root, "www");
+  const targetRoot = join(root, "patched-data");
+  const deltaPath = join(root, "run", "rpgmaker-delta.kaifuu");
+  const pairPolicyFixture = new URL(
+    "./fixtures/agentic-loop-smoke-pair-policy.json",
+    import.meta.url,
+  );
+  const rawPairPolicy = JSON.parse(readFileSync(pairPolicyFixture, "utf8")) as unknown;
+  const pairPolicy = parseLocalizeProjectPairPolicy(rawPairPolicy).pairPolicy;
+  const config: LocalizeFullProjectConfig = {
+    schemaVersion: "itotori.localize-fullproject.config.v0",
+    ...scope,
+    engineProfile: "rpg-maker-mv-mz",
+    translationScope: "dialogue-only",
+    bridgePath,
+    pairPolicyPath,
+    concurrency: 1,
+    maxRepairAttempts: 0,
+  };
+  fsIo().writeJson(bridgePath, bridge);
+  fsIo().writeJson(pairPolicyPath, rawPairPolicy);
+  fsIo().writeJson(configPath, config);
+  mkdirSync(join(sourceRoot, "data"), { recursive: true });
+  writeFileSync(join(sourceRoot, "data", "Map001.json"), '{"events":[]}\n');
+  return { configPath, bridge, pairPolicy, sourceRoot, targetRoot, deltaPath };
+}
+
+async function runExecutorFixture(input: {
+  journal: ItotoriLocalizationJournalRepository;
+  runDir: string;
+  runId: string;
+  bridge: BridgeBundleV02;
+  pairPolicy: ReturnType<typeof parseLocalizeProjectPairPolicy>["pairPolicy"];
+  providerFactory: AgenticLoopProviderFactory;
+  pauseUnitId?: string;
+}): Promise<{
+  result: ProjectDrivenExecutorResult;
+  adapter: DrivenJournalPersistenceAdapter;
+}> {
+  const adapter = new DrivenJournalPersistenceAdapter(input.journal, { actor });
+  const result = await runProjectDrivenExecutor({
+    bridge: input.bridge,
+    rawBridge: structuredClone(input.bridge),
+    pairPolicy: input.pairPolicy,
+    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    ...scope,
+    runId: input.runId,
+    actor,
+    providerFactory: input.providerFactory,
+    translationScope: "dialogue-only",
+    engineProfile: "rpg-maker-mv-mz",
+    concurrency: 1,
+    maxRepairAttempts: 0,
+    costAdmission: {
+      admit: async ({ bridgeUnitId }) =>
+        bridgeUnitId === input.pauseUnitId
+          ? {
+              admitted: false as const,
+              detail: "injected durable pause before pending resume unit",
+              evidence: `resume-unit:${bridgeUnitId}`,
+            }
+          : { admitted: true as const },
+    },
+    sinks: {
+      journal: adapter,
+      patchExport: new FsDrivenPatchExportSink(input.runDir),
+    },
+  });
+  return { result, adapter };
+}
+
+function resumeProviderFactory(
+  calls: Map<string, number>,
+  outageUnitId?: string,
+): AgenticLoopProviderFactory {
+  return ({ stage, agentLabel }) =>
+    new FakeModelProvider({
+      providerName: `terminal-resume-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest): string => {
+        calls.set("__all__", (calls.get("__all__") ?? 0) + 1);
+        if (request.taskKind === "experiment" && agentLabel !== "speaker-label") {
+          return fakeSemanticContextContent(agentLabel);
+        }
+        const unitId = resumeUnitIdOf(request);
+        calls.set(unitId, (calls.get(unitId) ?? 0) + 1);
+        if (request.taskKind === "experiment") return resumeSpeakerContent(unitId);
+        if (request.taskKind === "draft_translation") {
+          if (unitId === outageUnitId) {
+            throw Object.assign(new Error("injected HTTP 503 during resumed unit"), {
+              status: 503,
+            });
+          }
+          return resumeTranslationContent(
+            unitId,
+            unitId === RESUME_UNIT_ONE ? "First target." : "Second target.",
+          );
+        }
+        if (request.taskKind === "llm_qa") return cleanResumeQaContent();
+        throw new Error(`unexpected terminal resume provider task ${request.taskKind}`);
+      },
+    });
+}
+
+function resumeUnitIdOf(request: ModelInvocationRequest): string {
+  const serialized = JSON.stringify(request);
+  const unitId = [RESUME_UNIT_ONE, RESUME_UNIT_TWO, RESUME_UNIT_THREE].find((candidate) =>
+    serialized.includes(candidate),
+  );
+  if (unitId === undefined) throw new Error("terminal resume provider could not find unit id");
+  return unitId;
+}
+
+function resumeSpeakerContent(bridgeUnitId: string): string {
+  return JSON.stringify({
+    schemaVersion: SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
+    labels: [
+      {
+        bridgeUnitId,
+        speakerId: { kind: "narration" },
+        confidence: "high",
+        evidenceRefs: [],
+        agentRationale: "terminal resume fixture",
+      },
+    ],
+  });
+}
+
+function resumeTranslationContent(bridgeUnitId: string, draftText: string): string {
+  return JSON.stringify({
+    schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+    drafts: [
+      {
+        bridgeUnitId,
+        sourceLocale: "ja-JP",
+        targetLocale: "en-US",
+        draftText,
+        protectedSpanRefs: [],
+        citationRefs: [],
+        agentRationale: "terminal resume fixture",
+        confidenceFloor: "medium",
+      },
+    ],
+  });
+}
+
+function cleanResumeQaContent(): string {
+  return JSON.stringify({
+    schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
+    findings: [],
+  });
+}
+
+function resumeBridge(unitIds: readonly string[]): BridgeBundleV02 {
+  return {
+    schemaVersion: "0.2.0",
+    bridgeId: "terminal-finalizer-live-resume-bridge",
+    sourceLocale: "ja-JP",
+    units: unitIds.map((unitId, index) => resumeUnit(unitId, index + 1)),
+  } as unknown as BridgeBundleV02;
+}
+
+function resumeUnit(bridgeUnitId: string, ordinal: number): LocalizationUnitV02 {
+  const assetId = `019ef200-0000-7000-9000-${String(ordinal).padStart(12, "0")}`;
+  return {
+    bridgeUnitId,
+    surfaceId: assetId,
+    surfaceKind: "dialogue",
+    sourceUnitKey: `Map001/events/${String(ordinal)}`,
+    occurrenceId: `terminal-resume-occurrence-${String(ordinal)}`,
+    sourceLocale: "ja-JP",
+    sourceText: ordinal === 1 ? "一番目" : "二番目",
+    sourceHash: `terminal-resume-source-hash-${String(ordinal)}`,
+    sourceRevision: {
+      revisionId: scope.sourceRevisionId,
+      revisionKind: "content_hash",
+      value: "v1",
+    },
+    sourceAssetRef: { assetId, assetKey: `terminal-resume-asset-${String(ordinal)}` },
+    sourceLocation: { containerKey: "Map001.json" },
+    speaker: { knowledgeState: "unknown" },
+    context: {},
+    spans: [],
+    patchRef: {
+      assetId,
+      writeMode: "replace",
+      sourceUnitKey: `Map001/events/${String(ordinal)}`,
+      sourceRevision: {
+        revisionId: scope.sourceRevisionId,
+        revisionKind: "content_hash",
+        value: "v1",
+      },
+    },
+    runtimeExpectation: { expectationKind: "metadata_only" },
+  };
+}
+
+function materializeRpgMakerOutputs(targetRoot: string, deltaPath: string): void {
+  mkdirSync(targetRoot, { recursive: true });
+  writeFileSync(join(targetRoot, "Map001.json"), '{"events":["translated"]}\n');
+  writeFileSync(deltaPath, "deterministic-delta\n");
+}
+
+function installFakeKaifuu(root: string): { binPath: string; logPath: string } {
+  const binPath = join(root, "fake-kaifuu.cjs");
+  const logPath = join(root, "fake-kaifuu-invocations.log");
+  const script = `#!${process.execPath}
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const valueAfter = (flag) => args[args.indexOf(flag) + 1];
+const target = valueAfter("--patched-data-output");
+const delta = valueAfter("--delta-output");
+if (args[0] !== "patch" || !target || !delta) process.exit(64);
+fs.mkdirSync(target, { recursive: true });
+fs.mkdirSync(path.dirname(delta), { recursive: true });
+fs.writeFileSync(path.join(target, "Map001.json"), '{"events":["translated"]}\\n');
+fs.writeFileSync(delta, "deterministic-delta\\n");
+fs.appendFileSync(${JSON.stringify(logPath)}, "invoke\\n");
+process.stdout.write("fake kaifuu rpgmaker patch\\n");
+`;
+  writeFileSync(binPath, script);
+  chmodSync(binPath, 0o755);
+  return { binPath, logPath };
+}
+
+function readInvocationCount(path: string): number {
+  if (!existsSync(path)) return 0;
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0).length;
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 function cliDependencies(readJson: () => unknown): ItotoriCliDependencies {
   return {

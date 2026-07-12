@@ -206,6 +206,8 @@ export type TerminalRunFinalizerPersistencePort = {
     rootCause: TerminalRunRootCause;
     blocker: TerminalOperationalBlocker | null;
     patchVersionId?: string;
+    /** A resumed executor reached a new paused boundary; replace the prior pause epoch. */
+    supersedePausedSummary?: boolean;
     summary: TerminalRunSummary;
   }): Promise<TerminalRunSummary>;
 };
@@ -218,6 +220,8 @@ export type TerminalRunFinalizerInput = {
   workers?: TerminalFinalizerWorkerPorts;
   /** Explicit operator cancellation maps only to `aborted`. */
   cancelled?: boolean;
+  /** This invocation resumed executor work, so a new pause is not a summary retry. */
+  supersedePausedSummary?: boolean;
   stageFaults?: Partial<Record<TerminalFinalizerStage, TerminalFinalizerFaultFactory>>;
   now?: () => Date;
 };
@@ -482,9 +486,12 @@ async function finalizeTerminalRunWithLock(
     if (snapshot === null) {
       throw new Error(`terminal finalizer could not load durable run ${input.runId}`);
     }
+    const supersedingPausedSummary =
+      input.supersedePausedSummary === true && snapshot.runStatus === "paused";
     const existing =
       isTerminalRunState(snapshot.runStatus) &&
-      !(input.cancelled && snapshot.runStatus === "paused")
+      !(input.cancelled && snapshot.runStatus === "paused") &&
+      !supersedingPausedSummary
         ? await input.persistence.loadTerminalSummary(input.runId)
         : undefined;
     if (existing !== null && existing !== undefined) {
@@ -672,6 +679,9 @@ async function finalizeTerminalRunWithLock(
         ...(finalSnapshot.patch === null
           ? {}
           : { patchVersionId: finalSnapshot.patch.patchVersionId }),
+        ...(state === "paused" && input.supersedePausedSummary === true
+          ? { supersedePausedSummary: true }
+          : {}),
         summary: provisional,
       });
       // The terminal transaction can replace a previously-succeeded summary

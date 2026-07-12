@@ -276,6 +276,8 @@ export type TerminalizeLocalizationRunInput = {
   /** Required for a paused terminalization unless the current paused blocker is retained. */
   blocker?: LocalizationJournalOperationalBlocker;
   rootCause?: LocalizationRunFinalizerRootCause;
+  /** A resumed executor reached a new pause; replace rather than replay the prior pause epoch. */
+  supersedePausedSummary?: boolean;
   /**
    * Explicit operator cancellation fences a live executor by atomically moving
    * its running/paused/finalizing run to `aborted` and clearing the lease. This
@@ -707,6 +709,12 @@ async function terminalizeInTx(
   tx: JournalTransaction,
   input: TerminalizeLocalizationRunInput,
 ): Promise<LocalizationRunTerminalSummaryRecord> {
+  if (input.supersedePausedSummary === true && input.terminalStatus !== "paused") {
+    throw new LocalizationRunFinalizerRepositoryError(
+      "invalid_input",
+      "supersedePausedSummary is legal only for a paused terminalization",
+    );
+  }
   if (
     input.operatorCancellation === true &&
     (input.terminalStatus !== "aborted" || input.rootCause?.kind !== "cancelled")
@@ -737,7 +745,12 @@ async function terminalizeInTx(
   // A released paused run is the common all-path operational-blocker exit.
   // Replaying its finalizer must preserve the first durable blocker/summary,
   // rather than minting a new epoch for the same pause.
-  if (run.status === "paused" && input.terminalStatus === "paused" && existingSummary !== null) {
+  if (
+    run.status === "paused" &&
+    input.terminalStatus === "paused" &&
+    existingSummary !== null &&
+    input.supersedePausedSummary !== true
+  ) {
     return existingSummary;
   }
   if (run.status === "succeeded" || run.status === "failed" || run.status === "aborted") {
@@ -1425,6 +1438,10 @@ function projectTerminalSummaryStages(
   let patchBuild: LocalizationRunFinalizerOutboxRecord | undefined;
   let patchApply: LocalizationRunFinalizerOutboxRecord | undefined;
   for (const entry of outbox) {
+    // Every newly-minted summary epoch still has to project its own payload.
+    // Never inherit a prior epoch's successful delivery evidence into the new
+    // canonical row before this epoch's summary worker has run.
+    if (entry.stage === "summary") continue;
     if (entry.stage === "patch_build") {
       patchBuild = entry;
       continue;

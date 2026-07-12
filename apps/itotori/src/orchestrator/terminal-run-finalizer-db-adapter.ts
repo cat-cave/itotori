@@ -183,6 +183,7 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
     rootCause: TerminalRunRootCause;
     blocker: TerminalOperationalBlocker | null;
     patchVersionId?: string;
+    supersedePausedSummary?: boolean;
     summary: TerminalRunSummary;
   }): Promise<TerminalRunSummary> {
     const lease = this.leaseFor?.(input.runId);
@@ -191,6 +192,7 @@ export class DbTerminalRunFinalizerAdapter implements TerminalRunFinalizerPersis
       ...(input.patchVersionId === undefined ? {} : { patchVersionId: input.patchVersionId }),
       ...(lease === undefined ? {} : { lease }),
       ...(input.blocker === null ? {} : { blocker: input.blocker }),
+      ...(input.supersedePausedSummary === true ? { supersedePausedSummary: true } : {}),
       ...(this.options.operatorCancellation === true &&
       input.terminalStatus === "aborted" &&
       input.rootCause.kind === "cancelled"

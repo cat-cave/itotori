@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -249,10 +249,13 @@ describe.skipIf(!process.env.DATABASE_URL)("live operator terminal-run cancellat
         writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
       });
       const command = ["localize", "--cancel", "--resume-run-id", runId, "--run-dir", runDir];
+      const summaryPath = join(runDir, "run-summary.json");
+      writeFileSync(summaryPath, '{"stale":true}\n');
 
       await expect(runItotoriCliCommand(command, dependencies)).rejects.toThrow(
         "injected cancellation summary projection failure",
       );
+      expect(existsSync(summaryPath)).toBe(false);
 
       const canonicalAfterFailure = await repository.loadTerminalSummary(actor, runId);
       const snapshotAfterFailure = await repository.loadSnapshot(actor, runId);

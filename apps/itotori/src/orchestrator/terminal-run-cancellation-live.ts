@@ -4,6 +4,7 @@
 // provider, or run the executor. It terminalizes the identified DB run as
 // aborted, then projects run-summary.json from the committed canonical row.
 
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   ItotoriLocalizationRunFinalizerRepository,
@@ -83,6 +84,7 @@ export async function cancelTerminalRunLive(
       }
     }
     if (initial.run.status === "aborted") {
+      rmSync(summaryPath, { force: true });
       const committed = await repository.loadTerminalSummary(actor, runId);
       if (committed === null || committed.terminalStatus !== "aborted") {
         throw new Error(
@@ -111,6 +113,9 @@ export async function cancelTerminalRunLive(
       );
     }
 
+    // The DB transition below is authoritative. Absence is the only honest
+    // filesystem state until an aborted canonical row has committed.
+    rmSync(summaryPath, { force: true });
     const persistence = new DbTerminalRunFinalizerAdapter(
       repository,
       actor,
