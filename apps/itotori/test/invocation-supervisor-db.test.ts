@@ -369,6 +369,299 @@ describe("InvocationSupervisor durable pause/resume", () => {
     }
   });
 
+  it("fails closed before provider dispatch when the DB lease has no safe abort margin", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const exhaustedDeadlineJournal = new Proxy(repository, {
+        get(target, property) {
+          if (property === "beginAttempt") {
+            return async (
+              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[0],
+              input: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[1],
+            ) => {
+              const dispatching = await target.beginAttempt(actor, input);
+              return {
+                ...dispatching,
+                leaseDeadline: { ...dispatching.leaseDeadline, remainingMs: 0 },
+              };
+            };
+          }
+          const value = Reflect.get(target, property, target) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ItotoriLocalizationJournalRepositoryPort;
+      let physicalDispatches = 0;
+      const healthyFactory = providerFactory(new Map());
+      const countingFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        const provider = healthyFactory(factoryInput);
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request) => {
+            physicalDispatches += 1;
+            return await provider.invoke(request);
+          },
+        };
+      };
+
+      const result = await runProjectDrivenExecutor({
+        ...executorInput(countingFactory),
+        maxUnits: 1,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(exhaustedDeadlineJournal, {
+            actor: ACTOR,
+            driverId: "exhausted-deadline-driver",
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+
+      expect(physicalDispatches).toBe(0);
+      expect(result).toMatchObject({
+        runState: "paused",
+        pausedBlocker: { kind: "provider_outage" },
+      });
+      const attempts = await repository.loadAttemptsForRun(ACTOR, result.journalRunId);
+      expect(attempts.length).toBeGreaterThan(0);
+      expect(attempts.every((attempt) => attempt.failureClass === "timeout")).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("aborts driver A at the DB lease deadline before an expired-lease takeover dispatches", async () => {
+    const context = await isolatedMigratedContext();
+    let releaseDispatch: (() => void) | undefined;
+    let releaseCompletion: (() => void) | undefined;
+    let firstExecution: ReturnType<typeof runProjectDrivenExecutor> | undefined;
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const completionGate = new Promise<void>((resolve) => {
+        releaseCompletion = resolve;
+      });
+      let markCompletionBlocked!: () => void;
+      const completionBlocked = new Promise<void>((resolve) => {
+        markCompletionBlocked = resolve;
+      });
+      const deadlineJournal = new Proxy(repository, {
+        get(target, property) {
+          if (property === "beginAttempt") {
+            return async (
+              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[0],
+              input: Parameters<ItotoriLocalizationJournalRepositoryPort["beginAttempt"]>[1],
+            ) => {
+              const dispatching = await target.beginAttempt(actor, input);
+              // Keep the production 120-second floor while making this one
+              // DB-issued deadline observable in a focused integration test.
+              const compressed = await context.pool.query<{
+                leaseExpiresAt: Date;
+                remainingMs: number;
+              }>(
+                `
+                update itotori_localization_journal_runs
+                set lease_expires_at = clock_timestamp() + interval '2 seconds'
+                where run_id = $1
+                returning
+                  lease_expires_at as "leaseExpiresAt",
+                  greatest(
+                    0,
+                    extract(epoch from (lease_expires_at - clock_timestamp())) * 1000
+                  )::double precision as "remainingMs"
+                `,
+                [input.runId],
+              );
+              const leaseDeadline = compressed.rows[0];
+              if (leaseDeadline === undefined) {
+                throw new Error(`failed to compress test lease for ${input.runId}`);
+              }
+              return { ...dispatching, leaseDeadline };
+            };
+          }
+          if (property === "completeAttempt") {
+            return async (
+              actor: Parameters<ItotoriLocalizationJournalRepositoryPort["completeAttempt"]>[0],
+              input: Parameters<ItotoriLocalizationJournalRepositoryPort["completeAttempt"]>[1],
+            ) => {
+              // A lease-deadline abort happens conservatively before expiry.
+              // Hold A's completion write so it cannot renew the compressed
+              // lease before the takeover assertion exercises the DB boundary.
+              markCompletionBlocked();
+              await completionGate;
+              return await target.completeAttempt(actor, input);
+            };
+          }
+          const value = Reflect.get(target, property, target) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ItotoriLocalizationJournalRepositoryPort;
+
+      let markDispatchStarted!: () => void;
+      const dispatchStarted = new Promise<void>((resolve) => {
+        markDispatchStarted = resolve;
+      });
+      let markDispatchAborted!: () => void;
+      const dispatchAborted = new Promise<void>((resolve) => {
+        markDispatchAborted = resolve;
+      });
+      const eventOrder: string[] = [];
+      let driverAAborted = false;
+      let driverAAbortReason: unknown;
+      let driverAPhysicalDispatches = 0;
+      const healthyFirstFactory = providerFactory(new Map());
+      const blockingFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        if (factoryInput.stage !== "context" || factoryInput.agentLabel !== "scene-summary") {
+          return healthyFirstFactory(factoryInput);
+        }
+        const provider = new FakeModelProvider({
+          providerName: "lease-deadline-driver-a-scene-summary",
+          generate: () => fakeSemanticContextContent("scene-summary"),
+        });
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request) => {
+            driverAPhysicalDispatches += 1;
+            markDispatchStarted();
+            await new Promise<void>((resolve, reject) => {
+              const signal = request.signal;
+              if (signal === undefined) {
+                reject(new Error("supervised dispatch did not provide an AbortSignal"));
+                return;
+              }
+              const onAbort = (): void => {
+                driverAAborted = true;
+                driverAAbortReason = signal.reason;
+                eventOrder.push("driver-a-aborted");
+                markDispatchAborted();
+                reject(signal.reason);
+              };
+              releaseDispatch = () => {
+                signal.removeEventListener("abort", onAbort);
+                resolve();
+              };
+              if (signal.aborted) onAbort();
+              else signal.addEventListener("abort", onAbort, { once: true });
+            });
+            return provider.invoke(request);
+          },
+        };
+      };
+
+      firstExecution = runProjectDrivenExecutor({
+        ...executorInput(blockingFactory),
+        maxUnits: 1,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(deadlineJournal, {
+            actor: ACTOR,
+            driverId: "lease-deadline-driver-a",
+            leaseHeartbeatIntervalMs: 5_000,
+            leaseHeartbeatTimeoutMs: 500,
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+      await dispatchStarted;
+      const activeRun = await repository.loadLatestRunForBranch(ACTOR, BRANCH_ID);
+      if (activeRun === null) throw new Error("deadline driver did not seed its run");
+
+      await expect(
+        repository.resumeRun(ACTOR, activeRun.runId, { ownerId: "lease-deadline-probe" }),
+      ).rejects.toMatchObject({ code: "run_lease_conflict" });
+
+      await dispatchAborted;
+      await completionBlocked;
+      expect(driverAAbortReason).toMatchObject({
+        name: "JournalRunLeaseDeadlineError",
+        message: expect.stringContaining("reached DB lease deadline"),
+      });
+      const liveAtAbort = await context.pool.query<{ live: boolean }>(
+        `
+        select lease_expires_at > clock_timestamp() as live
+        from itotori_localization_journal_runs
+        where run_id = $1
+        `,
+        [activeRun.runId],
+      );
+      expect(liveAtAbort.rows[0]).toMatchObject({ live: true });
+
+      let expired = false;
+      for (let poll = 0; poll < 120; poll += 1) {
+        const result = await context.pool.query<{ expired: boolean }>(
+          `
+          select lease_expires_at <= clock_timestamp() as expired
+          from itotori_localization_journal_runs
+          where run_id = $1
+          `,
+          [activeRun.runId],
+        );
+        if (result.rows[0]?.expired === true) {
+          expired = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(expired).toBe(true);
+
+      const secondCalls = new Map<string, number>();
+      const healthySecondFactory = providerFactory(secondCalls);
+      const secondFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        const provider = healthySecondFactory(factoryInput);
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request) => {
+            eventOrder.push("driver-b-dispatched");
+            if (!driverAAborted) {
+              throw new Error("driver B dispatched before driver A observed its lease abort");
+            }
+            return await provider.invoke(request);
+          },
+        };
+      };
+      const resumed = await runProjectDrivenExecutor({
+        ...executorInput(secondFactory),
+        maxUnits: 1,
+        resumeRunId: activeRun.runId,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(repository, {
+            actor: ACTOR,
+            driverId: "lease-deadline-driver-b",
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+
+      expect(resumed.runState).toBe("running");
+      expect(driverAPhysicalDispatches).toBe(1);
+      expect(secondCalls.get("__all__") ?? 0).toBeGreaterThan(0);
+      expect(eventOrder.indexOf("driver-a-aborted")).toBeLessThan(
+        eventOrder.indexOf("driver-b-dispatched"),
+      );
+      const attempts = await repository.loadAttemptsForRun(ACTOR, activeRun.runId);
+      expect(attempts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            fenceToken: 1,
+            finishState: "interrupted",
+            failureClass: "interrupted",
+          }),
+          expect.objectContaining({
+            fenceToken: 2,
+            lifecycleState: "completed",
+          }),
+        ]),
+      );
+
+      releaseCompletion?.();
+      await expect(firstExecution).rejects.toMatchObject({ code: "run_lease_lost" });
+    } finally {
+      releaseDispatch?.();
+      releaseCompletion?.();
+      await firstExecution?.catch(() => undefined);
+      await context.close();
+    }
+  });
+
   it("aborts the provider and settles the executor when lease renewal hangs", async () => {
     const context = await isolatedMigratedContext();
     let releaseDispatch: (() => void) | undefined;

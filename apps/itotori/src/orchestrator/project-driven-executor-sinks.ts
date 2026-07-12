@@ -13,10 +13,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS,
   type AuthorizationActor,
   type ItotoriLocalizationJournalRepositoryPort,
+  type LocalizationJournalRunLeaseDeadline,
 } from "@itotori/db";
 import type {
   DrivenJournalResumeState,
@@ -27,10 +29,11 @@ import type {
   DrivenPatchExportSink,
 } from "./project-driven-executor.js";
 import type { DrivenLlmAttemptRecord } from "./attempt-outcome-journal.js";
-import type {
-  InvocationAttemptCompleted,
-  InvocationAttemptStarted,
-  OperationalBlocker,
+import {
+  INVOCATION_DEFAULT_DEADLINE_MS,
+  type InvocationAttemptCompleted,
+  type InvocationAttemptStarted,
+  type OperationalBlocker,
 } from "./invocation-supervisor.js";
 
 export type DrivenJournalPersistenceOptions = {
@@ -54,9 +57,19 @@ type ActiveRunLease = {
 type RunLeaseHeartbeat = {
   attemptAbortControllers: Map<string, AbortController>;
   timer: ReturnType<typeof setInterval>;
+  leaseDeadlineTimer: ReturnType<typeof setTimeout> | null;
   renewalInFlight: Promise<void> | null;
   renewalFailure: unknown | null;
 };
+
+class JournalRunLeaseDeadlineError extends Error {
+  constructor(runId: string, deadline: LocalizationJournalRunLeaseDeadline) {
+    super(
+      `journal run ${runId} reached DB lease deadline ${deadline.leaseExpiresAt.toISOString()} before renewal`,
+    );
+    this.name = "JournalRunLeaseDeadlineError";
+  }
+}
 
 /**
  * Binds the executor's journal sink to its real repository. The executor gives
@@ -89,10 +102,11 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       !Number.isFinite(this.leaseHeartbeatTimeoutMs) ||
       !Number.isInteger(this.leaseHeartbeatTimeoutMs) ||
       this.leaseHeartbeatTimeoutMs <= 0 ||
-      this.leaseHeartbeatIntervalMs + this.leaseHeartbeatTimeoutMs >= leaseMilliseconds
+      this.leaseHeartbeatIntervalMs + this.leaseHeartbeatTimeoutMs >= leaseMilliseconds ||
+      INVOCATION_DEFAULT_DEADLINE_MS + this.leaseHeartbeatTimeoutMs > leaseMilliseconds
     ) {
       throw new Error(
-        "journal lease heartbeat interval and timeout must be positive integers whose sum is below the lease",
+        "journal lease heartbeat interval and timeout must be positive integers whose sum is below the lease, and the lease must cover the provider deadline plus the abort margin",
       );
     }
   }
@@ -234,7 +248,8 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
   async attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal> {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
-    await this.journal.beginAttempt(this.opts.actor, {
+    const leaseRoundTripStartedAt = performance.now();
+    const dispatchingAttempt = await this.journal.beginAttempt(this.opts.actor, {
       attemptId: attempt.attemptId,
       runId: attempt.runId,
       bridgeUnitId: attempt.bridgeUnitId,
@@ -249,7 +264,12 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       startedAt: attempt.startedAt,
       lease,
     });
-    return this.startAttemptHeartbeat(attempt.runId, attempt.attemptId);
+    return this.startAttemptHeartbeat(
+      attempt.runId,
+      attempt.attemptId,
+      dispatchingAttempt.leaseDeadline,
+      performance.now() - leaseRoundTripStartedAt,
+    );
   }
 
   async attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void> {
@@ -356,12 +376,21 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     return lease;
   }
 
-  private startAttemptHeartbeat(runId: string, attemptId: string): AbortSignal {
+  private startAttemptHeartbeat(
+    runId: string,
+    attemptId: string,
+    deadline: LocalizationJournalRunLeaseDeadline,
+    leaseRoundTripMs: number,
+  ): AbortSignal {
     const controller = new AbortController();
     const existing = this.leaseHeartbeats.get(runId);
     if (existing !== undefined) {
       existing.attemptAbortControllers.set(attemptId, controller);
-      if (existing.renewalFailure !== null) controller.abort(existing.renewalFailure);
+      if (existing.renewalFailure !== null) {
+        controller.abort(existing.renewalFailure);
+      } else {
+        this.armRunLeaseDeadline(runId, existing, deadline, leaseRoundTripMs);
+      }
       return controller.signal;
     }
 
@@ -370,12 +399,15 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       this.renewLeaseHeartbeat(runId);
     }, this.leaseHeartbeatIntervalMs);
     timer.unref?.();
-    this.leaseHeartbeats.set(runId, {
+    const heartbeat: RunLeaseHeartbeat = {
       attemptAbortControllers,
       timer,
+      leaseDeadlineTimer: null,
       renewalInFlight: null,
       renewalFailure: null,
-    });
+    };
+    this.leaseHeartbeats.set(runId, heartbeat);
+    this.armRunLeaseDeadline(runId, heartbeat, deadline, leaseRoundTripMs);
     return controller.signal;
   }
 
@@ -385,11 +417,22 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     if (heartbeat === undefined || lease === undefined || heartbeat.renewalInFlight !== null)
       return;
 
+    const renewalStartedAt = performance.now();
     const underlyingRenewal = Promise.resolve()
       .then(async () => {
-        await this.journal.renewRunLease(this.opts.actor, runId, lease);
+        return await this.journal.renewRunLease(this.opts.actor, runId, lease);
       })
-      .then(() => undefined);
+      .then((renewed) => {
+        const current = this.leaseHeartbeats.get(runId);
+        if (current === heartbeat && current.renewalFailure === null) {
+          this.armRunLeaseDeadline(
+            runId,
+            current,
+            renewed.leaseDeadline,
+            performance.now() - renewalStartedAt,
+          );
+        }
+      });
     let renewal!: Promise<void>;
     renewal = new Promise<void>((resolve) => {
       let settled = false;
@@ -427,12 +470,46 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       error instanceof Error
         ? error
         : new Error(`journal lease heartbeat failed: ${String(error)}`);
+    if (heartbeat.leaseDeadlineTimer !== null) {
+      clearTimeout(heartbeat.leaseDeadlineTimer);
+      heartbeat.leaseDeadlineTimer = null;
+    }
     // The provider transport contract requires honoring AbortSignal. Poison
     // every active dispatch immediately on lease uncertainty, while later
     // ticks keep trying to renew until all attempts have settled.
     for (const controller of heartbeat.attemptAbortControllers.values()) {
       controller.abort(heartbeat.renewalFailure);
     }
+  }
+
+  private armRunLeaseDeadline(
+    runId: string,
+    heartbeat: RunLeaseHeartbeat,
+    deadline: LocalizationJournalRunLeaseDeadline,
+    leaseRoundTripMs: number,
+  ): void {
+    if (heartbeat.renewalFailure !== null) return;
+    if (heartbeat.leaseDeadlineTimer !== null) clearTimeout(heartbeat.leaseDeadlineTimer);
+    // PostgreSQL supplies the remaining duration, so executor wall-clock skew
+    // cannot move this boundary. Subtract the full observed round trip plus the
+    // renewal timeout as a conservative abort margin; a healthy event loop then
+    // delivers AbortSignal before the DB can admit a new fence.
+    const delayMs = Math.max(
+      0,
+      Math.floor(
+        deadline.remainingMs - Math.max(0, leaseRoundTripMs) - this.leaseHeartbeatTimeoutMs,
+      ),
+    );
+    if (delayMs === 0) {
+      // Fail closed in this turn. A zero-delay timer would run only after the
+      // supervisor's continuation had a chance to enter the physical provider.
+      this.recordHeartbeatFailure(runId, new JournalRunLeaseDeadlineError(runId, deadline));
+      return;
+    }
+    heartbeat.leaseDeadlineTimer = setTimeout(() => {
+      this.recordHeartbeatFailure(runId, new JournalRunLeaseDeadlineError(runId, deadline));
+    }, delayMs);
+    heartbeat.leaseDeadlineTimer.unref?.();
   }
 
   private async stopAttemptHeartbeat(runId: string, attemptId: string): Promise<void> {
@@ -446,6 +523,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     const heartbeat = this.leaseHeartbeats.get(runId);
     if (heartbeat === undefined) return;
     clearInterval(heartbeat.timer);
+    if (heartbeat.leaseDeadlineTimer !== null) clearTimeout(heartbeat.leaseDeadlineTimer);
     this.leaseHeartbeats.delete(runId);
     // The interval callback records every renewal promise before returning.
     // Drain the final one so executor completion/context teardown cannot race

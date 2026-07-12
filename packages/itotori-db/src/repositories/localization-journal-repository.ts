@@ -48,8 +48,8 @@ export type LocalizationJournalAttemptLifecycleState = "dispatching" | "complete
 
 /**
  * The production lease is four times the supervisor's 30-second physical-call
- * deadline. begin/complete writes renew it, so a live bounded provider call
- * cannot be mistaken for a crashed driver by a second resumer.
+ * deadline. With a healthy event loop, begin/complete renewal plus the abort
+ * margin stops a bounded provider call before a second resumer can take over.
  */
 export const LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS = 120;
 
@@ -57,6 +57,12 @@ export type LocalizationJournalRunLeaseIdentity = {
   ownerId: string;
   fenceToken: number;
   leaseSeconds?: number;
+};
+
+/** DB-clock lease deadline plus its remaining duration at the observation query. */
+export type LocalizationJournalRunLeaseDeadline = {
+  leaseExpiresAt: Date;
+  remainingMs: number;
 };
 
 export type SeedLocalizationJournalRunLeaseInput = {
@@ -332,6 +338,16 @@ export type LocalizationJournalAttemptRecord = {
   createdAt: Date;
 };
 
+/** Pre-dispatch row paired with the lease deadline renewed in the same transaction. */
+export type LocalizationJournalDispatchingAttemptRecord = LocalizationJournalAttemptRecord & {
+  leaseDeadline: LocalizationJournalRunLeaseDeadline;
+};
+
+/** Heartbeat result paired with a fresh DB-clock lease deadline observation. */
+export type LocalizationJournalRenewedRunRecord = LocalizationJournalRunRecord & {
+  leaseDeadline: LocalizationJournalRunLeaseDeadline;
+};
+
 export type LocalizationJournalOutcomeRecord = {
   /** Internal, run-scoped FK identity; canonical `outcome.id` remains below. */
   journalOutcomeId: string;
@@ -489,7 +505,7 @@ export interface ItotoriLocalizationJournalRepositoryPort {
   beginAttempt(
     actor: AuthorizationActor,
     input: BeginLocalizationJournalAttemptInput,
-  ): Promise<LocalizationJournalAttemptRecord>;
+  ): Promise<LocalizationJournalDispatchingAttemptRecord>;
   completeAttempt(
     actor: AuthorizationActor,
     input: CompleteLocalizationJournalAttemptInput,
@@ -520,7 +536,7 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     actor: AuthorizationActor,
     runId: string,
     lease: LocalizationJournalRunLeaseIdentity,
-  ): Promise<LocalizationJournalRunRecord>;
+  ): Promise<LocalizationJournalRenewedRunRecord>;
   /** Release only a paused run after the owning executor has fully quiesced. */
   releaseRunLease(
     actor: AuthorizationActor,
@@ -839,7 +855,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
   async beginAttempt(
     actor: AuthorizationActor,
     input: BeginLocalizationJournalAttemptInput,
-  ): Promise<LocalizationJournalAttemptRecord> {
+  ): Promise<LocalizationJournalDispatchingAttemptRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     const attempt = normalizeBeginAttempt(input);
 
@@ -853,7 +869,10 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
             `attempt ${attempt.attemptId} already exists with different pre-dispatch facts`,
           );
         }
-        return journalAttemptRowToRecord(existing);
+        return {
+          ...journalAttemptRowToRecord(existing),
+          leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+        };
       }
       const claimed = await tx
         .update(localizationJournalRunUnits)
@@ -928,7 +947,10 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           `attempt ${attempt.attemptId} already exists with different pre-dispatch facts or collides with another logical attempt`,
         );
       }
-      return journalAttemptRowToRecord(persisted);
+      return {
+        ...journalAttemptRowToRecord(persisted),
+        leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+      };
     });
   }
 
@@ -1385,6 +1407,13 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const lease = normalizeSeedRunLease(leaseInput, "lease");
     return this.db.transaction(async (tx) => {
       const resumedAt = new Date();
+      // This is the takeover boundary. Fencing guarantees that the old fence
+      // cannot persist a duplicate or incorrect OUTCOME. A duplicate provider
+      // CALL (and cost) remains possible only if its JavaScript event loop
+      // freezes beyond this DB lease while a non-idempotent request is live;
+      // preventing that residual requires provider idempotency keys, which are
+      // unavailable. This is an accepted fundamental limitation. Healthy
+      // drivers bind every request to this lease deadline.
       const rows = await tx
         .update(localizationJournalRuns)
         .set({
@@ -1496,13 +1525,17 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     actor: AuthorizationActor,
     runId: string,
     leaseInput: LocalizationJournalRunLeaseIdentity,
-  ): Promise<LocalizationJournalRunRecord> {
+  ): Promise<LocalizationJournalRenewedRunRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     assertNonBlank(runId, "runId");
     const lease = normalizeRunLeaseIdentity(leaseInput, "lease");
-    return this.db.transaction(async (tx) =>
-      journalRunRowToRecord(await renewRunLeaseInTx(tx, runId, lease, ["running", "paused"])),
-    );
+    return this.db.transaction(async (tx) => {
+      const renewed = await renewRunLeaseInTx(tx, runId, lease, ["running", "paused"]);
+      return {
+        ...journalRunRowToRecord(renewed),
+        leaseDeadline: await loadRunLeaseDeadlineInTx(tx, runId),
+      };
+    });
   }
 
   async releaseRunLease(
@@ -2894,6 +2927,39 @@ async function renewRunLeaseInTx(
     "run_lease_lost",
     `driver ${lease.ownerId} fence ${lease.fenceToken} has no live lease for journal run ${runId}`,
   );
+}
+
+async function loadRunLeaseDeadlineInTx(
+  tx: JournalTransaction,
+  runId: string,
+): Promise<LocalizationJournalRunLeaseDeadline> {
+  const rows = await tx
+    .select({
+      leaseExpiresAt: localizationJournalRuns.leaseExpiresAt,
+      remainingMs: sql<number>`greatest(
+        0,
+        extract(epoch from (${localizationJournalRuns.leaseExpiresAt} - clock_timestamp())) * 1000
+      )::double precision`,
+    })
+    .from(localizationJournalRuns)
+    .where(eq(localizationJournalRuns.runId, runId))
+    .limit(1);
+  const deadline = rows[0];
+  if (
+    deadline?.leaseExpiresAt === null ||
+    deadline?.leaseExpiresAt === undefined ||
+    !Number.isFinite(deadline.remainingMs) ||
+    deadline.remainingMs < 0
+  ) {
+    throw new LocalizationJournalRepositoryError(
+      "run_lease_lost",
+      `journal run ${runId} has no valid DB lease deadline`,
+    );
+  }
+  return {
+    leaseExpiresAt: deadline.leaseExpiresAt,
+    remainingMs: deadline.remainingMs,
+  };
 }
 
 async function runLeaseIsLiveInTx(
