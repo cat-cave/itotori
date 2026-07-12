@@ -21,6 +21,7 @@ import type {
 } from "@itotori/localization-bridge-schema";
 import type {
   QaBridgeUnit,
+  QaContextArtifact,
   QaGlossaryEntry,
   QaInvocationInput,
   QaModelProfile,
@@ -112,6 +113,22 @@ const FIXTURE_STYLE_GUIDE: QaStyleGuideRule[] = [
     ruleId: "protected-spans-001",
     section: "protectedSpans",
     guidance: "Preserve every placeholder verbatim.",
+  },
+];
+
+/**
+ * Every calibration invocation receives the same resolved scene artifact.
+ * This keeps focused QA on the production contract: semantic findings cite
+ * evidence with a real body, not an out-of-band fixture-only identifier.
+ */
+const FIXTURE_CONTEXT_ARTIFACTS: ReadonlyArray<QaContextArtifact> = [
+  {
+    contextArtifactId: "scene-summary:scene-calibration",
+    category: "scene_summary",
+    title: "Calibration scene",
+    body: "The hero bows only to the king in a formal court scene.",
+    contextEntryVersionId: "019ed079-0000-7000-8000-000000cc0001",
+    contentHash: "sha256:calibration-scene-summary",
   },
 ];
 
@@ -278,7 +295,7 @@ export const STYLE_VIOLATION_FIXTURE: CalibrationFixture = {
           bridgeUnitId: FIXTURE_BRIDGE_UNIT_ID_B,
           severity: "critical",
           category: "protected-span-violation",
-          evidenceRefs: ["style-guide:protected-spans-001"],
+          evidenceRefs: ["protected-spans-001"],
           recommendation: "Restore the {player} placeholder before exporting the draft.",
           agentRationale:
             "Source carries the {player} placeholder; draft omits it entirely, breaking the protected-span contract.",
@@ -362,7 +379,7 @@ export const TONE_SHIFT_FIXTURE: CalibrationFixture = {
           bridgeUnitId: FIXTURE_BRIDGE_UNIT_ID_B,
           severity: "major",
           category: "tone",
-          evidenceRefs: ["style-guide:tone-formal-001"],
+          evidenceRefs: ["tone-formal-001"],
           recommendation: "Rewrite using the formal register established by units 1 and 3.",
           agentRationale:
             "Draft switches to casual register mid-scene ('kinda just bowed', 'lol'), violating the tone-formal-001 style guide.",
@@ -401,7 +418,7 @@ export const TERMINOLOGY_MISS_FIXTURE: CalibrationFixture = {
           bridgeUnitId: FIXTURE_BRIDGE_UNIT_ID_B,
           severity: "major",
           category: "glossary-conflict",
-          evidenceRefs: [`glossary:${FIXTURE_GLOSSARY_TERM_ID}`],
+          evidenceRefs: [FIXTURE_GLOSSARY_TERM_ID],
           recommendation:
             "Use the glossary's preferred target form 'hero' for 勇者 instead of 'warrior'.",
           agentRationale:
@@ -460,7 +477,7 @@ export const REGRADE_TRIGGER_FIXTURE: CalibrationFixture = {
           bridgeUnitId: FIXTURE_BRIDGE_UNIT_ID_B,
           severity: "critical",
           category: "protected-span-violation",
-          evidenceRefs: ["style-guide:protected-spans-001"],
+          evidenceRefs: ["protected-spans-001"],
           recommendation: "Restore the {player} placeholder.",
           agentRationale: "Source carries {player}; draft drops the placeholder entirely.",
         }),
@@ -474,7 +491,7 @@ export const REGRADE_TRIGGER_FIXTURE: CalibrationFixture = {
           bridgeUnitId: FIXTURE_BRIDGE_UNIT_ID_B,
           severity: "major",
           category: "glossary-conflict",
-          evidenceRefs: [`glossary:${FIXTURE_GLOSSARY_TERM_ID}`],
+          evidenceRefs: [FIXTURE_GLOSSARY_TERM_ID],
           recommendation: "Use 'hero' per glossary.",
           agentRationale: "Draft renders 勇者 as 'warrior', contradicting glossary.",
         }),
@@ -529,6 +546,7 @@ export function calibrationFixtureWorkflowInput(
     units: fixture.units,
     glossary: fixture.glossary,
     styleGuide: fixture.styleGuide,
+    contextArtifacts: FIXTURE_CONTEXT_ARTIFACTS,
     modelProfile: fixture.modelProfile,
   };
 }

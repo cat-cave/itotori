@@ -14,7 +14,9 @@
 //   3. Parse + validate the content against the wire schema. Schema
 //      failure → QaResponseValidationError (typed by the schema package).
 //   4. Each finding's bridgeUnitId must resolve to a unit in the input
-//      → otherwise QaUnknownCitationError.
+//      → otherwise QaUnknownCitationError; each evidenceRef must resolve
+//      to supplied glossary, style, or context-artifact evidence
+//      → otherwise QaUnknownEvidenceRefError.
 //   5. If the provider reported a finish reason that indicates a partial
 //      response (length / stop-sequence / content-filter), or content
 //      was null, throw `QaPartialResultError` — never silently empty the
@@ -55,6 +57,7 @@ import {
   QaProviderCapabilityError,
   QaSpanOutOfBoundsError,
   QaUnknownCitationError,
+  QaUnknownEvidenceRefError,
   type QaInvocationInput,
   type QaInvocationResult,
 } from "./shapes.js";
@@ -125,6 +128,7 @@ export class QaAgent {
         validateResponse: (candidate) => this.assertCompleteInvocation(candidate),
         validateParsed: (candidate) => {
           this.assertCitationsResolve(candidate, input);
+          this.assertEvidenceRefsResolve(candidate, input);
           this.assertSpansWithinBounds(candidate, input);
         },
         requiredUnitIds: input.units.map((unit) => unit.bridgeUnitId),
@@ -271,6 +275,24 @@ export class QaAgent {
           finding.draftSpan.end,
           unit.draftText.length,
         );
+      }
+    }
+  }
+
+  private assertEvidenceRefsResolve(
+    parsed: StructuredQaFindingOutput,
+    input: QaInvocationInput,
+  ): void {
+    const knownEvidenceRefs = new Set([
+      ...input.glossary.map((entry) => entry.termId),
+      ...input.styleGuide.map((rule) => rule.ruleId),
+      ...input.contextArtifacts.map((artifact) => artifact.contextArtifactId),
+    ]);
+    for (const finding of parsed.findings) {
+      for (const evidenceRef of finding.evidenceRefs) {
+        if (!knownEvidenceRefs.has(evidenceRef)) {
+          throw new QaUnknownEvidenceRefError(evidenceRef, finding.findingId);
+        }
       }
     }
   }

@@ -10,7 +10,7 @@
       "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
       "severity": "major",
       "category": "glossary-conflict",
-      "evidenceRefs": ["glossary:019ed079-0000-7000-8000-000000cb0001"],
+      "evidenceRefs": ["019ed079-0000-7000-8000-000000cb0001"],
       "recommendation": "Use 'hero' per glossary.",
       "agentRationale": "Draft renders 勇者 as 'warrior', contradicting glossary."
     }

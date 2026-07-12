@@ -491,6 +491,75 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     expect(persistedContext.status).toBe("completed");
     expect(persistedContext.matches.length).toBeGreaterThan(0);
   });
+
+  it("passes same-scene bridge siblings into semantic terminology evidence", async () => {
+    const bridge = loadValidStageBridge() as {
+      sourceLocale: string;
+      units: Array<{
+        bridgeUnitId: string;
+        sourceLocale: string;
+        sourceText: string;
+      }>;
+    };
+    // This schema example is authored as an en-US bridge. The production
+    // command targets en-US, so make the copied source fixture ja-JP before
+    // exercising its semantic evidence path.
+    bridge.sourceLocale = "ja-JP";
+    for (const bridgeUnit of bridge.units) {
+      bridgeUnit.sourceLocale = "ja-JP";
+    }
+    const unitIndex = 10;
+    const unit = bridge.units[unitIndex];
+    const sibling = bridge.units[unitIndex + 1];
+    if (unit === undefined || sibling === undefined) {
+      throw new Error("valid stage bridge must include adjacent prologue dialogue units");
+    }
+    const semanticPrompts: string[] = [];
+    const reads = new Map<string, unknown>([
+      ["bridge.json", bridge],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io } = ioFixture(reads);
+    const liveFactoryOverride = (): AgenticLoopProviderFactory => {
+      const delegateFactory = writtenTranslationFactory({
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceLocale: unit.sourceLocale,
+      });
+      return (factoryInput) => {
+        const delegate = delegateFactory(factoryInput);
+        return {
+          descriptor: delegate.descriptor,
+          invoke: async (request: ModelInvocationRequest) => {
+            if (
+              factoryInput.agentLabel === "terminology-candidate" &&
+              request.taskKind === "experiment"
+            ) {
+              semanticPrompts.push(request.messages.map((message) => message.content).join("\n"));
+            }
+            return await delegate.invoke(request);
+          },
+        };
+      };
+    };
+
+    await runLocalizeProjectStageCommand({
+      bridgePath: "bridge.json",
+      pairPolicyPath: "pair-policy.json",
+      outputPath: "out/agentic-loop-bundle.v0.json",
+      translatedBundleOutputPath: "out/translated-bridge.json",
+      patchReportOutputPath: "out/patch-report.json",
+      unitIndex,
+      liveFactoryOverride,
+      io,
+      actor: { userId: "test" },
+      supervision: testSupervision(),
+      contextArtifactRepository: new InMemoryContextArtifactRepository(),
+    });
+
+    expect(semanticPrompts).toHaveLength(1);
+    expect(semanticPrompts[0]).toContain(sibling.bridgeUnitId);
+    expect(semanticPrompts[0]).toContain(sibling.sourceText);
+  });
 });
 
 describe.skipIf(!process.env.DATABASE_URL)("localize-project-stage durable cost admission", () => {

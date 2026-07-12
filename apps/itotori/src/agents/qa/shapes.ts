@@ -21,6 +21,7 @@ import type {
   ProviderRunRecord,
 } from "../../providers/types.js";
 import type { Bcp47Locale, Uuid7 } from "../../batch-planner/shapes.js";
+import type { TranslationContextArtifact } from "../translation/shapes.js";
 
 export const QA_PROMPT_TEMPLATE_VERSION_V1 = "itotori-qa-agent-v1";
 export const QA_DEFAULT_STRUCTURED_OUTPUT_NAME = "itotori-structured-qa-finding-output";
@@ -67,6 +68,15 @@ export type QaStyleGuideRule = {
 };
 
 /**
+ * A resolved context artifact supplied to QA with its authoritative body.
+ *
+ * This deliberately aliases the translation projection: one frozen
+ * ContextPacket must feed both stages with the same bytes, while
+ * `contextArtifactId` remains the sole citable identity.
+ */
+export type QaContextArtifact = TranslationContextArtifact;
+
+/**
  * Strictly-typed input to `QaAgent.invokeQa`. The `draftJobId` references
  * the row owned by ITOTORI-074. We accept the id as an opaque Uuid7 here
  * so we can build and test the seam before that node lands.
@@ -81,6 +91,12 @@ export type QaInvocationInput = {
   units: ReadonlyArray<QaBridgeUnit>;
   glossary: ReadonlyArray<QaGlossaryEntry>;
   styleGuide: ReadonlyArray<QaStyleGuideRule>;
+  /**
+   * The resolved ContextPacket projection for this QA call. Required even
+   * when the packet resolved no applicable artifacts, so callers cannot
+   * accidentally regress to the context-blind units/glossary/style shape.
+   */
+  contextArtifacts: ReadonlyArray<QaContextArtifact>;
   modelProfile: QaModelProfile;
   qaPromptVersion: string;
   now?: (() => Date) | undefined;
@@ -178,6 +194,23 @@ export class QaUnknownCitationError extends Error {
   ) {
     super(`QA agent refused: finding ${findingId} cites unknown bridge unit ${bridgeUnitId}`);
     this.name = "QaUnknownCitationError";
+  }
+}
+
+/**
+ * A finding's evidence reference was not supplied in this invocation's
+ * glossary, style guide, or resolved ContextPacket. QA must never claim
+ * support from context it did not receive.
+ */
+export class QaUnknownEvidenceRefError extends Error {
+  constructor(
+    public readonly evidenceRef: string,
+    public readonly findingId: string,
+  ) {
+    super(
+      `QA agent refused: finding ${findingId} cites unknown evidence reference '${evidenceRef}'`,
+    );
+    this.name = "QaUnknownEvidenceRefError";
   }
 }
 

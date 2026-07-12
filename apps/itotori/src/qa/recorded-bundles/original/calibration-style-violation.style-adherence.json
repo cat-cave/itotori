@@ -10,7 +10,7 @@
       "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
       "severity": "critical",
       "category": "protected-span-violation",
-      "evidenceRefs": ["style-guide:protected-spans-001"],
+      "evidenceRefs": ["protected-spans-001"],
       "recommendation": "Restore the {player} placeholder before exporting the draft.",
       "agentRationale": "Source carries the {player} placeholder; draft omits it entirely, breaking the protected-span contract."
     }

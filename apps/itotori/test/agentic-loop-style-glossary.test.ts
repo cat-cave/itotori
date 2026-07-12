@@ -264,7 +264,7 @@ describe("itotori-live-loop-style-glossary-injection", () => {
     expect(captured.qa.length).toBe(4);
     for (const qprompt of captured.qa) {
       expect(qprompt).toContain(`${GLOSSARY_SOURCE} -> ${GLOSSARY_TARGET}`);
-      expect(qprompt).toContain("[tone] (tone-warm-direct)");
+      expect(qprompt).toContain("[tone] ruleId=tone-warm-direct");
     }
 
     // (2) The glossary-respecting draft is the selected written candidate.

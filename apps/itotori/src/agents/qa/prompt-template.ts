@@ -32,7 +32,8 @@ const SYSTEM_INSTRUCTIONS = [
   `Category MUST be one of: ${QA_FINDING_CATEGORIES.join(", ")}.`,
   "sourceSpan and draftSpan are OPTIONAL. When present they are 0-based Unicode code-unit (JavaScript string.length) character offsets: sourceSpan indexes ONLY into that unit's `source` text and draftSpan indexes ONLY into that unit's `draft` text — never cross-index (a draftSpan must NOT be measured against the source).",
   "Each span MUST satisfy 0 <= start <= end <= the length of the text it indexes. Each unit block gives the exact character length of its source and draft; a draftSpan.end may not exceed the draft length and a sourceSpan.end may not exceed the source length. If you cannot cite an exact in-bounds offset, OMIT the span entirely rather than guess — an out-of-bounds span is rejected.",
-  "evidenceRefs cites glossary term ids, style guide rule ids, or context-artifact ids; never raw quotes.",
+  "evidenceRefs cites glossary term ids, style guide rule ids, or resolved context-artifact ids; never raw quotes.",
+  'evidenceRefs MUST contain ONLY exact ids supplied in the Glossary block (termId=...), Style guide block (ruleId=...), or "Context artifacts (resolved content)" block (contextArtifactId=...). Cite the id VERBATIM. Do NOT invent ids, do NOT cite anything not listed, and emit an empty evidenceRefs array if no supplied evidence supports the finding.',
   "recommendation is a free-text remediation suggestion; do NOT include rewritten output.",
   "agentRationale explains why you flagged the finding.",
   "Flag any draft whose `draftText` contains a parenthetical translator-note or meta-commentary intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)', '(meta-commentary: ...)'); emit such cases as `category: 'other'` findings with `draftSpan` covering the offending parenthetical, and recommend removing the parenthetical.",
@@ -69,7 +70,34 @@ export function buildQaPrompt(input: QaInvocationInput): RenderedQaPrompt {
     lines.push("Style guide:");
     const sortedRules = canonicalizeStyleGuide(input.styleGuide);
     for (const rule of sortedRules) {
-      lines.push(`- [${rule.section}] (${rule.ruleId}) ${rule.guidance}`);
+      lines.push(`- [${rule.section}] ruleId=${rule.ruleId} ${rule.guidance}`);
+    }
+  }
+
+  lines.push("");
+  if (input.contextArtifacts.length === 0) {
+    lines.push("Context artifacts: (empty)");
+  } else {
+    lines.push("Context artifacts (resolved content):");
+    const sortedArtifacts = [...input.contextArtifacts].sort((left, right) =>
+      left.contextArtifactId.localeCompare(right.contextArtifactId),
+    );
+    for (const artifact of sortedArtifacts) {
+      lines.push(
+        `- contextArtifactId=${artifact.contextArtifactId} category=${artifact.category} title=${JSON.stringify(artifact.title)}`,
+      );
+      if (
+        artifact.contextEntryVersionId !== undefined &&
+        artifact.contextEntryVersionId.length > 0
+      ) {
+        lines.push(`  contextEntryVersionId=${artifact.contextEntryVersionId}`);
+      }
+      if (artifact.contentHash !== undefined && artifact.contentHash.length > 0) {
+        lines.push(`  contentHash=${artifact.contentHash}`);
+      }
+      for (const bodyLine of artifact.body.split("\n")) {
+        lines.push(`  ${bodyLine}`);
+      }
     }
   }
 

@@ -49,7 +49,10 @@ export function makeQaFindingFixture(overrides: QaFindingFactoryOverrides = {}):
     bridgeUnitId,
     severity,
     category,
-    evidenceRefs: overrides.evidenceRefs ?? [`style-guide:${category}`],
+    // A fixture factory cannot know which evidence was supplied to a future
+    // invocation. Empty is valid; callers that need a citation must provide
+    // an exact id from their glossary, style guide, or ContextPacket.
+    evidenceRefs: overrides.evidenceRefs ?? [],
     recommendation: overrides.recommendation ?? defaultRecommendationFor(category),
     agentRationale:
       overrides.agentRationale ?? `Default ${severity}/${category} rationale for ${bridgeUnitId}.`,

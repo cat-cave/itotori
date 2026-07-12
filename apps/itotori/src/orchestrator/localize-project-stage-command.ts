@@ -86,10 +86,15 @@ import {
   flattenPairPolicyV03Postures,
   type AgenticLoopBundle,
   type BridgeBundleV02,
+  type LocalizationUnitV02,
   type PairPolicyV03,
   type StagePostureV03,
   type StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
+import {
+  groupBySceneBoundary,
+  projectLocalizationUnitV02,
+} from "../batch-planner/scene-grouping.js";
 import { parseNarrativeStructure } from "../agents/structure-informed-context/index.js";
 import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
@@ -260,6 +265,36 @@ export class LocalizeProjectContextStoreRequiredError extends Error {
 }
 
 const DEFAULT_UNIT_INDEX = 0;
+
+/**
+ * Resolve the selected unit's real sibling evidence from the same scene/route
+ * grouping the batch planner uses. The agentic loop adds the selected `unit`
+ * itself, so this deliberately returns only other units in that group.
+ */
+function sceneSiblingUnits(
+  bridge: BridgeBundleV02,
+  unitIndex: number,
+): ReadonlyArray<LocalizationUnitV02> {
+  const selectedUnit = bridge.units[unitIndex];
+  if (selectedUnit === undefined) {
+    throw new Error(`localize-project-stage refused: missing selected unit at index ${unitIndex}`);
+  }
+  const group = groupBySceneBoundary(bridge.units.map(projectLocalizationUnitV02)).find(
+    (candidate) => candidate.units.some((unit) => unit.bridgeUnitId === selectedUnit.bridgeUnitId),
+  );
+  if (group === undefined) {
+    throw new Error(
+      `localize-project-stage refused: could not resolve scene evidence for ${selectedUnit.bridgeUnitId}`,
+    );
+  }
+  const siblingIds = new Set(
+    group.units
+      .map((candidate) => candidate.bridgeUnitId)
+      .filter((bridgeUnitId) => bridgeUnitId !== selectedUnit.bridgeUnitId),
+  );
+  return bridge.units.filter((candidate) => siblingIds.has(candidate.bridgeUnitId));
+}
+
 // Re-export so the test surface and any external integrators get the
 // version-mismatch error from the same place they used to import the
 // command-level error.
@@ -468,11 +503,12 @@ export async function runLocalizeProjectStageCommand(
   if (narrativeStructure !== undefined) {
     log(`localize-project-stage: structure-informed context enabled (scene ${sceneId})`);
   }
+  const siblingSceneUnits = sceneSiblingUnits(bridge, unitIndex);
 
   const input: AgenticLoopUnitInput = {
     unit,
     sourceRevisionId,
-    sceneUnits: [],
+    sceneUnits: siblingSceneUnits,
     // itotori-live-loop-style-glossary-injection — feed the caller-resolved
     // ACTIVE glossary + style-guide into the live loop (empty when unset).
     glossary: args.glossary ?? [],

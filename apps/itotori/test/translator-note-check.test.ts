@@ -255,6 +255,7 @@ describe("QA prompt — translator-note rubric", () => {
       ],
       glossary: [],
       styleGuide: [],
+      contextArtifacts: [],
       modelProfile: {
         providerFamily: "fake",
         modelId: "itotori-fake-qa-v0",
