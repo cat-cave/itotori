@@ -5,7 +5,7 @@
 // `usage.cost` (live evidence in docs/openrouter-integration-evidence/
 // 2026-06-25.json); we carry it VERBATIM as the authoritative full-
 // precision `amountUsd` and ALSO derive integer micros (`amountMicrosUsd`)
-// as a cap/telemetry mirror, tagging `costKind: 'billed'`. The decimal
+// as a display/telemetry mirror, tagging `costKind: 'billed'`. The decimal
 // `amountUsd` — not micros — is the value the ledger persists and the
 // 1e-9 cost CHECK compares. No estimation paths. No `unknown` fallback.
 
@@ -154,16 +154,15 @@ export function usageCostToDecimalString(value: unknown): string {
 /**
  * Return the real cost amount in micros-USD for a `ProviderCost`. Throws if
  * the cost is not billed (i.e. zero-cost runs do not have a billable
- * amount to charge against the cap / aggregate). Callers that want to
- * include zero-cost runs in their sums should use `costToMicrosOrZero`
- * instead.
+ * amount for a display or legacy micros aggregate. It is never valid for
+ * durable cost admission or reconciliation; those paths use
+ * `assertBilledCostDecimal`. Callers that want to include zero-cost runs in
+ * their display sums should use `costToMicrosOrZero` instead.
  *
  * ITOTORI-134 — `provider_estimate` costs carry a deterministic estimate
  * derived from real provider pricing data (cost_details / endpoint pricing).
- * The estimate IS a real expected spend number, so the cost cap / aggregate
- * consumes it directly (fail-safe: an estimate counts toward the budget
- * rather than silently passing). Both `billed` and `provider_estimate`
- * therefore return their `amountMicrosUsd`; `zero` returns 0.
+ * The estimate IS a real expected spend number. Both `billed` and
+ * `provider_estimate` return their display-micros mirror; `zero` returns 0.
  */
 export function assertBilledCost(cost: ProviderCost): bigint {
   if (cost.costKind === "billed" || cost.costKind === "provider_estimate") {

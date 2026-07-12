@@ -90,19 +90,28 @@ export type InvocationLifecycle = {
 };
 
 /**
- * Node-4 seam. This node asks whether dispatch is admitted; the later atomic
- * reservation node replaces the implementation without changing supervision.
+ * Node-4's cost-admission seam. A durable implementation can atomically
+ * reserve the exact worst case AND write this attempt's dispatching row. The
+ * existing denial path remains the node-3 operational `budget_cap` pause.
  */
 export type InvocationCostAdmission = {
   admit(input: {
+    attempt: InvocationAttemptStarted;
     runId: string;
     bridgeUnitId: string;
     stage: string;
     agentLabel: string;
     request: ModelInvocationRequest;
-    maximumCostUsd: number | null;
+    /** Canonical exact decimal worst case, never a rounded micros mirror. */
+    worstCaseCostUsd: string | null;
   }): Promise<
-    | { admitted: true }
+    | {
+        admitted: true;
+        /** The admission transaction already persisted the dispatching attempt. */
+        attemptStarted?: true;
+        /** Lease health from the same durable pre-dispatch transaction. */
+        dispatchLeaseSignal?: AbortSignal;
+      }
     | { admitted: false; detail: string; evidence: string; operatorAction?: string }
   >;
 };
@@ -324,11 +333,15 @@ export abstract class SupervisedModelProviderAdapter implements ModelProvider {
     | { admitted: false; detail: string; evidence: string; operatorAction?: string }
   > {
     const target = providerAdapterTarget(this);
-    return (
-      (await target.preflightInvocation?.(this.decorateInvocationRequest(request))) ?? {
-        admitted: true,
-      }
-    );
+    const decorated = this.decorateInvocationRequest(request);
+    const admission = (await target.preflightInvocation?.(decorated)) ?? { admitted: true };
+    // Transport preparation may attach an enumerable symbol (for example the
+    // OpenRouter rate-token receipt) to its decorated request. Dispatch later
+    // decorates the original request again, so relay those opaque receipts back
+    // through every adapter layer. This keeps rate admission before durable
+    // reservation and avoids acquiring a second token after reservation.
+    copyPreparedDispatchSymbols(decorated, request);
+    return admission;
   }
 
   invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
@@ -414,8 +427,12 @@ export class InvocationSupervisor {
         ...(this.standalone ? {} : { fallbackModels: [], runId: attemptId }),
       };
 
-      await this.assertCostAdmission(routeRequest);
-      const dispatchLeaseSignal = await this.options.lifecycle?.attemptStarted(attemptStarted);
+      const admission = await this.assertCostAdmission(routeRequest, attemptStarted);
+      const dispatchLeaseSignal =
+        admission?.dispatchLeaseSignal ??
+        (admission?.attemptStarted === true
+          ? undefined
+          : await this.options.lifecycle?.attemptStarted(attemptStarted));
       const dispatchRequest: ModelInvocationRequest = {
         ...routeRequest,
         ...(dispatchLeaseSignal === undefined
@@ -573,7 +590,15 @@ export class InvocationSupervisor {
     );
   }
 
-  private async assertCostAdmission(request: ModelInvocationRequest): Promise<void> {
+  private async assertCostAdmission(
+    request: ModelInvocationRequest,
+    attempt: InvocationAttemptStarted,
+  ): Promise<
+    Extract<Awaited<ReturnType<InvocationCostAdmission["admit"]>>, { admitted: true }> | undefined
+  > {
+    // Provider preparation owns rate tokens (and any narrower transport
+    // permit). It deliberately runs before the DB reservation, so a token is
+    // never acquired after the run has already claimed budget.
     const providerAdmission = await this.options.provider.preflightInvocation?.(request);
     if (providerAdmission !== undefined && !providerAdmission.admitted) {
       await this.pauseAndThrow(
@@ -584,14 +609,17 @@ export class InvocationSupervisor {
       );
     }
     const admission = await this.options.costAdmission?.admit({
+      attempt,
       runId: this.context.runId,
       bridgeUnitId: this.context.bridgeUnitId,
       stage: this.context.stage,
       agentLabel: this.context.agentLabel,
       request,
-      maximumCostUsd: this.context.maximumCostUsd ?? request.maxPriceUsd ?? null,
+      worstCaseCostUsd: exactDecimalUsdFromNumber(
+        this.context.maximumCostUsd ?? request.maxPriceUsd ?? null,
+      ),
     });
-    if (admission === undefined || admission.admitted) return;
+    if (admission === undefined || admission.admitted) return admission;
     await this.pauseAndThrow(
       "budget_cap",
       admission.detail,
@@ -900,6 +928,21 @@ function requestWithoutDispatchCapability(request: ModelInvocationRequest): Mode
   return unprivilegedRequest;
 }
 
+/** Preserve transport-private, enumerable preparation receipts across decorators. */
+function copyPreparedDispatchSymbols(
+  source: ModelInvocationRequest,
+  destination: ModelInvocationRequest,
+): void {
+  if (source === destination) return;
+  const target = destination as ModelInvocationRequest & Record<symbol, unknown>;
+  const prepared = source as ModelInvocationRequest & Record<symbol, unknown>;
+  for (const key of Object.getOwnPropertySymbols(source)) {
+    if (Object.prototype.propertyIsEnumerable.call(source, key)) {
+      target[key] = prepared[key];
+    }
+  }
+}
+
 /** Universal entry for schema/semantic structured calls. */
 export function executeStructuredInvocation<T>(
   provider: ModelProvider,
@@ -1132,7 +1175,7 @@ function classifyThrownFailure(error: unknown): InvocationFailure {
     if (error.code === "cost_cap_exceeded") {
       return {
         kind: "itotori_bug",
-        detail: `provider-side cost cap exceeded after dispatch: ${error.message}`,
+        detail: `provider reported a cost above the declared per-invocation maximum after dispatch: ${error.message}`,
         error,
         rawContent: null,
       };
@@ -1350,6 +1393,24 @@ function abortReason(reason: unknown): Error {
   return reason instanceof Error
     ? reason
     : new Error("provider dispatch aborted by its inherited attempt signal", { cause: reason });
+}
+
+/** Convert policy's numeric input to a canonical decimal without arithmetic. */
+function exactDecimalUsdFromNumber(value: number | null): string | null {
+  if (value === null) return null;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`maximum cost must be a finite non-negative USD number, got ${String(value)}`);
+  }
+  const raw = String(value);
+  if (!/[eE]/u.test(raw)) return raw;
+  const [coefficient, exponentRaw] = raw.toLowerCase().split("e");
+  const exponent = Number(exponentRaw);
+  const [whole = "0", fraction = ""] = coefficient!.split(".");
+  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/u, "") || "0";
+  const decimalPoint = whole.length + exponent;
+  if (decimalPoint <= 0) return `0.${"0".repeat(-decimalPoint)}${digits}`;
+  if (decimalPoint >= digits.length) return `${digits}${"0".repeat(decimalPoint - digits.length)}`;
+  return `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`;
 }
 
 function defaultSleep(delayMs: number): Promise<void> {

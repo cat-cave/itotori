@@ -205,6 +205,8 @@ export type LocalizeFullProjectArgs = {
    * the executor. Generic — no game-specific coupling.
    */
   concurrency?: number;
+  /** Optional exact run-cap override from the operator CLI. */
+  budgetCapUsd?: number;
   deps: LocalizeFullProjectDeps;
 };
 
@@ -492,7 +494,9 @@ export async function runLocalizeFullProjectCommand(
     ...(deps.styleGuide !== undefined ? { styleGuide: deps.styleGuide } : {}),
     ...(resolveUnitContext !== undefined ? { resolveUnitContext } : {}),
     ...(config.maxUnits !== undefined ? { maxUnits: config.maxUnits } : {}),
-    ...(config.budgetCapUsd !== undefined ? { budgetCapUsd: config.budgetCapUsd } : {}),
+    ...((args.budgetCapUsd ?? config.budgetCapUsd) !== undefined
+      ? { budgetCapUsd: args.budgetCapUsd ?? config.budgetCapUsd }
+      : {}),
     ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
     // `--concurrency` CLI override wins over the config value; falls back to
     // the config's `concurrency`, then the executor's DEFAULT_DRIVEN_CONCURRENCY.

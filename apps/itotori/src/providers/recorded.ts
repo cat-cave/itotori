@@ -34,7 +34,7 @@
 // write the response's `usage` block (with `cost`), the request's
 // `provider` block, AND the response's `usage.cost` matching the
 // captured ProviderCost.amountUsd (the authoritative full-precision
-// decimal cost; amountMicrosUsd is only a derived cap/telemetry mirror)
+// decimal cost; amountMicrosUsd is only a derived display/telemetry mirror)
 // into the bundle; refusing the
 // write when any are absent is the contractual forcing function and is
 // documented at the future-capture seam.
@@ -374,6 +374,7 @@ export class RecordedModelProvider implements ModelProvider {
       // schema makes `response.cost` non-optional; pre-ITOTORI-228 files
       // would have already failed `assertBundleSchema` at construction.
       cost: response.cost,
+      billingState: "known",
       // ITOTORI-230 — mirror the captured routing posture verbatim so
       // the replayed run carries the same audit evidence as the LIVE
       // run that produced the bundle. The bundle schema (v3) makes

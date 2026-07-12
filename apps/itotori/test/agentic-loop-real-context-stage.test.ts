@@ -453,8 +453,6 @@ const LIVE_ENABLED =
   process.env.OPENROUTER_API_KEY.length > 0 &&
   process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1";
 
-const LIVE_BUDGET_CAP_USD = 1.0;
-
 /** Provider wrapper that records every request + result for the live proof. */
 function capturingLiveProvider(
   inner: ModelProvider,
@@ -515,7 +513,6 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
       mkdtempSync(join(tmpdir(), "itotori-realctx-live-runs-")),
     );
     const provider = new OpenRouterModelProvider({
-      costCapUsd: LIVE_BUDGET_CAP_USD,
       artifactRecorder: recorder,
     });
     const factory: AgenticLoopProviderFactory = () =>
@@ -554,7 +551,7 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     expect(prompt).toContain("route position");
     expect(prompt).toContain("Context artifacts available for citation:");
 
-    // ZDR enforced on the wire + real cost recorded; budget cap respected.
+    // ZDR enforced on the wire + real cost recorded.
     let totalCostUsd = 0;
     for (const result of results) {
       expect(result.providerRun.routingPosture.zdr).toBe(true);
@@ -563,7 +560,6 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
       totalCostUsd += (result.providerRun.cost.amountMicrosUsd ?? 0) / 1_000_000;
     }
     expect(totalCostUsd).toBeGreaterThan(0);
-    expect(totalCostUsd).toBeLessThanOrEqual(LIVE_BUDGET_CAP_USD);
 
     // eslint-disable-next-line no-console
     console.warn(

@@ -74,6 +74,7 @@ import {
   type DrivenUnitJournalRecord,
   type DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
+import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
 import {
   buildScopeGraph,
   resolveEffectiveScope,
@@ -834,9 +835,9 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
 //
 // Proves the driven executor schedules up to `concurrency` units'
 // `runAgenticLoopForUnit` at once (a client-side worker pool over the canonical
-// unit list) while keeping: (a) the budget cap (stops DISPATCHING before
-// overspend), (b) per-unit failure isolation, (c) DETERMINISTIC canonical result
-// ordering regardless of completion order. Driven with an INSTRUMENTED fake
+// unit list) while keeping: (a) an injected durable admission's dispatch
+// decision, (b) per-unit failure isolation, (c) DETERMINISTIC canonical result
+// ordering regardless of completion order. Driven with an instrumented fake
 // provider (small artificial per-call delay + an in-flight concurrency meter);
 // no live LLM. Because the loop fires provider calls SEQUENTIALLY within a unit,
 // the max in-flight invocation count IS the unit-level concurrency.
@@ -864,16 +865,13 @@ class ConcurrencyMeter {
 }
 
 /**
- * Wraps a FakeModelProvider with an artificial delay + the concurrency meter,
- * and OPTIONALLY overrides each invocation's cost to a fixed billed amount so a
- * budget-cap test accumulates real (fake) spend.
+ * Wraps a FakeModelProvider with an artificial delay + the concurrency meter.
  */
 class InstrumentedProvider implements ModelProvider {
   constructor(
     private readonly inner: FakeModelProvider,
     private readonly meter: ConcurrencyMeter,
     private readonly delayMs: number,
-    private readonly costPerCallUsd: number,
   ) {}
   get descriptor() {
     return this.inner.descriptor;
@@ -882,23 +880,7 @@ class InstrumentedProvider implements ModelProvider {
     this.meter.enter();
     try {
       await sleep(this.delayMs);
-      const result = await this.inner.invoke(request);
-      if (this.costPerCallUsd <= 0) {
-        return result;
-      }
-      const micros = Math.round(this.costPerCallUsd * 1_000_000);
-      return {
-        ...result,
-        providerRun: {
-          ...result.providerRun,
-          cost: {
-            costKind: "billed",
-            currency: "USD",
-            amountUsd: this.costPerCallUsd.toFixed(6),
-            amountMicrosUsd: micros,
-          },
-        },
-      };
+      return await this.inner.invoke(request);
     } finally {
       this.meter.exit();
     }
@@ -968,14 +950,13 @@ function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): st
 function instrumentedFactory(opts: {
   meter: ConcurrencyMeter;
   delayMs: number;
-  costPerCallUsd?: number;
 }): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) => {
     const inner = new FakeModelProvider({
       providerName: `driven-conc-${stage}-${agentLabel}`,
       generate: (request: ModelInvocationRequest): string => drivenGenerate(agentLabel, request),
     });
-    return new InstrumentedProvider(inner, opts.meter, opts.delayMs, opts.costPerCallUsd ?? 0);
+    return new InstrumentedProvider(inner, opts.meter, opts.delayMs);
   };
 }
 
@@ -1238,60 +1219,60 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(second.journalUnitOrder.slice().sort()).toEqual(first.journalUnitOrder.slice().sort());
   });
 
-  it("budget cap STOPS dispatching before overspend under concurrency (unspent units not run)", async () => {
+  it("rejects a capped in-memory run without a durable atomic admission", async () => {
     const UNIT_COUNT = 12;
-    const COST_PER_CALL = 0.001; // ~10 calls/unit -> ~$0.01/unit.
-    const BUDGET_CAP = 0.03; // trips after ~3 units.
     const meter = new ConcurrencyMeter();
     const sinks = new InMemorySinks();
     const { bridge } = makeManyUnitBridge(UNIT_COUNT);
-    const result = await runProjectDrivenExecutor({
-      ...concurrencyBaseInput({
-        bridge,
-        factory: instrumentedFactory({ meter, delayMs: 4, costPerCallUsd: COST_PER_CALL }),
-        sinks,
+    await expect(
+      runProjectDrivenExecutor({
+        ...concurrencyBaseInput({
+          bridge,
+          factory: instrumentedFactory({ meter, delayMs: 4 }),
+          sinks,
+        }),
+        concurrency: 2,
+        budgetCapUsd: 0.03,
       }),
-      concurrency: 2,
-      budgetCapUsd: BUDGET_CAP,
-    });
-    // The cap stopped scheduling: not every unit ran, but at least one did.
-    expect(result.budgetStopped).toBe(true);
-    expect(result.unitsRun).toBeGreaterThan(0);
-    expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
-    // Persisted count matches what actually ran (unspent units never dispatched).
-    expect(sinks.journalUnits).toHaveLength(result.unitsRun);
-    expect(result.journalUnitsPersisted).toBe(result.unitsRun);
-    expect(result.attemptsPersisted).toBe(meter.totalCalls);
-    // Real spend accumulated, bounded: at most `concurrency - 1` in-flight units
-    // can overshoot past the cap (here <= ~1 extra unit's worth).
-    expect(result.totalUsageCostUsd).toBeGreaterThan(0);
-    expect(result.totalUsageCostUsd).toBeLessThan(BUDGET_CAP + 0.02);
+    ).rejects.toThrow("durable atomic cost-admission");
+    expect(meter.totalCalls).toBe(0);
   });
 
-  it("budget cap at concurrency=1 stops with ZERO overshoot (sequential guard preserved)", async () => {
+  it("uses an injected durable admission denial to pause before a second dispatch", async () => {
     const UNIT_COUNT = 12;
-    const COST_PER_CALL = 0.001;
-    const BUDGET_CAP = 0.025;
     const meter = new ConcurrencyMeter();
     const sinks = new InMemorySinks();
     const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+    const admittedAttempts: string[] = [];
+    const costAdmission: InvocationCostAdmission = {
+      admit: async ({ attempt, worstCaseCostUsd }) => {
+        admittedAttempts.push(`${attempt.attemptId}:${worstCaseCostUsd ?? "unbounded"}`);
+        if (admittedAttempts.length === 1) return { admitted: true };
+        return {
+          admitted: false,
+          detail: "durable cost reservation rejected the next attempt",
+          evidence: "test durable account exhausted",
+        };
+      },
+    };
     const result = await runProjectDrivenExecutor({
       ...concurrencyBaseInput({
         bridge,
-        factory: instrumentedFactory({ meter, delayMs: 1, costPerCallUsd: COST_PER_CALL }),
+        factory: instrumentedFactory({ meter, delayMs: 1 }),
         sinks,
       }),
       concurrency: 1,
-      budgetCapUsd: BUDGET_CAP,
+      budgetCapUsd: 0.03,
+      costAdmission,
     });
     expect(result.budgetStopped).toBe(true);
-    expect(result.unitsRun).toBeGreaterThan(0);
-    expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).toMatchObject({ kind: "budget_cap" });
+    expect(result.unitsRun).toBe(0);
     expect(meter.maxInFlight).toBe(1);
-    // Sequential: the run stops the FIRST time completed cost reaches the cap, so
-    // the total is exactly the sum through the crossing unit (one unit's worth of
-    // overshoot at most — the unit that crossed).
-    expect(result.totalUsageCostUsd).toBeGreaterThanOrEqual(BUDGET_CAP);
+    expect(meter.totalCalls).toBe(1);
+    expect(admittedAttempts).toHaveLength(2);
+    expect(admittedAttempts[0]).toMatch(/:\d/);
   });
 });
 
@@ -1484,7 +1465,6 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         mkdtempSync(join(tmpdir(), "itotori-driven-live-runs-")),
       );
       const provider = new OpenRouterModelProvider({
-        costCapUsd: LIVE_BUDGET_CAP_USD,
         artifactRecorder: recorder,
       });
 

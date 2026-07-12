@@ -330,7 +330,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
 });
 
 // ---------------------------------------------------------------------------
-// OpenRouter-side fallback + live-path provider plumbing
+// OpenRouter-served route recording + live-path provider plumbing
 // ---------------------------------------------------------------------------
 
 function presetWithStageMaxPriceUsd(maxPriceUsd: number): unknown {
@@ -611,14 +611,13 @@ function providerRunArtifactFromInvocation(
   };
 }
 
-describe("OpenRouter-side fallback resilience", () => {
-  it("primary-provider 429 resolved by OR-side fallback: run completes and the served provider is recorded", async () => {
-    // Models the post-ITOTORI-241 wire posture: the request PREFERS the
-    // primary pair (fireworks = provider.order[0]) but, on a 429 from
-    // fireworks, OpenRouter transparently routes within the ZDR allow-list
-    // and serves DigitalOcean, returning HTTP 200. The app never sees the
-    // 429 — there is NO app-level failover loop — and the served (model,
-    // providerId) pair is recorded on every provider-run record.
+describe("OpenRouter-served route recording", () => {
+  it("records a served provider different from the requested primary", async () => {
+    // Models the post-ITOTORI-241 wire response: the request prefers the
+    // primary pair (fireworks = provider.order[0]), while OpenRouter reports
+    // DigitalOcean as the served ZDR-allow-list upstream. The app records the
+    // served (model, providerId) pair on every provider-run record and does
+    // not add an application-level failover loop.
     const SERVED_PROVIDER = "digitalocean";
     const smokeBridge = loadSmokeBridge() as {
       units: ReadonlyArray<{ bridgeUnitId: string }>;
@@ -652,8 +651,8 @@ describe("OpenRouter-side fallback resilience", () => {
           descriptor: delegate.descriptor,
           invoke: async (request: ModelInvocationRequest): Promise<ModelInvocationResult> => {
             const result = await delegate.invoke(request);
-            // OpenRouter served a DIFFERENT upstream than the requested
-            // order[0]: requested fireworks, OR fell back to digitalocean.
+            // OpenRouter reported a DIFFERENT upstream than requested
+            // order[0]: requested fireworks, served digitalocean.
             const served: ModelInvocationResult = {
               ...result,
               providerRun: {
@@ -688,7 +687,8 @@ describe("OpenRouter-side fallback resilience", () => {
       actor: { userId: "test" },
     });
 
-    // The run COMPLETED via OR-side fallback — no app-level retry loop.
+    // The reported served route is sufficient for the normal run; there is
+    // no app-level retry loop.
     const selectedCandidate = bundle.writtenOutcome.candidates.find(
       (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
     );
@@ -704,8 +704,8 @@ describe("OpenRouter-side fallback resilience", () => {
     expect(patchReport).not.toHaveProperty("failoverPredicate");
     expect(patchReport).not.toHaveProperty("failoverAttempts");
 
-    // Every persisted provider-run artifact records the served provider
-    // OpenRouter actually fell back to.
+    // Every persisted provider-run artifact records the provider OpenRouter
+    // reported as served.
     const runDirectories = readdirSync(providerRunArtifactDirectory, {
       withFileTypes: true,
     }).filter((entry) => entry.isDirectory());

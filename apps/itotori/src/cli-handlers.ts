@@ -958,7 +958,6 @@ async function runLocalizeProjectStage(
   // Optional:
   //   --unit-index <N>                         default 0
   //   --max-repair-attempts <N>                default 1
-  //   --cost-cap-usd <decimal>                 default 0.5
   //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
   // The command runs the LIVE OpenRouter path only — there is no fake /
   // fixture provider option on this production CLI surface.
@@ -970,7 +969,6 @@ async function runLocalizeProjectStage(
   const unitIndexRaw = optionalFlag(args, "--unit-index");
   const engineProfileRaw = optionalFlag(args, "--engine-profile");
   const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
-  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
   if (providerRunArtifactDirectory === undefined) {
     throw new Error(
@@ -1019,15 +1017,6 @@ async function runLocalizeProjectStage(
     }
     callArgs.maxRepairAttempts = parsed;
   }
-  if (costCapUsdRaw !== undefined) {
-    const parsed = Number.parseFloat(costCapUsdRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new Error(
-        `localize-project-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
-      );
-    }
-    callArgs.costCapUsd = parsed;
-  }
   if (providerRunArtifactDirectory !== undefined) {
     callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
@@ -1049,7 +1038,7 @@ async function runLocalizeProjectStage(
  *                         artifacts + run summary
  * Optional:
  *   --resume-run-id <ID> resume an existing paused durable journal run
- *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
+ *   --cost-cap-usd <decimal>   durable run-level exact-decimal cost cap
  *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
  *                         over the config's `concurrency`)
  *   --source <PATH>       read-only source game root. RealLive: the game root
@@ -1176,7 +1165,7 @@ async function runLocalizeFullProject(
  *   --entry-scene <N>            structure dispatch-order entry scene override
  *   --expect-text <TEXT>         localized text the render frame must contain
  *   --redaction on|off           render-frame redaction posture (default on)
- *   --cost-cap-usd <decimal>     per-process OpenRouter budget cap
+ *   --cost-cap-usd <decimal>     durable run-level exact-decimal budget cap
  *   --concurrency <N>            client-side bounded-concurrency cap (default 8;
  *                                wins over the config's `concurrency`)
  */

@@ -250,7 +250,6 @@ describe("itotori-agentic-loop-live-llm — repair branch fires LIVE (ZDR)", () 
     // Constructor is fail-closed on ZDR: throws AccountZdrAssertionError
     // unless OPENROUTER_ZDR_ACCOUNT_ASSERTED=1.
     const live = new OpenRouterModelProvider({
-      costCapUsd: 0.25,
       artifactRecorder: new LocalProviderRunArtifactRecorder(artifactsDir),
     });
 

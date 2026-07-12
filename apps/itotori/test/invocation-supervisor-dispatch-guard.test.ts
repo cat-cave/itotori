@@ -67,6 +67,48 @@ describe("InvocationSupervisor provider-adapter delegation", () => {
     expect(physicalDispatches).toBe(1);
   });
 
+  it("carries a transport preflight receipt through a spreading decorator", async () => {
+    const rateReceipt = Symbol("test-rate-receipt");
+    let preflightAcquires = 0;
+    let lateAcquires = 0;
+    const physical = new FakeModelProvider({ generate: () => "prepared transport output" });
+    const transport: ModelProvider = {
+      descriptor: physical.descriptor,
+      preflightInvocation: async (candidate) => {
+        preflightAcquires += 1;
+        (candidate as ModelInvocationRequest & { [rateReceipt]?: true })[rateReceipt] = true;
+        return { admitted: true };
+      },
+      invoke: async (candidate) => {
+        if (
+          (candidate as ModelInvocationRequest & { [rateReceipt]?: true })[rateReceipt] !== true
+        ) {
+          lateAcquires += 1;
+        }
+        return await physical.invoke(candidate);
+      },
+    };
+    class SpreadingDecorator extends SupervisedModelProviderAdapter {
+      readonly descriptor = transport.descriptor;
+
+      constructor() {
+        super(() => transport);
+      }
+
+      protected override decorateInvocationRequest(
+        candidate: ModelInvocationRequest,
+      ): ModelInvocationRequest {
+        return { ...candidate };
+      }
+    }
+
+    const result = await executeModelInvocation(new SpreadingDecorator(), request());
+
+    expect(result.content).toBe("prepared transport output");
+    expect(preflightAcquires).toBe(1);
+    expect(lateAcquires).toBe(0);
+  });
+
   it("rejects the first use against a provider other than the issued target", async () => {
     let intendedDispatches = 0;
     let wrongDispatches = 0;

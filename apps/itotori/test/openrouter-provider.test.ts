@@ -11,9 +11,8 @@
 //   - a ZDR-served provider that differs from order[0] is ACCEPTED
 //     (ITOTORI-243: no provider-identity pin) and its served (model,
 //     providerId) pair + real billed cost are recorded
-//   - per-process USD cost cap raises OpenRouterCostCapError BEFORE
-//     the HTTP request fires (third call mocked at $0.60 each so the
-//     cumulative >$1.00 cap rejects without a network hit)
+//   - exact per-request maxPriceUsd comparison never rounds paid sub-micro
+//     costs through the integer-micros mirror
 //   - token-bucket rate limit serialises three back-to-back invocations
 //     at 1 rps using a controllable clock + sleep injection
 //   - the CapabilityGuard registers the DEV_PAIR (modelId, providerId)
@@ -28,7 +27,6 @@ import {
   DEV_PAIR,
   extractCacheDiscountMicros,
   ModelProviderError,
-  OpenRouterCostCapError,
   OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
@@ -562,7 +560,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
   });
 
   it("ITOTORI-242: ACCEPTS a genuine ZDR fallback (preferred 429s → 2nd ZDR-allow-list provider) and records the swap in adapterMetadata.openrouterRouting", async () => {
-    // End-to-end 429-resilience: the preferred provider (order[0],
+    // Provider-side routing record: the preferred provider (order[0],
     // DEV_PAIR.providerId='fireworks') 429s, OpenRouter routes to the NEXT
     // ZDR-allow-list provider ('deepinfra'). The privacy gate held (this
     // request enforces zdr:true — synthetic_public input), so the served
@@ -625,7 +623,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
   });
 
   it("ITOTORI-242: fallbackUsed is TRUE when the served provider differs from order[0] (a genuine provider-level ZDR fallback), and the served pair is recorded", async () => {
-    // The headline ITOTORI-242 resilience path: order[0]
+    // The ITOTORI-242 routing-record path: order[0]
     // (DEV_PAIR.providerId='fireworks') 429s, OpenRouter serves a DIFFERENT
     // ZDR-allow-list provider ('deepinfra') with the SAME model. The old
     // model-only check (actualModelId !== requestedModelId) read this as
@@ -829,7 +827,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
   });
 });
 
-describe("OpenRouterModelProvider — per-process cost cap", () => {
+describe("OpenRouterModelProvider — exact per-request max price", () => {
   it("raises cost_cap_exceeded when reported usage.cost exceeds request maxPriceUsd", async () => {
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
@@ -863,7 +861,6 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       });
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(provider.totalSpentUsd()).toBeCloseTo(0.000003, 6);
     expect(recorder.artifacts[0]?.error?.class).toBe("cost_cap_exceeded");
     expect(recorder.artifacts[0]?.run.cost).toEqual({
       costKind: "billed",
@@ -876,54 +873,6 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       cost: 0.000003, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       _cost_cap_exceeded: true,
     });
-  });
-
-  it("raises OpenRouterCostCapError when cumulative spend exceeds the cap (third call blocked, no HTTP fired)", async () => {
-    // Three calls each reporting $0.60 → after 2 the cumulative is
-    // $1.20 which is already over the explicit $1 cap configured
-    // below, so the third invoke must throw BEFORE the HTTP request
-    // fires. (The provider's canonical DEFAULT_COST_CAP_USD is 0.5;
-    // this test pins 1.0 so the per-call $0.60 reports are meaningful.)
-    const fetchMock = vi.fn(async () =>
-      successResponse({ usageCost: 0.6 }),
-    ) as unknown as typeof fetch;
-    const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
-      httpClient: fetchMock,
-      costCapUsd: 1.0,
-      rateLimitPerSec: 1000, // effectively unlimited for this test
-      capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
-    });
-    await provider.invoke(baseRequest());
-    await provider.invoke(baseRequest());
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(OpenRouterCostCapError);
-    if (error instanceof OpenRouterCostCapError) {
-      expect(error.remainingUsd).toBe(0);
-      expect(error.capUsd).toBe(1.0);
-      expect(error.spentUsd).toBeCloseTo(1.2, 5);
-    }
-    // Critical audit assertion: the third call's HTTP request never fired.
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not refuse a call that exactly equals the cap (the next call after will)", async () => {
-    const fetchMock = vi.fn(async () =>
-      successResponse({ usageCost: 1.0 }),
-    ) as unknown as typeof fetch;
-    const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
-      httpClient: fetchMock,
-      costCapUsd: 1.0,
-      rateLimitPerSec: 1000,
-      capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
-    });
-    await provider.invoke(baseRequest());
-    expect(provider.totalSpentUsd()).toBeCloseTo(1.0, 5);
-    await expect(provider.invoke(baseRequest())).rejects.toBeInstanceOf(OpenRouterCostCapError);
   });
 });
 
@@ -1473,39 +1422,6 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
     expect(result.providerRun.cost.cacheDiscountMicrosUsd).toBe(0);
     expect(result.providerRun.tokenUsage.cacheReadTokens).toBeUndefined();
     expect(result.providerRun.tokenUsage.cacheWriteTokens).toBeUndefined();
-  });
-
-  it("cost cap consumes usage.cost VERBATIM, not (usage.cost - cache_discount) — DOC-AMBIGUOUS-6 / §5.3", async () => {
-    // ITOTORI-233 / docs/openrouter-integration.md §5.3 + §11 entry 6
-    // RESOLVED: `usage.cost` is treated as authoritative billed cost and
-    // is **net** of `cache_discount`. The cost cap consumes the
-    // post-discount amount verbatim — subtracting cache_discount AGAIN
-    // would double-count it. This test mocks two calls at usage.cost
-    // = $0.6 (with $0.3 cache_discount each); a $1.0 cap should refuse
-    // the THIRD call because cumulative spend = $1.2 > $1.0, NOT
-    // because $1.2 - $0.6 = $0.6 < $1.0.
-    const fetchMock = vi.fn(async () =>
-      successResponse({ usageCost: 0.6, cacheDiscount: 0.3 }),
-    ) as unknown as typeof fetch;
-    const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
-      httpClient: fetchMock,
-      costCapUsd: 1.0,
-      rateLimitPerSec: 1000,
-      capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
-    });
-    await provider.invoke(baseRequest());
-    await provider.invoke(baseRequest());
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(provider.totalSpentUsd()).toBeCloseTo(1.2, 5);
-    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(OpenRouterCostCapError);
-    // Critical: the third call's HTTP request never fired because
-    // cumulative spent $1.2 > $1.0 cap — and the cap arithmetic used
-    // $0.6 per call (the authoritative `usage.cost`), NOT $0.3 (the
-    // pre-discount nominal would yield $0.9 - $1.0 still under cap).
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("per-call maxPriceUsd cap fails closed: a billed cost with no amount throws instead of passing", () => {

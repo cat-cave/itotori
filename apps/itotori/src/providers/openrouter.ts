@@ -10,7 +10,7 @@ import {
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
 import {
   addDecimalUsd,
-  assertBilledCost,
+  compareDecimalUsd,
   decimalUsdStringCanonical,
   decimalUsdStringToMicros,
   usageCostToDecimalString,
@@ -271,6 +271,12 @@ export class OpenRouterProvider implements ModelProvider {
       normalized = normalizeOpenRouterResponse(body, requestedModelId);
     } catch (error) {
       const metadata = adapterMetadata(body, providerRouting);
+      // Semantic shape can be malformed after OpenRouter has already billed
+      // the request. Recover `usage.cost` independently of choices/message
+      // normalization so a malformed HTTP-200 never launders a paid call to
+      // zero. If the billing field itself is absent/invalid, mark it unknown;
+      // the durable reservation intentionally remains conservative.
+      const recoveredBilledCost = recoverBilledCostFromResponse(body);
       const run = buildProviderRunRecord({
         descriptor: this.descriptor,
         request,
@@ -282,11 +288,14 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["provider_response_invalid"],
         tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
+        ...(recoveredBilledCost === undefined ? {} : { cost: recoveredBilledCost }),
+        billingState: recoveredBilledCost === undefined ? "unknown" : "known",
         routingPosture,
-        // ITOTORI-232 — preserve whatever `usage` shape the malformed
-        // response carried; the failed-run path tags the row zero-cost
-        // so even an absent `cost` field is honest.
-        usageResponseJson: extractUsageResponseJson(body, "_response_invalid"),
+        usageResponseJson: extractUsageResponseJson(
+          body,
+          "_response_invalid",
+          recoveredBilledCost !== undefined,
+        ),
       });
       await recordProviderRunArtifact({
         recorder: this.live.artifactRecorder,
@@ -318,10 +327,9 @@ export class OpenRouterProvider implements ModelProvider {
     // provider (otherwise it returns the 404 ZDR envelope), so whichever
     // provider actually answered is a valid serve. Strict provider-pinning +
     // a post-response provider-identity throw were a needless formality with
-    // no operational security — OpenRouter-side automatic fallback across the
-    // ZDR allow-list
-    // IS the resilience mechanism (UTSUSHI-231: SiliconFlow served when
-    // Fireworks was order[0]; that is a correct ZDR serve). The real served
+    // no operational security. A provider-side route change remains recorded
+    // transport provenance; run retry and pause policy belong to the
+    // supervisor. The real served
     // (model, providerId) pair — `normalized.actualModelId` /
     // `normalized.upstreamProvider`, read verbatim from the response — and
     // the real billed cost (`normalized.cost`, costKind:"billed" from
@@ -331,19 +339,14 @@ export class OpenRouterProvider implements ModelProvider {
     // `adapterMetadata.openrouterRouting`.
     const maxPriceUsd = request.maxPriceUsd;
     if (maxPriceUsd !== undefined) {
-      const maxPriceMicrosUsd = maxPriceUsdToMicros(maxPriceUsd);
-      // Fail-closed on the spend guard. The old `?? 0` silently treated a
-      // missing `amountMicrosUsd` as $0, so an absent amount would compare
-      // `0 > cap` → false and ALWAYS pass the cap — the opposite of
-      // fail-loud (a latent silent-undercount path). `assertBilledCost`
-      // throws on a `billed` cost with no real amount; a genuine
-      // `costKind:"zero"` (free call) returns 0 and correctly passes.
-      const actualMicrosUsd = Number(assertBilledCost(normalized.cost));
-      if (actualMicrosUsd > maxPriceMicrosUsd) {
+      const maxPriceExactUsd = maxPriceUsdToDecimalString(maxPriceUsd);
+      // This is an exact decimal comparison. `amountMicrosUsd` is a display
+      // mirror only: using it here can round a paid sub-micro call to zero.
+      if (compareDecimalUsd(normalized.cost.amountUsd, maxPriceExactUsd) > 0) {
         const metadata = {
           ...adapterMetadata(body, providerRouting),
           localMaxPriceUsd: maxPriceUsd,
-          actualCostUsd: actualMicrosUsd / 1_000_000,
+          actualCostUsd: normalized.cost.amountUsd,
         } as JsonObject;
         const run = buildProviderRunRecord({
           descriptor: this.descriptor,
@@ -357,6 +360,7 @@ export class OpenRouterProvider implements ModelProvider {
           errorClasses: ["cost_cap_exceeded"],
           tokenUsage: normalized.tokenUsage,
           cost: normalized.cost,
+          billingState: normalized.cost.costKind === "billed" ? "known" : "unknown",
           routingPosture,
           usageResponseJson: extractUsageResponseJson(body, "_cost_cap_exceeded"),
         });
@@ -369,13 +373,13 @@ export class OpenRouterProvider implements ModelProvider {
             rawCapture: this.live.rawCapture,
             error: {
               class: "cost_cap_exceeded",
-              message: `OpenRouter response cost $${(actualMicrosUsd / 1_000_000).toFixed(6)} exceeded pair-policy maxPriceUsd $${maxPriceUsd.toFixed(6)}`,
+              message: `OpenRouter response cost $${normalized.cost.amountUsd} exceeded pair-policy maxPriceUsd $${maxPriceExactUsd}`,
             },
             adapterMetadata: metadata,
           }),
         });
         throw new ModelProviderError(
-          `OpenRouter response cost $${(actualMicrosUsd / 1_000_000).toFixed(6)} exceeded pair-policy maxPriceUsd $${maxPriceUsd.toFixed(6)}`,
+          `OpenRouter response cost $${normalized.cost.amountUsd} exceeded pair-policy maxPriceUsd $${maxPriceExactUsd}`,
           "cost_cap_exceeded",
           false,
           run,
@@ -403,6 +407,7 @@ export class OpenRouterProvider implements ModelProvider {
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
       cost: normalized.cost,
+      billingState: normalized.cost.costKind === "billed" ? "known" : "unknown",
       routingPosture,
       ...(providerAttempt !== undefined ? { providerAttempt } : {}),
       // ITOTORI-232 — mirror the response's `usage` block verbatim onto
@@ -804,10 +809,6 @@ function maxPriceUsdToDecimalString(value: number): string {
   return value.toFixed(12).replace(/0+$/u, "").replace(/\.$/u, "");
 }
 
-function maxPriceUsdToMicros(value: number): number {
-  return decimalUsdStringToMicros(maxPriceUsdToDecimalString(value));
-}
-
 function isPrivateInput(inputClassification: ProviderInputClassification): boolean {
   return inputClassification !== "synthetic_public" && inputClassification !== "public";
 }
@@ -1003,8 +1004,8 @@ function normalizeUsage(value: unknown): TokenUsage {
  *
  * ITOTORI-233 / DOC-AMBIGUOUS-6 RESOLVED (integration doc §11 entry 6,
  * §5.3): `usage.cost` is **net of `cache_discount`** by treaty — we treat
- * it as authoritative billed cost and **never recompute**. The cost cap
- * therefore consumes `amountMicrosUsd` directly; `cache_discount` is
+ * it as authoritative billed cost and **never recompute**. The durable
+ * run-cost account reconciles exact `amountUsd`; `cache_discount` is
  * mirrored onto `cacheDiscountMicrosUsd` as an INFORMATIONAL annotation
  * for telemetry ("how much did caching save us") and is NOT subtracted
  * from `amountMicrosUsd`. Subtracting it would double-count the discount
@@ -1030,7 +1031,7 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
       // ITOTORI-232 — authoritative full-precision cost, the verbatim
       // `usage.cost`. This is what the ledger persists and the
       // migration-0041 CHECK validates; `amountMicrosUsd` below is the
-      // rounded informational mirror for the cap / telemetry only.
+      // rounded informational mirror for display / telemetry only.
       amountUsd: usageCostToDecimalString(usage.cost),
       amountMicrosUsd: usageCostToMicros(usage.cost),
       cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
@@ -1078,6 +1079,36 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
     "provider_response_invalid",
     false,
   );
+}
+
+/**
+ * Recover a settled OpenRouter bill without requiring a semantically valid
+ * chat-completions envelope. This deliberately reads only `usage.cost`; a
+ * malformed choice/message must not erase a charge that OpenRouter returned.
+ */
+function recoverBilledCostFromResponse(body: unknown): ProviderCost | undefined {
+  if (!isRecord(body) || !isRecord(body.usage)) return undefined;
+  const usage = body.usage;
+  if (usage.cost === undefined || usage.cost === null) return undefined;
+  try {
+    const cost: ProviderCost = {
+      costKind: "billed",
+      currency: "USD",
+      amountUsd: usageCostToDecimalString(usage.cost),
+      amountMicrosUsd: usageCostToMicros(usage.cost),
+    };
+    // Cache metadata is informational. A malformed cache_discount must not
+    // discard the independently valid settled bill.
+    try {
+      cost.cacheDiscountMicrosUsd = extractCacheDiscountMicros(usage);
+    } catch {
+      // Preserve the exact billed amount; the malformed metadata remains in
+      // usageResponseJson for forensic reconciliation.
+    }
+    return cost;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -1287,21 +1318,17 @@ export function extractCacheDiscountMicros(usage: Record<string, unknown>): numb
  *     (filtering out symbols / undefined leaves) via {@link jsonValueOrUndefined};
  *     numbers, strings, booleans, arrays, and nested objects survive verbatim.
  *
- *   - On most FAILED calls (`failureMarker` is a sentinel like
- *     `_http_error` / `_response_invalid`) we
- *     deliberately STRIP the upstream `cost` field before persisting.
- *     Those failed runs are tagged zero-cost (see
- *     `buildProviderRunRecord`); if we kept the upstream `cost` here,
- *     the captured cost would misstate a failed call. `_cost_cap_exceeded` is
- *     the exception: OpenRouter
- *     already completed and billed that response, so the failed audit row
- *     must retain the upstream cost.
+ *   - Failed responses preserve `usage.cost` only when the adapter recovered
+ *     a valid settled bill independently of semantic success. A malformed
+ *     HTTP-200 can therefore reconcile a real charge; a missing/invalid bill
+ *     remains explicitly unknown and keeps its reservation conservative.
  *
  * The returned object is always shaped: caller never sees `undefined`.
  */
 function extractUsageResponseJson(
   body: unknown,
   failureMarker: "_http_error" | "_response_invalid" | "_cost_cap_exceeded" | null,
+  preserveSettledCost = false,
 ): JsonObject {
   const usageBlock = isRecord(body) && isRecord(body.usage) ? body.usage : undefined;
   if (usageBlock === undefined) {
@@ -1317,10 +1344,12 @@ function extractUsageResponseJson(
   }
   const json: JsonObject = {};
   for (const [key, value] of Object.entries(usageBlock)) {
-    // Failure-path strip: never persist upstream `cost` on a zero-cost
-    // failure row; the CHECK would reject the equality. Cost-cap failures
-    // are already billed, so they retain `cost`.
-    if (failureMarker !== null && failureMarker !== "_cost_cap_exceeded" && key === "cost") {
+    if (
+      failureMarker !== null &&
+      failureMarker !== "_cost_cap_exceeded" &&
+      !preserveSettledCost &&
+      key === "cost"
+    ) {
       continue;
     }
     const converted = jsonValueOrUndefined(value);
@@ -1386,6 +1415,8 @@ function buildProviderRunRecord(input: {
   errorClasses: string[];
   tokenUsage: TokenUsage;
   cost?: ProviderCost;
+  /** Omitted only when no settled billing fact was available. */
+  billingState?: "known" | "unknown";
   // ITOTORI-132 — OpenRouter's 1-indexed router `attempt` counter from the
   // response's `openrouter_metadata.attempt`. attempt=1 means the preferred
   // provider (order[0]) served directly; attempt=2 means OpenRouter advanced
@@ -1421,10 +1452,9 @@ function buildProviderRunRecord(input: {
   // fallback ON (allow_fallbacks:true), a 429 on the preferred provider
   // (order[0]) makes OpenRouter serve a DIFFERENT ZDR-allow-list provider
   // while keeping the same model — a provider swap that the old model-only
-  // check missed entirely. That swap IS the headline resilience path
-  // (UTSUSHI-231 live run: OR served DigitalOcean instead of the fireworks
-  // preference) and must read as fallbackUsed:true. It is accurate
-  // telemetry, NOT an error: the pair_mismatch guard is gone, so this
+  // check missed entirely. It must read as fallbackUsed:true so recorded
+  // transport provenance remains honest. This is telemetry, NOT application
+  // resilience: the pair_mismatch guard is gone, so this
   // NEVER rejects a non-preferred ZDR serve. The served provider
   // (input.upstreamProvider, read verbatim from the response) is compared
   // to the preferred order[0] under casing/version normalization so a
@@ -1469,11 +1499,13 @@ function buildProviderRunRecord(input: {
     fallbackUsed: modelFallbackUsed || providerFallbackUsed,
     fallbackPlan,
     tokenUsage: input.tokenUsage,
-    // ITOTORI-225 — zero-cost failures record ZERO_COST rather than the
-    // deprecated 'unknown'. Some failed audit rows, such as
-    // cost_cap_exceeded, still incurred an upstream bill and pass
-    // `input.cost` so accounting remains exact.
+    // The ProviderCost shape retains `ZERO_COST` for artifact compatibility,
+    // but `billingState` prevents an absent settlement from releasing a durable
+    // reservation as though it were a confirmed free call.
     cost: input.cost ?? ZERO_COST,
+    billingState:
+      input.billingState ??
+      (input.cost?.costKind === "billed" || input.cost?.costKind === "zero" ? "known" : "unknown"),
     routingPosture: input.routingPosture,
     usageResponseJson: input.usageResponseJson,
     prompt: input.request.prompt,
@@ -1852,7 +1884,7 @@ function isJsonValue(value: unknown): value is JsonValue {
 // Concrete live-LLM ModelProvider implementation. Wraps the existing
 // `OpenRouterProvider` (which handles the HTTP request shape, provider-
 // routing block, and recording the served (model, providerId) pair) and
-// layers on three
+// layers on two
 // new responsibilities the alpha-gap analysis (§3 ITOTORI-NEW-Bopen)
 // requires for a production-tier seam:
 //
@@ -1863,14 +1895,13 @@ function isJsonValue(value: unknown): value is JsonValue {
 //      Missing key → `OpenRouterMissingApiKeyError` at construction,
 //      not on first invoke, so the failure is loud and traceable to the
 //      starting process.
-//   2. Per-process USD cost cap. Tracks cumulative billed cost across
-//      every `invoke()` and refuses to fire a new request once the cap
-//      is hit. The check runs BEFORE the HTTP call so a cap-busted
-//      caller never spends money it doesn't have a budget for.
-//   3. Token-bucket rate limit at `rateLimitPerSec`. When the bucket is
-//      empty, `invoke()` awaits the next slot rather than throwing —
-//      this is the softer of the two limits, and matches OpenRouter's
-//      own rps-based throttling behaviour.
+//   2. Token-bucket rate limit at `rateLimitPerSec`. InvocationSupervisor
+//      acquires the token before the durable cost-reservation transaction;
+//      direct fixture/admin calls acquire it in `invoke()`.
+//
+// Cost caps do NOT live in this process. The journal's exact-decimal account
+// atomically reserves and reconciles each run, so concurrent processes share
+// one authoritative admission decision.
 //
 // On construction the provider also registers every known (modelId,
 // providerId) capability sheet from `dev-pair.ts` into the global
@@ -1898,34 +1929,18 @@ export class OpenRouterMissingArtifactRecorderError extends Error {
   }
 }
 
-export class OpenRouterCostCapError extends Error {
-  constructor(
-    readonly capUsd: number,
-    readonly spentUsd: number,
-    readonly remainingUsd: number,
-  ) {
-    super(
-      `OpenRouterModelProvider per-process cost cap of $${capUsd.toFixed(4)} USD hit: ` +
-        `$${spentUsd.toFixed(6)} already spent, remaining budget $${remainingUsd.toFixed(6)}`,
-    );
-    this.name = "OpenRouterCostCapError";
-  }
-}
-
 export type OpenRouterHttpClient = typeof fetch;
 
 export type OpenRouterModelProviderOptions = {
   /** Env var to read for the API key. Defaults to `OPENROUTER_API_KEY`. */
   apiKeyEnvVar?: string;
-  /** Per-process cumulative USD cap. Default `1.0`. */
-  costCapUsd?: number;
   /** Token-bucket rate (rps). Default `1.0`. */
   rateLimitPerSec?: number;
   /** Optional injection for unit tests (defaults to global `fetch`). */
   httpClient?: OpenRouterHttpClient;
-  /** Optional injection of the cap-guard clock (test-only). */
+  /** Optional injection of the rate-token clock (test-only). */
   now?: () => number;
-  /** Optional injection of the cap-guard sleep (test-only). */
+  /** Optional injection of the rate-token sleep (test-only). */
   sleep?: (ms: number) => Promise<void>;
   /** Optional override for the capability guard registration target. */
   capabilityGuard?: CapabilityGuard;
@@ -2004,35 +2019,22 @@ class TokenBucket {
 }
 
 const DEFAULT_API_KEY_ENV_VAR = "OPENROUTER_API_KEY";
-// ITOTORI-231 — single source of truth for the per-process USD cap.
-//
-// Why 0.5 USD: Trevor's standing rule is that every model invocation
-// declares its (modelId, providerId) pair and cost is always REAL (the
-// generation/<id> endpoint settles `usage.cost`) — never estimated.
-// Empirically, per the ITOTORI-224 evidence pack a single agentic-loop
-// call against the DEV_PAIR (deepseek-v4-flash at fireworks) settles
-// at ~USD 0.000003 (USD 0.0000182 across six calls). A 0.5 USD ceiling
-// therefore admits roughly 166,000 calls of headroom in a single
-// process run — far more than any realistic interactive Sweetie HD
-// localization session needs, while still tight enough to refuse a
-// runaway loop. Batch runs pass `--cost-cap-usd` to override this
-// per-invocation; the constant is the only default in code.
+// Default run-level cap used by policy parsing. The durable Postgres account,
+// not this transport process, owns admission and reconciliation.
 export const DEFAULT_COST_CAP_USD = 0.5;
 const DEFAULT_RATE_LIMIT_PER_SEC = 1.0;
+const OPENROUTER_RATE_TOKEN_ACQUIRED = Symbol("itotori.openrouter.rate-token");
 
 export class OpenRouterModelProvider implements ModelProvider {
   readonly descriptor: ProviderDescriptor;
-  readonly costCapUsd: number;
   readonly rateLimitPerSec: number;
   readonly apiKeyEnvVar: string;
-  private spentUsd = 0;
   private readonly inner: OpenRouterProvider;
   private readonly bucket: TokenBucket;
   private readonly capabilityGuard: CapabilityGuard;
 
   constructor(options: OpenRouterModelProviderOptions = {}) {
     this.apiKeyEnvVar = options.apiKeyEnvVar ?? DEFAULT_API_KEY_ENV_VAR;
-    this.costCapUsd = options.costCapUsd ?? DEFAULT_COST_CAP_USD;
     this.rateLimitPerSec = options.rateLimitPerSec ?? DEFAULT_RATE_LIMIT_PER_SEC;
 
     const envSource: Readonly<Record<string, string | undefined>> = options.env ?? process.env;
@@ -2079,8 +2081,9 @@ export class OpenRouterModelProvider implements ModelProvider {
     }
     this.capabilityGuard = guard;
 
-    // The inner OpenRouterProvider does the request shaping + pair
-    // check; we wrap it for cost cap + rate limit + env config.
+    // The inner OpenRouterProvider does request shaping and recording; this
+    // wrapper owns only transport rate tokens and env configuration. Run-cost
+    // admission is deliberately durable and lives above the transport.
     // modelId on the descriptor is "openrouter" because the provider
     // is multi-model — actual modelId per call comes from the request.
     this.inner = new OpenRouterProvider({
@@ -2119,76 +2122,27 @@ export class OpenRouterModelProvider implements ModelProvider {
     return { ...this.descriptor, capabilities };
   }
 
-  async preflightInvocation(): Promise<
-    | { admitted: true }
-    | { admitted: false; detail: string; evidence: string; operatorAction: string }
-  > {
-    const remainingUsd = this.remainingBudgetUsd();
-    if (remainingUsd > 0) return { admitted: true };
-    return {
-      admitted: false,
-      detail: `OpenRouter per-process cost cap of $${this.costCapUsd.toFixed(4)} reached`,
-      evidence: `provider:openrouter;spent-usd:${this.spentUsd.toFixed(6)};remaining-usd:${remainingUsd.toFixed(6)}`,
-      operatorAction: "raise --cost-cap-usd, then resume the same run",
-    };
+  async preflightInvocation(request: ModelInvocationRequest): Promise<{ admitted: true }> {
+    // InvocationSupervisor calls this before durable cost reservation. Keep a
+    // symbol on the request so the later invoke consumes this exact token
+    // rather than acquiring a second one; object-spread adapter layers retain
+    // enumerable symbol keys.
+    await this.bucket.acquire();
+    (request as ModelInvocationRequest & { [OPENROUTER_RATE_TOKEN_ACQUIRED]?: true })[
+      OPENROUTER_RATE_TOKEN_ACQUIRED
+    ] = true;
+    return { admitted: true };
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
-    // Cost cap check BEFORE the HTTP request fires (per the spec audit
-    // focus: "Cost cap bypassed by a code path that constructs the
-    // HTTP request before the policy check"). Mocked tests assert
-    // fetchMock was never called when the cap is hit.
-    const remaining = this.remainingBudgetUsd();
-    if (remaining <= 0) {
-      throw new OpenRouterCostCapError(this.costCapUsd, this.spentUsd, 0);
-    }
-
-    // Rate-limit wait. Softer than the cost cap: blocks the caller
-    // until the bucket has a token.
-    await this.bucket.acquire();
-
-    try {
-      const result = await this.inner.invoke(request);
-      this.recordSpend(result);
-      return result;
-    } catch (error) {
-      if (error instanceof ModelProviderError && error.providerRun !== undefined) {
-        this.recordRunSpend(error.providerRun);
-      }
-      throw error;
-    }
-  }
-
-  /** Currently spent USD against the per-process cap. */
-  totalSpentUsd(): number {
-    return this.spentUsd;
-  }
-
-  /** Remaining USD budget (cap minus spent). */
-  remainingBudgetUsd(): number {
-    return Math.max(0, this.costCapUsd - this.spentUsd);
-  }
-
-  private recordSpend(result: ModelInvocationResult): void {
-    this.recordRunSpend(result.providerRun);
-  }
-
-  private recordRunSpend(run: ProviderRunRecord): void {
-    const cost = run.cost;
-    if (cost.amountMicrosUsd === undefined) {
-      return;
-    }
-    // ITOTORI-233 — `cost.amountMicrosUsd` mirrors `usage.cost` verbatim
-    // and `usage.cost` is **net of `cache_discount`** per
-    // docs/openrouter-integration.md §5.3 / §11 entry 6 (DOC-AMBIGUOUS-6
-    // RESOLVED: treat as authoritative billed cost, never recompute).
-    // The cost cap therefore consumes the post-discount amount directly;
-    // we do NOT subtract `cost.cacheDiscountMicrosUsd` again — that
-    // would double-count the discount. The discount is an INFORMATIONAL
-    // annotation surfaced through telemetry (see `cache_savings_usd` in
-    // apps/itotori/src/telemetry/queries.ts + cli.ts), not an arithmetic
-    // input to the cap.
-    this.spentUsd += cost.amountMicrosUsd / 1_000_000;
+    const tokenWasPrepared =
+      (request as ModelInvocationRequest & { [OPENROUTER_RATE_TOKEN_ACQUIRED]?: true })[
+        OPENROUTER_RATE_TOKEN_ACQUIRED
+      ] === true;
+    // Direct fixture/admin calls still receive rate limiting. Production
+    // supervised calls have already acquired their token before reservation.
+    if (!tokenWasPrepared) await this.bucket.acquire();
+    return await this.inner.invoke(request);
   }
 }
 

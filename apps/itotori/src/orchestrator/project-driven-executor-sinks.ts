@@ -33,6 +33,7 @@ import {
   INVOCATION_DEFAULT_DEADLINE_MS,
   type InvocationAttemptCompleted,
   type InvocationAttemptStarted,
+  type InvocationCostAdmission,
   type OperationalBlocker,
 } from "./invocation-supervisor.js";
 
@@ -245,6 +246,68 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     });
   }
 
+  createCostAdmission(runId: string): InvocationCostAdmission {
+    return {
+      admit: async (input) => {
+        if (input.runId !== runId) {
+          throw new Error(
+            `cost admission for ${runId} cannot reserve attempt for different run ${input.runId}`,
+          );
+        }
+        if (input.worstCaseCostUsd === null) {
+          return {
+            admitted: false,
+            detail: "invocation has no exact worst-case cost for durable budget reservation",
+            evidence: `cost-account:${runId};worst-case:missing`,
+            operatorAction: "configure a per-stage maximum cost, then resume",
+          };
+        }
+        await this.requireSeed(runId);
+        const lease = this.requireLease(runId);
+        const roundTripStartedAt = performance.now();
+        const result = await this.journal.reserveAttemptCost(this.opts.actor, {
+          attemptId: input.attempt.attemptId,
+          runId: input.attempt.runId,
+          bridgeUnitId: input.attempt.bridgeUnitId,
+          stage: input.attempt.stage,
+          agentLabel: input.attempt.agentLabel,
+          logicalCallId: input.attempt.logicalCallId,
+          attemptIndex: input.attempt.attemptIndex,
+          requestedModelId: input.attempt.requestedModelId,
+          requestedProviderId: input.attempt.requestedProviderId,
+          zdr: input.attempt.zdr,
+          artifactRef: `provider-run:${input.attempt.providerRunId}`,
+          startedAt: input.attempt.startedAt,
+          worstCaseCostUsd: input.worstCaseCostUsd,
+          lease,
+        });
+        if (!result.admitted) {
+          const cap = result.account.capUsd ?? "unbounded";
+          return {
+            admitted: false,
+            detail:
+              `run cost cap $${cap} cannot reserve worst-case $${input.worstCaseCostUsd} ` +
+              `after $${result.account.spentCostUsd} spent and $${result.account.reservedCostUsd} reserved`,
+            evidence:
+              `cost-account:${runId};spent-usd:${result.account.spentCostUsd};` +
+              `reserved-usd:${result.account.reservedCostUsd};cap-usd:${cap}`,
+            operatorAction: "raise the run cost cap, then resume",
+          };
+        }
+        return {
+          admitted: true,
+          attemptStarted: true,
+          dispatchLeaseSignal: this.startAttemptHeartbeat(
+            runId,
+            input.attempt.attemptId,
+            result.attempt.leaseDeadline,
+            performance.now() - roundTripStartedAt,
+          ),
+        };
+      },
+    };
+  }
+
   async attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal> {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
@@ -277,6 +340,9 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
     const usage = run?.tokenUsage;
+    const billingState = run?.billingState ?? "unknown";
+    const reportableCost =
+      run !== undefined && !(billingState === "unknown" && run.cost.costKind === "zero");
     try {
       await this.journal.completeAttempt(this.opts.actor, {
         attemptId: attempt.attemptId,
@@ -287,8 +353,9 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
           run === undefined
             ? null
             : (run.provider.upstreamProvider ?? run.provider.requestedProviderId),
-        costUsd: run?.cost.amountUsd ?? null,
-        ...(run !== undefined ? { costKind: run.cost.costKind } : {}),
+        costUsd: reportableCost ? run.cost.amountUsd : null,
+        ...(reportableCost ? { costKind: run.cost.costKind } : {}),
+        billingState,
         ...(run !== undefined ? { usageResponseJson: run.usageResponseJson } : {}),
         tokensIn: usage?.promptTokens ?? null,
         tokensOut: usage?.completionTokens ?? null,

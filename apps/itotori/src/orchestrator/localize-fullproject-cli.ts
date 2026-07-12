@@ -32,7 +32,6 @@ import {
   assertOpenRouterZdrAccount,
   LocalProviderRunArtifactRecorder,
 } from "../providers/index.js";
-import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
 import { liveOpenRouterFactory } from "./localize-project-stage-command.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
 import {
@@ -72,7 +71,7 @@ export type RunLocalizeFullProjectLiveArgs = {
   io: LocalizeFullProjectIo;
   /** Existing durable journal run to resume from its first pending unit. */
   resumeRunId?: string;
-  /** Per-process USD cost cap for the OpenRouter provider. Defaults to $0.50. */
+  /** Exact run-level USD cap persisted in the journal cost account. */
   costCapUsd?: number;
   /**
    * Optional client-side bounded-concurrency override (from `--concurrency`).
@@ -280,7 +279,6 @@ export async function runLocalizeFullProjectLive(
       join(args.runDir, "provider-runs"),
     );
     const providerFactory = liveOpenRouterFactory({
-      costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
       artifactRecorder,
     });
     let patchApply: WholeGamePatchExportAndApplyResult | undefined;
@@ -312,6 +310,7 @@ export async function runLocalizeFullProjectLive(
           runSummaryPath: join(args.runDir, "run-summary.json"),
           ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
           ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
+          ...(args.costCapUsd !== undefined ? { budgetCapUsd: args.costCapUsd } : {}),
           deps: {
             io: args.io,
             actor,

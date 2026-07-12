@@ -250,22 +250,22 @@ describe("InvocationSupervisor failure matrix", () => {
     expect((await executeDraft(resumed)).parsed.drafts[0]?.body).toBe(VALID_BODY);
   });
 
-  it("checks a provider-owned legacy cap before opening the attempt row", async () => {
+  it("pauses when provider preparation refuses before opening the attempt row", async () => {
     const lifecycle = new RecordingLifecycle();
     const transport = new ScriptedProvider([{ content: validContent() }]);
     const provider: ModelProvider = {
       descriptor: transport.descriptor,
       preflightInvocation: async () => ({
         admitted: false,
-        detail: "provider process cap reached",
-        evidence: "provider:fixture;remaining-usd:0",
+        detail: "provider preparation permit unavailable",
+        evidence: "provider:fixture;permit:unavailable",
       }),
       invoke: (candidate) => transport.invoke(candidate),
     };
 
     await expect(executeDraft(supervisorFor(provider, lifecycle))).rejects.toMatchObject({
       name: "InvocationOperationalPauseError",
-      blocker: { kind: "budget_cap", detail: "provider process cap reached" },
+      blocker: { kind: "budget_cap", detail: "provider preparation permit unavailable" },
     });
     expect(lifecycle.started).toHaveLength(0);
     expect(transport.requests).toHaveLength(0);

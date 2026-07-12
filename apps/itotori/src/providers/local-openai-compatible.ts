@@ -447,6 +447,7 @@ function buildRun(input: {
       amountUsd: "0",
       amountMicrosUsd: 0,
     },
+    billingState: "known",
     // ITOTORI-230 — local providers talk to localhost; no data leaves
     // the host, so the canonical ZDR posture trivially holds. Recording
     // the canonical shape keeps the ledger schema uniform.

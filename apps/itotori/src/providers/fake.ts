@@ -1,9 +1,5 @@
 import { assertProviderInvocationSupported } from "./capability-guard.js";
-import {
-  DEFAULT_COST_CAP_USD,
-  OpenRouterModelProvider,
-  type OpenRouterHttpClient,
-} from "./openrouter.js";
+import { OpenRouterModelProvider, type OpenRouterHttpClient } from "./openrouter.js";
 import type {
   ModelCapabilities,
   ModelInvocationRequest,
@@ -100,6 +96,7 @@ export class FakeModelProvider implements ModelProvider {
       // Defaults to ZERO_COST (fake providers never bill); a test may inject
       // a SYNTHETIC billed `ProviderCost` via the constructor `cost` option.
       cost: this.cost,
+      billingState: "known",
       // ITOTORI-230 — fake providers never leave the process so the
       // canonical ZDR posture is trivially in force; record it
       // explicitly so the ledger row + telemetry have a uniform shape.
@@ -270,14 +267,13 @@ export class SemanticAgentUnsupportedLiveFamilyError extends Error {
  * writing the run outside every reconciled surface.
  *
  * The (modelId, providerId) routing is NOT here — it is config-driven,
- * travelling on each request from the agent's `modelProfile`. `costCapUsd`
- * defaults to the shared per-process `DEFAULT_COST_CAP_USD`. `httpClient` /
+ * travelling on each request from the agent's `modelProfile`. Durable runs
+ * enforce their cap in the journal cost account. `httpClient` /
  * `baseUrl` are test-only transport seams (mirroring
  * `OpenRouterModelProviderOptions`) so a deterministic test can drive the REAL
  * provider through a mock fetch and assert the run is reconciled.
  */
 export type SemanticAgentLiveProviderOptions = {
-  costCapUsd?: number;
   artifactRecorder?: ProviderRunArtifactRecorder;
   env?: Readonly<Record<string, string | undefined>>;
   providerName?: string;
@@ -357,7 +353,6 @@ export function resolveSemanticAgentProvider(options: {
     // pair with `provider.zdr=true`, and records real `usage.cost` into the
     // run-scoped recorder the reconciler consumes.
     return new OpenRouterModelProvider({
-      costCapUsd: live.costCapUsd ?? DEFAULT_COST_CAP_USD,
       artifactRecorder: live.artifactRecorder,
       ...(live.env !== undefined ? { env: live.env } : {}),
       ...(live.providerName !== undefined ? { providerName: live.providerName } : {}),

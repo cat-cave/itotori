@@ -119,7 +119,6 @@ describe("projects.draft HTTP boundary", () => {
         OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
         OPENROUTER_ZDR_ACCOUNT_ASSERTED: process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED,
       },
-      costCapUsd: 0.05,
       artifactRecorder,
     });
     const workflow = new ItotoriProjectWorkflowService(repositoryFixture(), actor, provider);

@@ -365,7 +365,7 @@ export type TokenUsage = {
  *
  * - `billed`: a real upstream charge. `amountUsd` carries the exact spend
  *   reported by the provider (OpenRouter's `usage.cost`) verbatim;
- *   `amountMicrosUsd` is a derived cap/telemetry mirror. Required.
+ *   `amountMicrosUsd` is a derived display/telemetry mirror. Required.
  * - `provider_estimate` (ITOTORI-134): a deterministic cost ESTIMATE derived
  *   from provider-supplied pricing signals when the authoritative
  *   `usage.cost` is absent — either `usage.cost_details` (the
@@ -403,9 +403,10 @@ export type ProviderCost = {
    * actually bill (DEV_PAIR deepseek-v4-flash evidence: `usage.cost`
    * `0.00000602`, which `amountMicrosUsd` would round to `0.000006`, a
    * 2e-8 error that a micros-only persistence model loses). `amountMicrosUsd`
-   * is therefore a DERIVED, informational value for the cost cap, telemetry
-   * aggregates, and dashboards — it is NEVER the persisted journal
-   * authority. For `costKind: 'zero'` this is the exact string `"0"`.
+   * is therefore a DERIVED display/telemetry mirror. Durable run-cap
+   * reservation and reconciliation use `amountUsd` exactly; it is NEVER the
+   * persisted journal authority. For `costKind: 'zero'` this is the exact
+   * string `"0"`.
    */
   amountUsd: string;
   amountMicrosUsd: number;
@@ -421,8 +422,8 @@ export type ProviderCost = {
    * `usage.cost` is treated as authoritative billed cost and is **net**
    * of `cache_discount`; we surface `cache_discount` here as an
    * informational annotation for telemetry ("how much did caching save
-   * us"), NOT as an arithmetic input to the cost cap. The cap consumes
-   * `amountMicrosUsd` verbatim — see `OpenRouterModelProvider.recordSpend`.
+   * us"), NOT as an arithmetic input to the durable run cap. The account
+   * reconciles the exact `amountUsd` value.
    *
    * Optional at the TS layer (older shapes / non-OR providers omit it),
    * but the storage layer DEFAULTS to 0 NOT NULL on persist (migration
@@ -482,6 +483,12 @@ export type ProviderRunRecord = {
   tokenUsage: TokenUsage;
   cost: ProviderCost;
   /**
+   * A confirmed zero charge is not the same as a response whose settlement is
+   * absent or malformed. Omitted legacy records are treated conservatively as
+   * unknown by the run-cost reservation ledger.
+   */
+  billingState?: "known" | "unknown";
+  /**
    * ITOTORI-230 — the OpenRouter routing posture the call carried on
    * the wire. Required: every record (LIVE OR, recorded replay, fake,
    * local) MUST surface a posture so the ledger row + telemetry have
@@ -498,7 +505,7 @@ export type ProviderRunRecord = {
    *
    * For LIVE OR runs this MUST carry `cost` as a number (decimal USD)
    * equal to `cost.amountUsd` (the authoritative full-precision decimal;
-   * `amountMicrosUsd` is only a derived cap/telemetry mirror) to within
+   * `amountMicrosUsd` is only a derived display/telemetry mirror) to within
    * 1e-9; the OR adapter populates it from `responseBody.usage` verbatim
    * so the equality holds by construction. Recorded replays mirror the bundle
    * verbatim (bundle schema v3). Fake / local providers that never bill
@@ -572,9 +579,9 @@ export type ProviderLiveRunOptions =
 export interface ModelProvider {
   readonly descriptor: ProviderDescriptor;
   /**
-   * Optional provider-owned guard exposed to InvocationSupervisor so legacy
-   * per-process caps are checked before an attempt row is opened. Node 4 will
-   * replace this compatibility probe with the atomic run-cost reservation.
+   * Optional transport preparation exposed to InvocationSupervisor. Live
+   * providers use it to acquire a rate token before the durable run-cost
+   * reservation; it must not implement process-local budget accounting.
    */
   preflightInvocation?(
     request: ModelInvocationRequest,
