@@ -25,7 +25,6 @@ import {
 } from "@itotori/db";
 import {
   fixtureBatchPermissionView,
-  fixturePendingGlossaryItem,
   fixturePendingQaItem,
   fixturePendingRuntimeEvidenceItem,
   fixtureRerunJobConsequence,
@@ -36,7 +35,6 @@ import {
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
   reviewerBatchPreviewStatusValues,
-  reviewerTriggeredRerunJobNameValues,
   type BatchActionPayload,
   type BatchActionPayloadResolver,
   type ReviewerBatchActionRequest,
@@ -109,8 +107,6 @@ function makeActionStub(): {
     defer: vi.fn(async (_actor, input) => record("defer", input.reviewItemId)),
     escalate: vi.fn(async (_actor, input) => record("escalate", input.reviewItemId)),
     requestRepair: vi.fn(async (_actor, input) => record("requestRepair", input.reviewItemId)),
-    updateGlossary: vi.fn(async (_actor, input) => record("updateGlossary", input.reviewItemId)),
-    updateStyle: vi.fn(async (_actor, input) => record("updateStyle", input.reviewItemId)),
     importRuntimeFeedback: vi.fn(async (_actor, input) =>
       record("importRuntimeFeedback", input.reviewItemId),
     ),
@@ -139,10 +135,6 @@ function methodForAction(action: ReviewerQueueActionInput["action"]): string {
       return "escalate";
     case reviewerQueueActionValues.requestRepair:
       return "requestRepair";
-    case reviewerQueueActionValues.updateGlossary:
-      return "updateGlossary";
-    case reviewerQueueActionValues.updateStyle:
-      return "updateStyle";
     case reviewerQueueActionValues.importRuntimeFeedback:
       return "importRuntimeFeedback";
     default: {
@@ -186,7 +178,7 @@ describe("ReviewerBatchActionService — happy path", () => {
     expect(calls.map((c) => c.reviewItemId)).toEqual([qa1.reviewItemId, qa2.reviewItemId]);
   });
 
-  it("uses the real reviewer action service path that plans rerun jobs atomically", async () => {
+  it("uses the real reviewer action service path without queue rerun jobs", async () => {
     const qa = fixturePendingQaItem("reviewer-queue-083-qa-rerun");
     const previewService = new ReviewerBatchPreviewService(makeResolver({ [qa.reviewItemId]: qa }));
     const plannedJobs: JobQueueInput[] = [];
@@ -211,12 +203,7 @@ describe("ReviewerBatchActionService — happy path", () => {
     );
 
     expect(result.appliedAll).toBe(true);
-    expect(plannedJobs.map((job) => job.jobName)).toEqual([
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      reviewerTriggeredRerunJobNameValues.qaReplay,
-      reviewerTriggeredRerunJobNameValues.exportRegeneration,
-      reviewerTriggeredRerunJobNameValues.runtimeValidation,
-    ]);
+    expect(plannedJobs).toHaveLength(0);
   });
 });
 
@@ -393,39 +380,6 @@ describe("ReviewerBatchActionService — per-item dispatch surfaces repository d
 });
 
 describe("ReviewerBatchActionService — payload resolver dispatch", () => {
-  it("dispatches updateGlossary with termId + approvedTranslation for glossary items", async () => {
-    const item = fixturePendingGlossaryItem();
-    const previewService = new ReviewerBatchPreviewService(
-      makeResolver({ [item.reviewItemId]: item }),
-    );
-    const { service: actionService, calls } = makeActionStub();
-    const executor = new ReviewerBatchActionService({
-      previewService,
-      actionService,
-      resolvePayload: () => ({
-        kind: "updateGlossary",
-        termId: "term-42",
-        approvedTranslation: "Hero",
-      }),
-    });
-
-    const result = await executor.execute(
-      actor,
-      {
-        action: reviewerQueueActionValues.updateGlossary,
-        actorUserId: actor.userId,
-        selections: [
-          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
-        ],
-      },
-      fixtureBatchPermissionView(),
-    );
-
-    expect(result.appliedAll).toBe(true);
-    expect(actionService.applyPreparedBatch).toHaveBeenCalledTimes(1);
-    expect(calls.map((call) => call.method)).toEqual(["updateGlossary"]);
-  });
-
   it("dispatches importRuntimeFeedback with evidence tier + observation events", async () => {
     const item = fixturePendingRuntimeEvidenceItem();
     const previewService = new ReviewerBatchPreviewService(

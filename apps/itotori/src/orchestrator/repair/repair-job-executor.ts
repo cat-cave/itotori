@@ -5,9 +5,8 @@
 // `claimNext()` / `recordOutcome()` seam — but the service itself does NO IO,
 // makes NO provider calls, and persists NOTHING. Its own header documents
 // that "Production wiring layers an executor on top via `claimNext`." Before
-// this module that executor did not exist: a scheduled rerun sat in the queue
-// forever. Likewise `reviewer/repair-rerun-scheduler.ts` builds durable rerun
-// job INPUTS, but nothing consumed them.
+// this module that executor did not exist: scheduled repair work sat in the
+// queue forever with no consumer.
 //
 // This module IS that executor. It takes a CLAIMED `RepairJob` and actually
 // RUNS the affected scope through the real draft + QA path

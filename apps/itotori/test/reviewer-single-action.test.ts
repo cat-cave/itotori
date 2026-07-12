@@ -107,8 +107,6 @@ function makeActionServiceStub(items: Record<string, ReviewerQueueItemRecord>): 
     defer: vi.fn(),
     escalate: vi.fn(),
     requestRepair: vi.fn(),
-    updateGlossary: vi.fn(),
-    updateStyle: vi.fn(),
     importRuntimeFeedback: vi.fn(),
     applyPreparedBatch,
   } as unknown as ReviewerQueueActionServicePort;

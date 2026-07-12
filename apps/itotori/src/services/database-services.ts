@@ -147,7 +147,7 @@ import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionServicePort,
 } from "../workspace/correction-service.js";
-import { WorkspaceCorrectionFeedbackLoop } from "../workspace/correction-feedback-loop.js";
+import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -210,6 +210,8 @@ export type ItotoriApplicationServices = {
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
   workspaceCorrections: WorkspaceCorrectionServicePort;
+  /** Direct play-tester shared-brain correction API (node 8). */
+  contextCorrections: Pick<ContextCorrectionService, "apply">;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -797,28 +799,17 @@ export async function withDatabaseItotoriServices<T>(
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
     });
-    // ITOTORI-118 — the mutation service composes the feedback intake (so
-    // corrections enter the same decision + targeted-rerun loop), the durable
-    // edit-history repository, and the reviewer-detail comparison read-model
-    // for the before/after preview. Repository calls are bound to the local
-    // authorization actor, exactly like the read workspace.
-    // itotori-correction-feedback-writeback-e2e — the feedback loop's RETURN
-    // path: a repair-candidate correction writes its corrected target back into
-    // the translation-memory (+ glossary when term-scoped) stores and schedules
-    // an affected rerun over every unit sharing that source, so the next draft
-    // reflects the correction. Composes the existing TM + terminology repos and
-    // the shared reviewer-rerun job queue; no new store.
+    // Play-tester corrections retain a feedback audit row but intentionally do
+    // not inject that feedback into a reviewer queue. The canonical context
+    // service owns the real version → invalidation → registered-redraft path.
     const eventQueueRepository = new ItotoriEventQueueRepository(context.db);
-    const workspaceCorrectionFeedbackLoop = new WorkspaceCorrectionFeedbackLoop({
+    const contextCorrectionService = new ContextCorrectionService({
       actor: localUserActor,
-      translationMemory: translationMemoryRepository,
-      glossary: terminologyRepository,
-      rerunQueue: {
-        enqueueJobs: (actor, inputs) => eventQueueRepository.enqueueJobs(actor, inputs),
-      },
+      contextArtifacts: contextArtifactRepository,
+      jobs: eventQueueRepository,
     });
     const workspaceCorrectionService = new WorkspaceCorrectionService({
-      importPort: manualFeedbackService,
+      importPort: new ManualFeedbackImportService(feedbackRepository, localUserActor),
       // The correction service's edit-history port is write-only; reads of the
       // edit history bypass the service and hit
       // `ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch` directly
@@ -830,7 +821,7 @@ export async function withDatabaseItotoriServices<T>(
       comparisonPort: {
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
-      feedbackLoop: workspaceCorrectionFeedbackLoop,
+      contextCorrections: contextCorrectionService,
     });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
@@ -901,6 +892,7 @@ export async function withDatabaseItotoriServices<T>(
       reviewerQueue: reviewerQueueApiService,
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,
+      contextCorrections: contextCorrectionService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

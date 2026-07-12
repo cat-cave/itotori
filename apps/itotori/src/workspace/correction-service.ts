@@ -7,11 +7,9 @@
 //   1. feedback intake → `ManualFeedbackImportPort.importManualFeedback` is
 //      driven once per correction. Each correction becomes a feedback report
 //      carrying the reviewer's note (reason) + `suggestedEdit` (the corrected
-//      text) + a `lineReference.bridgeUnitId`. The feedback repository assigns
-//      the triage label and enqueues the reviewer-queue item with the affected
-//      bridge unit on its metadata, so the correction enters the SAME decision
-//      queue + targeted-rerun loop as QA / runtime findings (acceptance #2). No
-//      parallel path.
+//      text) + a `lineReference.bridgeUnitId`. The audit feedback is retained,
+//      but this service deliberately uses an importer with no reviewer-queue
+//      sink: a context correction goes straight to the shared brain.
 //
 //   2. durable edit history → `WorkspaceCorrectionEditPersistPort` records the
 //      append-only audit row tied to (project, locale branch, source revision,
@@ -21,7 +19,9 @@
 //   3. before/after context → `WorkspaceCorrectionComparisonPort` reuses the
 //      reviewer detail read-model (source / draft / final / runtime / style /
 //      glossary) so the preview shows everything a reviewer must see before
-//      submitting (acceptance #3).
+//      submitting (acceptance #3). The direct `ContextCorrectionService`
+//      appends the canonical version, invalidates dependent artifacts, and
+//      schedules the registered redraft worker.
 //
 // Permission: the preview is gated on `queue.read` (read-only browsing is never
 // blocked); the submit is gated on `queue.manage` and short-circuits to a
@@ -39,6 +39,10 @@ import {
 } from "@itotori/db";
 import type { AnnotationSeverity } from "../annotation.js";
 import { dispositionFor } from "../draft-feedback/batch-service.js";
+import {
+  ContextCorrectionService,
+  playTesterContextKindValues,
+} from "../orchestrator/context-correction-service.js";
 import type { ReviewerDetailContext } from "../reviewer/detail-fixtures.js";
 import type { ManualFeedbackImportPort } from "../manual-feedback.js";
 import {
@@ -53,7 +57,6 @@ import {
   type WorkspaceCorrectionSubmitReadModel,
   type WorkspaceCorrectionWritebackView,
 } from "./correction-model.js";
-import type { WorkspaceCorrectionFeedbackLoopPort } from "./correction-feedback-loop.js";
 import type { WorkspaceRuntimeEvidenceLink } from "./read-model.js";
 
 /**
@@ -84,15 +87,8 @@ export type WorkspaceCorrectionServiceDeps = {
   importPort: ManualFeedbackImportPort;
   editRepository: WorkspaceCorrectionEditPersistPort;
   comparisonPort: WorkspaceCorrectionComparisonPort;
-  /**
-   * The feedback loop's RETURN path. When wired, every repair-candidate
-   * correction writes its corrected target back into the translation-memory /
-   * glossary stores AND schedules an affected rerun so the next draft for every
-   * unit sharing that source reflects the correction. Optional so the read-only
-   * and no-DB composition tests need not stand up the writeback stores; the live
-   * DB wiring always provides it.
-   */
-  feedbackLoop?: WorkspaceCorrectionFeedbackLoopPort;
+  /** Direct canonical context mutation + registered redraft scheduling seam. */
+  contextCorrections?: Pick<ContextCorrectionService, "apply">;
   now?: () => Date;
 };
 
@@ -105,11 +101,7 @@ export type WorkspaceCorrectionSubmission = {
   reason: string;
   correctedText: string;
   draftText?: string;
-  /**
-   * When the correction fixes a glossary term, the source term to write back
-   * (sourceTerm → correctedText) so the glossary carries the corrected
-   * preferred translation. Absent for a plain segment-level correction.
-   */
+  /** Optional glossary head/title identity for a canonical glossary edit. */
   sourceTerm?: string;
   feedbackType?: FeedbackType;
   attachments?: ManualFeedbackAttachment[];
@@ -228,7 +220,7 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
     };
     if (!input.permission.canManageQueue) {
       // Mutation refused — read-only browsing is preserved, but no edit-history
-      // row, feedback report, or queue item is created (acceptance #4).
+      // row, feedback report, canonical context version, or job is created.
       return {
         ...base,
         batchId: emptyBatchId(input),
@@ -341,48 +333,54 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
       affected.add(correction.bridgeUnitId);
       if (disposition === workspaceCorrectionDispositionValues.repairCandidate) {
         repairCandidateReportIds.push(result.feedbackReportId);
-        // Feedback loop RETURN path: persist the corrected target into the
-        // translation-memory (+ glossary when term-scoped) stores and schedule
-        // an affected rerun, so the next draft for every unit sharing this
-        // source reflects the correction. Only repair-candidate corrections
-        // (objective defects) auto-return; style disputes and needs-context
-        // corrections stay in the human decision queue.
-        if (this.deps.feedbackLoop !== undefined && !record.duplicate) {
-          const writeback = await this.deps.feedbackLoop.applyCorrectionWriteback({
-            projectId: input.projectId,
-            localeBranchId: input.localeBranchId,
-            sourceRevisionId: correction.sourceRevisionId,
-            bridgeUnitId: correction.bridgeUnitId,
-            correctedText: correction.correctedText,
-            feedbackReportId: result.feedbackReportId,
-            batchId,
-            reason: correction.reason,
-            ...(correction.sourceTerm === undefined ? {} : { sourceTerm: correction.sourceTerm }),
-          });
-          if (writeback.writtenBack) {
-            for (const unitId of writeback.affectedBridgeUnitIds) {
-              affected.add(unitId);
-            }
-            for (const jobId of writeback.scheduledJobIds) {
-              scheduledRerunJobIds.add(jobId);
-            }
-            writebacks.push({
-              bridgeUnitId: correction.bridgeUnitId,
-              memorySegmentId: writeback.memorySegmentId,
-              termId: writeback.termId,
-              affectedBridgeUnitIds: writeback.affectedBridgeUnitIds,
-              scheduledJobIds: writeback.scheduledJobIds,
-            });
-          }
-        }
-      } else if (disposition === workspaceCorrectionDispositionValues.decisionQueue) {
-        decisionQueueReportIds.push(result.feedbackReportId);
-      } else {
+      } else if (disposition === workspaceCorrectionDispositionValues.needsContext) {
         needsContextReportIds.push(result.feedbackReportId);
-        diagnostics.push({
-          code: workspaceCorrectionDiagnosticCodeValues.needsContext,
-          message: `Correction for bridge unit ${correction.bridgeUnitId} was recorded but parked for lack of context; it will not schedule a repair until context arrives.`,
+      }
+
+      // This is the shared-brain path: no per-line approval/decision queue and
+      // no mutable translation-memory or terminology metadata writeback. The
+      // canonical context version is the durable correction; the worker will
+      // reload it before it drafts the affected unit.
+      if (this.deps.contextCorrections !== undefined && !record.duplicate) {
+        const contextCorrection = await this.deps.contextCorrections.apply({
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: correction.sourceRevisionId,
+          kind: contextKindFor(correction),
+          title: contextTitleFor(correction),
+          body: correction.correctedText,
+          reason: correction.reason,
+          affectedUnitIds: [correction.bridgeUnitId],
+          data: {
+            sourceTerm: correction.sourceTerm ?? null,
+            annotationSeverity: correction.severity,
+            annotationScope: correction.scope,
+            sourceUnitKey: correction.sourceUnitKey ?? null,
+            batchId,
+            ...correction.metadata,
+          },
         });
+        for (const unitId of contextCorrection.affectedUnitIds) {
+          affected.add(unitId);
+        }
+        const contextEntryVersionId = contextCorrection.contextArtifact.headVersionId;
+        if (contextEntryVersionId === null) {
+          throw new Error("canonical context correction returned without a head version");
+        }
+        scheduledRerunJobIds.add(contextCorrection.redraftJob.jobId);
+        writebacks.push({
+          bridgeUnitId: correction.bridgeUnitId,
+          contextArtifactId: contextCorrection.contextArtifact.contextArtifactId,
+          contextEntryVersionId,
+          invalidatedArtifactIds: [...contextCorrection.invalidatedArtifactIds],
+          affectedBridgeUnitIds: [...contextCorrection.affectedUnitIds],
+          scheduledJobIds: [contextCorrection.redraftJob.jobId],
+        });
+      }
+      if (disposition === workspaceCorrectionDispositionValues.decisionQueue) {
+        // The feedback triage label is retained in the append-only audit row,
+        // but a play-tester context correction never routes into this queue.
+        decisionQueueReportIds.push(result.feedbackReportId);
       }
       if (record.duplicate) {
         diagnostics.push({
@@ -409,6 +407,26 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
   }
 }
 
+function contextKindFor(correction: WorkspaceCorrectionSubmission) {
+  if (
+    correction.sourceTerm !== undefined ||
+    correction.feedbackType === feedbackTypeValues.glossaryCanonIssue
+  ) {
+    return playTesterContextKindValues.glossary;
+  }
+  if (correction.feedbackType === feedbackTypeValues.stylePreference) {
+    return playTesterContextKindValues.style;
+  }
+  return playTesterContextKindValues.context;
+}
+
+function contextTitleFor(correction: WorkspaceCorrectionSubmission): string {
+  if (correction.sourceTerm !== undefined && correction.sourceTerm.trim().length > 0) {
+    return correction.sourceTerm;
+  }
+  return `Play-tester context for ${correction.bridgeUnitId}`;
+}
+
 /**
  * Service-boundary validation mirroring the edit repository's
  * `normalizeCorrectionEdit` checks (workspace-correction-repository.ts). Runs
@@ -428,7 +446,7 @@ function validateCorrectionBatch(
         : `correction[${index}] (bridgeUnitId ${input.corrections[index]?.bridgeUnitId ?? "?"})`;
     diagnostics.push({
       code: workspaceCorrectionDiagnosticCodeValues.invalidCorrection,
-      message: `Correction batch refused: ${where} field ${field} is invalid: ${reason}. No feedback report, edit-history row, or queue item was created for any correction in the batch (no partial mutation).`,
+      message: `Correction batch refused: ${where} field ${field} is invalid: ${reason}. No feedback report, edit-history row, canonical context version, or redraft job was created for any correction in the batch (no partial mutation).`,
     });
   };
 

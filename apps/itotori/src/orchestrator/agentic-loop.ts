@@ -2033,6 +2033,9 @@ async function invokeSemanticContextStage(args: {
       contextArtifactCategoryValues.routeMap,
       contextArtifactCategoryValues.terminologyCandidate,
       contextArtifactCategoryValues.speakerLabel,
+      contextArtifactCategoryValues.glossary,
+      contextArtifactCategoryValues.style,
+      contextArtifactCategoryValues.contextNote,
     ],
     // Prefer unit-scoped matches; also retrieve scene-level without unit filter
     // via a second broader pull when the store is present.
@@ -2054,6 +2057,9 @@ async function invokeSemanticContextStage(args: {
         contextArtifactCategoryValues.routeMap,
         contextArtifactCategoryValues.terminologyCandidate,
         contextArtifactCategoryValues.speakerLabel,
+        contextArtifactCategoryValues.glossary,
+        contextArtifactCategoryValues.style,
+        contextArtifactCategoryValues.contextNote,
       ],
       limit: 50,
     });
@@ -2086,6 +2092,20 @@ async function invokeSemanticContextStage(args: {
   }
 
   const units = evidenceUnits;
+  // Play-tester glossary/style/context edits are canonical ContextEntry
+  // versions. Unlike semantic enrichment, they are already authored content:
+  // include the active entries that cite this unit directly in the freshly
+  // resolved packet rather than attempting to regenerate them.
+  const evidenceUnitIdsForCorrections = new Set(units.map((unit) => unit.bridgeUnitId));
+  resolvedArtifacts.push(
+    ...storedArtifacts.filter(
+      (artifact) =>
+        isPlayTesterContextArtifact(artifact.category) &&
+        artifact.citations.some((sourceUnit) =>
+          evidenceUnitIdsForCorrections.has(sourceUnit.bridgeUnitId),
+        ),
+    ),
+  );
   const roster = deriveCharacterRoster(input);
 
   // (b) LIVE enrichment — only MISSING/STALE agents fire. Success → upsert
@@ -2692,6 +2712,14 @@ function structuredContextToResolvedArtifacts(
     semanticResult: { kind: "content" },
   });
   return entries;
+}
+
+function isPlayTesterContextArtifact(category: string): boolean {
+  return (
+    category === contextArtifactCategoryValues.glossary ||
+    category === contextArtifactCategoryValues.style ||
+    category === contextArtifactCategoryValues.contextNote
+  );
 }
 
 function dedupeResolvedArtifacts(

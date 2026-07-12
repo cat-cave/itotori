@@ -104,7 +104,7 @@ function rerunJobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
     projectId,
     localeBranchId,
     jobType: jobTaskTypeValues.rerun,
-    jobName: "rerun.draft-repair",
+    jobName: "test.draft-repair",
     queueName: "reviewer-rerun",
     idempotency: {
       policy: jobIdempotencyPolicyValues.idempotent,
@@ -362,7 +362,7 @@ describe("ItotoriReviewerQueueRepository", () => {
           () => [
             rerunJobInput(),
             rerunJobInput({
-              jobName: "rerun.qa-replay",
+              jobName: "test.qa-replay",
               idempotency: {
                 policy: jobIdempotencyPolicyValues.idempotent,
                 key: "reviewer-084:job:qa-replay",
@@ -478,7 +478,7 @@ describe("ItotoriReviewerQueueRepository", () => {
     }
   });
 
-  it("applyAction rejects an action whose kind does not match the item kind", async () => {
+  it("applyAction rejects requestRepair for a glossary item", async () => {
     const context = await isolatedMigratedContext();
     try {
       await seedProjectScope(context);
@@ -491,7 +491,7 @@ describe("ItotoriReviewerQueueRepository", () => {
       await expect(
         repo.applyAction(localActor, {
           reviewItemId: glossaryItem.reviewItemId,
-          action: reviewerQueueActionValues.updateStyle,
+          action: reviewerQueueActionValues.requestRepair,
           actorUserId: localUserId,
           expectedSourceRevisionId: sourceRevisionId,
         }),

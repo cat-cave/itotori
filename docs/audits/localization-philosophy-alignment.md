@@ -220,7 +220,7 @@
 
 - Decoded scene/route/character context is injected into translation when supplied, and the translation prompt renders the actual supplied scene, route, and arc text. `apps/itotori/src/orchestrator/agentic-loop.ts:1144-1161` `apps/itotori/src/agents/translation/prompt-template.ts:89-110`
 
-- A workspace correction can write back translation memory, optionally upsert a glossary term, and schedule affected units for rerun; the DB service wires that feedback loop. `apps/itotori/src/workspace/correction-feedback-loop.ts:118-231` `apps/itotori/src/services/database-services.ts:753-782`
+- **Resolved since this audit — a workspace correction now appends canonical glossary/style/context versions, invalidates affected artifacts, and schedules the registered redraft worker without a translation-memory writeback or reviewer-queue route.** `apps/itotori/src/orchestrator/context-correction-service.ts` `apps/itotori/src/services/database-services.ts`
 
 #### Violates
 
@@ -230,7 +230,7 @@
 
 - **Severity: P1 — QA is not given the scene/character/route/speaker enrichment it is expected to reference.** The QA input is limited to units, glossary, and style guide, and the loop constructs exactly those values, despite the QA prompt allowing context-artifact evidence references. `apps/itotori/src/agents/qa/shapes.ts:74-87` `apps/itotori/src/orchestrator/agentic-loop.ts:1760-1781` `apps/itotori/src/agents/qa/prompt-template.ts:27-39`
 
-- **Severity: P2 — a reviewer-queue glossary action does not itself perform a glossary writeback.** Its type comment assigns the actual glossary write to a downstream worker, while the service records/enqueues the action. `apps/itotori/src/reviewer/action-service.ts:137-146` `apps/itotori/src/reviewer/action-service.ts:238-250` `apps/itotori/src/reviewer/action-service.ts:312-321`
+- **Resolved since this audit — play-tester glossary/style/context edits now append a canonical ContextEntryVersion, invalidate dependent artifacts, and enqueue one registered context-correction redraft handler.** `apps/itotori/src/orchestrator/context-correction-service.ts` `apps/itotori/src/orchestrator/context-correction-worker.ts`
 
 #### Gaps / needs deeper trace
 

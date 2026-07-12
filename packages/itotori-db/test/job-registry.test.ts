@@ -1,52 +1,42 @@
 // ITOTORI-048 — typed job-name registry unit tests.
 //
-// Pure unit tests (no database): pin that every persisted job name maps to
-// a typed payload + exactly one handler, that an unregistered name or a
-// mismatched payload is rejected (compile-time via the `COMPILE_TIME_*`
-// self-checks in src/job-registry.ts, enforced by tsc on every build, +
-// runtime via the validators), and that a handler cannot be bound for an
-// unregistered name or bound twice for the same name.
-//
-// The compile-time self-checks live in `src/job-registry.ts` (test files
-// are outside the tsc `include`), so tsc enforces them; these tests pin
-// their existence + the runtime rejection behaviour. Together they cover
-// both halves of the acceptance: "caught (compile-time and/or a test)".
+// Pure unit tests (no database): pin that the sole structural
+// context-correction redraft job maps to its typed payload and one handler
+// slot, while unregistered names or mismatched payloads are rejected.
+// Generic agent/tool/search families remain registry-driven.
 
 import { describe, expect, it } from "vitest";
 import {
-  assertReviewerTriggeredRerunPayload,
+  assertContextCorrectionRedraftPayload,
   buildRegisteredJobInput,
   COMPILE_TIME_AGENT_PAYLOAD_TYPE,
+  COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_NAME_REGISTERED,
+  COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_PAYLOAD_TYPE,
   COMPILE_TIME_CROSS_FAMILY_MISMATCH_REJECTED,
   COMPILE_TIME_FAMILY_NAMES_REGISTERED,
-  COMPILE_TIME_RERUN_NAMES_REGISTERED,
-  COMPILE_TIME_RERUN_PAYLOAD_TYPE,
   COMPILE_TIME_UNREGISTERED_NAME_REJECTED,
-  COMPILE_TIME_WRONG_RERUN_PAYLOAD_REJECTED,
+  COMPILE_TIME_WRONG_CONTEXT_CORRECTION_PAYLOAD_REJECTED,
+  contextCorrectionRedraftJobName,
+  contextCorrectionRedraftPayloadSchemaVersion,
   DuplicateJobHandlerError,
   isRegisteredJobName,
   JOB_DEFINITIONS,
   JOB_NAME_FAMILIES,
-  JobPayloadValidationError,
   jobPayloadValidationReasons,
   REGISTERED_JOB_NAMES,
   RegisteredJobHandlerRegistry,
   requireRegisteredJobDefinition,
   resolveRegisteredJobDefinition,
-  reviewerTriggeredRerunJobNameValues,
-  reviewerTriggeredRerunPayloadSchemaVersion,
-  reviewerTriggeredRerunReasonCodeValues,
-  reviewerTriggeredRerunStageValues,
   UnregisteredJobHandlerError,
   UnregisteredJobNameError,
 } from "../src/job-registry.js";
 import type {
   AgentJobPayload,
   AnyRegisteredJobName,
+  ContextCorrectionRedraftPayload,
   JobPayloadFor,
   RegisteredJobInputBase,
   RegisteredJobName,
-  ReviewerTriggeredRerunPayload,
 } from "../src/job-registry.js";
 import type { JobQueueRecord } from "../src/repositories/event-queue-repository.js";
 import { jobIdempotencyPolicyValues, jobTaskTypeValues } from "../src/schema.js";
@@ -55,31 +45,19 @@ import { jobIdempotencyPolicyValues, jobTaskTypeValues } from "../src/schema.js"
 // Fixtures.
 // ---------------------------------------------------------------------------
 
-function rerunPayload(
-  stage: (typeof reviewerTriggeredRerunStageValues)[keyof typeof reviewerTriggeredRerunStageValues],
-): ReviewerTriggeredRerunPayload {
+function contextCorrectionPayload(
+  overrides: Partial<ContextCorrectionRedraftPayload> = {},
+): ContextCorrectionRedraftPayload {
   return {
-    schemaVersion: reviewerTriggeredRerunPayloadSchemaVersion,
-    stage,
+    schemaVersion: contextCorrectionRedraftPayloadSchemaVersion,
+    correctionId: "correction-1",
+    contextArtifactId: "context-artifact-1",
+    contextEntryVersionId: "context-entry-version-2",
     projectId: "project-test",
     localeBranchId: "locale-en-us",
     sourceRevisionId: "source-revision-test",
     affectedUnitIds: ["bridge-unit-1"],
-    artifactIds: ["artifact-1"],
-    policyVersions: {
-      styleGuideVersionId: "style-v1",
-      glossaryVersionId: "glossary-v1",
-      pairPolicyVersionId: null,
-      qaPolicyVersionId: null,
-      exportPolicyVersionId: null,
-      runtimeValidationPolicyVersionId: null,
-    },
-    reasonCodes: [reviewerTriggeredRerunReasonCodeValues.reviewerRequestRepair],
-    reviewItemId: "review-item-1",
-    transitionId: "transition-1",
-    reviewerAction: "request_repair",
-    itemKind: "qa",
-    sourceItemRef: "ref-1",
+    ...overrides,
   };
 }
 
@@ -129,47 +107,29 @@ function jobRecord(jobName: string, payload: unknown): JobQueueRecord {
   };
 }
 
-const stageForRerunName: Record<
-  RegisteredJobName,
-  (typeof reviewerTriggeredRerunStageValues)[keyof typeof reviewerTriggeredRerunStageValues]
-> = {
-  "rerun.draft-repair": reviewerTriggeredRerunStageValues.draftRepair,
-  "rerun.qa-replay": reviewerTriggeredRerunStageValues.qaReplay,
-  "rerun.export-regeneration": reviewerTriggeredRerunStageValues.exportRegeneration,
-  "rerun.runtime-validation": reviewerTriggeredRerunStageValues.runtimeValidation,
-};
-
 // ---------------------------------------------------------------------------
 // Registry exhaustiveness: name ↔ definition parity.
 // ---------------------------------------------------------------------------
 
 describe("JOB_DEFINITIONS — registry exhaustiveness", () => {
-  it("registers every structural RegisteredJobName (compile-time via satisfies)", () => {
-    // The `satisfies Record<RegisteredJobName, RegisteredJobDefinition>` on
-    // JOB_DEFINITIONS makes a missing entry a compile error; this runtime
-    // assertion pins that every declared name resolves to a definition.
-    for (const name of REGISTERED_JOB_NAMES) {
-      expect(resolveRegisteredJobDefinition(name)).toBeDefined();
-      expect(JOB_DEFINITIONS[name]).toBeDefined();
-    }
+  it("registers the sole structural context-correction job", () => {
+    expect(REGISTERED_JOB_NAMES).toEqual([contextCorrectionRedraftJobName]);
+    expect(resolveRegisteredJobDefinition(contextCorrectionRedraftJobName)).toBeDefined();
+    expect(JOB_DEFINITIONS[contextCorrectionRedraftJobName]).toBeDefined();
   });
 
-  it("has no surplus entries beyond the RegisteredJobName union (key parity)", () => {
-    const declared = new Set<string>(Object.values(reviewerTriggeredRerunJobNameValues));
+  it("has no surplus entries beyond the structural registered-name union", () => {
+    const declared = new Set<string>(REGISTERED_JOB_NAMES);
     const tableKeys = new Set<string>(Object.keys(JOB_DEFINITIONS));
-    // Every table key is a declared registered name (no phantom entries).
     for (const key of tableKeys) {
       expect(declared).toContain(key);
     }
-    // Every declared name is in the table (no missing entries).
     expect([...tableKeys].sort()).toEqual([...declared].sort());
   });
 
-  it("stamps the rerun jobType for every structural name", () => {
-    for (const name of REGISTERED_JOB_NAMES) {
-      const definition = requireRegisteredJobDefinition(name);
-      expect(definition.jobType).toBe(jobTaskTypeValues.rerun);
-    }
+  it("stamps the rerun jobType for the structural redraft", () => {
+    const definition = requireRegisteredJobDefinition(contextCorrectionRedraftJobName);
+    expect(definition.jobType).toBe(jobTaskTypeValues.rerun);
   });
 });
 
@@ -197,28 +157,29 @@ describe("resolveRegisteredJobDefinition — name families", () => {
   });
 
   it("returns undefined for an unregistered name", () => {
-    expect(resolveRegisteredJobDefinition("bogus.thing")).toBeUndefined();
-    expect(resolveRegisteredJobDefinition("rerun.not-a-stage")).toBeUndefined();
+    expect(resolveRegisteredJobDefinition("obsolete.refinement")).toBeUndefined();
     expect(resolveRegisteredJobDefinition("agent")).toBeUndefined();
   });
 
   it("isRegisteredJobName agrees with resolveRegisteredJobDefinition", () => {
-    expect(isRegisteredJobName("rerun.draft-repair")).toBe(true);
+    expect(isRegisteredJobName(contextCorrectionRedraftJobName)).toBe(true);
     expect(isRegisteredJobName("agent.foo")).toBe(true);
     expect(isRegisteredJobName("tool.bar")).toBe(true);
     expect(isRegisteredJobName("search.baz")).toBe(true);
     expect(isRegisteredJobName("bogus")).toBe(false);
   });
 
-  it("requireRegisteredJobDefinition throws UnregisteredJobNameError for an unknown name", () => {
-    expect(() => requireRegisteredJobDefinition("bogus.thing")).toThrow(UnregisteredJobNameError);
-    expect(() => requireRegisteredJobDefinition("bogus.thing")).toThrow(
-      expect.objectContaining({ jobName: "bogus.thing" }),
+  it("requireRegisteredJobDefinition throws for an unknown name", () => {
+    expect(() => requireRegisteredJobDefinition("obsolete.refinement")).toThrow(
+      UnregisteredJobNameError,
+    );
+    expect(() => requireRegisteredJobDefinition("obsolete.refinement")).toThrow(
+      expect.objectContaining({ jobName: "obsolete.refinement" }),
     );
   });
 
   it("registers exactly the three family prefixes", () => {
-    expect(JOB_NAME_FAMILIES.map((f) => f.namePrefix).sort()).toEqual([
+    expect(JOB_NAME_FAMILIES.map((family) => family.namePrefix).sort()).toEqual([
       "agent.",
       "search.",
       "tool.",
@@ -227,83 +188,90 @@ describe("resolveRegisteredJobDefinition — name families", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildRegisteredJobInput — typed enqueue builder.
+// buildRegisteredJobInput — structural context-correction job.
 // ---------------------------------------------------------------------------
 
-describe("buildRegisteredJobInput — structural rerun names", () => {
-  it("stamps jobName, jobType, and payload for each registered rerun name", () => {
-    for (const name of REGISTERED_JOB_NAMES) {
-      const stage = stageForRerunName[name];
-      const payload = rerunPayload(stage);
-      const input = buildRegisteredJobInput(name, payload, jobInputBase());
-      expect(input.jobName).toBe(name);
-      expect(input.jobType).toBe(jobTaskTypeValues.rerun);
-      expect(input.payload).toEqual(payload as unknown as Record<string, unknown>);
-    }
+describe("buildRegisteredJobInput — context-correction redraft", () => {
+  it("stamps jobName, rerun jobType, and payload", () => {
+    const payload = contextCorrectionPayload();
+    const input = buildRegisteredJobInput(contextCorrectionRedraftJobName, payload, jobInputBase());
+    expect(input.jobName).toBe(contextCorrectionRedraftJobName);
+    expect(input.jobType).toBe(jobTaskTypeValues.rerun);
+    expect(input.payload).toEqual(payload as unknown as Record<string, unknown>);
   });
 
-  it("preserves caller-supplied queueing context (project, idempotency, deps)", () => {
+  it("preserves caller-supplied queueing context", () => {
     const input = buildRegisteredJobInput(
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      rerunPayload(reviewerTriggeredRerunStageValues.draftRepair),
+      contextCorrectionRedraftJobName,
+      contextCorrectionPayload(),
       jobInputBase({
-        queueName: "reviewer-rerun",
+        queueName: "context-correction",
         dependsOnJobIds: ["job-prior"],
         priority: 40,
       }),
     );
-    expect(input.queueName).toBe("reviewer-rerun");
+    expect(input.queueName).toBe("context-correction");
     expect(input.dependsOnJobIds).toEqual(["job-prior"]);
     expect(input.priority).toBe(40);
   });
 
-  it("runs the payload validator (rejects a payload whose stage disagrees with jobName)", () => {
-    // draft-repair payload enqueued under the qa-replay name: the
-    // stage↔name binding must be caught.
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
+  it("rejects a payload missing a required identifier", () => {
+    const broken: unknown = { ...contextCorrectionPayload(), correctionId: "" };
     expect(() =>
       buildRegisteredJobInput(
-        reviewerTriggeredRerunJobNameValues.qaReplay,
-        payload,
-        jobInputBase(),
-      ),
-    ).toThrow(JobPayloadValidationError);
-    expect(() =>
-      buildRegisteredJobInput(
-        reviewerTriggeredRerunJobNameValues.qaReplay,
-        payload,
+        contextCorrectionRedraftJobName,
+        broken as ContextCorrectionRedraftPayload,
         jobInputBase(),
       ),
     ).toThrow(
       expect.objectContaining({
-        jobName: reviewerTriggeredRerunJobNameValues.qaReplay,
-        reason: jobPayloadValidationReasons.wrongStage,
+        reason: jobPayloadValidationReasons.missingField,
+        field: "correctionId",
       }),
     );
   });
 
-  it("rejects a payload missing required fields", () => {
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const broken: any = { ...payload };
-    broken["projectId"] = "";
+  it("rejects a payload with an empty affectedUnitIds list", () => {
+    const broken: unknown = { ...contextCorrectionPayload(), affectedUnitIds: [] };
     expect(() =>
       buildRegisteredJobInput(
-        reviewerTriggeredRerunJobNameValues.draftRepair,
-        broken,
+        contextCorrectionRedraftJobName,
+        broken as ContextCorrectionRedraftPayload,
         jobInputBase(),
       ),
-    ).toThrow(JobPayloadValidationError);
+    ).toThrow(
+      expect.objectContaining({
+        reason: jobPayloadValidationReasons.missingField,
+        field: "affectedUnitIds",
+      }),
+    );
+  });
+
+  it("rejects a blank affected unit id", () => {
+    const broken: unknown = { ...contextCorrectionPayload(), affectedUnitIds: [""] };
+    expect(() =>
+      buildRegisteredJobInput(
+        contextCorrectionRedraftJobName,
+        broken as ContextCorrectionRedraftPayload,
+        jobInputBase(),
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        reason: jobPayloadValidationReasons.missingField,
+        field: "affectedUnitIds",
+      }),
+    );
   });
 
   it("rejects a payload with a bad schemaVersion discriminator", () => {
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const broken: any = { ...payload, schemaVersion: "itotori.wrong.v1" };
+    const broken: unknown = {
+      ...contextCorrectionPayload(),
+      schemaVersion: "itotori.wrong.v1",
+    };
     expect(() =>
       buildRegisteredJobInput(
-        reviewerTriggeredRerunJobNameValues.draftRepair,
-        broken,
+        contextCorrectionRedraftJobName,
+        broken as ContextCorrectionRedraftPayload,
         jobInputBase(),
       ),
     ).toThrow(
@@ -314,6 +282,10 @@ describe("buildRegisteredJobInput — structural rerun names", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildRegisteredJobInput — agent/tool family names.
+// ---------------------------------------------------------------------------
 
 describe("buildRegisteredJobInput — agent/tool family names", () => {
   it("stamps agent_task for an agent.* name with a valid AgentJobPayload", () => {
@@ -367,16 +339,21 @@ describe("buildRegisteredJobInput — agent/tool family names", () => {
         "agent.translation-quality-judge",
         {
           jobKind: "agent_job",
-          agentName: "agent.wrong",
+          agentName: "agent.other",
           agentVersion: "1.0.0",
           input: {},
         },
         jobInputBase(),
       ),
-    ).toThrow(expect.objectContaining({ reason: jobPayloadValidationReasons.wrongNameBinding }));
+    ).toThrow(
+      expect.objectContaining({
+        reason: jobPayloadValidationReasons.wrongNameBinding,
+        field: "agentName",
+      }),
+    );
   });
 
-  it("rejects a tool payload with the wrong jobKind discriminator", () => {
+  it("rejects a deterministic tool payload with the wrong discriminator", () => {
     expect(() =>
       buildRegisteredJobInput(
         "tool.protected-span-check",
@@ -385,7 +362,7 @@ describe("buildRegisteredJobInput — agent/tool family names", () => {
           toolName: "tool.protected-span-check",
           toolVersion: "1.0.0",
           input: {},
-        },
+        } as unknown as JobPayloadFor<"tool.protected-span-check">,
         jobInputBase(),
       ),
     ).toThrow(expect.objectContaining({ reason: jobPayloadValidationReasons.wrongDiscriminator }));
@@ -397,49 +374,41 @@ describe("buildRegisteredJobInput — agent/tool family names", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildRegisteredJobInput — compile-time enforcement", () => {
-  // The compile-time half of the acceptance is enforced by tsc on
-  // `src/job-registry.ts` (test files are not in the tsc `include`), via
-  // the exported `COMPILE_TIME_*` self-check constants — each resolves to
-  // `never` (making the `= true` initializer a type error) when its
-  // property does NOT hold. These runtime assertions pin that the
-  // self-checks exist and resolved to `true`; tsc pins the type-level
-  // rejection on every build.
-
   it("rejects an unregistered name at compile time", () => {
     expect(COMPILE_TIME_UNREGISTERED_NAME_REJECTED).toBe(true);
   });
 
-  it("registers every structural rerun name at compile time", () => {
-    expect(COMPILE_TIME_RERUN_NAMES_REGISTERED).toBe(true);
+  it("registers the structural context-correction name at compile time", () => {
+    expect(COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_NAME_REGISTERED).toBe(true);
   });
 
   it("registers the agent/tool/search family patterns at compile time", () => {
     expect(COMPILE_TIME_FAMILY_NAMES_REGISTERED).toBe(true);
   });
 
-  it("maps a structural name to the rerun payload type at compile time", () => {
-    expect(COMPILE_TIME_RERUN_PAYLOAD_TYPE).toBe(true);
+  it("maps the structural name to the context-correction payload type", () => {
+    expect(COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_PAYLOAD_TYPE).toBe(true);
   });
 
-  it("maps an agent name to the agent payload type at compile time", () => {
+  it("maps an agent name to the agent payload type", () => {
     expect(COMPILE_TIME_AGENT_PAYLOAD_TYPE).toBe(true);
   });
 
-  it("rejects a wrong-shaped payload for a structural name at compile time", () => {
-    expect(COMPILE_TIME_WRONG_RERUN_PAYLOAD_REJECTED).toBe(true);
+  it("rejects a wrong-shaped payload for the structural name", () => {
+    expect(COMPILE_TIME_WRONG_CONTEXT_CORRECTION_PAYLOAD_REJECTED).toBe(true);
   });
 
-  it("rejects a cross-family payload mismatch at compile time", () => {
+  it("rejects a cross-family payload mismatch", () => {
     expect(COMPILE_TIME_CROSS_FAMILY_MISMATCH_REJECTED).toBe(true);
   });
 
-  it("JobPayloadFor resolves structural names to the rerun payload (runtime shape check)", () => {
-    const payload: JobPayloadFor<typeof reviewerTriggeredRerunJobNameValues.draftRepair> =
-      rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
-    expect(payload.schemaVersion).toBe(reviewerTriggeredRerunPayloadSchemaVersion);
+  it("JobPayloadFor resolves the structural name to the context-correction payload", () => {
+    const payload: JobPayloadFor<typeof contextCorrectionRedraftJobName> =
+      contextCorrectionPayload();
+    expect(payload.schemaVersion).toBe(contextCorrectionRedraftPayloadSchemaVersion);
   });
 
-  it("JobPayloadFor resolves agent.* names to the agent payload (runtime shape check)", () => {
+  it("JobPayloadFor resolves agent.* names to the agent payload", () => {
     const payload: JobPayloadFor<"agent.translation-quality-judge"> = {
       jobKind: "agent_job",
       agentName: "agent.translation-quality-judge",
@@ -463,17 +432,16 @@ describe("RegisteredJobHandlerRegistry — handler binding", () => {
     expect(registry.hasHandlerFor("bogus.thing")).toBe(false);
   });
 
-  it("binds exactly one handler per registered name", () => {
+  it("binds exactly one handler for the structural redraft job", () => {
     const registry = new RegisteredJobHandlerRegistry();
     const handler = async () => {};
-    registry.register(reviewerTriggeredRerunJobNameValues.draftRepair, handler);
-    expect(registry.hasHandlerFor(reviewerTriggeredRerunJobNameValues.draftRepair)).toBe(true);
-    expect(registry.boundJobNames()).toEqual([reviewerTriggeredRerunJobNameValues.draftRepair]);
+    registry.register(contextCorrectionRedraftJobName, handler);
+    expect(registry.hasHandlerFor(contextCorrectionRedraftJobName)).toBe(true);
+    expect(registry.boundJobNames()).toEqual([contextCorrectionRedraftJobName]);
 
-    // A second binding for the SAME name is rejected — exactly one handler.
-    expect(() =>
-      registry.register(reviewerTriggeredRerunJobNameValues.draftRepair, async () => {}),
-    ).toThrow(DuplicateJobHandlerError);
+    expect(() => registry.register(contextCorrectionRedraftJobName, async () => {})).toThrow(
+      DuplicateJobHandlerError,
+    );
   });
 
   it("binds distinct handlers for distinct family names", () => {
@@ -488,16 +456,13 @@ describe("RegisteredJobHandlerRegistry — handler binding", () => {
     ]);
   });
 
-  it("handlerFor throws UnregisteredJobHandlerError for a name with no handler", () => {
+  it("handlerFor throws when a name has no handler", () => {
     const registry = new RegisteredJobHandlerRegistry();
-    const job = jobRecord(
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      rerunPayload(reviewerTriggeredRerunStageValues.draftRepair),
-    );
+    const job = jobRecord(contextCorrectionRedraftJobName, contextCorrectionPayload());
     expect(() => registry.handlerFor(job)).toThrow(UnregisteredJobHandlerError);
     expect(() => registry.handlerFor(job)).toThrow(
       expect.objectContaining({
-        jobName: reviewerTriggeredRerunJobNameValues.draftRepair,
+        jobName: contextCorrectionRedraftJobName,
         jobId: "job-test",
       }),
     );
@@ -506,13 +471,10 @@ describe("RegisteredJobHandlerRegistry — handler binding", () => {
   it("handlerFor returns the bound handler", async () => {
     const registry = new RegisteredJobHandlerRegistry();
     let called = false;
-    registry.register(reviewerTriggeredRerunJobNameValues.draftRepair, async () => {
+    registry.register(contextCorrectionRedraftJobName, async () => {
       called = true;
     });
-    const job = jobRecord(
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      rerunPayload(reviewerTriggeredRerunStageValues.draftRepair),
-    );
+    const job = jobRecord(contextCorrectionRedraftJobName, contextCorrectionPayload());
     const handler = registry.handlerFor(job);
     await handler(job);
     expect(called).toBe(true);
@@ -521,74 +483,69 @@ describe("RegisteredJobHandlerRegistry — handler binding", () => {
   it("toJobHandlerByNameMap projects to the loose byName shape", () => {
     const registry = new RegisteredJobHandlerRegistry();
     const handler = async () => {};
-    registry.register(reviewerTriggeredRerunJobNameValues.draftRepair, handler);
+    registry.register(contextCorrectionRedraftJobName, handler);
     const map = registry.toJobHandlerByNameMap();
-    expect(map[reviewerTriggeredRerunJobNameValues.draftRepair]).toBe(handler);
+    expect(map[contextCorrectionRedraftJobName]).toBe(handler);
   });
 });
 
 // ---------------------------------------------------------------------------
-// assertReviewerTriggeredRerunPayload — payload mismatch coverage.
+// Context-correction payload mismatch coverage.
 // ---------------------------------------------------------------------------
 
-describe("assertReviewerTriggeredRerunPayload — mismatch detection", () => {
+describe("assertContextCorrectionRedraftPayload — mismatch detection", () => {
   it("accepts a well-formed payload", () => {
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
     expect(() =>
-      assertReviewerTriggeredRerunPayload(payload, reviewerTriggeredRerunJobNameValues.draftRepair),
+      assertContextCorrectionRedraftPayload(
+        contextCorrectionPayload(),
+        contextCorrectionRedraftJobName,
+      ),
     ).not.toThrow();
   });
 
   it("rejects a non-object payload", () => {
     expect(() =>
-      assertReviewerTriggeredRerunPayload(
-        "not-an-object",
-        reviewerTriggeredRerunJobNameValues.draftRepair,
-      ),
+      assertContextCorrectionRedraftPayload("not-an-object", contextCorrectionRedraftJobName),
     ).toThrow(expect.objectContaining({ reason: jobPayloadValidationReasons.notRecord }));
   });
 
-  it("rejects a payload with an invalid reasonCode", () => {
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const broken: any = { ...payload, reasonCodes: ["not_a_real_reason_code"] };
+  it("rejects another job name for the context-correction payload", () => {
     expect(() =>
-      assertReviewerTriggeredRerunPayload(broken, reviewerTriggeredRerunJobNameValues.draftRepair),
-    ).toThrow(expect.objectContaining({ reason: jobPayloadValidationReasons.wrongDiscriminator }));
+      assertContextCorrectionRedraftPayload(contextCorrectionPayload(), "other.redraft"),
+    ).toThrow(
+      expect.objectContaining({
+        reason: jobPayloadValidationReasons.wrongNameBinding,
+        field: "jobName",
+      }),
+    );
   });
 
-  it("rejects a payload with a null policyVersions field where a string|null is expected", () => {
-    const payload = rerunPayload(reviewerTriggeredRerunStageValues.draftRepair);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const broken: any = {
-      ...payload,
-      policyVersions: { ...payload.policyVersions, styleGuideVersionId: 123 },
-    };
+  it("rejects a missing context entry version", () => {
+    const broken: unknown = { ...contextCorrectionPayload(), contextEntryVersionId: "" };
     expect(() =>
-      assertReviewerTriggeredRerunPayload(broken, reviewerTriggeredRerunJobNameValues.draftRepair),
-    ).toThrow(JobPayloadValidationError);
+      assertContextCorrectionRedraftPayload(broken, contextCorrectionRedraftJobName),
+    ).toThrow(
+      expect.objectContaining({
+        reason: jobPayloadValidationReasons.missingField,
+        field: "contextEntryVersionId",
+      }),
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
-// Every persisted job name -> typed payload + one handler (acceptance crux).
+// Every persisted job name -> typed payload + one handler slot.
 // ---------------------------------------------------------------------------
 
-describe("acceptance crux — every registered name maps to a typed payload + one handler slot", () => {
-  it("each structural name resolves to a typed payload via JobPayloadFor", () => {
-    // Compile-time: each name's payload type is ReviewerTriggeredRerunPayload.
-    const check: Record<RegisteredJobName, ReviewerTriggeredRerunPayload> = {
-      "rerun.draft-repair": rerunPayload(reviewerTriggeredRerunStageValues.draftRepair),
-      "rerun.qa-replay": rerunPayload(reviewerTriggeredRerunStageValues.qaReplay),
-      "rerun.export-regeneration": rerunPayload(
-        reviewerTriggeredRerunStageValues.exportRegeneration,
-      ),
-      "rerun.runtime-validation": rerunPayload(reviewerTriggeredRerunStageValues.runtimeValidation),
+describe("acceptance crux — structural job maps to a typed payload + one handler slot", () => {
+  it("the structural name resolves to ContextCorrectionRedraftPayload via JobPayloadFor", () => {
+    const check: Record<RegisteredJobName, ContextCorrectionRedraftPayload> = {
+      [contextCorrectionRedraftJobName]: contextCorrectionPayload(),
     };
-    expect(Object.keys(check).sort()).toEqual([...REGISTERED_JOB_NAMES].sort());
+    expect(Object.keys(check)).toEqual([...REGISTERED_JOB_NAMES]);
   });
 
-  it("a fresh registry has no handlers — exactly one slot per name, opt-in", () => {
+  it("a fresh registry has no handler for the structural job", () => {
     const registry = new RegisteredJobHandlerRegistry();
     for (const name of REGISTERED_JOB_NAMES) {
       expect(registry.hasHandlerFor(name)).toBe(false);
@@ -596,9 +553,8 @@ describe("acceptance crux — every registered name maps to a typed payload + on
   });
 
   it("the closed AnyRegisteredJobName union covers structural + family names", () => {
-    // Compile-time fixture: these all satisfy AnyRegisteredJobName.
     const names: AnyRegisteredJobName[] = [
-      reviewerTriggeredRerunJobNameValues.draftRepair,
+      contextCorrectionRedraftJobName,
       "agent.translation-quality-judge",
       "tool.protected-span-check",
       "search.exact",

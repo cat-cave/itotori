@@ -453,6 +453,10 @@ export const migrations = [
     file: "0088_playable_patch_idempotent_membership.sql",
     legacyIds: ["0086_playable_patch_idempotent_membership"],
   },
+  {
+    id: "0089_playtester_context_categories",
+    file: "0089_playtester_context_categories.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

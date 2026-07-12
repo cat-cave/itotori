@@ -3,10 +3,10 @@
 // The reviewer selects N queue items and an action; this service
 // computes — WITHOUT mutating anything — what the action would do to
 // each item: the next state (via the shared ITOTORI-081 transition
-// validator), the affected drafts / exports / rerun jobs / glossary
-// terms / policy versions / benchmark artifacts, and a per-item status
-// (allowed / denied / stale / conflicting). The dashboard renders the
-// result so the reviewer confirms with full knowledge.
+// validator), the affected drafts / exports / rerun jobs / benchmark
+// artifacts, and a per-item status (allowed / denied / stale /
+// conflicting). The dashboard renders the result so the reviewer
+// confirms with full knowledge.
 //
 // The preview path is gated on `queue.read`: the caller resolves the
 // permission via `auth.ts` and passes a `ReviewerBatchPermissionView`.
@@ -107,26 +107,17 @@ export type ReviewerBatchPreviewStatus =
   (typeof reviewerBatchPreviewStatusValues)[keyof typeof reviewerBatchPreviewStatusValues];
 
 /**
- * Closed taxonomy of consequences the preview enumerates. Each rerun
- * job / policy write / glossary write / export / benchmark impact is
- * surfaced verbatim so the dashboard renders one row per affected
- * downstream artifact.
+ * Closed taxonomy of consequences the preview enumerates. Each rerun,
+ * export, or benchmark impact is surfaced verbatim so the dashboard
+ * renders one row per affected downstream artifact. Canonical glossary
+ * and style edits are handled by context correction, not reviewer queue
+ * consequences.
  */
 export type ReviewerBatchConsequence =
   | {
       kind: "rerun_job";
       runtimeTargetId: string;
       jobLabel: string;
-    }
-  | {
-      kind: "policy_version_write";
-      styleGuidePolicyVersionId: string;
-      ruleLabel: string;
-    }
-  | {
-      kind: "glossary_term_write";
-      termId: string;
-      approvedTranslation: string;
     }
   | {
       kind: "export_artifact";
@@ -148,7 +139,7 @@ export type ReviewerBatchConsequence =
  * Per-item preview row. Carries the validator outcome, the next state
  * the action would write, the required permission, the affected
  * artifact ids the batch declared, and any per-item consequences the
- * preview resolver supplied (rerun jobs, glossary writes, etc.).
+ * preview resolver supplied (rerun jobs, exports, and benchmarks).
  */
 export type BatchPreviewItem = {
   reviewItemId: string;
@@ -210,8 +201,8 @@ export type ReviewerBatchPreview = {
 
 /**
  * Port the preview service uses to resolve per-item consequences
- * (affected drafts, exports, rerun jobs, glossary terms, policy
- * versions, benchmark artifacts). Concrete implementations are wired
+ * (affected drafts, exports, rerun jobs, and benchmark artifacts).
+ * Concrete implementations are wired
  * in `services/database-services.ts`; tests pass a hand-rolled stub.
  *
  * The port returns the item + consequences in a single call so the

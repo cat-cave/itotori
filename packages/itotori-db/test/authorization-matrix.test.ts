@@ -568,6 +568,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
   ),
   contextArtifactGate(
+    "loadArtifact",
+    "catalogRead",
+    "context-artifact-repository.test.ts current-head load coverage",
+    (repo) => repo.loadArtifact(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
     "listEntryVersions",
     "catalogRead",
     "context-artifact-repository.test.ts entry history coverage",
@@ -1817,6 +1823,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriContextArtifactRepository.retrieveArtifacts",
           "requiredPermission": "catalog.read",
           "successFixture": "context-artifact-repository.test.ts retrieval coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.loadArtifact",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts current-head load coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

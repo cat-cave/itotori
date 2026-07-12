@@ -87,15 +87,15 @@ describe("validateReviewerQueueTransition — allowed", () => {
 describe("validateReviewerQueueTransition — refusal taxonomy", () => {
   it("returns reviewer_queue_item_invalid_input when the action is not allowed for the kind", () => {
     const result = validateReviewerQueueTransition({
-      item: makeItem({ itemKind: reviewerQueueItemKindValues.qa }),
-      action: reviewerQueueActionValues.updateGlossary,
+      item: makeItem({ itemKind: reviewerQueueItemKindValues.glossary }),
+      action: reviewerQueueActionValues.requestRepair,
       expectedSourceRevisionId: "source-revision-test",
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.code).toBe("reviewer_queue_item_invalid_input");
-      expect(result.message).toContain("action 'update_glossary'");
-      expect(result.message).toContain("'qa'");
+      expect(result.message).toContain("action 'request_repair'");
+      expect(result.message).toContain("'glossary'");
     }
   });
 
@@ -245,12 +245,11 @@ describe("validateReviewerQueueTransition — exported constants", () => {
     );
   });
 
-  it("exposes the per-action allowed kinds", () => {
-    expect(reviewerQueueActionAllowedKinds[reviewerQueueActionValues.updateGlossary]).toEqual([
-      reviewerQueueItemKindValues.glossary,
-    ]);
-    expect(reviewerQueueActionAllowedKinds[reviewerQueueActionValues.updateStyle]).toEqual([
-      reviewerQueueItemKindValues.style,
+  it("exposes requestRepair's allowed queue item kinds", () => {
+    expect(reviewerQueueActionAllowedKinds[reviewerQueueActionValues.requestRepair]).toEqual([
+      reviewerQueueItemKindValues.qa,
+      reviewerQueueItemKindValues.runtimeEvidence,
+      reviewerQueueItemKindValues.feedback,
     ]);
   });
 });

@@ -75,7 +75,7 @@ function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
     projectId: "project-test",
     localeBranchId: "locale-en-us",
     jobType: jobTaskTypeValues.rerun,
-    jobName: "rerun.affected-drafts",
+    jobName: "test.affected-drafts",
     idempotency: {
       policy: jobIdempotencyPolicyValues.idempotent,
       key: "job:rerun:affected-drafts",
@@ -172,7 +172,7 @@ describe("ItotoriEventQueueRepository", () => {
           }),
           jobInput({
             jobId: "job-rerun-drafts-non-idempotent",
-            jobName: "rerun.affected-drafts.non-idempotent",
+            jobName: "test.affected-drafts.non-idempotent",
             idempotency: {
               policy: jobIdempotencyPolicyValues.nonIdempotent,
             },
@@ -605,7 +605,7 @@ describe("ItotoriEventQueueRepository", () => {
         localActor,
         jobInput({
           jobId: "job-rerun-draft-repair",
-          jobName: "rerun.draft-repair",
+          jobName: "test.draft-repair",
           idempotency: {
             policy: jobIdempotencyPolicyValues.idempotent,
             key: "job:rerun:draft-repair",
@@ -617,7 +617,7 @@ describe("ItotoriEventQueueRepository", () => {
         localActor,
         jobInput({
           jobId: "job-rerun-qa-replay",
-          jobName: "rerun.qa-replay",
+          jobName: "test.qa-replay",
           idempotency: {
             policy: jobIdempotencyPolicyValues.idempotent,
             key: "job:rerun:qa-replay",
@@ -630,7 +630,7 @@ describe("ItotoriEventQueueRepository", () => {
         localActor,
         jobInput({
           jobId: "job-rerun-export-regeneration",
-          jobName: "rerun.export-regeneration",
+          jobName: "test.export-regeneration",
           idempotency: {
             policy: jobIdempotencyPolicyValues.idempotent,
             key: "job:rerun:export-regeneration",
@@ -643,7 +643,7 @@ describe("ItotoriEventQueueRepository", () => {
         localActor,
         jobInput({
           jobId: "job-rerun-runtime-validation",
-          jobName: "rerun.runtime-validation",
+          jobName: "test.runtime-validation",
           idempotency: {
             policy: jobIdempotencyPolicyValues.idempotent,
             key: "job:rerun:runtime-validation",
@@ -1055,7 +1055,7 @@ describe("ItotoriEventQueueRepository", () => {
       // the handler returns and the worker attempts completeJob.
       const worker = new ItotoriJobWorkerService(queue, localActor, "worker-slow", {
         byName: {
-          "rerun.affected-drafts": async () => ({ done: true }),
+          "test.affected-drafts": async () => ({ done: true }),
         },
       });
       await expect(worker.runAvailable({ limit: 1, leaseSeconds: 0 })).resolves.toEqual({

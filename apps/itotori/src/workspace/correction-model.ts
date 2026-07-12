@@ -121,20 +121,18 @@ export type WorkspaceCorrectionEditView = {
   duplicate: boolean;
 };
 
-/**
- * The feedback loop's RETURN path for one correction: what was written back to
- * the translation-memory / glossary stores and which units the correction
- * scheduled an affected rerun for. Empty for corrections parked for context.
- */
+/** Direct shared-brain result for one play-tester context correction. */
 export type WorkspaceCorrectionWritebackView = {
   bridgeUnitId: string;
-  /** The reusable translation-memory segment the corrected target was written to. */
-  memorySegmentId: string | null;
-  /** The glossary term written, when the correction was term-scoped. */
-  termId: string | null;
-  /** Every bridge unit sharing the corrected source — the rerun scope. */
+  /** Canonical ContextEntry whose immutable head was advanced. */
+  contextArtifactId: string;
+  /** Newly appended canonical ContextEntryVersion identity. */
+  contextEntryVersionId: string;
+  /** Context artifacts invalidated before the new head was appended. */
+  invalidatedArtifactIds: string[];
+  /** Exact unit scope sent to the registered redraft worker. */
   affectedBridgeUnitIds: string[];
-  /** The reviewer-rerun jobs scheduled to re-draft the affected units. */
+  /** The registered context-correction redraft job. */
   scheduledJobIds: string[];
 };
 
@@ -147,21 +145,19 @@ export type WorkspaceCorrectionSubmitReadModel = {
   batchLabel: string | null;
   submittedCount: number;
   edits: WorkspaceCorrectionEditView[];
-  /** Feedback reports eligible for a scoped repair rerun (objective defects). */
+  /** Retained feedback-audit classification; it never enters a reviewer queue. */
   repairCandidateReportIds: string[];
-  /** Feedback reports routed to the decision queue (style disputes). */
+  /** Retained feedback-audit classification; it never routes a reviewer queue item. */
   decisionQueueReportIds: string[];
-  /** Feedback reports parked for lack of context. */
+  /** Feedback reports tagged as needing more context, retained for audit only. */
   needsContextReportIds: string[];
   /** Union of every bridge unit corrected in the batch — the rerun scope. */
   affectedBridgeUnitIds: string[];
   /**
-   * Per-correction feedback-loop return path: the glossary/TM writeback + the
-   * affected rerun scheduled for each repair-candidate correction. Empty when no
-   * feedback loop is wired or every correction was parked for context.
+   * Per-correction canonical context version + registered redraft schedule.
    */
   writebacks: WorkspaceCorrectionWritebackView[];
-  /** Union of every reviewer-rerun job scheduled by the batch's writebacks. */
+  /** Union of registered context-correction redraft jobs scheduled by the batch. */
   scheduledRerunJobIds: string[];
   diagnostics: WorkspaceCorrectionDiagnostic[];
 };

@@ -120,10 +120,9 @@ export type ReviewerBatchExecuteResult = {
 /**
  * Per-action input the executor needs from the caller, keyed by the
  * `ReviewerQueueAction`. The single-action API requires extra inputs
- * for `requestRepair`, `updateGlossary`, `updateStyle`, and
- * `importRuntimeFeedback`; the batch surface uses a function so the
- * dashboard can compute per-item inputs (e.g. a per-item repair hint
- * or per-item glossary term).
+ * for `requestRepair` and `importRuntimeFeedback`; the batch surface
+ * uses a function so the dashboard can compute per-item inputs (for
+ * example, a per-item repair hint).
  */
 export type BatchActionPayloadResolver = (item: ReviewerQueueItemRecord) => BatchActionPayload;
 
@@ -140,18 +139,6 @@ export type BatchActionPayload =
   | {
       kind: "requestRepair";
       repairHint: string;
-      metadata?: Record<string, unknown>;
-    }
-  | {
-      kind: "updateGlossary";
-      termId: string;
-      approvedTranslation: string;
-      metadata?: Record<string, unknown>;
-    }
-  | {
-      kind: "updateStyle";
-      styleGuideVersionId: string;
-      ruleLabel: string;
       metadata?: Record<string, unknown>;
     }
   | {
@@ -407,36 +394,6 @@ function buildPreparedActionInput(
         },
         reviewerQueueActionValues.requestRepair,
         { repairHint: payload.repairHint },
-      );
-    case "updateGlossary":
-      assertActionMatches(preview.action, "update_glossary");
-      assertNonEmptyPayload("termId", payload.termId);
-      assertNonEmptyPayload("approvedTranslation", payload.approvedTranslation);
-      return buildReviewerQueueActionInput(
-        {
-          ...common,
-          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-        },
-        reviewerQueueActionValues.updateGlossary,
-        {
-          termId: payload.termId,
-          approvedTranslation: payload.approvedTranslation,
-        },
-      );
-    case "updateStyle":
-      assertActionMatches(preview.action, "update_style");
-      assertNonEmptyPayload("styleGuideVersionId", payload.styleGuideVersionId);
-      assertNonEmptyPayload("ruleLabel", payload.ruleLabel);
-      return buildReviewerQueueActionInput(
-        {
-          ...common,
-          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-        },
-        reviewerQueueActionValues.updateStyle,
-        {
-          styleGuideVersionId: payload.styleGuideVersionId,
-          ruleLabel: payload.ruleLabel,
-        },
       );
     case "importRuntimeFeedback":
       assertActionMatches(preview.action, "import_runtime_feedback");

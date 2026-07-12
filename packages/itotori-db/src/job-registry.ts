@@ -2,30 +2,27 @@
 //
 // Single source of truth mapping every persisted durable-job name to its
 // typed payload schema and exactly one intended handler. The queue layer
-// historically carried `jobName: string` and `payload: Record<string,
-// unknown>` on {@link JobQueueInput}, so a renamed job, a drifted payload,
-// or an orphaned handler could only be caught at runtime (often in
-// production). This module closes that hole three ways:
+// historically carried jobName: string and payload: Record<string, unknown>
+// on JobQueueInput, so a renamed job, a drifted payload, or an orphaned
+// handler could only be caught at runtime. This module closes that hole three
+// ways:
 //
-//   1. A closed `RegisteredJobName` union of the structural job names the
-//      db package owns (the reviewer-triggered rerun stages) plus
-//      template-literal family names (`agent.*` / `tool.*` / `search.*`)
-//      for the registry-driven agent/tool jobs. Enqueueing through
-//      {@link buildRegisteredJobInput} is type-gated on that union, so an
-//      unregistered name is a compile-time error.
-//   2. A `JOB_DEFINITIONS` table typed `satisfies Record<RegisteredJobName,
-//      RegisteredJobDefinition>` so adding a name to the union without a
+//   1. A closed RegisteredJobName union for the structural
+//      context-correction redraft job, plus template-literal family names
+//      (agent.* / tool.* / search.*) for registry-driven agent/tool jobs.
+//      Enqueueing through buildRegisteredJobInput is type-gated on that
+//      union, so an unregistered name is a compile-time error.
+//   2. A JOB_DEFINITIONS table typed as Record<RegisteredJobName,
+//      RegisteredJobDefinition>, so adding a structural name without a
 //      definition (or a payload validator) is a compile-time error.
-//   3. A runtime {@link RegisteredJobHandlerRegistry} that refuses to bind
-//      a handler for a name that is not registered and refuses a second
-//      binding for a name that already has one — exactly one handler per
-//      persisted job name.
+//   3. A runtime RegisteredJobHandlerRegistry that refuses to bind a handler
+//      for an unregistered name and refuses a second binding for a name that
+//      already has one — exactly one handler per persisted job name.
 //
-// The reviewer-triggered rerun payload + name constants live here (moved
-// from apps/itotori/src/reviewer/repair-rerun-scheduler.ts) because they
-// are game-agnostic and because the registry must own the payload contract
-// to keep name ↔ payload ↔ handler from drifting. The app re-exports them
-// from @itotori/db so existing imports keep resolving.
+// The context-correction redraft contract lives in the db package because the
+// durable queue must keep its name, payload, and handler binding from
+// drifting. The app consumes these exports when it persists a canonical
+// context version, invalidates affected artifacts, and queues a real redraft.
 
 import type {
   JobQueueInput,
@@ -33,92 +30,45 @@ import type {
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
 import type { JobTaskType } from "./schema.js";
-import {
-  jobTaskTypeValues,
-  reviewerQueueActionValues,
-  reviewerQueueItemKindValues,
-} from "./schema.js";
+import { jobTaskTypeValues } from "./schema.js";
 
 // ---------------------------------------------------------------------------
-// Reviewer-triggered rerun payload + name constants (moved from the app).
+// Context-correction redraft payload + structural job name.
 // ---------------------------------------------------------------------------
-
-export const reviewerTriggeredRerunPayloadSchemaVersion =
-  "itotori.reviewer_triggered_rerun.v1" as const;
-
-export const reviewerTriggeredRerunStageValues = {
-  draftRepair: "draft-repair",
-  qaReplay: "qa-replay",
-  exportRegeneration: "export-regeneration",
-  runtimeValidation: "runtime-validation",
-} as const;
-
-export type ReviewerTriggeredRerunStage =
-  (typeof reviewerTriggeredRerunStageValues)[keyof typeof reviewerTriggeredRerunStageValues];
 
 /**
- * Closed union of the structural reviewer-triggered rerun job names. Each
- * name is `rerun.<stage>` and is the SINGLE source of truth for both the
- * persisted `job_name` column and the {@link ReviewerTriggeredRerunPayload}
- * `stage` discriminator. Adding a stage without adding a name here (and a
- * {@link JOB_DEFINITIONS} entry) is a compile-time error.
+ * The only structural refinement job owned by this registry. Its registered
+ * handler reloads the current ContextPacket before redrafting every affected
+ * unit; it is not a staged fan-out chain.
  */
-export const reviewerTriggeredRerunJobNameValues = {
-  draftRepair: "rerun.draft-repair",
-  qaReplay: "rerun.qa-replay",
-  exportRegeneration: "rerun.export-regeneration",
-  runtimeValidation: "rerun.runtime-validation",
-} as const;
+export const contextCorrectionRedraftJobName = "context-correction.redraft" as const;
 
-export type ReviewerTriggeredRerunJobName =
-  (typeof reviewerTriggeredRerunJobNameValues)[keyof typeof reviewerTriggeredRerunJobNameValues];
+export type ContextCorrectionRedraftJobName = typeof contextCorrectionRedraftJobName;
 
-export const reviewerTriggeredRerunReasonCodeValues = {
-  reviewerRequestRepair: "reviewer_request_repair",
-  reviewerGlossaryUpdate: "reviewer_glossary_update",
-  reviewerStyleUpdate: "reviewer_style_update",
-  reviewerRuntimeFeedbackImport: "reviewer_runtime_feedback_import",
-  glossaryInvalidated: "glossary_invalidated",
-  policyInvalidated: "policy_invalidated",
-  runtimeFeedbackRerun: "runtime_feedback_rerun",
-  reviewerCorrectionWriteback: "reviewer_correction_writeback",
-  translationMemoryInvalidated: "translation_memory_invalidated",
-} as const;
+export const contextCorrectionRedraftPayloadSchemaVersion =
+  "itotori.context-correction-redraft.v1" as const;
 
-export type ReviewerTriggeredRerunReasonCode =
-  (typeof reviewerTriggeredRerunReasonCodeValues)[keyof typeof reviewerTriggeredRerunReasonCodeValues];
+/**
+ * A non-empty immutable array. Context corrections without an affected unit
+ * are not enqueue-able: there is no redraft work to perform.
+ */
+export type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
 
-export type ReviewerTriggeredRerunPolicyVersions = {
-  styleGuideVersionId: string | null;
-  glossaryVersionId: string | null;
-  pairPolicyVersionId: string | null;
-  qaPolicyVersionId: string | null;
-  exportPolicyVersionId: string | null;
-  runtimeValidationPolicyVersionId: string | null;
-};
-
-export type ReviewerTriggeredRerunPayload = {
-  schemaVersion: typeof reviewerTriggeredRerunPayloadSchemaVersion;
-  stage: ReviewerTriggeredRerunStage;
+/**
+ * Durable reference to one canonical context correction and the exact version
+ * that caused it. The worker treats the version identifiers as provenance,
+ * then reloads the fresh ContextPacket rather than trusting a serialized
+ * packet in the job payload.
+ */
+export type ContextCorrectionRedraftPayload = {
+  schemaVersion: typeof contextCorrectionRedraftPayloadSchemaVersion;
+  correctionId: string;
+  contextArtifactId: string;
+  contextEntryVersionId: string;
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
-  affectedUnitIds: readonly string[];
-  artifactIds: readonly string[];
-  policyVersions: ReviewerTriggeredRerunPolicyVersions;
-  reasonCodes: readonly ReviewerTriggeredRerunReasonCode[];
-  reviewItemId: string;
-  transitionId: string;
-  reviewerAction: (typeof reviewerQueueActionValues)[keyof typeof reviewerQueueActionValues];
-  itemKind: (typeof reviewerQueueItemKindValues)[keyof typeof reviewerQueueItemKindValues];
-  sourceItemRef: string;
-  repairHint?: string;
-  termId?: string;
-  approvedTranslation?: string;
-  ruleLabel?: string;
-  runtimeEvidenceTier?: string;
-  observationEventIds?: string[];
-  artifactHashes?: string[];
+  affectedUnitIds: NonEmptyReadonlyArray<string>;
 };
 
 // ---------------------------------------------------------------------------
@@ -126,12 +76,9 @@ export type ReviewerTriggeredRerunPayload = {
 // ---------------------------------------------------------------------------
 
 /**
- * The `agent.<name>` family: durable jobs dispatched to a registered LLM
- * agent. The db layer validates the contract-level fields (`jobKind`,
- * `agentName` prefix + match to `jobName`, `agentVersion`, `input`); the
- * app's `AgentToolRuntime` validates the agent-specific input/output
- * against the registered schema. This is the minimal payload shape the
- * queue layer can assert without coupling to the app-layer agent registry.
+ * The agent.<name> family: durable jobs dispatched to a registered LLM agent.
+ * The db layer validates contract-level fields; the app runtime validates
+ * agent-specific input/output against its registered schema.
  */
 export type AgentJobPayload = {
   jobKind: "agent_job";
@@ -141,12 +88,9 @@ export type AgentJobPayload = {
 };
 
 /**
- * The `tool.<name>` / `search.<name>` family: durable jobs dispatched to a
- * registered deterministic tool. The db layer validates the contract-level
- * fields (`jobKind`, `toolName` prefix + match to `jobName`,
- * `toolVersion`, `input`); the app's `AgentToolRuntime` validates the
- * tool-specific input/output against the registered schema + reproducibility
- * spec.
+ * The tool.<name> / search.<name> family: durable jobs dispatched to a
+ * registered deterministic tool. The db layer validates contract-level
+ * fields; the app runtime validates the tool-specific contract.
  */
 export type DeterministicToolJobPayload = {
   jobKind: "deterministic_tool_job";
@@ -165,38 +109,35 @@ export type DeterministicToolName = ToolJobName | SearchJobName;
 // ---------------------------------------------------------------------------
 
 /**
- * Every structural job name the registry owns. Extending this union
- * without extending {@link JOB_DEFINITIONS} is a compile-time error (the
- * `satisfies Record<RegisteredJobName, RegisteredJobDefinition>` check
- * fails). Extending it WITH a definition automatically makes the name
- * enqueue-able via {@link buildRegisteredJobInput}.
+ * Every structural job name the registry owns. Extending this union without
+ * extending JOB_DEFINITIONS is a compile-time error. Extending it with a
+ * definition automatically makes the name enqueue-able via
+ * buildRegisteredJobInput.
  */
-export type RegisteredJobName = ReviewerTriggeredRerunJobName;
+export type RegisteredJobName = ContextCorrectionRedraftJobName;
 
 /**
  * Template-literal family names: dynamically many (one per registered
  * agent/tool), but each must match a fixed prefix that binds it to a
- * {@link JobTaskType} and a payload validator.
+ * JobTaskType and a payload validator.
  */
 export type RegisteredJobFamilyName = AgentJobName | DeterministicToolName;
 
 /**
  * The full set of names the registry accepts: every structural name plus
- * every family-pattern name. {@link buildRegisteredJobInput} and
- * {@link RegisteredJobHandlerRegistry.register} are type-gated on this
- * union, so an unregistered name is a compile-time error.
+ * every family-pattern name. buildRegisteredJobInput and
+ * RegisteredJobHandlerRegistry.register are type-gated on this union, so an
+ * unregistered name is a compile-time error.
  */
 export type AnyRegisteredJobName = RegisteredJobName | RegisteredJobFamilyName;
 
 /**
  * Compile-time mapping from a registered job name to its typed payload.
- * Resolves to `never` for a name that is not in {@link AnyRegisteredJobName},
- * so {@link buildRegisteredJobInput}`<N>(name, payload)` rejects a
- * wrong-typed payload at compile time and rejects an unknown name entirely
- * (the `never` payload makes any argument a type error).
+ * Resolves to never for a name that is not in AnyRegisteredJobName, so
+ * buildRegisteredJobInput rejects a wrong-typed payload and an unknown name.
  */
-export type JobPayloadFor<N extends string> = N extends RegisteredJobName
-  ? ReviewerTriggeredRerunPayload
+export type JobPayloadFor<N extends string> = N extends ContextCorrectionRedraftJobName
+  ? ContextCorrectionRedraftPayload
   : N extends AgentJobName
     ? AgentJobPayload
     : N extends DeterministicToolName
@@ -209,15 +150,14 @@ export type JobPayloadFor<N extends string> = N extends RegisteredJobName
 
 /**
  * Why a registered-job payload failed validation. Kept as a closed
- * discriminant so a caller can branch on the kind of mismatch
- * (wrong discriminator vs missing field vs wrong name binding).
+ * discriminant so a caller can branch on wrong discriminator, missing field,
+ * or wrong name binding.
  */
 export const jobPayloadValidationReasons = {
   notRecord: "not_record",
   wrongDiscriminator: "wrong_discriminator",
   missingField: "missing_field",
   wrongNameBinding: "wrong_name_binding",
-  wrongStage: "wrong_stage",
 } as const;
 
 export type JobPayloadValidationReason =
@@ -245,115 +185,47 @@ export class JobPayloadValidationError extends Error {
 }
 
 /**
- * Asserts `payload` is a {@link ReviewerTriggeredRerunPayload} AND that its
- * `stage` matches the `rerun.<stage>` suffix of `jobName`. The stage↔name
- * binding is the single most important invariant for the rerun chain (the
- * scheduler fans one context out into four stage-ordered jobs), so a
- * payload whose `stage` disagrees with its `jobName` is rejected as a
- * `wrong_stage` mismatch rather than enqueued and discovered later.
+ * Asserts a context-correction redraft payload has the canonical version
+ * provenance and at least one non-blank affected unit. The job name is bound
+ * exactly so this payload cannot be used under another structural name.
  */
-export function assertReviewerTriggeredRerunPayload(
+export function assertContextCorrectionRedraftPayload(
   payload: unknown,
   jobName: string,
-): asserts payload is ReviewerTriggeredRerunPayload {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+): asserts payload is ContextCorrectionRedraftPayload {
+  assertJobPayloadRecord(payload, jobName);
+  const record = payload as Record<string, unknown>;
+
+  if (jobName !== contextCorrectionRedraftJobName) {
     throw new JobPayloadValidationError(
       jobName,
-      jobPayloadValidationReasons.notRecord,
-      "payload must be a JSON object",
+      jobPayloadValidationReasons.wrongNameBinding,
+      `context-correction payload must use jobName ${contextCorrectionRedraftJobName}`,
+      "jobName",
     );
   }
-  const record = payload as Record<string, unknown>;
-  const reject = (
-    field: string,
-    message: string,
-    reason: JobPayloadValidationReason = jobPayloadValidationReasons.missingField,
-  ): void => {
-    throw new JobPayloadValidationError(jobName, reason, message, field);
-  };
-
-  if (record["schemaVersion"] !== reviewerTriggeredRerunPayloadSchemaVersion) {
-    reject(
-      "schemaVersion",
-      `expected ${reviewerTriggeredRerunPayloadSchemaVersion}`,
+  if (record["schemaVersion"] !== contextCorrectionRedraftPayloadSchemaVersion) {
+    throw new JobPayloadValidationError(
+      jobName,
       jobPayloadValidationReasons.wrongDiscriminator,
-    );
-  }
-  const stage = record["stage"];
-  if (!isReviewerTriggeredRerunStage(stage)) {
-    reject(
-      "stage",
-      "not a valid reviewer-triggered rerun stage",
-      jobPayloadValidationReasons.wrongStage,
-    );
-  }
-  const expectedJobName = `rerun.${stage}`;
-  if (jobName !== expectedJobName) {
-    reject(
-      "stage",
-      `stage ${stage} implies jobName ${expectedJobName} but got ${jobName}`,
-      jobPayloadValidationReasons.wrongStage,
+      `schemaVersion must be ${contextCorrectionRedraftPayloadSchemaVersion}`,
+      "schemaVersion",
     );
   }
 
+  requireNonEmptyString(record["correctionId"], "correctionId", jobName);
+  requireNonEmptyString(record["contextArtifactId"], "contextArtifactId", jobName);
+  requireNonEmptyString(record["contextEntryVersionId"], "contextEntryVersionId", jobName);
   requireNonEmptyString(record["projectId"], "projectId", jobName);
   requireNonEmptyString(record["localeBranchId"], "localeBranchId", jobName);
   requireNonEmptyString(record["sourceRevisionId"], "sourceRevisionId", jobName);
-  requireNonEmptyString(record["reviewItemId"], "reviewItemId", jobName);
-  requireNonEmptyString(record["transitionId"], "transitionId", jobName);
-  requireNonEmptyString(record["sourceItemRef"], "sourceItemRef", jobName);
-
-  if (!isReviewerQueueAction(record["reviewerAction"])) {
-    reject(
-      "reviewerAction",
-      "not a valid reviewer queue action",
-      jobPayloadValidationReasons.wrongDiscriminator,
-    );
-  }
-  if (!isReviewerQueueItemKind(record["itemKind"])) {
-    reject(
-      "itemKind",
-      "not a valid reviewer queue item kind",
-      jobPayloadValidationReasons.wrongDiscriminator,
-    );
-  }
-
-  requireStringArray(record["affectedUnitIds"], "affectedUnitIds", jobName);
-  requireStringArray(record["artifactIds"], "artifactIds", jobName);
-  requireStringArray(record["reasonCodes"], "reasonCodes", jobName);
-  assertReviewerTriggeredRerunReasonCodes(record["reasonCodes"], jobName);
-
-  const policyVersions = record["policyVersions"];
-  if (
-    typeof policyVersions !== "object" ||
-    policyVersions === null ||
-    Array.isArray(policyVersions)
-  ) {
-    reject("policyVersions", "must be a JSON object");
-  } else {
-    const policyRecord = policyVersions as Record<string, unknown>;
-    assertPolicyVersionField(policyRecord, "styleGuideVersionId", jobName);
-    assertPolicyVersionField(policyRecord, "glossaryVersionId", jobName);
-    assertPolicyVersionField(policyRecord, "pairPolicyVersionId", jobName);
-    assertPolicyVersionField(policyRecord, "qaPolicyVersionId", jobName);
-    assertPolicyVersionField(policyRecord, "exportPolicyVersionId", jobName);
-    assertPolicyVersionField(policyRecord, "runtimeValidationPolicyVersionId", jobName);
-  }
-
-  assertOptionalString(record["repairHint"], "repairHint", jobName);
-  assertOptionalString(record["termId"], "termId", jobName);
-  assertOptionalString(record["approvedTranslation"], "approvedTranslation", jobName);
-  assertOptionalString(record["ruleLabel"], "ruleLabel", jobName);
-  assertOptionalString(record["runtimeEvidenceTier"], "runtimeEvidenceTier", jobName);
-  assertOptionalStringArray(record["observationEventIds"], "observationEventIds", jobName);
-  assertOptionalStringArray(record["artifactHashes"], "artifactHashes", jobName);
+  requireNonEmptyStringArray(record["affectedUnitIds"], "affectedUnitIds", jobName);
 }
 
 /**
- * Asserts `payload` is an {@link AgentJobPayload} whose `agentName` matches
- * `jobName` exactly (the durable-job adapter enforces this contract at
- * dispatch time; asserting it at enqueue time catches a mismatch before
- * the job is persisted).
+ * Asserts an AgentJobPayload whose agentName matches jobName exactly. The
+ * durable-job adapter enforces the same contract at dispatch time; asserting
+ * it at enqueue time catches a mismatch before persistence.
  */
 export function assertAgentJobPayload(
   payload: unknown,
@@ -375,7 +247,7 @@ export function assertAgentJobPayload(
     throw new JobPayloadValidationError(
       jobName,
       jobPayloadValidationReasons.wrongNameBinding,
-      `agentName must start with "agent."`,
+      'agentName must start with "agent."',
       "agentName",
     );
   }
@@ -384,9 +256,8 @@ export function assertAgentJobPayload(
 }
 
 /**
- * Asserts `payload` is a {@link DeterministicToolJobPayload} whose
- * `toolName` matches `jobName` exactly. Covers both `tool.*` and
- * `search.*` names.
+ * Asserts a DeterministicToolJobPayload whose toolName matches jobName
+ * exactly. Covers both tool.* and search.* names.
  */
 export function assertDeterministicToolJobPayload(
   payload: unknown,
@@ -408,7 +279,7 @@ export function assertDeterministicToolJobPayload(
     throw new JobPayloadValidationError(
       jobName,
       jobPayloadValidationReasons.wrongNameBinding,
-      `toolName must start with "tool." or "search."`,
+      'toolName must start with "tool." or "search."',
       "toolName",
     );
   }
@@ -421,9 +292,9 @@ export function assertDeterministicToolJobPayload(
 // ---------------------------------------------------------------------------
 
 /**
- * A registered job name's binding: the {@link JobTaskType} that must be
- * stamped on the `itotori_jobs.job_type` column and the runtime payload
- * validator that enforces the typed payload contract.
+ * A registered job name's binding: the JobTaskType stamped on
+ * itotori_jobs.job_type and the runtime payload validator that enforces the
+ * typed payload contract.
  */
 export type RegisteredJobDefinition = {
   readonly jobType: JobTaskType;
@@ -431,44 +302,21 @@ export type RegisteredJobDefinition = {
 };
 
 /**
- * The single source mapping each structural {@link RegisteredJobName} to
- * its `jobType` + payload validator. Typed
- * `satisfies Record<RegisteredJobName, RegisteredJobDefinition>` so:
- *
- *   - adding a name to {@link reviewerTriggeredRerunJobNameValues} (and
- *     thus to {@link RegisteredJobName}) without an entry here is a
- *     compile-time error;
- *   - each entry's `jobType` is a known {@link JobTaskType}.
- *
- * Extra entries (a key not in the union) are caught by the
- * `job-registry.test.ts` key-parity assertion rather than by `satisfies`
- * (which permits surplus keys), giving the test-time half of the gate.
+ * The single mapping from structural names to their job type and payload
+ * validator. The context-correction redraft is a rerun task because the
+ * worker reloads context and redrafts existing affected units.
  */
 export const JOB_DEFINITIONS = {
-  [reviewerTriggeredRerunJobNameValues.draftRepair]: {
+  [contextCorrectionRedraftJobName]: {
     jobType: jobTaskTypeValues.rerun,
-    validatePayload: assertReviewerTriggeredRerunPayload,
-  },
-  [reviewerTriggeredRerunJobNameValues.qaReplay]: {
-    jobType: jobTaskTypeValues.rerun,
-    validatePayload: assertReviewerTriggeredRerunPayload,
-  },
-  [reviewerTriggeredRerunJobNameValues.exportRegeneration]: {
-    jobType: jobTaskTypeValues.rerun,
-    validatePayload: assertReviewerTriggeredRerunPayload,
-  },
-  [reviewerTriggeredRerunJobNameValues.runtimeValidation]: {
-    jobType: jobTaskTypeValues.rerun,
-    validatePayload: assertReviewerTriggeredRerunPayload,
+    validatePayload: assertContextCorrectionRedraftPayload,
   },
 } as const satisfies Record<RegisteredJobName, RegisteredJobDefinition>;
 
 /**
- * The fixed job-name family prefixes: each prefix binds a
- * template-literal family of names to a {@link JobTaskType} + payload
- * validator. A persisted job name that matches neither a structural
- * {@link RegisteredJobName} nor a family prefix is rejected by
- * {@link resolveRegisteredJobName}.
+ * Fixed job-name family prefixes. A persisted name matching neither a
+ * structural RegisteredJobName nor a family prefix is rejected by
+ * resolveRegisteredJobDefinition.
  */
 export const JOB_NAME_FAMILIES = [
   {
@@ -503,7 +351,9 @@ export class UnregisteredJobNameError extends Error {
 
   constructor(jobName: string) {
     super(
-      `job name ${jobName} is not registered: add it to JOB_DEFINITIONS (structural) or a JOB_NAME_FAMILIES prefix`,
+      "job name " +
+        jobName +
+        " is not registered: add it to JOB_DEFINITIONS (structural) or a JOB_NAME_FAMILIES prefix",
     );
     this.name = "UnregisteredJobNameError";
     this.jobName = jobName;
@@ -540,9 +390,9 @@ export class UnregisteredJobHandlerError extends Error {
 
 /**
  * Resolves a persisted job name to its registered definition (structural
- * name first, then family prefix). Returns `undefined` for an unknown name
- * so callers can branch; throws via {@link requireRegisteredJobDefinition}
- * when a name is mandatory.
+ * name first, then family prefix). Returns undefined for an unknown name so
+ * callers can branch; requireRegisteredJobDefinition throws when a name is
+ * mandatory.
  */
 export function resolveRegisteredJobDefinition(
   jobName: string,
@@ -560,17 +410,17 @@ export function resolveRegisteredJobDefinition(
 }
 
 /**
- * Type guard: is `jobName` one the registry accepts (structural name or
- * family-prefix member)? Use this to gate raw enqueue paths that receive a
- * `string` so an unregistered name is rejected before it is persisted.
+ * Type guard: is jobName one the registry accepts (structural name or
+ * family-prefix member)? Use this to gate raw enqueue paths receiving a
+ * string so an unregistered name is rejected before persistence.
  */
 export function isRegisteredJobName(jobName: string): boolean {
   return resolveRegisteredJobDefinition(jobName) !== undefined;
 }
 
 /**
- * Throws {@link UnregisteredJobNameError} for an unknown name; otherwise
- * returns its definition. The mandated path for enqueue-side resolution.
+ * Throws UnregisteredJobNameError for an unknown name; otherwise returns its
+ * definition. The mandated path for enqueue-side resolution.
  */
 export function requireRegisteredJobDefinition(jobName: string): RegisteredJobDefinition {
   const definition = resolveRegisteredJobDefinition(jobName);
@@ -581,25 +431,17 @@ export function requireRegisteredJobDefinition(jobName: string): RegisteredJobDe
 }
 
 /**
- * The structural {@link RegisteredJobName} literals in declaration order,
- * for the key-parity test and any consumer that needs to enumerate the
- * closed set. Family names are intentionally excluded (they are
- * unbounded template literals).
+ * Structural RegisteredJobName literals in declaration order. Family names
+ * are intentionally excluded because they are unbounded template literals.
  */
-export const REGISTERED_JOB_NAMES: readonly RegisteredJobName[] = Object.values(
-  reviewerTriggeredRerunJobNameValues,
-);
+export const REGISTERED_JOB_NAMES = [
+  contextCorrectionRedraftJobName,
+] as const satisfies readonly RegisteredJobName[];
 
 /**
- * Typed enqueue builder: the sanctioned way to construct a
- * {@link JobQueueInput} for a registered job name. Compile-time: `name`
- * must extend {@link AnyRegisteredJobName} and `payload` must extend
- * {@link JobPayloadFor}`<N>`, so an unregistered name or a wrong-typed
- * payload is a type error. Runtime: the registered payload validator runs
- * and the `jobType` is stamped from the registry (the caller cannot lie
- * about it). `base` supplies the queueing context (project, idempotency,
- * dependencies, etc.) and may NOT set `jobName` / `jobType` / `payload`
- * (those are owned by the registry).
+ * Typed enqueue builder: name must extend AnyRegisteredJobName and payload
+ * must extend JobPayloadFor<N>. Runtime validation runs before the job is
+ * persisted and the registry, not the caller, stamps jobType.
  */
 export function buildRegisteredJobInput<N extends AnyRegisteredJobName>(
   name: N,
@@ -617,10 +459,8 @@ export function buildRegisteredJobInput<N extends AnyRegisteredJobName>(
 }
 
 /**
- * The queueing context for {@link buildRegisteredJobInput}: everything on
- * {@link JobQueueInput} EXCEPT `jobName` / `jobType` / `payload`, which the
- * registry owns. `idempotency` and `projectId` remain required (a job
- * without them is not persistable).
+ * Queueing context for buildRegisteredJobInput: everything on JobQueueInput
+ * except jobName, jobType, and payload, which the registry owns.
  */
 export type RegisteredJobInputBase = Omit<JobQueueInput, "jobName" | "jobType" | "payload">;
 
@@ -629,40 +469,23 @@ export type RegisteredJobInputBase = Omit<JobQueueInput, "jobName" | "jobType" |
 // ---------------------------------------------------------------------------
 
 /**
- * A handler for a registered job. Receives the full {@link JobQueueRecord};
- * the payload has already been validated at enqueue time, so a handler can
- * narrow it via the matching `assert*Payload` if it needs typed access.
+ * A handler for a registered job. It receives the full JobQueueRecord; a
+ * handler can use its matching assert*Payload function before accessing its
+ * payload.
  */
 export type RegisteredJobHandler = (job: JobQueueRecord) => Promise<QueueJsonRecord | void>;
 
 /**
- * Typed handler registry: binds exactly one {@link RegisteredJobHandler}
- * per registered job name and dispatches by `jobName`. This is the
- * type-safe replacement for the loose
- * `JobHandlerRegistry['byName']: Record<string, JobHandler>` map:
- *
- *   - {@link register} refuses a name that is not registered
- *     ({@link UnregisteredJobNameError}) — "a handler cannot be added
- *     without registering it";
- *   - {@link register} refuses a second binding for a name that already
- *     has one ({@link DuplicateJobHandlerError}) — "exactly one intended
- *     handler";
- *   - {@link handlerFor} throws {@link UnregisteredJobHandlerError} for a
- *     claimed job whose name has no handler — closing the "orphaned job"
- *     hole at dispatch time.
- *
- * The registry is name-scoped only; type-based fallback (used by the
- * agent/tool adapter for `agent.*` / `tool.*` jobs) stays on the existing
- * {@link JobHandlerRegistry} `byType` map. Use {@link toJobHandlerRegistry}
- * to merge the two for `ItotoriJobWorkerService`.
+ * Typed handler registry: binds exactly one RegisteredJobHandler per
+ * registered job name and dispatches by jobName. The registry is name-scoped;
+ * type-based fallback for agent/tool jobs remains on the existing byType map.
  */
 export class RegisteredJobHandlerRegistry {
   private readonly handlers = new Map<string, RegisteredJobHandler>();
 
   /**
-   * Binds `handler` to `name`. Throws {@link UnregisteredJobNameError} if
-   * `name` is not a registered job name (structural or family), and
-   * {@link DuplicateJobHandlerError} if `name` already has a handler.
+   * Binds handler to name. Rejects an unregistered name and a second binding
+   * for the same name.
    */
   register<N extends AnyRegisteredJobName>(name: N, handler: RegisteredJobHandler): void {
     requireRegisteredJobDefinition(name);
@@ -672,7 +495,7 @@ export class RegisteredJobHandlerRegistry {
     this.handlers.set(name, handler);
   }
 
-  /** Returns the handler bound to `job.jobName`, or throws if none is bound. */
+  /** Returns the handler bound to job.jobName, or throws if none is bound. */
   handlerFor(job: JobQueueRecord): RegisteredJobHandler {
     const handler = this.handlers.get(job.jobName);
     if (handler === undefined) {
@@ -681,21 +504,19 @@ export class RegisteredJobHandlerRegistry {
     return handler;
   }
 
-  /** True when a handler is bound for `jobName`. */
+  /** True when a handler is bound for jobName. */
   hasHandlerFor(jobName: string): boolean {
     return this.handlers.has(jobName);
   }
 
-  /** The set of names with a bound handler, in insertion order. */
+  /** The names with a bound handler, in insertion order. */
   boundJobNames(): readonly string[] {
     return [...this.handlers.keys()];
   }
 
   /**
-   * Projects this registry into the loose
-   * `JobHandlerRegistry['byName']` shape consumed by
-   * {@link ItotoriJobWorkerService}, so the typed registry can be merged
-   * with the existing `byType` fallback without rewriting the worker.
+   * Projects this registry into the loose byName shape consumed by
+   * ItotoriJobWorkerService, so it can be merged with the byType fallback.
    */
   toJobHandlerByNameMap(): Record<string, RegisteredJobHandler> {
     return Object.fromEntries(this.handlers);
@@ -746,6 +567,26 @@ function requireNonEmptyString(value: unknown, field: string, jobName: string): 
   return value;
 }
 
+function requireNonEmptyStringArray(
+  value: unknown,
+  field: string,
+  jobName: string,
+): NonEmptyReadonlyArray<string> {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every((entry) => typeof entry === "string" && entry.length > 0)
+  ) {
+    throw new JobPayloadValidationError(
+      jobName,
+      jobPayloadValidationReasons.missingField,
+      `${field} must be a non-empty array of non-empty strings`,
+      field,
+    );
+  }
+  return value as unknown as NonEmptyReadonlyArray<string>;
+}
+
 function requireJsonObject(value: unknown, field: string, jobName: string): QueueJsonRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new JobPayloadValidationError(
@@ -758,141 +599,22 @@ function requireJsonObject(value: unknown, field: string, jobName: string): Queu
   return value as QueueJsonRecord;
 }
 
-function requireStringArray(value: unknown, field: string, jobName: string): readonly string[] {
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new JobPayloadValidationError(
-      jobName,
-      jobPayloadValidationReasons.missingField,
-      `${field} must be an array of strings`,
-      field,
-    );
-  }
-  return value as readonly string[];
-}
-
-function assertOptionalString(value: unknown, field: string, jobName: string): void {
-  if (value === undefined) {
-    return;
-  }
-  if (typeof value !== "string" || value.length === 0) {
-    throw new JobPayloadValidationError(
-      jobName,
-      jobPayloadValidationReasons.missingField,
-      `${field} must be a non-empty string when present`,
-      field,
-    );
-  }
-}
-
-function assertOptionalStringArray(value: unknown, field: string, jobName: string): void {
-  if (value === undefined) {
-    return;
-  }
-  requireStringArray(value, field, jobName);
-}
-
-function assertPolicyVersionField(
-  policyRecord: Record<string, unknown>,
-  field: string,
-  jobName: string,
-): void {
-  const value = policyRecord[field];
-  if (value === null) {
-    return;
-  }
-  if (typeof value !== "string" || value.length === 0) {
-    throw new JobPayloadValidationError(
-      jobName,
-      jobPayloadValidationReasons.missingField,
-      `policyVersions.${field} must be a non-empty string or null`,
-      `policyVersions.${field}`,
-    );
-  }
-}
-
-function assertReviewerTriggeredRerunReasonCodes(
-  value: unknown,
-  jobName: string,
-): asserts value is readonly ReviewerTriggeredRerunReasonCode[] {
-  if (!Array.isArray(value)) {
-    throw new JobPayloadValidationError(
-      jobName,
-      jobPayloadValidationReasons.missingField,
-      "reasonCodes must be an array",
-      "reasonCodes",
-    );
-  }
-  const valid = new Set<string>(Object.values(reviewerTriggeredRerunReasonCodeValues));
-  for (const entry of value) {
-    if (typeof entry !== "string" || !valid.has(entry)) {
-      throw new JobPayloadValidationError(
-        jobName,
-        jobPayloadValidationReasons.wrongDiscriminator,
-        `reasonCodes entry ${String(entry)} is not a valid reviewer-triggered rerun reason code`,
-        "reasonCodes",
-      );
-    }
-  }
-}
-
-function isReviewerTriggeredRerunStage(value: unknown): value is ReviewerTriggeredRerunStage {
-  return (
-    typeof value === "string" &&
-    Object.values(reviewerTriggeredRerunStageValues).includes(value as ReviewerTriggeredRerunStage)
-  );
-}
-
-function isReviewerQueueAction(
-  value: unknown,
-): value is (typeof reviewerQueueActionValues)[keyof typeof reviewerQueueActionValues] {
-  return (
-    typeof value === "string" &&
-    Object.values(reviewerQueueActionValues).includes(
-      value as (typeof reviewerQueueActionValues)[keyof typeof reviewerQueueActionValues],
-    )
-  );
-}
-
-function isReviewerQueueItemKind(
-  value: unknown,
-): value is (typeof reviewerQueueItemKindValues)[keyof typeof reviewerQueueItemKindValues] {
-  return (
-    typeof value === "string" &&
-    Object.values(reviewerQueueItemKindValues).includes(
-      value as (typeof reviewerQueueItemKindValues)[keyof typeof reviewerQueueItemKindValues],
-    )
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Compile-time self-checks (tsc-enforced on every build).
 //
-// These exported constants are the compile-time half of the acceptance
-// ("caught (compile-time and/or a test)"). Each asserts exactly one
-// property of the registry's type-level contract via a conditional type
-// that resolves to `never` (making the `= true` initializer a type error)
-// when the property does NOT hold. They are runtime `true` (no side
-// effects, never throw); tsc enforces them because this file is in
-// `src/**/*.ts`. `job-registry.test.ts` pins their existence.
-//
-//   - an unregistered name does NOT satisfy AnyRegisteredJobName;
-//   - every structural rerun name + the agent/tool/search family patterns
-//     DO satisfy AnyRegisteredJobName;
-//   - JobPayloadFor<N> is exactly the expected payload type per family;
-//   - a wrong-shaped payload is NOT assignable to JobPayloadFor<N>.
+// These exported constants assert the registry's type-level contract:
+// unregistered names are excluded; the structural context-correction job and
+// each dynamic family are included; JobPayloadFor maps to the correct payload;
+// and a wrong-shaped payload is rejected.
 // ---------------------------------------------------------------------------
 
-/** Asserts `"bogus.thing"` is rejected by the registered-name union. */
+/** Asserts bogus.thing is rejected by the registered-name union. */
 export const COMPILE_TIME_UNREGISTERED_NAME_REJECTED: "bogus.thing" extends AnyRegisteredJobName
   ? never
   : true = true;
 
-/** Asserts every structural rerun name is in the registered-name union. */
-export const COMPILE_TIME_RERUN_NAMES_REGISTERED:
-  | typeof reviewerTriggeredRerunJobNameValues.draftRepair
-  | typeof reviewerTriggeredRerunJobNameValues.qaReplay
-  | typeof reviewerTriggeredRerunJobNameValues.exportRegeneration
-  | typeof reviewerTriggeredRerunJobNameValues.runtimeValidation extends AnyRegisteredJobName
+/** Asserts the context-correction redraft name is a registered structural name. */
+export const COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_NAME_REGISTERED: typeof contextCorrectionRedraftJobName extends AnyRegisteredJobName
   ? true
   : never = true;
 
@@ -904,18 +626,18 @@ export const COMPILE_TIME_FAMILY_NAMES_REGISTERED:
   ? true
   : never = true;
 
-/** Asserts JobPayloadFor<rerun name> is exactly ReviewerTriggeredRerunPayload. */
-export const COMPILE_TIME_RERUN_PAYLOAD_TYPE: [
-  JobPayloadFor<typeof reviewerTriggeredRerunJobNameValues.draftRepair>,
-] extends [ReviewerTriggeredRerunPayload]
-  ? [ReviewerTriggeredRerunPayload] extends [
-      JobPayloadFor<typeof reviewerTriggeredRerunJobNameValues.draftRepair>,
+/** Asserts JobPayloadFor for the structural name is ContextCorrectionRedraftPayload. */
+export const COMPILE_TIME_CONTEXT_CORRECTION_REDRAFT_PAYLOAD_TYPE: [
+  JobPayloadFor<typeof contextCorrectionRedraftJobName>,
+] extends [ContextCorrectionRedraftPayload]
+  ? [ContextCorrectionRedraftPayload] extends [
+      JobPayloadFor<typeof contextCorrectionRedraftJobName>,
     ]
     ? true
     : never
   : never = true;
 
-/** Asserts JobPayloadFor<agent name> is exactly AgentJobPayload. */
+/** Asserts JobPayloadFor for an agent name is AgentJobPayload. */
 export const COMPILE_TIME_AGENT_PAYLOAD_TYPE: [
   JobPayloadFor<"agent.translation-quality-judge">,
 ] extends [AgentJobPayload]
@@ -924,14 +646,14 @@ export const COMPILE_TIME_AGENT_PAYLOAD_TYPE: [
     : never
   : never = true;
 
-/** Asserts a wrong-shaped object is NOT assignable to the rerun payload type. */
-export const COMPILE_TIME_WRONG_RERUN_PAYLOAD_REJECTED: { wrong: string } extends JobPayloadFor<
-  typeof reviewerTriggeredRerunJobNameValues.draftRepair
->
+/** Asserts a wrong-shaped object is not assignable to the structural payload. */
+export const COMPILE_TIME_WRONG_CONTEXT_CORRECTION_PAYLOAD_REJECTED: {
+  wrong: string;
+} extends JobPayloadFor<typeof contextCorrectionRedraftJobName>
   ? never
   : true = true;
 
-/** Asserts a rerun payload is NOT assignable to the agent payload type (cross-family mismatch). */
-export const COMPILE_TIME_CROSS_FAMILY_MISMATCH_REJECTED: ReviewerTriggeredRerunPayload extends JobPayloadFor<"agent.translation-quality-judge">
+/** Asserts the structural payload is not assignable to the agent payload. */
+export const COMPILE_TIME_CROSS_FAMILY_MISMATCH_REJECTED: ContextCorrectionRedraftPayload extends JobPayloadFor<"agent.translation-quality-judge">
   ? never
   : true = true;

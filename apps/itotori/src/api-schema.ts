@@ -2936,14 +2936,16 @@ export function assertWorkspaceCorrectionSubmitReadModel(
     const writebackLabel = `${label}.writebacks[${index}]`;
     const writeback = asStrictRecord(writebackValue, writebackLabel, [
       "bridgeUnitId",
-      "memorySegmentId",
-      "termId",
+      "contextArtifactId",
+      "contextEntryVersionId",
+      "invalidatedArtifactIds",
       "affectedBridgeUnitIds",
       "scheduledJobIds",
     ]);
     assertString(writeback.bridgeUnitId, `${writebackLabel}.bridgeUnitId`);
-    assertNullableString(writeback.memorySegmentId, `${writebackLabel}.memorySegmentId`);
-    assertNullableString(writeback.termId, `${writebackLabel}.termId`);
+    assertString(writeback.contextArtifactId, `${writebackLabel}.contextArtifactId`);
+    assertString(writeback.contextEntryVersionId, `${writebackLabel}.contextEntryVersionId`);
+    assertStringArray(writeback.invalidatedArtifactIds, `${writebackLabel}.invalidatedArtifactIds`);
     assertStringArray(writeback.affectedBridgeUnitIds, `${writebackLabel}.affectedBridgeUnitIds`);
     assertStringArray(writeback.scheduledJobIds, `${writebackLabel}.scheduledJobIds`);
   }

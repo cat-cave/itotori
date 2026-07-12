@@ -3,10 +3,10 @@
 // CORRECTION SCOPE panel.
 //
 // Mounts the REAL `CorrectionScopePanel` over an msw-intercepted
-// `/api/workspace/corrections` (the correction-feedback-loop preview
+// `/api/workspace/corrections` (the context-correction preview
 // read-model) + `/api/projects/overview` (the durable execution-journal
 // read-model) and asserts the OBSERVABLE behavior the reviewer sees: the
-// panel reads the correction-feedback-loop read-model through the typed
+// panel reads the context-correction read-model through the typed
 // client (no ad-hoc fetch) and renders the correction's SCOPE (which unit /
 // scene it affects) and which RUN (N+1) folds it in — derived from the
 // journal run count — using the ds `ComparisonPane` + `StatReadout` + `Badge`
@@ -35,7 +35,7 @@ const LOCALE_BRANCH_ID = "locale-branch-rev-corr";
 const CORRECTIONS_PATH = "*/api/workspace/corrections";
 const OVERVIEW_PATH = "*/api/projects/overview";
 
-// A correction-feedback-loop preview fixture carrying ONE unit — the
+// A context-correction preview fixture carrying ONE unit — the
 // correction under review — with source / draft / corrected (final) text so
 // the panel renders the correction's scope (bridge unit + scene/unit key).
 function previewFixture(
@@ -176,9 +176,7 @@ describe("CorrectionScopePanel — correction scope + folding run (N+1)", () => 
     // The api-client treats `units: []` as the structured `empty` state; the
     // panel surfaces a no-data message rather than a blank panel.
     expect(
-      await screen.findByText(
-        "No correction-feedback-loop preview was returned for this reviewer item.",
-      ),
+      await screen.findByText("No context-correction preview was returned for this reviewer item."),
     ).toBeInTheDocument();
   });
 

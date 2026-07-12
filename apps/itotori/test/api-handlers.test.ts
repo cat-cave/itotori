@@ -1387,15 +1387,14 @@ describe("Itotori API handlers", () => {
     expect(response.body).toMatchObject({ code: "bad_request" });
   });
 
-  it("rejects an unsupported single-item action verb with a 400 bad_request", async () => {
+  it("rejects an unknown single-item action verb with a 400 bad_request", async () => {
     const services = serviceFixture();
     const response = await handleItotoriApiRequest(
       {
         method: "POST",
         pathname: "/api/reviewer/queue/reviewer-queue-7/action",
         body: {
-          // update_glossary is a batch/agentic-loop verb, not a per-item verb.
-          action: reviewerQueueActionValues.updateGlossary,
+          action: "not_a_reviewer_action",
           actorUserId: "reviewer-user",
           expectedSourceRevisionId: "source-revision-1",
         },

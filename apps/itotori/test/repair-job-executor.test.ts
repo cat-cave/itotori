@@ -2,9 +2,8 @@
 //
 // Proves the crux acceptance: a correction / feedback that schedules a rerun
 // actually EXECUTES. Before the executor landed, `RepairJobService` only
-// QUEUED jobs (`claimNext`/`recordOutcome` seam with no consumer) and
-// `repair-rerun-scheduler` only built durable job INPUTS — nothing re-drafted
-// or re-QA'd anything, and no written outcome was persisted. These tests drive
+// QUEUED jobs (`claimNext`/`recordOutcome` seam with no consumer), so nothing
+// re-drafted or re-QA'd anything and no written outcome was persisted. These tests drive
 // the executor end-to-end on a synthetic (fake-provider) project so a
 // play-test correction -> scheduled rerun -> REAL re-draft/re-QA -> persisted
 // selected body + real billed cost is proven, deterministically.
@@ -334,8 +333,8 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     const service = makeService();
 
     // A play-test correction: the prior body was wrong; the user requests a
-    // re-draft of UNIT_A at the translation stage. This is the trigger the
-    // repair-rerun-scheduler / a correction writeback would lower into a job.
+    // re-draft of UNIT_A at the translation stage. This is the generic
+    // human-decision trigger that lowers into a repair job.
     const job = service.enqueue({
       trigger: {
         trigger: "human_decision",

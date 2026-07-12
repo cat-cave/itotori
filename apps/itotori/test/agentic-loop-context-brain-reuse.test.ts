@@ -5,9 +5,13 @@
 // adapter; the behavioral boundary under test is the actual executor wiring
 // into the migrated Postgres context-artifact repository.
 
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ItotoriContextArtifactRepository,
+  ItotoriEventQueueRepository,
   ItotoriProjectRepository,
   bootstrapLocalUser,
   localUserId,
@@ -21,6 +25,9 @@ import {
   runProjectDrivenExecutor,
   type DrivenUnitJournalRecord,
 } from "../src/orchestrator/project-driven-executor.js";
+import { FsDrivenPatchExportSink } from "../src/orchestrator/project-driven-executor-sinks.js";
+import { ContextCorrectionService } from "../src/orchestrator/context-correction-service.js";
+import { ContextCorrectionRerunWorker } from "../src/orchestrator/context-correction-worker.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import {
   createProviderRunId,
@@ -56,6 +63,10 @@ const SEMANTIC_SCENE_SUMMARY_BODY =
 const CONTEXT_AWARE_DRAFT = "Captain Wato's context-aware greeting.";
 const PRIMARY_REPAIR_DRAFT = "Captain Wato's draft before repair.";
 const REPAIRED_DRAFT = "Captain Wato's repaired context-aware greeting.";
+const DELIVERED_DRAFT = "Captain Wato's delivered greeting before the context correction.";
+const CONTEXT_CORRECTED_DRAFT = "Captain Wato's glossary-corrected greeting.";
+const PLAY_TESTER_GLOSSARY_BODY =
+  "PLAY-TESTER GLOSSARY: Captain Wato must be rendered as Captain Wato in this scene.";
 const QA_FINDING_ID = "019ed0cb-1000-7000-8000-00000000cb31";
 
 const providerDescriptor: ProviderDescriptor = {
@@ -809,5 +820,274 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await context.close();
       }
     }, 30_000);
+
+    it("persists a play-tester glossary version, invalidates context, and runs the registered redraft worker", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await bootstrapLocalUser(context.db);
+        const bridge = makeBridge();
+        const projectRepository = new ItotoriProjectRepository(context.db);
+        const project = {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          targetLocale: "en-US",
+          drafts: {},
+          bridge,
+        };
+        await projectRepository.importSourceBundle(ACTOR, project);
+
+        const contextArtifacts = new ItotoriContextArtifactRepository(context.db);
+        const queue = new ItotoriEventQueueRepository(context.db);
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-context-correction-"));
+        const initialDir = join(workDir, "delivered-before-refresh");
+        const refreshDir = join(workDir, "refresh-after-correction");
+        const prompts = makePromptCaptures();
+        const sceneSummaryCalls = { count: 0 };
+        let refreshPass = false;
+        const providerFactory = executorProviderFactory({
+          sceneSummaryCalls,
+          prompts,
+          responseOverride: ({ bridgeUnitId, prompt, stage }) => {
+            if (stage !== "translation") {
+              return undefined;
+            }
+            if (!refreshPass) {
+              return translationContent(
+                bridgeUnitId,
+                bridgeUnitId === UNIT_A_ID ? DELIVERED_DRAFT : "Delivered unaffected greeting.",
+              );
+            }
+            const reloadedCorrection = prompt.includes(PLAY_TESTER_GLOSSARY_BODY);
+            return translationContent(
+              bridgeUnitId,
+              reloadedCorrection ? CONTEXT_CORRECTED_DRAFT : "Context packet was not reloaded.",
+            );
+          },
+        });
+        const initialJournalUnits: DrivenUnitJournalRecord[] = [];
+
+        const initial = await runProjectDrivenExecutor({
+          bridge,
+          rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
+          pairPolicy: DEV_POLICY,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          actor: ACTOR,
+          providerFactory,
+          contextArtifactRepository: contextArtifacts,
+          resolveUnitContext: () => ({ narrativeStructure: makeStructure(), sceneId: SCENE_ID }),
+          translationScope: "dialogue-only",
+          engineProfile: "rpg-maker-mv-mz",
+          concurrency: 1,
+          maxRepairAttempts: 0,
+          sinks: {
+            journal: {
+              createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
+              persistUnitJournal: async (record) => {
+                initialJournalUnits.push(record);
+              },
+              persistFailedUnitAttempts: async () => {},
+            },
+            patchExport: new FsDrivenPatchExportSink(initialDir),
+          },
+        });
+        expect(initial.patchReport.coverageComplete).toBe(true);
+        const deliveredOutcome = initial.unitOutcomes.find(
+          (outcome) => outcome.bridgeUnitId === UNIT_A_ID,
+        );
+        if (deliveredOutcome === undefined) {
+          throw new Error("initial delivered run did not persist unit A");
+        }
+        expect(deliveredOutcome.selectedBody).toBe(DELIVERED_DRAFT);
+        const deliveredDrafts = Object.fromEntries(
+          initial.unitOutcomes.map((outcome) => [outcome.bridgeUnitId, outcome.selectedBody]),
+        );
+        await projectRepository.saveDrafts(ACTOR, { ...project, drafts: deliveredDrafts });
+        expect(exportedTargetText(initialDir, UNIT_A_ID)).toBe(DELIVERED_DRAFT);
+        expect(
+          (
+            await context.pool.query<{ target_text: string }>(
+              "select target_text from itotori_locale_branch_units where locale_branch_id = $1 and bridge_unit_id = $2",
+              [LOCALE_BRANCH_ID, UNIT_A_ID],
+            )
+          ).rows[0]?.target_text,
+        ).toBe(DELIVERED_DRAFT);
+
+        const correction = await new ContextCorrectionService({
+          actor: ACTOR,
+          contextArtifacts,
+          jobs: queue,
+        }).apply({
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          contextArtifactId: "play-tester-glossary-captain-wato",
+          kind: "glossary",
+          title: "Captain Wato",
+          body: PLAY_TESTER_GLOSSARY_BODY,
+          reason: "The play test established the canonical captain title.",
+          affectedUnitIds: [UNIT_A_ID],
+        });
+        const correctionVersionId = correction.contextArtifact.headVersionId;
+        if (correctionVersionId === null) {
+          throw new Error("correction did not append a canonical context version");
+        }
+        expect(correction.invalidatedArtifactIds.length).toBeGreaterThan(0);
+        const versions = await contextArtifacts.listEntryVersions(ACTOR, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          contextArtifactId: correction.contextArtifact.contextArtifactId,
+        });
+        expect(versions).toEqual([
+          expect.objectContaining({
+            contextEntryVersionId: correctionVersionId,
+            body: PLAY_TESTER_GLOSSARY_BODY,
+            affectedUnitIds: [UNIT_A_ID],
+          }),
+        ]);
+        expect((await queue.getJob(ACTOR, correction.redraftJob.jobId))?.status).toBe("queued");
+        // The delivered patch stays available while the refresh waits in the
+        // durable queue; no delivery projection is overwritten at schedule time.
+        expect(exportedTargetText(initialDir, UNIT_A_ID)).toBe(DELIVERED_DRAFT);
+
+        let refreshRunId: string | undefined;
+        const refreshJournalUnits: DrivenUnitJournalRecord[] = [];
+        const affectedBridge = {
+          ...bridge,
+          units: bridge.units.filter((unit) => unit.bridgeUnitId === UNIT_A_ID),
+        };
+        const worker = new ContextCorrectionRerunWorker({
+          queue,
+          actor: ACTOR,
+          workerId: "context-correction-e2e-worker",
+          redrafter: {
+            redraft: async (_payload) => {
+              refreshPass = true;
+              const refresh = await runProjectDrivenExecutor({
+                bridge: affectedBridge,
+                rawBridge: JSON.parse(JSON.stringify(affectedBridge)) as unknown,
+                pairPolicy: DEV_POLICY,
+                pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+                projectId: PROJECT_ID,
+                localeBranchId: LOCALE_BRANCH_ID,
+                sourceRevisionId: SOURCE_REVISION_ID,
+                actor: ACTOR,
+                providerFactory,
+                contextArtifactRepository: contextArtifacts,
+                resolveUnitContext: () => ({
+                  narrativeStructure: makeStructure(),
+                  sceneId: SCENE_ID,
+                }),
+                translationScope: "dialogue-only",
+                engineProfile: "rpg-maker-mv-mz",
+                concurrency: 1,
+                maxRepairAttempts: 0,
+                sinks: {
+                  journal: {
+                    createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
+                    persistUnitJournal: async (record) => {
+                      refreshJournalUnits.push(record);
+                    },
+                    persistFailedUnitAttempts: async () => {},
+                  },
+                  patchExport: new FsDrivenPatchExportSink(refreshDir),
+                },
+              });
+              refreshRunId = refresh.journalRunId;
+              const refreshedDrafts = Object.fromEntries(
+                refresh.unitOutcomes.map((outcome) => [outcome.bridgeUnitId, outcome.selectedBody]),
+              );
+              await projectRepository.saveDrafts(ACTOR, {
+                ...project,
+                drafts: { ...deliveredDrafts, ...refreshedDrafts },
+              });
+              const resolvedContextVersionsByUnit: Record<string, Record<string, string>> = {};
+              let changedDraftCount = 0;
+              for (const record of refreshJournalUnits) {
+                const packet = record.contextPacket.unitContextPacket;
+                if (packet === null || packet === undefined) {
+                  throw new Error(
+                    `redraft ${record.writtenOutcome.bridgeUnitId} did not resolve a ContextPacket`,
+                  );
+                }
+                resolvedContextVersionsByUnit[record.writtenOutcome.bridgeUnitId] = {
+                  ...packet.resolvedFromVersions,
+                };
+                const selected = refresh.unitOutcomes.find(
+                  (outcome) => outcome.bridgeUnitId === record.writtenOutcome.bridgeUnitId,
+                );
+                if (selected?.selectedBody !== DELIVERED_DRAFT) {
+                  changedDraftCount += 1;
+                }
+              }
+              return {
+                journalRunId: refresh.journalRunId,
+                redraftedUnitIds: refreshJournalUnits.map(
+                  (record) => record.writtenOutcome.bridgeUnitId,
+                ),
+                changedDraftCount,
+                resolvedContextVersionsByUnit,
+              };
+            },
+          },
+        });
+        expect(worker.hasRegisteredHandler()).toBe(true);
+        const workerResult = await worker.runAvailable();
+        expect(workerResult).toMatchObject({
+          claimed: 1,
+          succeeded: 1,
+          failed: 0,
+        });
+        if (refreshRunId === undefined) {
+          throw new Error("registered context-correction worker did not run the redrafter");
+        }
+
+        const refreshedOutcome = refreshJournalUnits.find(
+          (record) => record.writtenOutcome.bridgeUnitId === UNIT_A_ID,
+        );
+        if (refreshedOutcome === undefined) {
+          throw new Error("registered redraft did not run unit A");
+        }
+        expect(
+          refreshJournalUnits.find((record) => record.writtenOutcome.bridgeUnitId === UNIT_A_ID)
+            ?.writtenOutcome.selectedBody,
+        ).toBe(CONTEXT_CORRECTED_DRAFT);
+        expect(refreshedOutcome.contextPacket).toMatchObject({
+          unitContextPacket: {
+            resolvedFromVersions: {
+              [correction.contextArtifact.contextArtifactId]: correctionVersionId,
+            },
+            artifacts: expect.arrayContaining([
+              expect.objectContaining({
+                contextEntryVersionId: correctionVersionId,
+                body: PLAY_TESTER_GLOSSARY_BODY,
+              }),
+            ]),
+          },
+        });
+        expect(exportedTargetText(refreshDir, UNIT_A_ID)).toBe(CONTEXT_CORRECTED_DRAFT);
+        expect(exportedTargetText(initialDir, UNIT_A_ID)).toBe(DELIVERED_DRAFT);
+        expect(
+          (
+            await context.pool.query<{ target_text: string }>(
+              "select target_text from itotori_locale_branch_units where locale_branch_id = $1 and bridge_unit_id = $2",
+              [LOCALE_BRANCH_ID, UNIT_A_ID],
+            )
+          ).rows[0]?.target_text,
+        ).toBe(CONTEXT_CORRECTED_DRAFT);
+        expect((await queue.getJob(ACTOR, correction.redraftJob.jobId))?.status).toBe("succeeded");
+      } finally {
+        await context.close();
+      }
+    }, 30_000);
   },
 );
+
+function exportedTargetText(runDir: string, bridgeUnitId: string): string | undefined {
+  const bridge = JSON.parse(readFileSync(join(runDir, "translated-bridge.json"), "utf8")) as {
+    units: Array<{ bridgeUnitId: string; target?: { text?: string } }>;
+  };
+  return bridge.units.find((unit) => unit.bridgeUnitId === bridgeUnitId)?.target?.text;
+}

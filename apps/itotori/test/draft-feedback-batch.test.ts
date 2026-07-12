@@ -1,14 +1,11 @@
 // ALPHA-002 — Playable draft feedback loop tests.
 //
-// Drives the real composition end to end with no DB:
+// Drives the real batched intake composition end to end with no DB:
 //   batched intake → triage labels → reviewer-queue decision items
-//   (real `ManualFeedbackImportService.createItem` path) → scoped repair
-//   (real `buildReviewerTriggeredRerunJobInputs`) → before/after evidence.
+//   (real `ManualFeedbackImportService.createItem` path).
 //
-// The repair-job output the evidence is built from is REAL — it comes
-// from the reviewer-triggered rerun scheduler, not a fixture. Only the
-// leaf DB ports (feedback repository, reviewer-queue repository) are
-// in-memory stubs, mirroring the existing reviewer-action-service tests.
+// Only the leaf DB ports (feedback repository, reviewer-queue repository)
+// are in-memory stubs, mirroring the existing reviewer-action-service tests.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -19,22 +16,17 @@ import type {
   ManualFeedbackImportInput,
   ManualFeedbackImportResult,
   ManualFeedbackReviewerQueueContext,
-  ReviewerQueueActionResult,
   ReviewerQueueItemRecord,
-  ReviewerQueueTransitionRecord,
 } from "@itotori/db";
 import {
   feedbackContextStatusValues,
   feedbackTriageLabelValues,
   feedbackTypeValues,
-  reviewerQueueActionValues,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
 } from "@itotori/db";
 import { ManualFeedbackImportService } from "../src/manual-feedback.js";
 import {
-  buildDraftFeedbackLoopEvidence,
-  buildDraftFeedbackRepairPlan,
   DraftFeedbackBatchError,
   DraftFeedbackBatchService,
   dispositionFor,
@@ -211,27 +203,6 @@ function buildLoop(): {
   return { batch: new DraftFeedbackBatchService(manualFeedback), reviewerQueue };
 }
 
-// Build a real `requestRepair` action result from a created feedback item
-// so the scheduler scopes the rerun to the item's affected units.
-function requestRepairResult(item: ReviewerQueueItemRecord): ReviewerQueueActionResult {
-  const transition: ReviewerQueueTransitionRecord = {
-    transitionId: `transition-${item.reviewItemId}`,
-    reviewItemId: item.reviewItemId,
-    localeBranchId: item.localeBranchId,
-    sourceRevisionId: item.sourceRevisionId,
-    itemKind: item.itemKind,
-    action: reviewerQueueActionValues.requestRepair,
-    priorState: reviewerQueueItemStateValues.pending,
-    nextState: reviewerQueueItemStateValues.repairRequested,
-    actorUserId: actor.userId,
-    affectedArtifactIds: [],
-    diagnostics: [],
-    metadata: { repairHint: "fix the typo" },
-    createdAt: new Date("2026-06-28T01:00:00Z"),
-  };
-  return { item, transition };
-}
-
 describe("DraftFeedbackBatchService — batched intake + triage", () => {
   it("collects multiple typo corrections with context and routes a style dispute to the decision queue", async () => {
     const { batch, reviewerQueue } = buildLoop();
@@ -288,92 +259,6 @@ describe("DraftFeedbackBatchService — batched intake + triage", () => {
     const first = await buildLoop().batch.submitBatch({ submissions });
     const second = await buildLoop().batch.submitBatch({ submissions });
     expect(first.batchId).toBe(second.batchId);
-  });
-});
-
-describe("buildDraftFeedbackRepairPlan — scoped repair from real rerun output", () => {
-  it("re-runs only the affected bridge units, never the whole slice", async () => {
-    const { batch, reviewerQueue } = buildLoop();
-    await batch.submitBatch({
-      submissions: [
-        typoSubmission("unit-a", "Teh hero speaks"),
-        typoSubmission("unit-b", "recieve the sword"),
-        styleSubmission("unit-c", "honorifics should stay"),
-      ],
-    });
-
-    // Reviewer requests a repair on the two typo (feedback) items.
-    const feedbackItems = reviewerQueue.created.filter(
-      (item) => item.itemKind === reviewerQueueItemKindValues.feedback,
-    );
-    const plan = buildDraftFeedbackRepairPlan(feedbackItems.map(requestRepairResult));
-
-    // Scope is read back from the real rerun-job subject refs.
-    expect(plan.repairScheduledUnitIds).toEqual(["unit-a", "unit-b"]);
-    expect(plan.rerunJobs.length).toBeGreaterThan(0);
-    // Every rerun job is scoped — none widens to the whole project.
-    for (const job of plan.rerunJobs) {
-      expect(job.queueName).toBe("reviewer-rerun");
-    }
-    expect(plan.perItem).toHaveLength(2);
-    expect(plan.perItem[0]?.affectedUnitIds).toEqual(["unit-a"]);
-  });
-
-  it("contributes nothing for non-repair reviewer actions", () => {
-    const empty = buildDraftFeedbackRepairPlan([]);
-    expect(empty.rerunJobs).toHaveLength(0);
-    expect(empty.repairScheduledUnitIds).toHaveLength(0);
-  });
-});
-
-describe("buildDraftFeedbackLoopEvidence — before/after dashboard", () => {
-  it("proves the repair touched only affected work and left the rest of the slice untouched", async () => {
-    const { batch, reviewerQueue } = buildLoop();
-    const batchResult = await batch.submitBatch({
-      batchLabel: "oshioki-slice-1",
-      submissions: [
-        typoSubmission("unit-a", "Teh hero speaks"),
-        typoSubmission("unit-b", "recieve the sword"),
-        styleSubmission("unit-c", "honorifics should stay"),
-      ],
-    });
-
-    const feedbackItems = reviewerQueue.created.filter(
-      (item) => item.itemKind === reviewerQueueItemKindValues.feedback,
-    );
-    const repairPlan = buildDraftFeedbackRepairPlan(feedbackItems.map(requestRepairResult));
-
-    const evidence = buildDraftFeedbackLoopEvidence({
-      batchResult,
-      repairPlan,
-      // The reviewed slice has four units; only two had typo feedback.
-      unitsInScope: ["unit-a", "unit-b", "unit-c", "unit-d"],
-    });
-
-    expect(evidence.before.unitsInScope).toEqual(["unit-a", "unit-b", "unit-c", "unit-d"]);
-    expect(evidence.before.repairCandidateCount).toBe(2);
-    expect(evidence.before.decisionQueueCount).toBe(1);
-
-    expect(evidence.after.repairScheduledUnitIds).toEqual(["unit-a", "unit-b"]);
-    // Load-bearing: the repair left these in-scope units alone.
-    expect(evidence.after.untouchedUnitIds).toEqual(["unit-c", "unit-d"]);
-    expect(evidence.after.rerunJobCount).toBeGreaterThan(0);
-    expect(evidence.after.decisionQueueReportIds).toHaveLength(1);
-    expect(evidence.scoped).toBe(true);
-
-    // Before/after correction text is surfaced per affected unit.
-    expect(evidence.corrections).toEqual([
-      {
-        bridgeUnitId: "unit-a",
-        observed: "Teh hero speaks",
-        suggested: "Teh hero speaks (corrected)",
-      },
-      {
-        bridgeUnitId: "unit-b",
-        observed: "recieve the sword",
-        suggested: "recieve the sword (corrected)",
-      },
-    ]);
   });
 });
 

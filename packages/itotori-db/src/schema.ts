@@ -559,6 +559,9 @@ export const contextArtifactCategoryValues = {
   routeMap: "route_map",
   speakerLabel: "speaker_label",
   terminologyCandidate: "terminology_candidate",
+  glossary: "glossary",
+  style: "style",
+  contextNote: "context_note",
 } as const;
 
 export type ContextArtifactCategory =
@@ -3975,7 +3978,7 @@ export type ReviewerQueueItemState =
 /**
  * Closed enum of reviewer-queue actions. Each maps 1:1 to a typed entry
  * on the action API (`approve`, `reject`, `requestRepair`,
- * `updateGlossary`, `updateStyle`, `importRuntimeFeedback`).
+ * `importRuntimeFeedback`).
  */
 export const reviewerQueueActionValues = {
   approve: "approve",
@@ -3983,8 +3986,6 @@ export const reviewerQueueActionValues = {
   defer: "defer",
   escalate: "escalate",
   requestRepair: "request_repair",
-  updateGlossary: "update_glossary",
-  updateStyle: "update_style",
   importRuntimeFeedback: "import_runtime_feedback",
 } as const;
 

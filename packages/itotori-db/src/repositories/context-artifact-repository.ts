@@ -101,6 +101,13 @@ export type ListContextEntryVersionsInput = {
   contextArtifactId: string;
 };
 
+/** Read the mutable head projection for one canonical ContextEntry. */
+export type LoadContextArtifactInput = {
+  projectId: string;
+  localeBranchId: string;
+  contextArtifactId: string;
+};
+
 export type ContextArtifactSourceUnitRecord = {
   contextArtifactId: string;
   bridgeUnitId: string;
@@ -222,6 +229,10 @@ export interface ItotoriContextArtifactRepositoryPort {
     actor: AuthorizationActor,
     input: RetrieveContextArtifactsInput,
   ): Promise<ContextArtifactRetrievalResult>;
+  loadArtifact(
+    actor: AuthorizationActor,
+    input: LoadContextArtifactInput,
+  ): Promise<ContextArtifactRecord | null>;
 }
 
 export class ItotoriContextArtifactRepository implements ItotoriContextArtifactRepositoryPort {
@@ -605,6 +616,21 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       matches,
       diagnostics: [],
     };
+  }
+
+  async loadArtifact(
+    actor: AuthorizationActor,
+    input: LoadContextArtifactInput,
+  ): Promise<ContextArtifactRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await artifactsWithSources(this.db, {
+      contextArtifactId: input.contextArtifactId,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      includeStale: true,
+      limit: 1,
+    });
+    return rows[0] ?? null;
   }
 
   async listEntryVersions(
