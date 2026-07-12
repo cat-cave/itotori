@@ -26,6 +26,9 @@
  *   - OPENROUTER_API_KEY is REQUIRED unless `--dry-run`. No fallback to
  *     RecordedModelProvider. If OPENROUTER_LIVE=1 is set but the API
  *     key is missing the driver fails loudly (no silent downgrade).
+ *   - DATABASE_URL is required for a non-dry run: `localize-project-stage`
+ *     reserves and reconciles every paid invocation in the durable Postgres
+ *     journal before dispatching the provider.
  *   - A source root is REQUIRED unless `--dry-run`: either
  *     LOCALIZE_PROJECT_SOURCE_PATH, ITOTORI_REAL_CORPUS_MANIFEST, or
  *     ITOTORI_REAL_GAME_ROOT.
@@ -74,6 +77,7 @@ const LOCAL_ENV_ALLOWLIST = new Set([
   "OPENROUTER_LIVE",
   "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
   "OPENROUTER_ZDR_DOWNGRADE",
+  "DATABASE_URL",
   "ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER",
   "ITOTORI_REAL_CORPUS_MANIFEST",
   "ITOTORI_REAL_GAME_ROOT",
@@ -88,6 +92,7 @@ function usage() {
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
+    "  DATABASE_URL                    Postgres URL for durable paid-call cost admission",
     "  ITOTORI_REAL_CORPUS_MANIFEST     local manifest with corpora[].{corpusId,projectId,engine,root}",
     "  ITOTORI_REAL_GAME_ROOT           fallback readonly path for a single selected corpus",
     "  LOCALIZE_PROJECT_SOURCE_PATH     direct readonly project source root (still supported)",

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { repairJsonObject } from "../localization/patchback-safety.js";
+import { compareDecimalUsd } from "../providers/cost.js";
 import {
   ModelProviderError,
   providerRunFromThrownError,
@@ -90,19 +91,31 @@ export type InvocationLifecycle = {
 };
 
 /**
- * Node-4 seam. This node asks whether dispatch is admitted; the later atomic
- * reservation node replaces the implementation without changing supervision.
+ * Node-4's cost-admission seam. A durable implementation can atomically
+ * reserve the exact worst case AND write this attempt's dispatching row. The
+ * existing denial path remains the node-3 operational `budget_cap` pause.
  */
 export type InvocationCostAdmission = {
   admit(input: {
+    attempt: InvocationAttemptStarted;
     runId: string;
     bridgeUnitId: string;
     stage: string;
     agentLabel: string;
     request: ModelInvocationRequest;
-    maximumCostUsd: number | null;
+    /**
+     * Canonical exact decimal hard ceiling, never a rounded micros mirror.
+     * A cost-admitted physical invocation cannot proceed without this value.
+     */
+    worstCaseCostUsd: string;
   }): Promise<
-    | { admitted: true }
+    | {
+        admitted: true;
+        /** The admission transaction already persisted the dispatching attempt. */
+        attemptStarted?: true;
+        /** Lease health from the same durable pre-dispatch transaction. */
+        dispatchLeaseSignal?: AbortSignal;
+      }
     | { admitted: false; detail: string; evidence: string; operatorAction?: string }
   >;
 };
@@ -145,7 +158,16 @@ export type InvocationSupervisorContext = {
   modelId?: string;
   providerId?: string;
   fallbackModels?: readonly string[];
+  /** Legacy provider-pricing filter. It is never a durable reservation bound. */
   maximumCostUsd?: number;
+  /**
+   * Explicit hard maximum bill for one physical invocation. Cost admission
+   * reserves this before dispatch; it is distinct from a provider-pricing
+   * filter and must be supplied by a validated stage posture. Any invocation
+   * with cost admission fails closed before provider preparation/dispatch when
+   * this is absent.
+   */
+  maximumBillableCostUsd?: number;
   zdr?: boolean;
 };
 
@@ -324,11 +346,15 @@ export abstract class SupervisedModelProviderAdapter implements ModelProvider {
     | { admitted: false; detail: string; evidence: string; operatorAction?: string }
   > {
     const target = providerAdapterTarget(this);
-    return (
-      (await target.preflightInvocation?.(this.decorateInvocationRequest(request))) ?? {
-        admitted: true,
-      }
-    );
+    const decorated = this.decorateInvocationRequest(request);
+    const admission = (await target.preflightInvocation?.(decorated)) ?? { admitted: true };
+    // Transport preparation may attach an enumerable symbol (for example the
+    // OpenRouter rate-token receipt) to its decorated request. Dispatch later
+    // decorates the original request again, so relay those opaque receipts back
+    // through every adapter layer. This keeps rate admission before durable
+    // reservation and avoids acquiring a second token after reservation.
+    copyPreparedDispatchSymbols(decorated, request);
+    return admission;
   }
 
   invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
@@ -414,8 +440,12 @@ export class InvocationSupervisor {
         ...(this.standalone ? {} : { fallbackModels: [], runId: attemptId }),
       };
 
-      await this.assertCostAdmission(routeRequest);
-      const dispatchLeaseSignal = await this.options.lifecycle?.attemptStarted(attemptStarted);
+      const admission = await this.assertCostAdmission(routeRequest, attemptStarted);
+      const dispatchLeaseSignal =
+        admission?.dispatchLeaseSignal ??
+        (admission?.attemptStarted === true
+          ? undefined
+          : await this.options.lifecycle?.attemptStarted(attemptStarted));
       const dispatchRequest: ModelInvocationRequest = {
         ...routeRequest,
         ...(dispatchLeaseSignal === undefined
@@ -573,7 +603,43 @@ export class InvocationSupervisor {
     );
   }
 
-  private async assertCostAdmission(request: ModelInvocationRequest): Promise<void> {
+  private async assertCostAdmission(
+    request: ModelInvocationRequest,
+    attempt: InvocationAttemptStarted,
+  ): Promise<
+    Extract<Awaited<ReturnType<InvocationCostAdmission["admit"]>>, { admitted: true }> | undefined
+  > {
+    const costAdmission = this.options.costAdmission;
+    // `executeModelInvocation` and `executeStructuredInvocation` both use
+    // `supervisorFor`'s standalone fallback when their provider was not
+    // explicitly bound to a durable supervisor. That fallback is useful for
+    // fake/recorded/local providers, but it must never turn an OpenRouter
+    // transport into an unaccounted paid dispatch. Check before provider
+    // preparation: preflight can lazily construct the physical transport or
+    // consume a rate token, neither of which belongs on a refused call.
+    if (
+      providerRequiresDurableCostAdmission(this.options.provider) &&
+      costAdmission === undefined
+    ) {
+      await this.pauseAndThrow(
+        "budget_cap",
+        "paid provider invocation requires a durable cost-admission sink before dispatch",
+        `cost-admission:${this.context.runId};attempt:${attempt.attemptId};sink:missing`,
+        "run this paid invocation through a durable cost-admission boundary with a maximumBillableCostUsd ceiling",
+      );
+    }
+    // `maxPriceUsd` is a provider-pricing preference/filter, not a proved
+    // upper bound on what a provider can settle. Do not turn it (or the legacy
+    // `maximumCostUsd` alias) into a reservation value. A durable paid call
+    // requires an operator-declared, validated hard bill ceiling instead.
+    const worstCaseCostUsd =
+      costAdmission === undefined
+        ? undefined
+        : await this.requiredCostAdmissionCeiling(request, attempt);
+
+    // Provider preparation owns rate tokens (and any narrower transport
+    // permit). It deliberately runs before the DB reservation, so a token is
+    // never acquired after the run has already claimed budget.
     const providerAdmission = await this.options.provider.preflightInvocation?.(request);
     if (providerAdmission !== undefined && !providerAdmission.admitted) {
       await this.pauseAndThrow(
@@ -583,21 +649,61 @@ export class InvocationSupervisor {
         providerAdmission.operatorAction ?? "raise the provider cost cap, then resume",
       );
     }
-    const admission = await this.options.costAdmission?.admit({
+    const admission = await costAdmission?.admit({
+      attempt,
       runId: this.context.runId,
       bridgeUnitId: this.context.bridgeUnitId,
       stage: this.context.stage,
       agentLabel: this.context.agentLabel,
       request,
-      maximumCostUsd: this.context.maximumCostUsd ?? request.maxPriceUsd ?? null,
+      // The helper above either returned a canonical ceiling or paused before
+      // this admission call. The non-null assertion documents that invariant
+      // at the optional-admission boundary.
+      worstCaseCostUsd: worstCaseCostUsd!,
     });
-    if (admission === undefined || admission.admitted) return;
+    if (admission === undefined || admission.admitted) return admission;
     await this.pauseAndThrow(
       "budget_cap",
       admission.detail,
       admission.evidence,
       admission.operatorAction ?? "raise the cost cap, then resume",
     );
+  }
+
+  /**
+   * Resolve the only value a durable admission may reserve. This intentionally
+   * has no `maxPriceUsd` fallback: OpenRouter can report a settled bill above
+   * that provider-side filter, in which case reconciliation persists it and
+   * pauses the run rather than pretending the earlier reservation was safe.
+   */
+  private async requiredCostAdmissionCeiling(
+    request: ModelInvocationRequest,
+    attempt: InvocationAttemptStarted,
+  ): Promise<string> {
+    const ceiling = this.context.maximumBillableCostUsd;
+    if (ceiling === undefined) {
+      return await this.pauseAndThrow(
+        "budget_cap",
+        "invocation policy does not declare maximumBillableCostUsd; maxPriceUsd is a provider-pricing filter and cannot be used as a durable reservation bound",
+        `cost-admission:${this.context.runId};attempt:${attempt.attemptId};maximum-billable:missing`,
+        "set a validated maximumBillableCostUsd for this stage, then resume",
+      );
+    }
+
+    const worstCaseCostUsd = exactDecimalUsdFromNumber(ceiling);
+    if (request.maxPriceUsd !== undefined) {
+      const providerPriceFilterUsd = exactDecimalUsdFromNumber(request.maxPriceUsd);
+      if (compareDecimalUsd(worstCaseCostUsd, providerPriceFilterUsd) < 0) {
+        await this.pauseAndThrow(
+          "budget_cap",
+          `maximumBillableCostUsd $${worstCaseCostUsd} is below provider maxPriceUsd $${providerPriceFilterUsd}`,
+          `cost-admission:${this.context.runId};attempt:${attempt.attemptId};` +
+            `maximum-billable:${worstCaseCostUsd};max-price:${providerPriceFilterUsd}`,
+          "set maximumBillableCostUsd at or above maxPriceUsd, then resume",
+        );
+      }
+    }
+    return worstCaseCostUsd;
   }
 
   private async dispatchWithDeadline(
@@ -900,6 +1006,21 @@ function requestWithoutDispatchCapability(request: ModelInvocationRequest): Mode
   return unprivilegedRequest;
 }
 
+/** Preserve transport-private, enumerable preparation receipts across decorators. */
+function copyPreparedDispatchSymbols(
+  source: ModelInvocationRequest,
+  destination: ModelInvocationRequest,
+): void {
+  if (source === destination) return;
+  const target = destination as ModelInvocationRequest & Record<symbol, unknown>;
+  const prepared = source as ModelInvocationRequest & Record<symbol, unknown>;
+  for (const key of Object.getOwnPropertySymbols(source)) {
+    if (Object.prototype.propertyIsEnumerable.call(source, key)) {
+      target[key] = prepared[key];
+    }
+  }
+}
+
 /** Universal entry for schema/semantic structured calls. */
 export function executeStructuredInvocation<T>(
   provider: ModelProvider,
@@ -919,6 +1040,18 @@ function supervisorFor(provider: ModelProvider): InvocationSupervisor {
     return (provider as SupervisorBoundProvider)[SUPERVISOR_BINDING];
   }
   return new InvocationSupervisor({ provider });
+}
+
+/**
+ * OpenRouter is the only shipped provider family that can incur a remote
+ * provider bill. The remaining families are explicitly fake, recorded, or
+ * local-only transports (see ProviderFamily), so they can use the standalone
+ * supervisor for fixtures and non-paid local work without manufacturing a
+ * journal run. Keep this discriminator at the invocation boundary rather
+ * than trusting individual callers to remember a cost wrapper.
+ */
+function providerRequiresDurableCostAdmission(provider: ModelProvider): boolean {
+  return provider.descriptor.family === "openrouter";
 }
 
 function standaloneContext(): InvocationSupervisorContext {
@@ -1132,7 +1265,7 @@ function classifyThrownFailure(error: unknown): InvocationFailure {
     if (error.code === "cost_cap_exceeded") {
       return {
         kind: "itotori_bug",
-        detail: `provider-side cost cap exceeded after dispatch: ${error.message}`,
+        detail: `provider reported a cost above the declared per-invocation maximum after dispatch: ${error.message}`,
         error,
         rawContent: null,
       };
@@ -1350,6 +1483,23 @@ function abortReason(reason: unknown): Error {
   return reason instanceof Error
     ? reason
     : new Error("provider dispatch aborted by its inherited attempt signal", { cause: reason });
+}
+
+/** Convert policy's numeric input to a canonical decimal without arithmetic. */
+function exactDecimalUsdFromNumber(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`maximum cost must be a finite non-negative USD number, got ${String(value)}`);
+  }
+  const raw = String(value);
+  if (!/[eE]/u.test(raw)) return raw;
+  const [coefficient, exponentRaw] = raw.toLowerCase().split("e");
+  const exponent = Number(exponentRaw);
+  const [whole = "0", fraction = ""] = coefficient!.split(".");
+  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/u, "") || "0";
+  const decimalPoint = whole.length + exponent;
+  if (decimalPoint <= 0) return `0.${"0".repeat(-decimalPoint)}${digits}`;
+  if (decimalPoint >= digits.length) return `${digits}${"0".repeat(decimalPoint - digits.length)}`;
+  return `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`;
 }
 
 function defaultSleep(delayMs: number): Promise<void> {

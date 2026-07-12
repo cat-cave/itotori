@@ -21,6 +21,7 @@ import {
   type DrivenPatchExportRecord,
   type DrivenUnitJournalRecord,
 } from "../src/orchestrator/project-driven-executor.js";
+import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
@@ -33,6 +34,9 @@ const ASSET_ID = "019ed0f1-0000-7000-8000-000000000004";
 const BRIDGE_UNIT_ID = "019ed0f1-0000-7000-8000-0000000000a1";
 const SOURCE_TEXT = "おはよう。";
 const SELECTED_TARGET = "Good morning.";
+const TEST_COST_ADMISSION: InvocationCostAdmission = {
+  admit: async () => ({ admitted: true }),
+};
 
 function makeBridge(): BridgeBundleV02 {
   const unit: LocalizationUnitV02 = {
@@ -140,6 +144,7 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
       sourceRevisionId: REVISION_ID,
       actor: ACTOR,
       providerFactory: partialQaProviderFactory(),
+      costAdmission: TEST_COST_ADMISSION,
       translationScope: "dialogue-only",
       engineProfile: "rpg-maker-mv-mz",
       sinks: {

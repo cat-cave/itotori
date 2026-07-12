@@ -22,6 +22,7 @@ import {
 } from "@itotori/db";
 import type {
   DrivenJournalResumeState,
+  DrivenJournalCostPolicy,
   DrivenJournalRunPlan,
   DrivenUnitJournalRecord,
   DrivenUnitJournalSink,
@@ -31,8 +32,10 @@ import type {
 import type { DrivenLlmAttemptRecord } from "./attempt-outcome-journal.js";
 import {
   INVOCATION_DEFAULT_DEADLINE_MS,
+  InvocationOperationalPauseError,
   type InvocationAttemptCompleted,
   type InvocationAttemptStarted,
+  type InvocationCostAdmission,
   type OperationalBlocker,
 } from "./invocation-supervisor.js";
 
@@ -167,6 +170,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     ]);
     if (run === null) throw new Error(`cannot resume missing journal run ${runId}`);
     return {
+      costPolicy: drivenJournalCostPolicyFromRecord(run.costPolicy, runId),
       status: run.status,
       pausedBlocker: run.pausedBlocker,
       leaseOwnerId: run.leaseOwnerId,
@@ -245,6 +249,60 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     });
   }
 
+  createCostAdmission(runId: string): InvocationCostAdmission {
+    return {
+      admit: async (input) => {
+        if (input.runId !== runId) {
+          throw new Error(
+            `cost admission for ${runId} cannot reserve attempt for different run ${input.runId}`,
+          );
+        }
+        await this.requireSeed(runId);
+        const lease = this.requireLease(runId);
+        const roundTripStartedAt = performance.now();
+        const result = await this.journal.reserveAttemptCost(this.opts.actor, {
+          attemptId: input.attempt.attemptId,
+          runId: input.attempt.runId,
+          bridgeUnitId: input.attempt.bridgeUnitId,
+          stage: input.attempt.stage,
+          agentLabel: input.attempt.agentLabel,
+          logicalCallId: input.attempt.logicalCallId,
+          attemptIndex: input.attempt.attemptIndex,
+          requestedModelId: input.attempt.requestedModelId,
+          requestedProviderId: input.attempt.requestedProviderId,
+          zdr: input.attempt.zdr,
+          artifactRef: `provider-run:${input.attempt.providerRunId}`,
+          startedAt: input.attempt.startedAt,
+          worstCaseCostUsd: input.worstCaseCostUsd,
+          lease,
+        });
+        if (!result.admitted) {
+          const cap = result.account.capUsd ?? "unbounded";
+          return {
+            admitted: false,
+            detail:
+              `run cost cap $${cap} cannot reserve worst-case $${input.worstCaseCostUsd} ` +
+              `after $${result.account.spentCostUsd} spent and $${result.account.reservedCostUsd} reserved`,
+            evidence:
+              `cost-account:${runId};spent-usd:${result.account.spentCostUsd};` +
+              `reserved-usd:${result.account.reservedCostUsd};cap-usd:${cap}`,
+            operatorAction: "raise the run cost cap, then resume",
+          };
+        }
+        return {
+          admitted: true,
+          attemptStarted: true,
+          dispatchLeaseSignal: this.startAttemptHeartbeat(
+            runId,
+            input.attempt.attemptId,
+            result.attempt.leaseDeadline,
+            performance.now() - roundTripStartedAt,
+          ),
+        };
+      },
+    };
+  }
+
   async attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal> {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
@@ -277,6 +335,9 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
     const usage = run?.tokenUsage;
+    const billingState = run?.billingState ?? "unknown";
+    const reportableCost =
+      run !== undefined && !(billingState === "unknown" && run.cost.costKind === "zero");
     try {
       await this.journal.completeAttempt(this.opts.actor, {
         attemptId: attempt.attemptId,
@@ -287,8 +348,9 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
           run === undefined
             ? null
             : (run.provider.upstreamProvider ?? run.provider.requestedProviderId),
-        costUsd: run?.cost.amountUsd ?? null,
-        ...(run !== undefined ? { costKind: run.cost.costKind } : {}),
+        costUsd: reportableCost ? run.cost.amountUsd : null,
+        ...(reportableCost ? { costKind: run.cost.costKind } : {}),
+        billingState,
         ...(run !== undefined ? { usageResponseJson: run.usageResponseJson } : {}),
         tokensIn: usage?.promptTokens ?? null,
         tokensOut: usage?.completionTokens ?? null,
@@ -312,6 +374,15 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
         completedAt: attempt.completedAt,
         lease,
       });
+      // A provider can report a settled bill above its pre-dispatch estimate.
+      // The repository commits that real cost and atomically pauses a capped
+      // run. Surface the durable blocker back through the supervisor so this
+      // worker stops before it can materialize an outcome or patch after the
+      // over-cap settlement.
+      const runState = await this.journal.loadRun(this.opts.actor, attempt.runId);
+      if (runState?.status === "paused" && runState.pausedBlocker?.kind === "budget_cap") {
+        throw new InvocationOperationalPauseError(runState.pausedBlocker);
+      }
     } finally {
       await this.stopAttemptHeartbeat(attempt.runId, attempt.attemptId);
     }
@@ -530,6 +601,42 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     // an unobserved database operation.
     await heartbeat.renewalInFlight;
   }
+}
+
+/**
+ * A resumed executor must replay the policy the repository persisted, not a
+ * config/CLI reconstruction. Validate the narrow driven-run contract here,
+ * but keep every persisted field so a future policy addition remains stable
+ * across an idempotent resume seed.
+ */
+function drivenJournalCostPolicyFromRecord(
+  costPolicy: Record<string, unknown> | null,
+  runId: string,
+): DrivenJournalCostPolicy {
+  if (costPolicy === null) {
+    throw new Error(`cannot resume journal run ${runId}: persisted cost policy is missing`);
+  }
+  if (costPolicy.reservation !== "node_4_seam") {
+    throw new Error(
+      `cannot resume journal run ${runId}: unsupported persisted cost reservation policy`,
+    );
+  }
+  const budgetCapUsd = costPolicy.budgetCapUsd;
+  if (
+    budgetCapUsd !== null &&
+    typeof budgetCapUsd !== "string" &&
+    (typeof budgetCapUsd !== "number" || !Number.isFinite(budgetCapUsd) || budgetCapUsd < 0)
+  ) {
+    throw new Error(`cannot resume journal run ${runId}: persisted budget cap is invalid`);
+  }
+  if (typeof budgetCapUsd === "string" && budgetCapUsd.trim().length === 0) {
+    throw new Error(`cannot resume journal run ${runId}: persisted budget cap is invalid`);
+  }
+  return {
+    ...costPolicy,
+    reservation: "node_4_seam",
+    budgetCapUsd,
+  };
 }
 
 /**

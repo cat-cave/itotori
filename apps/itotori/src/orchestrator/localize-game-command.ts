@@ -162,7 +162,7 @@ export type RunLocalizeGameArgs = {
   expectTextContains?: string;
   /** Redaction posture for the render-validate frame (default "on"). */
   redaction?: "on" | "off";
-  /** Per-process OpenRouter USD budget cap forwarded to the localize driver. */
+  /** Durable run-level USD budget cap forwarded to the localize driver. */
   costCapUsd?: number;
   /** Existing durable journal run to resume from its first pending unit. */
   resumeRunId?: string;

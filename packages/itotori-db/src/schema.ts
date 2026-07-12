@@ -5349,6 +5349,12 @@ export type LocalizationJournalNextActionJson = {
   [key: string]: unknown;
 };
 
+/** Whether a completed provider response established a settled bill. */
+export type LocalizationJournalAttemptBillingState = "known" | "unknown";
+
+/** Lifecycle state of a pre-dispatch worst-case cost reservation. */
+export type LocalizationJournalCostReservationState = "reserved" | "reconciled";
+
 /**
  * One localization execution run. It owns the physical provider-call and
  * written-outcome facts needed to rebuild a patch/read model losslessly.
@@ -5456,6 +5462,9 @@ export const localizationJournalLlmAttempts = pgTable(
     providerRunId: text("provider_run_id").notNull(),
     costUsd: numeric("cost_usd"),
     costKind: text("cost_kind"),
+    // A confirmed zero is materially different from a malformed/network
+    // response whose bill is not yet known. The latter keeps its reservation.
+    billingState: text("billing_state").$type<LocalizationJournalAttemptBillingState>(),
     usageResponseJson: jsonb("usage_response_json"),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
@@ -5490,6 +5499,7 @@ export const localizationJournalLlmAttempts = pgTable(
       table.attemptIndex,
     ),
     uniqueIndex("itotori_llm_attempts_provider_run_idx").on(table.providerRunId),
+    unique("itotori_llm_attempts_run_attempt_unique").on(table.runId, table.attemptId),
     index("itotori_llm_attempts_run_unit_idx").on(table.runId, table.bridgeUnitId),
     index("itotori_llm_attempts_run_stage_idx").on(table.runId, table.stage),
     index("itotori_llm_attempts_dispatching_idx").on(
@@ -5501,6 +5511,65 @@ export const localizationJournalLlmAttempts = pgTable(
       columns: [table.runId, table.bridgeUnitId],
       foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
       name: "itotori_llm_attempts_planned_unit_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+/**
+ * Exact-decimal cost account for one durable localization run. `capUsd: null`
+ * means the run has no configured upper bound; spent and reserved remain
+ * durable so an operator can later set a cap without recreating history.
+ */
+export const localizationJournalRunCostAccounts = pgTable(
+  "itotori_localization_run_cost_accounts",
+  {
+    runId: text("run_id")
+      .primaryKey()
+      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+    capUsd: numeric("cap_usd"),
+    spentCostUsd: numeric("spent_usd").notNull().default("0"),
+    reservedCostUsd: numeric("reserved_usd").notNull().default("0"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * One worst-case reservation, coupled to the exact physical attempt that it
+ * admitted. An unresolved reservation is intentionally conservative: it is
+ * still included in the account's `reservedCostUsd` until a settled bill arrives.
+ */
+export const localizationJournalCostReservations = pgTable(
+  "itotori_localization_cost_reservations",
+  {
+    reservationId: text("reservation_id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => localizationJournalRunCostAccounts.runId, { onDelete: "cascade" }),
+    attemptId: text("attempt_id").notNull(),
+    reservedUsd: numeric("reserved_usd").notNull(),
+    reconciledUsd: numeric("reconciled_usd"),
+    state: text("state").$type<LocalizationJournalCostReservationState>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    reconciledAt: timestamp("reconciled_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("itotori_localization_cost_reservations_run_attempt_unique").on(
+      table.runId,
+      table.attemptId,
+    ),
+    index("itotori_localization_cost_reservations_run_state_idx").on(
+      table.runId,
+      table.state,
+      table.createdAt,
+    ),
+    foreignKey({
+      columns: [table.runId, table.attemptId],
+      foreignColumns: [
+        localizationJournalLlmAttempts.runId,
+        localizationJournalLlmAttempts.attemptId,
+      ],
+      name: "itotori_localization_cost_reservations_attempt_fkey",
     }).onDelete("cascade"),
   ],
 );

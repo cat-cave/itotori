@@ -19,7 +19,9 @@ import { type AuthorizationActor, permissionValues, requirePermission } from "..
 import type { ItotoriDatabase } from "../connection.js";
 import {
   localeBranches,
+  localizationJournalCostReservations,
   localizationJournalLlmAttempts,
+  localizationJournalRunCostAccounts,
   localizationJournalRuns,
   localizationJournalRunUnits,
   outcomeContextRefs,
@@ -43,6 +45,9 @@ export type LocalizationJournalAttemptValidationResult =
 export type LocalizationJournalAttemptRetryDecision = "retry" | "advance" | "write" | "pause";
 
 export type LocalizationJournalAttemptCostKind = "billed" | "provider_estimate" | "zero";
+
+/** A response with unknown settlement keeps its conservative reservation. */
+export type LocalizationJournalAttemptBillingState = "known" | "unknown";
 
 export type LocalizationJournalAttemptLifecycleState = "dispatching" | "completed";
 
@@ -133,6 +138,46 @@ export type BeginLocalizationJournalAttemptInput = {
   lease: LocalizationJournalRunLeaseIdentity;
 };
 
+/** Exact worst-case admission plus the dispatching attempt in one transaction. */
+export type ReserveLocalizationJournalAttemptInput = BeginLocalizationJournalAttemptInput & {
+  /** Canonical exact decimal USD; never micros or a JavaScript arithmetic result. */
+  worstCaseCostUsd: string;
+  /** Optional stable id for a retried transport write; defaults from attemptId. */
+  reservationId?: string;
+};
+
+export type LocalizationJournalRunCostAccountRecord = {
+  runId: string;
+  capUsd: string | null;
+  spentCostUsd: string;
+  reservedCostUsd: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type LocalizationJournalCostReservationRecord = {
+  reservationId: string;
+  runId: string;
+  attemptId: string;
+  reservedUsd: string;
+  reconciledUsd: string | null;
+  state: "reserved" | "reconciled";
+  createdAt: Date;
+  reconciledAt: Date | null;
+};
+
+export type ReserveLocalizationJournalAttemptResult =
+  | {
+      admitted: true;
+      attempt: LocalizationJournalDispatchingAttemptRecord;
+      reservation: LocalizationJournalCostReservationRecord;
+      account: LocalizationJournalRunCostAccountRecord;
+    }
+  | {
+      admitted: false;
+      account: LocalizationJournalRunCostAccountRecord;
+    };
+
 /** Real provider + validation facts that close one pre-dispatch attempt row. */
 export type CompleteLocalizationJournalAttemptInput = {
   attemptId: string;
@@ -143,6 +188,8 @@ export type CompleteLocalizationJournalAttemptInput = {
   providerId: string | null;
   costUsd: string | null;
   costKind?: LocalizationJournalAttemptCostKind | undefined;
+  /** Known zero and unknown settlement are never conflated. */
+  billingState?: LocalizationJournalAttemptBillingState | undefined;
   usageResponseJson?: unknown;
   tokensIn: number | null;
   tokensOut: number | null;
@@ -163,6 +210,25 @@ export type CompleteLocalizationJournalAttemptInput = {
   errorClasses: readonly string[];
   completedAt: LocalizationJournalTimestamp;
   lease: LocalizationJournalRunLeaseIdentity;
+};
+
+/**
+ * Settles an already-completed unknown-billing attempt when a later provider
+ * reconciliation obtains its exact bill. This intentionally has no run lease:
+ * reconciliation is a durable accounting repair, including after a crashed
+ * driver's fence has been superseded.
+ */
+export type ReconcileLocalizationJournalAttemptBillingInput = {
+  attemptId: string;
+  runId: string;
+  /** Exact settled decimal USD, never rounded micros. */
+  costUsd: string;
+  costKind?: LocalizationJournalAttemptCostKind | undefined;
+  /** Required as a pair when the original unknown attempt had no served pair. */
+  modelId?: string | undefined;
+  providerId?: string | undefined;
+  /** Optional recovered provider usage block; preserves prior metadata when absent. */
+  usageResponseJson?: unknown;
 };
 
 /** One physical provider dispatch, keyed by its provider-run identity. */
@@ -315,6 +381,7 @@ export type LocalizationJournalAttemptRecord = {
   /** Exact decimal text from unconstrained PostgreSQL numeric. */
   costUsd: string | null;
   costKind: LocalizationJournalAttemptCostKind | null;
+  billingState: LocalizationJournalAttemptBillingState | null;
   usageResponseJson: unknown | null;
   tokensIn: number | null;
   tokensOut: number | null;
@@ -506,10 +573,32 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     actor: AuthorizationActor,
     input: BeginLocalizationJournalAttemptInput,
   ): Promise<LocalizationJournalDispatchingAttemptRecord>;
+  reserveAttemptCost(
+    actor: AuthorizationActor,
+    input: ReserveLocalizationJournalAttemptInput,
+  ): Promise<ReserveLocalizationJournalAttemptResult>;
   completeAttempt(
     actor: AuthorizationActor,
     input: CompleteLocalizationJournalAttemptInput,
   ): Promise<LocalizationJournalAttemptRecord>;
+  /** Releases an unknown-billing reservation only after a later exact settlement. */
+  reconcileAttemptBilling(
+    actor: AuthorizationActor,
+    input: ReconcileLocalizationJournalAttemptBillingInput,
+  ): Promise<LocalizationJournalAttemptRecord>;
+  loadRunCostAccount(
+    actor: AuthorizationActor,
+    runId: string,
+  ): Promise<LocalizationJournalRunCostAccountRecord | null>;
+  loadCostReservations(
+    actor: AuthorizationActor,
+    runId: string,
+  ): Promise<LocalizationJournalCostReservationRecord[]>;
+  raiseRunCostCap(
+    actor: AuthorizationActor,
+    runId: string,
+    capUsd: string,
+  ): Promise<LocalizationJournalRunCostAccountRecord>;
   /** Atomically persists attempts, canonical outcome, and all provenance children. */
   persistUnit(
     actor: AuthorizationActor,
@@ -647,6 +736,7 @@ type NormalizedCompleteAttempt = Omit<
   CompleteLocalizationJournalAttemptInput,
   | "completedAt"
   | "costKind"
+  | "billingState"
   | "usageResponseJson"
   | "tokenCountSource"
   | "cacheReadTokens"
@@ -658,6 +748,7 @@ type NormalizedCompleteAttempt = Omit<
   | "lease"
 > & {
   costKind: LocalizationJournalAttemptCostKind | null;
+  billingState: LocalizationJournalAttemptBillingState;
   usageResponseJson: unknown | null;
   tokenCountSource: string | null;
   cacheReadTokens: number | null;
@@ -737,14 +828,28 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         run = upgraded[0] ?? run;
       } else if (
         !jsonValuesEqual(run.frozenScope, input.frozenScope) ||
-        !jsonValuesEqual(run.routingPolicy, input.routingPolicy) ||
-        !jsonValuesEqual(run.costPolicy, input.costPolicy)
+        !jsonValuesEqual(run.routingPolicy, input.routingPolicy)
       ) {
         throw new LocalizationJournalRepositoryError(
           "run_seed_conflict",
           `journal run ${runId} already exists with different frozen scope/routing/cost policy`,
         );
+      } else if (!jsonValuesEqual(run.costPolicy, input.costPolicy)) {
+        if (!costPolicyIsCapRaise(run.costPolicy, input.costPolicy)) {
+          throw new LocalizationJournalRepositoryError(
+            "run_seed_conflict",
+            `journal run ${runId} already exists with a different immutable cost policy or a lower cost cap`,
+          );
+        }
+        const raised = await tx
+          .update(localizationJournalRuns)
+          .set({ costPolicy: input.costPolicy, updatedAt: new Date() })
+          .where(eq(localizationJournalRuns.runId, runId))
+          .returning();
+        run = raised[0] ?? run;
       }
+
+      await ensureRunCostAccountInTx(tx, runId, costCapUsdFromPolicy(input.costPolicy));
 
       // An already-frozen run has an immutable obligation set. Validate the
       // caller's exact membership/order before attempting any unit insert so
@@ -858,9 +963,36 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
   ): Promise<LocalizationJournalDispatchingAttemptRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     const attempt = normalizeBeginAttempt(input);
+    return this.db.transaction(async (tx) => await beginAttemptInTx(tx, attempt));
+  }
+
+  async reserveAttemptCost(
+    actor: AuthorizationActor,
+    input: ReserveLocalizationJournalAttemptInput,
+  ): Promise<ReserveLocalizationJournalAttemptResult> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    const attempt = normalizeBeginAttempt(input);
+    const worstCaseCostUsd = normalizeExactNonNegativeDecimal(
+      input.worstCaseCostUsd,
+      "worstCaseCostUsd",
+    );
+    const reservationId = input.reservationId ?? `cost-reservation:${attempt.attemptId}`;
+    assertNonBlank(reservationId, "reservationId");
 
     return this.db.transaction(async (tx) => {
-      await renewRunLeaseInTx(tx, attempt.runId, attempt.lease, ["running"]);
+      const run = await renewRunLeaseInTx(tx, attempt.runId, attempt.lease, ["running", "paused"]);
+      // Another concurrent worker may have just paused this same fenced run
+      // after its own denial. Do not turn that expected convergence into an
+      // invalid-transition bug or admit another physical dispatch while
+      // siblings are draining.
+      if (run.status === "paused") {
+        return {
+          admitted: false,
+          account: journalCostAccountRowToRecord(
+            await requireRunCostAccountInTx(tx, attempt.runId),
+          ),
+        };
+      }
       const existing = await loadAttemptInTx(tx, attempt.attemptId);
       if (existing !== undefined) {
         if (!beginAttemptRowMatches(existing, attempt)) {
@@ -869,87 +1001,73 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
             `attempt ${attempt.attemptId} already exists with different pre-dispatch facts`,
           );
         }
+        if (existing.lifecycleState !== "dispatching") {
+          throw new LocalizationJournalRepositoryError(
+            "attempt_conflict",
+            `attempt ${attempt.attemptId} is already ${existing.lifecycleState} and cannot be re-dispatched`,
+          );
+        }
+        const reservation = await requireCostReservationInTx(tx, attempt.runId, attempt.attemptId);
+        if (
+          reservation.reservationId !== reservationId ||
+          reservation.state !== "reserved" ||
+          normalizeExactNonNegativeDecimal(reservation.reservedUsd, "reservedUsd") !==
+            worstCaseCostUsd
+        ) {
+          throw new LocalizationJournalRepositoryError(
+            "attempt_conflict",
+            `attempt ${attempt.attemptId} already has a different cost reservation`,
+          );
+        }
         return {
-          ...journalAttemptRowToRecord(existing),
-          leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+          admitted: true,
+          attempt: {
+            ...journalAttemptRowToRecord(existing),
+            leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+          },
+          reservation: journalCostReservationRowToRecord(reservation),
+          account: journalCostAccountRowToRecord(
+            await requireRunCostAccountInTx(tx, attempt.runId),
+          ),
         };
       }
-      const claimed = await tx
-        .update(localizationJournalRunUnits)
-        .set({
-          state: "claimed",
-          claimOwnerId: attempt.lease.ownerId,
-          claimFenceToken: attempt.lease.fenceToken,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(localizationJournalRunUnits.runId, attempt.runId),
-            eq(localizationJournalRunUnits.bridgeUnitId, attempt.bridgeUnitId),
-            eq(localizationJournalRunUnits.state, "pending"),
-          ),
-        )
-        .returning({ bridgeUnitId: localizationJournalRunUnits.bridgeUnitId });
-      if (claimed[0] === undefined) {
-        const current = await requireSeededUnitInTx(tx, attempt.runId, attempt.bridgeUnitId);
-        throw new LocalizationJournalRepositoryError(
-          "unit_not_pending",
-          `cannot dispatch attempt ${attempt.attemptId}: planned unit ${attempt.runId}/${attempt.bridgeUnitId} is ${current.state}`,
-        );
-      }
-      await tx
-        .insert(localizationJournalLlmAttempts)
-        .values({
-          attemptId: attempt.attemptId,
-          runId: attempt.runId,
-          bridgeUnitId: attempt.bridgeUnitId,
-          stage: attempt.stage,
-          agentLabel: attempt.agentLabel,
-          logicalCallId: attempt.logicalCallId,
-          attemptIndex: attempt.attemptIndex,
-          lifecycleState: "dispatching",
-          fenceToken: attempt.lease.fenceToken,
-          requestedModelId: attempt.requestedModelId,
-          requestedProviderId: attempt.requestedProviderId,
-          modelId: null,
-          providerId: null,
-          providerRunId: attempt.attemptId,
-          costUsd: null,
-          costKind: null,
-          usageResponseJson: null,
-          tokensIn: null,
-          tokensOut: null,
-          tokenCountSource: null,
-          cacheReadTokens: null,
-          cacheWriteTokens: null,
-          cacheDiscountMicrosUsd: null,
-          fallbackUsed: null,
-          fallbackPlan: null,
-          zdr: attempt.zdr,
-          finishState: null,
-          refusalState: null,
-          validationResult: null,
-          failureClass: null,
-          retryDecision: null,
-          retryDelayMs: null,
-          artifactRef: attempt.artifactRef,
-          errorClasses: [],
-          startedAt: attempt.startedAt,
-          completedAt: null,
-          createdAt: new Date(),
-        })
-        .onConflictDoNothing();
 
-      const persisted = await loadAttemptInTx(tx, attempt.attemptId);
-      if (persisted === undefined || !beginAttemptRowMatches(persisted, attempt)) {
+      const account = await reserveRunCostAccountInTx(tx, attempt.runId, worstCaseCostUsd);
+      if (account === undefined) {
+        return {
+          admitted: false,
+          account: journalCostAccountRowToRecord(
+            await requireRunCostAccountInTx(tx, attempt.runId),
+          ),
+        };
+      }
+
+      const dispatchingAttempt = await beginAttemptInTx(tx, attempt, { renewLease: false });
+      const insertedReservations = await tx
+        .insert(localizationJournalCostReservations)
+        .values({
+          reservationId,
+          runId: attempt.runId,
+          attemptId: attempt.attemptId,
+          reservedUsd: worstCaseCostUsd,
+          reconciledUsd: null,
+          state: "reserved",
+          createdAt: new Date(),
+          reconciledAt: null,
+        })
+        .returning();
+      const reservation = insertedReservations[0];
+      if (reservation === undefined) {
         throw new LocalizationJournalRepositoryError(
           "attempt_conflict",
-          `attempt ${attempt.attemptId} already exists with different pre-dispatch facts or collides with another logical attempt`,
+          `could not create cost reservation for attempt ${attempt.attemptId}`,
         );
       }
       return {
-        ...journalAttemptRowToRecord(persisted),
-        leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+        admitted: true,
+        attempt: dispatchingAttempt,
+        reservation: journalCostReservationRowToRecord(reservation),
+        account: journalCostAccountRowToRecord(account),
       };
     });
   }
@@ -965,6 +1083,12 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       await renewRunLeaseInTx(tx, completion.runId, completion.lease, ["running", "paused"]);
       const before = await loadAttemptInTx(tx, completion.attemptId);
       const persisted = await completeAttemptInTx(tx, completion);
+      // Completion and reservation reconciliation share this transaction. A
+      // malformed/refused response with a confirmed bill therefore charges the
+      // account even though semantic validation later rejects the invocation.
+      // Unknown settlement is intentionally a no-op here: its worst-case
+      // reservation remains in `reservedCostUsd` until a later reconciliation.
+      await reconcileAttemptReservationInTx(tx, completion);
       if (before?.lifecycleState === "dispatching") {
         const released = await tx
           .update(localizationJournalRunUnits)
@@ -992,6 +1116,222 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         }
       }
       return journalAttemptRowToRecord(persisted);
+    });
+  }
+
+  async reconcileAttemptBilling(
+    actor: AuthorizationActor,
+    input: ReconcileLocalizationJournalAttemptBillingInput,
+  ): Promise<LocalizationJournalAttemptRecord> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    assertNonBlank(input.attemptId, "attemptId");
+    assertNonBlank(input.runId, "runId");
+    const costUsd = normalizeExactNonNegativeDecimal(input.costUsd, "costUsd");
+    const costKind = input.costKind ?? "billed";
+    if (!journalCostKindValues.includes(costKind)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `costKind=${String(costKind)} is not supported`,
+      );
+    }
+    if (input.usageResponseJson !== undefined) {
+      assertJsonObject(input.usageResponseJson, "usageResponseJson");
+    }
+    if ((input.modelId === undefined) !== (input.providerId === undefined)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        "modelId and providerId must be supplied together for billing reconciliation",
+      );
+    }
+    if (input.modelId !== undefined) assertNonBlank(input.modelId, "modelId");
+    if (input.providerId !== undefined) assertNonBlank(input.providerId, "providerId");
+
+    return this.db.transaction(async (tx) => {
+      const current = await loadAttemptInTx(tx, input.attemptId);
+      if (current === undefined) {
+        throw new LocalizationJournalRepositoryError(
+          "candidate_attempt_missing",
+          `cannot reconcile missing attempt ${input.attemptId}`,
+        );
+      }
+      if (current.runId !== input.runId) {
+        throw new LocalizationJournalRepositoryError(
+          "attempt_conflict",
+          `attempt ${input.attemptId} is not bound to run ${input.runId}`,
+        );
+      }
+      if (current.lifecycleState !== "completed") {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `attempt ${input.attemptId} must complete before billing can reconcile`,
+        );
+      }
+      const modelId = input.modelId ?? current.modelId;
+      const providerId = input.providerId ?? current.providerId;
+      if (modelId === null || providerId === null) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `attempt ${input.attemptId} needs its served modelId/providerId before a known bill can reconcile`,
+        );
+      }
+
+      if (current.billingState === "known") {
+        if (
+          current.costUsd !== costUsd ||
+          current.costKind !== costKind ||
+          current.modelId !== modelId ||
+          current.providerId !== providerId
+        ) {
+          throw new LocalizationJournalRepositoryError(
+            "attempt_conflict",
+            `attempt ${input.attemptId} already has different settled billing facts`,
+          );
+        }
+        await reconcileKnownAttemptReservationInTx(tx, {
+          runId: input.runId,
+          attemptId: input.attemptId,
+          settledCostUsd: costUsd,
+        });
+        return journalAttemptRowToRecord(current);
+      }
+
+      // `null` is a pre-migration unknown state and receives the same
+      // conservative treatment as the explicit `unknown` value.
+      if (current.billingState !== "unknown" && current.billingState !== null) {
+        throw new LocalizationJournalRepositoryError(
+          "attempt_conflict",
+          `attempt ${input.attemptId} has unsupported billing state ${String(current.billingState)}`,
+        );
+      }
+      const updated = await tx
+        .update(localizationJournalLlmAttempts)
+        .set({
+          modelId,
+          providerId,
+          costUsd,
+          costKind,
+          billingState: "known",
+          ...(input.usageResponseJson === undefined
+            ? {}
+            : { usageResponseJson: input.usageResponseJson }),
+        })
+        .where(
+          and(
+            eq(localizationJournalLlmAttempts.attemptId, input.attemptId),
+            eq(localizationJournalLlmAttempts.runId, input.runId),
+            eq(localizationJournalLlmAttempts.lifecycleState, "completed"),
+            sql`(${localizationJournalLlmAttempts.billingState} = 'unknown' or ${localizationJournalLlmAttempts.billingState} is null)`,
+          ),
+        )
+        .returning();
+      const settled = updated[0] ?? (await loadAttemptInTx(tx, input.attemptId));
+      if (
+        settled === undefined ||
+        settled.billingState !== "known" ||
+        settled.costUsd !== costUsd ||
+        settled.costKind !== costKind
+      ) {
+        throw new LocalizationJournalRepositoryError(
+          "attempt_conflict",
+          `attempt ${input.attemptId} could not be reconciled with settled billing facts`,
+        );
+      }
+      await reconcileKnownAttemptReservationInTx(tx, {
+        runId: input.runId,
+        attemptId: input.attemptId,
+        settledCostUsd: costUsd,
+      });
+      return journalAttemptRowToRecord(settled);
+    });
+  }
+
+  async loadRunCostAccount(
+    actor: AuthorizationActor,
+    runId: string,
+  ): Promise<LocalizationJournalRunCostAccountRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertNonBlank(runId, "runId");
+    const rows = await this.db
+      .select()
+      .from(localizationJournalRunCostAccounts)
+      .where(eq(localizationJournalRunCostAccounts.runId, runId))
+      .limit(1);
+    const row = rows[0];
+    return row === undefined ? null : journalCostAccountRowToRecord(row);
+  }
+
+  async loadCostReservations(
+    actor: AuthorizationActor,
+    runId: string,
+  ): Promise<LocalizationJournalCostReservationRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertNonBlank(runId, "runId");
+    const rows = await this.db
+      .select()
+      .from(localizationJournalCostReservations)
+      .where(eq(localizationJournalCostReservations.runId, runId))
+      .orderBy(asc(localizationJournalCostReservations.createdAt));
+    return rows.map(journalCostReservationRowToRecord);
+  }
+
+  async raiseRunCostCap(
+    actor: AuthorizationActor,
+    runId: string,
+    capUsdInput: string,
+  ): Promise<LocalizationJournalRunCostAccountRecord> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    assertNonBlank(runId, "runId");
+    const capUsd = normalizeExactNonNegativeDecimal(capUsdInput, "capUsd");
+    return this.db.transaction(async (tx) => {
+      const account = await requireRunCostAccountInTx(tx, runId);
+      if (account.capUsd !== null && compareExactNonNegativeDecimals(capUsd, account.capUsd) < 0) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `cost cap ${capUsd} may not lower existing cap ${account.capUsd}`,
+        );
+      }
+      const run = await requireRunInTx(tx, runId);
+      if (run.costPolicy === null) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `journal run ${runId} has no frozen cost policy to raise`,
+        );
+      }
+      const raisedCostPolicy = { ...run.costPolicy, budgetCapUsd: capUsd };
+      if (!costPolicyIsCapRaise(run.costPolicy, raisedCostPolicy)) {
+        throw new LocalizationJournalRepositoryError(
+          "run_seed_conflict",
+          `journal run ${runId} cost policy does not permit cap ${capUsd}`,
+        );
+      }
+      const updated = await tx
+        .update(localizationJournalRunCostAccounts)
+        .set({ capUsd, updatedAt: new Date() })
+        .where(
+          and(
+            eq(localizationJournalRunCostAccounts.runId, runId),
+            sql`(
+              ${localizationJournalRunCostAccounts.capUsd} is null
+              or ${localizationJournalRunCostAccounts.capUsd} <= ${capUsd}
+            )`,
+            sql`${localizationJournalRunCostAccounts.spentCostUsd}
+              + ${localizationJournalRunCostAccounts.reservedCostUsd}
+              <= ${capUsd}`,
+          ),
+        )
+        .returning();
+      const row = updated[0];
+      if (row === undefined) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `cost cap ${capUsd} must not lower the concurrent cap or fall below committed spend and reservations for journal run ${runId}`,
+        );
+      }
+      await tx
+        .update(localizationJournalRuns)
+        .set({ costPolicy: raisedCostPolicy, updatedAt: new Date() })
+        .where(eq(localizationJournalRuns.runId, runId));
+      return journalCostAccountRowToRecord(row);
     });
   }
 
@@ -1475,6 +1815,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           providerId: null,
           costUsd: null,
           costKind: null,
+          billingState: "unknown",
           usageResponseJson: null,
           tokensIn: null,
           tokensOut: null,
@@ -2306,14 +2647,16 @@ function normalizeCompleteAttempt(
   }
   if (input.modelId !== null) assertNonBlank(input.modelId, "modelId");
   if (input.providerId !== null) assertNonBlank(input.providerId, "providerId");
-  if (input.costUsd !== null) {
+  const costUsd =
+    input.costUsd === null ? null : normalizeExactNonNegativeDecimal(input.costUsd, "costUsd");
+  if (costUsd !== null) {
     if (input.modelId === null) {
       throw new LocalizationJournalRepositoryError(
         "invalid_input",
         "costUsd requires a real served model/provider pair",
       );
     }
-    assertExactNonNegativeDecimal(input.costUsd, "costUsd");
+    assertExactNonNegativeDecimal(costUsd, "costUsd");
   } else if (input.costKind !== undefined) {
     throw new LocalizationJournalRepositoryError(
       "invalid_input",
@@ -2324,6 +2667,23 @@ function normalizeCompleteAttempt(
     throw new LocalizationJournalRepositoryError(
       "invalid_input",
       `costKind=${input.costKind} is not supported`,
+    );
+  }
+  if (
+    input.billingState !== undefined &&
+    input.billingState !== "known" &&
+    input.billingState !== "unknown"
+  ) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `billingState=${String(input.billingState)} is not supported`,
+    );
+  }
+  const billingState = input.billingState ?? (costUsd === null ? "unknown" : "known");
+  if (billingState === "known" && costUsd === null) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      "known billingState requires an exact settled costUsd",
     );
   }
   if (input.usageResponseJson !== undefined) {
@@ -2381,7 +2741,9 @@ function normalizeCompleteAttempt(
   }
   return {
     ...input,
+    costUsd,
     costKind: input.costKind ?? null,
+    billingState,
     usageResponseJson: input.usageResponseJson ?? null,
     tokenCountSource: input.tokenCountSource ?? null,
     cacheReadTokens: input.cacheReadTokens ?? null,
@@ -3016,6 +3378,402 @@ function beginAttemptRowMatches(
   );
 }
 
+async function beginAttemptInTx(
+  tx: JournalTransaction,
+  attempt: NormalizedBeginAttempt,
+  options: { renewLease?: boolean } = {},
+): Promise<LocalizationJournalDispatchingAttemptRecord> {
+  if (options.renewLease !== false) {
+    await renewRunLeaseInTx(tx, attempt.runId, attempt.lease, ["running"]);
+  }
+  const existing = await loadAttemptInTx(tx, attempt.attemptId);
+  if (existing !== undefined) {
+    if (!beginAttemptRowMatches(existing, attempt)) {
+      throw new LocalizationJournalRepositoryError(
+        "attempt_conflict",
+        `attempt ${attempt.attemptId} already exists with different pre-dispatch facts`,
+      );
+    }
+    return {
+      ...journalAttemptRowToRecord(existing),
+      leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+    };
+  }
+  const claimed = await tx
+    .update(localizationJournalRunUnits)
+    .set({
+      state: "claimed",
+      claimOwnerId: attempt.lease.ownerId,
+      claimFenceToken: attempt.lease.fenceToken,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRunUnits.runId, attempt.runId),
+        eq(localizationJournalRunUnits.bridgeUnitId, attempt.bridgeUnitId),
+        eq(localizationJournalRunUnits.state, "pending"),
+      ),
+    )
+    .returning({ bridgeUnitId: localizationJournalRunUnits.bridgeUnitId });
+  if (claimed[0] === undefined) {
+    const current = await requireSeededUnitInTx(tx, attempt.runId, attempt.bridgeUnitId);
+    throw new LocalizationJournalRepositoryError(
+      "unit_not_pending",
+      `cannot dispatch attempt ${attempt.attemptId}: planned unit ${attempt.runId}/${attempt.bridgeUnitId} is ${current.state}`,
+    );
+  }
+  await tx
+    .insert(localizationJournalLlmAttempts)
+    .values({
+      attemptId: attempt.attemptId,
+      runId: attempt.runId,
+      bridgeUnitId: attempt.bridgeUnitId,
+      stage: attempt.stage,
+      agentLabel: attempt.agentLabel,
+      logicalCallId: attempt.logicalCallId,
+      attemptIndex: attempt.attemptIndex,
+      lifecycleState: "dispatching",
+      fenceToken: attempt.lease.fenceToken,
+      requestedModelId: attempt.requestedModelId,
+      requestedProviderId: attempt.requestedProviderId,
+      modelId: null,
+      providerId: null,
+      providerRunId: attempt.attemptId,
+      costUsd: null,
+      costKind: null,
+      billingState: null,
+      usageResponseJson: null,
+      tokensIn: null,
+      tokensOut: null,
+      tokenCountSource: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      cacheDiscountMicrosUsd: null,
+      fallbackUsed: null,
+      fallbackPlan: null,
+      zdr: attempt.zdr,
+      finishState: null,
+      refusalState: null,
+      validationResult: null,
+      failureClass: null,
+      retryDecision: null,
+      retryDelayMs: null,
+      artifactRef: attempt.artifactRef,
+      errorClasses: [],
+      startedAt: attempt.startedAt,
+      completedAt: null,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+
+  const persisted = await loadAttemptInTx(tx, attempt.attemptId);
+  if (persisted === undefined || !beginAttemptRowMatches(persisted, attempt)) {
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `attempt ${attempt.attemptId} already exists with different pre-dispatch facts or collides with another logical attempt`,
+    );
+  }
+  return {
+    ...journalAttemptRowToRecord(persisted),
+    leaseDeadline: await loadRunLeaseDeadlineInTx(tx, attempt.runId),
+  };
+}
+
+/**
+ * The account-only admission primitive. Its single conditional UPDATE is the
+ * concurrency boundary for cost reservations: PostgreSQL locks the account
+ * row, reevaluates the cap predicate after that lock, and either returns the
+ * newly reserved balance or no row. Keep lease/unit/attempt work out of this
+ * helper so its atomicity can be exercised independently of run-row locks.
+ */
+export async function reserveRunCostAccountInTx(
+  tx: JournalTransaction,
+  runId: string,
+  worstCaseCostUsd: string,
+): Promise<typeof localizationJournalRunCostAccounts.$inferSelect | undefined> {
+  const updated = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({
+      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} + ${worstCaseCostUsd}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, runId),
+        sql`(
+          ${localizationJournalRunCostAccounts.capUsd} is null
+          or ${localizationJournalRunCostAccounts.spentCostUsd}
+            + ${localizationJournalRunCostAccounts.reservedCostUsd}
+            + ${worstCaseCostUsd}
+            <= ${localizationJournalRunCostAccounts.capUsd}
+        )`,
+      ),
+    )
+    .returning();
+  return updated[0];
+}
+
+async function requireRunCostAccountInTx(
+  tx: JournalTransaction,
+  runId: string,
+): Promise<typeof localizationJournalRunCostAccounts.$inferSelect> {
+  const rows = await tx
+    .select()
+    .from(localizationJournalRunCostAccounts)
+    .where(eq(localizationJournalRunCostAccounts.runId, runId))
+    .limit(1);
+  const account = rows[0];
+  if (account === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `journal run ${runId} has no cost account; seed it before cost admission`,
+    );
+  }
+  return account;
+}
+
+async function ensureRunCostAccountInTx(
+  tx: JournalTransaction,
+  runId: string,
+  capUsd: string | null,
+): Promise<typeof localizationJournalRunCostAccounts.$inferSelect> {
+  await tx
+    .insert(localizationJournalRunCostAccounts)
+    .values({
+      runId,
+      capUsd,
+      spentCostUsd: "0",
+      reservedCostUsd: "0",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing();
+  const existing = await requireRunCostAccountInTx(tx, runId);
+  if (existing.capUsd === capUsd) return existing;
+  if (
+    existing.capUsd !== null &&
+    capUsd !== null &&
+    compareExactNonNegativeDecimals(capUsd, existing.capUsd) < 0
+  ) {
+    throw new LocalizationJournalRepositoryError(
+      "run_seed_conflict",
+      `journal run ${runId} cost cap cannot decrease from ${existing.capUsd} to ${capUsd}`,
+    );
+  }
+  if (existing.capUsd !== null && capUsd === null) {
+    throw new LocalizationJournalRepositoryError(
+      "run_seed_conflict",
+      `journal run ${runId} already has finite cost cap ${existing.capUsd} and cannot become unlimited`,
+    );
+  }
+  const updated = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({ capUsd, updatedAt: new Date() })
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, runId),
+        sql`(
+          ${localizationJournalRunCostAccounts.capUsd} is null
+          or ${localizationJournalRunCostAccounts.capUsd} <= ${capUsd}
+        )`,
+        sql`${localizationJournalRunCostAccounts.spentCostUsd}
+          + ${localizationJournalRunCostAccounts.reservedCostUsd}
+          <= ${capUsd}`,
+      ),
+    )
+    .returning();
+  const account = updated[0];
+  if (account === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "run_seed_conflict",
+      `journal run ${runId} cost cap ${capUsd} cannot fall below committed spend and reservations`,
+    );
+  }
+  return account;
+}
+
+async function requireCostReservationInTx(
+  tx: JournalTransaction,
+  runId: string,
+  attemptId: string,
+): Promise<typeof localizationJournalCostReservations.$inferSelect> {
+  const rows = await tx
+    .select()
+    .from(localizationJournalCostReservations)
+    .where(
+      and(
+        eq(localizationJournalCostReservations.runId, runId),
+        eq(localizationJournalCostReservations.attemptId, attemptId),
+      ),
+    )
+    .limit(1);
+  const reservation = rows[0];
+  if (reservation === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `attempt ${attemptId} has no durable cost reservation`,
+    );
+  }
+  return reservation;
+}
+
+async function reconcileAttemptReservationInTx(
+  tx: JournalTransaction,
+  completion: NormalizedCompleteAttempt,
+): Promise<void> {
+  if (completion.billingState !== "known") return;
+  const settledCostUsd = completion.costUsd;
+  if (settledCostUsd === null) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `known billing for attempt ${completion.attemptId} lacks settled cost`,
+    );
+  }
+  await reconcileKnownAttemptReservationInTx(tx, {
+    runId: completion.runId,
+    attemptId: completion.attemptId,
+    settledCostUsd,
+  });
+}
+
+/** Move one settled reservation into exact spent balance, idempotently. */
+async function reconcileKnownAttemptReservationInTx(
+  tx: JournalTransaction,
+  input: { runId: string; attemptId: string; settledCostUsd: string },
+): Promise<void> {
+  // Cost admission locks the run before its account. Take the same lock order
+  // on both immediate completion and late reconciliation, so an over-cap
+  // settlement can pause the run without racing a concurrent reservation.
+  await lockRunForCostReconciliationInTx(tx, input.runId);
+  const transitioned = await tx
+    .update(localizationJournalCostReservations)
+    .set({
+      state: "reconciled",
+      reconciledUsd: input.settledCostUsd,
+      reconciledAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalCostReservations.runId, input.runId),
+        eq(localizationJournalCostReservations.attemptId, input.attemptId),
+        eq(localizationJournalCostReservations.state, "reserved"),
+      ),
+    )
+    .returning();
+  const reservation = transitioned[0];
+  if (reservation === undefined) {
+    const existing = await tx
+      .select()
+      .from(localizationJournalCostReservations)
+      .where(
+        and(
+          eq(localizationJournalCostReservations.runId, input.runId),
+          eq(localizationJournalCostReservations.attemptId, input.attemptId),
+        ),
+      )
+      .limit(1);
+    const prior = existing[0];
+    // Legacy / deliberately unbudgeted attempts have no reservation.
+    if (prior === undefined) return;
+    if (prior.state !== "reconciled" || prior.reconciledUsd !== input.settledCostUsd) {
+      throw new LocalizationJournalRepositoryError(
+        "attempt_conflict",
+        `attempt ${input.attemptId} cost reservation was reconciled with different facts`,
+      );
+    }
+    await pauseRunForOverCapSettlementInTx(tx, input);
+    return;
+  }
+  const account = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({
+      spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
+      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${reservation.reservedUsd}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, input.runId),
+        sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
+      ),
+    )
+    .returning();
+  const updatedAccount = account[0];
+  if (updatedAccount === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `cost account for attempt ${input.attemptId} has no matching reserved balance`,
+    );
+  }
+  await pauseRunForOverCapSettlementInTx(tx, input, updatedAccount);
+}
+
+/**
+ * Reconciliation is allowed to record a provider bill above the pre-dispatch
+ * reservation, because refusing the write would erase a real charge. The
+ * account is still never allowed to continue silently over its run cap:
+ * persist node 3's normal budget-cap operational state in the same
+ * transaction as the settlement.
+ */
+async function pauseRunForOverCapSettlementInTx(
+  tx: JournalTransaction,
+  input: { runId: string; attemptId: string; settledCostUsd: string },
+  updatedAccount?: typeof localizationJournalRunCostAccounts.$inferSelect,
+): Promise<void> {
+  const account = updatedAccount ?? (await requireRunCostAccountInTx(tx, input.runId));
+  if (
+    account.capUsd === null ||
+    compareExactNonNegativeDecimals(
+      addExactNonNegativeDecimals(account.spentCostUsd, account.reservedCostUsd),
+      account.capUsd,
+    ) <= 0
+  ) {
+    return;
+  }
+
+  const blocker: LocalizationJournalOperationalBlocker = {
+    kind: "budget_cap",
+    detail:
+      `reconciled provider bill $${input.settledCostUsd} raised run spend ` +
+      `plus reservations to $${addExactNonNegativeDecimals(
+        account.spentCostUsd,
+        account.reservedCostUsd,
+      )}, above configured cap $${account.capUsd}`,
+    evidence:
+      `cost-account:${input.runId};attempt:${input.attemptId};` +
+      `spent-usd:${account.spentCostUsd};reserved-usd:${account.reservedCostUsd};` +
+      `cap-usd:${account.capUsd}`,
+    raisedAt: new Date().toISOString(),
+    operatorAction: "raise the run cost cap, then resume",
+  };
+
+  // Preserve an earlier operational blocker rather than overwriting its
+  // evidence. A running run is the only state that could otherwise continue
+  // dispatching after this paid overrun.
+  await tx
+    .update(localizationJournalRuns)
+    .set({ status: "paused", pausedBlocker: blocker, updatedAt: new Date() })
+    .where(
+      and(
+        eq(localizationJournalRuns.runId, input.runId),
+        eq(localizationJournalRuns.status, "running"),
+      ),
+    );
+}
+
+async function lockRunForCostReconciliationInTx(
+  tx: JournalTransaction,
+  runId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    select 1
+    from ${localizationJournalRuns}
+    where ${localizationJournalRuns.runId} = ${runId}
+    for update
+  `);
+  await requireRunInTx(tx, runId);
+}
+
 async function completeAttemptInTx(
   tx: JournalTransaction,
   completion: NormalizedCompleteAttempt,
@@ -3069,6 +3827,7 @@ async function completeAttemptInTx(
       providerId: completion.providerId,
       costUsd: completion.costUsd,
       costKind: completion.costKind,
+      billingState: completion.billingState,
       usageResponseJson: completion.usageResponseJson,
       tokensIn: completion.tokensIn,
       tokensOut: completion.tokensOut,
@@ -3121,6 +3880,7 @@ function completeAttemptRowMatches(
     row.providerId === completion.providerId &&
     row.costUsd === completion.costUsd &&
     row.costKind === completion.costKind &&
+    row.billingState === completion.billingState &&
     jsonValuesEqual(row.usageResponseJson, completion.usageResponseJson) &&
     row.tokensIn === completion.tokensIn &&
     row.tokensOut === completion.tokensOut &&
@@ -3308,6 +4068,7 @@ function normalizedAttemptToCompletion(attempt: NormalizedAttempt): NormalizedCo
     providerId: attempt.providerId,
     costUsd: attempt.costUsd,
     costKind: attempt.costKind,
+    billingState: "known",
     usageResponseJson: attempt.usageResponseJson,
     tokensIn: attempt.tokensIn,
     tokensOut: attempt.tokensOut,
@@ -3392,8 +4153,9 @@ function journalAttemptRowToRecord(
     modelId: row.modelId,
     providerId: row.providerId,
     providerRunId: row.providerRunId,
-    costUsd: row.costUsd,
+    costUsd: row.costUsd === null ? null : normalizeExactNonNegativeDecimal(row.costUsd, "costUsd"),
     costKind: row.costKind as LocalizationJournalAttemptCostKind | null,
+    billingState: row.billingState as LocalizationJournalAttemptBillingState | null,
     usageResponseJson: row.usageResponseJson,
     tokensIn: row.tokensIn,
     tokensOut: row.tokensOut,
@@ -3415,6 +4177,37 @@ function journalAttemptRowToRecord(
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     createdAt: row.createdAt,
+  };
+}
+
+function journalCostAccountRowToRecord(
+  row: typeof localizationJournalRunCostAccounts.$inferSelect,
+): LocalizationJournalRunCostAccountRecord {
+  return {
+    runId: row.runId,
+    capUsd: row.capUsd === null ? null : normalizeExactNonNegativeDecimal(row.capUsd, "capUsd"),
+    spentCostUsd: normalizeExactNonNegativeDecimal(row.spentCostUsd, "spentCostUsd"),
+    reservedCostUsd: normalizeExactNonNegativeDecimal(row.reservedCostUsd, "reservedCostUsd"),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function journalCostReservationRowToRecord(
+  row: typeof localizationJournalCostReservations.$inferSelect,
+): LocalizationJournalCostReservationRecord {
+  return {
+    reservationId: row.reservationId,
+    runId: row.runId,
+    attemptId: row.attemptId,
+    reservedUsd: normalizeExactNonNegativeDecimal(row.reservedUsd, "reservedUsd"),
+    reconciledUsd:
+      row.reconciledUsd === null
+        ? null
+        : normalizeExactNonNegativeDecimal(row.reconciledUsd, "reconciledUsd"),
+    state: row.state,
+    createdAt: row.createdAt,
+    reconciledAt: row.reconciledAt,
   };
 }
 
@@ -3544,6 +4337,93 @@ function assertExactNonNegativeDecimal(value: string, label: string): void {
       `${label} must be an exact non-negative decimal string without exponent notation`,
     );
   }
+}
+
+function normalizeExactNonNegativeDecimal(value: string, label: string): string {
+  assertExactNonNegativeDecimal(value, label);
+  const [whole, fraction = ""] = value.split(".");
+  const trimmedFraction = fraction.replace(/0+$/u, "");
+  return trimmedFraction.length === 0 ? whole! : `${whole}.${trimmedFraction}`;
+}
+
+function compareExactNonNegativeDecimals(left: string, right: string): -1 | 0 | 1 {
+  const leftCanonical = normalizeExactNonNegativeDecimal(left, "left decimal");
+  const rightCanonical = normalizeExactNonNegativeDecimal(right, "right decimal");
+  const [leftWhole, leftFraction = ""] = leftCanonical.split(".");
+  const [rightWhole, rightFraction = ""] = rightCanonical.split(".");
+  const scale = Math.max(leftFraction.length, rightFraction.length);
+  const leftScaled = BigInt(leftWhole! + leftFraction.padEnd(scale, "0"));
+  const rightScaled = BigInt(rightWhole! + rightFraction.padEnd(scale, "0"));
+  if (leftScaled === rightScaled) return 0;
+  return leftScaled < rightScaled ? -1 : 1;
+}
+
+function addExactNonNegativeDecimals(left: string, right: string): string {
+  const leftCanonical = normalizeExactNonNegativeDecimal(left, "left decimal");
+  const rightCanonical = normalizeExactNonNegativeDecimal(right, "right decimal");
+  const [leftWhole, leftFraction = ""] = leftCanonical.split(".");
+  const [rightWhole, rightFraction = ""] = rightCanonical.split(".");
+  const scale = Math.max(leftFraction.length, rightFraction.length);
+  const sum =
+    BigInt(leftWhole! + leftFraction.padEnd(scale, "0")) +
+    BigInt(rightWhole! + rightFraction.padEnd(scale, "0"));
+  if (scale === 0) return sum.toString();
+  const digits = sum.toString().padStart(scale + 1, "0");
+  return normalizeExactNonNegativeDecimal(
+    `${digits.slice(0, digits.length - scale)}.${digits.slice(digits.length - scale)}`,
+    "decimal sum",
+  );
+}
+
+function costCapUsdFromPolicy(policy: Record<string, unknown>): string | null {
+  const raw = policy.budgetCapUsd;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === "string")
+    return normalizeExactNonNegativeDecimal(raw, "costPolicy.budgetCapUsd");
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+    return normalizeExactNonNegativeDecimal(
+      decimalStringFromFiniteNumber(raw),
+      "costPolicy.budgetCapUsd",
+    );
+  }
+  throw new LocalizationJournalRepositoryError(
+    "invalid_input",
+    "costPolicy.budgetCapUsd must be a non-negative decimal string, number, null, or omitted",
+  );
+}
+
+function costPolicyIsCapRaise(
+  current: Record<string, unknown> | null,
+  next: Record<string, unknown>,
+): boolean {
+  if (current === null) return false;
+  const currentWithoutCap = { ...current };
+  const nextWithoutCap = { ...next };
+  delete currentWithoutCap.budgetCapUsd;
+  delete nextWithoutCap.budgetCapUsd;
+  if (!jsonValuesEqual(currentWithoutCap, nextWithoutCap)) return false;
+  const before = costCapUsdFromPolicy(current);
+  const after = costCapUsdFromPolicy(next);
+  if (before === after) return true;
+  if (after === null) return before === null;
+  // An unlimited account still tracks durable spent/reserved history. An
+  // operator may add a finite cap later, provided the account update proves
+  // it covers all already-committed cost.
+  if (before === null) return true;
+  return compareExactNonNegativeDecimals(after, before) >= 0;
+}
+
+function decimalStringFromFiniteNumber(value: number): string {
+  const raw = String(value);
+  if (!/[eE]/u.test(raw)) return raw;
+  const [coefficient, exponentRaw] = raw.toLowerCase().split("e");
+  const exponent = Number(exponentRaw);
+  const [whole = "0", fraction = ""] = coefficient!.split(".");
+  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/u, "") || "0";
+  const decimalPoint = whole.length + exponent;
+  if (decimalPoint <= 0) return `0.${"0".repeat(-decimalPoint)}${digits}`;
+  if (decimalPoint >= digits.length) return `${digits}${"0".repeat(decimalPoint - digits.length)}`;
+  return `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`;
 }
 
 function toValidDate(value: LocalizationJournalTimestamp, label: string): Date {

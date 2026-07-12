@@ -109,7 +109,7 @@ export type ProviderRouteReliabilityRow = {
   readonly retriedInvocationCount: number;
   /** SUM of `retryCount` over the route. */
   readonly totalRetryCount: number;
-  /** Invocations with `fallbackUsed === true` (OR-side resilience, DATA not error). */
+  /** Invocations with `fallbackUsed === true` (provider-side routing data, not an app error). */
   readonly fallbackInvocationCount: number;
   /** Distinct non-empty `fallbackPlan` chains observed, sorted, as `a>b>c`. */
   readonly fallbackPlans: readonly string[];

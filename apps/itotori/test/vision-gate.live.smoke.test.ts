@@ -1,13 +1,8 @@
-// visual-inspection-gate-for-all-render-nodes — LIVE SMOKE (the real proof).
+// visual-inspection-gate-for-all-render-nodes — paid-boundary live smoke.
 //
-// Runs the eyes-on-pixels gate LIVE against a ZDR-routed OpenRouter VISION
-// model on TWO frames and records the verdicts:
-//
-//   1. a GARBAGE frame (a solid-color fill, standing in for the real
-//      solid/near-solid garbage render the metadata checks missed) — the
-//      gate MUST return coherent:false and REJECT.
-//   2. the REAL proof frame (real mansion + speaker name box + localized
-//      English) — the gate MUST return coherent:true + legible and ACCEPT.
+// A standalone vision command has no durable run-cost admission. Even with
+// opt-in credentials it must refuse before a paid OpenRouter call; the
+// providerOverride/fake suite covers vision verdict behavior separately.
 //
 // Gated exactly like the other live paths: ITOTORI_VISION_GATE_LIVE=1 +
 // OPENROUTER_API_KEY (+ the OpenRouter provider's own fail-closed
@@ -20,10 +15,10 @@
 // uncommitted /scratch directory.
 
 import { deflateSync } from "node:zlib";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runVisionGateCommand } from "../src/render-gate/index.js";
 
 const LIVE_ENABLED =
@@ -31,15 +26,9 @@ const LIVE_ENABLED =
   typeof process.env.OPENROUTER_API_KEY === "string" &&
   process.env.OPENROUTER_API_KEY.length > 0;
 
-const PROOF_FRAME_PATH =
-  process.env.ITOTORI_VISION_GATE_PROOF_FRAME ??
-  "/home/trevor/projects/itotori/.private-render/diag/alpha006d-rerun-proof.png";
-
 const EXPECTED_TEXT =
   process.env.ITOTORI_VISION_GATE_EXPECTED_TEXT ??
   "a single line of localized English dialogue in a message box with a speaker name label";
-
-const SMOKE_OUT_DIR = process.env.ITOTORI_VISION_GATE_SMOKE_OUT ?? "/scratch/itotori-visgate-smoke";
 
 /** crc32 (PNG chunk checksum). */
 function crc32(bytes: Uint8Array): number {
@@ -96,66 +85,24 @@ function solidColorPng(width: number, height: number, rgb: [number, number, numb
   ]);
 }
 
-describe.skipIf(!LIVE_ENABLED)("vision gate LIVE smoke (ZDR OpenRouter vision)", () => {
-  // Create the (uncommitted, developer-local) /scratch verdict dir only when the
-  // live suite actually runs. Vitest still evaluates a skipped describe's factory
-  // at COLLECTION time, so a top-level mkdirSync here would try to create
-  // `/scratch/...` on every default-suite run — failing on a hosted runner that
-  // has no writable /scratch. A `beforeAll` runs only for the non-skipped suite.
-  beforeAll(() => {
-    mkdirSync(SMOKE_OUT_DIR, { recursive: true });
-  });
-
-  it("REJECTS a garbage (solid-color) frame → coherent:false", async () => {
+describe.skipIf(!LIVE_ENABLED)("vision gate live paid-provider boundary", () => {
+  it("refuses a garbage-frame inspection before paid dispatch", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vision-gate-garbage-"));
     const framePath = join(dir, "garbage-solid-purple.png");
     // Solid purple — the same class of garbage (solid-color redaction) the
     // metadata checks failed to catch.
     writeFileSync(framePath, Buffer.from(solidColorPng(320, 180, [92, 40, 120])));
 
-    const outcome = await runVisionGateCommand({
-      framePath,
-      expectedText: EXPECTED_TEXT,
-      redactionMode: "off",
-      inputClassification: "synthetic_public",
+    await expect(
+      runVisionGateCommand({
+        framePath,
+        expectedText: EXPECTED_TEXT,
+        redactionMode: "off",
+        inputClassification: "synthetic_public",
+      }),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "budget_cap" },
     });
-    expect(outcome.status).not.toBe("skipped");
-    if (outcome.status === "skipped") throw new Error("live gate skipped unexpectedly");
-
-    writeFileSync(
-      join(SMOKE_OUT_DIR, "garbage-verdict.json"),
-      `${JSON.stringify(outcome.result.artifact, null, 2)}\n`,
-    );
-
-    expect(outcome.result.verdict.coherent).toBe(false);
-    expect(outcome.result.gate.passed).toBe(false);
-    expect(outcome.result.gate.failures).toContain("incoherent");
-    // real served pair + real billed cost recorded
-    expect(outcome.result.artifact.servedProviderId).not.toBeNull();
-    expect(outcome.result.artifact.zdr).toBe(true);
-    expect(Number(outcome.result.artifact.costUsd)).toBeGreaterThan(0);
-  }, 60_000);
-
-  it("ACCEPTS the real proof frame → coherent:true + legible", async () => {
-    const outcome = await runVisionGateCommand({
-      framePath: PROOF_FRAME_PATH,
-      expectedText: EXPECTED_TEXT,
-      redactionMode: "off",
-      inputClassification: "private_corpus",
-    });
-    expect(outcome.status).not.toBe("skipped");
-    if (outcome.status === "skipped") throw new Error("live gate skipped unexpectedly");
-
-    writeFileSync(
-      join(SMOKE_OUT_DIR, "real-proof-verdict.json"),
-      `${JSON.stringify(outcome.result.artifact, null, 2)}\n`,
-    );
-
-    expect(outcome.result.verdict.coherent).toBe(true);
-    expect(outcome.result.verdict.target_text_legible).toBe(true);
-    expect(outcome.result.gate.passed).toBe(true);
-    expect(outcome.result.artifact.servedProviderId).not.toBeNull();
-    expect(outcome.result.artifact.zdr).toBe(true);
-    expect(Number(outcome.result.artifact.costUsd)).toBeGreaterThan(0);
   }, 60_000);
 });

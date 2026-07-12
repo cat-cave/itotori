@@ -120,7 +120,6 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
-      costCapUsd: 1.0,
       rateLimitPerSec: 1000,
       artifactRecorder: memoryRecorder(),
     });
@@ -139,7 +138,6 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
-      costCapUsd: 1.0,
       rateLimitPerSec: 1000,
       artifactRecorder: memoryRecorder(),
     });
@@ -158,7 +156,6 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
-      costCapUsd: 1.0,
       rateLimitPerSec: 1000,
       artifactRecorder: memoryRecorder(),
     });
@@ -566,6 +563,52 @@ describe("OpenRouterProvider", () => {
     expect(recorder.artifacts[0]?.error).toMatchObject({
       class: "provider_response_invalid",
     });
+  });
+
+  it("retains a settled billed cost when a malformed HTTP-200 cannot be parsed semantically", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse({
+        model: "openai/gpt-4o-mini",
+        choices: { malformed: true },
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 2,
+          cost: 0.00000049, // itotori-225-audit-allow: synthetic malformed-200 paid-call fixture
+        },
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    let thrown: unknown;
+    try {
+      await provider.invoke(jsonSchemaRequest());
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ModelProviderError);
+    const failedRun = (thrown as ModelProviderError).providerRun;
+    expect(failedRun).toMatchObject({
+      status: "failed",
+      billingState: "known",
+      cost: {
+        costKind: "billed",
+        amountUsd: "0.00000049", // itotori-225-audit-allow: synthetic malformed-200 settled bill proves exact recovery survives semantic failure
+        amountMicrosUsd: 0,
+      },
+      usageResponseJson: expect.objectContaining({
+        cost: 0.00000049, // itotori-225-audit-allow: synthetic malformed-200 paid-call fixture
+        _response_invalid: true,
+      }),
+    });
+    expect(recorder.artifacts[0]?.run.billingState).toBe("known");
+    expect(recorder.artifacts[0]?.run.cost.amountUsd).toBe("0.00000049");
   });
 
   it("requires explicit live opt-in before any fetch can run", async () => {

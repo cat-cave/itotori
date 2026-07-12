@@ -380,6 +380,14 @@ export const migrations = [
     id: "0080_localization_run_leases_and_unit_claims",
     file: "0080_localization_run_leases_and_unit_claims.sql",
   },
+  {
+    id: "0081_atomic_cost_reservations",
+    file: "0081_atomic_cost_reservations.sql",
+  },
+  {
+    id: "0082_backfill_localization_run_cost_accounts",
+    file: "0082_backfill_localization_run_cost_accounts.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

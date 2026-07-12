@@ -45,9 +45,6 @@ describe("ITOTORI-221 — live OpenRouter ModelProvider invocation", () => {
     }
 
     const provider = new OpenRouterModelProvider({
-      // Default env var name + cost cap + rate limit. The live call
-      // costs ~$0.001 against the $1 default cap.
-      costCapUsd: 0.05,
       artifactRecorder: new LocalProviderRunArtifactRecorder(
         mkdtempSync(join(tmpdir(), "itotori-openrouter-live-provider-runs-")),
       ),

@@ -5,7 +5,7 @@
 // `usage.cost` (live evidence in docs/openrouter-integration-evidence/
 // 2026-06-25.json); we carry it VERBATIM as the authoritative full-
 // precision `amountUsd` and ALSO derive integer micros (`amountMicrosUsd`)
-// as a cap/telemetry mirror, tagging `costKind: 'billed'`. The decimal
+// as a display/telemetry mirror, tagging `costKind: 'billed'`. The decimal
 // `amountUsd` — not micros — is the value the ledger persists and the
 // 1e-9 cost CHECK compares. No estimation paths. No `unknown` fallback.
 
@@ -70,7 +70,7 @@ export function decimalUsdStringToMicros(value: string): number {
  */
 export function usageCostToMicros(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return decimalUsdStringToMicros(value.toFixed(12));
+    return decimalUsdStringToMicros(numberToPlainDecimalString(value));
   }
   if (typeof value === "string") {
     return decimalUsdStringToMicros(value);
@@ -133,13 +133,14 @@ function normalizeDecimalString(value: string): string {
 /**
  * ITOTORI-232 — convert any usage.cost shape OpenRouter emits (string or
  * number) into the canonical full-precision decimal-USD string that
- * becomes {@link ProviderCost.amountUsd}. Numbers are stringified at 12
- * fractional digits (enough to carry every sub-micro cost OpenRouter
- * returns) before validation, so the same parser handles both shapes.
+ * becomes {@link ProviderCost.amountUsd}. Numbers are expanded from their
+ * shortest round-trippable representation rather than rounded to a fixed
+ * number of fraction digits: a real, positive sub-picodollar charge must
+ * never turn into the string `"0"` before it reaches the durable ledger.
  */
 export function usageCostToDecimalString(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return decimalUsdStringCanonical(value.toFixed(12));
+    return decimalUsdStringCanonical(numberToPlainDecimalString(value));
   }
   if (typeof value === "string") {
     return decimalUsdStringCanonical(value);
@@ -152,18 +153,46 @@ export function usageCostToDecimalString(value: unknown): string {
 }
 
 /**
+ * Turn a finite JavaScript number into a plain decimal string without a
+ * fixed-precision rounding floor. `Number#toString()` chooses the shortest
+ * decimal that round-trips to the same IEEE-754 value, but uses exponent
+ * notation for very small (or large) values; our persisted decimal contract
+ * deliberately accepts plain decimals only, so expand that exponent exactly.
+ */
+function numberToPlainDecimalString(value: number): string {
+  const shortest = value.toString();
+  const exponentIndex = shortest.search(/e/i);
+  if (exponentIndex === -1) return shortest;
+
+  const coefficient = shortest.slice(0, exponentIndex);
+  const exponent = Number(shortest.slice(exponentIndex + 1));
+  const sign = coefficient.startsWith("-") ? "-" : "";
+  const unsignedCoefficient = sign.length > 0 ? coefficient.slice(1) : coefficient;
+  const [whole = "0", fractional = ""] = unsignedCoefficient.split(".");
+  const digits = `${whole}${fractional}`;
+  const decimalIndex = whole.length + exponent;
+
+  if (decimalIndex <= 0) {
+    return `${sign}0.${"0".repeat(-decimalIndex)}${digits}`;
+  }
+  if (decimalIndex >= digits.length) {
+    return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  }
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+}
+
+/**
  * Return the real cost amount in micros-USD for a `ProviderCost`. Throws if
  * the cost is not billed (i.e. zero-cost runs do not have a billable
- * amount to charge against the cap / aggregate). Callers that want to
- * include zero-cost runs in their sums should use `costToMicrosOrZero`
- * instead.
+ * amount for a display or legacy micros aggregate. It is never valid for
+ * durable cost admission or reconciliation; those paths use
+ * `assertBilledCostDecimal`. Callers that want to include zero-cost runs in
+ * their display sums should use `costToMicrosOrZero` instead.
  *
  * ITOTORI-134 — `provider_estimate` costs carry a deterministic estimate
  * derived from real provider pricing data (cost_details / endpoint pricing).
- * The estimate IS a real expected spend number, so the cost cap / aggregate
- * consumes it directly (fail-safe: an estimate counts toward the budget
- * rather than silently passing). Both `billed` and `provider_estimate`
- * therefore return their `amountMicrosUsd`; `zero` returns 0.
+ * The estimate IS a real expected spend number. Both `billed` and
+ * `provider_estimate` return their display-micros mirror; `zero` returns 0.
  */
 export function assertBilledCost(cost: ProviderCost): bigint {
   if (cost.costKind === "billed" || cost.costKind === "provider_estimate") {

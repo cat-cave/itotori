@@ -50,7 +50,6 @@ export {
   type LocalProviderCapabilityGapReport,
 } from "./local-capability-gaps.js";
 export {
-  OpenRouterCostCapError,
   OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   executeModelInvocation,
+  executeStructuredInvocation,
   InvocationRetryCeilingError,
   InvocationSupervisor,
   supervisedModelProvider,
@@ -250,22 +251,118 @@ describe("InvocationSupervisor failure matrix", () => {
     expect((await executeDraft(resumed)).parsed.drafts[0]?.body).toBe(VALID_BODY);
   });
 
-  it("checks a provider-owned legacy cap before opening the attempt row", async () => {
+  it("reserves the explicit hard billing ceiling instead of the provider-pricing filter", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const reservedWorstCases: Array<string | null> = [];
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: {
+        ...context(),
+        maximumCostUsd: 0.01,
+        maximumBillableCostUsd: 0.02,
+      },
+      lifecycle,
+      costAdmission: {
+        admit: async ({ worstCaseCostUsd }) => {
+          reservedWorstCases.push(worstCaseCostUsd);
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await executeDraft(supervisor);
+
+    expect(reservedWorstCases).toEqual(["0.02"]);
+    expect(provider.requests).toMatchObject([{ maxPriceUsd: 0.01 }]);
+  });
+
+  it("refuses cost admission without an explicit hard billing ceiling instead of reserving maxPriceUsd", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const admissionCalls: string[] = [];
+    const { maximumBillableCostUsd: _omittedCeiling, ...legacyOnlyContext } = context();
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: legacyOnlyContext,
+      lifecycle,
+      costAdmission: {
+        admit: async () => {
+          admissionCalls.push("admit");
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await expect(executeDraft(supervisor)).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("maximumBillableCostUsd"),
+      },
+    });
+    expect(admissionCalls).toEqual([]);
+    expect(lifecycle.started).toEqual([]);
+    expect(provider.requests).toEqual([]);
+    expect(lifecycle.blockers).toEqual([
+      expect.objectContaining({
+        kind: "budget_cap",
+        operatorAction: expect.stringContaining("maximumBillableCostUsd"),
+      }),
+    ]);
+  });
+
+  it("refuses a hard billing ceiling below the provider-pricing filter before admission", async () => {
+    const lifecycle = new RecordingLifecycle();
+    const provider = new ScriptedProvider([{ content: validContent() }]);
+    const admissionCalls: string[] = [];
+    const supervisor = new InvocationSupervisor({
+      provider,
+      context: {
+        ...context(),
+        maximumCostUsd: 0.02,
+        maximumBillableCostUsd: 0.01,
+      },
+      lifecycle,
+      costAdmission: {
+        admit: async () => {
+          admissionCalls.push("admit");
+          return { admitted: true };
+        },
+      },
+      sleep: async () => undefined,
+    });
+
+    await expect(executeDraft(supervisor)).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("below provider maxPriceUsd"),
+      },
+    });
+    expect(admissionCalls).toEqual([]);
+    expect(lifecycle.started).toEqual([]);
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("pauses when provider preparation refuses before opening the attempt row", async () => {
     const lifecycle = new RecordingLifecycle();
     const transport = new ScriptedProvider([{ content: validContent() }]);
     const provider: ModelProvider = {
       descriptor: transport.descriptor,
       preflightInvocation: async () => ({
         admitted: false,
-        detail: "provider process cap reached",
-        evidence: "provider:fixture;remaining-usd:0",
+        detail: "provider preparation permit unavailable",
+        evidence: "provider:fixture;permit:unavailable",
       }),
       invoke: (candidate) => transport.invoke(candidate),
     };
 
     await expect(executeDraft(supervisorFor(provider, lifecycle))).rejects.toMatchObject({
       name: "InvocationOperationalPauseError",
-      blocker: { kind: "budget_cap", detail: "provider process cap reached" },
+      blocker: { kind: "budget_cap", detail: "provider preparation permit unavailable" },
     });
     expect(lifecycle.started).toHaveLength(0);
     expect(transport.requests).toHaveLength(0);
@@ -329,6 +426,87 @@ describe("InvocationSupervisor failure matrix", () => {
 
     expect(result.content).toBe("Usable plain-text response.");
     expect(provider.requests).toHaveLength(3);
+  });
+
+  it("refuses every unbound paid standalone call before provider preparation or dispatch", async () => {
+    let preflightCalls = 0;
+    let dispatchCalls = 0;
+    const provider: ModelProvider = {
+      // The root guard keys off the shipped paid-provider family rather than
+      // a test-only class, so this proves an OpenRouter descriptor cannot use
+      // either helper's standalone supervisor fallback.
+      descriptor: { ...new FakeModelProvider().descriptor, family: "openrouter" },
+      preflightInvocation: async () => {
+        preflightCalls += 1;
+        return { admitted: true };
+      },
+      invoke: async () => {
+        dispatchCalls += 1;
+        return await new FakeModelProvider({ generate: () => "must not run" }).invoke(request());
+      },
+    };
+
+    await expect(executeModelInvocation(provider, request())).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("durable cost-admission"),
+      },
+    });
+    await expect(
+      executeStructuredInvocation(provider, {
+        request: request(),
+        parse: (raw) => raw,
+        validateParsed: () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "budget_cap" },
+    });
+
+    expect(preflightCalls).toBe(0);
+    expect(dispatchCalls).toBe(0);
+  });
+
+  it("refuses a paid bound supervisor with admission but no hard bill ceiling", async () => {
+    let preflightCalls = 0;
+    let dispatchCalls = 0;
+    let admissionCalls = 0;
+    const provider: ModelProvider = {
+      descriptor: { ...new FakeModelProvider().descriptor, family: "openrouter" },
+      preflightInvocation: async () => {
+        preflightCalls += 1;
+        return { admitted: true };
+      },
+      invoke: async () => {
+        dispatchCalls += 1;
+        return await new FakeModelProvider({ generate: () => "must not run" }).invoke(request());
+      },
+    };
+    const { maximumBillableCostUsd: _omittedCeiling, ...contextWithoutCeiling } = context();
+    const bound = supervisedModelProvider(
+      new InvocationSupervisor({
+        provider,
+        context: contextWithoutCeiling,
+        costAdmission: {
+          admit: async () => {
+            admissionCalls += 1;
+            return { admitted: true };
+          },
+        },
+      }),
+    );
+
+    await expect(executeModelInvocation(bound, request())).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: {
+        kind: "budget_cap",
+        detail: expect.stringContaining("maximumBillableCostUsd"),
+      },
+    });
+    expect(admissionCalls).toBe(0);
+    expect(preflightCalls).toBe(0);
+    expect(dispatchCalls).toBe(0);
   });
 
   it.each([
@@ -397,6 +575,7 @@ function context() {
     modelId: "primary-model",
     providerId: "fixture-provider",
     maximumCostUsd: 1,
+    maximumBillableCostUsd: 1,
     zdr: true,
   } as const;
 }

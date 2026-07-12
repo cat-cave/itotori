@@ -13,28 +13,26 @@
 // decode of those real translated bytes — there is no injected
 // sentinel substring anywhere in this pipeline.
 //
-// Resilience model — OpenRouter-side fallback (post-ITOTORI-241):
+// OpenRouter-served routing observation (post-ITOTORI-241):
 //
 //   This driver runs the SINGLE pair-policy primary pair for every
 //   stage. It does NOT carry an app-level 429-failover / alternate-
 //   chaining loop. On the wire the OpenRouter provider sends
 //   `provider.order = [providerId]` + `provider.allow_fallbacks = true`
 //   + `provider.zdr = true` + `provider.data_collection = deny`, so
-//   OpenRouter ITSELF routes within the account ZDR allow-list when the
-//   preferred provider returns HTTP 429 (UTSUSHI-231 / UTSUSHI-231 live
-//   run: OR served DigitalOcean on a primary-provider miss and the run
-//   completed). The served (model, providerId) pair is recorded
-//   verbatim in each invocation's provider-run record
-//   (`provider.upstreamProvider` / `provider.actualModelId`).
+//   OpenRouter may select an account ZDR-allow-list upstream when the
+//   preferred provider returns HTTP 429. The app records that provider-side
+//   routing outcome as the served (model, providerId) pair in each
+//   invocation's provider-run record (`provider.upstreamProvider` /
+//   `provider.actualModelId`), without an app-level retry or failover.
 //
 //   The superseded ITOTORI-238/239/240 approach (an EXPLICIT
 //   `alternateProviders[]` chain advanced by a `failoverPredicate` on a
-//   primary 429) was REMOVED — it was redundant with OR-side fallback
-//   and could double-handle a 429 OR had already resolved. The
-//   no-legacy rule means there is no dual failover: if EVERY ZDR-allow-
-//   list provider is at quota, OpenRouter returns the terminal error and
-//   the agentic loop surfaces it as a `ModelProviderError` (the natural
-//   terminal). No app-level retry layered on top.
+//   primary 429) was REMOVED because the app must not double-handle a
+//   429 that OpenRouter already resolved. There is no application-level
+//   failover or retry: if EVERY ZDR-allow-list provider is at quota,
+//   OpenRouter returns the terminal error and the agentic loop surfaces
+//   it as a `ModelProviderError`.
 //
 // Outputs three files:
 //   1. <output>                       — the AgenticLoopBundle.v0 JSON
@@ -108,11 +106,27 @@ import {
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "./agentic-loop.js";
-import { SupervisedModelProviderAdapter } from "./invocation-supervisor.js";
+import { capturePhysicalProviderAttempts } from "./attempt-outcome-journal.js";
+import {
+  SupervisedModelProviderAdapter,
+  type InvocationCostAdmission,
+  type InvocationLifecycle,
+} from "./invocation-supervisor.js";
 
 export type LocalizeProjectStageIo = {
   readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
+};
+
+/**
+ * The durable supervision boundary for every physical stage invocation.
+ * Production builds this with `DrivenJournalPersistenceAdapter`, exactly as
+ * the whole-project executor does; tests may provide a deterministic seam.
+ */
+export type LocalizeProjectStageSupervision = {
+  runId: string;
+  lifecycle: InvocationLifecycle;
+  costAdmission: InvocationCostAdmission;
 };
 
 export type LocalizeProjectStageArgs = {
@@ -165,17 +179,17 @@ export type LocalizeProjectStageArgs = {
   engineProfile?: "reallive" | "rpg-maker-mv-mz";
   io: LocalizeProjectStageIo;
   actor: AuthorizationActor;
+  /**
+   * Required before any provider is constructed. This prevents the single-unit
+   * live path from falling back to InvocationSupervisor's standalone mode,
+   * which has no durable reservation/accounting boundary.
+   */
+  supervision: LocalizeProjectStageSupervision;
   log?: (message: string) => void;
   /**
    * Maximum repair attempts the loop is allowed. Defaults to 1.
    */
   maxRepairAttempts?: number;
-  /**
-   * Per-process USD cap for the OpenRouter provider. Defaults to
-   * $0.50 — well above one scene-1 unit's translation cost (~$0.003
-   * at the DEV_PAIR rates) but tight enough to refuse a runaway loop.
-   */
-  costCapUsd?: number;
   /**
    * Optional directory where live OpenRouter provider-run artifacts are
    * persisted as one `provider-run.json` per invocation. The suite
@@ -223,9 +237,9 @@ export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Er
 }
 
 const DEFAULT_UNIT_INDEX = 0;
-// This single-unit command has no run-scope provisioning or reviewer-queue
-// sink. Keep the required loop input explicit without using the unit's
-// content-hash revision as a queue FK candidate.
+// The selected unit's stage bundle remains distinct from a whole-project
+// outcome, so keep its bundle source revision stable while the live wrapper
+// provisions the durable run scope from the bridge's real source revision.
 const LOCALIZE_PROJECT_STAGE_BUNDLE_SOURCE_REVISION_ID = "localize-project-stage-bundle-revision";
 
 // Re-export so the test surface and any external integrators get the
@@ -251,15 +265,19 @@ export { PairPolicyVersionMismatchError };
  * }
  * ```
  *
- * There is no app-level alternate/failover plumbing: OpenRouter-side
- * fallback (provider.order + allow_fallbacks within the ZDR allow-list)
- * is the resilience mechanism, so the policy declares the SINGLE primary
- * pair only.
+ * There is no app-level alternate/failover plumbing. The policy declares
+ * the SINGLE primary pair only; OpenRouter may independently report a
+ * different ZDR-allow-list upstream through `provider.order` +
+ * `allow_fallbacks`, which the app records as a served-route outcome.
  *
  * Every leaf's `pair` MUST byte-equal the top-level `pair` field
  * (single-game alpha invariant — only one pair drives this recipe;
  * the per-stage breakout is preserved so the orchestrator's required
  * PairPolicy shape lines up without us having to fork either side).
+ * Every leaf used by this live localization surface must also declare
+ * `maximumBillableCostUsd`: it is the durable reservation contract for one
+ * paid physical invocation. `maxPriceUsd` remains a provider-pricing filter
+ * and is deliberately not accepted as a substitute.
  *
  * If `openrouterPresetSlug` is set, the OpenRouter-side preset
  * (configured at the OR dashboard) handles routing AT REQUEST TIME.
@@ -302,6 +320,7 @@ export function parseLocalizeProjectPairPolicy(value: unknown): {
     throw error;
   }
   assertEveryLeafMatches(parsed);
+  assertEveryLeafHasMaximumBillableCost(parsed);
   const out: {
     policyId: string;
     pair: { modelId: string; providerId: string };
@@ -336,6 +355,23 @@ function assertEveryLeafMatches(policy: PairPolicyV03): void {
   }
 }
 
+/**
+ * Keep the generic v0.3 parser compatible with offline/legacy consumers, but
+ * make every policy accepted by a LIVE localization entry point carry a real
+ * durable reservation ceiling. InvocationSupervisor repeats this fail-closed
+ * check at admission time so programmatic callers cannot bypass it.
+ */
+function assertEveryLeafHasMaximumBillableCost(policy: PairPolicyV03): void {
+  for (const { leafPath, posture } of flattenPairPolicyV03Postures(policy)) {
+    if (posture.maximumBillableCostUsd === undefined) {
+      throw new LocalizeProjectPairPolicyError(
+        `stages.${leafPath}.maximumBillableCostUsd is required for a live paid invocation; ` +
+          "maxPriceUsd is only a provider-pricing filter and cannot be used as its durable reservation bound",
+      );
+    }
+  }
+}
+
 export async function runLocalizeProjectStageCommand(
   args: LocalizeProjectStageArgs,
 ): Promise<AgenticLoopBundle> {
@@ -360,7 +396,7 @@ export async function runLocalizeProjectStageCommand(
   const rawPolicy = args.io.readJson(args.pairPolicyPath);
   const { policyId, pair, sceneId, pairPolicy } = parseLocalizeProjectPairPolicy(rawPolicy);
   log(
-    `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) (OpenRouter-side fallback handles 429s within the ZDR allow-list)`,
+    `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) (OpenRouter served-route outcomes are recorded per invocation)`,
   );
 
   // The command always runs the LIVE OpenRouter path. The only test seam
@@ -410,24 +446,46 @@ export async function runLocalizeProjectStageCommand(
     actor: args.actor,
   };
 
-  // Single primary-pair run. OpenRouter-side fallback is the resilience
-  // mechanism: on the wire the provider sends `provider.order =
-  // [providerId]` + `allow_fallbacks = true` + `zdr = true`, so OR routes
-  // within the account ZDR allow-list when the preferred upstream returns
-  // HTTP 429 and records whichever provider actually served (UTSUSHI-231
-  // live run completed when OR served DigitalOcean on a Fireworks miss).
-  // There is NO app-level alternate-chaining loop: if EVERY ZDR-allow-list
-  // provider is at quota, OR returns the terminal error and
-  // `runAgenticLoopForUnit` surfaces it verbatim as a `ModelProviderError`.
+  // Single primary-pair run. On the wire, the provider sends
+  // `provider.order = [providerId]` + `allow_fallbacks = true` +
+  // `zdr = true`; OpenRouter may report a served ZDR-allow-list upstream
+  // different from the requested primary. This provider-side routing outcome
+  // is persisted per invocation. There is NO app-level alternate-chaining
+  // loop or retry: if EVERY ZDR-allow-list provider is at quota, OR returns
+  // the terminal error and `runAgenticLoopForUnit` surfaces it verbatim as a
+  // `ModelProviderError`.
   const factory: AgenticLoopProviderFactory =
     args.liveFactoryOverride !== undefined
       ? withStagePostureInjectionFactory(args.liveFactoryOverride(pair, { artifactRecorder }))
       : liveOpenRouterFactory({
-          costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
           artifactRecorder,
         });
 
-  const bundle = await runAgenticLoopForUnit(input, pairPolicy, policy, factory);
+  // Every provider factory handed to the loop is supervisor-bound here. This
+  // is intentionally the same capture/admission bridge the full-project
+  // executor uses: the reservation transaction persists the dispatching
+  // attempt before the live transport can run, and completion reconciles the
+  // exact billed cost into the same run account.
+  const supervisedAttempts = capturePhysicalProviderAttempts({
+    runId: args.supervision.runId,
+    bridgeUnitId: unit.bridgeUnitId,
+    source: factory,
+    lifecycle: args.supervision.lifecycle,
+    costAdmission: args.supervision.costAdmission,
+  });
+  let bundle: AgenticLoopBundle;
+  try {
+    bundle = await runAgenticLoopForUnit(
+      input,
+      pairPolicy,
+      policy,
+      supervisedAttempts.providerFactory,
+    );
+    supervisedAttempts.markSuccessful();
+  } catch (error) {
+    supervisedAttempts.markFailed(error);
+    throw error;
+  }
   assertAgenticLoopBundle(bundle);
 
   args.io.writeJson(args.outputPath, bundle);
@@ -516,11 +574,11 @@ export async function runLocalizeProjectStageCommand(
 }
 
 export function liveOpenRouterFactory(opts: {
-  costCapUsd: number;
   artifactRecorder: ProviderRunArtifactRecorder | undefined;
 }): AgenticLoopProviderFactory {
-  // Constructed once so the per-process cost cap + token bucket are
-  // shared across every stage's invocation. Throws
+  // Constructed once so the rate-token bucket is shared across every stage's
+  // invocation. Durable run-budget admission belongs above this transport.
+  // Throws
   // OpenRouterMissingApiKeyError immediately if the API key is
   // missing — surfaces the no-fallback failure mode at the driver
   // boundary rather than at first invoke.
@@ -531,7 +589,6 @@ export function liveOpenRouterFactory(opts: {
         throw new LocalizeProjectMissingProviderRunArtifactsDirectoryError();
       }
       provider = new OpenRouterModelProvider({
-        costCapUsd: opts.costCapUsd,
         artifactRecorder: opts.artifactRecorder,
       });
     }

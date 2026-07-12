@@ -47,12 +47,11 @@ describe("itotori-semantic-agents-live-provider-wiring — live semantic-agent O
     }
 
     // Resolved through the SAME seam the semantic-agent CLIs use. `openrouter`
-    // is the production default family; a scratch recorder + a tight cost cap
-    // keep the proof cheap. The (modelId, providerId) pair is config-driven:
+    // is the production default family; a scratch recorder preserves the
+    // proof's served-pair evidence. The (modelId, providerId) pair is config-driven:
     // it travels on the request below (mirroring the agents' modelProfile),
     // never hard-coded in the resolver.
     const provider = resolveSceneSummaryProvider("openrouter", {
-      costCapUsd: 0.05,
       artifactRecorder: new LocalProviderRunArtifactRecorder(
         mkdtempSync(join(tmpdir(), "itotori-semantic-agent-live-runs-")),
       ),

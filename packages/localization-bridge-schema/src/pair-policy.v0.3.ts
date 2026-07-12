@@ -2,7 +2,8 @@
 //
 // A v0.3 policy declares the SINGLE (modelId, providerId) pair that
 // drives every stage of the agentic loop, plus a per-stage posture
-// (pair + zdr + fallbackModels + seed + maxPriceUsd) for each leaf and
+// (pair + zdr + fallbackModels + seed + maxPriceUsd +
+// maximumBillableCostUsd) for each leaf and
 // the top-level sceneId / optional openrouterPresetSlug.
 //
 // Resilience is OpenRouter-side, NOT in this schema. On the wire the
@@ -71,6 +72,15 @@ export type StagePostureV03 = {
    * reported `usage.cost` to this cap.
    */
   maxPriceUsd: number;
+  /**
+   * Durable hard reservation ceiling for one physical invocation. This is
+   * deliberately distinct from OpenRouter's `maxPriceUsd` provider-pricing
+   * filter: cost admission reserves this value before dispatch. It remains
+   * optional in the generic v0.3 reader for legacy/offline policy consumers,
+   * but a cost-admitted paid invocation must refuse to dispatch when it is
+   * absent rather than falling back to `maxPriceUsd`.
+   */
+  maximumBillableCostUsd?: number;
 };
 
 /**
@@ -342,7 +352,32 @@ export function parsePairPolicyV03(
       maxPriceUsd = rawCap;
     }
 
-    return { pair: leafPair, zdr, fallbackModels, seed, maxPriceUsd };
+    let maximumBillableCostUsd: number | undefined;
+    if ("maximumBillableCostUsd" in leaf) {
+      const rawCeiling = leaf.maximumBillableCostUsd;
+      if (typeof rawCeiling !== "number" || !Number.isFinite(rawCeiling) || rawCeiling < 0) {
+        throw new PairPolicyV03ValidationError(
+          `stages.${leafPath}.maximumBillableCostUsd`,
+          "must be a non-negative finite number when present",
+        );
+      }
+      if (rawCeiling < maxPriceUsd) {
+        throw new PairPolicyV03ValidationError(
+          `stages.${leafPath}.maximumBillableCostUsd`,
+          "must be greater than or equal to maxPriceUsd so durable reservation covers the provider-pricing filter",
+        );
+      }
+      maximumBillableCostUsd = rawCeiling;
+    }
+
+    return {
+      pair: leafPair,
+      zdr,
+      fallbackModels,
+      seed,
+      maxPriceUsd,
+      ...(maximumBillableCostUsd === undefined ? {} : { maximumBillableCostUsd }),
+    };
   }
 
   function expectStageGroup(name: string): Record<string, unknown> {

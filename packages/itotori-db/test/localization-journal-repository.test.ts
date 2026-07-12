@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { Pool, PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import {
   asNonBlankTargetText,
@@ -8,6 +9,7 @@ import {
 import { AuthorizationError, localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   ItotoriLocalizationJournalRepository,
+  reserveRunCostAccountInTx,
   type PersistLocalizationJournalAttemptInput,
 } from "../src/repositories/localization-journal-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -966,7 +968,293 @@ describe("ItotoriLocalizationJournalRepository", () => {
       await context.close();
     }
   });
+
+  describe("atomic cost accounts", () => {
+    it("uses one conditional account update for a deterministic eight-way admission race", async () => {
+      const context = await isolatedMigratedContext();
+      let accountLock: PoolClient | undefined;
+      type CostAccountReservation = Awaited<ReturnType<typeof reserveRunCostAccountInTx>>;
+      let contenders: Array<Promise<CostAccountReservation>> = [];
+      try {
+        await seedScope(context);
+        const repository = new ItotoriLocalizationJournalRepository(context.db);
+        const runId = "journal-run-cost-account-eight-way-race";
+        const contenderCount = 8;
+        await repository.seedRun(
+          localActor,
+          costAccountSeedInput(
+            runId,
+            Array.from(
+              { length: contenderCount },
+              (_value, index) => `raw-bridge-unit-cost-account-race-${String(index + 1)}`,
+            ),
+            "0.00000098",
+          ),
+        );
+
+        // Lock the account before any contender enters the primitive. The
+        // real primitive's first account operation is one conditional UPDATE,
+        // so all eight transactions block at that statement until this lock
+        // is released. A read/check/write mutant would let all eight plain
+        // reads observe zero despite this row lock, then queue eight writes;
+        // it would therefore overspend and fail the exact-count assertions.
+        accountLock = await context.pool.connect();
+        await accountLock.query("begin");
+        await accountLock.query(
+          `
+            select 1
+            from itotori_localization_run_cost_accounts
+            where run_id = $1
+            for update
+          `,
+          [runId],
+        );
+
+        let openAdmissionGate: (() => void) | undefined;
+        const admissionGate = new Promise<void>((resolve) => {
+          openAdmissionGate = resolve;
+        });
+        let announceAllTransactions: (() => void) | undefined;
+        const allTransactionsReady = new Promise<void>((resolve) => {
+          announceAllTransactions = resolve;
+        });
+        const contenderPids: number[] = [];
+        contenders = Array.from({ length: contenderCount }, () =>
+          context.db.transaction(async (tx) => {
+            const session = await tx.execute(sql`select pg_backend_pid()::int as pid`);
+            const pid = session.rows[0]?.pid;
+            if (typeof pid !== "number") {
+              throw new Error(
+                "cost-account race contender did not receive a PostgreSQL backend pid",
+              );
+            }
+            contenderPids.push(pid);
+            if (contenderPids.length === contenderCount) announceAllTransactions?.();
+            await admissionGate;
+            return await reserveRunCostAccountInTx(tx, runId, "0.00000049");
+          }),
+        );
+        await allTransactionsReady;
+        openAdmissionGate?.();
+
+        await waitForCostAccountLockWaiters(context.pool, contenderPids, contenderCount);
+        await accountLock.query("commit");
+        accountLock.release();
+        accountLock = undefined;
+
+        const results = await Promise.all(contenders);
+        const admitted = results.filter(
+          (result): result is Exclude<(typeof results)[number], undefined> => result !== undefined,
+        );
+        expect(new Set(contenderPids)).toHaveLength(contenderCount);
+        expect(admitted).toHaveLength(2);
+        for (const account of admitted) {
+          expect(account.spentCostUsd).toBe("0");
+          expect(["0.00000049", "0.00000098"]).toContain(account.reservedCostUsd);
+        }
+        expect(await repository.loadRunCostAccount(localActor, runId)).toMatchObject({
+          capUsd: "0.00000098",
+          spentCostUsd: "0",
+          reservedCostUsd: "0.00000098",
+        });
+      } finally {
+        if (accountLock !== undefined) {
+          await accountLock.query("rollback").catch(() => undefined);
+          accountLock.release();
+        }
+        await Promise.all(contenders.map((contender) => contender.catch(() => undefined)));
+        await context.close();
+      }
+    });
+
+    it("tracks unlimited-run spend and permits a finite cap only above committed cost", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await seedScope(context);
+        const repository = new ItotoriLocalizationJournalRepository(context.db);
+        const runId = "journal-run-unlimited-cost-account";
+        const unitIds = ["raw-bridge-unit-unlimited-spent", "raw-bridge-unit-unlimited-reserved"];
+        await repository.seedRun(localActor, costAccountSeedInput(runId, unitIds, null));
+
+        const spentBegin = lifecycleBeginAttempt(runId, unitIds[0]!);
+        const spentReservation = await repository.reserveAttemptCost(localActor, {
+          ...spentBegin,
+          worstCaseCostUsd: "0.25",
+        });
+        if (!spentReservation.admitted) {
+          throw new Error("unlimited account unexpectedly denied its first reservation");
+        }
+        await repository.completeAttempt(localActor, {
+          ...lifecycleCompleteAttempt(spentBegin, "model-unlimited", "provider-unlimited"),
+          costUsd: "0.25",
+          usageResponseJson: { cost: "0.25" },
+        });
+
+        const reservedBegin = lifecycleBeginAttempt(runId, unitIds[1]!);
+        const reservedReservation = await repository.reserveAttemptCost(localActor, {
+          ...reservedBegin,
+          worstCaseCostUsd: "0.1",
+        });
+        if (!reservedReservation.admitted) {
+          throw new Error("unlimited account unexpectedly denied its second reservation");
+        }
+
+        expect(await repository.loadRunCostAccount(localActor, runId)).toMatchObject({
+          capUsd: null,
+          spentCostUsd: "0.25",
+          reservedCostUsd: "0.1",
+        });
+        await expect(repository.raiseRunCostCap(localActor, runId, "0.3")).rejects.toMatchObject({
+          code: "invalid_input",
+        });
+        await expect(repository.raiseRunCostCap(localActor, runId, "0.35")).resolves.toMatchObject({
+          capUsd: "0.35",
+          spentCostUsd: "0.25",
+          reservedCostUsd: "0.1",
+        });
+        expect(await repository.loadRun(localActor, runId)).toMatchObject({
+          costPolicy: expect.objectContaining({ budgetCapUsd: "0.35" }),
+        });
+      } finally {
+        await context.close();
+      }
+    });
+
+    it("pauses on a late bill when spent plus another reservation exceeds the cap", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await seedScope(context);
+        const repository = new ItotoriLocalizationJournalRepository(context.db);
+        const runId = "journal-run-over-cap-reconcile";
+        const firstBridgeUnitId = "raw-bridge-unit-over-cap-reconcile-first";
+        const secondBridgeUnitId = "raw-bridge-unit-over-cap-reconcile-second";
+        await repository.seedRun(
+          localActor,
+          costAccountSeedInput(runId, [firstBridgeUnitId, secondBridgeUnitId], "1"),
+        );
+
+        const firstBegin = lifecycleBeginAttempt(runId, firstBridgeUnitId);
+        const firstReservation = await repository.reserveAttemptCost(localActor, {
+          ...firstBegin,
+          worstCaseCostUsd: "0.5",
+        });
+        const secondBegin = lifecycleBeginAttempt(runId, secondBridgeUnitId);
+        const secondReservation = await repository.reserveAttemptCost(localActor, {
+          ...secondBegin,
+          worstCaseCostUsd: "0.5",
+        });
+        if (!firstReservation.admitted || !secondReservation.admitted) {
+          throw new Error("over-cap reconciliation fixture unexpectedly denied a reservation");
+        }
+        await repository.completeAttempt(localActor, {
+          ...lifecycleCompleteAttempt(firstBegin, "model-over-cap", "provider-over-cap"),
+          costUsd: null,
+          costKind: undefined,
+          billingState: "unknown",
+          usageResponseJson: { _provider_settlement_pending: true },
+        });
+
+        // A `spent > cap`-only predicate would miss this: $0.60 is below the
+        // $1 cap, but the second outstanding $0.50 reservation makes the
+        // committed total $1.10 and must pause the run.
+        await repository.reconcileAttemptBilling(localActor, {
+          runId,
+          attemptId: firstReservation.attempt.attemptId,
+          costUsd: "0.6",
+          modelId: "model-over-cap",
+          providerId: "provider-over-cap",
+          usageResponseJson: { cost: "0.6" },
+        });
+
+        expect(await repository.loadRunCostAccount(localActor, runId)).toMatchObject({
+          capUsd: "1",
+          spentCostUsd: "0.6",
+          reservedCostUsd: "0.5",
+        });
+        expect(await repository.loadRun(localActor, runId)).toMatchObject({
+          status: "paused",
+          pausedBlocker: expect.objectContaining({
+            kind: "budget_cap",
+            evidence: expect.stringContaining("spent-usd:0.6;reserved-usd:0.5;cap-usd:1"),
+          }),
+        });
+      } finally {
+        await context.close();
+      }
+    });
+
+    it("pauses on an immediate known bill when spent plus reservations exceed the cap", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await seedScope(context);
+        const repository = new ItotoriLocalizationJournalRepository(context.db);
+        const runId = "journal-run-over-cap-complete";
+        const firstBridgeUnitId = "raw-bridge-unit-over-cap-complete-first";
+        const secondBridgeUnitId = "raw-bridge-unit-over-cap-complete-second";
+        await repository.seedRun(
+          localActor,
+          costAccountSeedInput(runId, [firstBridgeUnitId, secondBridgeUnitId], "1"),
+        );
+
+        const firstBegin = lifecycleBeginAttempt(runId, firstBridgeUnitId);
+        const firstReservation = await repository.reserveAttemptCost(localActor, {
+          ...firstBegin,
+          worstCaseCostUsd: "0.5",
+        });
+        const secondReservation = await repository.reserveAttemptCost(localActor, {
+          ...lifecycleBeginAttempt(runId, secondBridgeUnitId),
+          worstCaseCostUsd: "0.5",
+        });
+        if (!firstReservation.admitted || !secondReservation.admitted) {
+          throw new Error("over-cap completion fixture unexpectedly denied a reservation");
+        }
+
+        await repository.completeAttempt(localActor, {
+          ...lifecycleCompleteAttempt(firstBegin, "model-over-cap", "provider-over-cap"),
+          costUsd: "0.6",
+          usageResponseJson: { cost: "0.6" },
+        });
+
+        expect(await repository.loadRunCostAccount(localActor, runId)).toMatchObject({
+          capUsd: "1",
+          spentCostUsd: "0.6",
+          reservedCostUsd: "0.5",
+        });
+        expect(await repository.loadRun(localActor, runId)).toMatchObject({
+          status: "paused",
+          pausedBlocker: expect.objectContaining({ kind: "budget_cap" }),
+        });
+      } finally {
+        await context.close();
+      }
+    });
+  });
 });
+
+async function waitForCostAccountLockWaiters(
+  pool: Pool,
+  contenderPids: readonly number[],
+  expectedCount: number,
+): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const waiting = await pool.query<{ count: number }>(
+      `
+        select count(*)::int as count
+        from pg_stat_activity
+        where pid = any($1::int[])
+          and wait_event_type = 'Lock'
+          and query like '%itotori_localization_run_cost_accounts%'
+      `,
+      [contenderPids],
+    );
+    if (waiting.rows[0]?.count === expectedCount) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(
+    `expected ${String(expectedCount)} contenders to block at the cost-account admission update`,
+  );
+}
 
 function lifecycleSeedInput(runId: string) {
   return {
@@ -990,6 +1278,27 @@ function lifecycleSeedInput(runId: string) {
         nextAction: { kind: "drive_unit", stage: "translation" },
       },
     ],
+    lease: { ownerId: driverALease.ownerId },
+    createdAt: "2026-07-12T12:00:00.000Z",
+  };
+}
+
+function costAccountSeedInput(
+  runId: string,
+  unitIds: readonly string[],
+  budgetCapUsd: string | null,
+) {
+  return {
+    runId,
+    ...scope,
+    frozenScope: { kind: "explicit_units", bridgeUnitIds: [...unitIds] },
+    routingPolicy: { routes: ["model-cost-account/provider-cost-account"] },
+    costPolicy: { reservation: "durable-cost-account", budgetCapUsd },
+    units: unitIds.map((bridgeUnitId) => ({
+      bridgeUnitId,
+      sourceUnitKey: `scene.${bridgeUnitId}`,
+      nextAction: { kind: "drive_unit", stage: "translation" },
+    })),
     lease: { ownerId: driverALease.ownerId },
     createdAt: "2026-07-12T12:00:00.000Z",
   };

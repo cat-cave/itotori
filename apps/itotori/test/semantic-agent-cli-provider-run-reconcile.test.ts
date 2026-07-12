@@ -1,23 +1,7 @@
-// semantic-agent-cli-provider-run-not-reconciled — deterministic proof that a
-// STANDALONE semantic-agent CLI run's provider-run is RECONCILED.
-//
-// Before the fix, the four standalone semantic-agent CLIs (scene-summary /
-// character-relationship / route-choice-map / terminology-candidate) built
-// their live OpenRouter provider with a recorder that DEFAULTED to the global
-// scratch `.tmp/provider-runs` directory — a directory the telemetry
-// reconciler never reads. So a standalone CLI run's served (model, provider)
-// pair + billed `usage.cost` + ZDR posture were invisible to cost
-// reconciliation.
-//
-// This test drives the REAL production path deterministically (mock fetch, no
-// live key): it resolves the scene-summary provider through the SAME
-// `resolveSceneSummaryProvider` seam the CLI uses, pointed at a RUN-SCOPED
-// `LocalProviderRunArtifactRecorder(dir)` (exactly what the CLI now threads
-// from `--provider-runs-dir`), runs the CLI runner, and asserts the run lands
-// in that run-scoped directory — with the served pair, the REAL billed
-// `usage.cost`, and ZDR enforced — read back through the SAME telemetry
-// reconciliation reader (`readProviderRunArtifactsFromDir` +
-// `aggregateProviderRunArtifacts`) that the reconciler consumes.
+// Standalone semantic-agent CLI paths may resolve an OpenRouter provider, but
+// they do not own a durable run-cost admission sink. The root supervisor must
+// therefore refuse them before the recorder or transport can observe a paid
+// call.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,12 +24,7 @@ import {
   type SceneSummaryCliDependencies,
 } from "../src/agents/scene-summary/index.js";
 import { DEV_PAIR, LocalProviderRunArtifactRecorder } from "../src/providers/index.js";
-import {
-  aggregateProviderRunArtifacts,
-  readProviderRunArtifactsFromDir,
-  SERVED_PROVIDER_UNKNOWN_SENTINEL,
-} from "../src/telemetry/provider-run-artifact-source.js";
-import { buildPairKey } from "../src/telemetry/queries.js";
+import { readProviderRunArtifactsFromDir } from "../src/telemetry/provider-run-artifact-source.js";
 
 const ACTOR: AuthorizationActor = { userId: "local-user" };
 
@@ -177,7 +156,7 @@ class ReadOnlySummaryRepository implements ItotoriSceneSummaryRepositoryPort {
   }
 }
 
-describe("semantic-agent-cli-provider-run-not-reconciled — standalone CLI run is reconciled", () => {
+describe("semantic-agent CLI paid-provider boundary", () => {
   let runsDir: string;
   let priorZdr: string | undefined;
   let priorKey: string | undefined;
@@ -196,7 +175,7 @@ describe("semantic-agent-cli-provider-run-not-reconciled — standalone CLI run 
     else process.env.OPENROUTER_API_KEY = priorKey;
   });
 
-  it("records the served (model,provider) pair + billed usage.cost + ZDR into the run-scoped dir the reconciler reads", async () => {
+  it("refuses an unbound standalone OpenRouter CLI run before artifact or transport dispatch", async () => {
     const unit = unitRecord("u-1");
     const runScopedRecorder = new LocalProviderRunArtifactRecorder(runsDir);
 
@@ -219,58 +198,28 @@ describe("semantic-agent-cli-provider-run-not-reconciled — standalone CLI run 
       now: () => new Date("2026-06-23T12:00:00Z"),
     };
 
-    const result = await runGenerateSceneSummariesCli(
-      {
-        projectId: "p",
-        localeBranchId: "lb",
-        sourceLocale: "ja-JP",
-        sourceRevisionId: "rev-1",
-        modelProfile: {
-          providerFamily: "openrouter",
-          modelId: DEV_PAIR.modelId,
-          providerId: DEV_PAIR.providerId,
-          contextWindowTokens: 8000,
-          maxOutputTokens: 256,
+    await expect(
+      runGenerateSceneSummariesCli(
+        {
+          projectId: "p",
+          localeBranchId: "lb",
+          sourceLocale: "ja-JP",
+          sourceRevisionId: "rev-1",
+          modelProfile: {
+            providerFamily: "openrouter",
+            modelId: DEV_PAIR.modelId,
+            providerId: DEV_PAIR.providerId,
+            contextWindowTokens: 8000,
+            maxOutputTokens: 256,
+          },
+          dryRun: true,
         },
-        dryRun: true,
-      },
-      deps,
-    );
-    expect(result.generatedCount).toBe(1);
-
-    // Read the run-scoped directory back through the EXACT reader the telemetry
-    // reconciler consumes.
-    const artifacts = readProviderRunArtifactsFromDir(runsDir);
-    expect(artifacts).toHaveLength(1);
-
-    const aggregate = aggregateProviderRunArtifacts(artifacts);
-
-    // Served (model, provider) pair reconciled under the requested pinned pair.
-    const pairKey = buildPairKey(DEV_PAIR.modelId, DEV_PAIR.providerId);
-    expect(aggregate.summary.byPair[pairKey]).toBeDefined();
-    expect(aggregate.summary.byPair[pairKey]?.invocationCount).toBe(1);
-
-    // Billed cost is the REAL wire `usage.cost`, carried verbatim (not zero,
-    // not fabricated).
-    expect(Number(aggregate.summary.totalCostUsd)).toBeCloseTo(WIRE_USAGE_COST, 9);
-    expect(aggregate.summary.byPair[pairKey]?.totalCostUsd).toBe(WIRE_USAGE_COST.toFixed(8));
-
-    // The REAL served upstream provider is bucketed (not the unknown sentinel).
-    expect(aggregate.servedProviderBreakdown.byServedProvider[SERVED_UPSTREAM]).toBeDefined();
-    expect(
-      aggregate.servedProviderBreakdown.byServedProvider[SERVED_PROVIDER_UNKNOWN_SENTINEL],
-    ).toBeUndefined();
-    expect(Number(aggregate.servedProviderBreakdown.totalCostUsd)).toBeCloseTo(WIRE_USAGE_COST, 9);
-
-    // ZDR enforced on the wire for the private_corpus semantic-agent request.
-    const zdrRow = aggregate.zdrRows.find((r) => r.pair === pairKey);
-    expect(zdrRow?.invocationCount).toBe(1);
-    expect(zdrRow?.zdrEnforcedCount).toBe(1);
-
-    // Cost kind is 'billed' (a real upstream charge).
-    const billedRow = aggregate.costKindRows.find(
-      (r) => r.pair === pairKey && r.costKind === "billed",
-    );
-    expect(billedRow?.invocationCount).toBe(1);
+        deps,
+      ),
+    ).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "budget_cap" },
+    });
+    expect(readProviderRunArtifactsFromDir(runsDir)).toEqual([]);
   });
 });

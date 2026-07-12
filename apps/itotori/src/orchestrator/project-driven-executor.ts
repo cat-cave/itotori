@@ -74,7 +74,7 @@ import {
   capturePhysicalProviderAttempts,
   DrivenLlmAttemptRecord,
 } from "./attempt-outcome-journal.js";
-import { addDecimalUsd, compareDecimalUsd } from "../providers/cost.js";
+import { addDecimalUsd } from "../providers/cost.js";
 import {
   bracketWrapForRealLive,
   stripOutOfBandControlMarkup,
@@ -252,6 +252,19 @@ export type DrivenPlannedRunUnit = {
   nextAction: { kind: "drive_unit"; stage: "context" };
 };
 
+/**
+ * Frozen cost policy for a driven run. A cap raised through the repository is
+ * persisted as an exact decimal string, so resumes must retain that string
+ * verbatim instead of coercing it back through a floating-point CLI value.
+ * The index signature preserves future persisted policy fields during a
+ * resume seed as well.
+ */
+export type DrivenJournalCostPolicy = {
+  budgetCapUsd: number | string | null;
+  reservation: "node_4_seam";
+  [key: string]: unknown;
+};
+
 /** Immutable launch facts persisted atomically with every planned unit. */
 export type DrivenJournalRunPlan = {
   run: DrivenJournalRunRecord;
@@ -260,11 +273,13 @@ export type DrivenJournalRunPlan = {
     bridgeUnitIds: string[];
   };
   routingPolicy: PairPolicy;
-  costPolicy: { budgetCapUsd: number | null; reservation: "node_4_seam" };
+  costPolicy: DrivenJournalCostPolicy;
   units: DrivenPlannedRunUnit[];
 };
 
 export type DrivenJournalResumeState = {
+  /** Persisted verbatim so a resume never rebuilds a raised cap as null. */
+  costPolicy: DrivenJournalCostPolicy;
   status: "running" | "paused" | "finalizing" | "succeeded" | "failed" | "aborted";
   pausedBlocker: OperationalBlocker | null;
   leaseOwnerId: string | null;
@@ -472,6 +487,8 @@ export type DrivenUnitJournalSink = {
   beginJournalRun?(plan: DrivenJournalRunPlan, mode: "new" | "resume"): Promise<void>;
   loadResumeState?(runId: string): Promise<DrivenJournalResumeState>;
   resumeJournalRun?(runId: string): Promise<void>;
+  /** Builds the durable atomic cost-admission implementation after seeding. */
+  createCostAdmission?(runId: string): InvocationCostAdmission;
   attemptStarted?(attempt: InvocationAttemptStarted): Promise<AbortSignal | void>;
   attemptCompleted?(attempt: InvocationAttemptCompleted): Promise<void>;
   pauseRun?(runId: string, blocker: OperationalBlocker): Promise<void>;
@@ -523,7 +540,7 @@ export type ProjectDrivenExecutorInput = {
   actor: AuthorizationActor;
   /** The loop's provider factory (live OpenRouter in production, fake in tests). */
   providerFactory: AgenticLoopProviderFactory;
-  /** Node-4 replacement seam; denial pauses before physical dispatch. */
+  /** Explicit test/alternate admission; the durable journal provides the production default. */
   costAdmission?: InvocationCostAdmission;
   /** The reviewer-queue DB sink (per P0#2). When absent, nothing is bridged. */
   reviewerQueue?: AgenticLoopReviewerQueueSink;
@@ -578,24 +595,16 @@ export type ProjectDrivenExecutorInput = {
    * a pilot proves on a bounded slice.
    */
   maxUnits?: number;
-  /**
-   * USD budget cap on the REAL total `usage.cost`. Once the running total of
-   * COMPLETED units reaches the cap, the pool stops DISPATCHING further units
-   * (records `budgetStopped`). Under bounded concurrency the check gates the
-   * NEXT dispatch, so at most `concurrency - 1` already-in-flight units can push
-   * the realized total marginally past the cap; the provider's own
-   * `costCapUsd` is the hard per-call backstop. A bounded, cost-safe pilot
-   * guard.
-   */
+  /** Exact run cap persisted in the journal cost account at seed time. */
   budgetCapUsd?: number;
   /** Existing durable run identity to resume instead of creating a new run. */
   resumeRunId?: string;
   /**
    * itotori-batched-concurrent-translation-scheduling — the CLIENT-SIDE
-   * bounded-concurrency cap: at most this many units run their agentic loop
-   * (`runAgenticLoopForUnit`) simultaneously. The OpenRouter-side provider
-   * fallback + rate limits are the real backpressure; this bound is the client
-   * cap that keeps a whole-route run from stampeding the provider. Defaults to
+   * bounded-concurrency permit: at most this many units run their agentic loop
+   * (`runAgenticLoopForUnit`) simultaneously. The provider rate-token hook
+   * runs before each atomic cost reservation; this worker bound prevents a
+   * whole-route run from stampeding that transport. Defaults to
    * {@link DEFAULT_DRIVEN_CONCURRENCY}. Clamped to `>= 1` (a value `<= 1` runs
    * strictly sequentially, the pre-concurrency behaviour).
    */
@@ -617,9 +626,8 @@ export const DEFAULT_DRIVEN_CONCURRENCY = 8;
 /**
  * Single source of truth for the safe operator ceiling. Larger values can spin
  * up one worker/loop per planned unit: `--concurrency 27000` can create 27,000
- * concurrent unit loops, causing provider queue thrash, rate-limit churn, and
- * ZDR cost-cap risk because the provider checks the cost cap before its
- * rate-limit token. Sixteen is a safe operator ceiling above the default 8.
+ * concurrent unit loops, causing provider queue thrash and rate-limit churn.
+ * Sixteen is a safe operator ceiling above the default 8.
  */
 export const MAX_DRIVEN_CONCURRENCY = 16;
 
@@ -697,26 +705,6 @@ export async function runProjectDrivenExecutor(
     `project-driven-executor: enumerated ${unitsEnumerated} unit(s); ${unitsInScope} in scope (${translationScope})`,
   );
 
-  // Freeze and seed the COMPLETE scope before any provider is constructed or
-  // dispatched. Pending rows carry identity + next action only—never source
-  // text or a fabricated candidate.
-  const runPlan: DrivenJournalRunPlan = {
-    run: journalRun,
-    frozenScope: {
-      translationScope,
-      bridgeUnitIds: enumerated.map((entry) => entry.unit.bridgeUnitId),
-    },
-    routingPolicy: input.pairPolicy,
-    costPolicy: {
-      budgetCapUsd: input.budgetCapUsd ?? null,
-      reservation: "node_4_seam",
-    },
-    units: enumerated.map((entry) => ({
-      bridgeUnitId: entry.unit.bridgeUnitId,
-      sourceUnitKey: entry.unit.sourceUnitKey,
-      nextAction: { kind: "drive_unit", stage: "context" },
-    })),
-  };
   let resumeState: DrivenJournalResumeState | undefined;
   if (input.resumeRunId !== undefined) {
     if (
@@ -734,6 +722,30 @@ export async function runProjectDrivenExecutor(
       );
     }
   }
+
+  // Freeze and seed the COMPLETE scope before any provider is constructed or
+  // dispatched. Pending rows carry identity + next action only—never source
+  // text or a fabricated candidate. A resumed run is governed by its durable
+  // policy, not the present CLI/config arguments: a previous cap raise stores
+  // an exact decimal string and rebuilding `null` here would both erase that
+  // authority and trip the repository's run_seed_conflict protection.
+  const runPlan: DrivenJournalRunPlan = {
+    run: journalRun,
+    frozenScope: {
+      translationScope,
+      bridgeUnitIds: enumerated.map((entry) => entry.unit.bridgeUnitId),
+    },
+    routingPolicy: input.pairPolicy,
+    costPolicy: resumeState?.costPolicy ?? {
+      budgetCapUsd: input.budgetCapUsd ?? null,
+      reservation: "node_4_seam",
+    },
+    units: enumerated.map((entry) => ({
+      bridgeUnitId: entry.unit.bridgeUnitId,
+      sourceUnitKey: entry.unit.sourceUnitKey,
+      nextAction: { kind: "drive_unit", stage: "context" },
+    })),
+  };
 
   // New runs are atomically established here. Existing runs are re-seeded
   // idempotently to verify the frozen scope/policies before any resumed call.
@@ -845,57 +857,23 @@ export async function runProjectDrivenExecutor(
   // completion order.
   const slots: Array<UnitRunResult | undefined> = Array.from({ length: plannedUnits.length });
 
-  // Realized cost from COMPLETED units — the budget gate. It is an exact
-  // decimal sum of physical attempt rows, never a stage bundle/float summary.
-  // JS is single-threaded, so the read-check-and-claim below runs atomically
-  // between `await`s; no lock is needed. Under concurrency `K` at most `K - 1`
-  // already-dispatched units can push this marginally past the cap before the
-  // gate trips; the provider's own `costCapUsd` is the hard per-call backstop.
-  const budgetCapExactUsd =
-    input.budgetCapUsd === undefined ? undefined : decimalUsdFromFiniteNumber(input.budgetCapUsd);
-  let realizedCostExactUsd = totalUsageCostExactUsd;
   let nextIndex = 0;
   const lifecycle = invocationLifecycleFor(input.sinks.journal);
-  const costAdmission: InvocationCostAdmission | undefined =
-    input.costAdmission ??
-    (budgetCapExactUsd === undefined
-      ? undefined
-      : {
-          admit: async () =>
-            compareDecimalUsd(realizedCostExactUsd, budgetCapExactUsd) >= 0
-              ? {
-                  admitted: false as const,
-                  detail: `run cost cap $${budgetCapExactUsd} reached at $${realizedCostExactUsd}`,
-                  evidence: `journal-run:${journalRun.runId};spent-usd:${realizedCostExactUsd}`,
-                  operatorAction: "raise the cost cap, then resume",
-                }
-              : { admitted: true as const },
-        });
+  // Every physical provider call must pass through durable cost admission.
+  // Unlimited accounts intentionally participate too: they record exact
+  // spent/reserved state so an operator can later add a finite cap without
+  // erasing the run's historical provider spend.
+  const costAdmission =
+    input.costAdmission ?? input.sinks.journal.createCostAdmission?.(journalRun.runId);
+  if (costAdmission === undefined) {
+    throw new Error(
+      "every driven run requires a durable atomic cost-admission journal sink or an explicit admission implementation",
+    );
+  }
 
   const runWorker = async (): Promise<void> => {
     for (;;) {
       if (pausedBlocker !== null) return;
-      // (a) BUDGET GATE — stop DISPATCHING once completed cost reaches the cap.
-      if (
-        budgetCapExactUsd !== undefined &&
-        compareDecimalUsd(realizedCostExactUsd, budgetCapExactUsd) >= 0
-      ) {
-        if (!budgetStopped) {
-          budgetStopped = true;
-          log(
-            `project-driven-executor: budget cap $${budgetCapExactUsd} reached ($${realizedCostExactUsd}); stopping dispatch (concurrency=${concurrency})`,
-          );
-        }
-        const blocker = budgetBlocker(
-          journalRun.runId,
-          budgetCapExactUsd,
-          realizedCostExactUsd,
-          input.now?.() ?? new Date(),
-        );
-        pausedBlocker = blocker;
-        await input.sinks.journal.pauseRun?.(journalRun.runId, blocker);
-        return;
-      }
       // Claim the next canonical index atomically (no await between read+bump).
       const index = nextIndex;
       if (index >= plannedUnits.length) {
@@ -947,13 +925,6 @@ export async function runProjectDrivenExecutor(
         pausedBlocker ??= result.blocker;
         budgetStopped = budgetStopped || result.blocker.kind === "budget_cap";
         return;
-      }
-      if (result.status === "success") {
-        // Only completed cost gates further dispatch (PROJECT LAW: real cost).
-        realizedCostExactUsd = addDecimalUsd(
-          realizedCostExactUsd,
-          result.telemetry.totalCostExactUsd,
-        );
       }
     }
   };
@@ -1114,21 +1085,6 @@ function invocationLifecycleFor(sink: DrivenUnitJournalSink): InvocationLifecycl
   };
 }
 
-function budgetBlocker(
-  runId: string,
-  budgetCapExactUsd: string,
-  realizedCostExactUsd: string,
-  raisedAt: Date,
-): OperationalBlocker {
-  return {
-    kind: "budget_cap",
-    detail: `run cost cap $${budgetCapExactUsd} reached at $${realizedCostExactUsd}`,
-    evidence: `journal-run:${runId};spent-usd:${realizedCostExactUsd}`,
-    raisedAt: raisedAt.toISOString(),
-    operatorAction: "raise the cost cap, then resume",
-  };
-}
-
 function itotoriBugBlocker(input: {
   runId: string;
   bridgeUnitId: string;
@@ -1189,7 +1145,7 @@ async function runSingleDrivenUnit(args: {
   engineProfile: DrivenEngineProfile;
   journalRun: DrivenJournalRunRecord;
   lifecycle: InvocationLifecycle | undefined;
-  costAdmission: InvocationCostAdmission | undefined;
+  costAdmission: InvocationCostAdmission;
   log: (message: string) => void;
 }): Promise<UnitRunResult> {
   const {
@@ -1219,7 +1175,7 @@ async function runSingleDrivenUnit(args: {
     bridgeUnitId: unit.bridgeUnitId,
     source: input.providerFactory,
     ...(lifecycle !== undefined ? { lifecycle } : {}),
-    ...(costAdmission !== undefined ? { costAdmission } : {}),
+    costAdmission,
   });
   try {
     assertValidDrivenUnitContext(context);
@@ -1824,31 +1780,6 @@ export function summariseProviderTelemetry(
     // A unit that fired zero invocations cannot assert a ZDR posture.
     zdr: sawInvocation ? zdr : false,
   };
-}
-
-/** Convert the existing numeric CLI/config cap into a plain decimal string. */
-function decimalUsdFromFiniteNumber(value: number): string {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new AgenticLoopInvariantError(
-      `budget cap must be a finite non-negative number, got ${value}`,
-    );
-  }
-  const raw = String(value);
-  if (!/[eE]/u.test(raw)) {
-    return raw;
-  }
-  const [coefficient, exponentRaw] = raw.toLowerCase().split("e");
-  const exponent = Number(exponentRaw);
-  const [whole = "0", fraction = ""] = coefficient!.split(".");
-  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/u, "") || "0";
-  const decimalPoint = whole.length + exponent;
-  if (decimalPoint <= 0) {
-    return `0.${"0".repeat(-decimalPoint)}${digits}`;
-  }
-  if (decimalPoint >= digits.length) {
-    return `${digits}${"0".repeat(decimalPoint - digits.length)}`;
-  }
-  return `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`;
 }
 
 // ---------------------------------------------------------------------------

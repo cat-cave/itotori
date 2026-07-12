@@ -95,9 +95,9 @@ import {
   runRawMtlBaselineProofCommand,
 } from "./raw-mtl-baseline-proof/index.js";
 import {
-  runLocalizeProjectStageCommand,
-  type LocalizeProjectStageArgs,
-} from "./orchestrator/localize-project-stage-command.js";
+  runLocalizeProjectStageLive,
+  type RunLocalizeProjectStageLiveArgs,
+} from "./orchestrator/localize-project-stage-live.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
 import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
@@ -958,7 +958,7 @@ async function runLocalizeProjectStage(
   // Optional:
   //   --unit-index <N>                         default 0
   //   --max-repair-attempts <N>                default 1
-  //   --cost-cap-usd <decimal>                 default 0.5
+  //   --cost-cap-usd <decimal>                 durable run-level exact-decimal cap
   //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
   // The command runs the LIVE OpenRouter path only — there is no fake /
   // fixture provider option on this production CLI surface.
@@ -978,7 +978,7 @@ async function runLocalizeProjectStage(
     );
   }
 
-  const callArgs: LocalizeProjectStageArgs = {
+  const callArgs: RunLocalizeProjectStageLiveArgs = {
     bridgePath,
     pairPolicyPath,
     outputPath,
@@ -988,7 +988,6 @@ async function runLocalizeProjectStage(
       readJson: (path) => dependencies.io.readJson(path),
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
-    actor: { userId: "local-user" },
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
@@ -1026,12 +1025,12 @@ async function runLocalizeProjectStage(
         `localize-project-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
       );
     }
-    callArgs.costCapUsd = parsed;
+    callArgs.budgetCapUsd = parsed;
   }
   if (providerRunArtifactDirectory !== undefined) {
     callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
-  await runLocalizeProjectStageCommand(callArgs);
+  await runLocalizeProjectStageLive(callArgs);
 }
 
 /**
@@ -1049,7 +1048,7 @@ async function runLocalizeProjectStage(
  *                         artifacts + run summary
  * Optional:
  *   --resume-run-id <ID> resume an existing paused durable journal run
- *   --cost-cap-usd <decimal>   per-process OpenRouter cost cap (default $0.50)
+ *   --cost-cap-usd <decimal>   durable run-level exact-decimal cost cap
  *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
  *                         over the config's `concurrency`)
  *   --source <PATH>       read-only source game root. RealLive: the game root
@@ -1176,7 +1175,7 @@ async function runLocalizeFullProject(
  *   --entry-scene <N>            structure dispatch-order entry scene override
  *   --expect-text <TEXT>         localized text the render frame must contain
  *   --redaction on|off           render-frame redaction posture (default on)
- *   --cost-cap-usd <decimal>     per-process OpenRouter budget cap
+ *   --cost-cap-usd <decimal>     durable run-level exact-decimal budget cap
  *   --concurrency <N>            client-side bounded-concurrency cap (default 8;
  *                                wins over the config's `concurrency`)
  */

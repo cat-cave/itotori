@@ -547,6 +547,10 @@ class InMemorySinks {
   readonly failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
   readonly journal = {
+    // The executor fails closed without admission even for uncapped tests.
+    // This fixture intentionally models an admitted durable account while the
+    // test exercises unrelated diagnostic/error paths.
+    createCostAdmission: () => ({ admit: async () => ({ admitted: true as const }) }),
     persistUnitJournal: async (record: DrivenUnitJournalRecord): Promise<void> => {
       this.journalUnits.push(record);
     },

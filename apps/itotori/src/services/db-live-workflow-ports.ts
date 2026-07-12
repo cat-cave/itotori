@@ -34,7 +34,6 @@ import {
   type ProviderDescriptor,
   type ProviderRunArtifactRecorder,
 } from "../providers/index.js";
-import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
 import type {
   LaunchLocalizationPassInput,
   LaunchLocalizationPassResult,
@@ -48,8 +47,6 @@ import type { LocalizeFullProjectIo } from "../orchestrator/localize-fullproject
 // ---------------------------------------------------------------------------
 
 export type DbBackedDraftProviderOptions = {
-  /** Per-process USD cap threaded into the live provider. Default $0.50. */
-  costCapUsd?: number;
   /**
    * Provider-run artifact recorder the live call persists routing posture +
    * usage into. Defaults to the on-disk recorder; a test injects a stub.
@@ -116,7 +113,6 @@ export function createDbBackedDraftModelProvider(
     options.buildProvider ??
     (() =>
       new OpenRouterModelProvider({
-        costCapUsd: options.costCapUsd ?? DEFAULT_COST_CAP_USD,
         artifactRecorder: options.artifactRecorder ?? new LocalProviderRunArtifactRecorder(),
         ...(options.env !== undefined ? { env: options.env } : {}),
         ...(options.httpClient !== undefined ? { httpClient: options.httpClient } : {}),
