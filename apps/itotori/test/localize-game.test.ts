@@ -57,16 +57,17 @@ const IDENTITY = {
 /** A minimal localize result carrying only the fields the command reads. */
 function fakeLocalizeResult(withPatch: boolean): RunLocalizeFullProjectLiveResult {
   const result = {
+    journalRunId: "localization-journal-run-test",
     unitsRun: 3,
     writtenOutcomeCount: 3,
     failures: [],
     reviewerQueueItemCount: 1,
+    totalUsageCostExactUsd: "0.0042",
     totalUsageCostUsd: 0.0042,
     zdrConfirmed: true,
     budgetStopped: false,
   };
-  const record = { passNumber: 1, priorPassNumber: null, writtenDeltas: [] };
-  const base = { result, record, prior: undefined } as unknown as RunLocalizeFullProjectLiveResult;
+  const base = { result } as unknown as RunLocalizeFullProjectLiveResult;
   if (withPatch) {
     return {
       ...base,

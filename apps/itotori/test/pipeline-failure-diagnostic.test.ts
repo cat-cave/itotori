@@ -38,12 +38,11 @@ import {
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
-import { InMemoryPassLedger, type PassLedgerPort } from "../src/orchestrator/pass-ledger.js";
 import {
   runProjectDrivenExecutor,
-  type DrivenWrittenOutcomeRecord,
+  type DrivenFailedUnitJournalRecord,
   type DrivenPatchExportRecord,
-  type DrivenProviderRunRecord,
+  type DrivenUnitJournalRecord,
   type DrivenUnitContext,
 } from "../src/orchestrator/project-driven-executor.js";
 import {
@@ -314,7 +313,7 @@ describe("runPipelineStepWithDiagnostic (itotori-agent-facing-pipeline-failure-d
     let caught: unknown;
     try {
       await runPipelineStepWithDiagnostic({
-        step: "localize.run-pass",
+        step: "localize.run-journal",
         message: "outer",
         run: () => {
           throw new PipelineFailureDiagnosticError(inner);
@@ -388,7 +387,7 @@ describe("renderPipelineFailureDiagnosticOneLine (itotori-agent-facing-pipeline-
 
   it("truncates long messages to the cap", () => {
     const diag = buildPipelineFailureDiagnostic({
-      step: "localize.run-pass",
+      step: "localize.run-journal",
       code: "unknown",
       message: "long",
       error: new Error("x".repeat(1000)),
@@ -540,17 +539,15 @@ function diagProviderFactory(): AgenticLoopProviderFactory {
 }
 
 class InMemorySinks {
-  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
-  readonly providerRuns: DrivenProviderRunRecord[] = [];
+  readonly journalUnits: DrivenUnitJournalRecord[] = [];
+  readonly failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly writtenOutcome = {
-    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
-      this.writtenOutcomes.push(record);
+  readonly journal = {
+    persistUnitJournal: async (record: DrivenUnitJournalRecord): Promise<void> => {
+      this.journalUnits.push(record);
     },
-  };
-  readonly providerRun = {
-    persistProviderRun: async (record: DrivenProviderRunRecord): Promise<void> => {
-      this.providerRuns.push(record);
+    persistFailedUnitAttempts: async (record: DrivenFailedUnitJournalRecord): Promise<void> => {
+      this.failedUnitAttempts.push(record);
     },
   };
   readonly patchExport = {
@@ -668,7 +665,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
     const queue = new InMemoryReviewerQueue();
-    const ledger: PassLedgerPort = new InMemoryPassLedger();
     const io = fsIo();
 
     const out = await runLocalizeFullProjectCommand({
@@ -679,11 +675,9 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
         actor: ACTOR,
         providerFactory: diagProviderFactory(),
         sinks: {
-          writtenOutcome: sinks.writtenOutcome,
-          providerRun: sinks.providerRun,
+          journal: sinks.journal,
           patchExport: sinks.patchExport,
         },
-        passLedger: ledger,
         reviewerQueue: { repository: queue as never },
       },
     });
@@ -709,7 +703,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
     const queue = new InMemoryReviewerQueue();
-    const ledger: PassLedgerPort = new InMemoryPassLedger();
     const io = fsIo();
 
     const out = await runLocalizeFullProjectCommand({
@@ -720,11 +713,9 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
         actor: ACTOR,
         providerFactory: diagProviderFactory(),
         sinks: {
-          writtenOutcome: sinks.writtenOutcome,
-          providerRun: sinks.providerRun,
+          journal: sinks.journal,
           patchExport: sinks.patchExport,
         },
-        passLedger: ledger,
         reviewerQueue: { repository: queue as never },
       },
     });
@@ -754,16 +745,15 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
 
 function makeDeps() {
   const io = fsIo();
+  const sinks = new InMemorySinks();
   return {
     io,
     actor: ACTOR,
     providerFactory: diagProviderFactory(),
     sinks: {
-      writtenOutcome: new InMemorySinks().writtenOutcome,
-      providerRun: new InMemorySinks().providerRun,
-      patchExport: new InMemorySinks().patchExport,
+      journal: sinks.journal,
+      patchExport: sinks.patchExport,
     },
-    passLedger: new InMemoryPassLedger() as PassLedgerPort,
   };
 }
 
@@ -805,7 +795,7 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
     expectRedactionComplete(diag);
   });
 
-  it("passes the per-unit diagnostic through the pass ledger record", async () => {
+  it("keeps the per-unit diagnostic on the durable executor result", async () => {
     const sinks = new InMemorySinks();
     const bridge = makeBridge();
     const result = await runProjectDrivenExecutor({
@@ -825,9 +815,9 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       sinks,
     });
 
-    // The pass ledger's record-build path consumes `result.failures` —
-    // confirm the failure's diagnostic survives the round-trip (a regression
-    // here would silently strip the new field).
+    // The journal persistence path consumes `result.failures`; confirm the
+    // diagnostic stays attached at the executor boundary instead of being
+    // silently stripped before durable capture.
     expect(result.failures).toHaveLength(1);
     const failure = result.failures[0]!;
     expect(failure.diagnostic).toBeDefined();

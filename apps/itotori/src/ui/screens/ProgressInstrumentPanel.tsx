@@ -5,7 +5,7 @@
 // stage breakouts + iteration cycle + remaining-work readout for the project's
 // selected locale branch. It CONSUMES the composed `projects.overview` read
 // model THROUGH the typed client (`useApiQuery`) — the same read model that
-// composes `progress` (`ProjectDashboardStatus`) + the localization `passLedger`
+// composes `progress` (`ProjectDashboardStatus`) + the durable execution journal
 // — and settles into loading / empty / error / populated independently, so a
 // failed overview read degrades only this panel. Rendered with the `@itotori/ds`
 // `LocalizationProgress` instrument + `StatReadout`s (className-based, ds tokens,
@@ -15,12 +15,12 @@
 // field or arithmetic over real fields. The stage funnel is derived from the
 // selected branch's aggregate counts (`unitCount` / `translatedUnitCount` /
 // `openFindingCount`), which the read model exposes; the cycle comes from the
-// pass ledger's `passNumber` / page total. Two dimensions have NO first-class
+// durable journal's run count. Two dimensions have NO first-class
 // source in the exposed overview read model and are therefore represented
 // honestly rather than fabricated:
 //   - a distinct per-unit "revised" bucket is not derivable from the branch
 //     aggregates (it needs per-unit stage state); the revision DIMENSION is
-//     surfaced as the count of recorded revision passes + the cycle counter.
+//     surfaced as the count of prior recorded runs + the cycle counter.
 //   - there is NO time-based ETA field; the "eta" slot renders the exact
 //     remaining-work unit count (sourced), never an invented completion time.
 
@@ -53,10 +53,10 @@ export type ProgressInstrument = {
   remaining: number;
   /** Disjoint stage segments (sum to total), for the ds segmented bar. */
   stages: LocalizationStage[];
-  /** Iteration cycle from the pass ledger, or null when no pass is recorded. */
+  /** Iteration cycle from the durable journal, or null when no run is recorded. */
   cycle: { current: number; of: number } | null;
-  /** Recorded passes that built on a prior pass (a revision signal). */
-  revisionPasses: number;
+  /** Recorded runs before the latest run (an iteration signal). */
+  priorRuns: number;
 };
 
 function clamp(value: number, lo: number, hi: number): number {
@@ -97,13 +97,9 @@ export function deriveProgressInstrument(
     { key: "pending", label: "pending", count: pending, tone: "neutral" },
   ];
 
-  const passRows = overview.passLedger.rows;
-  const latestPassNumber = passRows.reduce((max, row) => Math.max(max, row.passNumber), 0);
-  const cycle =
-    overview.passLedger.pagination.total > 0
-      ? { current: latestPassNumber, of: overview.passLedger.pagination.total }
-      : null;
-  const revisionPasses = passRows.filter((row) => row.priorPassNumber !== null).length;
+  const journalRunCount = overview.journal.pagination.total;
+  const cycle = journalRunCount > 0 ? { current: journalRunCount, of: journalRunCount } : null;
+  const priorRuns = Math.max(0, journalRunCount - 1);
 
   return {
     localeBranchId: branch.localeBranchId,
@@ -116,7 +112,7 @@ export function deriveProgressInstrument(
     remaining,
     stages,
     cycle,
-    revisionPasses,
+    priorRuns,
   };
 }
 
@@ -166,7 +162,7 @@ function ProgressInstrumentBody({
 }
 
 function ProgressInstrumentReadout({ instrument }: { instrument: ProgressInstrument }): ReactNode {
-  const { total, drafted, inQa, cleared, pending, remaining, cycle, revisionPasses } = instrument;
+  const { total, drafted, inQa, cleared, pending, remaining, cycle, priorRuns } = instrument;
   return (
     <div className="itotori-progress-instrument" data-locale-branch-id={instrument.localeBranchId}>
       <LocalizationProgress
@@ -185,7 +181,7 @@ function ProgressInstrumentReadout({ instrument }: { instrument: ProgressInstrum
         <StatReadout label="In QA" value={inQa} />
         <StatReadout label="Cleared" value={cleared} />
         <StatReadout label="Pending" value={pending} />
-        <StatReadout label="Revision passes" value={revisionPasses} />
+        <StatReadout label="Prior runs" value={priorRuns} />
       </div>
     </div>
   );

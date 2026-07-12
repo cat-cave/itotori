@@ -4,13 +4,13 @@
 // APPLYABLE, byte-correct patch via a SHIPPED path.
 //
 //   1. FAST (no DB) — the scope-token mapper + the kaifuu-cli invocation shape
-//      + the executor-run draft-bundle loader over in-memory fake repositories
+//      + the executor-run draft-bundle loader over an in-memory durable journal
 //      (production loader logic, no fixture bundle).
 //   2. REAL POSTGRES — drive a full project through the whole-game command
-//      (fake provider, real DB persistence of drafts + provider-ledger), THEN
+//      (fake provider, real DB persistence of the attempt/outcome journal), THEN
 //      run `runWholeGamePatchExportAndApply` over the run's REAL persisted
-//      drafts: the production loader reconstructs the DraftArtifactBundle from
-//      the DB, the export-patch preflight passes honestly, and the kaifuu-patch
+//      outcomes: the production loader reconstructs the DraftArtifactBundle
+//      from the DB, the export-patch preflight passes honestly, and the kaifuu-patch
 //      invocation MIRRORS the single-unit suite runner's phase 3
 //      (`kaifuu patch --engine reallive --source ... --target ... --bundle
 //      translated-bridge.json --scope ... --force`). A fake `runProcess`
@@ -25,36 +25,38 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  asNonBlankTargetText,
   assertDraftArtifactBundle,
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
   type BridgeBundleV02,
   type LocalizationUnitV02,
+  type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
 import {
-  ItotoriDraftAttemptProviderLedgerRepository,
-  ItotoriDraftJobRepository,
-  ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriReviewerQueueRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   localUserId,
   migrate,
   type AuthorizationActor,
+  type ItotoriLocalizationJournalRepositoryPort,
+  type LocalizationJournalAttemptRecord,
+  type LocalizationJournalOutcomeRecord,
+  type LocalizationJournalRunRecord,
 } from "@itotori/db";
 import {
   fakeSemanticContextContent,
   type AgenticLoopProviderFactory,
 } from "../src/orchestrator/agentic-loop.js";
-import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
-  DrivenDbPersistenceAdapter,
+  DrivenJournalPersistenceAdapter,
   FsDrivenPatchExportSink,
 } from "../src/orchestrator/project-driven-executor-sinks.js";
-import { DbPassLedger } from "../src/orchestrator/pass-ledger-db-adapter.js";
 import { runLocalizeFullProjectCommand } from "../src/orchestrator/localize-fullproject-command.js";
 import {
   applyKaifuuRealLivePatch,
@@ -64,7 +66,6 @@ import {
   mapV02SpanToProtectedSpan,
   runWholeGamePatchExportAndApply,
   WholeGamePatchExportPreflightError,
-  WholeGamePatchLoaderReconciliationError,
   type KaifuuProcessResult,
 } from "../src/orchestrator/patch-apply-seam.js";
 import {
@@ -246,61 +247,54 @@ describe("applyKaifuuRpgMakerPatch (invocation shape mirrors kaifuu rpgmaker pat
   });
 });
 
-describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake repos)", () => {
-  it("reconstructs a DraftArtifactBundle from persisted drafts + patch-report bodies", async () => {
+describe("buildDraftArtifactBundleFromExecutorRun (production loader over durable journal)", () => {
+  it("loads the exact persisted outcomes, all candidates, QA rationale, and full-precision attempts", async () => {
     const actor: AuthorizationActor = { userId: localUserId };
-    // Fake draft-job repo: two written units, one draft-job each, one attempt.
-    const draftJobs = {
-      async loadDraftJobsByProject() {
-        return [
-          {
-            draftJobId: "draft-job-a",
-            projectId: PROJECT_ID,
-            localeBranchId: LOCALE_BRANCH_ID,
-            bridgeUnitIds: [UNIT_A],
-          },
-          {
-            draftJobId: "draft-job-b",
-            projectId: PROJECT_ID,
-            localeBranchId: LOCALE_BRANCH_ID,
-            bridgeUnitIds: [UNIT_B],
-          },
-        ] as never;
-      },
-      async loadDraftJobAttempts(_a: AuthorizationActor, draftJobId: string) {
-        return [
-          {
-            draftJobAttemptId: `${draftJobId}-attempt-1`,
-            draftJobId,
-            attemptIndex: 1,
-            status: "succeeded",
-            failureReason: null,
-          },
-        ] as never;
-      },
-    } as never;
-    const ledger = {
-      async loadEntriesByAttempt(_a: AuthorizationActor, attemptId: string) {
-        return [
-          {
-            ledgerEntryId: `${attemptId}-ledger`,
-            providerProofId: `proof:${attemptId}`,
-            tokensIn: 10,
-            tokensOut: 5,
-            costAmount: "0.00000000",
-          },
-        ] as never;
-      },
-    } as never;
+    const runId = "localization-journal-run:loader-fast";
+    const { journal } = fakeJournal(
+      [
+        {
+          unitId: UNIT_A,
+          selectedBody: "Body A (repaired)",
+          candidates: [
+            { body: "Body A (primary)", kind: "primary", attemptId: "attempt-a-primary" },
+            { body: "Body A (repaired)", kind: "repair", attemptId: "attempt-a-repair" },
+          ],
+          findings: [
+            {
+              severity: "major",
+              category: "voice",
+              note: "Use the more formal address.\nRecommendation: retain the repair.",
+              contested: false,
+              confidence: 0.91,
+              recommendation: "retain the repair",
+              agentRationale: "The repaired candidate preserves the established formal voice.",
+            },
+          ],
+          attempts: [
+            { attemptId: "attempt-a-primary", costUsd: "0.00000602", tokensIn: 10, tokensOut: 5 },
+            { attemptId: "attempt-a-repair", costUsd: "0.00000602", tokensIn: 11, tokensOut: 6 },
+          ],
+        },
+        {
+          unitId: UNIT_B,
+          selectedBody: "Body B",
+          attempts: [
+            { attemptId: "attempt-b-primary", costUsd: "0.00000602", tokensIn: 12, tokensOut: 7 },
+          ],
+        },
+      ],
+      { runId },
+    );
 
     const bundle = await buildDraftArtifactBundleFromExecutorRun({
       actor,
-      draftJobs,
-      ledger,
+      journal,
       projectId: PROJECT_ID,
       localeBranchId: LOCALE_BRANCH_ID,
       draftArtifactBundleId: "wholegame-run:test",
       patchReport: {
+        journalRunId: runId,
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
         targetLocale: "en-US",
@@ -308,13 +302,15 @@ describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake r
           {
             bridgeUnitId: UNIT_B,
             sourceUnitKey: "k-b",
+            // The report is reconciled against, but the durable outcome is
+            // what the loader actually projects.
             selectedBody: "Body B",
             qualityFlags: [],
           },
           {
             bridgeUnitId: UNIT_A,
             sourceUnitKey: "k-a",
-            selectedBody: "Body A",
+            selectedBody: "Body A (repaired)",
             qualityFlags: [],
           },
         ],
@@ -324,92 +320,277 @@ describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake r
     });
 
     assertDraftArtifactBundle(bundle);
-    // Only written units, sorted deterministically, each carrying its real body
-    // + real provider-proof + ledger ref from the persisted rows.
     expect(bundle.drafts.map((d) => d.sourceUnitId)).toEqual([UNIT_A, UNIT_B]);
     const a = bundle.drafts.find((d) => d.sourceUnitId === UNIT_A)!;
     const selectedCandidate = a.writtenOutcome.candidates.find(
       (candidate) => candidate.id === a.writtenOutcome.selectedCandidateId,
     );
-    expect(selectedCandidate?.body).toBe("Body A");
-    expect(a.providerProofId).toBe("proof:draft-job-a-attempt-1");
-    expect(a.costLedgerEntryRef).toBe("draft-job-a-attempt-1-ledger");
+    expect(selectedCandidate?.body).toBe("Body A (repaired)");
+    expect(a.writtenOutcome.candidates.map((candidate) => candidate.kind)).toEqual([
+      "primary",
+      "repair",
+    ]);
+    expect(a.providerProofId).toBe("attempt-a-repair");
+    expect(a.costLedgerEntryRef).toBe("llm-attempt:attempt-a-repair");
     expect(a.writtenOutcome.status).toBe("written");
-    expect(a.writtenOutcome.findings).toEqual([]);
+    expect(a.writtenOutcome.findings).toMatchObject([
+      {
+        severity: "major",
+        category: "voice",
+        note: "Use the more formal address.\nRecommendation: retain the repair.",
+      },
+    ]);
     expect(a.writtenOutcome.provenance).toMatchObject({
-      candidateFindingsAvailability: "not-durably-persisted",
+      journal: {
+        qaFindingDetails: [
+          {
+            recommendation: "retain the repair",
+            agentRationale: "The repaired candidate preserves the established formal voice.",
+          },
+        ],
+      },
     });
-    expect(bundle.ledgerSummary.attemptCount).toBe(2);
-    expect(bundle.ledgerSummary.providerProofIds).toHaveLength(2);
+    // 0.00000602 * 3 proves the bundle sums persisted exact decimal strings,
+    // rather than losing tails through a micro-USD or Number conversion.
+    expect(bundle.ledgerSummary).toMatchObject({
+      totalCost: "0.00001806",
+      totalTokensIn: 33,
+      totalTokensOut: 18,
+      attemptCount: 3,
+    });
+    expect(bundle.ledgerSummary.providerProofIds.sort()).toEqual([
+      "attempt-a-primary",
+      "attempt-a-repair",
+      "attempt-b-primary",
+    ]);
   });
 });
 
 // ---------------------------------------------------------------------------
 // (1b) FAILURE-PATH proofs — the preflight is HONEST (no vacuous pass, no
-// silent drop, no tautological integrity). These run over fake repos (no DB):
+// silent drop, no tautological integrity). These run over a fake journal (no DB):
 // the loader reconciliation + the seam's source-view / integrity logic are DB
 // independent, so a fast test proves each blocking failure THROWS.
 // ---------------------------------------------------------------------------
 
 const SEAM_ACTOR: AuthorizationActor = { userId: localUserId };
 
+type FakeJournalCandidate = {
+  body: string;
+  kind: "primary" | "repair";
+  attemptId: string;
+};
+
+type FakeJournalFinding = {
+  severity: "info" | "minor" | "major" | "critical";
+  category: string;
+  note: string;
+  contested: boolean;
+  confidence: number;
+  recommendation: string;
+  agentRationale: string;
+};
+
+type FakeJournalAttempt = {
+  attemptId: string;
+  costUsd?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  providerRunId?: string;
+};
+
+type FakeJournalUnit = {
+  unitId: string;
+  selectedBody: string;
+  candidates?: readonly FakeJournalCandidate[];
+  findings?: readonly FakeJournalFinding[];
+  attempts?: readonly FakeJournalAttempt[];
+  withOutcome?: boolean;
+  withAttempt?: boolean;
+};
+
+type FakeJournalOptions = {
+  runId?: string;
+  missingRun?: boolean;
+  projectId?: string;
+  localeBranchId?: string;
+  targetLocale?: string;
+};
+
 /**
- * A fake draft-job + ledger repo pair keyed by unit id. `withJob` /
- * `withAttempt` / `withLedger` control exactly which persistence rows exist per
- * unit so a test can omit a job / attempt / ledger and prove the loader fails
- * loud (P1 #2).
+ * A typed in-memory read model for the journal loader. The outcomes carry
+ * canonical candidates/findings and their raw QA rationale in the outcome's
+ * persisted journal provenance; attempts are physical provider dispatches,
+ * not one synthesized aggregate row per unit.
  */
-function fakeRepos(
-  units: ReadonlyArray<{
-    unitId: string;
-    withJob?: boolean;
-    withAttempt?: boolean;
-    withLedger?: boolean;
-  }>,
-): { draftJobs: never; ledger: never } {
-  const jobIdOf = (unitId: string) => `job-${unitId}`;
-  const attemptIdOf = (unitId: string) => `attempt-${unitId}`;
-  const draftJobs = {
-    async loadDraftJobsByProject() {
-      return units
-        .filter((u) => u.withJob !== false)
-        .map((u) => ({
-          draftJobId: jobIdOf(u.unitId),
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          bridgeUnitIds: [u.unitId],
-        })) as never;
-    },
-    async loadDraftJobAttempts(_a: AuthorizationActor, draftJobId: string) {
-      const unit = units.find((u) => jobIdOf(u.unitId) === draftJobId);
-      if (unit === undefined || unit.withAttempt === false) return [] as never;
-      return [
+function fakeJournal(
+  units: readonly FakeJournalUnit[],
+  options: FakeJournalOptions = {},
+): {
+  journal: ItotoriLocalizationJournalRepositoryPort;
+  outcomes: LocalizationJournalOutcomeRecord[];
+  attempts: LocalizationJournalAttemptRecord[];
+  run: LocalizationJournalRunRecord;
+} {
+  const runId = options.runId ?? "localization-journal-run:patch-seam-fixture";
+  const run: LocalizationJournalRunRecord = {
+    runId,
+    projectId: options.projectId ?? PROJECT_ID,
+    localeBranchId: options.localeBranchId ?? LOCALE_BRANCH_ID,
+    sourceRevisionId: REVISION_ID,
+    targetLocale: options.targetLocale ?? "en-US",
+    createdAt: new Date("2026-07-11T00:00:00.000Z"),
+  };
+  const attempts: LocalizationJournalAttemptRecord[] = units.flatMap((unit) => {
+    if (unit.withAttempt === false) return [];
+    const fixtureAttempts = unit.attempts ?? [
+      { attemptId: `attempt:${unit.unitId}`, costUsd: "0", tokensIn: 0, tokensOut: 0 },
+    ];
+    return fixtureAttempts.map((attempt, index) => ({
+      attemptId: attempt.attemptId,
+      runId,
+      bridgeUnitId: unit.unitId,
+      stage: "translation",
+      agentLabel: "translation-primary",
+      logicalCallId: `logical:${unit.unitId}:${index}`,
+      attemptIndex: index,
+      modelId: "fixture-model",
+      providerId: "fixture-provider",
+      providerRunId: attempt.providerRunId ?? attempt.attemptId,
+      costUsd: attempt.costUsd ?? "0",
+      tokensIn: attempt.tokensIn ?? 0,
+      tokensOut: attempt.tokensOut ?? 0,
+      zdr: true,
+      finishState: "stop",
+      refusalState: null,
+      validationResult: "accepted",
+      failureClass: null,
+      retryDecision: "write",
+      retryDelayMs: null,
+      artifactRef: null,
+      errorClasses: [],
+      startedAt: new Date("2026-07-11T00:00:00.000Z"),
+      completedAt: new Date("2026-07-11T00:00:01.000Z"),
+      createdAt: new Date("2026-07-11T00:00:01.000Z"),
+    }));
+  });
+  const outcomes = units.flatMap((unit): LocalizationJournalOutcomeRecord[] => {
+    if (unit.withOutcome === false) return [];
+    const outcomeId = `outcome:${unit.unitId}`;
+    const defaultAttemptId = unit.attempts?.[0]?.attemptId ?? `attempt:${unit.unitId}`;
+    const candidates = (
+      unit.candidates ?? [
+        { body: unit.selectedBody, kind: "primary" as const, attemptId: defaultAttemptId },
+      ]
+    ).map((candidate, index) => ({
+      id: `${outcomeId}:candidate:${index + 1}`,
+      outcomeId,
+      body: asNonBlankTargetText(candidate.body),
+      producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+      attemptId: candidate.attemptId,
+      kind: candidate.kind,
+    }));
+    const selectedCandidate = candidates.find((candidate) => candidate.body === unit.selectedBody);
+    if (selectedCandidate === undefined) {
+      throw new Error(`fake journal has no candidate for selected body ${unit.selectedBody}`);
+    }
+    const findings = (unit.findings ?? []).map((finding, index) => ({
+      id: `${outcomeId}:finding:${index + 1}`,
+      outcomeId,
+      candidateId: selectedCandidate.id,
+      severity: finding.severity,
+      category: finding.category,
+      note: finding.note,
+      contested: finding.contested,
+      confidence: finding.confidence,
+    }));
+    const qaFindingDetails = (unit.findings ?? []).map((finding, index) => ({
+      findingId: findings[index]!.id,
+      recommendation: finding.recommendation,
+      agentRationale: finding.agentRationale,
+      evidenceRefs: [`evidence:${unit.unitId}:${index + 1}`],
+    }));
+    const provenance = {
+      journal: {
+        resolvedContextPacket: { fixture: true, unitId: unit.unitId },
+        contextArtifactRefs: [`context:${unit.unitId}`],
+        contextVersionRefs: [],
+        selectedCandidateCitationRefs: [`citation:${unit.unitId}`],
+        speakerLabels: [],
+        qaFindingDetails,
+      },
+    };
+    const outcome: WrittenUnitOutcome = {
+      id: outcomeId,
+      status: "written",
+      unitId: unit.unitId,
+      targetLocale: run.targetLocale,
+      selectedCandidateId: selectedCandidate.id,
+      candidates,
+      findings,
+      qualityFlags: [],
+      provenance,
+      writtenAt: "2026-07-11T00:00:01.000Z",
+    };
+    const qaDetails = Object.fromEntries(
+      qaFindingDetails.map((detail) => [
+        detail.findingId,
         {
-          draftJobAttemptId: attemptIdOf(unit.unitId),
-          draftJobId,
-          attemptIndex: 1,
-          status: "succeeded",
-          failureReason: null,
+          recommendation: detail.recommendation,
+          agentRationale: detail.agentRationale,
+          evidenceRefs: detail.evidenceRefs,
         },
-      ] as never;
+      ]),
+    );
+    return [
+      {
+        journalOutcomeId: `journal-outcome:${runId}:${outcomeId}`,
+        runId,
+        bridgeUnitId: unit.unitId,
+        sourceUnitKey: `k-${unit.unitId}`,
+        outcome,
+        candidates,
+        findings,
+        contextPacket: provenance.journal.resolvedContextPacket,
+        contextRefs: [
+          {
+            refKind: "context_artifact",
+            refId: `context:${unit.unitId}`,
+            versionRef: null,
+            details: null,
+          },
+        ],
+        speakerLabels: [],
+        qaDetails,
+      },
+    ];
+  });
+  const journal = {
+    async loadRun(_actor: AuthorizationActor, requestedRunId: string) {
+      return options.missingRun || requestedRunId !== runId ? null : run;
     },
-  } as never;
-  const ledger = {
-    async loadEntriesByAttempt(_a: AuthorizationActor, attemptId: string) {
-      const unit = units.find((u) => attemptIdOf(u.unitId) === attemptId);
-      if (unit === undefined || unit.withLedger === false) return [] as never;
-      return [
-        {
-          ledgerEntryId: `${attemptId}-ledger`,
-          providerProofId: `proof:${attemptId}`,
-          tokensIn: 10,
-          tokensOut: 5,
-          costAmount: "0.00000000",
-        },
-      ] as never;
+    async loadRunOutcomes(_actor: AuthorizationActor, requestedRunId: string) {
+      return requestedRunId === runId ? outcomes : [];
     },
-  } as never;
-  return { draftJobs, ledger };
+    async loadAttemptsForRun(_actor: AuthorizationActor, requestedRunId: string) {
+      return requestedRunId === runId ? attempts : [];
+    },
+  } as unknown as ItotoriLocalizationJournalRepositoryPort;
+  return { journal, outcomes, attempts, run };
+}
+
+function fakeJournalForPatchReport(
+  patchReport: DrivenPatchReport,
+  options: Omit<FakeJournalOptions, "runId"> & {
+    unitOverrides?: Readonly<Record<string, Partial<FakeJournalUnit>>>;
+  } = {},
+): ItotoriLocalizationJournalRepositoryPort {
+  const units = patchReport.writtenUnits.map((written) => ({
+    unitId: written.bridgeUnitId,
+    selectedBody: written.selectedBody,
+    ...options.unitOverrides?.[written.bridgeUnitId],
+  }));
+  return fakeJournal(units, { ...options, runId: patchReport.journalRunId }).journal;
 }
 
 type SeamBridgeUnit = {
@@ -438,6 +619,7 @@ function seamPatchReport(
 ): DrivenPatchReport {
   return {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
+    journalRunId: "localization-journal-run:preflight-fixture",
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     targetLocale: "en-US",
@@ -450,6 +632,7 @@ function seamPatchReport(
     writtenOutcomeCount: writtenUnits.length,
     failureCount: 0,
     reviewerQueueItemCount: 0,
+    totalUsageCostExactUsd: "0",
     totalUsageCostUsd: 0,
     zdrConfirmed: true,
     budgetStopped: false,
@@ -478,16 +661,16 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       },
     ]);
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hello." }], hash);
+    const journal = fakeJournalForPatchReport(patchReport);
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
         engineProfile: "reallive",
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
+        journal,
         // The draft body DROPS the [ICON] span -> coverage must fail.
-        patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hello." }], hash),
+        patchReport,
         rawBridge: bridge,
         sourceRoot: "/src",
         targetRoot: "/out",
@@ -515,17 +698,17 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       },
     ]);
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "See the sign." }],
+      hash,
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     await expect(
       runWholeGamePatchExportAndApply({
         engineProfile: "reallive",
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
-        patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, selectedBody: "See the sign." }],
-          hash,
-        ),
+        journal,
+        patchReport,
         rawBridge: bridge,
         sourceRoot: "/src",
         targetRoot: "/out",
@@ -557,18 +740,18 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       [{ assetId: IMAGE_ASSET_ID, assetKey: "poster", assetKind: "image" }],
     );
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Read the poster." }],
+      hash,
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
         engineProfile: "reallive",
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
-        patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, selectedBody: "Read the poster." }],
-          hash,
-        ),
+        journal,
+        patchReport,
         rawBridge: bridge,
         sourceRoot: "/src",
         targetRoot: "/out",
@@ -601,16 +784,16 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       [{ assetId: SCRIPT_ASSET_ID, assetKey: "Seen.txt", assetKind: "script" }],
     );
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Localized dialogue." }],
+      hash,
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     const seam = await runWholeGamePatchExportAndApply({
       engineProfile: "reallive",
       actor: SEAM_ACTOR,
-      draftJobs,
-      ledger,
-      patchReport: seamPatchReport(
-        [{ bridgeUnitId: UNIT_A, selectedBody: "Localized dialogue." }],
-        hash,
-      ),
+      journal,
+      patchReport,
       rawBridge: bridge,
       sourceRoot: "/src",
       targetRoot: "/out",
@@ -635,14 +818,17 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       },
     ]);
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }],
+      hash,
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     let capturedArgs: string[] | undefined;
     const seam = await runWholeGamePatchExportAndApply({
       engineProfile: "reallive",
       actor: SEAM_ACTOR,
-      draftJobs,
-      ledger,
-      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }], hash),
+      journal,
+      patchReport,
       rawBridge: bridge,
       sourceRoot: "/src",
       targetRoot: "/out",
@@ -673,14 +859,17 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       },
     ]);
     const hash = hashDraftedAgainstBridge(bridge);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }],
+      hash,
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     let capturedArgs: string[] | undefined;
     const seam = await runWholeGamePatchExportAndApply({
       engineProfile: "rpg-maker-mv-mz",
       actor: SEAM_ACTOR,
-      draftJobs,
-      ledger,
-      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }], hash),
+      journal,
+      patchReport,
       rawBridge: bridge,
       sourceRoot: "/src/www",
       targetRoot: "/out/patched-data",
@@ -721,94 +910,68 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     expect(seam.runtimeValidationAdmission).toBeUndefined();
   });
 
-  // (b) — P1 #2: a written unit with NO persisted attempt/ledger fails LOUD in
-  // the loader (no silent drop, no fabricated no-provider-run placeholder).
-  it("FAILS LOUD when a written unit has a job but NO persisted attempt", async () => {
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withAttempt: false }]);
+  // (b) — P1 #2: every selected candidate must have a real physical attempt,
+  // and every report unit must have a persisted canonical outcome. The journal
+  // loader refuses either gap; it never fabricates old draft/ledger evidence.
+  it("FAILS LOUD when the selected persisted candidate has NO physical attempt", async () => {
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Body A" }],
+      "sha256:deadbeef",
+    );
+    const journal = fakeJournalForPatchReport(patchReport, {
+      unitOverrides: { [UNIT_A]: { withAttempt: false } },
+    });
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
+        journal,
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
         draftArtifactBundleId: "wholegame-run:missing-attempt",
-        patchReport: {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          targetLocale: "en-US",
-          writtenUnits: [
-            {
-              bridgeUnitId: UNIT_A,
-              sourceUnitKey: "k-a",
-              selectedBody: "Body A",
-              qualityFlags: [],
-            },
-          ],
-          translationScope: "dialogue-only",
-        },
+        patchReport,
         sourceBridgeHash: "sha256:deadbeef",
       }),
-    ).rejects.toBeInstanceOf(WholeGamePatchLoaderReconciliationError);
+    ).rejects.toMatchObject({ discrepancy: "selected-candidate-attempt-missing" });
   });
 
-  it("FAILS LOUD when a written unit has NO persisted draft job (silent drop refused)", async () => {
-    // No jobs at all, but the report claims UNIT_A was written.
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withJob: false }]);
+  it("FAILS LOUD when a report-written unit has NO persisted journal outcome", async () => {
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Body A" }],
+      "sha256:deadbeef",
+    );
+    const journal = fakeJournalForPatchReport(patchReport, {
+      unitOverrides: { [UNIT_A]: { withOutcome: false } },
+    });
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
+        journal,
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
-        draftArtifactBundleId: "wholegame-run:missing-job",
-        patchReport: {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          targetLocale: "en-US",
-          writtenUnits: [
-            {
-              bridgeUnitId: UNIT_A,
-              sourceUnitKey: "k-a",
-              selectedBody: "Body A",
-              qualityFlags: [],
-            },
-          ],
-          translationScope: "dialogue-only",
-        },
+        draftArtifactBundleId: "wholegame-run:missing-outcome",
+        patchReport,
         sourceBridgeHash: "sha256:deadbeef",
       }),
-    ).rejects.toThrow(/no-persisted-draft-job/u);
+    ).rejects.toMatchObject({ discrepancy: "no-persisted-written-outcome" });
   });
 
-  it("FAILS LOUD when a written unit has an attempt but NO provider-ledger entry", async () => {
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withLedger: false }]);
+  it("FAILS LOUD when the patch report names no persisted journal run", async () => {
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Body A" }],
+      "sha256:deadbeef",
+    );
+    const journal = fakeJournalForPatchReport(patchReport, { missingRun: true });
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
+        journal,
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
-        draftArtifactBundleId: "wholegame-run:missing-ledger",
-        patchReport: {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          targetLocale: "en-US",
-          writtenUnits: [
-            {
-              bridgeUnitId: UNIT_A,
-              sourceUnitKey: "k-a",
-              selectedBody: "Body A",
-              qualityFlags: [],
-            },
-          ],
-          translationScope: "dialogue-only",
-        },
+        draftArtifactBundleId: "wholegame-run:missing-run",
+        patchReport,
         sourceBridgeHash: "sha256:deadbeef",
       }),
-    ).rejects.toThrow(/no-provider-ledger-entry/u);
+    ).rejects.toMatchObject({ discrepancy: "no-persisted-journal-run" });
   });
 
   // (c) — P1 #3: an apply-time bridge that DIFFERS from the drafted-against
@@ -816,20 +979,20 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
   it("THROWS on integrity when the apply-time bridge differs from the drafted-against hash", async () => {
     const draftedAgainst = seamBridge([{ bridgeUnitId: UNIT_A, sourceText: "Original source." }]);
     const applyTime = seamBridge([{ bridgeUnitId: UNIT_A, sourceText: "TAMPERED source." }]);
-    const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A }]);
+    const patchReport = seamPatchReport(
+      [{ bridgeUnitId: UNIT_A, selectedBody: "Draft body." }],
+      hashDraftedAgainstBridge(draftedAgainst),
+    );
+    const journal = fakeJournalForPatchReport(patchReport);
     let applied = false;
     await expect(
       runWholeGamePatchExportAndApply({
         engineProfile: "reallive",
         actor: SEAM_ACTOR,
-        draftJobs,
-        ledger,
+        journal,
         // The report records the DRAFTED-AGAINST hash; the seam applies over the
         // TAMPERED apply-time bridge -> the two hashes differ -> integrity fails.
-        patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, selectedBody: "Draft body." }],
-          hashDraftedAgainstBridge(draftedAgainst),
-        ),
+        patchReport,
         rawBridge: applyTime,
         sourceRoot: "/src",
         targetRoot: "/out",
@@ -955,7 +1118,7 @@ function fakeFactory(): AgenticLoopProviderFactory {
 async function seedProjectScope(
   pool: import("@itotori/db").DatabaseContext["pool"],
 ): Promise<void> {
-  await pool.query("delete from itotori_localization_pass_ledger where project_id = $1", [
+  await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
     PROJECT_ID,
   ]);
   await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
@@ -1021,7 +1184,7 @@ function deterministicClock(): () => Date {
 
 describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real DB)", () => {
   it.skipIf(!process.env.DATABASE_URL)(
-    "consumes REAL persisted drafts through the production loader, passes preflight, and applies via kaifuu patch",
+    "consumes REAL persisted journal outcomes through the production loader, passes preflight, and applies via kaifuu patch",
     async () => {
       const databaseUrl = process.env.DATABASE_URL as string;
       await migrate(databaseUrl);
@@ -1062,16 +1225,9 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         const runDir = join(workDir, "run");
         mkdirSync(runDir, { recursive: true });
 
-        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
         const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-        const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
-        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          actor,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-        });
+        const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const patchSink = new FsDrivenPatchExportSink(runDir);
         const io = {
           readJson: (p: string) => JSON.parse(readFileSync(p, "utf8")) as unknown,
@@ -1086,8 +1242,7 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
             io,
             actor,
             providerFactory: fakeFactory(),
-            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-            passLedger: new DbPassLedger(passLedgerRepo),
+            sinks: { journal, patchExport: patchSink },
             reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),
           },
@@ -1102,13 +1257,26 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         const translatedBundlePath = join(runDir, "translated-bridge.json");
         expect(existsSync(translatedBundlePath)).toBe(true);
 
+        // The loader reads this exact run, not project-wide latest rows. The
+        // normalized read model keeps canonical candidates, speaker labels,
+        // resolved context refs, and every physical provider dispatch.
+        const persistedOutcomes = await journalRepo.loadRunOutcomes(actor, result.journalRunId);
+        const persistedAttempts = await journalRepo.loadAttemptsForRun(actor, result.journalRunId);
+        expect(persistedOutcomes).toHaveLength(2);
+        expect(persistedAttempts).toHaveLength(result.attemptsPersisted);
+        expect(persistedAttempts.length).toBeGreaterThan(persistedOutcomes.length);
+        for (const outcome of persistedOutcomes) {
+          expect(outcome.outcome.candidates).toHaveLength(1);
+          expect(outcome.speakerLabels).toHaveLength(1);
+          expect(outcome.contextRefs.length).toBeGreaterThan(0);
+        }
+
         // --- The seam: production loader + preflight + kaifuu apply ---
         let captured: { command: string; args: string[] } | undefined;
         const seam = await runWholeGamePatchExportAndApply({
           engineProfile: "reallive",
           actor,
-          draftJobs: draftJobRepo,
-          ledger: ledgerRepo,
+          journal: journalRepo,
           patchReport: result.patchReport,
           rawBridge: JSON.parse(readFileSync(bridgePath, "utf8")),
           sourceRoot: "/scratch/fake-source-game",
@@ -1122,15 +1290,15 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
           },
         });
 
-        // The production loader built a real bundle from the PERSISTED drafts
+        // The production loader built a real bundle from the PERSISTED outcomes
         // (2 written units), and preflight passed -> the current patch-export bundle.
         expect(seam.patchExportBundle.drafts.map((d) => d.sourceUnitId).sort()).toEqual(
           [UNIT_A, UNIT_B].sort(),
         );
         for (const draft of seam.patchExportBundle.drafts) {
           expect(draft.draftText).toBe(DRAFT);
-          // Real provider proof id from the persisted ledger, not a fixture.
-          expect(draft.draftId).toContain("draft-job-");
+          // Real canonical outcome id from the persisted journal, not a fixture.
+          expect(draft.draftId).toContain("written-outcome:");
         }
         expect(
           seam.patchExportBundle.preflightResults.filter(
@@ -1221,16 +1389,9 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
 
         const runDir = join(workDir, "run");
         mkdirSync(runDir, { recursive: true });
-        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
         const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-        const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
-        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          actor,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-        });
+        const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const patchSink = new FsDrivenPatchExportSink(runDir);
         const io = {
           readJson: (p: string) => JSON.parse(readFileSync(p, "utf8")) as unknown,
@@ -1243,8 +1404,7 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
             io,
             actor,
             providerFactory: fakeFactory(),
-            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-            passLedger: new DbPassLedger(passLedgerRepo),
+            sinks: { journal, patchExport: patchSink },
             reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),
           },
@@ -1253,8 +1413,7 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
         const seam = await runWholeGamePatchExportAndApply({
           engineProfile: "reallive",
           actor,
-          draftJobs: draftJobRepo,
-          ledger: ledgerRepo,
+          journal: journalRepo,
           patchReport: result.patchReport,
           rawBridge: JSON.parse(readFileSync(bridgePath, "utf8")),
           sourceRoot,

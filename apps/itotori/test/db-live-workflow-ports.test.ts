@@ -143,9 +143,9 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
       const runLive = vi.fn(
         async (
           _config: DbBackedPassRunConfig,
-        ): Promise<{ outcome: "started"; passNumber: number; startedAt: Date }> => ({
+        ): Promise<{ outcome: "started"; journalRunId: string; startedAt: Date }> => ({
           outcome: "started",
-          passNumber: 2,
+          journalRunId: "localization-journal-run-2",
           startedAt: new Date("2026-07-11T00:00:00.000Z"),
         }),
       );
@@ -168,7 +168,7 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
       });
       expect(result).toEqual({
         outcome: "started",
-        passNumber: 2,
+        journalRunId: "localization-journal-run-2",
         startedAt: new Date("2026-07-11T00:00:00.000Z"),
       });
       expect(runLive).toHaveBeenCalledTimes(1);

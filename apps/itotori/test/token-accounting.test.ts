@@ -5,12 +5,10 @@
 // agents and the agentic-loop probe fell back to a char/4 estimate (or
 // zero) and persisted it indistinguishably from a provider-reported count.
 //
-// These tests pin the three enforcement points:
+// These tests pin the two enforcement points:
 //   1. The central guard (assertReportedTokenUsage / assertReportedTokenCount).
 //   2. The agent boundary (TranslationAgent throws on a missing/estimated
 //      count instead of silently recording one).
-//   3. The persistence sink (the ledger repo refuses a token count without
-//      a real provenance, and stamps `tokenCountSource` when it is real).
 import { describe, expect, it } from "vitest";
 import {
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
@@ -30,8 +28,6 @@ import type {
   ProviderDescriptor,
   TokenUsage,
 } from "../src/providers/types.js";
-import { InMemoryDraftAttemptProviderLedgerRepository } from "../src/draft/in-memory-draft-repositories.js";
-import type { RecordLedgerEntryInput } from "@itotori/db";
 import {
   makeStructuredTranslationDraftOutputFixture,
   representativeTranslationDraftsFixture,
@@ -267,56 +263,5 @@ describe("TranslationAgent token-count law", () => {
     await expect(agent.invokeTranslation(FIXED_ACTOR, inputFixture())).rejects.toBeInstanceOf(
       MissingProviderTokenCountError,
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3. The persistence sink.
-// ---------------------------------------------------------------------------
-
-function baseLedgerInput(overrides: Partial<RecordLedgerEntryInput> = {}): RecordLedgerEntryInput {
-  return {
-    draftJobAttemptId: "attempt-1",
-    providerProofId: `proof-${Math.random().toString(36).slice(2)}`,
-    providerId: "anthropic",
-    tokensIn: 500,
-    tokensOut: 200,
-    tokenCountSource: "provider_reported",
-    costUnit: "usd",
-    costAmount: "0",
-    usageResponseJson: { _synthetic: true },
-    ...overrides,
-  };
-}
-
-describe("ledger sink token-count provenance", () => {
-  it("persists a real provider_reported provenance", async () => {
-    const repo = new InMemoryDraftAttemptProviderLedgerRepository();
-    const entry = await repo.recordLedgerEntry(FIXED_ACTOR, baseLedgerInput());
-    expect(entry.tokensIn).toBe(500);
-    expect(entry.tokenCountSource).toBe("provider_reported");
-  });
-
-  it("persists a deterministic_counter provenance (recorded replay)", async () => {
-    const repo = new InMemoryDraftAttemptProviderLedgerRepository();
-    const entry = await repo.recordLedgerEntry(
-      FIXED_ACTOR,
-      baseLedgerInput({ tokenCountSource: "deterministic_counter" }),
-    );
-    expect(entry.tokenCountSource).toBe("deterministic_counter");
-  });
-
-  it("THROWS when a token count is recorded without a provenance", async () => {
-    const repo = new InMemoryDraftAttemptProviderLedgerRepository();
-    await expect(
-      repo.recordLedgerEntry(FIXED_ACTOR, baseLedgerInput({ tokenCountSource: undefined })),
-    ).rejects.toThrow(/tokenCountSource is required/u);
-  });
-
-  it("THROWS when a token count carries an estimated provenance", async () => {
-    const repo = new InMemoryDraftAttemptProviderLedgerRepository();
-    await expect(
-      repo.recordLedgerEntry(FIXED_ACTOR, baseLedgerInput({ tokenCountSource: "estimated" })),
-    ).rejects.toThrow(/real provenance/u);
   });
 });

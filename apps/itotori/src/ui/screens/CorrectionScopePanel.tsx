@@ -2,13 +2,13 @@
 //
 // A panel WITHIN the reviewer detail screen (not a new route): for the
 // correction under review it shows the correction's SCOPE (which unit / scene
-// it affects) and which PASS (N+1) folds it in. It consumes the
+// it affects) and which durable RUN folds it in. It consumes the
 // correction-feedback-loop read-model — the `workspace.correctionPreview`
 // GET read-model, the read-only leg of the correction feedback loop
 // (ITOTORI-118) — DIRECTLY through the typed `ItotoriApiClient`
-// (`useApiQuery`, never an ad-hoc fetch), and derives the folding pass from
-// the repair / pass-ledger read-model (`projects.overview.passLedger`):
-// the latest recorded localization pass is N, so the next pass (N+1) is the
+// (`useApiQuery`, never an ad-hoc fetch), and derives the folding run from
+// the durable journal read-model (`projects.overview.journal`): the latest
+// recorded localization run is N, so the next run (N+1) is the
 // one that folds this correction in. This is a READ-ONLY display — it does
 // not depend on the `ovw-launch-pass-action` runtime (it neither launches a
 // pass nor submits a correction); it only paints the correction's blast
@@ -32,36 +32,27 @@ import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 
 // ---------------------------------------------------------------------------
-// Pure derivation — the folding pass (N+1) from the pass-ledger rows.
+// Pure derivation — the folding run (N+1) from the journal count.
 // ---------------------------------------------------------------------------
 
 /**
- * The correction's folding pass, derived from the repair / pass-ledger
- * read-model. The latest recorded localization pass is `N`; the correction
- * folds into the NEXT pass (`N + 1`). When no pass has been recorded yet the
- * FIRST pass (`1`) is the one that folds it in. Pure + deterministic so a
- * behavior-first test can pin the landing pass from a mock ledger.
+ * The correction's folding run, derived from the durable journal read-model.
+ * The latest recorded localization run is `N`; the correction folds into the
+ * next run (`N + 1`). When no run has been recorded yet the first run (`1`)
+ * folds it in.
  */
-export type CorrectionFoldingPass = {
-  /** The latest recorded pass number (`N`), or `null` when none exists yet. */
-  latestPassNumber: number | null;
-  /** The pass that folds the correction in (`N + 1`, or `1` for the first). */
-  foldingPass: number;
+export type CorrectionFoldingRun = {
+  /** The latest recorded run ordinal (`N`), or `null` when none exists yet. */
+  latestRunNumber: number | null;
+  /** The run that folds the correction in (`N + 1`, or `1` for the first). */
+  foldingRun: number;
 };
 
-export function deriveCorrectionFoldingPass(
-  rows: readonly ProjectOverviewReadModel["passLedger"]["rows"][number][],
-): CorrectionFoldingPass {
-  if (rows.length === 0) {
-    return { latestPassNumber: null, foldingPass: 1 };
+export function deriveCorrectionFoldingRun(runCount: number): CorrectionFoldingRun {
+  if (runCount === 0) {
+    return { latestRunNumber: null, foldingRun: 1 };
   }
-  let latestPassNumber = rows[0]!.passNumber;
-  for (const row of rows) {
-    if (row.passNumber > latestPassNumber) {
-      latestPassNumber = row.passNumber;
-    }
-  }
-  return { latestPassNumber, foldingPass: latestPassNumber + 1 };
+  return { latestRunNumber: runCount, foldingRun: runCount + 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +72,7 @@ export interface CorrectionScopePanelProps {
 /**
  * The reviewer detail correction-scope panel. Issues the typed
  * `workspace.correctionPreview` query (the correction-feedback-loop
- * read-model) + the `projects.overview` query (the repair / pass-ledger
+ * read-model) + the `projects.overview` query (the repair / execution-journal
  * read-model) through the API client and renders the correction's scope +
  * folding pass. Settles into loading / empty / error independently of the
  * parent screen.
@@ -194,30 +185,27 @@ function CorrectionScopeReady({
   overview: ApiCallState<ProjectOverviewReadModel>;
   localeBranchId: string;
 }): ReactNode {
-  const foldingPass = foldingPassFromOverview(overview);
+  const foldingRun = foldingRunFromOverview(overview);
   const targetLocale = unit.targetLocale ?? "target";
-  const sourceLocale = unit.sourceLocale ?? "source";
   return (
     <div className="itotori-correction-scope" data-correction-scope="ready">
       <div className="itotori-metric-row" aria-label="Correction scope">
         <StatReadout
           label="Folds into"
-          value={<Badge status="succeeded">pass {foldingPass.foldingPass}</Badge>}
+          value={<Badge status="succeeded">run {foldingRun.foldingRun}</Badge>}
         />
         <StatReadout
           label="Built on"
-          value={
-            foldingPass.latestPassNumber === null ? "—" : `pass ${foldingPass.latestPassNumber}`
-          }
+          value={foldingRun.latestRunNumber === null ? "—" : `run ${foldingRun.latestRunNumber}`}
         />
         <StatReadout label="Bridge unit" value={unit.bridgeUnitId ?? "—"} mono />
         <StatReadout label="Scene / unit key" value={unit.sourceUnitKey ?? "—"} mono />
       </div>
 
-      <CorrectionText unit={unit} sourceLocale={sourceLocale} draftLocale={targetLocale} />
+      <CorrectionText unit={unit} draftLocale={targetLocale} />
 
       <p className="itotori-correction-scope__landing">
-        The next localization pass <code>pass {foldingPass.foldingPass}</code> folds this correction
+        The next localization run <code>run {foldingRun.foldingRun}</code> folds this correction
         into every unit sharing its source on locale branch <code>{localeBranchId}</code>.
       </p>
 
@@ -239,11 +227,9 @@ function CorrectionScopeReady({
 // reviewer detail's `MissingContext` copy.
 function CorrectionText({
   unit,
-  sourceLocale,
   draftLocale,
 }: {
   unit: WorkspaceCorrectionPreviewUnit;
-  sourceLocale: string;
   draftLocale: string;
 }): ReactNode {
   if (unit.draftText === null && unit.finalText === null) {
@@ -263,14 +249,13 @@ function CorrectionText({
   );
 }
 
-function foldingPassFromOverview(
+function foldingRunFromOverview(
   overview: ApiCallState<ProjectOverviewReadModel>,
-): CorrectionFoldingPass {
+): CorrectionFoldingRun {
   if (overview.state !== "ready") {
-    // While the pass ledger loads / errors, the folding pass is unknown; show
-    // the first pass as the honest fallback (the correction lands on the next
-    // pass, and the ledger will refine the number once it settles).
-    return { latestPassNumber: null, foldingPass: 1 };
+    // While the journal loads / errors, the next durable run is unknown; show
+    // the first-run fallback until the actual run count becomes available.
+    return { latestRunNumber: null, foldingRun: 1 };
   }
-  return deriveCorrectionFoldingPass(overview.data.passLedger.rows);
+  return deriveCorrectionFoldingRun(overview.data.journal.pagination.total);
 }

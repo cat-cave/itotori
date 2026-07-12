@@ -33,12 +33,11 @@ import { EngineCapabilityReportRepository } from "../src/repositories/engine-cap
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
-import { ItotoriDraftAttemptProviderLedgerRepository } from "../src/repositories/draft-attempt-provider-ledger-repository.js";
 import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
-import { ItotoriLocalizationPassLedgerRepository } from "../src/repositories/localization-pass-ledger-repository.js";
+import { ItotoriLocalizationJournalRepository } from "../src/repositories/localization-journal-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriModelRoutingSettingsRepository } from "../src/repositories/model-routing-settings-repository.js";
 import {
@@ -850,50 +849,6 @@ const repositoryPermissionGateMatrix = [
     "draft-job-repository.test.ts load draft job attempts coverage",
     (repo) => repo.loadDraftJobAttempts(deniedActor, "draft-job"),
   ),
-  draftAttemptProviderLedgerGate(
-    "recordLedgerEntry",
-    "draftWrite",
-    "draft-attempt-provider-ledger-repository.test.ts record ledger entry coverage",
-    (repo) => repo.recordLedgerEntry(deniedActor, undefined as never),
-  ),
-  draftAttemptProviderLedgerGate(
-    "loadEntriesByAttempt",
-    "catalogRead",
-    "draft-attempt-provider-ledger-repository.test.ts load entries by attempt coverage",
-    (repo) => repo.loadEntriesByAttempt(deniedActor, "draft-job-attempt"),
-  ),
-  draftAttemptProviderLedgerGate(
-    "loadEntriesByProviderProof",
-    "catalogRead",
-    "draft-attempt-provider-ledger-repository.test.ts load entries by provider proof coverage",
-    (repo) => repo.loadEntriesByProviderProof(deniedActor, "provider-proof"),
-  ),
-  draftAttemptProviderLedgerGate(
-    "sumCostByProject",
-    "catalogRead",
-    "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
-    (repo) =>
-      repo.sumCostByProject(deniedActor, "project", {
-        from: new Date(0),
-        to: new Date(0),
-      }),
-  ),
-  draftAttemptProviderLedgerGate(
-    "sumByPairAndDay",
-    "catalogRead",
-    "draft-attempt-provider-ledger-repository.test.ts sum by pair and day coverage",
-    (repo) =>
-      repo.sumByPairAndDay(deniedActor, "project", {
-        from: new Date(0),
-        to: new Date(0),
-      }),
-  ),
-  draftAttemptProviderLedgerGate(
-    "loadJobsRunTable",
-    "catalogRead",
-    "jobs-run-table-read-model.test.ts jobs run table coverage",
-    (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
-  ),
   assetLocalizationDecisionGate(
     "recordDecision",
     "draftWrite",
@@ -1076,23 +1031,77 @@ const repositoryPermissionGateMatrix = [
     "workspace-correction-repository.test.ts load corrections by branch coverage",
     (repo) => repo.loadCorrectionEditsByBranch(deniedActor, "branch-x"),
   ),
-  localizationPassLedgerGate(
-    "recordPass",
+  localizationJournalGate(
+    "createRun",
     "draftWrite",
-    "localization-pass-ledger-repository.test.ts record pass coverage",
-    (repo) => repo.recordPass(deniedActor, undefined as never),
+    "localization-journal-repository.test.ts create run coverage",
+    (repo) => repo.createRun(deniedActor, undefined as never),
   ),
-  localizationPassLedgerGate(
-    "loadLatestPass",
+  localizationJournalGate(
+    "persistAttempts",
     "draftWrite",
-    "localization-pass-ledger-repository.test.ts latest pass coverage",
-    (repo) => repo.loadLatestPass(deniedActor, "locale-branch-x"),
+    "localization-journal-repository.test.ts failure-attempt persistence coverage",
+    (repo) => repo.persistAttempts(deniedActor, undefined as never),
   ),
-  localizationPassLedgerGate(
-    "loadPassesForBranch",
+  localizationJournalGate(
+    "persistUnit",
     "draftWrite",
-    "localization-pass-ledger-repository.test.ts branch passes coverage",
-    (repo) => repo.loadPassesForBranch(deniedActor, "locale-branch-x"),
+    "localization-journal-repository.test.ts atomic outcome persistence coverage",
+    (repo) => repo.persistUnit(deniedActor, undefined as never),
+  ),
+  localizationJournalGate(
+    "loadRun",
+    "catalogRead",
+    "localization-journal-repository.test.ts run read coverage",
+    (repo) => repo.loadRun(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "loadRunsForBranch",
+    "catalogRead",
+    "localization-journal-repository.test.ts branch history read coverage",
+    (repo) => repo.loadRunsForBranch(deniedActor, "locale-branch-denied"),
+  ),
+  localizationJournalGate(
+    "loadRunOutcomes",
+    "catalogRead",
+    "localization-journal-repository.test.ts outcome provenance read coverage",
+    (repo) => repo.loadRunOutcomes(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "loadAttemptsForRun",
+    "catalogRead",
+    "localization-journal-repository.test.ts attempt read coverage",
+    (repo) => repo.loadAttemptsForRun(deniedActor, "journal-run-denied"),
+  ),
+  localizationJournalGate(
+    "sumAttemptsByPairAndDay",
+    "catalogRead",
+    "localization-journal-repository.test.ts attempt aggregate coverage",
+    (repo) =>
+      repo.sumAttemptsByPairAndDay(deniedActor, "project", { from: new Date(0), to: new Date(0) }),
+  ),
+  localizationJournalGate(
+    "countZdrEnforcedAttemptsByPair",
+    "catalogRead",
+    "localization-journal-repository.test.ts ZDR aggregate coverage",
+    (repo) =>
+      repo.countZdrEnforcedAttemptsByPair(deniedActor, "project", {
+        from: new Date(0),
+        to: new Date(0),
+      }),
+  ),
+  localizationJournalGate(
+    "countCostKindsByPair",
+    "catalogRead",
+    "localization-journal-repository.test.ts cost-kind aggregate coverage",
+    (repo) =>
+      repo.countCostKindsByPair(deniedActor, "project", { from: new Date(0), to: new Date(0) }),
+  ),
+  localizationJournalGate(
+    "loadJobsRunTable",
+    "catalogRead",
+    "jobs-run-table-read-model.test.ts journal jobs run table coverage",
+    (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
   ),
   principalGate(
     "createAccount",
@@ -2111,42 +2120,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.recordLedgerEntry",
-          "requiredPermission": "draft.write",
-          "successFixture": "draft-attempt-provider-ledger-repository.test.ts record ledger entry coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadEntriesByAttempt",
-          "requiredPermission": "catalog.read",
-          "successFixture": "draft-attempt-provider-ledger-repository.test.ts load entries by attempt coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadEntriesByProviderProof",
-          "requiredPermission": "catalog.read",
-          "successFixture": "draft-attempt-provider-ledger-repository.test.ts load entries by provider proof coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumCostByProject",
-          "requiredPermission": "catalog.read",
-          "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumByPairAndDay",
-          "requiredPermission": "catalog.read",
-          "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum by pair and day coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadJobsRunTable",
-          "requiredPermission": "catalog.read",
-          "successFixture": "jobs-run-table-read-model.test.ts jobs run table coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAssetLocalizationDecisionRepository.recordDecision",
           "requiredPermission": "draft.write",
           "successFixture": "asset-localization-decision-repository.test.ts record decision coverage",
@@ -2321,21 +2294,69 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationPassLedgerRepository.recordPass",
+          "mutation": "ItotoriLocalizationJournalRepository.createRun",
           "requiredPermission": "draft.write",
-          "successFixture": "localization-pass-ledger-repository.test.ts record pass coverage",
+          "successFixture": "localization-journal-repository.test.ts create run coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationPassLedgerRepository.loadLatestPass",
+          "mutation": "ItotoriLocalizationJournalRepository.persistAttempts",
           "requiredPermission": "draft.write",
-          "successFixture": "localization-pass-ledger-repository.test.ts latest pass coverage",
+          "successFixture": "localization-journal-repository.test.ts failure-attempt persistence coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationPassLedgerRepository.loadPassesForBranch",
+          "mutation": "ItotoriLocalizationJournalRepository.persistUnit",
           "requiredPermission": "draft.write",
-          "successFixture": "localization-pass-ledger-repository.test.ts branch passes coverage",
+          "successFixture": "localization-journal-repository.test.ts atomic outcome persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadRun",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts run read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadRunsForBranch",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts branch history read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadRunOutcomes",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts outcome provenance read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadAttemptsForRun",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts attempt read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.sumAttemptsByPairAndDay",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts attempt aggregate coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.countZdrEnforcedAttemptsByPair",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts ZDR aggregate coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.countCostKindsByPair",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-journal-repository.test.ts cost-kind aggregate coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationJournalRepository.loadJobsRunTable",
+          "requiredPermission": "catalog.read",
+          "successFixture": "jobs-run-table-read-model.test.ts journal jobs run table coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -3161,22 +3182,6 @@ function draftJobGate(
   });
 }
 
-function draftAttemptProviderLedgerGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriDraftAttemptProviderLedgerRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriDraftAttemptProviderLedgerRepository",
-    sourceFile: "draft-attempt-provider-ledger-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriDraftAttemptProviderLedgerRepository(db)),
-  });
-}
-
 function assetLocalizationDecisionGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3273,19 +3278,19 @@ function workspaceCorrectionGate(
   });
 }
 
-function localizationPassLedgerGate(
+function localizationJournalGate(
   mutation: string,
   permissionKey: PermissionKey,
   successFixture: string,
-  run: (repository: ItotoriLocalizationPassLedgerRepository) => Promise<unknown>,
+  run: (repository: ItotoriLocalizationJournalRepository) => Promise<unknown>,
 ): RepositoryPermissionGateCase {
   return repositoryGate({
-    repository: "ItotoriLocalizationPassLedgerRepository",
-    sourceFile: "localization-pass-ledger-repository.ts",
+    repository: "ItotoriLocalizationJournalRepository",
+    sourceFile: "localization-journal-repository.ts",
     mutation,
     permissionKey,
     successFixture,
-    runDeniedMutation: (db) => run(new ItotoriLocalizationPassLedgerRepository(db)),
+    runDeniedMutation: (db) => run(new ItotoriLocalizationJournalRepository(db)),
   });
 }
 

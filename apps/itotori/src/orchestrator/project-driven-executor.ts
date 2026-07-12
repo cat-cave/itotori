@@ -16,10 +16,9 @@
 //   (b) runs `runAgenticLoopForUnit` PER unit WITH the REAL structure-informed
 //       context (the decoded `narrativeStructure` + the unit's `sceneId`, per
 //       P0#1) and preserves the loop's canonical written outcome.
-//   (c) PERSISTS, per unit: the written outcome, a provider-run summary carrying
-//       the REAL total `usage.cost` + ZDR posture (summed verbatim from the
-//       bundle's per-invocation telemetry — PROJECT LAW: cost only from real
-//       provider output), and — via the loop's own bridge — the
+//   (c) PERSISTS, per unit: every physical provider attempt (including exact
+//       cost + validation/retry state), the canonical written outcome with all
+//       candidates/findings/provenance, and — via the loop's own bridge — the
 //       reviewer_queue_items.
 //   (d) produces ONE patch EXPORT only after every configured in-scope unit
 //       has a written body. The translated bridge carries each selected body;
@@ -35,7 +34,7 @@
 // downgrades ZDR, never widens scope — it threads the caller's parsed policy
 // into every `runAgenticLoopForUnit` call verbatim.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   AuthorizationActor,
   CreateReviewerQueueItemInput,
@@ -48,6 +47,7 @@ import {
   type AgenticLoopBundle,
   type BridgeBundleV02,
   type LocalizationUnitV02,
+  type SpeakerLabel,
   type StyleGuidePolicyV0Draft,
   type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
@@ -63,12 +63,18 @@ import type { EffectiveScope } from "../agents/work-scope/index.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import {
   AgenticLoopInvariantError,
+  readOutcomeJournalProvenance,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "./agentic-loop.js";
+import {
+  capturePhysicalProviderAttempts,
+  DrivenLlmAttemptRecord,
+} from "./attempt-outcome-journal.js";
+import { addDecimalUsd, compareDecimalUsd } from "../providers/cost.js";
 import {
   bracketWrapForRealLive,
   stripOutOfBandControlMarkup,
@@ -180,7 +186,7 @@ export type DrivenUnitContextResolver = (args: {
 }) => DrivenUnitContext | undefined;
 
 // ---------------------------------------------------------------------------
-// itotori-pass-ledger — prior-pass context threaded into a pass N+1 run
+// Optional historical prior-run context
 // ---------------------------------------------------------------------------
 
 /**
@@ -192,12 +198,15 @@ export type DrivenUnitContextResolver = (args: {
  * Strictly project-agnostic: the feedback carries only the prior routing
  * outcome, the prior draft, the defer reason, and an optional feedback note.
  * No game / engine / title fields anywhere — the multi-pass loop is generic
- * over any project whose units flow through the agentic loop. The pass ledger
- * (`pass-ledger.ts`) is the canonical source of this map.
+ * over any project whose units flow through the agentic loop. A caller may
+ * supply this historical context, but the durable journal is its persistence
+ * source of truth.
  */
 export type PriorPassContext = {
   /** 1-based number of the prior localization pass this context came from. */
   passNumber: number;
+  /** Durable journal run that supplied this context, when one exists. */
+  journalRunId?: string;
   feedbackByUnit: ReadonlyMap<string, PriorPassFeedback>;
 };
 
@@ -217,6 +226,54 @@ export type DrivenWrittenOutcomeRecord = {
   outcome: WrittenUnitOutcome;
   /** The selected candidate body, never blank or a source repetition. */
   selectedBody: string;
+};
+
+/** Immutable identity frozen once for the durable journal run. */
+export type DrivenJournalRunRecord = {
+  runId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  targetLocale: string;
+};
+
+/** A resolved context reference; versionRef is omitted when the current source has no version id. */
+export type DrivenOutcomeContextRef = {
+  refKind: string;
+  refId: string;
+  versionRef?: string;
+  details?: unknown;
+};
+
+/** Raw QA provenance that remains separately renderable from `WrittenQaFinding.note`. */
+export type DrivenQaFindingDetail = {
+  recommendation: string;
+  agentRationale: string;
+  evidenceRefs: string[];
+  sourceSpan?: { start: number; end: number };
+  draftSpan?: { start: number; end: number };
+};
+
+/**
+ * The sole project-driven persistence payload. It deliberately contains the
+ * canonical outcome verbatim plus every physical attempt and its resolved
+ * provenance; the DB adapter writes it transactionally.
+ */
+export type DrivenUnitJournalRecord = {
+  run: DrivenJournalRunRecord;
+  writtenOutcome: DrivenWrittenOutcomeRecord;
+  attempts: DrivenLlmAttemptRecord[];
+  contextPacket: unknown;
+  contextRefs: DrivenOutcomeContextRef[];
+  speakerLabels: SpeakerLabel[];
+  qaDetails: Record<string, DrivenQaFindingDetail>;
+};
+
+export type DrivenFailedUnitJournalRecord = {
+  run: DrivenJournalRunRecord;
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  attempts: DrivenLlmAttemptRecord[];
 };
 
 export type DrivenProviderRunRecord = {
@@ -241,6 +298,8 @@ export type DrivenPatchExportRecord = {
 
 export type DrivenPatchReport = {
   schemaVersion: "itotori.project-driven-executor.patch-report.v0";
+  /** Exact durable journal run; never infer a patch run from latest rows. */
+  journalRunId: string;
   projectId: string;
   localeBranchId: string;
   targetLocale: string;
@@ -253,6 +312,12 @@ export type DrivenPatchReport = {
   writtenOutcomeCount: number;
   failureCount: number;
   reviewerQueueItemCount: number;
+  /** Exact sum of every physical attempt's decimal `usage.cost`. */
+  totalUsageCostExactUsd: string;
+  /**
+   * Compatibility/display projection of {@link totalUsageCostExactUsd}.
+   * Persistence and budget comparisons use the exact decimal field above.
+   */
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
@@ -364,6 +429,12 @@ export type DrivenWrittenOutcomeSink = {
 export type DrivenProviderRunSink = {
   persistProviderRun(record: DrivenProviderRunRecord): Promise<void>;
 };
+export type DrivenUnitJournalSink = {
+  /** Establishes the immutable run record before any unit is dispatched. */
+  beginJournalRun?(run: DrivenJournalRunRecord): Promise<void>;
+  persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void>;
+  persistFailedUnitAttempts(record: DrivenFailedUnitJournalRecord): Promise<void>;
+};
 export type DrivenPatchExportSink = {
   exportPatch(record: DrivenPatchExportRecord): Promise<void>;
 };
@@ -441,18 +512,17 @@ export type ProjectDrivenExecutorInput = {
   /** Engine profile controlling the translated-bundle synthesis. */
   engineProfile?: DrivenEngineProfile;
   /**
-   * itotori-pass-ledger — prior localization pass's context, threaded so a pass
-   * N+1 driven run consumes pass N's accepted state + flagged-unit feedback as
-   * drafting context. When present each unit's translation prompt receives a
+   * Prior localization-run context, threaded so a pass N+1 driven run consumes
+   * pass N's accepted state + flagged-unit feedback as drafting context. When
+   * present each unit's translation prompt receives a
    * strictly-additive "Prior pass feedback" block (the draft iterates on the
-   * prior result); when absent the run is a blank first pass. The pass ledger
-   * is the canonical source — `runLocalizationPass` (pass-ledger.ts) loads the
-   * latest pass and builds this map automatically. Project-agnostic.
+   * prior result); when absent the run is a blank first pass. This is an
+   * optional caller-provided input only; the journal remains the execution
+   * source of truth. Project-agnostic.
    */
   priorPass?: PriorPassContext;
   sinks: {
-    writtenOutcome: DrivenWrittenOutcomeSink;
-    providerRun: DrivenProviderRunSink;
+    journal: DrivenUnitJournalSink;
     patchExport: DrivenPatchExportSink;
   };
   /**
@@ -505,28 +575,32 @@ export const DEFAULT_DRIVEN_CONCURRENCY = 8;
 export const MAX_DRIVEN_CONCURRENCY = 16;
 
 export type ProjectDrivenExecutorResult = {
+  journalRunId: string;
   unitsEnumerated: number;
   unitsInScope: number;
   unitsRun: number;
   writtenOutcomesPersisted: number;
   writtenOutcomeCount: number;
-  providerRunsPersisted: number;
+  journalUnitsPersisted: number;
+  attemptsPersisted: number;
   reviewerQueueItemCount: number;
   patchExportCount: number;
   failures: DrivenUnitFailure[];
   /**
    * Per-unit written outcomes (one entry per successfully-run unit, canonical
-   * order). The pass ledger consumes their required selected body + quality
-   * flags so a later pass always has a written baseline. Operational failures
-   * are surfaced separately via {@link failures}.
+   * order). This is an in-memory convenience for callers; the durable source
+   * of truth is the journal record. Operational failures are surfaced
+   * separately via {@link failures}.
    */
   unitOutcomes: DrivenWrittenOutcomeRecord[];
   /**
    * m1-wholegame-replay-render-validate — optional post-patch replay/render
-   * validation report. Populated by the pass-ledger post-executor hook so the
-   * same pass record can carry rendered/runtime findings into pass N+1.
+   * validation report supplied by an executor hook.
    */
   runtimeValidation?: WholeGameRenderValidationResult;
+  /** Exact sum of every physical attempt's decimal `usage.cost`. */
+  totalUsageCostExactUsd: string;
+  /** Compatibility/display projection of `totalUsageCostExactUsd`. */
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
@@ -544,10 +618,21 @@ export async function runProjectDrivenExecutor(
   const targetLocale = input.targetLocale ?? "en-US";
   const translationScope = input.translationScope ?? "dialogue-only";
   const engineProfile = input.engineProfile ?? "reallive";
+  const journalRun: DrivenJournalRunRecord = {
+    runId: `localization-journal-run-${randomUUID()}`,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+    targetLocale,
+  };
 
   if (input.bridge.units.length === 0) {
     throw new Error("project-driven-executor refused: bridge has zero units");
   }
+  // The database adapter establishes the run even when scope/budget means no
+  // physical call is ultimately dispatched. In-memory test sinks may omit this
+  // lifecycle hook because they only retain unit rows.
+  await input.sinks.journal.beginJournalRun?.(journalRun);
 
   // (a) ENUMERATE — consume the batch PLANNER's scene/route grouping.
   const enumerated = await enumerateInScopeUnits({
@@ -577,24 +662,26 @@ export async function runProjectDrivenExecutor(
   const failures: DrivenUnitFailure[] = [];
   const writtenBodies = new Map<string, string>();
   const writtenUnits: DrivenPatchReport["writtenUnits"] = [];
-  // Per-unit outcome accumulator (canonical order), read by the pass ledger to
-  // retain a required prior body and informational quality flags.
+  // Per-unit outcome accumulator (canonical order), retained for callers that
+  // need an immediate in-memory projection in addition to the durable journal.
   const unitOutcomes: DrivenWrittenOutcomeRecord[] = [];
   let unitsRun = 0;
   let writtenOutcomesPersisted = 0;
   let writtenOutcomeCount = 0;
-  let providerRunsPersisted = 0;
-  let totalUsageCostUsd = 0;
+  let journalUnitsPersisted = 0;
+  let attemptsPersisted = 0;
+  let totalUsageCostExactUsd = "0";
   let zdrConfirmed = true;
+  let sawPhysicalInvocation = false;
   let budgetStopped = false;
 
   // itotori-batched-concurrent-translation-scheduling — the pilot must scale to
   // a whole route/game, but the per-unit loop fires ~10 ZDR calls, so running
   // units strictly sequentially is ~25 min for four units. We schedule up to
   // `concurrency` units' `runAgenticLoopForUnit` at once via a bounded
-  // worker-pool over the canonical unit list. The pool RUNS units concurrently
-  // but PERSISTS in canonical order (below), so completion order never leaks
-  // into the stored drafts / provider-runs / queue-items.
+  // worker-pool over the canonical unit list. Every completed unit is durably
+  // journaled by its worker immediately; canonical ordering remains only for
+  // the returned aggregate and patch assembly below.
   const concurrency = Math.max(1, Math.floor(input.concurrency ?? DEFAULT_DRIVEN_CONCURRENCY));
 
   // `maxUnits` is a DISPATCH cap: the pool drives AT MOST this many in-scope
@@ -604,28 +691,35 @@ export async function runProjectDrivenExecutor(
   const plannedUnits = enumerated.slice(0, Math.max(0, maxUnits));
 
   // Result slots, one per planned unit, addressed by CANONICAL index. A slot is
-  // filled by whichever worker ran that unit; `undefined` means the unit was
-  // never dispatched (budget cap tripped first). Persistence walks these slots
-  // in index order, so the stored order is canonical regardless of which worker
-  // finished when — deterministic for identical inputs.
+  // filled by whichever worker completed and journaled that unit; `undefined`
+  // means the unit was never dispatched (budget cap tripped first). The final
+  // report and patch assembly walk these slots in index order, so externally
+  // returned data remains deterministic even though durable writes stream by
+  // completion order.
   const slots: Array<UnitRunResult | undefined> = Array.from({ length: plannedUnits.length });
 
-  // Realized cost from COMPLETED units — the budget gate. JS is single-threaded,
-  // so the read-check-and-claim below runs atomically between `await`s; no lock
-  // is needed. Under concurrency `K` at most `K - 1` already-dispatched units
-  // can push this marginally past the cap before the gate trips; the provider's
-  // own `costCapUsd` is the hard per-call backstop (see `budgetCapUsd` docs).
-  let realizedCostUsd = 0;
+  // Realized cost from COMPLETED units — the budget gate. It is an exact
+  // decimal sum of physical attempt rows, never a stage bundle/float summary.
+  // JS is single-threaded, so the read-check-and-claim below runs atomically
+  // between `await`s; no lock is needed. Under concurrency `K` at most `K - 1`
+  // already-dispatched units can push this marginally past the cap before the
+  // gate trips; the provider's own `costCapUsd` is the hard per-call backstop.
+  const budgetCapExactUsd =
+    input.budgetCapUsd === undefined ? undefined : decimalUsdFromFiniteNumber(input.budgetCapUsd);
+  let realizedCostExactUsd = "0";
   let nextIndex = 0;
 
   const runWorker = async (): Promise<void> => {
     for (;;) {
       // (a) BUDGET GATE — stop DISPATCHING once completed cost reaches the cap.
-      if (input.budgetCapUsd !== undefined && realizedCostUsd >= input.budgetCapUsd) {
+      if (
+        budgetCapExactUsd !== undefined &&
+        compareDecimalUsd(realizedCostExactUsd, budgetCapExactUsd) >= 0
+      ) {
         if (!budgetStopped) {
           budgetStopped = true;
           log(
-            `project-driven-executor: budget cap $${input.budgetCapUsd} reached ($${realizedCostUsd.toFixed(6)}); stopping dispatch (concurrency=${concurrency})`,
+            `project-driven-executor: budget cap $${budgetCapExactUsd} reached ($${realizedCostExactUsd}); stopping dispatch (concurrency=${concurrency})`,
           );
         }
         return;
@@ -644,12 +738,20 @@ export async function runProjectDrivenExecutor(
         policy,
         targetLocale,
         engineProfile,
+        journalRun,
         log,
       });
+      // Durability boundary: stream this completed unit now instead of waiting
+      // for every unrelated worker to drain. A process failure after another
+      // unit completes cannot erase this unit's attempts/outcome evidence.
+      await persistCompletedUnitJournal(input.sinks.journal, result);
       slots[index] = result;
       if (result.status === "success") {
         // Only completed cost gates further dispatch (PROJECT LAW: real cost).
-        realizedCostUsd += result.telemetry.totalCostUsd;
+        realizedCostExactUsd = addDecimalUsd(
+          realizedCostExactUsd,
+          result.telemetry.totalCostExactUsd,
+        );
       }
     }
   };
@@ -657,38 +759,37 @@ export async function runProjectDrivenExecutor(
   const workerCount = Math.min(concurrency, plannedUnits.length);
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
-  // (c) PERSIST in CANONICAL order — walk the slots by index. Completion order
-  // is irrelevant here: drafts, provider-runs, and the loop-bridged queue items
-  // (buffered per unit during the concurrent phase) all land in unit order.
+  // (c) Assemble the aggregate in CANONICAL order. The journal has already
+  // been persisted incrementally inside each worker; only the returned
+  // in-memory projection, patch body map, and buffered reviewer side-channel
+  // retain canonical ordering here.
   for (const slot of slots) {
     if (slot === undefined) {
       continue; // never dispatched (budget cap) — no patch may export incomplete coverage.
     }
+    totalUsageCostExactUsd = addDecimalUsd(
+      totalUsageCostExactUsd,
+      slot.telemetry.totalCostExactUsd,
+    );
+    if (slot.telemetry.invocationCount > 0) {
+      sawPhysicalInvocation = true;
+      zdrConfirmed = zdrConfirmed && slot.telemetry.zdr;
+    }
     if (slot.status === "failure") {
-      // PER-UNIT ISOLATION — the failing unit was caught in its worker and
-      // persisted no fabricated target. A later supervisor may resume it.
+      // Its physical calls were persisted as soon as this failed unit
+      // completed; no fabricated target/outcome accompanies them.
+      attemptsPersisted += slot.journal.attempts.length;
       failures.push(slot.failure);
       continue;
     }
 
     unitsRun += 1;
 
-    // PERSIST — the written outcome FIRST. The DB provider-run ledger's FK
-    // references the attempt this write creates, so the outcome must land
-    // before the provider-run row (the shared adapter keys it by bridgeUnitId).
-    await input.sinks.writtenOutcome.persistWrittenOutcome(slot.writtenOutcomeRecord);
     writtenOutcomesPersisted += 1;
-    // Capture this outcome for the pass ledger in canonical order.
+    journalUnitsPersisted += 1;
+    attemptsPersisted += slot.journal.attempts.length;
+    // Capture this outcome for the returned in-memory projection in canonical order.
     unitOutcomes.push(slot.writtenOutcomeRecord);
-
-    // PERSIST — provider-run summary (real usage.cost + ZDR).
-    totalUsageCostUsd += slot.telemetry.totalCostUsd;
-    zdrConfirmed = zdrConfirmed && slot.telemetry.zdr;
-    await input.sinks.providerRun.persistProviderRun({
-      bridgeUnitId: slot.unit.bridgeUnitId,
-      ...slot.telemetry,
-    });
-    providerRunsPersisted += 1;
 
     // PERSIST — the reviewer_queue_items the loop's bridge produced for this
     // unit, replayed onto the REAL sink in canonical order (they were buffered
@@ -717,8 +818,14 @@ export async function runProjectDrivenExecutor(
   // pause, or bounded pilot slice into source text just to manufacture a
   // complete-looking bridge. The later run finalizer/supervisor owns resume.
   const coverageComplete = writtenBodies.size === unitsInScope;
+  // Existing call sites render a number, but all accounting and persistence
+  // above use this exact decimal string. Do not feed this projection back into
+  // any journal or decision path.
+  const totalUsageCostUsd = Number(totalUsageCostExactUsd);
+  zdrConfirmed = sawPhysicalInvocation ? zdrConfirmed : false;
   const patchReport: DrivenPatchReport = {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
+    journalRunId: journalRun.runId,
     projectId: input.projectId,
     localeBranchId: input.localeBranchId,
     targetLocale,
@@ -731,6 +838,7 @@ export async function runProjectDrivenExecutor(
     writtenOutcomeCount,
     failureCount: failures.length,
     reviewerQueueItemCount,
+    totalUsageCostExactUsd,
     totalUsageCostUsd,
     zdrConfirmed,
     budgetStopped,
@@ -749,20 +857,23 @@ export async function runProjectDrivenExecutor(
     await input.sinks.patchExport.exportPatch({ translatedBridge, patchReport });
   }
   log(
-    `project-driven-executor: ran ${unitsRun} unit(s); ${writtenOutcomeCount} written, ${failures.length} failed; coverageComplete=${coverageComplete}; ${reviewerQueueItemCount} queue item(s); total usage.cost $${totalUsageCostUsd.toFixed(6)} (zdr=${zdrConfirmed})`,
+    `project-driven-executor: ran ${unitsRun} unit(s); ${writtenOutcomeCount} written, ${failures.length} failed; coverageComplete=${coverageComplete}; ${reviewerQueueItemCount} queue item(s); total usage.cost $${totalUsageCostExactUsd} (zdr=${zdrConfirmed})`,
   );
 
   return {
+    journalRunId: journalRun.runId,
     unitsEnumerated,
     unitsInScope,
     unitsRun,
     writtenOutcomesPersisted,
     writtenOutcomeCount,
-    providerRunsPersisted,
+    journalUnitsPersisted,
+    attemptsPersisted,
     reviewerQueueItemCount,
     patchExportCount: coverageComplete ? 1 : 0,
     failures,
     unitOutcomes,
+    totalUsageCostExactUsd,
     totalUsageCostUsd,
     zdrConfirmed,
     budgetStopped,
@@ -785,7 +896,8 @@ type UnitRunSuccess = {
   status: "success";
   unit: LocalizationUnitV02;
   writtenOutcomeRecord: DrivenWrittenOutcomeRecord;
-  telemetry: ReturnType<typeof summariseProviderTelemetry>;
+  journal: DrivenUnitJournalRecord;
+  telemetry: ProviderTelemetrySummary;
   /** The selected body after engine-specific out-of-band markup removal. */
   exportBody: string;
   /** Reviewer-queue writes the loop's bridge buffered for ordered replay. */
@@ -795,17 +907,19 @@ type UnitRunSuccess = {
 type UnitRunFailure = {
   status: "failure";
   failure: DrivenUnitFailure;
+  journal: DrivenFailedUnitJournalRecord;
+  /** Physical calls can incur cost even when the unit produces no outcome. */
+  telemetry: ProviderTelemetrySummary;
 };
 
 /**
- * Drive ONE unit through `runAgenticLoopForUnit` and capture everything the
- * caller needs to persist it later — WITHOUT touching the draft / provider-run
- * sinks (those persist in canonical order after the whole pool drains) and with
- * the reviewer-queue writes BUFFERED (replayed in order later). PER-UNIT
- * ISOLATION: a thrown error (incl. a live semantic-agent malformed pack, the
- * filed P2) is caught here and returned as a failure so one bad unit never
- * aborts the pool. Config-driven scope + the (modelId, providerId) pinning +
- * ZDR posture all thread through the loop UNCHANGED.
+ * Drive ONE unit through `runAgenticLoopForUnit` and capture its complete
+ * journal payload. The worker persists that payload immediately after this
+ * function returns; reviewer-queue writes stay buffered for canonical replay
+ * later. PER-UNIT ISOLATION: a thrown error (incl. a live semantic-agent
+ * malformed pack, the filed P2) is caught here and returned as a failure so
+ * one bad unit never aborts the pool. Config-driven scope + the (modelId,
+ * providerId) pinning + ZDR posture all thread through the loop UNCHANGED.
  */
 async function runSingleDrivenUnit(args: {
   enumeratedUnit: EnumeratedUnit;
@@ -813,15 +927,26 @@ async function runSingleDrivenUnit(args: {
   policy: AgenticLoopPolicy;
   targetLocale: string;
   engineProfile: DrivenEngineProfile;
+  journalRun: DrivenJournalRunRecord;
   log: (message: string) => void;
 }): Promise<UnitRunResult> {
-  const { enumeratedUnit, input, policy, targetLocale, engineProfile, log } = args;
+  const { enumeratedUnit, input, policy, targetLocale, engineProfile, journalRun, log } = args;
   const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
   // Resolve the per-unit structure-informed context OUTSIDE the try block so
   // the failure path can surface it in the diagnostic (itotori-agent-facing-
   // pipeline-failure-diagnostics — scene id helps the driving agent reproduce
   // the failing slice). The resolver is a pure function that never throws.
   const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
+  // TODO(p0-core-universal-invocation-supervisor-retry): InvocationSupervisor
+  // owns the stricter atomic "attempt row before physical provider call"
+  // contract. This executor can only persist the completed unit immediately
+  // after the capture wrapper returns, which prevents whole-pool buffering but
+  // does not claim pre-call atomicity.
+  const providerAttempts = capturePhysicalProviderAttempts({
+    runId: journalRun.runId,
+    bridgeUnitId: unit.bridgeUnitId,
+    source: input.providerFactory,
+  });
   try {
     assertValidDrivenUnitContext(context);
     // Buffer the loop's reviewer-queue writes so they persist in CANONICAL unit
@@ -834,7 +959,7 @@ async function runSingleDrivenUnit(args: {
         ? makeBufferingReviewerQueueSink(input.reviewerQueue, queueCaptures)
         : undefined;
 
-    // itotori-pass-ledger — thread THIS unit's prior-pass feedback (if the
+    // Thread THIS unit's optional prior-run feedback (if the
     // run is a pass N+1 driven run with a prior context) so the translation
     // prompt iterates on the prior accepted state / flagged-unit feedback.
     const priorPassFeedback =
@@ -869,24 +994,29 @@ async function runSingleDrivenUnit(args: {
         : {}),
       ...(workScopeContext !== undefined ? { workScopeContext } : {}),
       actor: input.actor,
+      attemptOutcomeObserver: providerAttempts.attemptOutcomeObserver,
       ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
       // ITOTORI-150 — hand the terminology-candidate repository to every unit's
       // loop so the repository-side pre-persist conflict check runs in prod.
       ...(input.terminologyCandidateRepository !== undefined
         ? { terminologyCandidateRepository: input.terminologyCandidateRepository }
         : {}),
-      // itotori-pass-ledger — thread THIS unit's prior-pass feedback (if the
+      // Thread THIS unit's optional prior-run feedback (if the
       // run is a pass N+1 driven run with a prior context) so the translation
       // prompt iterates on the prior accepted state / flagged-unit feedback.
       ...(priorPassFeedback !== undefined ? { priorPassFeedback } : {}),
+      ...(input.priorPass?.journalRunId !== undefined
+        ? { priorJournalRunId: input.priorPass.journalRunId }
+        : {}),
     };
 
     const bundle = await runAgenticLoopForUnit(
       unitInput,
       input.pairPolicy,
       policy,
-      input.providerFactory,
+      providerAttempts.providerFactory,
     );
+    providerAttempts.markSuccessful();
 
     const writtenOutcomeRecord = materializeDrivenWrittenOutcome({
       unit,
@@ -894,7 +1024,12 @@ async function runSingleDrivenUnit(args: {
       targetLocale,
       outcome: bundle.writtenOutcome,
     });
-    const telemetry = summariseProviderTelemetry(bundle, input.pair);
+    const telemetry = summariseCapturedProviderAttempts(providerAttempts.attempts, input.pair);
+    const journal = materializeDrivenUnitJournal({
+      run: journalRun,
+      writtenOutcome: writtenOutcomeRecord,
+      attempts: [...providerAttempts.attempts],
+    });
 
     // Strip out-of-band kidoku markup so the patchback splice matches the
     // engine-visible selected body (mirrors the single-unit driver).
@@ -916,11 +1051,13 @@ async function runSingleDrivenUnit(args: {
       status: "success",
       unit,
       writtenOutcomeRecord,
+      journal,
       telemetry,
       exportBody,
       queueCaptures,
     };
   } catch (error) {
+    providerAttempts.markFailed(error);
     log(
       `project-driven-executor: unit ${unit.sourceUnitKey} FAILED (isolated, run continues): ${
         error instanceof Error ? error.message : String(error)
@@ -951,7 +1088,35 @@ async function runSingleDrivenUnit(args: {
         errorMessage: diagnostic.errorMessage,
         diagnostic,
       },
+      journal: {
+        run: journalRun,
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        attempts: [...providerAttempts.attempts],
+      },
+      telemetry: summariseCapturedProviderAttempts(providerAttempts.attempts, input.pair),
     };
+  }
+}
+
+/**
+ * Persist one completed worker result at the durable journal boundary. This is
+ * intentionally called INSIDE the worker, before it claims another unit and
+ * before the pool is awaited, so completed evidence survives a later-worker
+ * crash. The repository keeps successful attempts + outcome atomic; failed
+ * units persist their observed physical attempts without fabricating an
+ * outcome.
+ */
+async function persistCompletedUnitJournal(
+  sink: DrivenUnitJournalSink,
+  result: UnitRunResult,
+): Promise<void> {
+  if (result.status === "success") {
+    await sink.persistUnitJournal(result.journal);
+    return;
+  }
+  if (result.journal.attempts.length > 0) {
+    await sink.persistFailedUnitAttempts(result.journal);
   }
 }
 
@@ -1009,6 +1174,63 @@ export function materializeDrivenWrittenOutcome(args: {
     outcome,
     selectedBody,
   };
+}
+
+/**
+ * Project the loop's exact auxiliary provenance into normalized journal input.
+ * The canonical `WrittenUnitOutcome` remains unchanged; this preserves fields
+ * that its concise presentation surface intentionally does not promote.
+ */
+export function materializeDrivenUnitJournal(args: {
+  run: DrivenJournalRunRecord;
+  writtenOutcome: DrivenWrittenOutcomeRecord;
+  attempts: DrivenLlmAttemptRecord[];
+}): DrivenUnitJournalRecord {
+  const journalProvenance = readOutcomeJournalProvenance(args.writtenOutcome.outcome.provenance);
+  const contextRefs: DrivenOutcomeContextRef[] = journalProvenance.contextArtifactRefs.map(
+    (refId) => ({
+      refKind: contextRefKind(refId),
+      refId,
+    }),
+  );
+  for (const refId of journalProvenance.contextVersionRefs) {
+    contextRefs.push({ refKind: "context_version", refId, versionRef: refId });
+  }
+  for (const resolvedRef of journalProvenance.resolvedContextRefs) {
+    contextRefs.push({
+      refKind: resolvedRef.refKind,
+      refId: resolvedRef.refId,
+      ...(resolvedRef.versionRef !== undefined ? { versionRef: resolvedRef.versionRef } : {}),
+      ...(resolvedRef.details !== undefined ? { details: resolvedRef.details } : {}),
+    });
+  }
+  for (const citationRef of journalProvenance.selectedCandidateCitationRefs) {
+    contextRefs.push({ refKind: "selected_candidate_citation", refId: citationRef });
+  }
+  const qaDetails: Record<string, DrivenQaFindingDetail> = {};
+  for (const detail of journalProvenance.qaFindingDetails) {
+    qaDetails[detail.findingId] = {
+      recommendation: detail.recommendation,
+      agentRationale: detail.agentRationale,
+      evidenceRefs: detail.evidenceRefs.slice(),
+      ...(detail.sourceSpan !== undefined ? { sourceSpan: { ...detail.sourceSpan } } : {}),
+      ...(detail.draftSpan !== undefined ? { draftSpan: { ...detail.draftSpan } } : {}),
+    };
+  }
+  return {
+    run: args.run,
+    writtenOutcome: args.writtenOutcome,
+    attempts: args.attempts,
+    contextPacket: journalProvenance.resolvedContextPacket,
+    contextRefs,
+    speakerLabels: journalProvenance.speakerLabels,
+    qaDetails,
+  };
+}
+
+function contextRefKind(ref: string): string {
+  const separator = ref.indexOf(":");
+  return separator > 0 ? ref.slice(0, separator) : "context_artifact";
 }
 
 function assertSelectedTargetBody(args: { body: string; sourceText: string; label: string }): void {
@@ -1227,22 +1449,70 @@ async function enumerateInScopeUnits(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Provider telemetry summary — real usage.cost + ZDR, from the bundle
+// Provider telemetry summary — real usage.cost + ZDR
 // ---------------------------------------------------------------------------
 
-export function summariseProviderTelemetry(
-  bundle: AgenticLoopBundle,
-  pair: { modelId: string; providerId: string },
-): {
+/**
+ * A compatibility-friendly telemetry projection with one exact decimal field.
+ * The number field is only for legacy display consumers; journal persistence,
+ * patch reconciliation, and executor budget accounting consume
+ * `totalCostExactUsd` instead.
+ */
+export type ProviderTelemetrySummary = {
   pair: { modelId: string; providerId: string };
   invocationCount: number;
+  totalCostExactUsd: string;
   totalCostUsd: number;
   totalTokensIn: number;
   totalTokensOut: number;
   zdr: boolean;
-} {
+};
+
+/**
+ * Summarize the physical attempts captured at the provider boundary. This is
+ * the project executor's accounting source: unlike bundle telemetry it also
+ * includes calls made before a handled partial QA/repair failure.
+ */
+export function summariseCapturedProviderAttempts(
+  attempts: readonly DrivenLlmAttemptRecord[],
+  pair: { modelId: string; providerId: string },
+): ProviderTelemetrySummary {
+  let totalCostExactUsd = "0";
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  let zdr = true;
+  for (const attempt of attempts) {
+    totalCostExactUsd = addDecimalUsd(totalCostExactUsd, attempt.costUsd);
+    totalTokensIn += attempt.tokensIn ?? 0;
+    totalTokensOut += attempt.tokensOut ?? 0;
+    zdr = zdr && attempt.zdr;
+  }
+  return {
+    pair,
+    invocationCount: attempts.length,
+    totalCostExactUsd,
+    // Compatibility/display projection only. Never use this to persist,
+    // compare a budget, or reconstruct a journal total.
+    totalCostUsd: Number(totalCostExactUsd),
+    totalTokensIn,
+    totalTokensOut,
+    // A unit that fired zero invocations cannot assert a ZDR posture.
+    zdr: attempts.length > 0 ? zdr : false,
+  };
+}
+
+/**
+ * Legacy bundle helper retained for the repair executor. It now performs the
+ * same lossless decimal addition as the physical-attempt path; callers should
+ * prefer {@link summariseCapturedProviderAttempts} whenever capture is
+ * available.
+ */
+export function summariseProviderTelemetry(
+  bundle: AgenticLoopBundle,
+  pair: { modelId: string; providerId: string },
+): ProviderTelemetrySummary {
   let invocationCount = 0;
-  let totalCostUsd = 0;
+  let totalCostExactUsd = "0";
   let totalTokensIn = 0;
   let totalTokensOut = 0;
   let zdr = true;
@@ -1253,7 +1523,7 @@ export function summariseProviderTelemetry(
       invocationCount += 1;
       // PROJECT LAW: cost comes ONLY from the real per-invocation usage.cost
       // the provider reported (the bundle stores it as a decimal-USD string).
-      totalCostUsd += Number.parseFloat(invocation.costUsd);
+      totalCostExactUsd = addDecimalUsd(totalCostExactUsd, invocation.costUsd);
       totalTokensIn += invocation.tokensIn;
       totalTokensOut += invocation.tokensOut;
       zdr = zdr && invocation.zdr === true;
@@ -1262,12 +1532,40 @@ export function summariseProviderTelemetry(
   return {
     pair,
     invocationCount,
-    totalCostUsd,
+    totalCostExactUsd,
+    // Compatibility/display projection only. The repair executor has no
+    // physical-attempt journal yet, so this remains a legacy boundary.
+    totalCostUsd: Number(totalCostExactUsd),
     totalTokensIn,
     totalTokensOut,
     // A unit that fired zero invocations cannot assert a ZDR posture.
     zdr: sawInvocation ? zdr : false,
   };
+}
+
+/** Convert the existing numeric CLI/config cap into a plain decimal string. */
+function decimalUsdFromFiniteNumber(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new AgenticLoopInvariantError(
+      `budget cap must be a finite non-negative number, got ${value}`,
+    );
+  }
+  const raw = String(value);
+  if (!/[eE]/u.test(raw)) {
+    return raw;
+  }
+  const [coefficient, exponentRaw] = raw.toLowerCase().split("e");
+  const exponent = Number(exponentRaw);
+  const [whole = "0", fraction = ""] = coefficient!.split(".");
+  const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/u, "") || "0";
+  const decimalPoint = whole.length + exponent;
+  if (decimalPoint <= 0) {
+    return `0.${"0".repeat(-decimalPoint)}${digits}`;
+  }
+  if (decimalPoint >= digits.length) {
+    return `${digits}${"0".repeat(decimalPoint - digits.length)}`;
+  }
+  return `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`;
 }
 
 // ---------------------------------------------------------------------------

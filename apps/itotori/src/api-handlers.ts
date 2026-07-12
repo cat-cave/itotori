@@ -212,7 +212,7 @@ export const apiMutationPermissionGates = {
   runtimeEvidenceIngest: apiMutationGate("runtime evidence ingest", "runtimeIngest"),
   // ovw-launch-pass-action — the `canSteer` steer permission is `draft.write`:
   // launching the next pass drives the drafting of pass N+1, the same authority
-  // that protects the draft workflow + the pass ledger.
+  // that protects the draft workflow.
   launchPass: apiMutationGate("launch pass", "draftWrite"),
   localizationRunConfigSave: apiMutationGate("localization run config save", "draftWrite"),
   ssoSettingsConfigure: apiMutationGate("SSO settings configure", "authSsoManage"),
@@ -1228,23 +1228,23 @@ async function routeItotoriApiRequest(
 
 /**
  * ovw-launch-pass-action — map the driver outcome to the typed wire envelope.
- * A `refused` outcome is surfaced in-band (null pass/timestamp + the reason) so
+ * A `refused` outcome is surfaced in-band (null journal-run/timestamp + the reason) so
  * the Overview strip renders it like any driver response, never a silent 200.
  */
 function launchPassResponseBody(outcome: LaunchLocalizationPassResult): ApiLaunchPassResponse {
   if (outcome.outcome === "started") {
     return {
-      schemaVersion: "itotori.projects.launch-pass.v0",
+      schemaVersion: "itotori.projects.launch-pass.v1",
       outcome: "started",
-      passNumber: outcome.passNumber,
+      journalRunId: outcome.journalRunId,
       startedAt: outcome.startedAt.toISOString(),
       refusalMessage: null,
     };
   }
   return {
-    schemaVersion: "itotori.projects.launch-pass.v0",
+    schemaVersion: "itotori.projects.launch-pass.v1",
     outcome: "refused",
-    passNumber: null,
+    journalRunId: null,
     startedAt: null,
     refusalMessage: outcome.refusalMessage,
   };
@@ -1439,21 +1439,14 @@ async function routeReadOnlyItotoriApiRequest(
 
   if (request.method === "GET" && request.pathname === "/api/projects/overview") {
     const canRead = await resolveProjectReadPermission(services);
-    // gate — the composed overview is only as strong as its parts. The pass
-    // ledger is a `draft.write`-protected read (see the pass-ledger
-    // repository), so it must NOT ride the weaker `catalog.read` gate the rest
-    // of the overview uses. Resolve the caller's pass-ledger permission and
-    // pass it INTO the composition so the ledger is never even read for an
-    // unpermitted caller (read within the permission boundary), rather than
-    // reading it and stripping it afterward.
-    const canReadPassLedger = await resolvePassLedgerReadPermission(services);
+    // The journal repository's read authority is `catalog.read`; compose it
+    // only when that boundary has granted the caller access. Steering remains
+    // a separate `draft.write` capability.
+    const canSteer = await resolveSteerPermission(services);
     const overview = await services.projectWorkflow.getProjectOverview({
       ...parseProjectOverviewFilter(request.search),
-      includePassLedger: canReadPassLedger,
-      // ovw-launch-pass-action — surface the caller's steer capability
-      // (draft.write, the SAME permission that protects the pass ledger) so the
-      // Overview launch-pass action gates itself off the composed payload.
-      canSteer: canReadPassLedger,
+      includeJournal: canRead,
+      canSteer,
     });
     return ok(
       "projects.overview",
@@ -2070,16 +2063,10 @@ async function resolveProjectReadPermission(
 }
 
 /**
- * SECURITY — the localization pass ledger is a `draft.write`-protected read
- * (the pass-ledger repository requires `draft.write` for every load). The
- * composed `projects.overview` embeds the ledger, so it must honor that SAME
- * permission — a `catalog.read`-only caller must NOT receive pass-ledger rows
- * through the overview. Threaded into `getProjectOverview` as
- * `includePassLedger` so the ledger is only READ when the caller may see it.
+ * Resolve the independent mutation capability surfaced to the overview launch
+ * action. Journal provenance itself is read under `catalog.read` above.
  */
-async function resolvePassLedgerReadPermission(
-  services: ApiAuthorizationDependency,
-): Promise<boolean> {
+async function resolveSteerPermission(services: ApiAuthorizationDependency): Promise<boolean> {
   const [canRead] = await tryApiPermission(services, permissionValues.draftWrite);
   return canRead;
 }
@@ -2367,33 +2354,27 @@ function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOption
       "to",
       "limit",
       "offset",
-      "passLedgerLocaleBranchId",
-      "passLedgerLimit",
-      "passLedgerOffset",
+      "journalLocaleBranchId",
+      "journalLimit",
+      "journalOffset",
     ],
     "project overview",
   );
   const costDrilldown = parseCostDrilldownParams(params);
-  const passLedgerLocaleBranchId = params.get("passLedgerLocaleBranchId");
-  const passLedgerLimit = parseNonNegativeIntParam(
-    params.get("passLedgerLimit"),
-    "passLedgerLimit",
-  );
-  if (passLedgerLimit !== undefined && passLedgerLimit < 1) {
-    throw new ApiValidationError("passLedgerLimit must be a positive integer");
+  const journalLocaleBranchId = params.get("journalLocaleBranchId");
+  const journalLimit = parseNonNegativeIntParam(params.get("journalLimit"), "journalLimit");
+  if (journalLimit !== undefined && journalLimit < 1) {
+    throw new ApiValidationError("journalLimit must be a positive integer");
   }
-  const passLedgerOffset = parseNonNegativeIntParam(
-    params.get("passLedgerOffset"),
-    "passLedgerOffset",
-  );
+  const journalOffset = parseNonNegativeIntParam(params.get("journalOffset"), "journalOffset");
   return {
     costDrilldown,
-    passLedger: {
-      ...(passLedgerLocaleBranchId !== null
-        ? { localeBranchId: nonEmptyParam(passLedgerLocaleBranchId, "passLedgerLocaleBranchId") }
+    journal: {
+      ...(journalLocaleBranchId !== null
+        ? { localeBranchId: nonEmptyParam(journalLocaleBranchId, "journalLocaleBranchId") }
         : {}),
-      ...(passLedgerLimit !== undefined ? { limit: passLedgerLimit } : {}),
-      ...(passLedgerOffset !== undefined ? { offset: passLedgerOffset } : {}),
+      ...(journalLimit !== undefined ? { limit: journalLimit } : {}),
+      ...(journalOffset !== undefined ? { offset: journalOffset } : {}),
     },
   };
 }

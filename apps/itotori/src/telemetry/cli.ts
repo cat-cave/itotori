@@ -194,9 +194,13 @@ export function renderTextSummary(
   // acceptance criterion:
   //   "apps/itotori/src/telemetry/cli.ts prints cache_savings_usd=<real>
   //    for the window"
-  // The line is always emitted (zero when no caching hit landed in the
-  // window) so the dashboard can render a deterministic row.
-  lines.push(`cache_savings_usd=${summary.cacheSavingsUsd}`);
+  // A pre-0078 row has no cache facts. Do not render its captured-only sum
+  // as proof that the unobserved call had zero cache activity.
+  lines.push(
+    summary.cacheFactsAvailability === "complete"
+      ? `cache_savings_usd=${summary.cacheSavingsUsd}`
+      : `cache_savings_usd=unavailable captured_invocations=${summary.cacheFactsCapturedInvocationCount}`,
+  );
   if (evidence !== undefined) {
     lines.push(
       `zdr_enforced_count=${evidence.zdr.zdrEnforcedCount} invocation_count=${evidence.zdr.invocationCount} all_zdr_enforced=${evidence.zdr.allInvocationsZdrEnforced}`,
@@ -220,8 +224,10 @@ export function renderTextSummary(
           pair,
           row.invocationCount.toString(),
           row.totalCostUsd,
-          row.cacheHitCount.toString(),
-          row.cacheSavingsUsd,
+          row.cacheFactsAvailability === "complete"
+            ? row.cacheHitCount.toString()
+            : `unavailable/${row.cacheFactsCapturedInvocationCount}`,
+          row.cacheFactsAvailability === "complete" ? row.cacheSavingsUsd : "unavailable",
           row.totalTokensIn.toString(),
           row.totalTokensOut.toString(),
           row.avgLatencyMs.toFixed(2),

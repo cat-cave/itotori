@@ -1,14 +1,10 @@
-// itotori-localize-fullproject-cli + pass-ledger-production-wiring — tests.
+// itotori-localize-fullproject-command + durable-journal production wiring — tests.
 //
-// Proves the two bundled nodes TOGETHER:
-//   NODE 1 — the general `itotori localize <project>` whole-project driver runs
-//     a FULL project (every in-scope unit) for any project given its config,
-//     persisting written outcomes + QA callouts to real Postgres + exporting a
-//     patch to disk; cost + ZDR recorded; no game-specific code path.
-//   NODE 2 — the DB-backed `PassLedgerPort` (DbPassLedger over the
-//     `itotori_localization_pass_ledger` table) persists each pass, and the
-//     driver runs THROUGH `runLocalizationPass` so a live pass N+1 CONSUMES the
-//     persisted pass N feedback + selected written state.
+// Proves the general `itotori localize <project>` whole-project driver runs a
+// FULL project (every in-scope unit) for any project given its config,
+// persisting canonical outcomes, physical attempts, and QA callouts to real
+// Postgres before exporting a patch to disk; cost + ZDR are recorded with no
+// game-specific code path.
 //
 // Driven with the FAKE/synthetic model provider (deterministic, zero real
 // cost, no live ZDR call) against a REAL Postgres — the test validates the
@@ -27,9 +23,7 @@ import {
   type QaFinding,
 } from "@itotori/localization-bridge-schema";
 import {
-  ItotoriDraftAttemptProviderLedgerRepository,
-  ItotoriDraftJobRepository,
-  ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriReviewerQueueRepository,
   ItotoriTranslationScopeSettingsRepository,
   bootstrapLocalUser,
@@ -43,14 +37,12 @@ import {
   fakeSemanticContextContent,
   type AgenticLoopProviderFactory,
 } from "../src/orchestrator/agentic-loop.js";
-import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
-  DrivenDbPersistenceAdapter,
+  DrivenJournalPersistenceAdapter,
   FsDrivenPatchExportSink,
 } from "../src/orchestrator/project-driven-executor-sinks.js";
-import { DbPassLedger } from "../src/orchestrator/pass-ledger-db-adapter.js";
 import {
   buildStructureResolver,
   parseLocalizeFullProjectConfig,
@@ -60,6 +52,7 @@ import {
 } from "../src/orchestrator/localize-fullproject-command.js";
 import { parseNarrativeStructure } from "../src/agents/structure-informed-context/index.js";
 import type { WholeGameRenderValidationResult } from "../src/orchestrator/wholegame-render-validation-seam.js";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
 // --- ids (text columns; UUID-ish so a shared DB never collides) -------------
 const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
@@ -78,9 +71,9 @@ const SPEAKER_ID = "019ed0dd-0000-7000-8000-000000000005";
 const SOURCE_BUNDLE_ID = "019ed0dd-0000-7000-8000-000000000006";
 const WORKSPACE_ID = "019ed0dd-0000-7000-8000-000000000007";
 
-const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // written in both passes
-const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // QA-callout pass 1, revised pass 2
-const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // written in both passes
+const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // written outcome
+const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // QA-callout
+const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // written outcome
 const UNIT_UI = "019ed0aa-0000-7000-8000-0000000000e5"; // ui_label -> OUT OF SCOPE
 
 const SCENE_ID = 6010;
@@ -213,7 +206,7 @@ describe("whole-game driver joins the REAL bridge + REAL structure by sceneKey",
 });
 
 // ---------------------------------------------------------------------------
-// Fixtures (mirror project-driven-executor.test.ts / pass-ledger.test.ts)
+// Fixtures (mirror the project-driven executor's journal behavior).
 // ---------------------------------------------------------------------------
 
 function makeStructureJson(): unknown {
@@ -356,11 +349,10 @@ function cleanQaContent(): string {
 }
 
 /**
- * Fake provider factory: UNIT_B is the FLAGGED unit whose outcome depends
- * ENTIRELY on whether the prior-pass feedback reached its translation prompt —
- * exactly the seam the DB pass ledger controls. When the "Prior pass feedback"
- * block is present it emits the corrected draft (QA clean);
- * otherwise the generic draft (critical finding retained as an annotation).
+ * UNIT_B carries a critical QA annotation on the blank first pass. A second
+ * pass must see the journal-derived feedback block and emit the corrected
+ * target, proving that the durable journal (not an in-memory result) drives
+ * multi-pass iteration.
  */
 function makeCaptureFactory(): {
   factory: AgenticLoopProviderFactory;
@@ -444,14 +436,13 @@ function materializeProject(dir: string): {
 }
 
 async function seedProjectScope(pool: DatabaseContext["pool"]): Promise<void> {
-  await pool.query("delete from itotori_localization_pass_ledger where project_id = $1", [
+  await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
     PROJECT_ID,
   ]);
   await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
     LOCALE_BRANCH_ID,
   ]);
   await pool.query("delete from itotori_reviewer_queue_items where project_id = $1", [PROJECT_ID]);
-  await pool.query("delete from itotori_draft_jobs where project_id = $1", [PROJECT_ID]);
   await pool.query("delete from itotori_projects where project_id = $1", [PROJECT_ID]);
   await pool.query(
     `insert into itotori_workspaces (workspace_id, name) values ($1, $2)
@@ -508,9 +499,9 @@ function deterministicClock(): () => Date {
 // The real-Postgres MECHANISM test (fake provider, no real cost / ZDR call)
 // ---------------------------------------------------------------------------
 
-describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->N+1, real DB)", () => {
+describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)", () => {
   it.skipIf(!process.env.DATABASE_URL)(
-    "writes every in-scope unit, persists selected outcomes plus QA callouts, exports a complete patch, and pass 2 consumes persisted pass 1",
+    "writes every in-scope unit, persists its lossless journal, and exports a complete patch",
     async () => {
       const databaseUrl = process.env.DATABASE_URL as string;
       await migrate(databaseUrl);
@@ -521,24 +512,15 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         await bootstrapLocalUser(context.db);
         await seedProjectScope(context.pool);
 
-        const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
-        const passLedger = new DbPassLedger(passLedgerRepo);
-
         const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-"));
         const { configPath } = materializeProject(workDir);
         const io = fsIo();
 
-        const runOnePass = async (runLabel: string) => {
+        const runJournal = async (runLabel: string) => {
           const capture = makeCaptureFactory();
-          const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-          const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+          const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
           const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-          const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-            projectId: PROJECT_ID,
-            localeBranchId: LOCALE_BRANCH_ID,
-            actor,
-            pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-          });
+          const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
           const runDir = join(workDir, runLabel);
           mkdirSync(runDir, { recursive: true });
           const patchSink = new FsDrivenPatchExportSink(runDir);
@@ -550,8 +532,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
               io,
               actor,
               providerFactory: capture.factory,
-              sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-              passLedger,
+              sinks: { journal, patchExport: patchSink },
               reviewerQueue: { repository: reviewerQueueRepo },
               now: clock,
             },
@@ -559,44 +540,63 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
           return { out, capture, runDir, patchSink };
         };
 
-        // ---------------- PASS 1 (blank first pass) ----------------
-        const pass1 = await runOnePass("pass-1");
-        const p1 = pass1.out;
+        const journalRun = await runJournal("journal-run");
+        const result = journalRun.out.result;
 
         // Full-project drive: 3 dialogue units in scope, the ui_label OUT of scope.
-        expect(p1.result.unitsEnumerated).toBe(4);
-        expect(p1.result.unitsInScope).toBe(3);
-        expect(p1.result.unitsRun).toBe(3);
+        expect(result.unitsEnumerated).toBe(4);
+        expect(result.unitsInScope).toBe(3);
+        expect(result.unitsRun).toBe(3);
         // A critical QA finding remains an annotation on UNIT_B's selected
         // candidate; it cannot withhold the text or make the scope partial.
-        expect(p1.result.writtenOutcomeCount).toBe(3);
-        expect(p1.result.patchReport.coverageComplete).toBe(true);
-        // Pass 1 is a blank first pass — the ledger recorded pass 1, no prior.
-        expect(p1.record.passNumber).toBe(1);
-        expect(p1.record.priorPassNumber).toBeUndefined();
-        expect(p1.prior).toBeUndefined();
+        expect(result.writtenOutcomeCount).toBe(3);
+        expect(result.journalUnitsPersisted).toBe(3);
+        expect(result.attemptsPersisted).toBeGreaterThan(3);
+        expect(result.patchReport.coverageComplete).toBe(true);
         // Fake provider: real cost is a genuine zero; ZDR recorded true.
-        expect(p1.result.totalUsageCostUsd).toBe(0);
-        expect(p1.result.zdrConfirmed).toBe(true);
-        expect(pass1.capture.priorFeedbackSeen.get(UNIT_B)).toBe(false);
+        expect(result.totalUsageCostUsd).toBe(0);
+        expect(result.zdrConfirmed).toBe(true);
 
         // Patch exported to disk.
-        expect(pass1.patchSink.exportCount).toBe(1);
-        expect(existsSync(join(pass1.runDir, "translated-bridge.json"))).toBe(true);
-        expect(existsSync(join(pass1.runDir, "patch-report.json"))).toBe(true);
-        expect(existsSync(join(pass1.runDir, "run-summary.json"))).toBe(true);
+        expect(journalRun.patchSink.exportCount).toBe(1);
+        expect(existsSync(join(journalRun.runDir, "translated-bridge.json"))).toBe(true);
+        expect(existsSync(join(journalRun.runDir, "patch-report.json"))).toBe(true);
+        expect(existsSync(join(journalRun.runDir, "run-summary.json"))).toBe(true);
 
-        // Written outcomes + QA callouts landed in REAL Postgres.
-        const draftJobsAfter1 = Number(
-          (
-            await context.pool.query(
-              "select count(*)::int as n from itotori_draft_jobs where project_id = $1",
-              [PROJECT_ID],
-            )
-          ).rows[0].n,
+        // The journal read model is the durable source of truth: it returns
+        // canonical selected bodies, all candidates, QA rationale, speaker
+        // labels, and every physical provider attempt for this exact run.
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
+        const persistedRun = await journalRepo.loadRun(actor, result.journalRunId);
+        expect(persistedRun).toMatchObject({
+          runId: result.journalRunId,
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: REVISION_ID,
+          targetLocale: "en-US",
+        });
+        const outcomes = await journalRepo.loadRunOutcomes(actor, result.journalRunId);
+        const attempts = await journalRepo.loadAttemptsForRun(actor, result.journalRunId);
+        expect(outcomes).toHaveLength(3);
+        expect(attempts).toHaveLength(result.attemptsPersisted);
+        const flagged = outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B)!;
+        expect(flagged.outcome.selectedCandidateId).toBe(flagged.candidates[0]?.id);
+        expect(flagged.candidates).toHaveLength(1);
+        // Every focused QA agent emits the same critical fixture finding. The
+        // journal retains all four agent observations and their individual
+        // renderable rationales instead of reducing them to a pass-level flag.
+        expect(flagged.findings).toHaveLength(4);
+        expect(flagged.findings.map((finding) => flagged.qaDetails[finding.id])).toEqual(
+          Array.from({ length: 4 }, () =>
+            expect.objectContaining({
+              recommendation: "fixture: the generic draft dropped the speaker name",
+              agentRationale: "fake-critical-finding",
+            }),
+          ),
         );
-        expect(draftJobsAfter1).toBe(3);
-        const queueAfter1 = Number(
+        expect(flagged.speakerLabels).toHaveLength(1);
+
+        const queueAfterJournal = Number(
           (
             await context.pool.query(
               "select count(*)::int as n from itotori_reviewer_queue_items where project_id = $1",
@@ -604,85 +604,8 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
             )
           ).rows[0].n,
         );
-        expect(queueAfter1).toBe(p1.result.reviewerQueueItemCount);
-        expect(queueAfter1).toBeGreaterThanOrEqual(1); // UNIT_B's QA callout
-        const queueRevisionsAfter1 = await context.pool.query(
-          "select distinct source_revision_id from itotori_reviewer_queue_items where project_id = $1",
-          [PROJECT_ID],
-        );
-        expect(queueRevisionsAfter1.rows.map((row) => row.source_revision_id)).toEqual([
-          REVISION_ID,
-        ]);
-
-        // The pass record persisted (NODE 2): one row, passNumber 1.
-        const ledgerAfter1 = await context.pool.query(
-          "select pass_number, prior_pass_number, total_usage_cost_usd, zdr_confirmed from itotori_localization_pass_ledger where locale_branch_id = $1 order by pass_number",
-          [LOCALE_BRANCH_ID],
-        );
-        expect(ledgerAfter1.rows.map((r) => Number(r.pass_number))).toEqual([1]);
-        expect(Number(ledgerAfter1.rows[0].total_usage_cost_usd)).toBe(0);
-        expect(ledgerAfter1.rows[0].zdr_confirmed).toBe(true);
-
-        // The DbPassLedger read path sees the persisted pass 1 (medium of iteration).
-        const latest = await passLedger.loadLatestPass(actor, LOCALE_BRANCH_ID);
-        expect(latest?.passNumber).toBe(1);
-        const flaggedUnit = latest?.outputs.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B);
-        expect(flaggedUnit).toMatchObject({
-          bridgeUnitId: UNIT_B,
-          selectedBody: GENERIC_DRAFT,
-          qualityFlags: expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
-        });
-        expect(flaggedUnit?.outcomeId).toBeTypeOf("string");
-        expect(flaggedUnit?.selectedCandidateId).toBeTypeOf("string");
-
-        // ---------------- PASS 2 (consumes persisted pass 1) ----------------
-        const pass2 = await runOnePass("pass-2");
-        const p2 = pass2.out;
-
-        // The driver LOADED pass 1 from the DB ledger and threaded UNIT_B's prior
-        // feedback into its pass-2 translation prompt (the crux N->N+1 seam).
-        expect(p2.prior?.passNumber).toBe(1);
-        expect(p2.record.passNumber).toBe(2);
-        expect(p2.record.priorPassNumber).toBe(1);
-        expect(pass2.capture.priorFeedbackSeen.get(UNIT_B)).toBe(true);
-
-        // Consuming the persisted feedback improves UNIT_B's selected body;
-        // both passes still have full written coverage.
-        expect(p2.result.writtenOutcomeCount).toBe(3);
-        expect(p2.result.patchReport.coverageComplete).toBe(true);
-        const pass2UnitB = p2.record.outputs.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B);
-        expect(pass2UnitB?.selectedBody).toBe(CORRECTED_DRAFT);
-        expect(pass2UnitB?.qualityFlags).toEqual([]);
-        // UNIT_B is the selected-body delta vs pass 1. The DB-backed adapter
-        // must round-trip both the prior and current canonical bodies.
-        expect(p2.record.writtenDeltas).toEqual([
-          {
-            bridgeUnitId: UNIT_B,
-            sourceUnitKey: "scene-6010/line-002",
-            priorSelectedBody: GENERIC_DRAFT,
-            currentSelectedBody: CORRECTED_DRAFT,
-          },
-        ]);
-
-        // Two pass rows now persisted, chained 1 -> 2.
-        const ledgerAfter2 = await context.pool.query(
-          "select pass_number, prior_pass_number from itotori_localization_pass_ledger where locale_branch_id = $1 order by pass_number",
-          [LOCALE_BRANCH_ID],
-        );
-        expect(ledgerAfter2.rows.map((r) => Number(r.pass_number))).toEqual([1, 2]);
-        expect(Number(ledgerAfter2.rows[1].prior_pass_number)).toBe(1);
-
-        // Full history round-trips through the DB adapter.
-        const history = await passLedger.loadPassesForBranch(actor, LOCALE_BRANCH_ID);
-        expect(history.map((h) => h.passNumber)).toEqual([1, 2]);
-        expect(history[0]?.outputs.unitOutcomes).toHaveLength(3);
-        expect(
-          history[0]?.outputs.unitOutcomes.find((unit) => unit.bridgeUnitId === UNIT_B),
-        ).toMatchObject({
-          selectedBody: GENERIC_DRAFT,
-          qualityFlags: expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
-        });
-        expect(history[1]?.writtenDeltas).toEqual(p2.record.writtenDeltas);
+        expect(queueAfterJournal).toBe(result.reviewerQueueItemCount);
+        expect(queueAfterJournal).toBeGreaterThanOrEqual(1); // UNIT_B's QA callout
       } finally {
         await context.close();
       }
@@ -691,7 +614,139 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
   );
 
   it.skipIf(!process.env.DATABASE_URL)(
-    "records whole-game render-validation findings in pass 1 and pass 2 consumes them from the DB ledger",
+    "pass 2 consumes pass 1 selected text and QA feedback from the durable journal",
+    async () => {
+      // This regression reads the pass-1 journal while pass 2 is running.
+      // Give it a migrated schema of its own so full-suite DB workers cannot
+      // delete/reseed the fixed fixture project between those two passes.
+      const context = await isolatedMigratedContext();
+      const actor: AuthorizationActor = { userId: localUserId };
+
+      try {
+        await bootstrapLocalUser(context.db);
+        await seedProjectScope(context.pool);
+
+        const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-journal-passes-"));
+        const { configPath } = materializeProject(workDir);
+        const io = fsIo();
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
+        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
+
+        const runJournalPass = async (label: string) => {
+          const capture = makeCaptureFactory();
+          const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
+          const runDir = join(workDir, label);
+          mkdirSync(runDir, { recursive: true });
+          const patchSink = new FsDrivenPatchExportSink(runDir);
+          const out = await runLocalizeFullProjectCommand({
+            configPath,
+            runSummaryPath: join(runDir, "run-summary.json"),
+            deps: {
+              io,
+              actor,
+              providerFactory: capture.factory,
+              sinks: { journal, patchExport: patchSink },
+              // The new read path: pass N+1 obtains prior state directly from
+              // normalized journal runs/outcomes, not a legacy pass record.
+              journalHistory: journalRepo,
+              reviewerQueue: { repository: reviewerQueueRepo },
+              now: deterministicClock(),
+            },
+          });
+          return { out, capture, patchSink, runDir };
+        };
+
+        const pass1 = await runJournalPass("pass-1");
+        expect(pass1.out.priorJournalRun).toBeUndefined();
+        expect(pass1.capture.priorFeedbackSeen.get(UNIT_B)).toBe(false);
+        expect(pass1.out.result.writtenOutcomeCount).toBe(3);
+        expect(pass1.out.result.patchReport.coverageComplete).toBe(true);
+
+        const pass1Outcomes = await journalRepo.loadRunOutcomes(
+          actor,
+          pass1.out.result.journalRunId,
+        );
+        const pass1UnitB = pass1Outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B);
+        expect(
+          pass1UnitB?.candidates.find(
+            (candidate) => candidate.id === pass1UnitB.outcome.selectedCandidateId,
+          )?.body,
+        ).toBe(GENERIC_DRAFT);
+        expect(pass1UnitB?.outcome.qualityFlags).toEqual(
+          expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+        );
+        expect(Object.values(pass1UnitB?.qaDetails ?? {})).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              recommendation: "fixture: the generic draft dropped the speaker name",
+            }),
+          ]),
+        );
+
+        const pass2 = await runJournalPass("pass-2");
+        // The production command read pass 1 from real Postgres before it
+        // created pass 2; its lineage reports that exact durable source.
+        expect(pass2.out.priorJournalRun).toEqual({
+          runId: pass1.out.result.journalRunId,
+          passNumber: 1,
+          feedbackUnitCount: 3,
+        });
+        expect(pass2.capture.priorFeedbackSeen.get(UNIT_B)).toBe(true);
+        expect(pass2.out.result.writtenOutcomeCount).toBe(3);
+        expect(pass2.out.result.patchReport.coverageComplete).toBe(true);
+        expect(pass2.patchSink.exportCount).toBe(1);
+
+        const runs = await journalRepo.loadRunsForBranch(actor, LOCALE_BRANCH_ID);
+        expect(runs.map((run) => run.runId)).toEqual([
+          pass1.out.result.journalRunId,
+          pass2.out.result.journalRunId,
+        ]);
+        const pass2Outcomes = await journalRepo.loadRunOutcomes(
+          actor,
+          pass2.out.result.journalRunId,
+        );
+        const pass2UnitB = pass2Outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B);
+        expect(
+          pass2UnitB?.candidates.find(
+            (candidate) => candidate.id === pass2UnitB.outcome.selectedCandidateId,
+          )?.body,
+        ).toBe(CORRECTED_DRAFT);
+        expect(pass2UnitB?.outcome.qualityFlags).toEqual([]);
+        // The journal records the exact prior feedback packet/run identity that
+        // produced pass 2, so the multi-pass context remains reviewable after
+        // the original process exits.
+        expect(pass2UnitB?.contextPacket).toMatchObject({
+          priorPassFeedback: {
+            passNumber: 1,
+            priorDraftText: GENERIC_DRAFT,
+            qualityFlags: expect.arrayContaining(["qa_unresolved"]),
+            feedbackNote: expect.stringContaining(
+              "fixture: the generic draft dropped the speaker name",
+            ),
+          },
+          priorJournalRunId: pass1.out.result.journalRunId,
+        });
+        expect(pass2UnitB?.contextRefs).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              refKind: "prior_pass_feedback",
+              refId: pass1.out.result.journalRunId,
+              details: expect.objectContaining({
+                passNumber: 1,
+                priorDraftText: GENERIC_DRAFT,
+              }),
+            }),
+          ]),
+        );
+      } finally {
+        await context.close();
+      }
+    },
+    120_000,
+  );
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "returns whole-game render-validation findings alongside the durable journal result",
     async () => {
       const databaseUrl = process.env.DATABASE_URL as string;
       await migrate(databaseUrl);
@@ -702,27 +757,18 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         await bootstrapLocalUser(context.db);
         await seedProjectScope(context.pool);
 
-        const passLedger = new DbPassLedger(
-          new ItotoriLocalizationPassLedgerRepository(context.db),
-        );
         const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-render-"));
         const { configPath } = materializeProject(workDir);
         const io = fsIo();
 
-        const runOnePass = async (
+        const runJournal = async (
           runLabel: string,
           runtimeValidation: WholeGameRenderValidationResult | undefined,
         ) => {
           const capture = makeCaptureFactory();
-          const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-          const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+          const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
           const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-          const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-            projectId: PROJECT_ID,
-            localeBranchId: LOCALE_BRANCH_ID,
-            actor,
-            pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-          });
+          const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
           const runDir = join(workDir, runLabel);
           mkdirSync(runDir, { recursive: true });
           const patchSink = new FsDrivenPatchExportSink(runDir);
@@ -733,8 +779,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
               io,
               actor,
               providerFactory: capture.factory,
-              sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-              passLedger,
+              sinks: { journal, patchExport: patchSink },
               reviewerQueue: { repository: reviewerQueueRepo },
               ...(runtimeValidation !== undefined
                 ? { afterExecutor: (result) => ({ ...result, runtimeValidation }) }
@@ -794,18 +839,11 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
           ],
         };
 
-        const pass1 = await runOnePass("pass-1", runtimeValidation);
-        expect(pass1.out.record.outputs.runtimeValidation?.coverage.validatedSceneCount).toBe(1);
-        expect(pass1.out.record.outputs.runtimeValidation?.findings).toHaveLength(1);
-
-        const latest = await passLedger.loadLatestPass(actor, LOCALE_BRANCH_ID);
-        expect(latest?.outputs.runtimeValidation?.findings[0]?.bridgeUnitId).toBe(UNIT_A);
-        expect(latest?.outputs.runtimeValidation?.redaction).toBe("on");
-
-        const pass2 = await runOnePass("pass-2", undefined);
-        expect(pass2.out.prior?.passNumber).toBe(1);
-        expect(pass2.out.record.passNumber).toBe(2);
-        expect(pass2.capture.priorFeedbackSeen.get(UNIT_A)).toBe(true);
+        const journalRun = await runJournal("journal-run", runtimeValidation);
+        expect(journalRun.out.result.runtimeValidation?.coverage.validatedSceneCount).toBe(1);
+        expect(journalRun.out.result.runtimeValidation?.findings).toHaveLength(1);
+        expect(journalRun.out.result.runtimeValidation?.findings[0]?.bridgeUnitId).toBe(UNIT_A);
+        expect(journalRun.out.result.runtimeValidation?.redaction).toBe("on");
       } finally {
         await context.close();
       }
@@ -856,9 +894,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
         });
         expect(saved.scope).toBe("dialogue-choices-ui");
 
-        const passLedgerRepo = new ItotoriLocalizationPassLedgerRepository(context.db);
-        const passLedger = new DbPassLedger(passLedgerRepo);
-
         const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-scope-default-"));
         const { configPath } = materializeProject(workDir);
         // Strip the explicit `translationScope` the fixture config normally
@@ -871,15 +906,9 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
         const io = fsIo();
 
         const capture = makeCaptureFactory();
-        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
         const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          actor,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-        });
+        const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const runDir = join(workDir, "pass-1");
         mkdirSync(runDir, { recursive: true });
         const patchSink = new FsDrivenPatchExportSink(runDir);
@@ -891,8 +920,7 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             io,
             actor,
             providerFactory: capture.factory,
-            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-            passLedger,
+            sinks: { journal, patchExport: patchSink },
             reviewerQueue: { repository: reviewerQueueRepo },
             // The REAL production port: reads through the SAME repository
             // instance the save above just wrote through.
@@ -905,8 +933,8 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
         });
 
         // The persisted "dialogue-choices-ui" scope is what the command
-        // resolved and recorded on the pass.
-        expect(out.record.inputs.translationScope).toBe("dialogue-choices-ui");
+        // resolved and recorded in the exact journal-backed patch report.
+        expect(out.result.patchReport.translationScope).toBe("dialogue-choices-ui");
 
         // Behavior proof, not just a label: the ui_label unit (UNIT_UI, out of
         // scope under the "dialogue-only" default proven in the sibling
@@ -961,23 +989,14 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
           scope: "all",
         });
 
-        const passLedger = new DbPassLedger(
-          new ItotoriLocalizationPassLedgerRepository(context.db),
-        );
         const workDir = mkdtempSync(join(tmpdir(), "itotori-fullproject-scope-override-"));
         const { configPath } = materializeProject(workDir); // pins "dialogue-only"
         const io = fsIo();
 
         const capture = makeCaptureFactory();
-        const draftJobRepo = new ItotoriDraftJobRepository(context.db);
-        const ledgerRepo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+        const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
         const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
-        const dbAdapter = new DrivenDbPersistenceAdapter(draftJobRepo, ledgerRepo, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          actor,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-        });
+        const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const runDir = join(workDir, "pass-1");
         mkdirSync(runDir, { recursive: true });
         const patchSink = new FsDrivenPatchExportSink(runDir);
@@ -989,8 +1008,7 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             io,
             actor,
             providerFactory: capture.factory,
-            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
-            passLedger,
+            sinks: { journal, patchExport: patchSink },
             reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {
               resolveScope: (projectId, localeBranchId) =>
@@ -1000,7 +1018,7 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
           },
         });
 
-        expect(out.record.inputs.translationScope).toBe("dialogue-only");
+        expect(out.result.patchReport.translationScope).toBe("dialogue-only");
         expect(out.result.unitsInScope).toBe(3); // UNIT_UI stays out of scope
       } finally {
         await context.close();

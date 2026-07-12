@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { assertOpenRouterZdrAccount } from "./account-zdr.js";
+import { recordProviderRunArtifact } from "./artifacts.js";
 import {
   assertProviderInvocationSupported,
   globalCapabilityGuard,
@@ -190,8 +191,10 @@ export class OpenRouterProvider implements ModelProvider {
         // failures apart from missing-cost responses.
         usageResponseJson: { _network_error: true },
       });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           rawCapture: this.live.rawCapture,
@@ -201,7 +204,7 @@ export class OpenRouterProvider implements ModelProvider {
           }),
           adapterMetadata: metadata,
         }),
-      );
+      });
       throw new ModelProviderError(
         `OpenRouter request failed before response: ${providerExceptionMessage(error)}`,
         "provider_http_error",
@@ -233,8 +236,10 @@ export class OpenRouterProvider implements ModelProvider {
         usageResponseJson: extractUsageResponseJson(body, "_http_error"),
       });
       const retryable = response.status >= 500 || response.status === 429;
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           rawCapture: this.live.rawCapture,
@@ -246,7 +251,7 @@ export class OpenRouterProvider implements ModelProvider {
           }),
           adapterMetadata: metadata,
         }),
-      );
+      });
       throw new ModelProviderError(
         `OpenRouter request failed with HTTP ${response.status}`,
         "provider_http_error",
@@ -278,8 +283,10 @@ export class OpenRouterProvider implements ModelProvider {
         // so even an absent `cost` field is honest.
         usageResponseJson: extractUsageResponseJson(body, "_response_invalid"),
       });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
+      await recordProviderRunArtifact({
+        recorder: this.live.artifactRecorder,
+        providerRun: run,
+        artifact: buildArtifact({
           request,
           run,
           rawCapture: this.live.rawCapture,
@@ -289,7 +296,7 @@ export class OpenRouterProvider implements ModelProvider {
           },
           adapterMetadata: metadata,
         }),
-      );
+      });
       throw new ModelProviderError(
         `OpenRouter response was invalid: ${providerExceptionMessage(error)}`,
         "provider_response_invalid",
@@ -348,8 +355,10 @@ export class OpenRouterProvider implements ModelProvider {
           routingPosture,
           usageResponseJson: extractUsageResponseJson(body, "_cost_cap_exceeded"),
         });
-        await this.live.artifactRecorder.recordProviderRun(
-          buildArtifact({
+        await recordProviderRunArtifact({
+          recorder: this.live.artifactRecorder,
+          providerRun: run,
+          artifact: buildArtifact({
             request,
             run,
             rawCapture: this.live.rawCapture,
@@ -359,7 +368,7 @@ export class OpenRouterProvider implements ModelProvider {
             },
             adapterMetadata: metadata,
           }),
-        );
+        });
         throw new ModelProviderError(
           `OpenRouter response cost $${(actualMicrosUsd / 1_000_000).toFixed(6)} exceeded pair-policy maxPriceUsd $${maxPriceUsd.toFixed(6)}`,
           "cost_cap_exceeded",
@@ -399,8 +408,10 @@ export class OpenRouterProvider implements ModelProvider {
       usageResponseJson: extractUsageResponseJson(body, null),
     });
     const metadata = adapterMetadata(body, providerRouting);
-    await this.live.artifactRecorder.recordProviderRun(
-      buildArtifact({
+    await recordProviderRunArtifact({
+      recorder: this.live.artifactRecorder,
+      providerRun: run,
+      artifact: buildArtifact({
         request,
         run,
         rawCapture: this.live.rawCapture,
@@ -411,7 +422,7 @@ export class OpenRouterProvider implements ModelProvider {
         },
         adapterMetadata: metadata,
       }),
-    );
+    });
     return {
       content: normalized.content,
       toolCalls: normalized.toolCalls,
@@ -1259,16 +1270,15 @@ export function extractCacheDiscountMicros(usage: Record<string, unknown>): numb
 /**
  * ITOTORI-232 — extract the `usage` block from an OpenRouter response body
  * and return it as a plain JsonObject suitable for persisting verbatim into
- * `itotori_draft_attempt_provider_ledger.usage_response_json`.
+ * `itotori_llm_attempts.usage_response_json`.
  *
  * Behaviour:
  *
  *   - On a successful call (`failureMarker === null`) the response's full
  *     `usage` object is mirrored verbatim, including `cost`, `cost_details`,
  *     `prompt_tokens_details`, and any caching annotations. This is the
- *     ledger row's load-bearing payload: the DB CHECK (migration 0041)
- *     verifies `cost_amount = usage_response_json->>'cost'` to within 1e-9
- *     USD on every new row. We re-shape only the JSON-incompatible bits
+ *     journal attempt's load-bearing payload. We re-shape only the
+ *     JSON-incompatible bits
  *     (filtering out symbols / undefined leaves) via {@link jsonValueOrUndefined};
  *     numbers, strings, booleans, arrays, and nested objects survive verbatim.
  *
@@ -1277,8 +1287,8 @@ export function extractCacheDiscountMicros(usage: Record<string, unknown>): numb
  *     deliberately STRIP the upstream `cost` field before persisting.
  *     Those failed runs are tagged zero-cost (see
  *     `buildProviderRunRecord`); if we kept the upstream `cost` here,
- *     the partial-NULL CHECK would fire and reject the row (cost_amount=0
- *     ≠ usage.cost). `_cost_cap_exceeded` is the exception: OpenRouter
+ *     the captured cost would misstate a failed call. `_cost_cap_exceeded` is
+ *     the exception: OpenRouter
  *     already completed and billed that response, so the failed audit row
  *     must retain the upstream cost.
  *

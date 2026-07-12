@@ -1,118 +1,88 @@
-// itotori-project-level-driven-executor — CONCRETE persistence sink adapters.
+// itotori-project-level-driven-executor — concrete journal + patch adapters.
 //
-// The executor persists through three narrow ports (draft / provider-run /
-// patch-export). These adapters bind those ports to REAL storage so a driven
-// run persists to actual tables + the filesystem, not in-memory:
+// The durable path has exactly two boundaries:
 //
-//   - written outcome    -> itotori_draft_jobs + itotori_draft_job_attempts
-//                           (ItotoriDraftJobRepository): one job + attempt per
-//                           run unit; every persisted outcome is written and
-//                           therefore marks its attempt succeeded.
-//   - provider-run       -> itotori_draft_attempt_provider_ledger
-//                           (ItotoriDraftAttemptProviderLedgerRepository): one
-//                           ledger row per unit carrying the REAL aggregated
-//                           usage.cost. The ledger's FK requires the draft
-//                           attempt to exist FIRST, so the executor persists the
-//                           draft before the provider-run (a single adapter
-//                           instance shares the per-unit attempt id).
-//   - patch-export       -> on-disk artifacts (translated-bridge.json +
-//                           patch-report.json) under a run directory.
+//   - unit journal -> itotori_localization_journal_* tables. Every physical
+//                     provider call lands as a row; then the canonical outcome
+//                     and its normalized provenance land atomically.
+//   - patch export -> translated-bridge.json + patch-report.json.
 //
-// This mirrors how the reviewer-queue sink binds to ItotoriReviewerQueueRepository.
+// Draft-job and aggregate provider-ledger rows are deliberately absent from
+// this adapter. They cannot represent a lossless execution journal.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { AuthorizationActor, ItotoriLocalizationJournalRepositoryPort } from "@itotori/db";
 import type {
-  AuthorizationActor,
-  ItotoriDraftAttemptProviderLedgerRepositoryPort,
-  ItotoriDraftJobRepositoryPort,
-} from "@itotori/db";
-import type {
-  DrivenWrittenOutcomeRecord,
-  DrivenWrittenOutcomeSink,
+  DrivenFailedUnitJournalRecord,
+  DrivenUnitJournalRecord,
+  DrivenUnitJournalSink,
   DrivenPatchExportRecord,
   DrivenPatchExportSink,
-  DrivenProviderRunRecord,
-  DrivenProviderRunSink,
 } from "./project-driven-executor.js";
 
-export type DrivenDbPersistenceOptions = {
-  projectId: string;
-  localeBranchId: string;
+export type DrivenJournalPersistenceOptions = {
   actor: AuthorizationActor;
-  /** The pinned (modelId, providerId) recorded on every draft job + ledger row. */
-  pair: { modelId: string; providerId: string };
-  now?: () => Date;
 };
 
 /**
- * Binds the draft + provider-run sinks to the REAL draft-job + provider-ledger
- * repositories. One instance persists a whole driven run: it keeps the per-unit
- * `draft_job_attempt_id` so the provider-run ledger row (recorded AFTER the
- * draft) can reference it (the ledger's on-delete-cascade FK requires the
- * attempt to exist first — the executor persists the draft before the run).
+ * Binds the executor's journal sink to its real repository. The executor gives
+ * us a stable run identity but deliberately knows nothing about database setup;
+ * establish the run before dispatch, and defensively ensure it again for every
+ * unit/failure write. The promise map keeps this safe if a future executor
+ * chooses concurrent persistence.
  */
-export class DrivenDbPersistenceAdapter implements DrivenWrittenOutcomeSink, DrivenProviderRunSink {
-  private readonly attemptByUnit = new Map<string, string>();
+export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
+  private readonly createdRuns = new Map<string, Promise<void>>();
 
   constructor(
-    private readonly draftJobs: ItotoriDraftJobRepositoryPort,
-    private readonly ledger: ItotoriDraftAttemptProviderLedgerRepositoryPort,
-    private readonly opts: DrivenDbPersistenceOptions,
+    private readonly journal: ItotoriLocalizationJournalRepositoryPort,
+    private readonly opts: DrivenJournalPersistenceOptions,
   ) {}
 
-  async persistWrittenOutcome(record: DrivenWrittenOutcomeRecord): Promise<void> {
-    const now = this.opts.now?.() ?? new Date();
-    const job = await this.draftJobs.createDraftJob(this.opts.actor, {
-      projectId: this.opts.projectId,
-      localeBranchId: this.opts.localeBranchId,
-      sourceUnitIds: [record.bridgeUnitId],
-      styleGuideVersion: "driven-executor",
-      glossaryVersion: "driven-executor",
-      policyVersions: {
-        promptTemplateVersion: "driven-executor-v0",
-        modelProviderFamily: "openrouter",
-        modelId: this.opts.pair.modelId,
-      },
-    });
-    const attempt = await this.draftJobs.recordAttempt(this.opts.actor, job.draftJobId, {
-      attemptIndex: 1,
-      startedAt: now,
-    });
-    this.attemptByUnit.set(record.bridgeUnitId, attempt.draftJobAttemptId);
-    await this.draftJobs.markAttemptSucceeded(this.opts.actor, attempt.draftJobAttemptId, now);
+  async beginJournalRun(record: DrivenUnitJournalRecord["run"]): Promise<void> {
+    await this.ensureRun(record);
   }
 
-  async persistProviderRun(record: DrivenProviderRunRecord): Promise<void> {
-    const attemptId = this.attemptByUnit.get(record.bridgeUnitId);
-    if (attemptId === undefined) {
-      throw new Error(
-        `driven-db-sink: no draft attempt persisted for unit ${record.bridgeUnitId}; ` +
-          "the executor must persist the draft (which creates the attempt) before the provider run",
-      );
-    }
-    // PROJECT LAW: cost comes only from the real aggregated usage.cost. The
-    // ledger CHECK requires cost_unit='usd' + cost_amount == usage.cost, so the
-    // usage block mirrors the same billed total the executor summed.
-    const costAmount = record.totalCostUsd.toFixed(8);
-    await this.ledger.recordLedgerEntry(this.opts.actor, {
-      draftJobAttemptId: attemptId,
-      // The provider-proof id carries a UNIQUE index. A MULTI-PASS run
-      // (pass-ledger) re-drafts the same unit across passes — each pass is a
-      // distinct provider run on a fresh draft attempt — so key the synthetic
-      // proof id by the per-attempt id (unique per draft attempt) rather than
-      // by the bridge unit alone, or pass N+1's ledger row collides with pass N.
-      providerProofId: `driven-executor:${record.bridgeUnitId}:${attemptId}`,
-      providerId: record.pair.providerId,
-      modelId: record.pair.modelId,
-      modelProviderFamily: "openrouter",
-      tokensIn: record.totalTokensIn,
-      tokensOut: record.totalTokensOut,
-      tokenCountSource: "provider_reported",
-      costUnit: "usd",
-      costAmount,
-      usageResponseJson: { cost: Number(costAmount) },
+  async persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void> {
+    await this.ensureRun(record.run);
+    await this.journal.persistUnit(this.opts.actor, {
+      runId: record.run.runId,
+      bridgeUnitId: record.writtenOutcome.bridgeUnitId,
+      sourceUnitKey: record.writtenOutcome.sourceUnitKey,
+      outcome: record.writtenOutcome.outcome,
+      attempts: record.attempts,
+      contextPacket: record.contextPacket,
+      contextRefs: record.contextRefs,
+      speakerLabels: record.speakerLabels,
+      qaDetails: record.qaDetails,
     });
+  }
+
+  async persistFailedUnitAttempts(record: DrivenFailedUnitJournalRecord): Promise<void> {
+    await this.ensureRun(record.run);
+    await this.journal.persistAttempts(this.opts.actor, {
+      runId: record.run.runId,
+      bridgeUnitId: record.bridgeUnitId,
+      attempts: record.attempts,
+    });
+  }
+
+  private async ensureRun(run: DrivenUnitJournalRecord["run"]): Promise<void> {
+    let creation = this.createdRuns.get(run.runId);
+    if (creation === undefined) {
+      creation = this.journal
+        .createRun(this.opts.actor, {
+          runId: run.runId,
+          projectId: run.projectId,
+          localeBranchId: run.localeBranchId,
+          sourceRevisionId: run.sourceRevisionId,
+          targetLocale: run.targetLocale,
+        })
+        .then(() => undefined);
+      this.createdRuns.set(run.runId, creation);
+    }
+    await creation;
   }
 }
 

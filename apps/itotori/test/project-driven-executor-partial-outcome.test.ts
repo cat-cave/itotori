@@ -17,9 +17,9 @@ import {
 } from "../src/orchestrator/agentic-loop.js";
 import {
   runProjectDrivenExecutor,
+  type DrivenFailedUnitJournalRecord,
   type DrivenPatchExportRecord,
-  type DrivenProviderRunRecord,
-  type DrivenWrittenOutcomeRecord,
+  type DrivenUnitJournalRecord,
 } from "../src/orchestrator/project-driven-executor.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
@@ -125,8 +125,8 @@ function partialQaProviderFactory(): AgenticLoopProviderFactory {
 
 describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
   it("persists and exports a primary candidate when QA coverage is incomplete", async () => {
-    const writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
-    const providerRuns: DrivenProviderRunRecord[] = [];
+    const journalUnits: DrivenUnitJournalRecord[] = [];
+    const failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
     const patchExports: DrivenPatchExportRecord[] = [];
     const bridge = makeBridge();
 
@@ -143,14 +143,12 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
       translationScope: "dialogue-only",
       engineProfile: "rpg-maker-mv-mz",
       sinks: {
-        writtenOutcome: {
-          persistWrittenOutcome: async (record) => {
-            writtenOutcomes.push(record);
+        journal: {
+          persistUnitJournal: async (record) => {
+            journalUnits.push(record);
           },
-        },
-        providerRun: {
-          persistProviderRun: async (record) => {
-            providerRuns.push(record);
+          persistFailedUnitAttempts: async (record) => {
+            failedUnitAttempts.push(record);
           },
         },
         patchExport: {
@@ -163,15 +161,37 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
 
     expect(result.failures).toEqual([]);
     expect(result.writtenOutcomesPersisted).toBe(1);
+    expect(result.journalUnitsPersisted).toBe(1);
     expect(result.patchExportCount).toBe(1);
     expect(result.patchReport.coverageComplete).toBe(true);
-    expect(writtenOutcomes).toHaveLength(1);
-    expect(writtenOutcomes[0]).toMatchObject({
+    expect(journalUnits).toHaveLength(1);
+    expect(journalUnits[0]!.writtenOutcome).toMatchObject({
       bridgeUnitId: BRIDGE_UNIT_ID,
       selectedBody: SELECTED_TARGET,
       outcome: { status: "written", qualityFlags: expect.arrayContaining(["qa_incomplete"]) },
     });
-    expect(providerRuns).toHaveLength(1);
+    expect(failedUnitAttempts).toEqual([]);
+    expect(result.attemptsPersisted).toBe(journalUnits[0]!.attempts.length);
+    expect(journalUnits[0]!.attempts.length).toBeGreaterThan(0);
+    const incompleteQaAttempts = journalUnits[0]!.attempts.filter(
+      (attempt) => attempt.stage === "qa_findings",
+    );
+    expect(incompleteQaAttempts).toHaveLength(4);
+    expect(incompleteQaAttempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          validationResult: "semantic_invalid",
+          retryDecision: "advance",
+          failureClass: "QaPartialResultError",
+        }),
+      ]),
+    );
+    expect(
+      incompleteQaAttempts.every(
+        (attempt) =>
+          attempt.validationResult === "semantic_invalid" && attempt.retryDecision === "advance",
+      ),
+    ).toBe(true);
     expect(patchExports).toHaveLength(1);
     const exported = patchExports[0]!.translatedBridge as {
       units: Array<{ bridgeUnitId: string; target: { text: string } }>;

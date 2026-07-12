@@ -544,7 +544,7 @@ async function runTelemetrySummaryHandler(
   // UTSUSHI-231 — when `--provider-runs-dir` is supplied, source the
   // summary from the per-run `provider-run.json` artifacts the
   // localize-project stage writes (the DB-free path) instead of the
-  // draft-attempt provider ledger. The byPair, ZDR, and billed-cost
+  // durable journal. The byPair, ZDR, and billed-cost
   // evidence come verbatim from the real served responses captured in
   // those artifacts — no DB, no withServices.
   if (args.includes("--provider-runs-dir")) {
@@ -1037,11 +1037,11 @@ async function runLocalizeProjectStage(
 /**
  * itotori-localize-fullproject-cli — the general `itotori localize <project>`
  * whole-game driver. Runs the FULL configured project (every in-scope unit)
- * through the multi-pass ledger against LIVE OpenRouter + real Postgres:
- * persists drafts + reviewer-queue items, exports a patch, and records the
- * pass (real usage.cost + ZDR). GAME-AGNOSTIC — the only inputs are the config
- * path + a run directory; the project/branch/revision ids + the pinned pair
- * arrive through the config + its pair-policy.
+ * through the durable attempt/outcome journal against LIVE OpenRouter + real
+ * Postgres: persists every physical call, canonical outcomes, provenance, and
+ * reviewer-queue items before exporting a patch. GAME-AGNOSTIC — the only
+ * inputs are the config path + a run directory; the project/branch/revision
+ * ids + the pinned pair arrive through the config + its pair-policy.
  *
  * Required flags (no defaulting):
  *   --config <PATH>       localize-fullproject config JSON
@@ -1057,11 +1057,11 @@ async function runLocalizeProjectStage(
  *   --patch-target <PATH> writable output the patched archive lands under
  *
  * m1-wholegame-localize-to-patch-seam: pass BOTH --source and --patch-target to
- * reach an APPLYABLE, byte-correct patch — the run's real drafts pass the
- * export-patch preflight (production loader) then `kaifuu patch` (dispatched on
- * the config engineProfile: `--engine reallive` for Seen.txt, `--engine
- * rpgmaker` for www/data/*.json → `.kaifuu` delta + patched tree) writes the
- * patched output. Omit both to stop at translated-bridge.json.
+ * reach an APPLYABLE, byte-correct patch — the run's real journal outcomes pass
+ * the export-patch preflight (production loader) then `kaifuu patch`
+ * (dispatched on the config engineProfile: `--engine reallive` for Seen.txt,
+ * `--engine rpgmaker` for www/data/*.json → `.kaifuu` delta + patched tree)
+ * writes the patched output. Omit both to stop at translated-bridge.json.
  */
 async function runLocalizeFullProject(
   args: string[],
@@ -1091,7 +1091,7 @@ async function runLocalizeFullProject(
     }
     costCapUsd = parsed;
   }
-  const { result, record, patchApply } = await runLocalizeFullProjectLive({
+  const { result, patchApply } = await runLocalizeFullProjectLive({
     configPath,
     runDir,
     io: {
@@ -1111,13 +1111,13 @@ async function runLocalizeFullProject(
   process.stdout.write(
     `${JSON.stringify(
       {
-        passNumber: record.passNumber,
-        priorPassNumber: record.priorPassNumber ?? null,
+        journalRunId: result.journalRunId,
         unitsRun: result.unitsRun,
         writtenOutcomeCount: result.writtenOutcomeCount,
         failureCount: result.failures.length,
         reviewerQueueItemCount: result.reviewerQueueItemCount,
-        writtenDeltaCount: record.writtenDeltas.length,
+        attemptsPersisted: result.attemptsPersisted,
+        totalUsageCostExactUsd: result.totalUsageCostExactUsd,
         totalUsageCostUsd: result.totalUsageCostUsd,
         zdrConfirmed: result.zdrConfirmed,
         budgetStopped: result.budgetStopped,
@@ -1270,6 +1270,7 @@ async function runLocalizeGame(
           patchTargetRoot: result.patchTargetRoot,
           unitsRun: result.localize.result.unitsRun,
           writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
+          totalUsageCostExactUsd: result.localize.result.totalUsageCostExactUsd,
           totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
           zdrConfirmed: result.localize.result.zdrConfirmed,
           patchApplied: result.localize.patchApply !== undefined,

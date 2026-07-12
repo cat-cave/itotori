@@ -1,12 +1,12 @@
 import {
-  ItotoriLocalizationPassLedgerRepository,
+  ItotoriLocalizationJournalRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   localUserId,
   type AuthorizationActor,
   type ProjectDashboardStatus,
 } from "@itotori/db";
-import type { BenchmarkReportV02 } from "@itotori/localization-bridge-schema";
+import { asNonBlankTargetText, type BenchmarkReportV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { assertItotoriApiResponse } from "../src/api-schema.js";
@@ -23,101 +23,20 @@ import {
 
 const actor: AuthorizationActor = { userId: localUserId };
 const dbBackedIt = process.env.DATABASE_URL ? it : it.skip;
+// Each case creates and migrates its own live Postgres schema. The app suite
+// runs these alongside other DB-backed cases, so use the DB suite's timeout
+// rather than Vitest's 5s unit-test default.
+const dbIntegrationTimeoutMs = 90_000;
 
 describe("projects.overview read model", () => {
-  dbBackedIt("composes the individual project cockpit source read models", async () => {
-    const context = await isolatedMigratedContext();
-    try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
-      const modelLedger = new ItotoriModelLedgerRepository(context.db);
-      const passLedger = new ItotoriLocalizationPassLedgerRepository(context.db);
-      const service = new ItotoriProjectWorkflowService(
-        projectRepository,
-        actor,
-        undefined,
-        modelLedger,
-        undefined,
-        undefined,
-        passLedger,
-      );
-
-      const project = await service.importBridge(bridgeFixture);
-      const importedStatus = await service.getDashboardStatus();
-      const pass = await passLedger.recordPass(actor, {
-        projectId: project.projectId,
-        localeBranchId: project.localeBranchId,
-        sourceRevisionId: importedStatus.sourceBundleRevisionId,
-        recordedAt: new Date("2026-07-07T00:00:00.000Z"),
-        totalUsageCostUsd: 0.0123,
-        zdrConfirmed: true,
-        recordBody: { accepted: 1, flagged: 0 },
-      });
-      const benchmarkReport = scopedBenchmarkReport(project.localeBranchId);
-      await service.recordBenchmarkReport(project.projectId, { benchmarkReport });
-
-      const costDrilldownFilter = {
-        projectId: project.projectId,
-        limit: 2,
-        offset: 0,
-      };
-      const [progress, decisions, cost, telemetry, costDrilldown, benchmarkReports, passRows] =
-        await Promise.all([
-          service.getDashboardStatus(),
-          service.getDashboardDecisions(project.projectId),
-          service.getCostReport(project.projectId),
-          service.getTelemetryTimeseries(project.projectId),
-          service.getCostDrilldown(costDrilldownFilter),
-          service.getBenchmarkReports(project.projectId),
-          passLedger.loadPassesForBranch(actor, project.localeBranchId),
-        ]);
-
-      const overview = await service.getProjectOverview({
-        projectId: project.projectId,
-        generatedAt: new Date("2026-07-07T00:00:00.000Z"),
-        costDrilldown: costDrilldownFilter,
-        passLedger: { localeBranchId: project.localeBranchId, limit: 1, offset: 0 },
-      });
-
-      expect(() => assertItotoriApiResponse("projects.overview", overview)).not.toThrow();
-      expect(overview.progress).toEqual(progress);
-      expect(overview.decisions).toEqual(decisions);
-      expect(overview.cost).toEqual(cost);
-      expect(overview.telemetry).toEqual(telemetry);
-      expect(overview.costDrilldown).toEqual(costDrilldown);
-      expect(overview.passLedger).toMatchObject({
-        filter: { projectId: project.projectId, localeBranchId: project.localeBranchId },
-        pagination: { total: passRows.length, limit: 1, offset: 0 },
-        rows: [
-          {
-            passLedgerId: pass.passLedgerId,
-            projectId: project.projectId,
-            localeBranchId: project.localeBranchId,
-            sourceRevisionId: importedStatus.sourceBundleRevisionId,
-            passNumber: pass.passNumber,
-            priorPassNumber: null,
-            totalUsageCostUsd: 0.0123,
-            zdrConfirmed: true,
-            recordedAt: "2026-07-07T00:00:00.000Z",
-          },
-        ],
-      });
-      expect(overview.benchmarkHeadline).toEqual({
-        reportCount: benchmarkReports.length,
-        latestReport: benchmarkReports[0] ?? null,
-      });
-    } finally {
-      await context.close();
-    }
-  });
-
   dbBackedIt(
-    "does NOT leak another project's pass ledger when a foreign locale-branch id is supplied",
+    "renders persisted journal provenance through the composed overview",
     async () => {
       const context = await isolatedMigratedContext();
       try {
         const projectRepository = new ItotoriProjectRepository(context.db);
         const modelLedger = new ItotoriModelLedgerRepository(context.db);
-        const passLedger = new ItotoriLocalizationPassLedgerRepository(context.db);
+        const journal = new ItotoriLocalizationJournalRepository(context.db);
         const service = new ItotoriProjectWorkflowService(
           projectRepository,
           actor,
@@ -125,150 +44,212 @@ describe("projects.overview read model", () => {
           modelLedger,
           undefined,
           undefined,
-          passLedger,
+          journal,
         );
 
-        // Project A (the target of the overview).
-        const projectA = await service.importBridge(bridgeFixture);
-
-        // Project B — a DIFFERENT project with its own locale branch and its
-        // own pass ledger. Imported second, so it is also the globally-latest
-        // project.
-        await projectRepository.importSourceBundle(actor, nonJapaneseTargetProjectFixture);
-        const statusB = await service.getDashboardStatus(nonJapaneseTargetProjectFixture.projectId);
-        const foreignBranchId = nonJapaneseTargetProjectFixture.localeBranchId;
-        const foreignPass = await passLedger.recordPass(actor, {
-          projectId: nonJapaneseTargetProjectFixture.projectId,
-          localeBranchId: foreignBranchId,
-          sourceRevisionId: statusB.sourceBundleRevisionId,
-          recordedAt: new Date("2026-07-07T00:00:00.000Z"),
-          totalUsageCostUsd: 9.99,
-          zdrConfirmed: true,
-          recordBody: { secret: "project-B-pass-ledger" },
+        const project = await service.importBridge(bridgeFixture);
+        const importedStatus = await service.getDashboardStatus();
+        const run = await persistJournalRun({
+          journal,
+          projectId: project.projectId,
+          localeBranchId: project.localeBranchId,
+          sourceRevisionId: importedStatus.sourceBundleRevisionId,
+          runId: "journal-run-project-overview",
         });
+        const benchmarkReport = scopedBenchmarkReport(project.localeBranchId);
+        await service.recordBenchmarkReport(project.projectId, { benchmarkReport });
 
-        // Sanity: project B's pass ledger really does hold a row (so the test
-        // proves suppression of REAL data, not the absence of any data).
-        const foreignRows = await passLedger.loadPassesForBranch(actor, foreignBranchId);
-        expect(foreignRows.map((row) => row.passLedgerId)).toContain(foreignPass.passLedgerId);
+        const costDrilldownFilter = { projectId: project.projectId, limit: 2, offset: 0 };
+        const [progress, decisions, cost, telemetry, costDrilldown, benchmarkReports, journalRuns] =
+          await Promise.all([
+            service.getDashboardStatus(),
+            service.getDashboardDecisions(project.projectId),
+            service.getCostReport(project.projectId),
+            service.getTelemetryTimeseries(project.projectId),
+            service.getCostDrilldown(costDrilldownFilter),
+            service.getBenchmarkReports(project.projectId),
+            journal.loadRunsForBranch(actor, project.localeBranchId),
+          ]);
 
-        // The attack: request project A's overview but hand in project B's
-        // locale-branch id for the pass ledger.
         const overview = await service.getProjectOverview({
-          projectId: projectA.projectId,
+          projectId: project.projectId,
           generatedAt: new Date("2026-07-07T00:00:00.000Z"),
-          passLedger: { localeBranchId: foreignBranchId },
+          costDrilldown: costDrilldownFilter,
+          journal: { localeBranchId: project.localeBranchId, limit: 1, offset: 0 },
         });
 
-        // The whole payload is scoped to project A.
-        expect(overview.projectId).toBe(projectA.projectId);
-        expect(overview.progress.projectId).toBe(projectA.projectId);
-        // The foreign branch is REFUSED (not project A's) — no rows, and the
-        // filter reflects the refusal rather than echoing the foreign branch.
-        expect(overview.passLedger.filter.localeBranchId).toBeNull();
-        expect(overview.passLedger.rows).toEqual([]);
-        expect(overview.passLedger.pagination.total).toBe(0);
-        // Belt-and-suspenders: project B's secret never appears anywhere.
-        expect(JSON.stringify(overview)).not.toContain("project-B-pass-ledger");
-        expect(JSON.stringify(overview)).not.toContain(foreignPass.passLedgerId);
+        expect(() => assertItotoriApiResponse("projects.overview", overview)).not.toThrow();
+        expect(overview.progress).toEqual(progress);
+        expect(overview.decisions).toEqual(decisions);
+        expect(overview.cost).toEqual(cost);
+        expect(overview.telemetry).toEqual(telemetry);
+        expect(overview.costDrilldown).toEqual(costDrilldown);
+        expect(overview.journal).toMatchObject({
+          filter: { projectId: project.projectId, localeBranchId: project.localeBranchId },
+          pagination: { total: journalRuns.length, limit: 1, offset: 0 },
+          rows: [
+            {
+              journalRunId: run.runId,
+              projectId: project.projectId,
+              localeBranchId: project.localeBranchId,
+              sourceRevisionId: importedStatus.sourceBundleRevisionId,
+              targetLocale: "en-US",
+              physicalCallCount: 1,
+              failedPhysicalCallCount: 0,
+              writtenOutcomeCount: 1,
+              candidateCount: 1,
+              qaFindingCount: 1,
+              contextRefCount: 1,
+              speakerLabelCount: 0,
+            },
+          ],
+        });
+        expect(overview.benchmarkHeadline).toEqual({
+          reportCount: benchmarkReports.length,
+          latestReport: benchmarkReports[0] ?? null,
+        });
       } finally {
         await context.close();
       }
     },
+    dbIntegrationTimeoutMs,
   );
 
-  dbBackedIt("composes a single-project payload even when another project is latest", async () => {
-    const context = await isolatedMigratedContext();
-    try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
-      const modelLedger = new ItotoriModelLedgerRepository(context.db);
-      const service = new ItotoriProjectWorkflowService(
-        projectRepository,
-        actor,
-        undefined,
-        modelLedger,
-      );
+  dbBackedIt(
+    "does NOT leak another project's journal when a foreign locale-branch id is supplied",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        const projectRepository = new ItotoriProjectRepository(context.db);
+        const modelLedger = new ItotoriModelLedgerRepository(context.db);
+        const journal = new ItotoriLocalizationJournalRepository(context.db);
+        const service = new ItotoriProjectWorkflowService(
+          projectRepository,
+          actor,
+          undefined,
+          modelLedger,
+          undefined,
+          undefined,
+          journal,
+        );
 
-      // Project A first, then project B — B becomes the globally-latest.
-      const projectA = await service.importBridge(bridgeFixture);
-      await projectRepository.importSourceBundle(actor, nonJapaneseTargetProjectFixture);
+        const projectA = await service.importBridge(bridgeFixture);
+        await projectRepository.importSourceBundle(actor, nonJapaneseTargetProjectFixture);
+        const statusB = await service.getDashboardStatus(nonJapaneseTargetProjectFixture.projectId);
+        const foreignRun = await persistJournalRun({
+          journal,
+          projectId: nonJapaneseTargetProjectFixture.projectId,
+          localeBranchId: nonJapaneseTargetProjectFixture.localeBranchId,
+          sourceRevisionId: statusB.sourceBundleRevisionId,
+          runId: "journal-run-project-b-secret",
+        });
+        expect(
+          (
+            await journal.loadRunsForBranch(actor, nonJapaneseTargetProjectFixture.localeBranchId)
+          ).map((row) => row.runId),
+        ).toContain(foreignRun.runId);
 
-      // The UNSCOPED dashboard status points at the latest project (B). This is
-      // exactly the value the old overview spliced in as `progress` regardless
-      // of the requested projectId.
-      const latest = await service.getDashboardStatus();
-      expect(latest.projectId).toBe(nonJapaneseTargetProjectFixture.projectId);
+        const overview = await service.getProjectOverview({
+          projectId: projectA.projectId,
+          generatedAt: new Date("2026-07-07T00:00:00.000Z"),
+          journal: { localeBranchId: nonJapaneseTargetProjectFixture.localeBranchId },
+        });
 
-      const overview = await service.getProjectOverview({ projectId: projectA.projectId });
-
-      // Every composed piece is project A's — no mixing of B's progress in.
-      expect(overview.projectId).toBe(projectA.projectId);
-      expect(overview.progress.projectId).toBe(projectA.projectId);
-      expect(overview.cost.projectId).toBe(projectA.projectId);
-      for (const branch of overview.progress.localeBranches) {
-        expect(branch.localeBranchId).not.toBe(nonJapaneseTargetProjectFixture.localeBranchId);
+        expect(overview.projectId).toBe(projectA.projectId);
+        expect(overview.progress.projectId).toBe(projectA.projectId);
+        expect(overview.journal.filter.localeBranchId).toBeNull();
+        expect(overview.journal.rows).toEqual([]);
+        expect(overview.journal.pagination.total).toBe(0);
+        expect(JSON.stringify(overview)).not.toContain(foreignRun.runId);
+      } finally {
+        await context.close();
       }
-    } finally {
-      await context.close();
-    }
-  });
+    },
+    dbIntegrationTimeoutMs,
+  );
 
-  dbBackedIt("reads the pass ledger ONLY inside the permission boundary", async () => {
-    const context = await isolatedMigratedContext();
-    try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
-      const modelLedger = new ItotoriModelLedgerRepository(context.db);
-      const passLedger = new ItotoriLocalizationPassLedgerRepository(context.db);
-      const service = new ItotoriProjectWorkflowService(
-        projectRepository,
-        actor,
-        undefined,
-        modelLedger,
-        undefined,
-        undefined,
-        passLedger,
-      );
+  dbBackedIt(
+    "composes a single-project payload even when another project is latest",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        const projectRepository = new ItotoriProjectRepository(context.db);
+        const modelLedger = new ItotoriModelLedgerRepository(context.db);
+        const service = new ItotoriProjectWorkflowService(
+          projectRepository,
+          actor,
+          undefined,
+          modelLedger,
+        );
 
-      const project = await service.importBridge(bridgeFixture);
-      const importedStatus = await service.getDashboardStatus();
-      await passLedger.recordPass(actor, {
-        projectId: project.projectId,
-        localeBranchId: project.localeBranchId,
-        sourceRevisionId: importedStatus.sourceBundleRevisionId,
-        recordedAt: new Date("2026-07-07T00:00:00.000Z"),
-        totalUsageCostUsd: 0.0123,
-        zdrConfirmed: true,
-        recordBody: { accepted: 1 },
-      });
+        const projectA = await service.importBridge(bridgeFixture);
+        await projectRepository.importSourceBundle(actor, nonJapaneseTargetProjectFixture);
+        const latest = await service.getDashboardStatus();
+        expect(latest.projectId).toBe(nonJapaneseTargetProjectFixture.projectId);
 
-      // Permitted caller (includePassLedger !== false) — the rows are read.
-      const permitted = await service.getProjectOverview({
-        projectId: project.projectId,
-        passLedger: { localeBranchId: project.localeBranchId },
-      });
-      expect(permitted.passLedger.rows).toHaveLength(1);
+        const overview = await service.getProjectOverview({ projectId: projectA.projectId });
+        expect(overview.projectId).toBe(projectA.projectId);
+        expect(overview.progress.projectId).toBe(projectA.projectId);
+        expect(overview.cost.projectId).toBe(projectA.projectId);
+        for (const branch of overview.progress.localeBranches) {
+          expect(branch.localeBranchId).not.toBe(nonJapaneseTargetProjectFixture.localeBranchId);
+        }
+      } finally {
+        await context.close();
+      }
+    },
+    dbIntegrationTimeoutMs,
+  );
 
-      // Unpermitted caller (includePassLedger === false, as the API boundary
-      // sets it for a caller lacking draft.write) — the ledger is NEVER read;
-      // an empty page is composed inside the boundary.
-      const redacted = await service.getProjectOverview({
-        projectId: project.projectId,
-        passLedger: { localeBranchId: project.localeBranchId },
-        includePassLedger: false,
-      });
-      expect(redacted.passLedger.rows).toEqual([]);
-      // The rest of the overview is unaffected.
-      expect(redacted.progress.projectId).toBe(project.projectId);
-    } finally {
-      await context.close();
-    }
-  });
+  dbBackedIt(
+    "reads the journal only inside the catalog.read composition boundary",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        const projectRepository = new ItotoriProjectRepository(context.db);
+        const modelLedger = new ItotoriModelLedgerRepository(context.db);
+        const journal = new ItotoriLocalizationJournalRepository(context.db);
+        const service = new ItotoriProjectWorkflowService(
+          projectRepository,
+          actor,
+          undefined,
+          modelLedger,
+          undefined,
+          undefined,
+          journal,
+        );
+        const project = await service.importBridge(bridgeFixture);
+        const importedStatus = await service.getDashboardStatus();
+        await persistJournalRun({
+          journal,
+          projectId: project.projectId,
+          localeBranchId: project.localeBranchId,
+          sourceRevisionId: importedStatus.sourceBundleRevisionId,
+          runId: "journal-run-permission-boundary",
+        });
+
+        const permitted = await service.getProjectOverview({
+          projectId: project.projectId,
+          journal: { localeBranchId: project.localeBranchId },
+        });
+        expect(permitted.journal.rows).toHaveLength(1);
+
+        const redacted = await service.getProjectOverview({
+          projectId: project.projectId,
+          journal: { localeBranchId: project.localeBranchId },
+          includeJournal: false,
+        });
+        expect(redacted.journal.rows).toEqual([]);
+        expect(redacted.progress.projectId).toBe(project.projectId);
+      } finally {
+        await context.close();
+      }
+    },
+    dbIntegrationTimeoutMs,
+  );
 
   it("refuses to compose a mixed-project overview at the composition seam", async () => {
-    const statusForProjectB: ProjectDashboardStatus = {
-      ...baseStatus(),
-      projectId: "project-b",
-    };
+    const statusForProjectB: ProjectDashboardStatus = { ...baseStatus(), projectId: "project-b" };
     await expect(
       composeProjectOverviewReadModel({
         actor,
@@ -283,6 +264,100 @@ describe("projects.overview read model", () => {
     ).rejects.toBeInstanceOf(ProjectOverviewProjectMismatchError);
   });
 });
+
+async function persistJournalRun(input: {
+  journal: ItotoriLocalizationJournalRepository;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  runId: string;
+}): Promise<{ runId: string }> {
+  const run = await input.journal.createRun(actor, {
+    runId: input.runId,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    sourceRevisionId: input.sourceRevisionId,
+    targetLocale: "en-US",
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+  const bridgeUnitId = `bridge-unit-${input.runId}`;
+  const attemptId = `provider-run-${input.runId}`;
+  await input.journal.persistUnit(actor, {
+    runId: run.runId,
+    bridgeUnitId,
+    attempts: [
+      {
+        attemptId,
+        runId: run.runId,
+        bridgeUnitId,
+        stage: "translation",
+        agentLabel: "translator",
+        logicalCallId: `logical-${input.runId}`,
+        attemptIndex: 0,
+        modelId: "model-overview",
+        providerId: "provider-overview",
+        providerRunId: attemptId,
+        costUsd: "0.000001",
+        tokensIn: 4,
+        tokensOut: 3,
+        zdr: true,
+        finishState: "stop",
+        refusalState: null,
+        validationResult: "accepted",
+        failureClass: null,
+        retryDecision: "write",
+        retryDelayMs: null,
+        artifactRef: `artifact:${attemptId}`,
+        errorClasses: [],
+        startedAt: "2026-07-07T00:00:01.000Z",
+        completedAt: "2026-07-07T00:00:02.000Z",
+      },
+    ],
+    outcome: {
+      id: `outcome-${input.runId}`,
+      status: "written",
+      unitId: bridgeUnitId,
+      targetLocale: "en-US",
+      selectedCandidateId: `candidate-${input.runId}`,
+      candidates: [
+        {
+          id: `candidate-${input.runId}`,
+          outcomeId: `outcome-${input.runId}`,
+          body: asNonBlankTargetText("Durable journal target."),
+          producedBy: { modelId: "model-overview", providerId: "provider-overview" },
+          attemptId,
+          kind: "primary",
+        },
+      ],
+      findings: [
+        {
+          id: `finding-${input.runId}`,
+          outcomeId: `outcome-${input.runId}`,
+          candidateId: `candidate-${input.runId}`,
+          severity: "minor",
+          category: "style",
+          note: "Visible provenance finding.",
+          contested: false,
+          confidence: 0.8,
+        },
+      ],
+      qualityFlags: ["qa_noted"],
+      provenance: { source: "overview-db-test" },
+      writtenAt: "2026-07-07T00:00:02.000Z",
+    },
+    contextPacket: { glossary: "resolved" },
+    contextRefs: [{ refKind: "glossary", refId: "glossary-overview", versionRef: "v1" }],
+    speakerLabels: [],
+    qaDetails: {
+      [`finding-${input.runId}`]: {
+        recommendation: "Keep the resolved register.",
+        agentRationale: "The journal overview must expose QA provenance.",
+        evidenceRefs: ["glossary-overview:v1"],
+      },
+    },
+  });
+  return { runId: run.runId };
+}
 
 function baseStatus(): ProjectDashboardStatus {
   const emptyCost = {

@@ -35,6 +35,7 @@ import {
   type DroppedContextEnrichment,
   type LocalizationUnitV02,
   type QaFinding,
+  type SpeakerLabel,
   type StagePostureV03,
   type StyleGuidePolicyV0Draft,
   type TranslationCandidate,
@@ -243,6 +244,191 @@ export type AgenticLoopProviderFactory = (input: {
 }) => ModelProvider;
 
 /**
+ * Optional execution-journal observer. The loop owns the semantic result of a
+ * provider response (for example, an empty `stop` response is invalid even
+ * though the transport invocation resolved); the physical-call wrapper owns
+ * persistence identity. This narrow callback joins those two facts without
+ * changing the canonical bundle wire shape.
+ */
+export type AgenticLoopAttemptOutcomeObserver = {
+  markFailedAttempt(input: {
+    stage: AgenticLoopStageName;
+    agentLabel: string;
+    error: unknown;
+    retryDecision: "advance" | "pause";
+  }): void;
+};
+
+/**
+ * Explicit node-6 seam for the context that is resolved today but has not yet
+ * been assigned immutable version identities by a persistent context store.
+ * Keeping this discriminant alongside the empty refs means a reader can tell
+ * the difference between "no context" and "resolved, but not versioned yet".
+ */
+export type ContextVersionReferenceState =
+  | {
+      availability: "versioned";
+      refs: string[];
+    }
+  | {
+      availability: "pending_persistent_context_brain";
+      refs: [];
+    };
+
+/** One resolved context item retained as a normalized journal reference. */
+export type OutcomeJournalContextRef = {
+  refKind: string;
+  refId: string;
+  versionRef?: string;
+  details?: unknown;
+};
+
+/**
+ * Exact resolved context that was available to the current loop. This remains
+ * a packet (rather than a new context-store schema) so the journal preserves
+ * glossary, style, and work-scope provenance before node 6 exists.
+ */
+export type ResolvedOutcomeContextPacket = {
+  structuredContext: StructuredContextInjection | null;
+  artifactRefs: string[];
+  glossary: TranslationGlossaryEntry[];
+  styleGuide: StyleGuidePolicyV0Draft | null;
+  styleGuideRules: TranslationStyleGuideRule[];
+  workScope: TranslationWorkScopeContext | null;
+  priorPassFeedback: PriorPassFeedback | null;
+  priorJournalRunId: string | null;
+  contextVersionReferenceState: ContextVersionReferenceState;
+};
+
+/**
+ * Extra execution provenance carried inside the canonical outcome's existing
+ * `provenance` slot. `WrittenUnitOutcome` itself remains the node-1 shape; the
+ * journal projection reads this typed supplement to retain context, speaker,
+ * and raw-QA provenance that the presentation outcome intentionally condenses.
+ */
+export type OutcomeJournalProvenance = {
+  resolvedContextPacket: ResolvedOutcomeContextPacket | null;
+  contextArtifactRefs: string[];
+  /** Flattened for the normalized DB ref rows; see the typed state below. */
+  contextVersionRefs: string[];
+  contextVersionReferenceState: ContextVersionReferenceState;
+  /** Resolved glossary/style/work-scope references, separate from artifacts. */
+  resolvedContextRefs: OutcomeJournalContextRef[];
+  selectedCandidateCitationRefs: string[];
+  speakerLabels: SpeakerLabel[];
+  qaFindingDetails: Array<{
+    findingId: string;
+    recommendation: string;
+    agentRationale: string;
+    evidenceRefs: string[];
+    sourceSpan?: { start: number; end: number };
+    draftSpan?: { start: number; end: number };
+  }>;
+};
+
+export function readOutcomeJournalProvenance(value: unknown): OutcomeJournalProvenance {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return emptyOutcomeJournalProvenance();
+  }
+  const journal = (value as Record<string, unknown>).journal;
+  if (typeof journal !== "object" || journal === null || Array.isArray(journal)) {
+    return emptyOutcomeJournalProvenance();
+  }
+  const record = journal as Partial<OutcomeJournalProvenance>;
+  const storedContextVersionRefs = stringArray(record.contextVersionRefs);
+  let contextVersionReferenceState = readContextVersionReferenceState(
+    record.contextVersionReferenceState,
+  );
+  // Read older journal-provenance payloads that had refs before the explicit
+  // state discriminator existed as genuinely versioned, never as the node-6
+  // pending seam.
+  if (
+    contextVersionReferenceState.availability === "pending_persistent_context_brain" &&
+    storedContextVersionRefs.length > 0
+  ) {
+    contextVersionReferenceState = {
+      availability: "versioned",
+      refs: storedContextVersionRefs,
+    };
+  }
+  return {
+    resolvedContextPacket: record.resolvedContextPacket ?? null,
+    contextArtifactRefs: stringArray(record.contextArtifactRefs),
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: outcomeJournalContextRefs(record.resolvedContextRefs),
+    selectedCandidateCitationRefs: stringArray(record.selectedCandidateCitationRefs),
+    speakerLabels: Array.isArray(record.speakerLabels)
+      ? (record.speakerLabels as SpeakerLabel[])
+      : [],
+    qaFindingDetails: Array.isArray(record.qaFindingDetails)
+      ? (record.qaFindingDetails as OutcomeJournalProvenance["qaFindingDetails"])
+      : [],
+  };
+}
+
+function emptyOutcomeJournalProvenance(): OutcomeJournalProvenance {
+  const contextVersionReferenceState = pendingContextVersionReferenceState();
+  return {
+    resolvedContextPacket: null,
+    contextArtifactRefs: [],
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: [],
+    selectedCandidateCitationRefs: [],
+    speakerLabels: [],
+    qaFindingDetails: [],
+  };
+}
+
+function pendingContextVersionReferenceState(): ContextVersionReferenceState {
+  // TODO(p0-core-persistent-context-brain): populate once versioned context exists
+  return { availability: "pending_persistent_context_brain", refs: [] };
+}
+
+function readContextVersionReferenceState(value: unknown): ContextVersionReferenceState {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (record.availability === "versioned") {
+      return { availability: "versioned", refs: stringArray(record.refs) };
+    }
+    if (record.availability === "pending_persistent_context_brain") {
+      return pendingContextVersionReferenceState();
+    }
+  }
+  return pendingContextVersionReferenceState();
+}
+
+function outcomeJournalContextRefs(value: unknown): OutcomeJournalContextRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const refs: OutcomeJournalContextRef[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      continue;
+    }
+    const record = candidate as Record<string, unknown>;
+    if (typeof record.refKind !== "string" || typeof record.refId !== "string") {
+      continue;
+    }
+    refs.push({
+      refKind: record.refKind,
+      refId: record.refId,
+      ...(typeof record.versionRef === "string" ? { versionRef: record.versionRef } : {}),
+      ...(record.details !== undefined ? { details: record.details } : {}),
+    });
+  }
+  return refs;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+/**
  * Input to `runAgenticLoopForUnit`. The `unit` is a v0.2
  * LocalizationUnitV02 (KAIFUU-210). Surrounding scene-context
  * artifacts and the glossary are passed alongside — the orchestrator
@@ -327,6 +513,11 @@ export type AgenticLoopUnitInput = {
    */
   actor: AuthorizationActor;
   /**
+   * Internal durable-journal hook. Omitted for pure loop callers and tests;
+   * supplied by the project executor's physical-provider capture wrapper.
+   */
+  attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
+  /**
    * itotori-loop-to-review-queue-bridge — an optional legacy notification
    * surface for threshold-crossing QA callouts. It receives the required
    * selected draft plus annotations; it is never fed a blank or withheld unit.
@@ -347,14 +538,16 @@ export type AgenticLoopUnitInput = {
    */
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
   /**
-   * itotori-pass-ledger — prior localization pass's feedback for THIS unit,
-   * threaded from the pass ledger so a pass N+1 run consumes pass N's accepted
-   * state + flagged-unit feedback as drafting context. When present the
+   * Prior localization run feedback for THIS unit, threaded from the durable
+   * journal so a pass N+1 run consumes pass N's accepted state + flagged-unit
+   * feedback as drafting context. When present the
    * translation prompt renders a strictly-additive "Prior pass feedback" block
    * (the draft iterates on the prior result); when absent the loop is
    * byte-identical to a blank first pass. Generic — no game-specific fields.
    */
   priorPassFeedback?: PriorPassFeedback;
+  /** Durable prior run that supplied `priorPassFeedback`, when available. */
+  priorJournalRunId?: string;
   /**
    * itotori-crosswork-context-injection — resolved effective scope for the
    * unit's work (shared context inherited, per-work overrides applied). The
@@ -496,12 +689,18 @@ export async function runAgenticLoopForUnit(
     agentLabel: "speaker-label",
     pair: pairPolicy.preTranslation.speakerLabel,
   });
-  const speakerLabelResult = await invokeSpeakerLabelStage({
-    provider: speakerLabelProvider,
-    pair: pairPolicy.preTranslation.speakerLabel,
-    input,
-    policy,
-  });
+  let speakerLabelResult: SpeakerLabelInvocationResult;
+  try {
+    speakerLabelResult = await invokeSpeakerLabelStage({
+      provider: speakerLabelProvider,
+      pair: pairPolicy.preTranslation.speakerLabel,
+      input,
+      policy,
+    });
+  } catch (error) {
+    markJournalAttemptFailure(input, "pre_translation", "speaker-label", error, "pause");
+    throw error;
+  }
   pushInvocation(preStage, providerTelemetryFromSpeakerLabel(speakerLabelResult, pairPolicy));
   preStage.outcome = "succeeded";
   stages.push(preStage);
@@ -513,20 +712,25 @@ export async function runAgenticLoopForUnit(
     agentLabel: "translation-primary",
     pair: pairPolicy.translation.primary,
   });
-  const translationResult = await invokeTranslationStage({
-    provider: translationProvider,
-    pair: pairPolicy.translation.primary,
-    input,
-    policy,
-    agentLabel: "translation-primary",
-    structuredContext: contextResult.structuredContext,
-    contextArtifactRefs: contextResult.contextArtifactRefs,
-    workScopeContext: input.workScopeContext,
-    // itotori-pass-ledger — thread the prior pass's feedback for this unit so
-    // the primary draft iterates on the prior result when present (undefined
-    // on a blank first pass → byte-identical prompt).
-    priorPassFeedback: input.priorPassFeedback,
-  });
+  let translationResult: TranslationInvocationResult;
+  try {
+    translationResult = await invokeTranslationStage({
+      provider: translationProvider,
+      pair: pairPolicy.translation.primary,
+      input,
+      policy,
+      agentLabel: "translation-primary",
+      structuredContext: contextResult.structuredContext,
+      contextArtifactRefs: contextResult.contextArtifactRefs,
+      workScopeContext: input.workScopeContext,
+      // Prior-run feedback is optional caller context; it never becomes a
+      // durable persistence authority for this execution.
+      priorPassFeedback: input.priorPassFeedback,
+    });
+  } catch (error) {
+    markJournalAttemptFailure(input, "translation", "translation-primary", error, "pause");
+    throw error;
+  }
   pushInvocation(
     translationStage,
     providerTelemetryFromTranslation(
@@ -619,6 +823,19 @@ export async function runAgenticLoopForUnit(
           routedFindingCount: triageResult.routings.length,
           repairAttempts: 0,
           maxRepairAttempts: policy.maxRepairAttempts,
+          journal: outcomeJournalProvenance({
+            contextArtifactRefs: contextResult.contextArtifactRefs,
+            structuredContext: contextResult.structuredContext,
+            glossary: input.glossary,
+            styleGuide: input.styleGuide,
+            workScopeContext: input.workScopeContext,
+            priorPassFeedback: input.priorPassFeedback,
+            priorJournalRunId: input.priorJournalRunId,
+            speakerLabels: speakerLabelResult.labels,
+            qaFindings: [],
+            writtenFindings: outcomeFindings,
+            selectedCandidateCitationRefs: primaryDraftCitationRefs,
+          }),
         },
         writtenAt: now().toISOString(),
       }),
@@ -677,6 +894,13 @@ export async function runAgenticLoopForUnit(
       // A primary candidate is already non-blank and canonical at this
       // point. A provider's empty/truncated QA response is an informational
       // loss of review coverage, not grounds to discard that candidate.
+      markJournalAttemptFailure(
+        input,
+        "qa_findings",
+        entry.agentLabel,
+        error,
+        isQaPartialResultError(error) ? "advance" : "pause",
+      );
       if (!isQaPartialResultError(error)) {
         throw error;
       }
@@ -762,13 +986,20 @@ export async function runAgenticLoopForUnit(
           structuredContext: contextResult.structuredContext,
           contextArtifactRefs: contextResult.contextArtifactRefs,
           workScopeContext: input.workScopeContext,
-          // itotori-pass-ledger — keep the prior-pass feedback on every repair
+          // Keep the prior-run feedback on every repair
           // attempt so the retry keeps addressing the flagged issue.
           priorPassFeedback: input.priorPassFeedback,
         });
       } catch (error) {
         // The selected primary (or an earlier selected repair) remains valid.
         // Do not manufacture a replacement or let a partial repair erase it.
+        markJournalAttemptFailure(
+          input,
+          "repair",
+          "repair-primary",
+          error,
+          isTranslationPartialResultError(error) ? "advance" : "pause",
+        );
         if (!isTranslationPartialResultError(error)) {
           throw error;
         }
@@ -908,6 +1139,19 @@ export async function runAgenticLoopForUnit(
         repairAttempts,
         maxRepairAttempts: policy.maxRepairAttempts,
         selectedKind: selectedCandidate.kind,
+        journal: outcomeJournalProvenance({
+          contextArtifactRefs: contextResult.contextArtifactRefs,
+          structuredContext: contextResult.structuredContext,
+          glossary: input.glossary,
+          styleGuide: input.styleGuide,
+          workScopeContext: input.workScopeContext,
+          priorPassFeedback: input.priorPassFeedback,
+          priorJournalRunId: input.priorJournalRunId,
+          speakerLabels: speakerLabelResult.labels,
+          qaFindings,
+          writtenFindings: outcomeFindings,
+          selectedCandidateCitationRefs,
+        }),
       },
       writtenAt: now().toISOString(),
     }),
@@ -1102,6 +1346,185 @@ function writtenFindingFromQa(
   };
 }
 
+/**
+ * Preserve the raw QA fields the concise written-finding surface deliberately
+ * folds into `note`. The durable journal normalizes this projection so a read
+ * model can render recommendation and agent rationale independently.
+ */
+function outcomeJournalProvenance(args: {
+  contextArtifactRefs: ReadonlyArray<string>;
+  structuredContext: StructuredContextInjection | undefined;
+  glossary: ReadonlyArray<TranslationGlossaryEntry>;
+  styleGuide: StyleGuidePolicyV0Draft | undefined;
+  workScopeContext: TranslationWorkScopeContext | undefined;
+  priorPassFeedback: PriorPassFeedback | undefined;
+  priorJournalRunId: string | undefined;
+  speakerLabels: ReadonlyArray<SpeakerLabel>;
+  qaFindings: ReadonlyArray<QaFinding>;
+  writtenFindings: ReadonlyArray<WrittenQaFinding>;
+  selectedCandidateCitationRefs: ReadonlyArray<string>;
+}): OutcomeJournalProvenance {
+  const qaFindingDetails: OutcomeJournalProvenance["qaFindingDetails"] = [];
+  for (const [index, writtenFinding] of args.writtenFindings.entries()) {
+    const rawFinding = args.qaFindings[index];
+    if (rawFinding === undefined) {
+      continue;
+    }
+    qaFindingDetails.push({
+      findingId: writtenFinding.id,
+      recommendation: rawFinding.recommendation,
+      agentRationale: rawFinding.agentRationale,
+      evidenceRefs: rawFinding.evidenceRefs.slice(),
+      ...(rawFinding.sourceSpan !== undefined ? { sourceSpan: { ...rawFinding.sourceSpan } } : {}),
+      ...(rawFinding.draftSpan !== undefined ? { draftSpan: { ...rawFinding.draftSpan } } : {}),
+    });
+  }
+  const contextVersionReferenceState = pendingContextVersionReferenceState();
+  const artifactRefs = [...new Set(args.contextArtifactRefs)].sort();
+  const glossary = args.glossary.map((entry) => ({ ...entry }));
+  const styleGuide = cloneStyleGuide(args.styleGuide);
+  const styleGuideRules = resolveStyleGuideRules(args.styleGuide).map((rule) => ({ ...rule }));
+  const workScope = cloneWorkScopeContext(args.workScopeContext);
+  const priorPassFeedback = clonePriorPassFeedback(args.priorPassFeedback);
+  return {
+    // This is the exact immutable context resolved for the unit by the current
+    // loop. The packet preserves the current glossary/style/scope surface;
+    // version identities remain the explicit node-6 seam below.
+    resolvedContextPacket: {
+      structuredContext: args.structuredContext ?? null,
+      artifactRefs,
+      glossary,
+      styleGuide,
+      styleGuideRules,
+      workScope,
+      priorPassFeedback,
+      priorJournalRunId: args.priorJournalRunId ?? null,
+      contextVersionReferenceState,
+    },
+    contextArtifactRefs: artifactRefs,
+    contextVersionRefs: contextVersionReferenceState.refs,
+    contextVersionReferenceState,
+    resolvedContextRefs: resolvedContextRefs({
+      glossary,
+      styleGuide,
+      styleGuideRules,
+      workScope,
+      priorPassFeedback,
+      priorJournalRunId: args.priorJournalRunId,
+    }),
+    selectedCandidateCitationRefs: [...new Set(args.selectedCandidateCitationRefs)].sort(),
+    speakerLabels: args.speakerLabels.map((label) => ({
+      ...label,
+      evidenceRefs: label.evidenceRefs.slice(),
+    })),
+    qaFindingDetails,
+  };
+}
+
+function cloneStyleGuide(
+  styleGuide: StyleGuidePolicyV0Draft | undefined,
+): StyleGuidePolicyV0Draft | null {
+  if (styleGuide === undefined) {
+    return null;
+  }
+  return {
+    schemaVersion: styleGuide.schemaVersion,
+    sections: {
+      tone: styleGuide.sections.tone.map((rule) => ({ ...rule })),
+      terminology: styleGuide.sections.terminology.map((rule) => ({ ...rule })),
+      honorifics: styleGuide.sections.honorifics.map((rule) => ({ ...rule })),
+      formatting: styleGuide.sections.formatting.map((rule) => ({ ...rule })),
+      protectedSpans: styleGuide.sections.protectedSpans.map((rule) => ({ ...rule })),
+    },
+  };
+}
+
+function cloneWorkScopeContext(
+  workScope: TranslationWorkScopeContext | undefined,
+): TranslationWorkScopeContext | null {
+  if (workScope === undefined) {
+    return null;
+  }
+  return {
+    workId: workScope.workId,
+    glossary: workScope.glossary.map((entry) => ({ ...entry })),
+    characters: workScope.characters.map((character) => ({ ...character })),
+  };
+}
+
+function clonePriorPassFeedback(
+  priorPassFeedback: PriorPassFeedback | undefined,
+): PriorPassFeedback | null {
+  if (priorPassFeedback === undefined) {
+    return null;
+  }
+  return {
+    passNumber: priorPassFeedback.passNumber,
+    priorDraftText: priorPassFeedback.priorDraftText,
+    qualityFlags: priorPassFeedback.qualityFlags.slice(),
+    ...(priorPassFeedback.feedbackNote !== undefined
+      ? { feedbackNote: priorPassFeedback.feedbackNote }
+      : {}),
+  };
+}
+
+function resolvedContextRefs(args: {
+  glossary: ReadonlyArray<TranslationGlossaryEntry>;
+  styleGuide: StyleGuidePolicyV0Draft | null;
+  styleGuideRules: ReadonlyArray<TranslationStyleGuideRule>;
+  workScope: TranslationWorkScopeContext | null;
+  priorPassFeedback: PriorPassFeedback | null;
+  priorJournalRunId: string | undefined;
+}): OutcomeJournalContextRef[] {
+  const refs: OutcomeJournalContextRef[] = args.glossary.map((entry) => ({
+    refKind: "glossary_term",
+    refId: entry.termId,
+    details: {
+      preferredSourceForm: entry.preferredSourceForm,
+      ...(entry.preferredTargetForm !== undefined
+        ? { preferredTargetForm: entry.preferredTargetForm }
+        : {}),
+      ...(entry.policyAction !== undefined ? { policyAction: entry.policyAction } : {}),
+    },
+  }));
+  for (const rule of args.styleGuideRules) {
+    refs.push({
+      refKind: "style_guide_rule",
+      refId: rule.ruleId,
+      details: {
+        ...(args.styleGuide !== null ? { policySchemaVersion: args.styleGuide.schemaVersion } : {}),
+        section: rule.section,
+        guidance: rule.guidance,
+      },
+    });
+  }
+  if (args.workScope !== null) {
+    refs.push({
+      refKind: "work_scope",
+      refId: args.workScope.workId,
+      details: {
+        glossary: args.workScope.glossary.map((entry) => ({ ...entry })),
+        characters: args.workScope.characters.map((character) => ({ ...character })),
+      },
+    });
+  }
+  if (args.priorPassFeedback !== null) {
+    refs.push({
+      refKind: "prior_pass_feedback",
+      refId: args.priorJournalRunId ?? `journal-pass:${String(args.priorPassFeedback.passNumber)}`,
+      details: {
+        passNumber: args.priorPassFeedback.passNumber,
+        priorDraftText: args.priorPassFeedback.priorDraftText,
+        qualityFlags: args.priorPassFeedback.qualityFlags.slice(),
+        ...(args.priorPassFeedback.feedbackNote !== undefined
+          ? { feedbackNote: args.priorPassFeedback.feedbackNote }
+          : {}),
+      },
+    });
+  }
+  return refs;
+}
+
 function buildWrittenOutcome(args: {
   id: string;
   input: AgenticLoopUnitInput;
@@ -1215,6 +1638,7 @@ async function runBestEffortEnrichment(
     telemetry: RawProviderTelemetry[];
     artifactRefs: Set<string>;
     droppedEnrichments: DroppedContextEnrichment[];
+    attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
   },
   run: () => Promise<{ telemetry: RawProviderTelemetry; refs: string[] }>,
 ): Promise<void> {
@@ -1225,6 +1649,12 @@ async function runBestEffortEnrichment(
       sink.artifactRefs.add(ref);
     }
   } catch (error) {
+    sink.attemptOutcomeObserver?.markFailedAttempt({
+      stage: "context",
+      agentLabel,
+      error,
+      retryDecision: "advance",
+    });
     sink.droppedEnrichments.push({ agentLabel, reason: describeEnrichmentDrop(error) });
   }
 }
@@ -1258,7 +1688,14 @@ async function invokeSemanticContextStage(args: {
   const telemetry: RawProviderTelemetry[] = [];
   const artifactRefs = new Set<string>();
   const droppedEnrichments: DroppedContextEnrichment[] = [];
-  const sink = { telemetry, artifactRefs, droppedEnrichments };
+  const sink = {
+    telemetry,
+    artifactRefs,
+    droppedEnrichments,
+    ...(input.attemptOutcomeObserver !== undefined
+      ? { attemptOutcomeObserver: input.attemptOutcomeObserver }
+      : {}),
+  };
 
   // (a) DETERMINISTIC base — the structure-informed context slice. This is the
   //     LOAD-BEARING, never-failing artifact: it is built + injected regardless
@@ -1653,7 +2090,7 @@ async function invokeTranslationStage(args: {
   contextArtifactRefs?: ReadonlyArray<string>;
   workScopeContext?: TranslationWorkScopeContext | undefined;
   /**
-   * itotori-pass-ledger — prior-pass feedback for this unit, rendered into the
+   * Prior-run feedback for this unit, rendered into the
    * translation prompt so a repair / pass N+1 draft iterates on the prior
    * result. Undefined on a blank first pass (byte-identical prompt).
    */
@@ -1965,6 +2402,13 @@ async function runPostRepairReQaPass(args: {
       // exist. Retain the known selection while making the coverage loss
       // visible to the caller; other focused judges may still contribute
       // their findings during this bounded pass.
+      markJournalAttemptFailure(
+        input,
+        "qa_findings",
+        entry.agentLabel,
+        error,
+        isQaPartialResultError(error) ? "advance" : "pause",
+      );
       if (!isQaPartialResultError(error)) {
         throw error;
       }
@@ -1986,6 +2430,21 @@ function isQaPartialResultError(error: unknown): error is QaPartialResultError {
 
 function isTranslationPartialResultError(error: unknown): error is TranslationPartialResultError {
   return error instanceof TranslationPartialResultError;
+}
+
+function markJournalAttemptFailure(
+  input: AgenticLoopUnitInput,
+  stage: AgenticLoopStageName,
+  agentLabel: string,
+  error: unknown,
+  retryDecision: "advance" | "pause",
+): void {
+  input.attemptOutcomeObserver?.markFailedAttempt({
+    stage,
+    agentLabel,
+    error,
+    retryDecision,
+  });
 }
 
 function providerTelemetryFromQa(

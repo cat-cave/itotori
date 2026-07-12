@@ -291,7 +291,7 @@ export type CostDrilldownFilter = {
  * COST-FIDELITY NOTE (codex-audit-fix): the provider-run cost ledger
  * (`itotori_cost_ledger_entries`) persists INTEGER MICROS ONLY; the
  * full-precision `ProviderCost.amountUsd` decimal lives on the recording
- * path (`itotori_draft_attempt_provider_ledger.cost_amount`), NOT on the
+ * path (`itotori_llm_attempts.cost_usd`), NOT on the
  * rows this drilldown reads. `displayAmountUsd` here is therefore NOT the
  * canonical `amountUsd` — it is a LOSSY micros-derived display field
  * (`microsToDecimalUsd(amountMicrosUsd)`). It MUST NOT be named `amountUsd`

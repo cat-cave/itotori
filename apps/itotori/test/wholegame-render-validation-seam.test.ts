@@ -104,6 +104,7 @@ function patchReport(
 ): DrivenPatchReport {
   return {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
+    journalRunId: "localization-journal-run-render-validation",
     projectId: "project",
     localeBranchId: "branch",
     targetLocale: "en-US",
@@ -116,6 +117,7 @@ function patchReport(
     writtenOutcomeCount: written.length,
     failureCount: 0,
     reviewerQueueItemCount: 0,
+    totalUsageCostExactUsd: "0",
     totalUsageCostUsd: 0,
     zdrConfirmed: true,
     budgetStopped: false,

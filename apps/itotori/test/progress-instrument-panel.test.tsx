@@ -6,7 +6,7 @@
 // `/api/projects/overview` and asserts the OBSERVABLE behavior: the ds
 // `LocalizationProgress` instrument renders the STAGE BREAKOUTS (cleared / in-qa
 // / pending) + the iteration CYCLE + the remaining-work ("eta" slot) readout,
-// all derived from the composed read model (`progress` + `passLedger`) THROUGH
+// all derived from the composed read model (`progress` + execution journal) THROUGH
 // the typed client (no ad-hoc fetch), and that loading / empty / error surface
 // instead of a blank or fabricated panel.
 // [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only the
@@ -48,14 +48,13 @@ function richStatus(overrides?: Partial<ProjectDashboardStatus>): ProjectDashboa
   };
 }
 
-// Three recorded passes (pass 3 built on pass 2 built on pass 1) -> cycle 3/3,
-// two revision passes (those with a prior).
+// Three durable runs -> cycle 3/3 and two prior runs.
 function richOverview(overrides?: Partial<ProjectOverviewReadModel>): ProjectOverviewReadModel {
   const status = overrides?.progress ?? richStatus();
   return {
     ...projectOverviewFixture,
     progress: status,
-    passLedger: {
+    journal: {
       filter: { projectId: status.projectId, localeBranchId: RICH_BRANCH_ID },
       pagination: {
         total: 3,
@@ -66,19 +65,20 @@ function richOverview(overrides?: Partial<ProjectOverviewReadModel>): ProjectOve
         hasMore: false,
         nextOffset: null,
       },
-      rows: [1, 2, 3].map((passNumber) => ({
-        passLedgerId: `pass-${passNumber}`,
+      rows: [1, 2, 3].map((runNumber) => ({
+        journalRunId: `journal-run-${runNumber}`,
         projectId: status.projectId,
         localeBranchId: RICH_BRANCH_ID,
         sourceRevisionId: status.sourceBundleRevisionId,
-        passNumber,
-        priorPassNumber: passNumber === 1 ? null : passNumber - 1,
-        totalUsageCostUsd: 0.01 * passNumber,
-        zdrConfirmed: true,
-        recordedAt: "2026-07-07T00:00:00.000Z",
-        score: 3 + passNumber * 0.2,
-        feedback: passNumber === 1 ? 0 : passNumber * 6,
-        note: passNumber === 1 ? "Initial draft." : `Folded in pass ${passNumber - 1} feedback.`,
+        targetLocale: "en-US",
+        createdAt: "2026-07-07T00:00:00.000Z",
+        physicalCallCount: runNumber,
+        failedPhysicalCallCount: 0,
+        writtenOutcomeCount: runNumber,
+        candidateCount: runNumber,
+        qaFindingCount: 0,
+        contextRefCount: 0,
+        speakerLabelCount: 0,
       })),
     },
     ...overrides,
@@ -121,11 +121,11 @@ describe("Overview progress instrument", () => {
     expect(breakouts).toHaveTextContent("50");
     expect(breakouts).toHaveTextContent("Pending");
     expect(breakouts).toHaveTextContent("30");
-    // The revision DIMENSION (two passes built on a prior).
-    expect(breakouts).toHaveTextContent("Revision passes");
+    // The iteration dimension (two prior journal runs).
+    expect(breakouts).toHaveTextContent("Prior runs");
     expect(breakouts).toHaveTextContent("2");
 
-    // CYCLE: from the pass ledger (latest pass 3 of 3 recorded).
+    // CYCLE: from the durable execution journal (3 of 3 recorded).
     const cycle = container.querySelector(".itotori-locprog__cycle");
     expect(cycle).not.toBeNull();
     expect(cycle).toHaveTextContent("cycle 3/3");

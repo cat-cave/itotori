@@ -1,8 +1,8 @@
 // ITOTORI-223 — telemetry queries-impl unit tests.
 //
-// We stub the ItotoriDraftAttemptProviderLedgerRepositoryPort so the
-// suite never touches the database. The stub answers `sumByPairAndDay`
-// by computing aggregates over an in-memory ledger seed; this lets us
+// We stub the journal telemetry port so the suite never touches the database.
+// The stub answers `sumAttemptsByPairAndDay` by computing aggregates over
+// in-memory physical-attempt seeds; this lets us
 // assert the queries-impl shape transforms (sumByPair, topPairsByCost,
 // pairRanking, groupByDay grouping) against deterministic data.
 //
@@ -12,16 +12,16 @@
 import { describe, expect, it } from "vitest";
 import type {
   AuthorizationActor,
-  DraftAttemptProviderLedgerEntry,
-  ItotoriDraftAttemptProviderLedgerRepositoryPort,
-  LedgerPairAggregateRow,
-  RecordLedgerEntryInput,
-  SumByPairAndDayOptions,
-  SumCostByProjectOptions,
-  SumCostByProjectResult,
-  SumCostByProjectWindow,
+  LocalizationJournalAttemptAggregateOptions,
+  LocalizationJournalAttemptAggregateRow,
+  LocalizationJournalCostKindAggregateRow,
+  LocalizationJournalZdrAggregateRow,
 } from "@itotori/db";
-import { LedgerTelemetryQuery, TelemetryQueryError } from "../src/telemetry/queries-impl.js";
+import {
+  LedgerTelemetryQuery,
+  TelemetryQueryError,
+  type TelemetryJournalPort,
+} from "../src/telemetry/queries-impl.js";
 import { renderTextSummary, runTelemetrySummaryCli } from "../src/telemetry/cli.js";
 import {
   aggregateProviderRunArtifacts,
@@ -46,8 +46,10 @@ type SeedRow = {
   latencyMs: number;
   createdAt: Date;
   // ITOTORI-233 — optional cache fields. Default to 0 when omitted so
-  // existing seed rows continue to express "no cache hit / no
-  // discount" without explicit zeros at every call site.
+  // existing seed rows continue to express captured "no cache hit / no
+  // discount" without explicit zeros at every call site. Set false only
+  // to model a pre-0078 row whose cache facts were never captured.
+  cacheFactsCaptured?: boolean;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   cacheDiscountMicrosUsd?: number;
@@ -65,7 +67,7 @@ function utcDay(year: number, month: number, day: number, hour = 12): Date {
 }
 
 /**
- * 10 ledger entries:
+ * 10 physical journal attempts:
  *   - pair A (anthropic/claude-3.5-sonnet, anthropic): 4 rows across
  *     days 1, 2, 3, 5 (days = 2026-06-{01,02,03,05}). Cost totals:
  *     0.01 + 0.02 + 0.04 + 0.03 = 0.10 USD. Latencies 1000/2000/3000/
@@ -175,43 +177,25 @@ function buildSeed(): SeedRow[] {
 }
 
 /**
- * In-memory port that answers `sumByPairAndDay` by computing
+ * In-memory journal port that answers `sumAttemptsByPairAndDay` by computing
  * aggregates over a seed list. We use linear interpolation for p95 to
  * match Postgres's `percentile_cont(0.95)` semantics.
  */
-class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort {
-  constructor(private readonly seed: ReadonlyArray<SeedRow>) {}
+class StubJournalPort implements TelemetryJournalPort {
+  constructor(
+    private readonly seed: ReadonlyArray<SeedRow>,
+    private readonly aggregates: {
+      zdrRows?: LocalizationJournalZdrAggregateRow[];
+      costKindRows?: LocalizationJournalCostKindAggregateRow[];
+    } = {},
+  ) {}
 
-  async recordLedgerEntry(
-    _actor: AuthorizationActor,
-    _input: RecordLedgerEntryInput,
-  ): Promise<DraftAttemptProviderLedgerEntry> {
-    throw new Error("recordLedgerEntry not used by telemetry queries");
-  }
-
-  async loadEntriesByAttempt(): Promise<DraftAttemptProviderLedgerEntry[]> {
-    throw new Error("loadEntriesByAttempt not used by telemetry queries");
-  }
-
-  async loadEntriesByProviderProof(): Promise<DraftAttemptProviderLedgerEntry | null> {
-    throw new Error("loadEntriesByProviderProof not used by telemetry queries");
-  }
-
-  async sumCostByProject(
+  async sumAttemptsByPairAndDay(
     _actor: AuthorizationActor,
     _projectId: string,
-    _window: SumCostByProjectWindow,
-    _opts?: SumCostByProjectOptions,
-  ): Promise<SumCostByProjectResult> {
-    throw new Error("sumCostByProject not used by telemetry queries");
-  }
-
-  async sumByPairAndDay(
-    _actor: AuthorizationActor,
-    _projectId: string,
-    window: SumCostByProjectWindow,
-    opts?: SumByPairAndDayOptions,
-  ): Promise<LedgerPairAggregateRow[]> {
+    window: { from: Date; to: Date },
+    opts?: LocalizationJournalAttemptAggregateOptions,
+  ): Promise<LocalizationJournalAttemptAggregateRow[]> {
     const filtered = this.seed.filter(
       (row) =>
         row.createdAt.getTime() >= window.from.getTime() &&
@@ -231,7 +215,7 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
       }
     }
 
-    const result: LedgerPairAggregateRow[] = [];
+    const result: LocalizationJournalAttemptAggregateRow[] = [];
     for (const [key, rows] of buckets) {
       const parts = key.split("|");
       const modelId = parts[0]!;
@@ -248,16 +232,24 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
       // the real repository. cacheHitCount counts rows with
       // cacheReadTokens > 0; cacheSavingsUsd is the SUM of
       // cacheDiscountMicrosUsd / 1_000_000.
-      const cacheHitCount = rows.reduce(
+      const cacheRows = rows.filter((row) => row.cacheFactsCaptured !== false);
+      const cacheHitCount = cacheRows.reduce(
         (acc, r) => acc + ((r.cacheReadTokens ?? 0) > 0 ? 1 : 0),
         0,
       );
-      const totalCacheReadTokens = rows.reduce((acc, r) => acc + (r.cacheReadTokens ?? 0), 0);
-      const totalCacheWriteTokens = rows.reduce((acc, r) => acc + (r.cacheWriteTokens ?? 0), 0);
-      const cacheSavingsMicros = rows.reduce((acc, r) => acc + (r.cacheDiscountMicrosUsd ?? 0), 0);
+      const totalCacheReadTokens = cacheRows.reduce((acc, r) => acc + (r.cacheReadTokens ?? 0), 0);
+      const totalCacheWriteTokens = cacheRows.reduce(
+        (acc, r) => acc + (r.cacheWriteTokens ?? 0),
+        0,
+      );
+      const cacheSavingsMicros = cacheRows.reduce(
+        (acc, r) => acc + (r.cacheDiscountMicrosUsd ?? 0),
+        0,
+      );
       result.push({
-        modelId,
-        providerId,
+        requestedPairAvailability: "complete",
+        requestedModelId: modelId,
+        requestedProviderId: providerId,
         bucketDay: groupByDay ? day : null,
         totalCostUsd: cost.toFixed(8),
         totalTokensIn: tokensIn,
@@ -265,6 +257,8 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
         invocationCount: rows.length,
         avgLatencyMs: avgLatency,
         p95LatencyMs: p95,
+        cacheFactsAvailability: cacheRows.length === rows.length ? "complete" : "partial",
+        cacheFactsCapturedInvocationCount: cacheRows.length,
         cacheHitCount,
         totalCacheReadTokens,
         totalCacheWriteTokens,
@@ -273,18 +267,26 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
     }
     // Sort: model asc, provider asc, day asc
     result.sort((a, b) => {
-      if (a.modelId !== b.modelId) {
-        if (a.modelId === null) return -1;
-        if (b.modelId === null) return 1;
-        return a.modelId.localeCompare(b.modelId);
+      if (a.requestedModelId !== b.requestedModelId) {
+        return a.requestedModelId.localeCompare(b.requestedModelId);
       }
-      if (a.providerId !== b.providerId) return a.providerId.localeCompare(b.providerId);
+      if (a.requestedProviderId !== b.requestedProviderId) {
+        return a.requestedProviderId.localeCompare(b.requestedProviderId);
+      }
       if (a.bucketDay === b.bucketDay) return 0;
       if (a.bucketDay === null) return -1;
       if (b.bucketDay === null) return 1;
       return a.bucketDay.localeCompare(b.bucketDay);
     });
     return result;
+  }
+
+  async countZdrEnforcedAttemptsByPair(): Promise<LocalizationJournalZdrAggregateRow[]> {
+    return this.aggregates.zdrRows ?? [];
+  }
+
+  async countCostKindsByPair(): Promise<LocalizationJournalCostKindAggregateRow[]> {
+    return this.aggregates.costKindRows ?? [];
   }
 }
 
@@ -313,7 +315,7 @@ const FULL_WINDOW = {
 
 describe("LedgerTelemetryQuery.sumByPair", () => {
   it("returns per-pair totals + p95 latencies", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
 
@@ -355,7 +357,7 @@ describe("LedgerTelemetryQuery.sumByPair", () => {
   });
 
   it("with groupByDay: true returns per-day breakdowns", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW, {
       groupByDay: true,
@@ -382,7 +384,7 @@ describe("LedgerTelemetryQuery.sumByPair", () => {
   });
 
   it("empty window returns byPair:{} and totalCostUsd:'0'", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, {
       from: new Date("1990-01-01T00:00:00Z"),
@@ -396,7 +398,7 @@ describe("LedgerTelemetryQuery.sumByPair", () => {
 
 describe("LedgerTelemetryQuery.topPairsByCost", () => {
   it("returns top-3 pairs by cost with correct shares", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const top = await query.topPairsByCost(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW, 3);
     expect(top).toHaveLength(3);
@@ -418,7 +420,7 @@ describe("LedgerTelemetryQuery.topPairsByCost", () => {
   });
 
   it("top-1 returns only the highest-cost pair", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const top = await query.topPairsByCost(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW, 1);
     expect(top).toHaveLength(1);
@@ -426,7 +428,7 @@ describe("LedgerTelemetryQuery.topPairsByCost", () => {
   });
 
   it("rejects non-positive k", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     await expect(
       query.topPairsByCost(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW, 0),
@@ -434,7 +436,7 @@ describe("LedgerTelemetryQuery.topPairsByCost", () => {
   });
 
   it("returns empty list with zero shares when window has no entries", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const top = await query.topPairsByCost(
       FIXED_ACTOR,
@@ -451,7 +453,7 @@ describe("LedgerTelemetryQuery.topPairsByCost", () => {
 
 describe("LedgerTelemetryQuery.pairRanking", () => {
   it("orders correctly by cost-per-token (ascending)", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const ranking = await query.pairRanking(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     expect(ranking).toHaveLength(3);
@@ -475,7 +477,7 @@ describe("LedgerTelemetryQuery.pairRanking", () => {
   });
 
   it("includes costPerInvocation", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const ranking = await query.pairRanking(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     const pairA = ranking.find((r) => r.pair === buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER));
@@ -485,7 +487,7 @@ describe("LedgerTelemetryQuery.pairRanking", () => {
   });
 
   it("returns empty list when window has no entries", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const ranking = await query.pairRanking(FIXED_ACTOR, PROJECT_ID, {
       from: new Date("1990-01-01T00:00:00Z"),
@@ -497,67 +499,33 @@ describe("LedgerTelemetryQuery.pairRanking", () => {
 
 describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () => {
   // ITOTORI-230 acceptance criterion #3 — schema-level test (no live OR
-  // call required). Stub the model-ledger port with fixture rows and
+  // call required). Stub journal aggregate rows and
   // assert the telemetry surface relays them with deterministic ordering.
-
-  type ZdrCountRow = {
-    modelId: string;
-    providerId: string;
-    invocationCount: number;
-    zdrEnforcedCount: number;
-  };
-
-  type CostKindCountRow = {
-    modelId: string;
-    providerId: string;
-    costKind: "billed" | "zero";
-    invocationCount: number;
-    amountMicrosUsd: number;
-  };
-
-  class StubModelLedgerPort {
-    constructor(
-      private readonly rows: ZdrCountRow[],
-      private readonly costKindRows: CostKindCountRow[] = [],
-    ) {}
-    // Type-erased: we only use countZdrEnforcedByPair on this port.
-    async recordProviderRun(): Promise<never> {
-      throw new Error("stub does not implement recordProviderRun");
-    }
-    async getProjectCostReport(): Promise<never> {
-      throw new Error("stub does not implement getProjectCostReport");
-    }
-    async countZdrEnforcedByPair(): Promise<ZdrCountRow[]> {
-      return this.rows;
-    }
-    async countCostKindsByPair(): Promise<CostKindCountRow[]> {
-      return this.costKindRows;
-    }
-  }
 
   const WINDOW = {
     from: new Date("2026-06-01T00:00:00Z"),
     to: new Date("2026-06-30T23:59:59Z"),
   };
 
-  it("returns ZDR-enforced counts per pair from the model-ledger port", async () => {
-    const modelLedger = new StubModelLedgerPort([
-      {
-        modelId: "deepseek-ai/deepseek-v3.2-exp",
-        providerId: "fireworks",
-        invocationCount: 3,
-        zdrEnforcedCount: 2,
-      },
-    ]);
+  it("returns ZDR-enforced counts per pair from the journal", async () => {
     const query = new LedgerTelemetryQuery(
-      new StubLedgerPort(buildSeed()),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      modelLedger as any,
+      new StubJournalPort(buildSeed(), {
+        zdrRows: [
+          {
+            requestedPairAvailability: "complete",
+            requestedModelId: "deepseek-ai/deepseek-v3.2-exp",
+            requestedProviderId: "fireworks",
+            invocationCount: 3,
+            zdrEnforcedCount: 2,
+          },
+        ],
+      }),
     );
     const rows = await query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
     expect(rows).toEqual([
       {
         pair: buildPairKey("deepseek-ai/deepseek-v3.2-exp", "fireworks"),
+        requestedPairAvailability: "complete",
         invocationCount: 3,
         zdrEnforcedCount: 2,
       },
@@ -565,25 +533,26 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
   });
 
   it("orders rows deterministically by pair key for stable JSON output", async () => {
-    const modelLedger = new StubModelLedgerPort([
-      // Insert in non-sorted order to assert the surface re-sorts.
-      {
-        modelId: "model-z",
-        providerId: "provider-z",
-        invocationCount: 5,
-        zdrEnforcedCount: 5,
-      },
-      {
-        modelId: "model-a",
-        providerId: "provider-a",
-        invocationCount: 1,
-        zdrEnforcedCount: 1,
-      },
-    ]);
     const query = new LedgerTelemetryQuery(
-      new StubLedgerPort(buildSeed()),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      modelLedger as any,
+      new StubJournalPort(buildSeed(), {
+        zdrRows: [
+          // Insert in non-sorted order to assert the surface re-sorts.
+          {
+            requestedPairAvailability: "complete",
+            requestedModelId: "model-z",
+            requestedProviderId: "provider-z",
+            invocationCount: 5,
+            zdrEnforcedCount: 5,
+          },
+          {
+            requestedPairAvailability: "complete",
+            requestedModelId: "model-a",
+            requestedProviderId: "provider-a",
+            invocationCount: 1,
+            zdrEnforcedCount: 1,
+          },
+        ],
+      }),
     );
     const rows = await query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
     expect(rows.map((row) => row.pair)).toEqual([
@@ -592,38 +561,33 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
     ]);
   });
 
-  it("throws TelemetryQueryError when constructor was not given a model-ledger port", async () => {
-    // Constructor wired only with the draft-attempt port — calling
-    // countZdrEnforcedCallsByPair must surface a typed error rather
-    // than silently returning empty.
-    const query = new LedgerTelemetryQuery(new StubLedgerPort(buildSeed()));
+  it("returns an empty list when the scoped journal has no ZDR rows", async () => {
+    const query = new LedgerTelemetryQuery(new StubJournalPort(buildSeed()));
     await expect(
       query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW),
-    ).rejects.toThrow(TelemetryQueryError);
+    ).resolves.toEqual([]);
   });
 
-  it("returns cost-kind counts per pair from the model-ledger port", async () => {
-    const modelLedger = new StubModelLedgerPort(
-      [],
-      [
-        {
-          modelId: "deepseek-ai/deepseek-v3.2-exp",
-          providerId: "fireworks",
-          costKind: "billed",
-          invocationCount: 12,
-          amountMicrosUsd: 3456, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
-        },
-      ],
-    );
+  it("returns cost-kind counts per pair from the journal", async () => {
     const query = new LedgerTelemetryQuery(
-      new StubLedgerPort(buildSeed()),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      modelLedger as any,
+      new StubJournalPort(buildSeed(), {
+        costKindRows: [
+          {
+            requestedPairAvailability: "complete",
+            requestedModelId: "deepseek-ai/deepseek-v3.2-exp",
+            requestedProviderId: "fireworks",
+            costKind: "billed",
+            invocationCount: 12,
+            amountMicrosUsd: 3456, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+          },
+        ],
+      }),
     );
     const rows = await query.countCostKindsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
     expect(rows).toEqual([
       {
         pair: buildPairKey("deepseek-ai/deepseek-v3.2-exp", "fireworks"),
+        requestedPairAvailability: "complete",
         costKind: "billed",
         invocationCount: 12,
         amountMicrosUsd: 3456, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
@@ -677,17 +641,19 @@ describe("LedgerTelemetryQuery — ITOTORI-233 cache aggregates", () => {
         tokensOut: 50,
         latencyMs: 1000,
         createdAt: utcDay(2026, 6, 3),
+        cacheFactsCaptured: false,
       },
     ];
   }
 
   it("sumByPair surfaces cacheHitCount + cacheSavingsUsd per pair", async () => {
-    const port = new StubLedgerPort(cacheSeed());
+    const port = new StubJournalPort(cacheSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     const pairC = summary.byPair[buildPairKey(PAIR_C_MODEL, PAIR_C_PROVIDER)];
     expect(pairC).toBeDefined();
     expect(pairC!.invocationCount).toBe(2);
+    expect(pairC!.cacheFactsAvailability).toBe("complete");
     expect(pairC!.cacheHitCount).toBe(1);
     expect(pairC!.totalCacheReadTokens).toBe(50);
     expect(pairC!.totalCacheWriteTokens).toBe(0);
@@ -696,26 +662,30 @@ describe("LedgerTelemetryQuery — ITOTORI-233 cache aggregates", () => {
 
     const pairA = summary.byPair[buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER)];
     expect(pairA).toBeDefined();
+    expect(pairA!.cacheFactsAvailability).toBe("partial");
+    expect(pairA!.cacheFactsCapturedInvocationCount).toBe(0);
     expect(pairA!.cacheHitCount).toBe(0);
     expect(pairA!.cacheSavingsUsd).toBe("0.00000000");
   });
 
   it("sumByPair surfaces top-level cacheSavingsUsd as the SUM across pairs", async () => {
-    const port = new StubLedgerPort(cacheSeed());
+    const port = new StubJournalPort(cacheSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     // Pair C: $0.000003; Pair A: $0. Total: $0.000003.
     expect(summary.cacheSavingsUsd).toBe("0.00000300");
+    expect(summary.cacheFactsAvailability).toBe("partial");
   });
 
   it("countCacheHitsByPair surfaces per-pair hit counts + savings, sorted by pair key", async () => {
-    const port = new StubLedgerPort(cacheSeed());
+    const port = new StubJournalPort(cacheSeed());
     const query = new LedgerTelemetryQuery(port);
     const rows = await query.countCacheHitsByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     expect(rows).toHaveLength(2);
     // Sorted by pair key lexicographically.
     expect(rows[0]!.pair).toBe(buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER));
     expect(rows[0]!.invocationCount).toBe(1);
+    expect(rows[0]!.cacheFactsAvailability).toBe("partial");
     expect(rows[0]!.cacheHitCount).toBe(0);
     expect(rows[0]!.cacheSavingsUsd).toBe("0.00000000");
 
@@ -727,7 +697,7 @@ describe("LedgerTelemetryQuery — ITOTORI-233 cache aggregates", () => {
   });
 
   it("countCacheHitsByPair returns empty list for an empty window", async () => {
-    const port = new StubLedgerPort(cacheSeed());
+    const port = new StubJournalPort(cacheSeed());
     const query = new LedgerTelemetryQuery(port);
     const rows = await query.countCacheHitsByPair(FIXED_ACTOR, PROJECT_ID, {
       from: new Date("1990-01-01T00:00:00Z"),
@@ -736,11 +706,12 @@ describe("LedgerTelemetryQuery — ITOTORI-233 cache aggregates", () => {
     expect(rows).toEqual([]);
   });
 
-  it("cacheSavingsUsd from existing non-cache seed remains 0 (backward-compat)", async () => {
-    const port = new StubLedgerPort(buildSeed());
+  it("cacheSavingsUsd from captured non-cache seed remains 0", async () => {
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
     expect(summary.cacheSavingsUsd).toBe("0.00000000");
+    expect(summary.cacheFactsAvailability).toBe("complete");
     for (const pair of Object.values(summary.byPair)) {
       expect(pair.cacheHitCount).toBe(0);
       expect(pair.cacheSavingsUsd).toBe("0.00000000");
@@ -753,7 +724,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
   // cache_savings_usd=<real> for the window."
 
   it("prints a cache_savings_usd=<real> line at the top of the text summary", async () => {
-    const port = new StubLedgerPort([
+    const port = new StubJournalPort([
       {
         modelId: PAIR_C_MODEL,
         providerId: PAIR_C_PROVIDER,
@@ -782,7 +753,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
   });
 
   it("prints cache_savings_usd=0.00000000 for an empty window", async () => {
-    const port = new StubLedgerPort(buildSeed());
+    const port = new StubJournalPort(buildSeed());
     const query = new LedgerTelemetryQuery(port);
     const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, {
       from: new Date("1990-01-01T00:00:00Z"),
@@ -946,6 +917,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
     zdr?: boolean;
     costKind?: "billed" | "zero";
     cacheReadTokens?: number;
+    cacheWriteTokens?: number;
     cacheDiscountMicrosUsd?: number;
     // Served pair differs from the pinned pair by casing/versioning —
     // proving the key uses the REQUESTED pair, not the served strings.
@@ -985,6 +957,9 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
           ...(overrides.cacheReadTokens === undefined
             ? {}
             : { cacheReadTokens: overrides.cacheReadTokens }),
+          ...(overrides.cacheWriteTokens === undefined
+            ? {}
+            : { cacheWriteTokens: overrides.cacheWriteTokens }),
         },
         cost: {
           costKind: overrides.costKind ?? "billed",
@@ -1065,9 +1040,17 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
     expect(row.totalTokensOut).toBe(60);
     expect(summary.totalCostUsd).toBe("0.00001002");
 
-    expect(zdrRows).toEqual([{ pair, invocationCount: 2, zdrEnforcedCount: 2 }]);
+    expect(zdrRows).toEqual([
+      { pair, requestedPairAvailability: "complete", invocationCount: 2, zdrEnforcedCount: 2 },
+    ]);
     expect(costKindRows).toEqual([
-      { pair, costKind: "billed", invocationCount: 2, amountMicrosUsd: 10 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+      {
+        pair,
+        requestedPairAvailability: "complete",
+        costKind: "billed",
+        invocationCount: 2,
+        amountMicrosUsd: 10, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+      },
     ]);
   });
 
@@ -1211,6 +1194,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         amountUsd: "0.00000500", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         amountMicrosUsd: 5, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         cacheReadTokens: 50,
+        cacheWriteTokens: 0,
         cacheDiscountMicrosUsd: 3,
       }),
     ];
@@ -1244,7 +1228,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
     expect(output.postRunEvidence.zdr.allInvocationsZdrEnforced).toBe(true);
     expect(output.postRunEvidence.costKind.allInvocationsBilled).toBe(true);
     expect(output.postRunEvidence.zdr.rows).toEqual([
-      { pair, invocationCount: 1, zdrEnforcedCount: 1 },
+      { pair, requestedPairAvailability: "complete", invocationCount: 1, zdrEnforcedCount: 1 },
     ]);
   });
 });

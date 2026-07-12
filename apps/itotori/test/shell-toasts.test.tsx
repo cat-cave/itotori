@@ -83,7 +83,7 @@ function HandoffHarness(): ReactNode {
   const handoffs: WorkflowHandoff[] = [
     { kind: "flag-sent", severity: "warning", category: "tone" },
     { kind: "approved" },
-    { kind: "pass-launched", passNumber: 4, unitCount: 3 },
+    { kind: "pass-launched", journalRunId: "localization-journal-run-4", unitCount: 3 },
   ];
   return (
     <div data-handoff-harness="true" data-toast-count={toasts.length}>
@@ -121,13 +121,17 @@ describe("shell-toasts — pure handoff copy", () => {
       tone: "ok",
       message: "Approved as-is — unit marked proven.",
     });
-    expect(describeWorkflowHandoff({ kind: "pass-launched", passNumber: 4, unitCount: 1 })).toEqual(
-      {
+    expect(
+      describeWorkflowHandoff({
         kind: "pass-launched",
-        tone: "neutral",
-        message: "Pass 4 started — re-drafting 1 corrected unit…",
-      },
-    );
+        journalRunId: "localization-journal-run-4",
+        unitCount: 1,
+      }),
+    ).toEqual({
+      kind: "pass-launched",
+      tone: "neutral",
+      message: "Journal localization-journal-run-4 started — drafting 1 corrected unit…",
+    });
   });
 });
 
@@ -155,7 +159,9 @@ describe("shell-toasts — ToastProvider host", () => {
     fireEvent.click(screen.getByRole("button", { name: /enqueue pass-launched/i }));
     expect(toastNodes()).toHaveLength(3);
     expect(screen.getByText("Approved as-is — unit marked proven.")).toBeInTheDocument();
-    expect(screen.getByText("Pass 4 started — re-drafting 3 corrected units…")).toBeInTheDocument();
+    expect(
+      screen.getByText("Journal localization-journal-run-4 started — drafting 3 corrected units…"),
+    ).toBeInTheDocument();
     const approved = toastNodes().find((node) => node.getAttribute("data-toast-tone") === "ok");
     expect(approved).toBeDefined();
   });
@@ -335,9 +341,9 @@ describe("shell-toasts — workflow handoffs from real actions", () => {
 
   it("launching a pass surfaces the pass-launched handoff toast", async () => {
     const started: ApiLaunchPassResponse = {
-      schemaVersion: "itotori.projects.launch-pass.v0",
+      schemaVersion: "itotori.projects.launch-pass.v1",
       outcome: "started",
-      passNumber: 7,
+      journalRunId: "localization-journal-run-7",
       startedAt: "2026-07-08T00:00:00.000Z",
       refusalMessage: null,
     };
@@ -348,11 +354,11 @@ describe("shell-toasts — workflow handoffs from real actions", () => {
 
     // Toast copy ends with a period; in-strip status does not. Assert the ds toast.
     await waitFor(() => {
-      expect(screen.getByText("Pass 7 started.")).toBeInTheDocument();
+      expect(screen.getByText("Journal localization-journal-run-7 started.")).toBeInTheDocument();
     });
     expect(toastNodes().length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector('[data-launch-pass="started"]')).toHaveTextContent(
-      /Pass 7 started/i,
+      /Journal localization-journal-run-7 started/i,
     );
   });
 });

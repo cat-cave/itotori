@@ -1,6 +1,6 @@
 // UTSUSHI-231 (second blocker) — telemetry-summary sourced from the
 // per-run `provider-run.json` artifacts the localize-project stage
-// writes, instead of the DB draft-attempt provider ledger.
+// writes, instead of a separate database projection.
 //
 // WHY a second source instead of wiring DB persistence into the stage:
 // the localize-project pipeline is intentionally DB-free — the agentic
@@ -15,9 +15,8 @@
 // plumbing.
 //
 // PAIR IDENTITY: the per-pair key is the canonical PINNED
-// (requestedModelId, requestedProviderId) — exactly the pair the DB
-// ledger persists (draft-attempt-recorder.ts records `profile.modelId`
-// + `identity.requestedProviderId`), the agentic-loop bundle's
+// (requestedModelId, requestedProviderId) — exactly the pair the durable
+// journal persists, the agentic-loop bundle's
 // `invocation.pair` carries, and `verify-artifacts.mjs` cross-checks.
 // The served upstream provider/model (`run.provider.upstreamProvider` /
 // `actualModelId`) and the verbatim `usage.cost` ARE the proof that the
@@ -96,6 +95,7 @@ type MutablePairAccumulator = {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   cacheDiscountMicrosUsd: number;
+  cacheFactsCapturedInvocationCount: number;
   zdrEnforcedCount: number;
   costKinds: Map<
     "billed" | "provider_estimate" | "zero",
@@ -166,6 +166,7 @@ function emptyAccumulator(): MutablePairAccumulator {
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
     cacheDiscountMicrosUsd: 0,
+    cacheFactsCapturedInvocationCount: 0,
     zdrEnforcedCount: 0,
     costKinds: new Map(),
   };
@@ -224,12 +225,23 @@ export function aggregateProviderRunArtifacts(
     if (typeof run.latencyMs === "number" && Number.isFinite(run.latencyMs)) {
       acc.latencies.push(run.latencyMs);
     }
-    const cacheReadTokens = run.tokenUsage.cacheReadTokens ?? 0;
-    const cacheWriteTokens = run.tokenUsage.cacheWriteTokens ?? 0;
-    if (cacheReadTokens > 0) acc.cacheHitCount += 1;
-    acc.cacheReadTokens += cacheReadTokens;
-    acc.cacheWriteTokens += cacheWriteTokens;
-    acc.cacheDiscountMicrosUsd += run.cost.cacheDiscountMicrosUsd ?? 0;
+    const cacheFactsCaptured =
+      run.tokenUsage.cacheReadTokens !== undefined &&
+      run.tokenUsage.cacheWriteTokens !== undefined &&
+      run.cost.cacheDiscountMicrosUsd !== undefined;
+    if (cacheFactsCaptured) {
+      // The conjunctive guard above establishes all three facts; retain the
+      // values locally so TypeScript cannot lose that refinement through the
+      // nested ProviderRunRecord property reads.
+      const cacheReadTokens = run.tokenUsage.cacheReadTokens!;
+      const cacheWriteTokens = run.tokenUsage.cacheWriteTokens!;
+      const cacheDiscountMicrosUsd = run.cost.cacheDiscountMicrosUsd!;
+      if (cacheReadTokens > 0) acc.cacheHitCount += 1;
+      acc.cacheReadTokens += cacheReadTokens;
+      acc.cacheWriteTokens += cacheWriteTokens;
+      acc.cacheDiscountMicrosUsd += cacheDiscountMicrosUsd;
+      acc.cacheFactsCapturedInvocationCount += 1;
+    }
     if (run.routingPosture.zdr === true) acc.zdrEnforcedCount += 1;
 
     const costKind = run.cost.costKind;
@@ -266,6 +278,10 @@ export function aggregateProviderRunArtifacts(
       avgLatencyMs,
       p95LatencyMs: computeP95LinearInterp(acc.latencies),
       invocationCount: acc.invocationCount,
+      requestedPairAvailability: "complete",
+      cacheFactsAvailability:
+        acc.cacheFactsCapturedInvocationCount === acc.invocationCount ? "complete" : "partial",
+      cacheFactsCapturedInvocationCount: acc.cacheFactsCapturedInvocationCount,
       cacheHitCount: acc.cacheHitCount,
       totalCacheReadTokens: acc.cacheReadTokens,
       totalCacheWriteTokens: acc.cacheWriteTokens,
@@ -276,6 +292,7 @@ export function aggregateProviderRunArtifacts(
 
     zdrRows.push({
       pair: key,
+      requestedPairAvailability: "complete",
       invocationCount: acc.invocationCount,
       zdrEnforcedCount: acc.zdrEnforcedCount,
     });
@@ -283,6 +300,7 @@ export function aggregateProviderRunArtifacts(
       const bucket = acc.costKinds.get(costKind)!;
       costKindRows.push({
         pair: key,
+        requestedPairAvailability: "complete",
         costKind,
         invocationCount: bucket.invocationCount,
         amountMicrosUsd: bucket.amountMicrosUsd,
@@ -293,6 +311,15 @@ export function aggregateProviderRunArtifacts(
   const summary: TelemetrySummaryByPair = {
     byPair,
     totalCostUsd: totalCostUsd.toFixed(8),
+    cacheFactsAvailability: [...byPairAcc.values()].every(
+      (entry) => entry.cacheFactsCapturedInvocationCount === entry.invocationCount,
+    )
+      ? "complete"
+      : "partial",
+    cacheFactsCapturedInvocationCount: [...byPairAcc.values()].reduce(
+      (total, entry) => total + entry.cacheFactsCapturedInvocationCount,
+      0,
+    ),
     cacheSavingsUsd: (totalCacheSavingsMicros / 1_000_000).toFixed(8),
   };
 

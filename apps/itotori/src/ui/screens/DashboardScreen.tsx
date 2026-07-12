@@ -661,7 +661,7 @@ function JobsRunTableRowView({ row }: { row: JobsRunTableRow }): ReactNode {
         <span className="itotori-virtual-list__value">
           {row.task}
           <br />
-          <code>{row.draftJobId}</code>
+          <code>{row.journalRunId}</code>
         </span>
       </span>
       <span>
@@ -669,7 +669,7 @@ function JobsRunTableRowView({ row }: { row: JobsRunTableRow }): ReactNode {
         <span className="itotori-virtual-list__value">
           {row.servedProvider}
           <br />
-          {row.servedModel ?? "unrecorded"}
+          {row.servedModel}
         </span>
       </span>
       <span>

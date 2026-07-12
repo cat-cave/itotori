@@ -155,13 +155,17 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  *
  * - `localize.parse-config`        — config JSON parse / validate.
  * - `localize.provision-project-scope` — idempotently upsert the project /
- *   locale-branch / source-revision graph the draft-job + pass-ledger FKs
- *   require, before any live persist.
+ *   locale-branch / source-revision graph the journal FKs require, before any
+ *   live persist.
  * - `localize.read-bridge`         — read + assert the v0.2 bridge bundle.
  * - `localize.read-pair-policy`    — read + parse the v0.3 pair-policy.
+ * - `localize.read-prior-journal`  — load prior-run context from the durable
+ *                                    attempt/outcome journal.
  * - `localize.read-structure`      — read + parse the decoded structure JSON.
  * - `localize.build-resolver`      — wire the per-unit structure resolver.
- * - `localize.run-pass`            — run the driven executor + pass ledger.
+ * - `localize.run-pass`            — run one driven-executor pass.
+ * - `localize.run-journal`         — run the driven executor + durable
+ *                                    attempt/outcome journal.
  * - `localize.persist-draft`       — persist a draft outcome.
  * - `localize.persist-provider-run`— persist a provider-run summary.
  * - `localize.export-patch`        — write the patch export artifact.
@@ -187,9 +191,11 @@ export type PipelineStep =
   | "localize.provision-project-scope"
   | "localize.read-bridge"
   | "localize.read-pair-policy"
+  | "localize.read-prior-journal"
   | "localize.read-structure"
   | "localize.build-resolver"
   | "localize.run-pass"
+  | "localize.run-journal"
   | "localize.persist-draft"
   | "localize.persist-provider-run"
   | "localize.export-patch"

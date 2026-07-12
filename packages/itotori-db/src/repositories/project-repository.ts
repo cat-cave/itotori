@@ -99,8 +99,8 @@ export type ItotoriProjectRecord = {
  * (`projectId` / `localeBranchId` / `sourceRevisionId` + the target/source
  * locales). {@link ItotoriProjectRepository.ensureRunProjectScope} upserts the
  * parent workspace -> project -> source-revision -> source-bundle -> locale-branch
- * graph these ids imply, so the FKs the draft-job / pass-ledger writes require
- * are satisfied before the first live persist. Game-agnostic: every field is a
+ * graph these ids imply, so the journal-run FKs are satisfied before the first
+ * live persist. Game-agnostic: every field is a
  * config value, never a hardcoded id.
  */
 export type LocalizationRunProjectScope = {
@@ -816,12 +816,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
 
   /**
    * Idempotently provision the parent project graph a whole-project localize run
-   * requires BEFORE it persists any draft job / pass-ledger row. The whole-game
-   * `localize-game` driver (and `localize`) writes into `itotori_draft_jobs`
-   * (FK -> projects + locale_branches) and `itotori_localization_pass_ledger`
-   * (FK -> projects + locale_branches + source_revisions) using the run identity
-   * from its config, but never created those parent rows — so the first live
-   * persist violated the FK. This upserts, in FK order, the
+   * requires before it persists a journal run. The whole-game `localize-game`
+   * driver (and `localize`) writes a journal run with FKs to projects,
+   * locale branches, and source revisions using the run identity from its
+   * config, but never created those parent rows — so the first live persist
+   * violated the FK. This upserts, in FK order, the
    * workspace -> project -> source_revision -> source_bundle -> locale_branch
    * chain those ids imply.
    *
@@ -829,7 +828,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
    * clobbers a richer graph a real `importSourceBundle` already wrote (a prior
    * real import keeps its own source bundle + locale-branch pointer; this only
    * fills in whatever parent rows are still missing — in particular the
-   * config's `sourceRevisionId`, which the pass-ledger FK restricts to). The
+   * config's `sourceRevisionId`, which the journal-run FK restricts to). The
    * synthesized source bundle is a minimal run-scope placeholder (0 units/0
    * assets) that exists only to satisfy the locale-branch's `restrict` FK; the
    * real source units land later via the normal bridge-import path when a run

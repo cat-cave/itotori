@@ -279,7 +279,7 @@ function terminologyResult(opts: {
 
 function runTable(): JobsRunTableReadModel {
   return {
-    schemaVersion: "jobs.run_table.v0.1",
+    schemaVersion: "jobs.run_table.v0.2",
     generatedAt: NOW.toISOString(),
     filter: { projectId: PROJECT_ID },
     pagination: {
@@ -294,11 +294,10 @@ function runTable(): JobsRunTableReadModel {
     rows: [
       {
         runId: "run-draft-1",
-        ledgerEntryId: "ledger-run-1",
-        draftJobId: "draft-job-1",
-        draftJobAttemptId: "draft-job-attempt-1",
+        journalRunId: "journal-run-1",
+        attemptId: "run-draft-1",
         providerRunId: "provider-run-1",
-        jobId: "job-1",
+        bridgeUnitId: "bridge-unit-1",
         projectId: PROJECT_ID,
         localeBranchId: BRANCH_ID,
         task: "draft scene greeting",
@@ -308,7 +307,7 @@ function runTable(): JobsRunTableReadModel {
         zdr: true,
         cost: { unit: "USD", amount: "0.000001" },
         tokens: { in: 10, out: 5, total: 15 },
-        fallback: { used: false, plan: [], chain: [] },
+        fallback: { availability: "captured", used: false, plan: [], chain: [] },
         createdAt: NOW.toISOString(),
       },
     ],
