@@ -38,6 +38,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   AuthorizationActor,
   CreateReviewerQueueItemInput,
+  ItotoriContextArtifactRepositoryPort,
   ItotoriTerminologyCandidateRepositoryPort,
   ReviewerQueueItemRecord,
 } from "@itotori/db";
@@ -552,6 +553,12 @@ export type ProjectDrivenExecutorInput = {
    * absent the loop's terminology enrichment runs without the repository check.
    */
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
+  /**
+   * p0-core-persistent-context-brain — central context-artifact store (source /
+   * sink / invalidation). Threaded into every unit so semantic enrichment +
+   * speaker labels persist and cross-unit reuse works on the live path.
+   */
+  contextArtifactRepository?: ItotoriContextArtifactRepositoryPort;
   /** Per-unit real-context resolver (per P0#1). */
   resolveUnitContext?: DrivenUnitContextResolver;
   /**
@@ -1230,6 +1237,10 @@ async function runSingleDrivenUnit(args: {
       // loop so the repository-side pre-persist conflict check runs in prod.
       ...(input.terminologyCandidateRepository !== undefined
         ? { terminologyCandidateRepository: input.terminologyCandidateRepository }
+        : {}),
+      // Persistent context brain — central store as source/sink/invalidation.
+      ...(input.contextArtifactRepository !== undefined
+        ? { contextArtifactRepository: input.contextArtifactRepository }
         : {}),
       // Thread THIS unit's optional prior-run feedback (if the
       // run is a pass N+1 driven run with a prior context) so the translation

@@ -40,7 +40,7 @@ const SYSTEM_INSTRUCTIONS = [
   `confidenceFloor MUST be one of: ${TRANSLATION_DRAFT_CONFIDENCE_FLOORS.join(", ")}.`,
   `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}". Copy it verbatim.`,
   'Emit ONLY the allowed top-level properties: "schemaVersion" and "drafts". Do NOT include a "$schema" property, an "$id", a "title", or ANY other top-level key. The embedded schema below is a SPEC to conform to, NOT a template to echo back.',
-  'citationRefs MUST contain ONLY the exact ids shown in the Glossary block (termId=...) or the "Context artifacts available for citation" block. Cite the id VERBATIM. Do NOT prefix an id (e.g. never "terminology-candidate:<term>"), do NOT cite a raw source term, and do NOT cite anything not listed. If you consulted nothing citable, emit an empty citationRefs array.',
+  'citationRefs MUST contain ONLY the exact ids shown in the Glossary block (termId=...) or the "Context artifacts (resolved content)" block (contextArtifactId=...). Cite the id VERBATIM. Do NOT invent ids, do NOT cite a raw source term, and do NOT cite anything not listed. If you consulted nothing citable, emit an empty citationRefs array.',
   "Emit ONLY a JSON object that conforms to the schema. Do NOT emit prose, markdown, or trailing commas. RFC 8259 JSON only.",
 ].join("\n");
 
@@ -79,13 +79,24 @@ export function buildTranslationPrompt(
   }
 
   lines.push("");
-  const contextArtifacts = input.contextArtifactRefs ?? [];
+  const contextArtifacts = input.contextArtifacts ?? [];
   if (contextArtifacts.length === 0) {
     lines.push("Context artifacts: (empty)");
   } else {
-    lines.push("Context artifacts available for citation:");
-    for (const ref of [...contextArtifacts].sort()) {
-      lines.push(`- ${ref}`);
+    lines.push("Context artifacts (resolved content):");
+    const sorted = [...contextArtifacts].sort((left, right) =>
+      left.contextArtifactId.localeCompare(right.contextArtifactId),
+    );
+    for (const artifact of sorted) {
+      lines.push(
+        `- contextArtifactId=${artifact.contextArtifactId} category=${artifact.category} title=${JSON.stringify(artifact.title)}`,
+      );
+      if (artifact.contentHash !== undefined && artifact.contentHash.length > 0) {
+        lines.push(`  version=${artifact.contentHash}`);
+      }
+      for (const bodyLine of artifact.body.split("\n")) {
+        lines.push(`  ${bodyLine}`);
+      }
     }
   }
 

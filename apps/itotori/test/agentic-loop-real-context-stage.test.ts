@@ -15,9 +15,9 @@
 //   1. Unit/integration (mock LLM): the translation stage PROVABLY receives
 //      the decoded scene / route / speaker structure in its prompt, and the
 //      four semantic agents all ran. Deterministic, runs in CI.
-//   2. Opt-in real-provider configuration: the direct loop has no durable
-//      cost-admission authority, so its first OpenRouter invocation must pause
-//      before the capturing transport can emit a network request.
+//   2. Opt-in real-provider configuration: the loop runs through the same
+//      supervisor-routed cost-admission boundary as production before any
+//      OpenRouter invocation, then proves the live context enrichment.
 
 import { readFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -37,6 +37,8 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
 } from "../src/orchestrator/agentic-loop.js";
+import { capturePhysicalProviderAttempts } from "../src/orchestrator/attempt-outcome-journal.js";
+import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   LocalProviderRunArtifactRecorder,
@@ -289,8 +291,11 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     expect(prompt).toContain("dispatches to scene 6020");
     // Speaker character arc.
     expect(prompt).toContain("speaks");
-    // contextArtifactRefs are non-empty and citable.
-    expect(prompt).toContain("Context artifacts available for citation:");
+    // Resolved context artifacts carry REAL content (not bare ids).
+    expect(prompt).toContain("Context artifacts (resolved content):");
+    expect(prompt).toContain(`structure:scene-summary:${SCENE_ID}`);
+    expect(prompt).toContain(`structure:route-branch-map:${SCENE_ID}`);
+    // Structure-informed citation line still names the deterministic refs.
     expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
     expect(prompt).toContain("route-branch-map");
 
@@ -444,7 +449,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Opt-in boundary proof — real ZDR OpenRouter configuration, no network call.
+// Opt-in live proof — real ZDR OpenRouter configuration, cost-admitted.
 // ---------------------------------------------------------------------------
 
 const LIVE_ENABLED =
@@ -453,14 +458,18 @@ const LIVE_ENABLED =
   process.env.OPENROUTER_API_KEY.length > 0 &&
   process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1";
 
+const LIVE_BUDGET_CAP_USD = 1.0;
+
 /** Provider wrapper that records every request + result for the live proof. */
 function capturingLiveProvider(
   inner: ModelProvider,
   requests: ModelInvocationRequest[],
   results: ModelInvocationResult[],
 ): ModelProvider {
+  const preflightInvocation = inner.preflightInvocation?.bind(inner);
   return {
     descriptor: inner.descriptor,
+    ...(preflightInvocation === undefined ? {} : { preflightInvocation }),
     invoke: async (request: ModelInvocationRequest): Promise<ModelInvocationResult> => {
       requests.push(request);
       const result = await inner.invoke(request);
@@ -470,13 +479,13 @@ function capturingLiveProvider(
   };
 }
 
-describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", () => {
-  it("refuses the configured OpenRouter route before its capturing transport runs", async () => {
+describe("itotori-agentic-loop-real-context-stage (live)", () => {
+  it("runs a cost-admitted OpenRouter loop whose translation prompt carries decoded context", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
         "[realctx-live] skipping — set ITOTORI_REALCTX_LIVE=1, OPENROUTER_API_KEY, and " +
-          "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 to exercise the guard (optional: ITOTORI_REALCTX_STRUCTURE_JSON=<path>, ITOTORI_REALCTX_SCENE=<id>)",
+          "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 to run it (optional: ITOTORI_REALCTX_STRUCTURE_JSON=<path>, ITOTORI_REALCTX_SCENE=<id>)",
       );
       return;
     }
@@ -517,6 +526,22 @@ describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", (
     });
     const factory: AgenticLoopProviderFactory = () =>
       capturingLiveProvider(provider, requests, results);
+    const admittedAttemptIds: string[] = [];
+    // The live proof takes the production-bound supervisor path. `DEV_POLICY`
+    // supplies each invocation's explicit maximumBillableCostUsd ceiling; this
+    // test-only sink records every admission without bypassing that guard.
+    const costAdmission: InvocationCostAdmission = {
+      admit: async ({ attempt }) => {
+        admittedAttemptIds.push(attempt.attemptId);
+        return { admitted: true };
+      },
+    };
+    const supervisedAttempts = capturePhysicalProviderAttempts({
+      runId: "realctx-live-run",
+      bridgeUnitId: unit.bridgeUnitId,
+      source: factory,
+      costAdmission,
+    });
 
     const input: AgenticLoopUnitInput = {
       unit,
@@ -530,16 +555,49 @@ describe("itotori-agentic-loop-real-context-stage (paid invocation boundary)", (
       actor: ACTOR,
     };
 
-    await expect(
-      runAgenticLoopForUnit(input, DEV_POLICY, makePolicy(), factory),
-    ).rejects.toMatchObject({
-      name: "InvocationOperationalPauseError",
-      blocker: {
-        kind: "budget_cap",
-        detail: expect.stringContaining("durable cost-admission"),
-      },
-    });
-    expect(requests).toEqual([]);
-    expect(results).toEqual([]);
+    const bundle = await runAgenticLoopForUnit(
+      { ...input, attemptOutcomeObserver: supervisedAttempts.attemptOutcomeObserver },
+      DEV_POLICY,
+      makePolicy(),
+      supervisedAttempts.providerFactory,
+    );
+    supervisedAttempts.markSuccessful();
+    expect(admittedAttemptIds).toHaveLength(results.length);
+
+    // The four semantic context agents ran LIVE (real openrouter proof ids).
+    const contextStage = bundle.stages.find((s) => s.stageName === "context");
+    expect(contextStage?.invocations.length).toBe(4);
+    for (const inv of contextStage?.invocations ?? []) {
+      expect(inv.providerProofId).toMatch(/^openrouter-/u);
+      // Real cost, from usage.cost.
+      expect(Number(inv.costUsd)).toBeGreaterThanOrEqual(0);
+    }
+
+    // The translation prompt PROVABLY carried the decoded structure.
+    const translationRequest = requests.find((r) => r.taskKind === "draft_translation");
+    expect(translationRequest).toBeDefined();
+    const userMessage = translationRequest?.messages?.find((m) => m.role === "user");
+    const prompt = userMessage?.content ?? "";
+    expect(prompt).toContain("Structure-informed context");
+    expect(prompt).toContain(`Scene ${sceneId}`);
+    expect(prompt).toContain("route position");
+    expect(prompt).toContain("Context artifacts (resolved content):");
+
+    // ZDR enforced on the wire + real cost recorded; budget cap respected.
+    let totalCostUsd = 0;
+    for (const result of results) {
+      expect(result.providerRun.routingPosture.zdr).toBe(true);
+      expect(result.providerRun.routingPosture.data_collection).toBe("deny");
+      expect(result.providerRun.cost.costKind).toBe("billed");
+      totalCostUsd += (result.providerRun.cost.amountMicrosUsd ?? 0) / 1_000_000;
+    }
+    expect(totalCostUsd).toBeGreaterThan(0);
+    expect(totalCostUsd).toBeLessThanOrEqual(LIVE_BUDGET_CAP_USD);
+
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[realctx-live] scene=${sceneId} calls=${results.length} totalCost=$${totalCostUsd.toFixed(6)} ` +
+        `zdr=true semanticAgents=4 finalOutcome=${bundle.writtenOutcome.status}`,
+    );
   }, 180_000);
 });

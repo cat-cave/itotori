@@ -816,10 +816,14 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
         ]),
       },
       contextVersionReferenceState: {
-        availability: "pending_persistent_context_brain",
-        refs: [],
+        availability: "versioned",
+        refs: expect.any(Array),
       },
+      artifacts: expect.any(Array),
     });
+    expect(afterJournal?.contextPacket?.contextVersionReferenceState.refs.length).toBeGreaterThan(
+      0,
+    );
     expect(afterJournal?.contextRefs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

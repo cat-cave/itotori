@@ -27,6 +27,7 @@
 
 import type {
   AuthorizationActor,
+  ItotoriContextArtifactRepositoryPort,
   ItotoriLocalizationJournalRepositoryPort,
   ItotoriTerminologyCandidateRepositoryPort,
   LocalizationJournalOutcomeRecord,
@@ -169,6 +170,7 @@ export type LocalizeFullProjectDeps = {
   journalHistory?: LocalizationJournalHistoryPort;
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   terminologyCandidateRepository?: ItotoriTerminologyCandidateRepositoryPort;
+  contextArtifactRepository?: ItotoriContextArtifactRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide?: StyleGuidePolicyV0Draft;
   /**
@@ -495,6 +497,9 @@ export async function runLocalizeFullProjectCommand(
     ...(deps.reviewerQueue !== undefined ? { reviewerQueue: deps.reviewerQueue } : {}),
     ...(deps.terminologyCandidateRepository !== undefined
       ? { terminologyCandidateRepository: deps.terminologyCandidateRepository }
+      : {}),
+    ...(deps.contextArtifactRepository !== undefined
+      ? { contextArtifactRepository: deps.contextArtifactRepository }
       : {}),
     ...(deps.glossary !== undefined ? { glossary: deps.glossary } : {}),
     ...(deps.styleGuide !== undefined ? { styleGuide: deps.styleGuide } : {}),

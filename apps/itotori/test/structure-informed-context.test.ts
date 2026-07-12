@@ -234,7 +234,12 @@ describe("translate-stage injection (prompt wiring)", () => {
     const rendered = buildTranslationPrompt({
       ...baseInput,
       structuredContext: ctx,
-      contextArtifactRefs: ctx.artifactRefs,
+      contextArtifacts: ctx.artifactRefs.map((ref) => ({
+        contextArtifactId: ref,
+        category: "scene_summary",
+        title: ref,
+        body: ctx.sceneSummaryText,
+      })),
     });
     expect(rendered.userText).toContain("Structure-informed context");
     expect(rendered.userText).toContain("dispatches to scene 6011");
