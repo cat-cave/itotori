@@ -36,7 +36,10 @@ const BUNDLE_ID = "bundle-invocation-supervisor-resume";
 const UNIT_ONE = "019ed200-0000-7000-8000-000000000001";
 const UNIT_TWO = "019ed200-0000-7000-8000-000000000002";
 
-describe("InvocationSupervisor durable pause/resume", () => {
+// DB-backed: skips visibly in portable (no-DATABASE_URL) shards, runs in the
+// tier1-db lane where a live Postgres is provisioned (matches the repo's
+// DATABASE_URL skip-gate convention, e.g. project-workflow.test.ts).
+describe.skipIf(!process.env.DATABASE_URL)("InvocationSupervisor durable pause/resume", () => {
   it("seeds every unit before dispatch, pauses without a patch, and resumes only pending work", async () => {
     const context = await isolatedMigratedContext();
     try {
