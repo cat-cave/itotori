@@ -123,6 +123,17 @@ export type WholeGamePatchLoaderDiscrepancyKind =
   | "duplicate-written-outcome";
 
 /**
+ * The whole-game patch loader can reconstruct the selected candidate from the
+ * patch report, but it cannot yet reload candidate-scoped QA annotations from
+ * durable state. The availability marker prevents an empty array from being
+ * mistaken for a durable "QA found nothing" result.
+ */
+export type CandidateFindingsReconstruction = {
+  findings: WrittenUnitOutcome["findings"];
+  availability: "not-durably-persisted";
+};
+
+/**
  * Raised when the written-unit set (per the run's patch report) does NOT
  * reconcile with the persisted draft-job / attempt / provider-ledger rows. An
  * written unit with no real draft evidence must NOT be silently dropped or
@@ -338,6 +349,7 @@ function reconstructWrittenOutcome(args: {
 }): WrittenUnitOutcome {
   const id = `draft-artifact:${args.draftJobId}:${args.unitId}`;
   const selectedCandidateId = `${id}:selected`;
+  const candidateFindings = reconstructCandidateFindings();
   const writtenAt = firstRecordedTimestamp(
     args.attempt.endedAt,
     args.attempt.createdAt,
@@ -362,7 +374,7 @@ function reconstructWrittenOutcome(args: {
         kind: args.attempt.attemptIndex > 1 ? "repair" : "primary",
       },
     ],
-    findings: [],
+    findings: candidateFindings.findings,
     qualityFlags: [...new Set(args.qualityFlags)].sort(),
     provenance: {
       origin: "patch-report-projection",
@@ -370,9 +382,15 @@ function reconstructWrittenOutcome(args: {
       attemptId: args.attempt.draftJobAttemptId,
       providerProofId: args.ledgerEntry.providerProofId,
       costLedgerEntryRef: args.ledgerEntry.ledgerEntryId,
+      candidateFindingsAvailability: candidateFindings.availability,
     },
     writtenAt,
   };
+}
+
+function reconstructCandidateFindings(): CandidateFindingsReconstruction {
+  // TODO(p0-core-attempt-and-outcome-journal): persist+reload candidate findings
+  return { findings: [], availability: "not-durably-persisted" };
 }
 
 function firstRecordedTimestamp(...values: ReadonlyArray<Date | null | undefined>): string {

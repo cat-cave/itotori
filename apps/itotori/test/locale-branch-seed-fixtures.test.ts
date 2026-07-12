@@ -25,6 +25,7 @@ const BRANCH_A: LocaleBranchSeedSpec = {
   targetLocale: "fr-FR",
   draftJobId: "019ed059-0000-7000-8000-0000000000d1",
   benchmarkRunId: "019ed059-0000-7000-8000-0000000000e1",
+  sourceText: "Source fixture text.",
   draftText: "Bonjour, joueur — branche primaire.",
 };
 
@@ -37,6 +38,7 @@ const BRANCH_B: LocaleBranchSeedSpec = {
   targetLocale: "fr-FR",
   draftJobId: "019ed059-0000-7000-8000-0000000000d2",
   benchmarkRunId: "019ed059-0000-7000-8000-0000000000e2",
+  sourceText: "Source fixture text.",
   draftText: "Salut, joueur — branche alternative.",
 };
 
@@ -166,6 +168,12 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
 
   it("rejects a seed that shows fewer than two branches", () => {
     expect(() => buildSeed([BRANCH_A])).toThrow(LocaleBranchSeedConflationError);
+  });
+
+  it("rejects a draft body that echoes its source text before producing a bundle", () => {
+    expect(() => buildSeed([{ ...BRANCH_A, draftText: BRANCH_A.sourceText }, BRANCH_B])).toThrow(
+      /must not echo sourceText/u,
+    );
   });
 
   it("API rejects a benchmark record that drops its locale-branch identity", () => {

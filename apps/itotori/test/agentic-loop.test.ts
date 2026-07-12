@@ -41,6 +41,7 @@ import {
   type PairPolicy,
 } from "../src/orchestrator/agentic-loop.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import { TranslationPartialResultError } from "../src/agents/translation/shapes.js";
 import { usageCostToDecimalString, usageCostToMicros } from "../src/providers/cost.js";
 import type {
   ModelInvocationRequest,
@@ -355,6 +356,65 @@ function persistentlyFlaggingProviderFactory(args: {
   };
 }
 
+/**
+ * Returns empty structured-agent content at a selected point in the loop.
+ * Empty content is deliberately used instead of an invalid JSON shape: it
+ * exercises the agents' typed partial-result path, which bounded structured
+ * retry intentionally does not retry as a schema problem.
+ */
+function partialResultProviderFactory(args: {
+  primaryTranslationPartial?: boolean;
+  initialQaPartial?: boolean;
+  repairTranslationPartial?: boolean;
+  reQaPartial?: boolean;
+  qaFinding?: QaFinding;
+}): AgenticLoopProviderFactory {
+  let qaCallCount = 0;
+  let translationCallCount = 0;
+  return ({ stage, agentLabel }) =>
+    new FakeModelProvider({
+      providerName: `partial-result-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest) => {
+        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+          return makeSpeakerLabelContent(makeUnit());
+        }
+        if (request.taskKind === "experiment") {
+          return fakeSemanticContextContent(agentLabel);
+        }
+        if (request.taskKind === "draft_translation") {
+          translationCallCount += 1;
+          if (
+            (translationCallCount === 1 && args.primaryTranslationPartial === true) ||
+            (translationCallCount > 1 && args.repairTranslationPartial === true)
+          ) {
+            return "";
+          }
+          return makeTranslationContent({
+            unit: makeUnit(),
+            draftText: DRAFT_TEXT,
+            spanStart: 7,
+            spanEnd: 15,
+          });
+        }
+        if (request.taskKind === "llm_qa") {
+          qaCallCount += 1;
+          const initialQaPass = qaCallCount <= 4;
+          if (
+            (initialQaPass && args.initialQaPartial === true) ||
+            (!initialQaPass && args.reQaPartial === true)
+          ) {
+            return "";
+          }
+          if (initialQaPass && qaCallCount === 1 && args.qaFinding !== undefined) {
+            return makeQaContent([args.qaFinding]);
+          }
+          return makeQaContent([]);
+        }
+        return "";
+      },
+    });
+}
+
 // ---------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------
@@ -535,6 +595,93 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     });
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
     expect(repairStage?.outcome).toBe("repair_budget_exhausted");
+  });
+
+  it("writes the primary candidate with qa_incomplete when initial QA returns no content", async () => {
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy(),
+      partialResultProviderFactory({ initialQaPartial: true }),
+    );
+
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.qualityFlags).toContain("qa_incomplete");
+    expect(bundle.stages.find((stage) => stage.stageName === "qa_findings")?.outcome).toBe(
+      "incomplete:partial_result",
+    );
+    expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
+      "skipped:qa_incomplete",
+    );
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
+  });
+
+  it("retains the primary candidate with repair_incomplete when repair returns no content", async () => {
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f05",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "critical",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: trigger a repair",
+      agentRationale: "fixture-repair-partial",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 1 }),
+      partialResultProviderFactory({ qaFinding: finding, repairTranslationPartial: true }),
+    );
+
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.candidates).toHaveLength(1);
+    expect(bundle.writtenOutcome.findings).toHaveLength(1);
+    expect(bundle.writtenOutcome.qualityFlags).toContain("repair_incomplete");
+    expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
+      "incomplete:partial_result_at_attempt_1",
+    );
+    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 1 });
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
+  });
+
+  it("retains the known primary candidate with qa_incomplete when post-repair QA returns no content", async () => {
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f06",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "critical",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: trigger re-QA",
+      agentRationale: "fixture-reqa-partial",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 1 }),
+      partialResultProviderFactory({ qaFinding: finding, reQaPartial: true }),
+    );
+
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.candidates).toHaveLength(2);
+    expect(bundle.writtenOutcome.qualityFlags).toContain("qa_incomplete");
+    expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
+      "incomplete:qa_partial_result_at_attempt_1",
+    );
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
+  });
+
+  it("keeps a primary partial result as a typed operational failure when no candidate exists", async () => {
+    await expect(
+      runAgenticLoopForUnit(
+        makeInput(),
+        DEV_POLICY,
+        makePolicy(),
+        partialResultProviderFactory({ primaryTranslationPartial: true }),
+      ),
+    ).rejects.toBeInstanceOf(TranslationPartialResultError);
   });
 
   it("post-repair re-QA selects a repaired candidate that passes the bounded re-QA", async () => {

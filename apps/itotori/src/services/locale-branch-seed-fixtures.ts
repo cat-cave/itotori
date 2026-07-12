@@ -37,6 +37,8 @@ export type LocaleBranchSeedSpec = {
   draftJobId: string;
   /** Benchmark run id for this branch's benchmark report. */
   benchmarkRunId: string;
+  /** Source text for the fixture unit; prevents emitting a source replay as a draft. */
+  sourceText: string;
   /** Distinct draft text so the two branches' draft state never collapses. */
   draftText: string;
 };
@@ -185,6 +187,11 @@ function projectDraftOntoBranch(
   bundle.draftJobId = spec.draftJobId;
   // Distinct selected bodies per branch: branch state must never be shared.
   const selectedBody = asNonBlankTargetText(spec.draftText);
+  if (selectedBody === spec.sourceText.trim()) {
+    throw new LocaleBranchSeedConflationError(
+      `draftText for branch ${spec.localeBranchId} must not echo sourceText`,
+    );
+  }
   bundle.drafts = bundle.drafts.map((draft) => {
     const selectedCandidate = draft.writtenOutcome.candidates.find(
       (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,

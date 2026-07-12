@@ -335,6 +335,10 @@ describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake r
     expect(a.providerProofId).toBe("proof:draft-job-a-attempt-1");
     expect(a.costLedgerEntryRef).toBe("draft-job-a-attempt-1-ledger");
     expect(a.writtenOutcome.status).toBe("written");
+    expect(a.writtenOutcome.findings).toEqual([]);
+    expect(a.writtenOutcome.provenance).toMatchObject({
+      candidateFindingsAvailability: "not-durably-persisted",
+    });
     expect(bundle.ledgerSummary.attemptCount).toBe(2);
     expect(bundle.ledgerSummary.providerProofIds).toHaveLength(2);
   });
@@ -1082,7 +1086,7 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
             io,
             actor,
             providerFactory: fakeFactory(),
-            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger: new DbPassLedger(passLedgerRepo),
             reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),
@@ -1239,7 +1243,7 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
             io,
             actor,
             providerFactory: fakeFactory(),
-            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger: new DbPassLedger(passLedgerRepo),
             reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),

@@ -283,7 +283,7 @@ function speakerLabelContent(bridgeUnitId: string): string {
   });
 }
 
-function translationContent(bridgeUnitId: string): string {
+function translationContent(bridgeUnitId: string, draftText = "Good morning."): string {
   return JSON.stringify({
     schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
     drafts: [
@@ -291,7 +291,7 @@ function translationContent(bridgeUnitId: string): string {
         bridgeUnitId,
         sourceLocale: "ja-JP",
         targetLocale: "en-US",
-        draftText: `Good morning.`,
+        draftText,
         protectedSpanRefs: [],
         citationRefs: [],
         agentRationale: "fake-translation",
@@ -793,7 +793,10 @@ function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): st
     if (blob.includes(POISON_MARKER)) {
       return JSON.stringify({ schemaVersion: "totally.wrong.v0", drafts: [] });
     }
-    return translationContent(bridgeUnitIdOf(request));
+    const bridgeUnitId = bridgeUnitIdOf(request);
+    // Each multi-unit fixture result deliberately differs so the patch-export
+    // assertion proves a unit cannot receive another unit's selected text.
+    return translationContent(bridgeUnitId, `Concurrent target ${bridgeUnitId.slice(-4)}`);
   }
   if (request.taskKind === "llm_qa") {
     if (blob.includes(DEFER_MARKER)) {
@@ -925,6 +928,22 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(result.writtenOutcomeCount).toBe(UNIT_COUNT);
     expect(result.patchExportCount).toBe(1);
     expect(sinks.writtenOutcomes).toHaveLength(UNIT_COUNT);
+    expect(sinks.patchExports).toHaveLength(1);
+    const translatedUnits = (
+      sinks.patchExports[0]!.translatedBridge as {
+        units: Array<{ bridgeUnitId: string; target: { text: string } }>;
+      }
+    ).units;
+    const targetById = new Map(
+      translatedUnits.map((unit) => [unit.bridgeUnitId, unit.target.text]),
+    );
+    for (const unit of bridge.units) {
+      const selectedBody = `Concurrent target ${unit.bridgeUnitId.slice(-4)}`;
+      // RealLive export adds the engine-visible wrapper, but each unit must
+      // still receive exactly its own selected candidate rather than a
+      // neighbouring unit's body.
+      expect(targetById.get(unit.bridgeUnitId)).toBe(`「${selectedBody}」`);
+    }
     // Same number of provider calls, but wall-clock is far below the sequential
     // sum (bounded speedup ~K). A conservative < 0.6x threshold avoids flake.
     expect(meter.totalCalls).toBe(seqMeter.totalCalls);
