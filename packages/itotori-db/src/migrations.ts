@@ -24,6 +24,7 @@ export async function migrate(databaseUrl?: string): Promise<void> {
       for (const migration of migrations) {
         const body = readFileSync(migrationPath(migration.file), "utf8");
         const checksum = createHash("sha256").update(body).digest("hex");
+        const legacyIds = "legacyIds" in migration ? [...migration.legacyIds] : [];
         try {
           await client.query("begin");
           const applied = await client.query<{ checksum: string }>(
@@ -34,6 +35,39 @@ export async function migrate(databaseUrl?: string): Promise<void> {
           if (existing) {
             if (existing.checksum !== checksum) {
               throw new Error(`migration ${migration.id} checksum mismatch`);
+            }
+          } else if (legacyIds.length > 0) {
+            const legacyApplied = await client.query<{
+              migration_id: string;
+              checksum: string;
+            }>(
+              `
+                select migration_id, checksum
+                from itotori_schema_migrations
+                where migration_id = any($1::text[])
+                for update
+              `,
+              [legacyIds],
+            );
+            const mismatchedLegacy = legacyApplied.rows.find(
+              (legacy) => legacy.checksum !== checksum,
+            );
+            if (mismatchedLegacy !== undefined) {
+              throw new Error(
+                `migration ${migration.id} legacy migration ${mismatchedLegacy.migration_id} checksum mismatch`,
+              );
+            }
+            if (legacyApplied.rows.length > 0) {
+              await client.query(
+                "insert into itotori_schema_migrations (migration_id, checksum) values ($1, $2)",
+                [migration.id, checksum],
+              );
+            } else {
+              await client.query(body);
+              await client.query(
+                "insert into itotori_schema_migrations (migration_id, checksum) values ($1, $2)",
+                [migration.id, checksum],
+              );
             }
           } else {
             await client.query(body);
@@ -395,6 +429,29 @@ export const migrations = [
   {
     id: "0084_retire_legacy_semantic_agent_tables",
     file: "0084_retire_legacy_semantic_agent_tables.sql",
+  },
+  {
+    // Node 5 first shipped this family as 0083–0086, before nodes 6/7 landed
+    // 0083/0084 on main. Adopt a byte-identical legacy migration instead of
+    // replaying its DDL, and record the canonical post-rebase ID.
+    id: "0085_localization_run_finalizer",
+    file: "0085_localization_run_finalizer.sql",
+    legacyIds: ["0083_localization_run_finalizer"],
+  },
+  {
+    id: "0086_terminal_finalizer_integrity",
+    file: "0086_terminal_finalizer_integrity.sql",
+    legacyIds: ["0084_terminal_finalizer_integrity"],
+  },
+  {
+    id: "0087_playable_patch_immutability",
+    file: "0087_playable_patch_immutability.sql",
+    legacyIds: ["0085_playable_patch_immutability"],
+  },
+  {
+    id: "0088_playable_patch_idempotent_membership",
+    file: "0088_playable_patch_idempotent_membership.sql",
+    legacyIds: ["0086_playable_patch_idempotent_membership"],
   },
 ] as const;
 

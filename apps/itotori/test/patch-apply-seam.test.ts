@@ -20,7 +20,15 @@
 //      kaifuu-cli and assert a patched Seen.txt landed under the target
 //      (no retail bytes committed).
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -196,36 +204,83 @@ describe("applyKaifuuRealLivePatch (invocation shape mirrors run.mjs phase 3)", 
 
 describe("applyKaifuuRpgMakerPatch (invocation shape mirrors kaifuu rpgmaker patch)", () => {
   it("invokes kaifuu patch --engine rpgmaker with source www + bundle + delta + patched-data outputs", () => {
-    let captured: { command: string; args: string[] } | undefined;
-    const runProcess = (command: string, args: string[]): KaifuuProcessResult => {
-      captured = { command, args };
-      return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
-    };
-    const res = applyKaifuuRpgMakerPatch({
-      sourceRoot: "/src/game/www",
-      patchedDataOutputPath: "/out/patched-data",
-      deltaOutputPath: "/run/rpgmaker-delta.kaifuu",
-      translatedBundlePath: "/run/translated-bridge.json",
-      env: {},
-      runProcess,
-    });
-    expect(res.status).toBe(0);
-    const a = captured!.args;
-    const patchIdx = a.indexOf("patch");
-    expect(patchIdx).toBeGreaterThanOrEqual(0);
-    expect(a.slice(patchIdx)).toEqual([
-      "patch",
-      "--engine",
-      "rpgmaker",
-      "--source",
-      "/src/game/www",
-      "--bundle",
-      "/run/translated-bridge.json",
-      "--delta-output",
-      "/run/rpgmaker-delta.kaifuu",
-      "--patched-data-output",
-      "/out/patched-data",
-    ]);
+    const root = rpgMakerApplyFixtureRoot();
+    try {
+      let captured: { command: string; args: string[] } | undefined;
+      const runProcess = (command: string, args: string[]): KaifuuProcessResult => {
+        captured = { command, args };
+        materializeRpgMakerOutputs(args);
+        return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
+      };
+      const sourceRoot = join(root, "www");
+      const patchedDataOutputPath = join(root, "patched-data");
+      const deltaOutputPath = join(root, "rpgmaker-delta.kaifuu");
+      const translatedBundlePath = join(root, "translated-bridge.json");
+      const res = applyKaifuuRpgMakerPatch({
+        sourceRoot,
+        patchedDataOutputPath,
+        deltaOutputPath,
+        translatedBundlePath,
+        env: {},
+        runProcess,
+      });
+      expect(res.status).toBe(0);
+      const a = captured!.args;
+      const patchIdx = a.indexOf("patch");
+      expect(patchIdx).toBeGreaterThanOrEqual(0);
+      expect(a.slice(patchIdx)).toEqual([
+        "patch",
+        "--engine",
+        "rpgmaker",
+        "--source",
+        sourceRoot,
+        "--bundle",
+        translatedBundlePath,
+        "--delta-output",
+        deltaOutputPath,
+        "--patched-data-output",
+        patchedDataOutputPath,
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("re-runs safely after a crash left complete target bytes but no outbox receipt", () => {
+    const root = rpgMakerApplyFixtureRoot();
+    try {
+      const sourceRoot = join(root, "www");
+      const patchedDataOutputPath = join(root, "patched-data");
+      const deltaOutputPath = join(root, "rpgmaker-delta.kaifuu");
+      const translatedBundlePath = join(root, "translated-bridge.json");
+      let attempts = 0;
+      const runProcess = (_command: string, processArgs: string[]): KaifuuProcessResult => {
+        attempts += 1;
+        materializeRpgMakerOutputs(processArgs);
+        if (attempts === 1) throw new Error("simulated crash after kaifuu materialized outputs");
+        return { status: 0, stdout: "recovered", stderr: "" };
+      };
+      const args = {
+        sourceRoot,
+        patchedDataOutputPath,
+        deltaOutputPath,
+        translatedBundlePath,
+        env: {},
+        runProcess,
+      } as const;
+
+      expect(() => applyKaifuuRpgMakerPatch(args)).toThrow(/simulated crash/u);
+      const recovered = applyKaifuuRpgMakerPatch(args);
+      expect(recovered.status).toBe(0);
+      expect(recovered.stdout).toContain("rebuilt and verified crash output");
+      expect(attempts).toBe(2);
+
+      const replayed = applyKaifuuRpgMakerPatch(args);
+      expect(replayed.stdout).toContain("verified existing receipt");
+      expect(attempts).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("throws a KaifuuPatchApplyError on a non-zero exit", () => {
@@ -246,6 +301,22 @@ describe("applyKaifuuRpgMakerPatch (invocation shape mirrors kaifuu rpgmaker pat
     ).toThrow(/rpgmaker.*status 4.*stale_source/su);
   });
 });
+
+function rpgMakerApplyFixtureRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-rpgmaker-apply-"));
+  mkdirSync(join(root, "www", "data"), { recursive: true });
+  writeFileSync(join(root, "www", "data", "Map001.json"), '{"events":[]}');
+  writeFileSync(join(root, "translated-bridge.json"), '{"schemaVersion":"0.2.0"}');
+  return root;
+}
+
+function materializeRpgMakerOutputs(args: readonly string[]): void {
+  const target = args[args.indexOf("--patched-data-output") + 1]!;
+  const delta = args[args.indexOf("--delta-output") + 1]!;
+  mkdirSync(target, { recursive: true });
+  writeFileSync(join(target, "Map001.json"), '{"events":["translated"]}');
+  writeFileSync(delta, "deterministic-delta");
+}
 
 describe("buildDraftArtifactBundleFromExecutorRun (production loader over durable journal)", () => {
   it("loads the exact persisted outcomes, all candidates, QA rationale, and full-precision attempts", async () => {
@@ -851,63 +922,117 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
   // SKIPS utsushi render validation even when one is requested (MV/MZ is a
   // delegation runtime with no VM oracle seam).
   it("dispatches rpg-maker-mv-mz to kaifuu patch --engine rpgmaker and skips render validation", async () => {
-    const bridge = seamBridge([
-      {
-        bridgeUnitId: UNIT_A,
-        sourceText: "Hello [ICON].",
-        spans: [{ spanId: "s1", spanKind: "variable_placeholder", raw: "[ICON]" }],
-      },
-    ]);
-    const hash = hashDraftedAgainstBridge(bridge);
-    const patchReport = seamPatchReport(
-      [{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }],
-      hash,
-    );
-    const journal = fakeJournalForPatchReport(patchReport);
-    let capturedArgs: string[] | undefined;
-    const seam = await runWholeGamePatchExportAndApply({
-      engineProfile: "rpg-maker-mv-mz",
-      actor: SEAM_ACTOR,
-      journal,
-      patchReport,
-      rawBridge: bridge,
-      sourceRoot: "/src/www",
-      targetRoot: "/out/patched-data",
-      rpgMakerDeltaOutputPath: "/run/rpgmaker-delta.kaifuu",
-      translatedBundlePath: "/run/translated-bridge.json",
-      requestedBy: localUserId,
-      loadActiveDecisions: async () => [],
-      // A render-validation request is present but MUST be ignored for MV/MZ.
-      renderValidation: { artifactRoot: "/run/rv" },
-      runProcess: (_c, a) => {
-        capturedArgs = a;
-        return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
-      },
-    });
-    expect(seam.apply.status).toBe(0);
-    expect(seam.patchExportBundle.drafts).toHaveLength(1);
-    const a = capturedArgs!;
-    const patchIdx = a.indexOf("patch");
-    expect(a.slice(patchIdx)).toEqual([
-      "patch",
-      "--engine",
-      "rpgmaker",
-      "--source",
-      "/src/www",
-      "--bundle",
-      "/run/translated-bridge.json",
-      "--delta-output",
-      "/run/rpgmaker-delta.kaifuu",
-      "--patched-data-output",
-      "/out/patched-data",
-    ]);
-    // No reallive-only flags leaked in.
-    expect(a).not.toContain("reallive");
-    expect(a).not.toContain("--scope");
-    expect(a).not.toContain("--force");
-    // Render validation skipped despite the request.
-    expect(seam.renderValidation).toBeUndefined();
-    expect(seam.runtimeValidationAdmission).toBeUndefined();
+    const root = rpgMakerApplyFixtureRoot();
+    try {
+      const bridge = seamBridge([
+        {
+          bridgeUnitId: UNIT_A,
+          sourceText: "Hello [ICON].",
+          spans: [{ spanId: "s1", spanKind: "variable_placeholder", raw: "[ICON]" }],
+        },
+      ]);
+      const hash = hashDraftedAgainstBridge(bridge);
+      const patchReport = seamPatchReport(
+        [{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }],
+        hash,
+      );
+      const journal = fakeJournalForPatchReport(patchReport);
+      let capturedArgs: string[] | undefined;
+      const sourceRoot = join(root, "www");
+      const targetRoot = join(root, "patched-data");
+      const deltaOutputPath = join(root, "rpgmaker-delta.kaifuu");
+      const translatedBundlePath = join(root, "translated-bridge.json");
+      const seam = await runWholeGamePatchExportAndApply({
+        engineProfile: "rpg-maker-mv-mz",
+        actor: SEAM_ACTOR,
+        journal,
+        patchReport,
+        rawBridge: bridge,
+        sourceRoot,
+        targetRoot,
+        rpgMakerDeltaOutputPath: deltaOutputPath,
+        translatedBundlePath,
+        requestedBy: localUserId,
+        loadActiveDecisions: async () => [],
+        // A render-validation request is present but MUST be ignored for MV/MZ.
+        renderValidation: { artifactRoot: "/run/rv" },
+        runProcess: (_c, a) => {
+          capturedArgs = a;
+          materializeRpgMakerOutputs(a);
+          return { status: 0, stdout: "kaifuu rpgmaker patch: changed_files=1", stderr: "" };
+        },
+      });
+      expect(seam.apply.status).toBe(0);
+      expect(seam.patchExportBundle.drafts).toHaveLength(1);
+      const a = capturedArgs!;
+      const patchIdx = a.indexOf("patch");
+      expect(a.slice(patchIdx)).toEqual([
+        "patch",
+        "--engine",
+        "rpgmaker",
+        "--source",
+        sourceRoot,
+        "--bundle",
+        translatedBundlePath,
+        "--delta-output",
+        deltaOutputPath,
+        "--patched-data-output",
+        targetRoot,
+      ]);
+      // No reallive-only flags leaked in.
+      expect(a).not.toContain("reallive");
+      expect(a).not.toContain("--scope");
+      expect(a).not.toContain("--force");
+      // Render validation skipped despite the request.
+      expect(seam.renderValidation).toBeUndefined();
+      expect(seam.runtimeValidationAdmission).toBeUndefined();
+      expect(seam.structuralValidation).toMatchObject({
+        kind: "rpg-maker-structural",
+        jsonFileCount: 1,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a status-zero RPG Maker apply whose patched JSON is corrupt", async () => {
+    const root = rpgMakerApplyFixtureRoot();
+    try {
+      const bridge = seamBridge([
+        {
+          bridgeUnitId: UNIT_A,
+          sourceText: "Hello [ICON].",
+          spans: [{ spanId: "s1", spanKind: "variable_placeholder", raw: "[ICON]" }],
+        },
+      ]);
+      const patchReport = seamPatchReport(
+        [{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }],
+        hashDraftedAgainstBridge(bridge),
+      );
+      await expect(
+        runWholeGamePatchExportAndApply({
+          engineProfile: "rpg-maker-mv-mz",
+          actor: SEAM_ACTOR,
+          journal: fakeJournalForPatchReport(patchReport),
+          patchReport,
+          rawBridge: bridge,
+          sourceRoot: join(root, "www"),
+          targetRoot: join(root, "patched-data"),
+          rpgMakerDeltaOutputPath: join(root, "rpgmaker-delta.kaifuu"),
+          translatedBundlePath: join(root, "translated-bridge.json"),
+          requestedBy: localUserId,
+          loadActiveDecisions: async () => [],
+          runProcess: (_command, processArgs) => {
+            materializeRpgMakerOutputs(processArgs);
+            const target = processArgs[processArgs.indexOf("--patched-data-output") + 1]!;
+            writeFileSync(join(target, "Map001.json"), '{"events": [broken}');
+            return { status: 0, stdout: "reported success despite corrupt JSON", stderr: "" };
+          },
+        }),
+      ).rejects.toThrow(/patched JSON is invalid/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   // (b) — P1 #2: every selected candidate must have a real physical attempt,
@@ -1237,7 +1362,6 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         // --- Whole-game localize (fake provider, real DB persistence) ---
         const { result } = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,
@@ -1399,7 +1523,6 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
         };
         const { result } = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,

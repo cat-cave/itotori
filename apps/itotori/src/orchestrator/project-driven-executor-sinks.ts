@@ -401,6 +401,39 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     await this.stopRunHeartbeat(runId);
   }
 
+  /**
+   * The terminal finalizer needs the same fenced lease that admitted the
+   * executor's provider calls. Expose a copy rather than the private mutable
+   * record so it can make the finalizing -> terminal transition atomically
+   * without teaching the executor about terminal states.
+   */
+  getActiveRunLease(runId: string): {
+    ownerId: string;
+    fenceToken: number;
+    leaseSeconds?: number;
+  } {
+    return { ...this.requireLease(runId) };
+  }
+
+  /**
+   * Stop provider-era heartbeat work while retaining the fenced identity for
+   * the one atomic `running|paused -> finalizing` transition. The terminal
+   * repository clears that durable lease as it acquires the run-level lock.
+   */
+  async quiesceTerminalRunLeaseHeartbeat(runId: string): Promise<void> {
+    await this.stopRunHeartbeat(runId);
+  }
+
+  /**
+   * `running|paused -> finalizing` atomically consumes the durable executor
+   * lease. Drop this adapter's in-memory ownership immediately afterward;
+   * unlike `releasePausedRunLease`, this never performs another DB write.
+   */
+  async forgetTerminalRunLease(runId: string): Promise<void> {
+    this.activeLeases.delete(runId);
+    await this.stopRunHeartbeat(runId);
+  }
+
   async persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void> {
     await this.requireSeed(record.run.runId);
     const lease = this.requireLease(record.run.runId);

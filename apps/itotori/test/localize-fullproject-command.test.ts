@@ -527,7 +527,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
           const clock = deterministicClock();
           const out = await runLocalizeFullProjectCommand({
             configPath,
-            runSummaryPath: join(runDir, "run-summary.json"),
             deps: {
               io,
               actor,
@@ -561,7 +560,9 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         expect(journalRun.patchSink.exportCount).toBe(1);
         expect(existsSync(join(journalRun.runDir, "translated-bridge.json"))).toBe(true);
         expect(existsSync(join(journalRun.runDir, "patch-report.json"))).toBe(true);
-        expect(existsSync(join(journalRun.runDir, "run-summary.json"))).toBe(true);
+        // The inner driven command is preterminal; only node 5's durable
+        // finalizer may emit the canonical run-summary projection.
+        expect(existsSync(join(journalRun.runDir, "run-summary.json"))).toBe(false);
 
         // The journal read model is the durable source of truth: it returns
         // canonical selected bodies, all candidates, QA rationale, speaker
@@ -640,7 +641,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
           const patchSink = new FsDrivenPatchExportSink(runDir);
           const out = await runLocalizeFullProjectCommand({
             configPath,
-            runSummaryPath: join(runDir, "run-summary.json"),
             deps: {
               io,
               actor,
@@ -774,7 +774,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
           const patchSink = new FsDrivenPatchExportSink(runDir);
           const out = await runLocalizeFullProjectCommand({
             configPath,
-            runSummaryPath: join(runDir, "run-summary.json"),
             deps: {
               io,
               actor,
@@ -915,7 +914,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
 
         const out = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,
@@ -944,12 +942,9 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
         expect(out.result.unitsInScope).toBe(4);
         expect(out.result.unitsRun).toBe(4);
 
-        // The written run-summary artifact — the durable, inspectable record
-        // of what a run actually did — carries the SAME resolved scope.
-        const runSummary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as {
-          translationScope: string;
-        };
-        expect(runSummary.translationScope).toBe("dialogue-choices-ui");
+        // No provisional summary may fabricate terminal coverage from this
+        // preterminal command; the durable finalizer projects it later.
+        expect(existsSync(join(runDir, "run-summary.json"))).toBe(false);
 
         // Re-reading the setting directly (the same read a second run, or the
         // Studio GET route, would perform) confirms it is durably persisted,
@@ -1003,7 +998,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
 
         const out = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,

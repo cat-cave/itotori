@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 describe("localization attempt/outcome journal migration", () => {
-  it("creates the normalized journal tables, an unconstrained exact-cost numeric, and candidate-to-attempt FK", async () => {
+  it("creates the normalized journal tables, exact-cost numeric, and planned-unit FKs", async () => {
     const context = await isolatedMigratedContext();
     try {
       const tableRows = await context.db.execute(sql`
@@ -136,7 +136,11 @@ describe("localization attempt/outcome journal migration", () => {
       `);
       expect(
         plannedUnitForeignKeys.rows.map((row) => (row as { source_table: string }).source_table),
-      ).toEqual(["itotori_llm_attempts", "itotori_written_unit_outcomes"]);
+      ).toEqual([
+        "itotori_llm_attempts",
+        "itotori_localization_patch_version_units",
+        "itotori_written_unit_outcomes",
+      ]);
     } finally {
       await context.close();
     }

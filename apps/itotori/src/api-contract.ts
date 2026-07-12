@@ -1242,7 +1242,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   ApiLaunchPassRequest: () =>
     object({
       required: ["localeBranchId"],
-      properties: { localeBranchId: str },
+      properties: { localeBranchId: str, cancelled: bool, resumeRunId: str },
       additionalProperties: true,
     }),
   ApiLaunchPassResponse: () =>

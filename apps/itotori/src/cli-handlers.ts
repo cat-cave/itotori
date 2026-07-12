@@ -101,6 +101,7 @@ import {
 } from "./orchestrator/localize-project-stage-live.js";
 import type { LocalizeProjectStageArgs } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
+import { cancelTerminalRunLive } from "./orchestrator/terminal-run-cancellation-live.js";
 import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
   runLocalizeGameCommand,
@@ -1054,7 +1055,9 @@ async function runLocalizeProjectStage(
  *   --run-dir <PATH>      directory for the patch export + provider-run
  *                         artifacts + run summary
  * Optional:
- *   --resume-run-id <ID> resume an existing paused durable journal run
+ *   --resume-run-id <ID> resume an existing paused or finalizing durable run
+ *   --cancel             abort the existing --resume-run-id without running a
+ *                        provider or parsing --config
  *   --cost-cap-usd <decimal>   durable run-level exact-decimal cost cap
  *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
  *                         over the config's `concurrency`)
@@ -1074,6 +1077,29 @@ async function runLocalizeFullProject(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  if (args.includes("--cancel")) {
+    const runId = requiredFlag(args, "--resume-run-id");
+    const runDir = requiredFlag(args, "--run-dir");
+    const cancelled = await cancelTerminalRunLive({
+      runId,
+      runDir,
+      io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
+    });
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          journalRunId: cancelled.journalRunId,
+          runState: cancelled.runState,
+          summaryPath: cancelled.summaryPath,
+          rootCause: cancelled.summary.rootCause,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+
   const configPath = requiredFlag(args, "--config");
   const runDir = requiredFlag(args, "--run-dir");
   const resumeRunId = optionalFlag(args, "--resume-run-id");
@@ -1099,7 +1125,7 @@ async function runLocalizeFullProject(
     }
     costCapUsd = parsed;
   }
-  const { result, patchApply } = await runLocalizeFullProjectLive({
+  const liveResult = await runLocalizeFullProjectLive({
     configPath,
     runDir,
     io: {
@@ -1117,6 +1143,27 @@ async function runLocalizeFullProject(
       process.stdout.write(`${message}\n`);
     },
   });
+  if (liveResult.resumedFinalization === true) {
+    const { result, terminalSummary } = liveResult;
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          journalRunId: result.journalRunId,
+          runState: result.runState,
+          pausedBlocker: result.pausedBlocker,
+          resumedFinalization: true,
+          plannedUnitCount: terminalSummary.coverage.plannedUnitCount,
+          writtenOutcomeCount: terminalSummary.coverage.writtenOutcomeCount,
+          attemptsPersisted: terminalSummary.attempts.totalCount,
+          patchApplied: terminalSummary.patch.playable,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+  const { result, patchApply } = liveResult;
   process.stdout.write(
     `${JSON.stringify(
       {
@@ -1175,7 +1222,7 @@ async function runLocalizeFullProject(
  *                                RealLive identity for the whole-seen extract
  *   --scene <N>                  scene the validate stage replays + renders
  * Optional:
- *   --resume-run-id <ID>        resume an existing paused durable journal run
+ *   --resume-run-id <ID>        resume an existing paused or finalizing durable run
  *   --vault-canonical-id <ID>    source by-id through the read-only vault
  *   --game-root <PATH>           raw extract source root (defaults to --source)
  *   --gameexe <PATH> / --seen <PATH>  structure inputs (default <source>/REALLIVEDATA/*)
@@ -1276,6 +1323,23 @@ async function runLocalizeGame(
 
   try {
     const result = await runLocalizeGameCommand(callArgs);
+    const localizeProjection =
+      result.localize.resumedFinalization === true
+        ? {
+            resumedFinalization: true,
+            plannedUnitCount: result.localize.terminalSummary.coverage.plannedUnitCount,
+            writtenOutcomeCount: result.localize.terminalSummary.coverage.writtenOutcomeCount,
+            attemptsPersisted: result.localize.terminalSummary.attempts.totalCount,
+            patchApplied: result.localize.terminalSummary.patch.playable,
+          }
+        : {
+            unitsRun: result.localize.result.unitsRun,
+            writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
+            totalUsageCostExactUsd: result.localize.result.totalUsageCostExactUsd,
+            totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
+            zdrConfirmed: result.localize.result.zdrConfirmed,
+            patchApplied: result.localize.patchApply !== undefined,
+          };
     process.stdout.write(
       `${JSON.stringify(
         {
@@ -1285,13 +1349,8 @@ async function runLocalizeGame(
           journalRunId: result.localize.result.journalRunId,
           runState: result.localize.result.runState,
           pausedBlocker: result.localize.result.pausedBlocker,
-          unitsRun: result.localize.result.unitsRun,
-          writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
-          totalUsageCostExactUsd: result.localize.result.totalUsageCostExactUsd,
-          totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
-          zdrConfirmed: result.localize.result.zdrConfirmed,
-          patchApplied: result.localize.patchApply !== undefined,
-          ...(result.localize.result.runState === "running"
+          ...localizeProjection,
+          ...(result.localize.result.runState === "succeeded"
             ? {
                 replayLogPath: result.replayLogPath,
                 renderEvidencePath: result.renderEvidencePath,

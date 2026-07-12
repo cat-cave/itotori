@@ -32,7 +32,7 @@ export function buildHelpText(allCommands = false): string {
     "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
   );
   lines.push(
-    "                          --resume-run-id <ID>  Resume the durable run from its first pending unit after clearing its exact paused blocker.",
+    "                          --resume-run-id <ID>  Resume a paused run from its first pending unit, or finish a durable finalizing commit.",
   );
   lines.push("  extract                 Extract a bridge bundle from a game.");
   lines.push("  structure-export        Export narrative structure from a game.");
@@ -41,7 +41,10 @@ export function buildHelpText(allCommands = false): string {
     "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
   );
   lines.push(
-    "                          --resume-run-id <ID>  Resume the durable run from its first pending unit after clearing its exact paused blocker.",
+    "                          --resume-run-id <ID>  Resume a paused run from its first pending unit, or finish a durable finalizing commit.",
+  );
+  lines.push(
+    "                          --cancel --resume-run-id <ID> --run-dir <PATH>  Abort an existing run without invoking a provider; --config is not required.",
   );
   lines.push("  patch                   Apply a translation patch to a game.");
   lines.push("  validate                Validate a patched game (replay + render).");

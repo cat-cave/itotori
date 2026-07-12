@@ -15,12 +15,11 @@ import { FakeModelProvider } from "../src/providers/fake.js";
 const ACTOR: AuthorizationActor = { userId: "localize-resume-plumbing-test" };
 
 describe("localize resume operator plumbing", () => {
-  it("forwards the durable run id and writes the exact paused blocker to run-summary.json", async () => {
+  it("forwards the durable run id and retains the exact paused blocker for the outer finalizer", async () => {
     const workDir = mkdtempSync(join(tmpdir(), "itotori-resume-plumbing-"));
     const bridgePath = join(workDir, "bridge.json");
     const pairPolicyPath = join(workDir, "pair-policy.json");
     const configPath = join(workDir, "localize.config.json");
-    const runSummaryPath = join(workDir, "run-summary.json");
     const resumeRunId = "localization-journal-run-resume-operator-test";
     const bridge = JSON.parse(
       readFileSync(new URL("./fixtures/whole-seen-bridge.json", import.meta.url), "utf8"),
@@ -85,7 +84,6 @@ describe("localize resume operator plumbing", () => {
 
     const output = await runLocalizeFullProjectCommand({
       configPath,
-      runSummaryPath,
       resumeRunId,
       deps: {
         io: {
@@ -111,22 +109,12 @@ describe("localize resume operator plumbing", () => {
       },
     });
 
-    const summary = JSON.parse(readFileSync(runSummaryPath, "utf8")) as {
-      journalRunId: string;
-      runState: string;
-      pausedBlocker: OperationalBlocker | null;
-    };
     expect(plannedRun?.run.runId).toBe(resumeRunId);
     expect(plannedRun?.costPolicy).toEqual({ reservation: "node_4_seam", budgetCapUsd: "0.0001" });
     expect(output.result.journalRunId).toBe(resumeRunId);
     expect(output.result.runState).toBe("paused");
     expect(output.result.pausedBlocker).toEqual(persistedBlocker);
-    expect(summary).toMatchObject({
-      journalRunId: resumeRunId,
-      runState: "paused",
-    });
-    expect(summary.pausedBlocker).toEqual(output.result.pausedBlocker);
-    expect(summary.pausedBlocker).toMatchObject({ kind: "provider_outage" });
+    expect(output.result.pausedBlocker).toMatchObject({ kind: "provider_outage" });
     expect(patchExports).toBe(0);
   });
 });

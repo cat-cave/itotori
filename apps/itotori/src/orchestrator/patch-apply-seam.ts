@@ -39,6 +39,7 @@ import type {
   LocalizationJournalAttemptRecord,
   LocalizationJournalOutcomeRecord,
 } from "@itotori/db";
+import { hashLocalizationArtifact } from "@itotori/db";
 import {
   assertDraftArtifactBundle,
   assertPatchExportBundle,
@@ -47,7 +48,18 @@ import {
   type DraftArtifactDraftEntry,
   type PatchExportBundle,
 } from "@itotori/localization-bridge-schema";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { AssetDecisionPolicyResolver } from "../asset-decisions/policy-resolver.js";
 import { addDecimalUsd } from "../providers/cost.js";
 import {
@@ -500,7 +512,67 @@ export function applyKaifuuRpgMakerPatch(
 ): KaifuuPatchApplyResult {
   const env = args.env ?? process.env;
   const { command, prefixArgs } = resolveKaifuuCli(env);
-  const patchArgs = [
+  const patchArgs = rpgMakerPatchArgs(prefixArgs, args, {
+    deltaOutputPath: args.deltaOutputPath,
+    patchedDataOutputPath: args.patchedDataOutputPath,
+  });
+  args.log?.(`patch-apply: ${command} ${patchArgs.join(" ")}`);
+  const runProcess = args.runProcess ?? defaultRunProcessFor("rpgmaker");
+  const targetExists = existsSync(args.patchedDataOutputPath);
+  const deltaExists = existsSync(args.deltaOutputPath);
+  if (targetExists || deltaExists) {
+    if (!targetExists || !deltaExists) {
+      throw new KaifuuPatchApplyError(
+        null,
+        "partial prior RPG Maker apply output",
+        `kaifuu patch (rpgmaker) cannot resume: target/delta existence differs ` +
+          `(target=${String(targetExists)}, delta=${String(deltaExists)})`,
+      );
+    }
+    return recoverExistingRpgMakerApply({
+      args,
+      command,
+      prefixArgs,
+      patchArgs,
+      env,
+      runProcess,
+    });
+  }
+  const res = runProcess(command, patchArgs, env);
+  if (res.status !== 0) {
+    throw new KaifuuPatchApplyError(
+      res.status,
+      res.stderr,
+      `kaifuu patch (rpgmaker) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+    );
+  }
+  assertRpgMakerApplyOutputs(args.patchedDataOutputPath, args.deltaOutputPath);
+  writeRpgMakerApplyReceipt(args);
+  return {
+    command,
+    args: patchArgs,
+    status: res.status,
+    stdout: res.stdout,
+    stderr: res.stderr,
+  };
+}
+
+const RPG_MAKER_APPLY_RECEIPT_SCHEMA_VERSION = "itotori.rpgmaker-apply-receipt.v1";
+
+type RpgMakerApplyReceipt = {
+  schemaVersion: typeof RPG_MAKER_APPLY_RECEIPT_SCHEMA_VERSION;
+  sourceHash: string;
+  translatedBundleHash: string;
+  patchedDataHash: string;
+  deltaHash: string;
+};
+
+function rpgMakerPatchArgs(
+  prefixArgs: readonly string[],
+  args: ApplyKaifuuRpgMakerPatchArgs,
+  outputs: { deltaOutputPath: string; patchedDataOutputPath: string },
+): string[] {
+  return [
     ...prefixArgs,
     "patch",
     "--engine",
@@ -510,27 +582,138 @@ export function applyKaifuuRpgMakerPatch(
     "--bundle",
     args.translatedBundlePath,
     "--delta-output",
-    args.deltaOutputPath,
+    outputs.deltaOutputPath,
     "--patched-data-output",
-    args.patchedDataOutputPath,
+    outputs.patchedDataOutputPath,
   ];
-  args.log?.(`patch-apply: ${command} ${patchArgs.join(" ")}`);
-  const runProcess = args.runProcess ?? defaultRunProcessFor("rpgmaker");
-  const res = runProcess(command, patchArgs, env);
-  if (res.status !== 0) {
+}
+
+function recoverExistingRpgMakerApply(input: {
+  args: ApplyKaifuuRpgMakerPatchArgs;
+  command: string;
+  prefixArgs: string[];
+  patchArgs: string[];
+  env: NodeJS.ProcessEnv;
+  runProcess: (command: string, args: string[], env: NodeJS.ProcessEnv) => KaifuuProcessResult;
+}): KaifuuPatchApplyResult {
+  const receiptPath = rpgMakerApplyReceiptPath(input.args.deltaOutputPath);
+  if (existsSync(receiptPath)) {
+    const expected = readRpgMakerApplyReceipt(receiptPath);
+    const actual = buildRpgMakerApplyReceipt(input.args);
+    if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+      throw new KaifuuPatchApplyError(
+        null,
+        "existing RPG Maker apply receipt no longer matches its inputs/outputs",
+        `kaifuu patch (rpgmaker) refused stale or tampered existing output at ${input.args.patchedDataOutputPath}`,
+      );
+    }
+    return {
+      command: input.command,
+      args: input.patchArgs,
+      status: 0,
+      stdout: "idempotent RPG Maker apply: verified existing receipt and output hashes",
+      stderr: "",
+    };
+  }
+
+  // A process can die after kaifuu has atomically materialized both outputs but
+  // before the receipt/outbox completion is durable. Rebuild into owned staging
+  // paths and compare bytes; only an exact deterministic match is adopted.
+  const suffix = randomUUID();
+  const stagedTarget = `${input.args.patchedDataOutputPath}.itotori-recovery-${suffix}`;
+  const stagedDelta = `${input.args.deltaOutputPath}.itotori-recovery-${suffix}`;
+  const stagedArgs = rpgMakerPatchArgs(input.prefixArgs, input.args, {
+    deltaOutputPath: stagedDelta,
+    patchedDataOutputPath: stagedTarget,
+  });
+  try {
+    const recovered = input.runProcess(input.command, stagedArgs, input.env);
+    if (recovered.status !== 0) {
+      throw new KaifuuPatchApplyError(
+        recovered.status,
+        recovered.stderr,
+        `kaifuu patch (rpgmaker) recovery failed with status ${String(recovered.status)}: ${recovered.stderr.trim() || recovered.stdout.trim() || "<no output>"}`,
+      );
+    }
+    assertRpgMakerApplyOutputs(stagedTarget, stagedDelta);
+    const existingTargetHash = hashLocalizationArtifact(input.args.patchedDataOutputPath);
+    const existingDeltaHash = hashLocalizationArtifact(input.args.deltaOutputPath);
+    const stagedTargetHash = hashLocalizationArtifact(stagedTarget);
+    const stagedDeltaHash = hashLocalizationArtifact(stagedDelta);
+    if (existingTargetHash !== stagedTargetHash || existingDeltaHash !== stagedDeltaHash) {
+      throw new KaifuuPatchApplyError(
+        null,
+        "recovered RPG Maker output differs from existing bytes",
+        `kaifuu patch (rpgmaker) refused unverified existing output at ${input.args.patchedDataOutputPath}`,
+      );
+    }
+    writeRpgMakerApplyReceipt(input.args);
+    return {
+      command: input.command,
+      args: input.patchArgs,
+      status: 0,
+      stdout: `${recovered.stdout}\nidempotent RPG Maker apply: rebuilt and verified crash output`,
+      stderr: recovered.stderr,
+    };
+  } finally {
+    rmSync(stagedTarget, { recursive: true, force: true });
+    rmSync(stagedDelta, { force: true });
+  }
+}
+
+function assertRpgMakerApplyOutputs(patchedDataOutputPath: string, deltaOutputPath: string): void {
+  if (!existsSync(patchedDataOutputPath) || !existsSync(deltaOutputPath)) {
     throw new KaifuuPatchApplyError(
-      res.status,
-      res.stderr,
-      `kaifuu patch (rpgmaker) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+      null,
+      "successful RPG Maker process omitted an output",
+      `kaifuu patch (rpgmaker) reported success without both target and delta outputs`,
     );
   }
+}
+
+function buildRpgMakerApplyReceipt(args: ApplyKaifuuRpgMakerPatchArgs): RpgMakerApplyReceipt {
+  const sourceDataPath = join(args.sourceRoot, "data");
   return {
-    command,
-    args: patchArgs,
-    status: res.status,
-    stdout: res.stdout,
-    stderr: res.stderr,
+    schemaVersion: RPG_MAKER_APPLY_RECEIPT_SCHEMA_VERSION,
+    sourceHash: hashLocalizationArtifact(sourceDataPath),
+    translatedBundleHash: hashLocalizationArtifact(args.translatedBundlePath),
+    patchedDataHash: hashLocalizationArtifact(args.patchedDataOutputPath),
+    deltaHash: hashLocalizationArtifact(args.deltaOutputPath),
   };
+}
+
+function writeRpgMakerApplyReceipt(args: ApplyKaifuuRpgMakerPatchArgs): void {
+  const receiptPath = rpgMakerApplyReceiptPath(args.deltaOutputPath);
+  const temporaryPath = `${receiptPath}.${randomUUID()}.tmp`;
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeFileSync(temporaryPath, `${JSON.stringify(buildRpgMakerApplyReceipt(args), null, 2)}\n`);
+  renameSync(temporaryPath, receiptPath);
+}
+
+function readRpgMakerApplyReceipt(path: string): RpgMakerApplyReceipt {
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8")) as Partial<RpgMakerApplyReceipt>;
+    if (
+      value.schemaVersion !== RPG_MAKER_APPLY_RECEIPT_SCHEMA_VERSION ||
+      typeof value.sourceHash !== "string" ||
+      typeof value.translatedBundleHash !== "string" ||
+      typeof value.patchedDataHash !== "string" ||
+      typeof value.deltaHash !== "string"
+    ) {
+      throw new Error("receipt schema is invalid");
+    }
+    return value as RpgMakerApplyReceipt;
+  } catch (error) {
+    throw new KaifuuPatchApplyError(
+      null,
+      error instanceof Error ? error.message : String(error),
+      `kaifuu patch (rpgmaker) could not verify apply receipt ${path}`,
+    );
+  }
+}
+
+function rpgMakerApplyReceiptPath(deltaOutputPath: string): string {
+  return `${deltaOutputPath}.apply-receipt.json`;
 }
 
 /**
@@ -661,6 +844,31 @@ export type WholeGamePatchExportAndApplyResult = {
   /** Present when the caller requested post-apply replay/render validation. */
   renderValidation?: WholeGameRenderValidationResult;
   runtimeValidationAdmission?: WholeGameRuntimeValidationAdmission;
+  /** Present for RPG Maker after receipt/hash and JSON-tree validation. */
+  structuralValidation?: WholeGameRpgMakerStructuralValidation;
+};
+
+export type WholeGameRpgMakerStructuralValidation = {
+  kind: "rpg-maker-structural";
+  jsonFileCount: number;
+  patchedDataHash: string;
+  deltaHash: string;
+};
+
+export class WholeGamePatchValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WholeGamePatchValidationError";
+  }
+}
+
+export type WholeGamePatchBuildResult = Pick<
+  WholeGamePatchExportAndApplyResult,
+  "patchExportBundle" | "draftArtifactBundleId"
+>;
+
+export type WholeGamePatchApplyResult = WholeGamePatchBuildResult & {
+  apply: KaifuuPatchApplyResult;
 };
 
 export class WholeGamePatchExportPreflightError extends Error {
@@ -688,9 +896,9 @@ export class WholeGamePatchExportPreflightError extends Error {
  *      (www/data/*.json literals → `.kaifuu` delta + patched tree), to produce
  *      the final applyable, byte-correct patched output.
  */
-export async function runWholeGamePatchExportAndApply(
+export async function buildWholeGamePatchExport(
   args: RunWholeGamePatchExportAndApplyArgs,
-): Promise<WholeGamePatchExportAndApplyResult> {
+): Promise<WholeGamePatchBuildResult> {
   // (P1 #3 — real integrity, not a tautology.) The DECLARED bundle hash is the
   // hash the run ACTUALLY drafted against, recorded by the executor in its
   // patch report (`patchReport.sourceBridgeHash`). The SOURCE-VIEW hash is
@@ -774,12 +982,20 @@ export async function runWholeGamePatchExportAndApply(
   }
   assertPatchExportBundle(result);
 
-  args.log?.(
-    `patch-export: ${result.drafts.length} real draft(s) passed preflight; applying via kaifuu patch (engine=${args.engineProfile})`,
-  );
+  return {
+    patchExportBundle: result,
+    draftArtifactBundleId,
+  };
+}
 
-  // Apply step dispatches on the engine. The preflight above was engine-agnostic;
-  // only the byte-surgical writer differs (Seen.txt vs www/data/*.json literals).
+/** Apply a previously persisted build result without rebuilding its export. */
+export function applyWholeGamePatch(
+  args: RunWholeGamePatchExportAndApplyArgs,
+  build: WholeGamePatchBuildResult,
+): WholeGamePatchApplyResult {
+  args.log?.(
+    `patch-export: ${build.patchExportBundle.drafts.length} real draft(s) already built; applying via kaifuu patch (engine=${args.engineProfile})`,
+  );
   const apply =
     args.engineProfile === "rpg-maker-mv-mz"
       ? applyKaifuuRpgMakerPatch({
@@ -801,10 +1017,18 @@ export async function runWholeGamePatchExportAndApply(
           ...(args.runProcess !== undefined ? { runProcess: args.runProcess } : {}),
           ...(args.log !== undefined ? { log: args.log } : {}),
         });
+  return { ...build, apply };
+}
 
-  // Post-apply utsushi replay/render validation is RealLive-only (from-scratch
-  // VM + rasterizer oracle). MV/MZ is a delegation runtime with no such seam
-  // wired, so a render-validation request is ignored for it.
+/** Run post-apply validation independently of both build and byte application. */
+export function validateWholeGamePatch(
+  args: RunWholeGamePatchExportAndApplyArgs,
+): Pick<
+  WholeGamePatchExportAndApplyResult,
+  "renderValidation" | "runtimeValidationAdmission" | "structuralValidation"
+> {
+  const structuralValidation =
+    args.engineProfile === "rpg-maker-mv-mz" ? validateRpgMakerPatchOutputs(args) : undefined;
   const renderValidation =
     args.renderValidation === undefined || args.engineProfile !== "reallive"
       ? undefined
@@ -817,14 +1041,92 @@ export async function runWholeGamePatchExportAndApply(
         });
   const runtimeValidationAdmission =
     renderValidation === undefined ? undefined : admitWholeGameRuntimeValidation(renderValidation);
-
   return {
-    patchExportBundle: result,
-    apply,
-    draftArtifactBundleId,
+    ...(structuralValidation !== undefined ? { structuralValidation } : {}),
     ...(renderValidation !== undefined ? { renderValidation } : {}),
     ...(runtimeValidationAdmission !== undefined ? { runtimeValidationAdmission } : {}),
   };
+}
+
+function validateRpgMakerPatchOutputs(
+  args: RunWholeGamePatchExportAndApplyArgs,
+): WholeGameRpgMakerStructuralValidation {
+  const deltaOutputPath = args.rpgMakerDeltaOutputPath ?? `${args.targetRoot}.delta.kaifuu`;
+  const receiptPath = rpgMakerApplyReceiptPath(deltaOutputPath);
+  const recorded = readRpgMakerApplyReceipt(receiptPath);
+  const actual = buildRpgMakerApplyReceipt({
+    sourceRoot: args.sourceRoot,
+    patchedDataOutputPath: args.targetRoot,
+    deltaOutputPath,
+    translatedBundlePath: args.translatedBundlePath,
+  });
+  if (JSON.stringify(recorded) !== JSON.stringify(actual)) {
+    throw new WholeGamePatchValidationError(
+      `RPG Maker apply receipt or output hashes changed before validation`,
+    );
+  }
+  if (statSync(deltaOutputPath).size === 0) {
+    throw new WholeGamePatchValidationError("RPG Maker delta output is empty");
+  }
+
+  const sourceJson = collectRpgMakerJsonFiles(join(args.sourceRoot, "data"));
+  const targetJson = collectRpgMakerJsonFiles(args.targetRoot);
+  if (
+    sourceJson.length === 0 ||
+    sourceJson.length !== targetJson.length ||
+    sourceJson.some((path, index) => path !== targetJson[index])
+  ) {
+    throw new WholeGamePatchValidationError(
+      `RPG Maker patched data JSON scope differs from source (source=${sourceJson.join(",")}; target=${targetJson.join(",")})`,
+    );
+  }
+  for (const path of targetJson) {
+    try {
+      JSON.parse(readFileSync(join(args.targetRoot, path), "utf8"));
+    } catch (error) {
+      throw new WholeGamePatchValidationError(
+        `RPG Maker patched JSON is invalid at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return {
+    kind: "rpg-maker-structural",
+    jsonFileCount: targetJson.length,
+    patchedDataHash: actual.patchedDataHash,
+    deltaHash: actual.deltaHash,
+  };
+}
+
+function collectRpgMakerJsonFiles(root: string, current = root): string[] {
+  let entries;
+  try {
+    entries = readdirSync(current, { withFileTypes: true });
+  } catch (error) {
+    throw new WholeGamePatchValidationError(
+      `RPG Maker data tree is missing or unreadable at ${current}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(current, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectRpgMakerJsonFiles(root, path));
+    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+      files.push(relative(root, path));
+    } else if (entry.isSymbolicLink()) {
+      throw new WholeGamePatchValidationError(`RPG Maker data tree contains symlink ${path}`);
+    }
+  }
+  return files.sort();
+}
+
+/** Compatibility composition of the independently retryable production steps. */
+export async function runWholeGamePatchExportAndApply(
+  args: RunWholeGamePatchExportAndApplyArgs,
+): Promise<WholeGamePatchExportAndApplyResult> {
+  const build = await buildWholeGamePatchExport(args);
+  const applied = applyWholeGamePatch(args, build);
+  return { ...applied, ...validateWholeGamePatch(args) };
 }
 
 /**

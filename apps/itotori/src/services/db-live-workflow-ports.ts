@@ -41,6 +41,11 @@ import type {
 } from "./project-workflow.js";
 import { runLocalizeFullProjectLive } from "../orchestrator/localize-fullproject-cli.js";
 import type { LocalizeFullProjectIo } from "../orchestrator/localize-fullproject-command.js";
+import {
+  cancelTerminalRunLive,
+  type CancelTerminalRunLiveArgs,
+  type CancelTerminalRunLiveResult,
+} from "../orchestrator/terminal-run-cancellation-live.js";
 
 // ---------------------------------------------------------------------------
 // Draft provider — deferred, pinned-pair live OpenRouter.
@@ -232,17 +237,67 @@ export function createDbBackedLocalizationPassDriver(
  * later edit to an operator's source policy cannot silently change a registered
  * Studio launch.
  */
-export function createDbBackedLivePassRunner(): NonNullable<
-  DbBackedLocalizationPassDriverDeps["runLive"]
-> {
+export type DbBackedLivePassRunnerOptions = {
+  io?: LocalizeFullProjectIo;
+  now?: () => Date;
+  runLive?: typeof runLocalizeFullProjectLive;
+  cancelRun?: (
+    args: CancelTerminalRunLiveArgs,
+  ) => Promise<Pick<CancelTerminalRunLiveResult, "journalRunId" | "runState">>;
+};
+
+export function createDbBackedLivePassRunner(
+  options: DbBackedLivePassRunnerOptions = {},
+): NonNullable<DbBackedLocalizationPassDriverDeps["runLive"]> {
   return async (registered, input) => {
-    const io = nodeJsonFileStore;
-    const prepared = materializeRegisteredRunConfig(registered, input, io);
-    const startedAt = new Date();
-    const result = await runLocalizeFullProjectLive({
+    const io = options.io ?? nodeJsonFileStore;
+    const startedAt = (options.now ?? (() => new Date()))();
+    if (input.cancelled === true) {
+      if (input.resumeRunId === undefined || input.resumeRunId.trim().length === 0) {
+        throw new Error("live operator cancellation requires a non-blank resumeRunId");
+      }
+      const cancelled = await (options.cancelRun ?? cancelTerminalRunLive)({
+        runId: input.resumeRunId,
+        runDir: registered.runDir,
+        io,
+        expectedScope: {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+        },
+      });
+      return {
+        // This existing driver result means the requested live operation ran;
+        // the durable run itself is already `aborted` when cancelRun returns.
+        outcome: "started",
+        journalRunId: cancelled.journalRunId,
+        startedAt,
+        terminalStatus: cancelled.runState,
+      };
+    }
+
+    // A resume may already be at the post-executor `finalizing` boundary. Pass
+    // its durable identity to the live runner before reading or rewriting any
+    // registered config: that runner probes the DB first and completes from
+    // persisted artifacts alone. Paused executor resumes still parse the
+    // registered config after that probe and the journal verifies its frozen
+    // policy before accepting work.
+    const prepared =
+      input.resumeRunId === undefined
+        ? materializeRegisteredRunConfig(registered, input, io)
+        : registered;
+    const result = await (options.runLive ?? runLocalizeFullProjectLive)({
       configPath: prepared.configPath,
       runDir: prepared.runDir,
       io,
+      ...(input.resumeRunId !== undefined ? { resumeRunId: input.resumeRunId } : {}),
+      ...(input.resumeRunId !== undefined
+        ? {
+            expectedResumeScope: {
+              projectId: input.projectId,
+              localeBranchId: input.localeBranchId,
+            },
+          }
+        : {}),
       ...(prepared.sourceRoot !== undefined ? { sourceRoot: prepared.sourceRoot } : {}),
       ...(prepared.patchTargetRoot !== undefined
         ? { patchTargetRoot: prepared.patchTargetRoot }

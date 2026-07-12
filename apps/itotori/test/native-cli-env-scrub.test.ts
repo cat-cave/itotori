@@ -251,14 +251,34 @@ describe("every native-tool seam scrubs live-provider secrets from the child env
 
   it("applyKaifuuRpgMakerPatch (live whole-game MV/MZ patch-apply path)", async () => {
     const { applyKaifuuRpgMakerPatch } = await import("../src/orchestrator/patch-apply-seam.js");
-    applyKaifuuRpgMakerPatch({
-      sourceRoot: "/games/example/www",
-      patchedDataOutputPath: "/tmp/patched-data",
-      deltaOutputPath: "/tmp/rpgmaker-delta.kaifuu",
-      translatedBundlePath: "/tmp/translated-bridge.json",
-      env: parentEnvWithSecrets(),
-    });
-    assertLastSpawnHadNoSecrets();
+    const root = mkdtempSync(join(tmpdir(), "native-scrub-rpgmaker-"));
+    try {
+      const sourceRoot = join(root, "www");
+      const patchedDataOutputPath = join(root, "patched-data");
+      const deltaOutputPath = join(root, "rpgmaker-delta.kaifuu");
+      const translatedBundlePath = join(root, "translated-bridge.json");
+      mkdirSync(join(sourceRoot, "data"), { recursive: true });
+      writeFileSync(join(sourceRoot, "data", "Map001.json"), "{}");
+      writeFileSync(translatedBundlePath, "{}");
+      spawnSyncMock.mockImplementationOnce((_command, processArgs: string[]) => {
+        const target = processArgs[processArgs.indexOf("--patched-data-output") + 1]!;
+        const delta = processArgs[processArgs.indexOf("--delta-output") + 1]!;
+        mkdirSync(target, { recursive: true });
+        writeFileSync(join(target, "Map001.json"), "{}");
+        writeFileSync(delta, "delta");
+        return { error: undefined, status: 0, stdout: "", stderr: "" };
+      });
+      applyKaifuuRpgMakerPatch({
+        sourceRoot,
+        patchedDataOutputPath,
+        deltaOutputPath,
+        translatedBundlePath,
+        env: parentEnvWithSecrets(),
+      });
+      assertLastSpawnHadNoSecrets();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

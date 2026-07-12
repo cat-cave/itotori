@@ -37,6 +37,7 @@ import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-rep
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriLocalizationJournalRepository } from "../src/repositories/localization-journal-repository.js";
+import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/localization-run-finalizer-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriModelRoutingSettingsRepository } from "../src/repositories/model-routing-settings-repository.js";
 import {
@@ -1035,6 +1036,42 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "jobs-run-table-read-model.test.ts journal jobs run table coverage",
     (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
+  ),
+  localizationRunFinalizerGate(
+    "loadSnapshot",
+    "catalogRead",
+    "localization-run-finalizer-repository.test.ts snapshot read coverage",
+    (repo) => repo.loadSnapshot(deniedActor, "journal-run-denied"),
+  ),
+  localizationRunFinalizerGate(
+    "loadTerminalSummary",
+    "catalogRead",
+    "localization-run-finalizer-repository.test.ts terminal summary read coverage",
+    (repo) => repo.loadTerminalSummary(deniedActor, "journal-run-denied"),
+  ),
+  localizationRunFinalizerGate(
+    "enterFinalizing",
+    "draftWrite",
+    "localization-run-finalizer-repository.test.ts finalizing transition coverage",
+    (repo) => repo.enterFinalizing(deniedActor, undefined as never),
+  ),
+  localizationRunFinalizerGate(
+    "ensurePatchVersion",
+    "draftWrite",
+    "localization-run-finalizer-repository.test.ts patch version coverage",
+    (repo) => repo.ensurePatchVersion(deniedActor, undefined as never),
+  ),
+  localizationRunFinalizerGate(
+    "upsertPatchStageEvidence",
+    "draftWrite",
+    "localization-run-finalizer-repository.test.ts stage evidence coverage",
+    (repo) => repo.upsertPatchStageEvidence(deniedActor, undefined as never),
+  ),
+  localizationRunFinalizerGate(
+    "terminalize",
+    "draftWrite",
+    "localization-run-finalizer-repository.test.ts terminal transition coverage",
+    (repo) => repo.terminalize(deniedActor, undefined as never),
   ),
   principalGate(
     "createAccount",
@@ -2227,6 +2264,42 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.loadSnapshot",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-run-finalizer-repository.test.ts snapshot read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.loadTerminalSummary",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-run-finalizer-repository.test.ts terminal summary read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.enterFinalizing",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-run-finalizer-repository.test.ts finalizing transition coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.ensurePatchVersion",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-run-finalizer-repository.test.ts patch version coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.upsertPatchStageEvidence",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-run-finalizer-repository.test.ts stage evidence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationRunFinalizerRepository.terminalize",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-run-finalizer-repository.test.ts terminal transition coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.createAccount",
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts create account coverage",
@@ -3126,6 +3199,22 @@ function localizationJournalGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriLocalizationJournalRepository(db)),
+  });
+}
+
+function localizationRunFinalizerGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriLocalizationRunFinalizerRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriLocalizationRunFinalizerRepository",
+    sourceFile: "localization-run-finalizer-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriLocalizationRunFinalizerRepository(db)),
   });
 }
 

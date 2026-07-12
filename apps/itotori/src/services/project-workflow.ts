@@ -180,6 +180,10 @@ export class PatchResultIngestionError extends Error {
 export type LaunchLocalizationPassInput = {
   projectId: string;
   localeBranchId: string;
+  /** Existing durable run selected for an operator cancellation. */
+  resumeRunId?: string;
+  /** Cancel the selected run instead of launching/resuming provider work. */
+  cancelled?: boolean;
 };
 
 /**
@@ -189,7 +193,13 @@ export type LaunchLocalizationPassInput = {
  * from a thrown error (misconfiguration / permission).
  */
 export type LaunchLocalizationPassResult =
-  | { outcome: "started"; journalRunId: string; startedAt: Date }
+  | {
+      outcome: "started";
+      journalRunId: string;
+      startedAt: Date;
+      /** Present when the requested live operation synchronously aborted this run. */
+      terminalStatus?: "aborted";
+    }
   | { outcome: "refused"; refusalMessage: string };
 
 /**

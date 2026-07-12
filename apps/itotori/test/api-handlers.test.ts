@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Node } from "@babel/types";
 import {
   isCallExpression,
@@ -16,6 +18,9 @@ import {
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  ItotoriLocalizationJournalRepository,
+  ItotoriLocalizationPassRunConfigRepository,
+  ItotoriLocalizationRunFinalizerRepository,
   RuntimeRunNotFoundError,
   ItotoriAuthSsoSettingsRepository,
   ItotoriProjectRepository,
@@ -37,6 +42,7 @@ import {
   type LocaleBranchIdentity,
   type Permission,
   type ProjectCostReport,
+  type ItotoriProjectRepositoryPort,
 } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
 import { findUncoveredProjectWorkflowMutations } from "./api-mutation-coverage-guard.js";
@@ -66,6 +72,10 @@ import {
   withDatabaseReadOnlyApiServices,
 } from "../src/services/database-services.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
+import {
+  createDbBackedLivePassRunner,
+  createDbBackedLocalizationPassDriver,
+} from "../src/services/db-live-workflow-ports.js";
 import type { ProjectOverviewReadModelOptions } from "../src/project-overview-read-model.js";
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -4361,6 +4371,191 @@ describe("Itotori API handlers", () => {
       });
     });
 
+    it("carries an explicit cancellation through the real workflow and live-runner binding", async () => {
+      const services = serviceFixture();
+      const io = {
+        readJson: vi.fn(() => {
+          throw new Error("API cancellation must not read localization config");
+        }),
+        writeJson: vi.fn(),
+      };
+      const cancelRun = vi.fn(async () => ({
+        journalRunId: "localization-journal-run-api-cancel",
+        runState: "aborted" as const,
+      }));
+      const providerRunner = vi.fn(async () => {
+        throw new Error("API cancellation must not run provider work");
+      });
+      const liveRunner = createDbBackedLivePassRunner({
+        io,
+        cancelRun,
+        runLive: providerRunner,
+        now: () => new Date("2026-07-12T16:00:00.000Z"),
+      });
+      const driver = createDbBackedLocalizationPassDriver({
+        actor: { userId: localUserId },
+        projectRepository: {
+          listLocaleBranchIdentities: async () => ownedLocaleBranchIdentitiesFixture("project-1"),
+        },
+        resolveRunConfig: async () => ({
+          configPath: "/must-not-be-read/project.localize.json",
+          runDir: "/runs/api-cancel",
+        }),
+        runLive: liveRunner,
+      });
+      const workflow = new ItotoriProjectWorkflowService(
+        {} as ItotoriProjectRepositoryPort,
+        { userId: localUserId },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        driver,
+      );
+      services.projectWorkflow.launchNextLocalizationPass = vi.fn((input) =>
+        workflow.launchNextLocalizationPass(input),
+      );
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", {
+          localeBranchId: "locale-1",
+          cancelled: true,
+          resumeRunId: "  localization-journal-run-api-cancel  ",
+        }),
+        services,
+      );
+
+      expect(response).toEqual({
+        statusCode: 200,
+        body: {
+          schemaVersion: "itotori.projects.launch-pass.v1",
+          outcome: "started",
+          journalRunId: "localization-journal-run-api-cancel",
+          startedAt: "2026-07-12T16:00:00.000Z",
+          refusalMessage: null,
+        },
+      });
+      expect(services.projectWorkflow.launchNextLocalizationPass).toHaveBeenCalledWith({
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        cancelled: true,
+        resumeRunId: "localization-journal-run-api-cancel",
+      });
+      expect(cancelRun).toHaveBeenCalledWith({
+        runId: "localization-journal-run-api-cancel",
+        runDir: "/runs/api-cancel",
+        io,
+        expectedScope: {
+          projectId: "project-1",
+          localeBranchId: "locale-1",
+        },
+      });
+      expect(providerRunner).not.toHaveBeenCalled();
+      expect(io.readJson).not.toHaveBeenCalled();
+    });
+
+    it.skipIf(!process.env.DATABASE_URL)(
+      "aborts the scoped durable run through the DB-backed API service and canonical summary",
+      async () => {
+        const context = await isolatedMigratedContext();
+        const runDir = mkdtempSync(join(tmpdir(), "itotori-api-cancel-"));
+        const originalDatabaseUrl = process.env.DATABASE_URL;
+        const actor = { userId: localUserId };
+        const runScope = {
+          projectId: "project-api-live-cancel",
+          localeBranchId: "branch-api-live-cancel",
+          sourceRevisionId: "revision-api-live-cancel",
+          targetLocale: "en-US",
+          sourceLocale: "ja-JP",
+        } as const;
+        const runId = "localization-journal-run-api-live-cancel";
+
+        try {
+          await bootstrapLocalUser(context.db);
+          const projectRepository = new ItotoriProjectRepository(context.db);
+          await projectRepository.ensureRunProjectScope(actor, runScope);
+          const journal = new ItotoriLocalizationJournalRepository(context.db);
+          await journal.seedRun(actor, {
+            runId,
+            ...runScope,
+            frozenScope: { kind: "explicit_units", unitIds: ["unit-api-live-cancel"] },
+            routingPolicy: { routes: ["model-api-live/provider-api-live"] },
+            costPolicy: { kind: "api-live-cancellation-test", capUsd: "1.00" },
+            units: [
+              {
+                bridgeUnitId: "unit-api-live-cancel",
+                sourceUnitKey: "scene.api-live-cancel",
+                nextAction: { kind: "drive_unit", stage: "translation" },
+              },
+            ],
+            lease: { ownerId: "api-live-executor" },
+            createdAt: "2026-07-12T16:30:00.000Z",
+          });
+          const runConfig = new ItotoriLocalizationPassRunConfigRepository(context.db);
+          await runConfig.saveRunConfig(actor, {
+            projectId: runScope.projectId,
+            localeBranchId: runScope.localeBranchId,
+            configPath: "/must-not-be-read/api-live.localize.json",
+            dataRoot: "/must-not-be-read/game",
+            pairPolicyPath: "/must-not-be-read/pair-policy.json",
+            modelId: "model-api-live",
+            providerId: "provider-api-live",
+            runDir,
+          });
+
+          process.env.DATABASE_URL = context.databaseUrl;
+          const response = await withDatabaseItotoriServices(
+            { databaseUrl: context.databaseUrl },
+            (services) =>
+              handleItotoriApiRequest(
+                post(`/api/projects/${runScope.projectId}/launch-pass`, {
+                  localeBranchId: runScope.localeBranchId,
+                  cancelled: true,
+                  resumeRunId: runId,
+                }),
+                services,
+              ),
+          );
+
+          expect(response).toMatchObject({
+            statusCode: 200,
+            body: {
+              schemaVersion: "itotori.projects.launch-pass.v1",
+              outcome: "started",
+              journalRunId: runId,
+              refusalMessage: null,
+            },
+          });
+          const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+          const snapshot = await finalizer.loadSnapshot(actor, runId);
+          const canonical = await finalizer.loadTerminalSummary(actor, runId);
+          expect(snapshot?.run).toMatchObject({
+            projectId: runScope.projectId,
+            localeBranchId: runScope.localeBranchId,
+            status: "aborted",
+            leaseOwnerId: null,
+          });
+          expect(canonical?.summary).toMatchObject({
+            runId,
+            terminalStatus: "aborted",
+            rootCause: { kind: "cancelled", code: "explicit_cancellation" },
+          });
+          expect(
+            JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8")) as unknown,
+          ).toEqual(canonical?.summary);
+        } finally {
+          if (originalDatabaseUrl === undefined) {
+            delete process.env.DATABASE_URL;
+          } else {
+            process.env.DATABASE_URL = originalDatabaseUrl;
+          }
+          rmSync(runDir, { recursive: true, force: true });
+          await context.close();
+        }
+      },
+    );
+
     it("does NOT drive the pass and returns 403 for a non-canSteer user", async () => {
       const services = serviceFixture();
       services.authorization.requirePermission.mockRejectedValueOnce(
@@ -4418,6 +4613,32 @@ describe("Itotori API handlers", () => {
 
       const response = await handleItotoriApiRequest(
         post("/api/projects/project-1/launch-pass", {}),
+        services,
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toMatchObject({ code: "bad_request" });
+      expect(services.projectWorkflow.launchNextLocalizationPass).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {
+        name: "bare existing run id",
+        body: { localeBranchId: "locale-1", resumeRunId: "run-without-cancel" },
+      },
+      {
+        name: "cancellation without an existing run id",
+        body: { localeBranchId: "locale-1", cancelled: true },
+      },
+      {
+        name: "blank cancellation run id",
+        body: { localeBranchId: "locale-1", cancelled: true, resumeRunId: "   " },
+      },
+    ])("rejects an ambiguous cancellation request: $name", async ({ body }) => {
+      const services = serviceFixture();
+
+      const response = await handleItotoriApiRequest(
+        post("/api/projects/project-1/launch-pass", body),
         services,
       );
 

@@ -90,6 +90,7 @@ describe("itotori --help / help", () => {
     expect(text).toContain("db-reset");
     expect(text).toContain("--allow-partial-patch");
     expect(text).toContain("--resume-run-id <ID>");
+    expect(text).toContain("--cancel --resume-run-id <ID> --run-dir <PATH>");
   });
 
   it("--help takes precedence over --version", async () => {
