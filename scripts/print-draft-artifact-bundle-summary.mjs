@@ -31,9 +31,16 @@ console.log(`ledger.totalCost=${bundle.ledgerSummary.totalCost}`);
 console.log(`ledger.totalTokensIn=${bundle.ledgerSummary.totalTokensIn}`);
 console.log(`ledger.totalTokensOut=${bundle.ledgerSummary.totalTokensOut}`);
 for (const draft of bundle.drafts) {
+  const selectedCandidate = draft.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+  );
+  if (!selectedCandidate) {
+    throw new Error(`written outcome for ${draft.sourceUnitId} has no selected candidate`);
+  }
   console.log(
-    `draft sourceUnit=${draft.sourceUnitId} state=${draft.retryFallbackState} ` +
-      `accepted=${draft.protectedSpanValidationResult.accepted} ` +
+    `draft sourceUnit=${draft.sourceUnitId} status=${draft.writtenOutcome.status} ` +
+      `targetLocale=${draft.writtenOutcome.targetLocale} selectedLength=${selectedCandidate.body.length} ` +
+      `qualityFlags=${draft.writtenOutcome.qualityFlags.join(",") || "none"} ` +
       `proof=${draft.providerProofId} ledger=${draft.costLedgerEntryRef}`,
   );
 }

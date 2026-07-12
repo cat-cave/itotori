@@ -1,10 +1,10 @@
 // itotori-loop-to-review-queue-bridge (pre-pilot #2) — bridge tests.
 //
-// Proves the agentic loop now creates a context-rich `reviewer_queue_items`
-// record when its outcome warrants human judgment, that this is the DEFAULT
+// Proves the agentic loop creates a context-rich `reviewer_queue_items` callout
+// when permanent QA annotations warrant attention, that this is the DEFAULT
 // loop path (fires from `runAgenticLoopForUnit`, not a fixture/manual step),
-// that the item surfaces via the reviewer-queue read carrying source / draft /
-// context / evidence / reasoning / options, that a clean run creates NOTHING,
+// that the item surfaces via the reviewer-queue read carrying source / selected
+// draft / context / evidence / annotations, that a clean run creates NOTHING,
 // and that a re-run is idempotent (no duplicate for the same unit+revision).
 //
 // Driven with a FakeModelProvider + an in-memory reviewer-queue repository, so
@@ -320,7 +320,7 @@ function readRepository(queue: InMemoryReviewerQueue) {
 // ---------------------------------------------------------------------------
 
 describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridge)", () => {
-  it("a deferred_to_human outcome lands a context-rich reviewer_queue_items row", async () => {
+  it("a critical QA callout retains a written draft in a context-rich reviewer_queue_items row", async () => {
     const queue = new InMemoryReviewerQueue();
     const bundle = await runAgenticLoopForUnit(
       makeInput(queue),
@@ -328,7 +328,14 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
       makePolicy({ maxRepairAttempts: 0 }),
       providerFactory(criticalFinding()),
     );
-    expect(bundle.routingSummary.outcome).toBe("deferred_to_human");
+    expect(bundle.writtenOutcome.status).toBe("written");
+    const selectedCandidate = bundle.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+    );
+    expect(selectedCandidate?.body).toBe(DRAFT_TEXT);
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+    );
 
     expect(queue.items).toHaveLength(1);
     const item = queue.items[0]!;
@@ -343,13 +350,14 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     const record = item.payload.decisionRecord as Record<string, any>;
     expect(record.schemaVersion).toBe(AGENTIC_LOOP_DECISION_RECORD_SCHEMA_VERSION);
     expect(record.state).toBe("ready_for_human");
-    expect(record.outcome).toBe("deferred_to_human");
+    expect(record.outcome).toBe("written");
     expect(record.source.sourceText).toBe(SOURCE_TEXT);
     expect(record.source.sourceHash).toBe("src-hash-bridge-fixture");
     expect(record.source.sourceRevision.revisionId).toBe(REVISION_ID);
-    // The REJECTED draft is carried so the reviewer never judges an isolated line.
+    // The selected written draft is carried so the reviewer never judges an isolated line.
     expect(typeof record.draft.draftText).toBe("string");
-    expect(record.draft.draftText.length).toBeGreaterThan(0);
+    expect(record.draft.draftText).toBe(DRAFT_TEXT);
+    expect(record.draft.draftStatus).toBe("written_with_qa_callout");
     expect(Array.isArray(record.context.contextArtifactRefs)).toBe(true);
     expect(record.context.citationRefs).toEqual([GLOSSARY_CITATION_REF]);
     // wiki-structure-context-feed — when a structured injection was available
@@ -365,15 +373,13 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     }
     expect(record.reasoningAndFindings.qaFindings).toHaveLength(1);
     expect(record.reasoningAndFindings.qaFindings[0].severity).toBe("critical");
-    expect(record.reasoningAndFindings.deferredReason).toBeDefined();
-    expect(record.reasoningAndFindings.repairHistory.maxRepairAttempts).toBe(0);
-    expect(record.options.map((o: { optionId: string }) => o.optionId)).toEqual([
-      "accept",
-      "reject",
-      "edit",
-      "defer",
-      "escalate",
-    ]);
+    expect(record.reasoningAndFindings.qualityFlags).toEqual(
+      expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+    );
+    expect(record.reasoningAndFindings.repairHistory.repairStageOutcome).toBe(
+      "repair_budget_exhausted",
+    );
+    expect(record.options.map((o: { optionId: string }) => o.optionId)).toEqual(["inspect"]);
   });
 
   it("the item surfaces via the reviewer-queue read (repository + dashboard)", async () => {
@@ -417,7 +423,7 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
     ).toBe(true);
   });
 
-  it("a threshold-exceeding QA finding on an ACCEPTED draft still creates a row", async () => {
+  it("a threshold-exceeding QA annotation on a written draft still creates a row", async () => {
     const queue = new InMemoryReviewerQueue();
     const bundle = await runAgenticLoopForUnit(
       makeInput(queue),
@@ -425,19 +431,19 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
       makePolicy({ maxRepairAttempts: 1 }),
       providerFactory(majorFinding()),
     );
-    // The draft was accepted (no defer) but a major finding crossed the floor.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBeDefined();
+    // The draft remains written while a major finding crosses the callout floor.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(bundle.writtenOutcome.selectedCandidateId).toBeDefined();
 
     expect(queue.items).toHaveLength(1);
     const record = queue.items[0]!.payload.decisionRecord as Record<string, any>;
-    expect(record.outcome).toBe("accepted");
+    expect(record.outcome).toBe("written");
     expect(record.decisionType).toBe("qa_finding_review");
-    expect(record.draft.draftStatus).toBe("qa_flagged");
+    expect(record.draft.draftStatus).toBe("written_with_qa_callout");
     expect(record.reasoningAndFindings.qaFindings[0].severity).toBe("major");
   });
 
-  it("a clean run (accepted, no floor-crossing finding) creates NO item", async () => {
+  it("a clean written run with no floor-crossing finding creates NO item", async () => {
     const queue = new InMemoryReviewerQueue();
     const bundle = await runAgenticLoopForUnit(
       makeInput(queue),
@@ -445,7 +451,7 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
       makePolicy(),
       providerFactory(),
     );
-    expect(bundle.routingSummary.outcome).toBe("accepted");
+    expect(bundle.writtenOutcome.status).toBe("written");
     expect(queue.items).toHaveLength(0);
   });
 
@@ -469,7 +475,8 @@ describe("agentic-loop reviewer-queue bridge (itotori-loop-to-review-queue-bridg
       makePolicy({ maxRepairAttempts: 0 }),
       providerFactory(criticalFinding()),
     );
-    // No throw, no sink — the loop still returns its bundle.
-    expect(bundle.routingSummary.outcome).toBe("deferred_to_human");
+    // No throw, no sink — the loop still returns its required written outcome.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(bundle.writtenOutcome.selectedCandidateId).toBeDefined();
   });
 });

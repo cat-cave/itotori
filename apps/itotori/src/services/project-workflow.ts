@@ -38,6 +38,7 @@ import {
   assertNormalizedSurfacePreservesIdentity,
   ConformanceIngestionError,
   computePatchResultOutputHashRollupV02,
+  isLocaleTaggedSourceEcho,
   normalizeBridgeSurface,
   normalizedProtectedSpanRaws,
 } from "@itotori/localization-bridge-schema";
@@ -594,10 +595,14 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         );
         throw error;
       }
-      if (result.content === null) {
+      const validatedDraft = validateWorkflowDraftText({
+        draftText: result.content,
+        sourceTexts: [unit.sourceText, normalizedSurface.sourceText],
+      });
+      if (!validatedDraft.valid) {
         const failedRun = failedProviderRunFromRun(result.providerRun, "provider_response_invalid");
         const error = new ModelProviderError(
-          `draft provider returned no text for ${unit.bridgeUnitId}`,
+          `draft provider returned ${validatedDraft.reason} for ${unit.bridgeUnitId}`,
           "provider_response_invalid",
           false,
           failedRun,
@@ -613,7 +618,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         throw error;
       }
       await this.recordProviderRun(nextProject, result);
-      nextProject.drafts[unit.bridgeUnitId] = result.content;
+      nextProject.drafts[unit.bridgeUnitId] = validatedDraft.text;
     }
     await this.repository.saveDrafts(this.actor, nextProject);
     return nextProject;
@@ -976,8 +981,20 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     }
 
     const reusedDraftUnitIds = new Set<string>();
+    const unitsById = new Map(project.bridge.units.map((unit) => [unit.bridgeUnitId, unit]));
     for (const reuse of result.reuses) {
-      project.drafts[reuse.target.bridgeUnitId] = reuse.event.targetText;
+      const unit = unitsById.get(reuse.target.bridgeUnitId);
+      if (unit === undefined) {
+        continue;
+      }
+      const validatedDraft = validateWorkflowDraftText({
+        draftText: reuse.event.targetText,
+        sourceTexts: [unit.sourceText],
+      });
+      if (!validatedDraft.valid) {
+        continue;
+      }
+      project.drafts[reuse.target.bridgeUnitId] = validatedDraft.text;
       reusedDraftUnitIds.add(reuse.target.bridgeUnitId);
     }
     return reusedDraftUnitIds;
@@ -1011,7 +1028,37 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 }
 
 const draftPromptSystemMessage =
-  "Draft a localized target string. Preserve protected spans exactly and return only the target text.";
+  "Draft a localized target string. Preserve protected spans exactly; return only trimmed, non-blank target text, never a locale-tagged or source-repeated value.";
+
+type WorkflowDraftTextValidation = { valid: true; text: string } | { valid: false; reason: string };
+
+/**
+ * The legacy project-draft route has no canonical outcome persistence yet, so
+ * it must at least refuse malformed/source-repeated provider text rather than
+ * persisting it as a target draft. A later invocation supervisor owns retries.
+ */
+function validateWorkflowDraftText(args: {
+  draftText: string | null;
+  sourceTexts: ReadonlyArray<string>;
+}): WorkflowDraftTextValidation {
+  if (args.draftText === null) {
+    return { valid: false, reason: "no text" };
+  }
+  const text = args.draftText;
+  if (text.trim().length === 0) {
+    return { valid: false, reason: "blank text" };
+  }
+  if (text !== text.trim()) {
+    return { valid: false, reason: "untrimmed text" };
+  }
+  if (isLocaleTaggedSourceEcho(text)) {
+    return { valid: false, reason: "a locale-tagged source replay" };
+  }
+  if (args.sourceTexts.some((sourceText) => text === sourceText.trim())) {
+    return { valid: false, reason: "a source replay" };
+  }
+  return { valid: true, text };
+}
 
 function draftPromptPreset() {
   const configSnapshot = {

@@ -100,7 +100,7 @@ function rawBridgeFixtureSceneOneTwoUnits(): unknown {
 }
 
 function patchReport(
-  accepted: Array<{ bridgeUnitId: string; sourceUnitKey: string; finalDraftText: string }>,
+  written: Array<{ bridgeUnitId: string; sourceUnitKey: string; selectedBody: string }>,
 ): DrivenPatchReport {
   return {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
@@ -110,18 +110,18 @@ function patchReport(
     pair: { modelId: "m", providerId: "p" },
     engineProfile: "reallive",
     translationScope: "dialogue-only",
-    unitsEnumerated: accepted.length,
-    unitsInScope: accepted.length,
-    unitsRun: accepted.length,
-    acceptedDraftCount: accepted.length,
-    deferredCount: 0,
+    unitsEnumerated: written.length,
+    unitsInScope: written.length,
+    unitsRun: written.length,
+    writtenOutcomeCount: written.length,
     failureCount: 0,
     reviewerQueueItemCount: 0,
     totalUsageCostUsd: 0,
     zdrConfirmed: true,
     budgetStopped: false,
+    coverageComplete: true,
     sourceBridgeHash: "sha256:test",
-    acceptedUnits: accepted,
+    writtenUnits: written.map((unit) => ({ ...unit, qualityFlags: [] })),
   };
 }
 
@@ -131,7 +131,7 @@ describe("runWholeGameReplayRenderValidate", () => {
       schemaVersion: "itotori.wholegame-render-validation.v0",
       redaction: "on",
       coverage: {
-        acceptedUnitCount: 1,
+        writtenUnitCount: 1,
         candidateUnitCount: 1,
         selectedUnitCount: 1,
         candidateSceneCount: 1,
@@ -171,8 +171,8 @@ describe("runWholeGameReplayRenderValidate", () => {
     const result: WholeGameRenderValidationResult = runWholeGameReplayRenderValidate({
       rawBridge: rawBridgeTwoScenes(),
       patchReport: patchReport([
-        { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-6010/line-001", finalDraftText: DRAFT_A },
-        { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-6020/line-001", finalDraftText: DRAFT_B },
+        { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-6010/line-001", selectedBody: DRAFT_A },
+        { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-6020/line-001", selectedBody: DRAFT_B },
       ]),
       sourceRoot: "/source-game",
       targetRoot: "/patched-game",
@@ -196,7 +196,7 @@ describe("runWholeGameReplayRenderValidate", () => {
     });
 
     expect(result.coverage).toMatchObject({
-      acceptedUnitCount: 2,
+      writtenUnitCount: 2,
       candidateUnitCount: 2,
       selectedUnitCount: 1,
       candidateSceneCount: 2,
@@ -207,7 +207,7 @@ describe("runWholeGameReplayRenderValidate", () => {
       selectedUnitIds: [UNIT_A],
       skippedUnitIds: [UNIT_B],
     });
-    expect(logs.join("\n")).toContain("1/2 accepted unit(s)");
+    expect(logs.join("\n")).toContain("1/2 written unit(s)");
     expect(logs.join("\n")).toContain("maxUnits=1");
     expect(logs.join("\n")).toContain(`skipped=[${UNIT_B}]`);
     expect(logs.join("\n")).toContain("reason=cost-cap");
@@ -246,7 +246,7 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(finding.diagnostic.inputs.expectedTextContains).toBe("[REDACTED]");
   });
 
-  it("invokes render-validate once per accepted unit in the same scene (no silent per-scene cap)", () => {
+  it("invokes render-validate once per written unit in the same scene (no silent per-scene cap)", () => {
     const expectTexts: string[] = [];
     const logs: string[] = [];
     const artifactRoot = join(
@@ -256,9 +256,9 @@ describe("runWholeGameReplayRenderValidate", () => {
     const result = runWholeGameReplayRenderValidate({
       rawBridge: rawBridgeSameSceneTwoUnits(),
       patchReport: patchReport([
-        { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-6010/line-001", finalDraftText: DRAFT_A },
-        { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-6010/line-002", finalDraftText: DRAFT_B },
-        { bridgeUnitId: UNIT_C, sourceUnitKey: "scene-6010/line-003", finalDraftText: DRAFT_C },
+        { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-6010/line-001", selectedBody: DRAFT_A },
+        { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-6010/line-002", selectedBody: DRAFT_B },
+        { bridgeUnitId: UNIT_C, sourceUnitKey: "scene-6010/line-003", selectedBody: DRAFT_C },
       ]),
       sourceRoot: "/source-game",
       targetRoot: "/patched-game",
@@ -286,7 +286,7 @@ describe("runWholeGameReplayRenderValidate", () => {
     });
 
     expect(result.coverage).toMatchObject({
-      acceptedUnitCount: 3,
+      writtenUnitCount: 3,
       candidateUnitCount: 3,
       selectedUnitCount: 3,
       candidateSceneCount: 1,
@@ -296,11 +296,11 @@ describe("runWholeGameReplayRenderValidate", () => {
       selectedUnitIds: [UNIT_A, UNIT_B, UNIT_C],
       skippedUnitIds: [],
     });
-    expect(logs.join("\n")).toContain("3/3 accepted unit(s)");
+    expect(logs.join("\n")).toContain("3/3 written unit(s)");
     expect(logs.join("\n")).toContain("1/1 scene(s)");
     expect(logs.join("\n")).not.toContain("sampled");
 
-    // One render-validate invocation per accepted unit, each with its own text.
+    // One render-validate invocation per written unit, each with its own text.
     expect(expectTexts).toEqual([DRAFT_A, DRAFT_B, DRAFT_C]);
     // The broken later line is caught — not silently dropped by scene de-dupe.
     expect(result.findings).toHaveLength(1);
@@ -308,7 +308,7 @@ describe("runWholeGameReplayRenderValidate", () => {
     expect(result.findings[0]!.phase).toBe("render-validate");
   });
 
-  it("selects duplicate accepted drafts by scene-local message index, not first substring match", () => {
+  it("selects duplicate written drafts by scene-local message index, not first substring match", () => {
     const renderSelections: Array<{ expectText: string; messageIndex: string }> = [];
     const artifactRoot = join(
       mkdtempSync(join(tmpdir(), "itotori-wholegame-render-duplicate-")),
@@ -320,12 +320,12 @@ describe("runWholeGameReplayRenderValidate", () => {
         {
           bridgeUnitId: UNIT_A,
           sourceUnitKey: "scene-6010/line-001",
-          finalDraftText: DUPLICATE_DRAFT,
+          selectedBody: DUPLICATE_DRAFT,
         },
         {
           bridgeUnitId: UNIT_B,
           sourceUnitKey: "scene-6010/line-002",
-          finalDraftText: DUPLICATE_DRAFT,
+          selectedBody: DUPLICATE_DRAFT,
         },
       ]),
       sourceRoot: "/source-game",
@@ -357,7 +357,7 @@ describe("runWholeGameReplayRenderValidate", () => {
       { expectText: DUPLICATE_DRAFT, messageIndex: "1" },
     ]);
     expect(result.coverage).toMatchObject({
-      acceptedUnitCount: 2,
+      writtenUnitCount: 2,
       candidateUnitCount: 2,
       selectedUnitCount: 2,
       sampled: false,
@@ -412,8 +412,8 @@ describe("runWholeGameReplayRenderValidate", () => {
       const result = runWholeGameReplayRenderValidate({
         rawBridge: rawBridgeFixtureSceneOneTwoUnits(),
         patchReport: patchReport([
-          { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-0001/line-001", finalDraftText: DRAFT_A },
-          { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-0001/line-002", finalDraftText: DRAFT_B },
+          { bridgeUnitId: UNIT_A, sourceUnitKey: "scene-0001/line-001", selectedBody: DRAFT_A },
+          { bridgeUnitId: UNIT_B, sourceUnitKey: "scene-0001/line-002", selectedBody: DRAFT_B },
         ]),
         sourceRoot,
         targetRoot,

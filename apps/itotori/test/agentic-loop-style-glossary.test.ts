@@ -8,11 +8,11 @@
 //   1. With an active glossary term + an active style guide, the translation
 //      prompt AND every QA prompt carry the glossary line and the style-guide
 //      rule (non-empty) — the styleGuide:[] replacement reaches the wire.
-//   2. A draft that maps the glossary term to its target is ACCEPTED (glossary
-//      respected).
+//   2. A draft that maps the glossary term to its target becomes the selected
+//      written candidate (glossary respected).
 //   3. A draft that mistranslates the glossary target is FLAGGED by the
-//      deterministic glossary check (capitalization_drift → P0 short-circuit →
-//      deferred_to_human).
+//      deterministic glossary check (capitalization drift becomes a permanent
+//      quality flag while the draft remains written).
 //   4. With NO active glossary / style guide the loop degrades gracefully:
 //      prompts render `(empty)` and the loop still completes with a draft.
 
@@ -124,6 +124,21 @@ function makePolicy(): AgenticLoopPolicy {
       return d;
     },
   };
+}
+
+function selectedCandidateBody(bundle: {
+  writtenOutcome: {
+    selectedCandidateId: string;
+    candidates: Array<{ id: string; body: string }>;
+  };
+}): string {
+  const selected = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  if (selected === undefined) {
+    throw new Error("test fixture expected a selected written candidate");
+  }
+  return selected.body;
 }
 
 function speakerLabel(unit: LocalizationUnitV02): string {
@@ -252,12 +267,12 @@ describe("itotori-live-loop-style-glossary-injection", () => {
       expect(qprompt).toContain("[tone] (tone-warm-direct)");
     }
 
-    // (2) The glossary-respecting draft is accepted with its target form.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe(`${GLOSSARY_TARGET} smiled.`);
+    // (2) The glossary-respecting draft is the selected written candidate.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateBody(bundle)).toBe(`${GLOSSARY_TARGET} smiled.`);
   });
 
-  it("flags a draft that mistranslates the glossary target (deterministic glossary check → deferred)", async () => {
+  it("flags a draft that mistranslates the glossary target without clearing it", async () => {
     const unit = makeUnit();
     const captured: Captured = { translation: [], qa: [] };
     const input: AgenticLoopUnitInput = {
@@ -279,11 +294,16 @@ describe("itotori-live-loop-style-glossary-injection", () => {
       capturingFactory(unit, "stella smiled.", captured),
     );
 
-    // The deterministic glossary check fired a P0 (capitalization_drift) and the
-    // loop deferred to a human rather than accepting the violating draft.
-    expect(bundle.routingSummary.outcome).toBe("short_circuit_deterministic_p0");
-    expect(bundle.finalDraft.draftText).toBeUndefined();
-    expect(bundle.finalDraft.deferredReason).toContain("capitalization_drift");
+    // The deterministic glossary check keeps the best-effort draft and records
+    // its concern as a permanent quality flag.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateBody(bundle)).toBe("stella smiled.");
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining([
+        "deterministic_capitalization_drift",
+        "deterministic_validation_failed",
+      ]),
+    );
   });
 
   it("degrades gracefully with no active glossary or style guide (empty, not broken)", async () => {
@@ -309,8 +329,8 @@ describe("itotori-live-loop-style-glossary-injection", () => {
     const tprompt = captured.translation[0] ?? "";
     expect(tprompt).toContain("Glossary: (empty)");
     expect(tprompt).toContain("Style guide: (empty)");
-    // Still completes end-to-end with a real draft.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe("Someone smiled.");
+    // Still completes end-to-end with a selected written candidate.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateBody(bundle)).toBe("Someone smiled.");
   });
 });

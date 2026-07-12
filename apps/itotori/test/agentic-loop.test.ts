@@ -9,10 +9,10 @@
 // The suite asserts:
 //   1. Happy path: every stage appears in bundle.stages, every
 //      invocation declares an explicit (modelId, providerId) pair.
-//   2. Deterministic-check P0 short-circuit: QA stage records ZERO
-//      invocations and the loop ends with `deferred_to_human`.
-//   3. Repair cap: a synthetic finding that would normally repair
-//      defers when `maxRepairAttempts=0`.
+//   2. Deterministic diagnostics: QA stage records ZERO invocations while the
+//      primary candidate still becomes the required written result.
+//   3. Repair cap: a synthetic finding leaves the primary candidate selected
+//      with informational quality flags when `maxRepairAttempts=0`.
 //   4. Round-trip: bundle serializes + reparses byte-equal via the
 //      schema package asserter.
 //   5. Pair-policy completeness: missing entries throw a typed
@@ -148,15 +148,22 @@ function deterministicClock(): () => Date {
   };
 }
 
-// --- Fake content generators ------------------------------------------
+function selectedCandidateOf(bundle: {
+  writtenOutcome: {
+    selectedCandidateId: string;
+    candidates: Array<{ id: string; body: string; kind: "primary" | "repair" }>;
+  };
+}): { id: string; body: string; kind: "primary" | "repair" } {
+  const selected = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  if (selected === undefined) {
+    throw new Error("test fixture expected a selected written candidate");
+  }
+  return selected;
+}
 
-type StageRole =
-  | "context"
-  | "speaker-label"
-  | "translation-success"
-  | "translation-with-glossary-mistranslation"
-  | "qa-clean"
-  | "qa-with-mistranslation";
+// --- Fake content generators ------------------------------------------
 
 function makeSpeakerLabelContent(unit: LocalizationUnitV02): string {
   return JSON.stringify({
@@ -296,9 +303,10 @@ function findingsProviderFactory(args: {
  * bounded post-repair re-QA), while the repair translation emits a
  * deterministically-CLEAN draft. This isolates the post-repair contract: the
  * repaired draft clears the deterministic recheck yet the re-QA still flags the
- * issue, so the loop must record `repaired_then_qa_rejected` (NOT falsely
- * accept). Every repair attempt fires exactly one repair translation + one
- * four-agent re-QA pass, so the invocation counts prove the loop stays bounded.
+ * issue, so the loop retains the primary candidate and records QA/budget flags
+ * instead of clearing text. Every repair attempt fires exactly one repair
+ * translation + one four-agent re-QA pass, so the invocation counts prove the
+ * loop stays bounded.
  */
 function persistentlyFlaggingProviderFactory(args: {
   qaFinding: QaFinding;
@@ -376,11 +384,12 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     for (const name of stageNames) {
       expect(AGENTIC_LOOP_STAGE_NAMES).toContain(name);
     }
-    // Happy path: routing accepted + draft text persisted.
-    expect(bundle.routingSummary.outcome).toBe("accepted");
-    expect(bundle.finalDraft.draftText).toBe(DRAFT_TEXT);
-    expect(bundle.finalDraft.deferredReason).toBeUndefined();
-    expect(bundle.routingSummary.repairAttempts).toBe(0);
+    // Happy path: one selected, non-blank candidate is written.
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(bundle.writtenOutcome.unitId).toBe(BRIDGE_UNIT_ID);
+    expect(selectedCandidateOf(bundle).body).toBe(DRAFT_TEXT);
+    expect(bundle.writtenOutcome.qualityFlags).toEqual([]);
+    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 0 });
   });
 
   it("every invocation carries an explicit (modelId, providerId) pair from the pair-policy", async () => {
@@ -408,7 +417,7 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     }
   });
 
-  it("deterministic-check P0 failure short-circuits before QA stages fire", async () => {
+  it("deterministic diagnostics skip QA but retain a written primary candidate", async () => {
     // Build an input whose glossary protected span declares an
     // expectedTargetForm 'HERO'. The translation emits 'hero'
     // (lowercase) AT the declared range — yielding
@@ -481,13 +490,18 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     const qaStage = bundle.stages.find((s) => s.stageName === "qa_findings");
     expect(qaStage).toBeDefined();
     expect(qaStage?.invocations.length).toBe(0);
-    expect(qaStage?.outcome).toMatch(/^skipped:deterministic_p0/u);
-    expect(bundle.routingSummary.outcome).toBe("short_circuit_deterministic_p0");
-    expect(bundle.finalDraft.deferredReason).toBeDefined();
-    expect(bundle.finalDraft.draftText).toBeUndefined();
+    expect(qaStage?.outcome).toMatch(/^skipped:deterministic_diagnostic/u);
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle).body).toBe("hero {player}");
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining([
+        "deterministic_capitalization_drift",
+        "deterministic_validation_failed",
+      ]),
+    );
   });
 
-  it("repair cap: maxRepairAttempts=0 forces deferred_to_human when a repairable finding emerges", async () => {
+  it("repair cap: maxRepairAttempts=0 retains the primary candidate with informational flags", async () => {
     const finding: QaFinding = {
       findingId: "019ed079-0000-7000-8000-000000000f01",
       bridgeUnitId: BRIDGE_UNIT_ID,
@@ -508,17 +522,22 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
         repairSpanEnd: 15,
       }),
     );
-    expect(bundle.routingSummary.outcome).toBe("deferred_to_human");
-    expect(bundle.routingSummary.maxRepairAttempts).toBe(0);
-    expect(bundle.routingSummary.repairAttempts).toBe(0);
-    expect(bundle.routingSummary.criticalFindingCount).toBe(1);
-    expect(bundle.finalDraft.draftText).toBeUndefined();
-    expect(bundle.finalDraft.deferredReason).toBeDefined();
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.findings).toHaveLength(1);
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+    );
+    expect(bundle.writtenOutcome.provenance).toMatchObject({
+      maxRepairAttempts: 0,
+      repairAttempts: 0,
+      criticalFindingCount: 1,
+    });
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
-    expect(repairStage?.outcome).toBe("cap_exceeded");
+    expect(repairStage?.outcome).toBe("repair_budget_exhausted");
   });
 
-  it("post-repair re-QA CONFIRMS the fix: a repaired draft that passes the bounded re-QA is accepted", async () => {
+  it("post-repair re-QA selects a repaired candidate that passes the bounded re-QA", async () => {
     // agentic-loop-post-repair-qa-revalidation — option (a) accept path. The
     // initial QA flags a repairable mistranslation; the repair emits a clean
     // draft; the bounded re-QA (four judges, once) comes back CLEAN, so the
@@ -545,12 +564,12 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
         repairSpanEnd: 15,
       }),
     );
-    expect(bundle.routingSummary.outcome).toBe("repaired_then_accepted");
-    expect(bundle.routingSummary.repairAttempts).toBe(1);
-    expect(bundle.finalDraft.draftText).toBe(DRAFT_TEXT);
-    expect(bundle.finalDraft.deferredReason).toBeUndefined();
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "repair" });
+    expect(bundle.writtenOutcome.candidates).toHaveLength(2);
+    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 1 });
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
-    expect(repairStage?.outcome).toBe("repaired_then_accepted_at_attempt_1");
+    expect(repairStage?.outcome).toBe("selected_repair_candidate_at_attempt_1");
     // The repair stage owns BOTH the repair translation (1) AND its bounded
     // re-QA (4 focused judges) = 5 invocations. The `qa_findings` stage stays
     // the INITIAL four-agent pass — the re-QA is not double-counted there.
@@ -562,13 +581,12 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     expect(qaStage?.invocations.length).toBe(4);
   });
 
-  it("post-repair re-QA REJECTS: a repaired draft that clears deterministic checks but still fails re-QA is NOT falsely accepted", async () => {
+  it("post-repair re-QA retains the primary draft when a repair still has QA findings", async () => {
     // agentic-loop-post-repair-qa-revalidation — option (a) reject path. The
     // repaired draft is deterministically CLEAN (balanced / non-empty / charset
     // / protected-spans all pass), yet the bounded re-QA STILL flags the
-    // repairable issue. Deterministic-only acceptance would falsely mark this
-    // `repaired_then_accepted`; the contract instead records the distinct
-    // `repaired_then_qa_rejected` and defers, with no persisted draft.
+    // repairable issue. The primary draft remains selected, while both drafts
+    // and every QA annotation remain available in the written outcome.
     const finding: QaFinding = {
       findingId: "019ed079-0000-7000-8000-000000000f03",
       bridgeUnitId: BRIDGE_UNIT_ID,
@@ -589,23 +607,27 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
         repairSpanEnd: 15,
       }),
     );
-    expect(bundle.routingSummary.outcome).toBe("repaired_then_qa_rejected");
-    expect(bundle.routingSummary.repairAttempts).toBe(1);
-    // NOT falsely accepted: no draft is persisted, a reason is carried.
-    expect(bundle.finalDraft.draftText).toBeUndefined();
-    expect(bundle.finalDraft.deferredReason).toBeDefined();
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.candidates).toHaveLength(2);
+    expect(bundle.writtenOutcome.findings.length).toBeGreaterThan(0);
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+    );
+    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 1 });
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
-    expect(repairStage?.outcome).toBe("repaired_then_qa_rejected_after_1_attempts");
+    expect(repairStage?.outcome).toBe("repair_budget_exhausted_with_qa_flags_after_1_attempts");
     expect(repairStage?.invocations.length).toBe(5);
     // The bundle round-trips through the schema asserter with the new outcome.
     assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
   });
 
-  it("post-repair re-QA stays BOUNDED: exactly maxRepairAttempts repair+re-QA cycles, never an unbounded loop", async () => {
+  it("post-repair re-QA stays BOUNDED while retaining a written candidate", async () => {
     // agentic-loop-post-repair-qa-revalidation — the bound proof. With a
-    // persistently-flagging re-QA the loop can NEVER accept, so it must run
+    // persistently-flagging re-QA never selects a repair, so it must run
     // EXACTLY `maxRepairAttempts` cycles and stop — each cycle firing one
-    // repair translation + one four-agent re-QA (no unbounded QA→repair→QA).
+    // repair translation + one four-agent re-QA (no unbounded QA→repair→QA),
+    // while the primary candidate remains selected.
     const finding: QaFinding = {
       findingId: "019ed079-0000-7000-8000-000000000f04",
       bridgeUnitId: BRIDGE_UNIT_ID,
@@ -626,11 +648,16 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
         repairSpanEnd: 15,
       }),
     );
-    expect(bundle.routingSummary.outcome).toBe("repaired_then_qa_rejected");
+    expect(bundle.writtenOutcome.status).toBe("written");
+    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
+    expect(bundle.writtenOutcome.candidates).toHaveLength(3);
+    expect(bundle.writtenOutcome.qualityFlags).toEqual(
+      expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+    );
     // The cap held: exactly 2 attempts, not one more.
-    expect(bundle.routingSummary.repairAttempts).toBe(2);
+    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 2 });
     const repairStage = bundle.stages.find((s) => s.stageName === "repair");
-    expect(repairStage?.outcome).toBe("repaired_then_qa_rejected_after_2_attempts");
+    expect(repairStage?.outcome).toBe("repair_budget_exhausted_with_qa_flags_after_2_attempts");
     // 2 repair translations + 2 × 4 re-QA judges = 10 invocations. If the loop
     // were unbounded this would blow past 10.
     expect(repairStage?.invocations.length).toBe(10);

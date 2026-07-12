@@ -2,26 +2,26 @@
 //
 // Multi-pass localization ("pass N+1 consumes pass N's feedback then reruns the
 // affected scope") was not wired: the project-driven executor ran ONE pass over
-// the in-scope units and persisted the accepted drafts + reviewer-queue items,
+// the in-scope units and persisted written outcomes + reviewer-queue items,
 // but nothing RECORDED the pass's inputs/outputs/feedback so a subsequent pass
 // could build on it. A pass N+1 run was therefore a blank re-run — it re-derived
-// every draft from scratch, ignoring the prior pass's accepted state and the
+// every draft from scratch, ignoring the prior pass's written state and the
 // units it flagged.
 //
 // This module is the general pass ledger. It is the single source of truth for
 // "what happened on each localization pass" for a locale branch:
 //   - RECORDS, per pass: the inputs (scope / pair / units enumerated), the
-//     outputs (accepted + deferred + failed unit outcomes, real usage.cost, ZDR,
-//     budget-stopped), the prior-feedback notes carried in, and the ACCEPTED
-//     DELTAS (units whose accepted draft CHANGED vs the prior pass).
-//   - LETS a pass N+1 run CONSUME pass N's accepted state + flagged-unit
+//     outputs (written + failed unit outcomes, real usage.cost, ZDR,
+//     budget-stopped), the prior-feedback notes carried in, and the WRITTEN
+//     DELTAS (units whose selected body changed vs the prior pass).
+//   - LETS a pass N+1 run CONSUME pass N's written state + flagged-unit
 //     feedback as drafting context — `buildPriorPassContext` projects the latest
 //     pass record into the `PriorPassContext` the driven executor threads into
 //     every unit's translation prompt, and `runLocalizationPass` ties the
 //     executor + ledger together so a pass N+1 run automatically loads pass N.
 //
 // Project-agnostic (GAME-AGNOSTIC): the record carries only generic fields —
-// routing outcomes, draft text, defer reasons, free-form feedback notes. There
+// selected target bodies, quality flags, free-form feedback notes. There
 // is no title / engine / game-specific field anywhere; the multi-pass loop is
 // generic over any project whose units flow through the agentic loop.
 //
@@ -29,8 +29,8 @@
 // production deployment backs it with a real table (`@itotori/db`) and tests
 // back it with `InMemoryPassLedger`. `recordLocalizationPass` derives a
 // deterministic `passNumber` (prior + 1, else 1) and a deterministic
-// `acceptedDeltas` list (computed by a pure diff against the prior accepted
-// state), so two replays of the same pass produce byte-equal records.
+// `writtenDeltas` list (computed by a pure diff against the prior selected
+// bodies), so two replays of the same pass produce byte-equal records.
 //
 // Cost recording (PROJECT LAW / audit-no-hardcoded-cost): the ledger records the
 // REAL total `usage.cost` the executor summed verbatim from per-invocation
@@ -38,7 +38,6 @@
 // (synthetic fake) provider is recorded as the real zero it produced.
 
 import type { AuthorizationActor } from "@itotori/db";
-import type { AgenticLoopRoutingOutcome } from "@itotori/localization-bridge-schema";
 import type { PriorPassFeedback } from "../agents/translation/shapes.js";
 import {
   runProjectDrivenExecutor,
@@ -60,39 +59,36 @@ import type {
 
 /**
  * One unit's outcome within a localization pass. Mirrors the driven executor's
- * per-unit `DrivenDraftRecord` (accepted/deferred state + draft text + defer
- * reason) plus the loop's routing outcome. The ledger records one of these per
- * successfully-run unit so a pass N+1 run can build on the prior pass's
- * accepted state and address the units it flagged.
+ * per-unit canonical written outcome. The ledger records one of these per
+ * successfully-run unit so a pass N+1 run can build on the prior selected body
+ * and address informational quality flags without withholding text.
  */
 export type LocalizationPassUnitOutcome = {
   bridgeUnitId: string;
   sourceUnitKey: string;
-  /** The loop's routing outcome for this unit on this pass. */
-  outcome: AgenticLoopRoutingOutcome;
-  accepted: boolean;
   targetLocale: string;
-  /** The accepted draft text; absent on a defer. */
-  draftText?: string;
-  /** The loop's deferred reason; absent when accepted. */
-  deferredReason?: string;
+  outcomeId: string;
+  selectedCandidateId: string;
+  /** Required selected target body; never blank or source-repeated. */
+  selectedBody: string;
+  /** Informational QA/repair signals; never a release gate. */
+  qualityFlags: string[];
+  writtenAt: string;
 };
 
 /**
- * A unit whose accepted draft CHANGED between the prior pass and the current
- * pass. The ledger computes this via a deterministic diff against the prior
- * accepted state so iteration is observable: pass N+1 either keeps an accepted
- * draft byte-equal (no delta) or produces a new one (delta recorded). A unit
- * that was deferred in pass N and accepted in pass N+1 is a delta whose
- * `priorDraftText` is absent.
+ * A unit whose selected body CHANGED between the prior pass and the current
+ * pass. The ledger computes this via a deterministic diff, so iteration is
+ * observable without a release-decision state. A newly written unit has no
+ * prior selected body.
  */
-export type AcceptedDelta = {
+export type WrittenDelta = {
   bridgeUnitId: string;
   sourceUnitKey: string;
-  /** The prior pass's accepted draft for this unit, when it had one. */
-  priorDraftText?: string;
-  /** The current pass's accepted draft for this unit. */
-  currentDraftText: string;
+  /** The prior selected body, when this unit was written in the prior pass. */
+  priorSelectedBody?: string;
+  /** The current required selected body. */
+  currentSelectedBody: string;
 };
 
 /**
@@ -116,13 +112,12 @@ export type LocalizationPassInputs = {
  * from per-invocation provider telemetry (PROJECT LAW) — never fabricated.
  */
 export type LocalizationPassOutputs = {
-  acceptedDraftCount: number;
-  deferredCount: number;
+  writtenOutcomeCount: number;
   failureCount: number;
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
-  /** Per-unit outcomes (accepted + deferred), canonical order. */
+  /** Per-unit written outcomes, canonical order. */
   unitOutcomes: LocalizationPassUnitOutcome[];
   /** Per-unit failures (isolated), canonical order. */
   unitFailures: DrivenUnitFailure[];
@@ -153,8 +148,8 @@ export type PassFeedbackNote = {
  *
  * `priorPassNumber` chains successive passes so the iteration lineage is
  * self-contained: pass N+1's record points at pass N, all the way back to pass
- * 1 (whose `priorPassNumber` is undefined). `acceptedDeltas` makes iteration
- * observable — the set of units whose accepted draft actually changed vs the
+ * 1 (whose `priorPassNumber` is undefined). `writtenDeltas` makes iteration
+ * observable — the set of units whose selected body actually changed vs the
  * prior pass.
  */
 export type LocalizationPassRecord = {
@@ -168,8 +163,8 @@ export type LocalizationPassRecord = {
   recordedAt: Date;
   inputs: LocalizationPassInputs;
   outputs: LocalizationPassOutputs;
-  /** Units whose accepted draft changed vs the prior pass (deterministic diff). */
-  acceptedDeltas: AcceptedDelta[];
+  /** Units whose selected body changed vs the prior pass (deterministic diff). */
+  writtenDeltas: WrittenDelta[];
   /**
    * The per-unit feedback notes this pass CONSUMED (carried in from the prior
    * pass / reviewers). Empty for a blank first pass. The ledger records these
@@ -268,66 +263,58 @@ export class InMemoryPassLedger implements PassLedgerPort {
 }
 
 // ---------------------------------------------------------------------------
-// Accepted-delta diff (deterministic, pure)
+// Written-outcome delta diff (deterministic, pure)
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the accepted deltas between the prior pass's accepted state and the
- * current pass's accepted state. A unit is a DELTA iff its accepted draft text
- * CHANGED — either the text differs, or the unit is newly accepted (no prior
- * draft) vs the prior pass. A unit that stays byte-equal accepted is NOT a
- * delta (iteration left it alone). Deterministic: same inputs → same deltas.
+ * Compute the written deltas between the prior pass's selected bodies and the
+ * current pass's selected bodies. A unit is a DELTA iff its selected body
+ * changed, or it is newly written (no prior body). A byte-equal body is not a
+ * delta. Deterministic: same inputs → same deltas.
  *
  * The `current`/`prior` inputs accept the structural subset a record-under-
  * construction carries — the full `outputs.unitOutcomes` list — so the diff can
  * run BEFORE the ledger assigns a `passNumber` (it never reads the passNumber).
  */
-export function deriveAcceptedDeltas(args: {
+export function deriveWrittenDeltas(args: {
   prior?:
     | LocalizationPassRecord
     | { outputs: { unitOutcomes: LocalizationPassUnitOutcome[] } }
     | undefined;
   current: LocalizationPassRecord | { outputs: { unitOutcomes: LocalizationPassUnitOutcome[] } };
-}): AcceptedDelta[] {
+}): WrittenDelta[] {
   if (args.prior === undefined) {
-    // First pass: every accepted unit is a delta (no prior state to compare).
-    return args.current.outputs.unitOutcomes
-      .filter((unit) => unit.accepted && unit.draftText !== undefined)
-      .map((unit) => ({
-        bridgeUnitId: unit.bridgeUnitId,
-        sourceUnitKey: unit.sourceUnitKey,
-        currentDraftText: unit.draftText!,
-      }));
+    // First pass: every written unit is a delta (no prior state to compare).
+    return args.current.outputs.unitOutcomes.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceUnitKey: unit.sourceUnitKey,
+      currentSelectedBody: unit.selectedBody,
+    }));
   }
-  const priorAccepted = new Map<string, string>();
+  const priorBodies = new Map<string, string>();
   for (const unit of args.prior.outputs.unitOutcomes) {
-    if (unit.accepted && unit.draftText !== undefined) {
-      priorAccepted.set(unit.bridgeUnitId, unit.draftText);
-    }
+    priorBodies.set(unit.bridgeUnitId, unit.selectedBody);
   }
-  const deltas: AcceptedDelta[] = [];
+  const deltas: WrittenDelta[] = [];
   for (const unit of args.current.outputs.unitOutcomes) {
-    if (!unit.accepted || unit.draftText === undefined) {
-      continue;
-    }
-    const priorDraftText = priorAccepted.get(unit.bridgeUnitId);
-    if (priorDraftText === undefined) {
-      // Newly accepted vs prior (was deferred / failed / not run).
+    const priorSelectedBody = priorBodies.get(unit.bridgeUnitId);
+    if (priorSelectedBody === undefined) {
+      // Newly written vs prior (previously failed or not in scope).
       deltas.push({
         bridgeUnitId: unit.bridgeUnitId,
         sourceUnitKey: unit.sourceUnitKey,
-        currentDraftText: unit.draftText,
+        currentSelectedBody: unit.selectedBody,
       });
-    } else if (priorDraftText !== unit.draftText) {
-      // Accepted in both passes but the draft text changed (real iteration).
+    } else if (priorSelectedBody !== unit.selectedBody) {
+      // Written in both passes but the selected body changed (real iteration).
       deltas.push({
         bridgeUnitId: unit.bridgeUnitId,
         sourceUnitKey: unit.sourceUnitKey,
-        priorDraftText,
-        currentDraftText: unit.draftText,
+        priorSelectedBody,
+        currentSelectedBody: unit.selectedBody,
       });
     }
-    // else: byte-equal accepted — NOT a delta (unchanged).
+    // else: byte-equal written body — not a delta (unchanged).
   }
   return deltas;
 }
@@ -339,12 +326,12 @@ export function deriveAcceptedDeltas(args: {
 /**
  * Project the latest pass record into the {@link PriorPassContext} the driven
  * executor threads into every unit's translation prompt. Each unit's feedback
- * carries its prior routing outcome, its prior accepted/deferred draft, and its
- * defer reason; caller-supplied `feedbackNotesByUnit` are layered on top so a
- * reviewer correction / QA-finding recommendation reaches the prompt verbatim.
+ * carries its prior selected body and informational quality flags; caller-
+ * supplied `feedbackNotesByUnit` are layered on top so a play-test correction
+ * or QA recommendation reaches the prompt verbatim.
  *
  * Generic + project-agnostic: the feedback carries no game-specific fields —
- * only the prior outcome + draft + reason + note. Returns `undefined` when
+ * only the prior selected body + quality flags + note. Returns `undefined` when
  * there is no prior pass (the run is a blank first pass).
  */
 export function buildPriorPassContext(args: {
@@ -352,7 +339,7 @@ export function buildPriorPassContext(args: {
   /**
    * Optional human / finding notes to layer onto the prior-pass feedback, keyed
    * by bridge unit. A note a reviewer added between pass N and pass N+1 reaches
-   * the pass N+1 prompt even when the prior pass accepted the unit.
+   * the pass N+1 prompt even when the prior pass already wrote the unit.
    */
   feedbackNotesByUnit?: ReadonlyMap<string, string>;
 }): PriorPassContext | undefined {
@@ -370,9 +357,8 @@ export function buildPriorPassContext(args: {
     const feedbackNote = combineFeedbackNotes(note, runtimeNote);
     const feedback: PriorPassFeedback = {
       passNumber: latest.passNumber,
-      priorOutcome: unit.outcome,
-      ...(unit.draftText !== undefined ? { priorDraftText: unit.draftText } : {}),
-      ...(unit.deferredReason !== undefined ? { deferredReason: unit.deferredReason } : {}),
+      priorDraftText: unit.selectedBody,
+      qualityFlags: unit.qualityFlags.slice(),
       ...(feedbackNote !== undefined ? { feedbackNote } : {}),
     };
     feedbackByUnit.set(unit.bridgeUnitId, feedback);
@@ -387,7 +373,7 @@ export function buildPriorPassContext(args: {
 /**
  * Build a {@link LocalizationPassRecord} (sans passNumber / priorPassNumber,
  * which the ledger assigns deterministically on `recordPass`) from a driven
- * executor result. Derives the deterministic `acceptedDeltas` by diffing
+ * executor result. Derives deterministic `writtenDeltas` by diffing
  * against the supplied prior pass, and records the feedback notes the pass
  * consumed (so the iteration trail is self-contained).
  *
@@ -410,11 +396,12 @@ export function buildLocalizationPassRecord(args: {
   const unitOutcomes: LocalizationPassUnitOutcome[] = result.unitOutcomes.map((unit) => ({
     bridgeUnitId: unit.bridgeUnitId,
     sourceUnitKey: unit.sourceUnitKey,
-    outcome: unit.outcome,
-    accepted: unit.accepted,
-    targetLocale: unit.targetLocale,
-    ...(unit.draftText !== undefined ? { draftText: unit.draftText } : {}),
-    ...(unit.deferredReason !== undefined ? { deferredReason: unit.deferredReason } : {}),
+    targetLocale: unit.outcome.targetLocale,
+    outcomeId: unit.outcome.id,
+    selectedCandidateId: unit.outcome.selectedCandidateId,
+    selectedBody: unit.selectedBody,
+    qualityFlags: unit.outcome.qualityFlags.slice(),
+    writtenAt: unit.outcome.writtenAt,
   }));
 
   const record: Omit<LocalizationPassRecord, "passNumber" | "priorPassNumber"> = {
@@ -433,8 +420,7 @@ export function buildLocalizationPassRecord(args: {
       ...(executorInput.maxUnits !== undefined ? { maxUnits: executorInput.maxUnits } : {}),
     },
     outputs: {
-      acceptedDraftCount: result.acceptedDraftCount,
-      deferredCount: result.deferredCount,
+      writtenOutcomeCount: result.writtenOutcomeCount,
       failureCount: result.failures.length,
       totalUsageCostUsd: result.totalUsageCostUsd,
       zdrConfirmed: result.zdrConfirmed,
@@ -445,13 +431,13 @@ export function buildLocalizationPassRecord(args: {
         ? { runtimeValidation: result.runtimeValidation }
         : {}),
     },
-    acceptedDeltas: [],
+    writtenDeltas: [],
     consumedFeedbackNotes: args.consumedFeedbackNotes ?? [],
   };
-  // `deriveAcceptedDeltas` reads only `outputs.unitOutcomes`, which is complete
+  // `deriveWrittenDeltas` reads only `outputs.unitOutcomes`, which is complete
   // on the record-under-construction, so it can run before the ledger assigns a
   // passNumber (the diff never reads the passNumber).
-  record.acceptedDeltas = deriveAcceptedDeltas({ prior, current: record });
+  record.writtenDeltas = deriveWrittenDeltas({ prior, current: record });
   return record;
 }
 
@@ -462,9 +448,9 @@ export function buildLocalizationPassRecord(args: {
 /**
  * Run ONE localization pass and record it in the ledger. This is the seam that
  * makes multi-pass iteration work: it LOADS the latest prior pass from the
- * ledger (so pass N+1 consumes pass N's accepted state + flagged-unit
+ * ledger (so pass N+1 consumes pass N's written state + flagged-unit
  * feedback), threads that context into the driven executor, runs it, and
- * RECORDS the resulting pass (with deterministic accepted deltas vs the prior).
+ * RECORDS the resulting pass (with deterministic written deltas vs the prior).
  *
  * For a blank first pass (no prior on the branch) the executor runs with no
  * `priorPass` — byte-identical to calling `runProjectDrivenExecutor` directly.
@@ -532,7 +518,7 @@ export async function runLocalizationPass(args: {
     }
   }
 
-  // RECORD the pass — derive the deterministic accepted deltas vs the prior.
+  // RECORD the pass — derive deterministic written deltas vs the prior.
   const consumedFeedbackNotes: PassFeedbackNote[] = [];
   if (args.feedbackNotesByUnit !== undefined) {
     for (const [bridgeUnitId, note] of args.feedbackNotesByUnit) {
@@ -551,19 +537,17 @@ export async function runLocalizationPass(args: {
 
   log(
     `pass-ledger: recorded pass ${record.passNumber} ` +
-      `(${result.acceptedDraftCount} accepted, ${result.deferredCount} deferred, ` +
-      `${result.failures.length} failed, ${record.acceptedDeltas.length} accepted delta(s))`,
+      `(${result.writtenOutcomeCount} written, ${result.failures.length} failed, ` +
+      `${record.writtenDeltas.length} written delta(s))`,
   );
 
   return { result, record, prior };
 }
 
 // Re-export the driven-executor types the multi-pass surface pairs with so
-// callers reach them from a single import path. The schema-package types
-// (`AgenticLoopBundle` / `AgenticLoopRoutingOutcome`) are imported at the top
-// of this file directly from `@itotori/localization-bridge-schema`.
+// callers reach them from a single import path.
 export type {
-  DrivenDraftRecord,
+  DrivenWrittenOutcomeRecord,
   PriorPassContext,
   ProjectDrivenExecutorInput,
   ProjectDrivenExecutorResult,

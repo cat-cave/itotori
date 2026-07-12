@@ -67,7 +67,10 @@ import {
   WholeGamePatchLoaderReconciliationError,
   type KaifuuProcessResult,
 } from "../src/orchestrator/patch-apply-seam.js";
-import { hashDraftedAgainstBridge } from "../src/orchestrator/project-driven-executor.js";
+import {
+  hashDraftedAgainstBridge,
+  type DrivenPatchReport,
+} from "../src/orchestrator/project-driven-executor.js";
 
 // --- ids (UUID-ish so a shared DB never collides) ---------------------------
 const PROJECT_ID = "019ed0ee-0000-7000-8000-000000000001";
@@ -78,8 +81,8 @@ const SPEAKER_ID = "019ed0ee-0000-7000-8000-000000000005";
 const SOURCE_BUNDLE_ID = "019ed0ee-0000-7000-8000-000000000006";
 const WORKSPACE_ID = "019ed0ee-0000-7000-8000-000000000007";
 
-const UNIT_A = "019ed0ff-0000-7000-8000-0000000000a1"; // accepted
-const UNIT_B = "019ed0ff-0000-7000-8000-0000000000b2"; // accepted
+const UNIT_A = "019ed0ff-0000-7000-8000-0000000000a1"; // written
+const UNIT_B = "019ed0ff-0000-7000-8000-0000000000b2"; // written
 const UNIT_UI = "019ed0ff-0000-7000-8000-0000000000e5"; // ui_label -> OUT OF SCOPE
 
 const SCENE_ID = 6010;
@@ -246,7 +249,7 @@ describe("applyKaifuuRpgMakerPatch (invocation shape mirrors kaifuu rpgmaker pat
 describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake repos)", () => {
   it("reconstructs a DraftArtifactBundle from persisted drafts + patch-report bodies", async () => {
     const actor: AuthorizationActor = { userId: localUserId };
-    // Fake draft-job repo: two accepted units, one draft-job each, one attempt.
+    // Fake draft-job repo: two written units, one draft-job each, one attempt.
     const draftJobs = {
       async loadDraftJobsByProject() {
         return [
@@ -300,9 +303,20 @@ describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake r
       patchReport: {
         projectId: PROJECT_ID,
         localeBranchId: LOCALE_BRANCH_ID,
-        acceptedUnits: [
-          { bridgeUnitId: UNIT_B, sourceUnitKey: "k-b", finalDraftText: "Body B" },
-          { bridgeUnitId: UNIT_A, sourceUnitKey: "k-a", finalDraftText: "Body A" },
+        targetLocale: "en-US",
+        writtenUnits: [
+          {
+            bridgeUnitId: UNIT_B,
+            sourceUnitKey: "k-b",
+            selectedBody: "Body B",
+            qualityFlags: [],
+          },
+          {
+            bridgeUnitId: UNIT_A,
+            sourceUnitKey: "k-a",
+            selectedBody: "Body A",
+            qualityFlags: [],
+          },
         ],
         translationScope: "dialogue-only",
       },
@@ -310,14 +324,17 @@ describe("buildDraftArtifactBundleFromExecutorRun (production loader over fake r
     });
 
     assertDraftArtifactBundle(bundle);
-    // Only accepted units, sorted deterministically, each carrying its real body
+    // Only written units, sorted deterministically, each carrying its real body
     // + real provider-proof + ledger ref from the persisted rows.
     expect(bundle.drafts.map((d) => d.sourceUnitId)).toEqual([UNIT_A, UNIT_B]);
     const a = bundle.drafts.find((d) => d.sourceUnitId === UNIT_A)!;
-    expect(a.draftText).toBe("Body A");
+    const selectedCandidate = a.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === a.writtenOutcome.selectedCandidateId,
+    );
+    expect(selectedCandidate?.body).toBe("Body A");
     expect(a.providerProofId).toBe("proof:draft-job-a-attempt-1");
     expect(a.costLedgerEntryRef).toBe("draft-job-a-attempt-1-ledger");
-    expect(a.retryFallbackState).toBe("success");
+    expect(a.writtenOutcome.status).toBe("written");
     expect(bundle.ledgerSummary.attemptCount).toBe(2);
     expect(bundle.ledgerSummary.providerProofIds).toHaveLength(2);
   });
@@ -412,9 +429,9 @@ function seamBridge(
 }
 
 function seamPatchReport(
-  acceptedUnits: ReadonlyArray<{ bridgeUnitId: string; finalDraftText: string }>,
+  writtenUnits: ReadonlyArray<{ bridgeUnitId: string; selectedBody: string }>,
   sourceBridgeHash: string,
-): never {
+): DrivenPatchReport {
   return {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
     projectId: PROJECT_ID,
@@ -423,30 +440,31 @@ function seamPatchReport(
     pair: { modelId: "m", providerId: "p" },
     engineProfile: "reallive",
     translationScope: "dialogue-only",
-    unitsEnumerated: acceptedUnits.length,
-    unitsInScope: acceptedUnits.length,
-    unitsRun: acceptedUnits.length,
-    acceptedDraftCount: acceptedUnits.length,
-    deferredCount: 0,
+    unitsEnumerated: writtenUnits.length,
+    unitsInScope: writtenUnits.length,
+    unitsRun: writtenUnits.length,
+    writtenOutcomeCount: writtenUnits.length,
     failureCount: 0,
     reviewerQueueItemCount: 0,
     totalUsageCostUsd: 0,
     zdrConfirmed: true,
     budgetStopped: false,
+    coverageComplete: true,
     sourceBridgeHash,
-    acceptedUnits: acceptedUnits.map((u) => ({
+    writtenUnits: writtenUnits.map((u) => ({
       bridgeUnitId: u.bridgeUnitId,
       sourceUnitKey: `k-${u.bridgeUnitId}`,
-      finalDraftText: u.finalDraftText,
+      selectedBody: u.selectedBody,
+      qualityFlags: [],
     })),
-  } as never;
+  };
 }
 
 describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)", () => {
-  // (a) — P1 #1: a bridge that declares a protected span the accepted draft
+  // (a) — P1 #1: a bridge that declares a protected span the written draft
   // does NOT contain makes protectedSpanCoverage BLOCK. The source view carries
   // the REAL span (not erased to []), so the check can throw.
-  it("THROWS when an accepted draft LOST a declared protected span (not a vacuous pass)", async () => {
+  it("THROWS when a written draft LOST a declared protected span (not a vacuous pass)", async () => {
     const bridge = seamBridge([
       {
         bridgeUnitId: UNIT_A,
@@ -465,7 +483,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         draftJobs,
         ledger,
         // The draft body DROPS the [ICON] span -> coverage must fail.
-        patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, finalDraftText: "Hello." }], hash),
+        patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hello." }], hash),
         rawBridge: bridge,
         sourceRoot: "/src",
         targetRoot: "/out",
@@ -501,7 +519,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         draftJobs,
         ledger,
         patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, finalDraftText: "See the sign." }],
+          [{ bridgeUnitId: UNIT_A, selectedBody: "See the sign." }],
           hash,
         ),
         rawBridge: bridge,
@@ -544,7 +562,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         draftJobs,
         ledger,
         patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, finalDraftText: "Read the poster." }],
+          [{ bridgeUnitId: UNIT_A, selectedBody: "Read the poster." }],
           hash,
         ),
         rawBridge: bridge,
@@ -586,7 +604,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       draftJobs,
       ledger,
       patchReport: seamPatchReport(
-        [{ bridgeUnitId: UNIT_A, finalDraftText: "Just dialogue." }],
+        [{ bridgeUnitId: UNIT_A, selectedBody: "Localized dialogue." }],
         hash,
       ),
       rawBridge: bridge,
@@ -620,7 +638,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       actor: SEAM_ACTOR,
       draftJobs,
       ledger,
-      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, finalDraftText: "Hi [ICON]!" }], hash),
+      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }], hash),
       rawBridge: bridge,
       sourceRoot: "/src",
       targetRoot: "/out",
@@ -658,7 +676,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
       actor: SEAM_ACTOR,
       draftJobs,
       ledger,
-      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, finalDraftText: "Hi [ICON]!" }], hash),
+      patchReport: seamPatchReport([{ bridgeUnitId: UNIT_A, selectedBody: "Hi [ICON]!" }], hash),
       rawBridge: bridge,
       sourceRoot: "/src/www",
       targetRoot: "/out/patched-data",
@@ -699,9 +717,9 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     expect(seam.runtimeValidationAdmission).toBeUndefined();
   });
 
-  // (b) — P1 #2: an accepted unit with NO persisted attempt/ledger fails LOUD in
+  // (b) — P1 #2: a written unit with NO persisted attempt/ledger fails LOUD in
   // the loader (no silent drop, no fabricated no-provider-run placeholder).
-  it("FAILS LOUD when an accepted unit has a job but NO persisted attempt", async () => {
+  it("FAILS LOUD when a written unit has a job but NO persisted attempt", async () => {
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withAttempt: false }]);
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
@@ -714,7 +732,15 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         patchReport: {
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
-          acceptedUnits: [{ bridgeUnitId: UNIT_A, sourceUnitKey: "k-a", finalDraftText: "Body A" }],
+          targetLocale: "en-US",
+          writtenUnits: [
+            {
+              bridgeUnitId: UNIT_A,
+              sourceUnitKey: "k-a",
+              selectedBody: "Body A",
+              qualityFlags: [],
+            },
+          ],
           translationScope: "dialogue-only",
         },
         sourceBridgeHash: "sha256:deadbeef",
@@ -722,8 +748,8 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     ).rejects.toBeInstanceOf(WholeGamePatchLoaderReconciliationError);
   });
 
-  it("FAILS LOUD when an accepted unit has NO persisted draft job (silent drop refused)", async () => {
-    // No jobs at all, but the report claims UNIT_A accepted.
+  it("FAILS LOUD when a written unit has NO persisted draft job (silent drop refused)", async () => {
+    // No jobs at all, but the report claims UNIT_A was written.
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withJob: false }]);
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
@@ -736,7 +762,15 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         patchReport: {
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
-          acceptedUnits: [{ bridgeUnitId: UNIT_A, sourceUnitKey: "k-a", finalDraftText: "Body A" }],
+          targetLocale: "en-US",
+          writtenUnits: [
+            {
+              bridgeUnitId: UNIT_A,
+              sourceUnitKey: "k-a",
+              selectedBody: "Body A",
+              qualityFlags: [],
+            },
+          ],
           translationScope: "dialogue-only",
         },
         sourceBridgeHash: "sha256:deadbeef",
@@ -744,7 +778,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
     ).rejects.toThrow(/no-persisted-draft-job/u);
   });
 
-  it("FAILS LOUD when an accepted unit has an attempt but NO provider-ledger entry", async () => {
+  it("FAILS LOUD when a written unit has an attempt but NO provider-ledger entry", async () => {
     const { draftJobs, ledger } = fakeRepos([{ unitId: UNIT_A, withLedger: false }]);
     await expect(
       buildDraftArtifactBundleFromExecutorRun({
@@ -757,7 +791,15 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         patchReport: {
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
-          acceptedUnits: [{ bridgeUnitId: UNIT_A, sourceUnitKey: "k-a", finalDraftText: "Body A" }],
+          targetLocale: "en-US",
+          writtenUnits: [
+            {
+              bridgeUnitId: UNIT_A,
+              sourceUnitKey: "k-a",
+              selectedBody: "Body A",
+              qualityFlags: [],
+            },
+          ],
           translationScope: "dialogue-only",
         },
         sourceBridgeHash: "sha256:deadbeef",
@@ -781,7 +823,7 @@ describe("runWholeGamePatchExportAndApply — the preflight is HONEST (P1 fixes)
         // The report records the DRAFTED-AGAINST hash; the seam applies over the
         // TAMPERED apply-time bridge -> the two hashes differ -> integrity fails.
         patchReport: seamPatchReport(
-          [{ bridgeUnitId: UNIT_A, finalDraftText: "Draft body." }],
+          [{ bridgeUnitId: UNIT_A, selectedBody: "Draft body." }],
           hashDraftedAgainstBridge(draftedAgainst),
         ),
         rawBridge: applyTime,
@@ -1046,7 +1088,13 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
             now: deterministicClock(),
           },
         });
-        expect(result.acceptedDraftCount).toBe(2);
+        expect(result.writtenOutcomeCount).toBe(2);
+        expect(result.patchReport.coverageComplete).toBe(true);
+        expect(result.patchReport.writtenUnits).toHaveLength(2);
+        for (const written of result.patchReport.writtenUnits) {
+          expect(written.selectedBody.trim()).not.toHaveLength(0);
+          expect(written.qualityFlags).toEqual(expect.any(Array));
+        }
         const translatedBundlePath = join(runDir, "translated-bridge.json");
         expect(existsSync(translatedBundlePath)).toBe(true);
 
@@ -1071,7 +1119,7 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         });
 
         // The production loader built a real bundle from the PERSISTED drafts
-        // (2 accepted units), and preflight passed -> a v0.2 patch-export bundle.
+        // (2 written units), and preflight passed -> the current patch-export bundle.
         expect(seam.patchExportBundle.drafts.map((d) => d.sourceUnitId).sort()).toEqual(
           [UNIT_A, UNIT_B].sort(),
         );

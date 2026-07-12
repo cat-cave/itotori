@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { AuthorizationActor } from "@itotori/db";
-import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
+import type { AgenticLoopBundle, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
   runAgenticLoopForUnit,
@@ -123,6 +123,18 @@ function makePolicy(): AgenticLoopPolicy {
       return d;
     },
   };
+}
+
+function selectedWrittenCandidateBody(bundle: AgenticLoopBundle): string {
+  expect(bundle.writtenOutcome.status).toBe("written");
+  const selectedCandidate = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  expect(selectedCandidate).toBeDefined();
+  if (selectedCandidate === undefined) {
+    throw new Error("written outcome selectedCandidateId must resolve to a candidate");
+  }
+  return selectedCandidate.body;
 }
 
 function makeSpeakerLabel(unit: LocalizationUnitV02): string {
@@ -248,7 +260,7 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     );
 
     // The unit STILL completes with a real draft.
-    expect(bundle.finalDraft.draftText).toBe("Good morning.");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
 
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
     expect(contextStage).toBeDefined();
@@ -298,7 +310,7 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     );
 
     // The unit STILL completes on the deterministic context alone.
-    expect(bundle.finalDraft.draftText).toBe("Good morning.");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
 
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
     // No semantic invocations survived...
@@ -330,7 +342,7 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
       makeFactory(unit, captured, {}),
     );
 
-    expect(bundle.finalDraft.draftText).toBe("Good morning.");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
     expect(contextStage?.invocations.map((i) => i.agentLabel).sort()).toEqual(
       [...SEMANTIC_AGENTS].sort(),

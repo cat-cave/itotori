@@ -13,8 +13,8 @@
 //      (`buildDraftArtifactBundleFromExecutorRun`) that reconstructs the
 //      `DraftArtifactBundle` `export-patch-v2` consumes from the executor's
 //      REAL persisted run — the DB draft-jobs / attempts / provider-ledger
-//      (real providerProofId, costLedgerEntryRef, retry/fallback state) joined
-//      with the executor's `patch-report.json` accepted bodies (the DB does
+//      (real providerProofId, costLedgerEntryRef) joined with the executor's
+//      `patch-report.json` written bodies (the DB does
 //      NOT store draftText). This REPLACES the fixture-only `--draft-bundle`
 //      loader on the real path, so preflight runs against real drafts.
 //
@@ -43,12 +43,14 @@ import type {
   ItotoriDraftJobRepositoryPort,
 } from "@itotori/db";
 import {
+  asNonBlankTargetText,
   assertDraftArtifactBundle,
   assertPatchExportBundle,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
   type DraftArtifactDraftEntry,
   type PatchExportBundle,
+  type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
 import { createHash } from "node:crypto";
 import { AssetDecisionPolicyResolver } from "../asset-decisions/policy-resolver.js";
@@ -90,14 +92,14 @@ import {
 
 /**
  * The subset of the executor's `patch-report.json` this loader consumes. It
- * carries the accepted units + their REAL final draft body — the DB draft rows
- * do NOT store the draft text, so the accepted bodies must come from the run's
+ * carries the written units + their selected target body — the DB draft rows
+ * do NOT store the draft text, so the selected bodies must come from the run's
  * patch report. `sourceBridgeHash` is the bridge revision the run drafted
  * against (the preflight `sourceBridgeIntegrity` check compares it).
  */
 export type ExecutorRunPatchReport = Pick<
   DrivenPatchReport,
-  "projectId" | "localeBranchId" | "acceptedUnits" | "translationScope"
+  "projectId" | "localeBranchId" | "targetLocale" | "writtenUnits" | "translationScope"
 >;
 
 export type BuildDraftArtifactBundleArgs = {
@@ -108,7 +110,7 @@ export type BuildDraftArtifactBundleArgs = {
   localeBranchId: string;
   /** Deterministic draftJobId for the reconstructed whole-run bundle. */
   draftArtifactBundleId: string;
-  /** The executor run's patch report (accepted bodies + identity). */
+  /** The executor run's patch report (selected written bodies + identity). */
   patchReport: ExecutorRunPatchReport;
   /** The bridge hash the run drafted against (preflight integrity). */
   sourceBridgeHash: string;
@@ -117,14 +119,15 @@ export type BuildDraftArtifactBundleArgs = {
 export type WholeGamePatchLoaderDiscrepancyKind =
   | "no-persisted-draft-job"
   | "no-persisted-attempt"
-  | "no-provider-ledger-entry";
+  | "no-provider-ledger-entry"
+  | "duplicate-written-outcome";
 
 /**
- * Raised when the accepted-unit set (per the run's patch report) does NOT
+ * Raised when the written-unit set (per the run's patch report) does NOT
  * reconcile with the persisted draft-job / attempt / provider-ledger rows. An
- * accepted unit with no real draft evidence must NOT be silently dropped or
+ * written unit with no real draft evidence must NOT be silently dropped or
  * carried on a fabricated placeholder — the loader fails loud so no patch is
- * ever applied from a report whose accepted units the DB cannot attest.
+ * ever applied from a report whose written units the DB cannot attest.
  */
 export class WholeGamePatchLoaderReconciliationError extends Error {
   constructor(
@@ -143,18 +146,11 @@ export class WholeGamePatchLoaderReconciliationError extends Error {
  * Reconstruct the `DraftArtifactBundle` for a whole-game executor run from its
  * REAL persisted state. The executor persists ONE draft-job per unit; this
  * reads every draft-job the run created for the project/branch, keeps the
- * LATEST job per unit, and joins each ACCEPTED unit (the run's
- * `patch-report.json` `acceptedUnits`) to its persisted attempt +
+ * LATEST job per unit, and joins each WRITTEN unit to its persisted attempt +
  * provider-ledger row — the real providerProofId + costLedgerEntryRef — with
- * its real translated body.
+ * its canonical written outcome.
  *
- * Only ACCEPTED units become draft entries: a deferred / failed unit produced
- * NO draft (it is carried byte-identical by the patchback, not a
- * draft-artifact). This matches the exporter, which refuses a
- * `terminal-rejection` entry at bundle assembly. The bundle therefore carries
- * exactly the drafts that the patch splices.
- *
- * (P1 #2 — reconcile or fail loud.) Every unit the report calls ACCEPTED MUST
+ * (P1 #2 — reconcile or fail loud.) Every unit the report calls WRITTEN MUST
  * have a persisted draft job AND attempt AND provider-ledger row. A unit with no
  * job/attempt/ledger is NOT silently dropped, and NO `no-provider-run` /
  * `no-ledger-entry` placeholder is fabricated — the loader throws a
@@ -167,9 +163,20 @@ export class WholeGamePatchLoaderReconciliationError extends Error {
 export async function buildDraftArtifactBundleFromExecutorRun(
   args: BuildDraftArtifactBundleArgs,
 ): Promise<DraftArtifactBundle> {
-  const acceptedBodyByUnit = new Map(
-    args.patchReport.acceptedUnits.map((u) => [u.bridgeUnitId, u.finalDraftText]),
+  const writtenUnitById = new Map(
+    args.patchReport.writtenUnits.map((unit) => [unit.bridgeUnitId, unit]),
   );
+  const writtenUnitIds = args.patchReport.writtenUnits.map((unit) => unit.bridgeUnitId).sort();
+  const duplicateWrittenUnitIds = [
+    ...new Set(writtenUnitIds.filter((unitId, index) => writtenUnitIds[index - 1] === unitId)),
+  ];
+  if (duplicateWrittenUnitIds.length > 0) {
+    throw new WholeGamePatchLoaderReconciliationError(
+      "duplicate-written-outcome",
+      duplicateWrittenUnitIds,
+      "patch-report contains more than one written outcome for the same unit",
+    );
+  }
 
   // The executor creates one draft-job per unit (sourceUnitIds: [bridgeUnitId]);
   // read them all for this project (newest first) and keep the LATEST job per
@@ -193,34 +200,32 @@ export async function buildDraftArtifactBundleFromExecutorRun(
   let attemptCount = 0;
   const providerProofIds: string[] = [];
 
-  // One draft entry per ACCEPTED unit, in deterministic (sorted) order so the
+  // One draft entry per WRITTEN unit, in deterministic (sorted) order so the
   // bundle is stable across runs (the DB order is time-dependent createdAt).
   //
-  // An accepted unit (per the run's patch report) MUST reconcile EXACTLY with a
+  // A written unit (per the run's patch report) MUST reconcile EXACTLY with a
   // persisted draft job — silently dropping units with no job, or fabricating a
   // `no-provider-run` / `no-ledger-entry` placeholder for a unit with no
-  // attempt/ledger, would let the patch splice an accepted unit that carries no
+  // attempt/ledger, would let the patch splice a written unit that carries no
   // real provider-ledger evidence. So we fail LOUD on any discrepancy: every
-  // accepted unit needs a persisted job AND a persisted attempt AND a
+  // written unit needs a persisted job AND a persisted attempt AND a
   // provider-ledger row, or the loader throws with the offending unit ids.
-  const acceptedUnitIds = args.patchReport.acceptedUnits.map((u) => u.bridgeUnitId).sort();
-
-  const missingJob = acceptedUnitIds.filter((unitId) => !latestJobByUnit.has(unitId));
+  const missingJob = writtenUnitIds.filter((unitId) => !latestJobByUnit.has(unitId));
   if (missingJob.length > 0) {
     throw new WholeGamePatchLoaderReconciliationError(
       "no-persisted-draft-job",
       missingJob,
-      `accepted unit(s) have no persisted draft job for project=${args.projectId} branch=${args.localeBranchId}; ` +
-        "the patch-report claims them accepted but the loader found no draft — refusing to apply",
+      `written unit(s) have no persisted draft job for project=${args.projectId} branch=${args.localeBranchId}; ` +
+        "the patch-report claims a written outcome but the loader found no draft — refusing to apply",
     );
   }
 
   const missingAttempt: string[] = [];
   const missingLedger: string[] = [];
   const drafts: DraftArtifactDraftEntry[] = [];
-  for (const unitId of acceptedUnitIds) {
+  for (const unitId of writtenUnitIds) {
     const job = latestJobByUnit.get(unitId)!;
-    const draftText = acceptedBodyByUnit.get(unitId)!;
+    const writtenUnit = writtenUnitById.get(unitId)!;
     const attempts = await args.draftJobs.loadDraftJobAttempts(args.actor, job.draftJobId);
     const latestAttempt = pickLatestAttempt(attempts);
     if (latestAttempt === undefined) {
@@ -246,10 +251,16 @@ export async function buildDraftArtifactBundleFromExecutorRun(
       sourceUnitId: unitId,
       draftId: draftIdFor(job.draftJobId, unitId),
       providerProofId: ledgerEntry.providerProofId,
-      protectedSpanValidationResult: { accepted: true },
-      retryFallbackState: retryStateForAcceptedAttempts(attempts),
       costLedgerEntryRef: ledgerEntry.ledgerEntryId,
-      draftText,
+      writtenOutcome: reconstructWrittenOutcome({
+        unitId,
+        targetLocale: args.patchReport.targetLocale,
+        selectedBody: writtenUnit.selectedBody,
+        qualityFlags: writtenUnit.qualityFlags,
+        draftJobId: job.draftJobId,
+        attempt: latestAttempt,
+        ledgerEntry,
+      }),
     });
   }
 
@@ -257,14 +268,14 @@ export async function buildDraftArtifactBundleFromExecutorRun(
     throw new WholeGamePatchLoaderReconciliationError(
       "no-persisted-attempt",
       missingAttempt,
-      "accepted unit(s) have a draft job but NO persisted attempt — no provider run to attest the draft; refusing to apply",
+      "written unit(s) have a draft job but NO persisted attempt — no provider run to attest the draft; refusing to apply",
     );
   }
   if (missingLedger.length > 0) {
     throw new WholeGamePatchLoaderReconciliationError(
       "no-provider-ledger-entry",
       missingLedger,
-      "accepted unit(s) have a draft attempt but NO provider-ledger entry — no real cost/proof evidence; refusing to apply",
+      "written unit(s) have a draft attempt but NO provider-ledger entry — no real cost/proof evidence; refusing to apply",
     );
   }
 
@@ -316,11 +327,57 @@ function pickLatestAttempt(
   return attempts[attempts.length - 1];
 }
 
-function retryStateForAcceptedAttempts(
-  attempts: ReadonlyArray<DraftJobAttemptRecord>,
-): DraftArtifactDraftEntry["retryFallbackState"] {
-  const failedBefore = attempts.some((a) => a.status === "failed" || a.status === "retryable");
-  return failedBefore ? "retried-then-success" : "success";
+function reconstructWrittenOutcome(args: {
+  unitId: string;
+  targetLocale: string;
+  selectedBody: string;
+  qualityFlags: ReadonlyArray<string>;
+  draftJobId: string;
+  attempt: DraftJobAttemptRecord;
+  ledgerEntry: DraftAttemptProviderLedgerEntry;
+}): WrittenUnitOutcome {
+  const id = `draft-artifact:${args.draftJobId}:${args.unitId}`;
+  const selectedCandidateId = `${id}:selected`;
+  const writtenAt = firstRecordedTimestamp(
+    args.attempt.endedAt,
+    args.attempt.createdAt,
+    args.ledgerEntry.createdAt,
+  );
+  return {
+    id,
+    status: "written",
+    unitId: args.unitId,
+    targetLocale: args.targetLocale,
+    selectedCandidateId,
+    candidates: [
+      {
+        id: selectedCandidateId,
+        outcomeId: id,
+        body: asNonBlankTargetText(args.selectedBody),
+        producedBy: {
+          modelId: args.ledgerEntry.modelId ?? "unknown",
+          providerId: args.ledgerEntry.providerId || "unknown",
+        },
+        attemptId: args.attempt.draftJobAttemptId,
+        kind: args.attempt.attemptIndex > 1 ? "repair" : "primary",
+      },
+    ],
+    findings: [],
+    qualityFlags: [...new Set(args.qualityFlags)].sort(),
+    provenance: {
+      origin: "patch-report-projection",
+      draftJobId: args.draftJobId,
+      attemptId: args.attempt.draftJobAttemptId,
+      providerProofId: args.ledgerEntry.providerProofId,
+      costLedgerEntryRef: args.ledgerEntry.ledgerEntryId,
+    },
+    writtenAt,
+  };
+}
+
+function firstRecordedTimestamp(...values: ReadonlyArray<Date | null | undefined>): string {
+  const value = values.find((candidate) => candidate instanceof Date);
+  return value?.toISOString() ?? new Date(0).toISOString();
 }
 
 function draftIdFor(draftJobId: string, unitId: string): string {
@@ -635,7 +692,7 @@ export type RunWholeGamePatchExportAndApplyArgs = {
 };
 
 export type WholeGamePatchExportAndApplyResult = {
-  /** The v0.2 patch-export bundle produced from REAL executor drafts. */
+  /** The current patch-export bundle produced from REAL executor drafts. */
   patchExportBundle: PatchExportBundle;
   /** The kaifuu-patch apply result (byte-correct patched output written). */
   apply: KaifuuPatchApplyResult;
@@ -664,7 +721,7 @@ export class WholeGamePatchExportPreflightError extends Error {
  *   2. Run the export-patch-v2 preflight + exporter over those real drafts,
  *      with an HONEST source-bridge view (integrity hash from the run's bridge,
  *      asset decisions resolved through the live repository, protected-span
- *      coverage checked per accepted draft). A blocking preflight failure
+ *      coverage checked per written outcome). A blocking preflight failure
  *      throws — no patch is applied on a failed preflight.
  *   3. Apply the translated bundle via `kaifuu patch`, dispatched on
  *      `engineProfile`: `--engine reallive` (Seen.txt) or `--engine rpgmaker`
@@ -951,7 +1008,7 @@ function readAssetKindByAssetId(rawAssets: unknown): Map<string, string> {
  *      fixture shape) when the bridge already carries it.
  *
  * Refs are de-duplicated by `kind:ref` so the same container referenced by many
- * accepted units is resolved once.
+ * written units is resolved once.
  */
 function readUnitAssetRefs(
   record: Record<string, unknown>,

@@ -183,6 +183,7 @@ describe("Translation prompt template", () => {
     expect(rendered.systemText).toContain(
       "citationRefs MUST contain ONLY the exact ids shown in the Glossary block",
     );
+    expect(rendered.systemText).toContain("draftText MUST be non-blank");
     for (const floor of ["low", "medium", "high"]) {
       expect(rendered.systemText).toContain(floor);
     }
@@ -219,14 +220,100 @@ describe("TranslationAgent.invokeTranslation happy path", () => {
     expect(result.drafts).toHaveLength(3);
   });
 
-  it("accepts a zero-draft response without throwing (empty array is valid)", async () => {
+  it("rejects an empty draft list after one corrective re-ask", async () => {
     const input = inputFixture();
-    const provider = buildFakeTranslationProvider(() =>
-      JSON.stringify(makeStructuredTranslationDraftOutputFixture([])),
-    );
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(makeStructuredTranslationDraftOutputFixture([]));
+    });
     const agent = new TranslationAgent({ provider });
-    const result = await agent.invokeTranslation(FIXED_ACTOR, input);
-    expect(result.drafts).toEqual([]);
+    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(2);
+  });
+
+  it("rejects a partial response that omits a requested source unit", async () => {
+    const input = inputFixture();
+    const partialDrafts = representativeTranslationDraftsFixture().slice(0, 2);
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(makeStructuredTranslationDraftOutputFixture(partialDrafts));
+    });
+    const agent = new TranslationAgent({ provider });
+    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(2);
+    if (error instanceof TranslationDraftResponseValidationError) {
+      expect(error.path).toBe("drafts");
+      expect(error.rule).toBe("totality");
+      expect(error.detail).toContain(input.sourceBridgeUnits[2]!.bridgeUnitId);
+    }
+  });
+
+  it("rejects a whitespace-only draft rather than returning a no-text result", async () => {
+    const input = inputFixture();
+    const drafts = representativeTranslationDraftsFixture().map((draft, index) =>
+      index === 1 ? { ...draft, draftText: " \n\t " } : draft,
+    );
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts));
+    });
+    const agent = new TranslationAgent({ provider });
+    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(2);
+    if (error instanceof TranslationDraftResponseValidationError) {
+      expect(error.path).toBe("drafts[1].draftText");
+      expect(error.rule).toBe("nonBlank");
+    }
+  });
+
+  it("rejects a source-repeated draft through the corrective retry path", async () => {
+    const input = inputFixture();
+    const drafts = representativeTranslationDraftsFixture().map((draft, index) =>
+      index === 1 ? { ...draft, draftText: input.sourceBridgeUnits[1]!.sourceText } : draft,
+    );
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts));
+    });
+    const agent = new TranslationAgent({ provider });
+    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(2);
+    if (error instanceof TranslationDraftResponseValidationError) {
+      expect(error.path).toBe("drafts[1].draftText");
+      expect(error.rule).toBe("sourceEcho");
+    }
+  });
+
+  it("rejects duplicate response unit ids rather than selecting an ambiguous draft", async () => {
+    const input = inputFixture();
+    const drafts = representativeTranslationDraftsFixture();
+    drafts[2] = { ...drafts[1]! };
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts));
+    });
+    const agent = new TranslationAgent({ provider });
+    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(2);
+    if (error instanceof TranslationDraftResponseValidationError) {
+      expect(error.path).toBe("drafts[2].bridgeUnitId");
+      expect(error.rule).toBe("unique");
+    }
   });
 
   it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
@@ -297,6 +384,29 @@ describe("TranslationAgent.invokeTranslation pre-flight invariants", () => {
     if (error instanceof TranslationLocaleMismatchError) {
       expect(error.field).toBe("targetLocale");
       expect(error.detail).toContain("must differ");
+    }
+  });
+
+  it("rejects duplicate requested unit ids before invoking the provider", async () => {
+    const units = unitsFixture();
+    let invocations = 0;
+    const provider = buildFakeTranslationProvider(() => {
+      invocations += 1;
+      return validTranslationDraftFixture();
+    });
+    const agent = new TranslationAgent({ provider });
+    const error = await agent
+      .invokeTranslation(
+        FIXED_ACTOR,
+        inputFixture({ sourceBridgeUnits: [...units, { ...units[0]! }] }),
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+    expect(invocations).toBe(0);
+    if (error instanceof TranslationDraftResponseValidationError) {
+      expect(error.path).toBe("sourceBridgeUnits[3].bridgeUnitId");
+      expect(error.rule).toBe("unique");
     }
   });
 });
@@ -384,16 +494,16 @@ describe("TranslationAgent.invokeTranslation malformed responses", () => {
     }
   });
 
-  it("salvages a response with a trailing comma via bounded json-repair (repairableTrailingCommaFixture)", async () => {
+  it("salvages a complete response with a trailing comma via bounded json-repair (repairableTrailingCommaFixture)", async () => {
     // Patchback-safety: json-repair is now the primary structured-output
     // decode path. A trailing comma that a raw JSON.parse rejects is
     // deterministically stripped before schema validation, so the agent
-    // recovers the (here empty-drafts) response instead of throwing.
+    // recovers the complete written output instead of throwing.
     const input = inputFixture();
     const provider = buildFakeTranslationProvider(() => repairableTrailingCommaFixture());
     const agent = new TranslationAgent({ provider });
     const result = await agent.invokeTranslation(FIXED_ACTOR, input);
-    expect(result.drafts).toEqual([]);
+    expect(result.drafts).toHaveLength(input.sourceBridgeUnits.length);
   });
 
   it("rejects a response with an invalid confidenceFloor enum", async () => {
@@ -489,21 +599,18 @@ describe("TranslationAgent.invokeTranslation bridge unit + citation resolution",
 
   it("accepts a draft citing a context artifact ref present in the input", async () => {
     const input = inputFixture();
+    const drafts = representativeTranslationDraftsFixture();
+    drafts[1] = {
+      ...drafts[1]!,
+      citationRefs: ["context-artifact:scene-summary-001"],
+    };
     const provider = buildFakeTranslationProvider(() =>
-      JSON.stringify(
-        makeStructuredTranslationDraftOutputFixture([
-          makeTranslationDraftFixture({
-            bridgeUnitId: input.sourceBridgeUnits[1]!.bridgeUnitId,
-            draftText: "The hero greeted the king.",
-            protectedSpanRefs: [],
-            citationRefs: ["context-artifact:scene-summary-001"],
-          }),
-        ]),
-      ),
+      JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts)),
     );
     const agent = new TranslationAgent({ provider });
     const result = await agent.invokeTranslation(FIXED_ACTOR, input);
-    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts).toHaveLength(input.sourceBridgeUnits.length);
+    expect(result.drafts[1]!.citationRefs).toEqual(["context-artifact:scene-summary-001"]);
   });
 });
 

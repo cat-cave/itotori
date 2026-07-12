@@ -1,20 +1,20 @@
 // ITOTORI-025 — PatchExporter integration tests.
 //
 // Verifies the exporter:
-//   1. Assembles a v0.2 PatchExportBundle when every preflight check
+//   1. Assembles a PatchExportBundle when every preflight check
 //      passes, with all provenance fields populated.
 //   2. Returns a typed PreflightFailure (and produces NO bundle) when:
 //        - the source-bridge hash drifts (stale draft bundle);
 //        - any asset decision is unresolved;
-//        - any draft is terminally rejected;
 //        - any protected span is missing from a draft.
 //   3. Honors the no-partial-bundle invariant.
 //   4. The Kaifuu handoff helper produces an engine-agnostic payload
-//      that mirrors the v0.2 bundle.
+//      that mirrors the bundle.
 
 import { describe, expect, it } from "vitest";
 import type { AssetDecisionRecord, AuthorizationActor } from "@itotori/db";
 import {
+  asNonBlankTargetText,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   PATCH_EXPORT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
@@ -80,17 +80,7 @@ function makeBundle(overrides: Partial<DraftArtifactBundle> = {}): DraftArtifact
     draftJobId: DRAFT_JOB_ID,
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
-    drafts: [
-      {
-        sourceUnitId: "unit-001",
-        draftId: "draft-001",
-        providerProofId: "proof-001",
-        protectedSpanValidationResult: { accepted: true },
-        retryFallbackState: "success",
-        costLedgerEntryRef: "ledger-001",
-        draftText: "Hello, {player}.",
-      },
-    ],
+    drafts: [makeDraftEntry()],
     ledgerSummary: {
       totalCost: "0.00000000",
       totalTokensIn: 0,
@@ -99,6 +89,48 @@ function makeBundle(overrides: Partial<DraftArtifactBundle> = {}): DraftArtifact
       providerProofIds: ["proof-001"],
     },
     ...overrides,
+  };
+}
+
+function makeDraftEntry(
+  overrides: {
+    sourceUnitId?: string;
+    draftId?: string;
+    selectedBody?: string;
+    targetLocale?: string;
+    qualityFlags?: string[];
+  } = {},
+): DraftArtifactBundle["drafts"][number] {
+  const sourceUnitId = overrides.sourceUnitId ?? "unit-001";
+  const draftId = overrides.draftId ?? "draft-001";
+  const outcomeId = `outcome:${draftId}`;
+  const candidateId = `${outcomeId}:selected`;
+  return {
+    sourceUnitId,
+    draftId,
+    providerProofId: "proof-001",
+    costLedgerEntryRef: "ledger-001",
+    writtenOutcome: {
+      id: outcomeId,
+      status: "written",
+      unitId: sourceUnitId,
+      targetLocale: overrides.targetLocale ?? TARGET_LOCALE,
+      selectedCandidateId: candidateId,
+      candidates: [
+        {
+          id: candidateId,
+          outcomeId,
+          body: asNonBlankTargetText(overrides.selectedBody ?? "Hello, {player}."),
+          producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+          attemptId: `attempt:${draftId}`,
+          kind: "primary",
+        },
+      ],
+      findings: [],
+      qualityFlags: overrides.qualityFlags ?? [],
+      provenance: { fixture: true },
+      writtenAt: "2026-07-11T00:00:00.000Z",
+    },
   };
 }
 
@@ -179,7 +211,7 @@ function expectFailure(
 }
 
 describe("PatchExporter", () => {
-  it("assembles a v0.2 patch-export bundle when every check passes", async () => {
+  it("assembles a patch-export bundle when every check passes", async () => {
     const exporter = makeExporter();
     const result = await exporter.export(ACTOR, {
       projectId: PROJECT_ID,
@@ -222,7 +254,7 @@ describe("PatchExporter", () => {
       rationale: "rationale",
     });
     expect(result.assetDecisions[0]?.decisionId).toMatch(/^asset-decision:/);
-    expect(result.preflightResults).toHaveLength(6);
+    expect(result.preflightResults).toHaveLength(5);
     expect(
       result.preflightResults.every((entry) => !entry.blockingExport || entry.status !== "fail"),
     ).toBe(true);
@@ -278,44 +310,9 @@ describe("PatchExporter", () => {
     expect(result.failingChecks.every((entry) => entry.blockingExport)).toBe(true);
   });
 
-  it("rejects export when a draft was terminally rejected", async () => {
-    const bundle = makeBundle({
-      drafts: [
-        {
-          sourceUnitId: "unit-001",
-          draftId: "draft-rejected-unit-001",
-          providerProofId: "proof-001",
-          protectedSpanValidationResult: { accepted: true },
-          retryFallbackState: "terminal-rejection",
-          costLedgerEntryRef: "ledger-001",
-          terminalReason: "model refused to translate",
-        },
-      ],
-    });
-    const exporter = makeExporter({ bundle });
-    const result = await exporter.export(ACTOR, {
-      projectId: PROJECT_ID,
-      localeBranchId: LOCALE_BRANCH_ID,
-      draftArtifactBundleId: DRAFT_JOB_ID,
-      requestedBy: "exporter-test-actor",
-    });
-    expectFailure(result);
-    expect(result.failingChecks.map((entry) => entry.check)).toContain("allDraftsAccepted");
-  });
-
   it("rejects export when a draft loses a protected span", async () => {
     const bundle = makeBundle({
-      drafts: [
-        {
-          sourceUnitId: "unit-001",
-          draftId: "draft-001",
-          providerProofId: "proof-001",
-          protectedSpanValidationResult: { accepted: true },
-          retryFallbackState: "success",
-          costLedgerEntryRef: "ledger-001",
-          draftText: "Hello, friend.",
-        },
-      ],
+      drafts: [makeDraftEntry({ selectedBody: "Hello, friend." })],
     });
     const exporter = makeExporter({ bundle });
     const result = await exporter.export(ACTOR, {
@@ -346,17 +343,7 @@ describe("PatchExporter", () => {
       }),
     ]);
     const bundle = makeBundle({
-      drafts: [
-        {
-          sourceUnitId: "unit-001",
-          draftId: "draft-001",
-          providerProofId: "proof-001",
-          protectedSpanValidationResult: { accepted: true },
-          retryFallbackState: "success",
-          costLedgerEntryRef: "ledger-001",
-          draftText: "Hello.",
-        },
-      ],
+      drafts: [makeDraftEntry({ selectedBody: "Hello." })],
     });
     const exporter = makeExporter({ view, bundle });
     const result = await exporter.export(ACTOR, {
@@ -388,17 +375,7 @@ describe("PatchExporter", () => {
       }),
     ]);
     const bundle = makeBundle({
-      drafts: [
-        {
-          sourceUnitId: "unit-001",
-          draftId: "draft-001",
-          providerProofId: "proof-001",
-          protectedSpanValidationResult: { accepted: true },
-          retryFallbackState: "success",
-          costLedgerEntryRef: "ledger-001",
-          draftText: "Hello.",
-        },
-      ],
+      drafts: [makeDraftEntry({ selectedBody: "Hello." })],
     });
     const result = await makeExporter({ view, bundle }).export(ACTOR, {
       projectId: PROJECT_ID,
@@ -408,6 +385,26 @@ describe("PatchExporter", () => {
     });
     expectFailure(result);
     expect(result.failingChecks.map((entry) => entry.check)).toContain("protectedSpanCoverage");
+  });
+
+  it("rejects a source replay that only becomes visible after kidoku markup is stripped", async () => {
+    const view = makeView([
+      makeUnit({
+        sourceText: "<reallive.kidoku 5>こんにちは。",
+        protectedSpans: [],
+      }),
+    ]);
+    const bundle = makeBundle({
+      drafts: [makeDraftEntry({ selectedBody: "<reallive.kidoku 9>こんにちは。" })],
+    });
+    await expect(
+      makeExporter({ view, bundle }).export(ACTOR, {
+        projectId: PROJECT_ID,
+        localeBranchId: LOCALE_BRANCH_ID,
+        draftArtifactBundleId: DRAFT_JOB_ID,
+        requestedBy: "exporter-test-actor",
+      }),
+    ).rejects.toThrow(/engine-visible source text/u);
   });
 
   it("preserves bundle integrity when all checks pass; Kaifuu handoff mirrors the bundle", async () => {

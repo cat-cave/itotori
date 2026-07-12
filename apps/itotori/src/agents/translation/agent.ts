@@ -15,16 +15,19 @@
 //   3. Parse + validate the content against the wire schema. Schema
 //      failure → TranslationDraftResponseValidationError (typed by the
 //      schema package).
-//   4. Each draft's bridgeUnitId must resolve to a unit in the input
+//   4. Every requested bridge unit receives exactly one non-blank draft;
+//      duplicate, partial, and no-text responses are schema-invalid and get
+//      one corrective retry.
+//   5. Each draft's bridgeUnitId must resolve to a unit in the input
 //      → otherwise TranslationUnknownBridgeUnitError.
-//   5. Every protected span in the input catalog MUST appear in the
+//   6. Every protected span in the input catalog MUST appear in the
 //      corresponding draft's protectedSpanRefs with a valid range and
 //      byte-equal preservation of the source span's text. Any
 //      divergence → TranslationProtectedSpanViolationError naming the
 //      bridgeUnitId + spanRef + closed-enum reason.
-//   6. Every citationRef must resolve to a glossary termId or to a
+//   7. Every citationRef must resolve to a glossary termId or to a
 //      contextArtifactRef → otherwise TranslationUnknownCitationError.
-//   7. If the provider reported a finish reason that indicates a
+//   8. If the provider reported a finish reason that indicates a
 //      partial response (length / stop-sequence / content-filter), or
 //      content was null, throw `TranslationPartialResultError` — never
 //      silently empty the draft list.
@@ -144,6 +147,7 @@ export class TranslationAgent {
         this.assertLocaleConsistency(candidate, input);
         this.assertCitationsResolve(candidate, input);
         this.assertProtectedSpansPreserved(candidate, input);
+        this.assertEveryRequestedUnitHasOneNonBlankDraft(candidate, input);
       },
     });
     const providerRun = invocation.providerRun;
@@ -211,6 +215,18 @@ export class TranslationAgent {
         input.targetLocale,
         `must differ from sourceLocale '${input.sourceLocale}'`,
       );
+    }
+
+    const seenBridgeUnitIds = new Set<string>();
+    for (const [index, unit] of input.sourceBridgeUnits.entries()) {
+      if (seenBridgeUnitIds.has(unit.bridgeUnitId)) {
+        throw new TranslationDraftResponseValidationError(
+          `sourceBridgeUnits[${index}].bridgeUnitId`,
+          "unique",
+          `requested bridgeUnitId '${unit.bridgeUnitId}' appears more than once`,
+        );
+      }
+      seenBridgeUnitIds.add(unit.bridgeUnitId);
     }
   }
 
@@ -414,6 +430,63 @@ export class TranslationAgent {
             "input catalog required this span but draft omitted it from protectedSpanRefs",
           );
         }
+      }
+    }
+  }
+
+  /**
+   * A translation invocation is total over its requested source units: every
+   * requested id appears exactly once and carries text a patch can actually
+   * write. This remains an agent-boundary check because the wire schema cannot
+   * know which ids a particular invocation requested.
+   *
+   * The typed schema error intentionally participates in the existing one-shot
+   * corrective retry. A provider that returns an empty, partial, duplicate, or
+   * whitespace-only draft list gets one precise re-ask; neither attempt can
+   * leak an optional/no-text result to the orchestrator.
+   */
+  private assertEveryRequestedUnitHasOneNonBlankDraft(
+    parsed: StructuredTranslationDraftOutput,
+    input: TranslationInvocationInput,
+  ): void {
+    const seenBridgeUnitIds = new Set<string>();
+    const sourceTextByBridgeUnitId = new Map(
+      input.sourceBridgeUnits.map((unit) => [unit.bridgeUnitId, unit.sourceText.trim()]),
+    );
+
+    for (const [index, draft] of parsed.drafts.entries()) {
+      if (draft.draftText.trim().length === 0) {
+        throw new TranslationDraftResponseValidationError(
+          `drafts[${index}].draftText`,
+          "nonBlank",
+          "must contain at least one non-whitespace character",
+        );
+      }
+      if (seenBridgeUnitIds.has(draft.bridgeUnitId)) {
+        throw new TranslationDraftResponseValidationError(
+          `drafts[${index}].bridgeUnitId`,
+          "unique",
+          `bridgeUnitId '${draft.bridgeUnitId}' appears more than once`,
+        );
+      }
+      seenBridgeUnitIds.add(draft.bridgeUnitId);
+      const sourceText = sourceTextByBridgeUnitId.get(draft.bridgeUnitId);
+      if (sourceText !== undefined && draft.draftText === sourceText) {
+        throw new TranslationDraftResponseValidationError(
+          `drafts[${index}].draftText`,
+          "sourceEcho",
+          `must not repeat source text for bridgeUnitId '${draft.bridgeUnitId}'`,
+        );
+      }
+    }
+
+    for (const unit of input.sourceBridgeUnits) {
+      if (!seenBridgeUnitIds.has(unit.bridgeUnitId)) {
+        throw new TranslationDraftResponseValidationError(
+          "drafts",
+          "totality",
+          `missing draft for requested bridgeUnitId '${unit.bridgeUnitId}'`,
+        );
       }
     }
   }

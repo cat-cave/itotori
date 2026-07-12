@@ -129,49 +129,42 @@ export class RuntimeValidationIncompleteError extends Error {
 
 export type WholeGamePatchCoverage = Pick<
   DrivenPatchReport,
-  "unitsInScope" | "unitsRun" | "acceptedDraftCount" | "deferredCount" | "failureCount"
+  "unitsInScope" | "unitsRun" | "writtenOutcomeCount" | "failureCount" | "coverageComplete"
 >;
 
 export class WholeGamePatchCoverageRefusedError extends Error {
   public readonly unitsInScope: number;
   public readonly unitsRun: number;
-  public readonly acceptedDraftCount: number;
-  public readonly deferredCount: number;
+  public readonly writtenOutcomeCount: number;
+  public readonly coverageComplete: boolean;
   public readonly failureCount: number;
 
   constructor(public readonly coverage: WholeGamePatchCoverage) {
     super(
-      `whole-game patch-export refused: partial draft coverage ` +
-        `(drafted ${coverage.unitsRun}/${coverage.unitsInScope} in-scope units; ` +
-        `deferred=${coverage.deferredCount} failed=${coverage.failureCount}). ` +
-        `Re-run with --allow-partial-patch to produce a preview patch ` +
-        `(undrafted units pass through byte-identical), or draft the whole corpus ` +
-        `for a release patch.`,
+      `whole-game patch-export refused: configured scope lacks complete written coverage ` +
+        `(${coverage.writtenOutcomeCount}/${coverage.unitsInScope} written; ` +
+        `${coverage.failureCount} operational failure(s)). Resolve and resume the run before exporting.`,
     );
     this.name = "WholeGamePatchCoverageRefusedError";
     this.unitsInScope = coverage.unitsInScope;
     this.unitsRun = coverage.unitsRun;
-    this.acceptedDraftCount = coverage.acceptedDraftCount;
-    this.deferredCount = coverage.deferredCount;
+    this.writtenOutcomeCount = coverage.writtenOutcomeCount;
+    this.coverageComplete = coverage.coverageComplete;
     this.failureCount = coverage.failureCount;
   }
 }
 
 export function assertWholeGamePatchCoverage(
   patchReport: WholeGamePatchCoverage,
-  allowPartialPatch: boolean,
+  _allowPartialPatch: boolean,
 ): void {
-  const partial =
-    patchReport.unitsRun < patchReport.unitsInScope ||
-    patchReport.deferredCount > 0 ||
-    patchReport.failureCount > 0;
-  if (partial && !allowPartialPatch) {
+  if (!patchReport.coverageComplete) {
     throw new WholeGamePatchCoverageRefusedError({
       unitsInScope: patchReport.unitsInScope,
       unitsRun: patchReport.unitsRun,
-      acceptedDraftCount: patchReport.acceptedDraftCount,
-      deferredCount: patchReport.deferredCount,
+      writtenOutcomeCount: patchReport.writtenOutcomeCount,
       failureCount: patchReport.failureCount,
+      coverageComplete: patchReport.coverageComplete,
     });
   }
 }
@@ -325,7 +318,7 @@ export async function runLocalizeFullProjectLive(
             io: args.io,
             actor,
             providerFactory,
-            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger: new DbPassLedger(passLedgerRepo),
             reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {

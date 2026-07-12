@@ -3,12 +3,12 @@
 // Proves the two bundled nodes TOGETHER:
 //   NODE 1 — the general `itotori localize <project>` whole-project driver runs
 //     a FULL project (every in-scope unit) for any project given its config,
-//     persisting drafts + reviewer-queue items to real Postgres + exporting a
+//     persisting written outcomes + QA callouts to real Postgres + exporting a
 //     patch to disk; cost + ZDR recorded; no game-specific code path.
 //   NODE 2 — the DB-backed `PassLedgerPort` (DbPassLedger over the
 //     `itotori_localization_pass_ledger` table) persists each pass, and the
 //     driver runs THROUGH `runLocalizationPass` so a live pass N+1 CONSUMES the
-//     persisted pass N feedback + accepted state.
+//     persisted pass N feedback + selected written state.
 //
 // Driven with the FAKE/synthetic model provider (deterministic, zero real
 // cost, no live ZDR call) against a REAL Postgres — the test validates the
@@ -67,9 +67,9 @@ const LOCALE_BRANCH_ID = "019ed0dd-0000-7000-8000-000000000002";
 const REVISION_ID = "019ed0dd-0000-7000-8000-000000000003";
 // Per-unit content-hash revision — DELIBERATELY distinct from the run/bundle
 // REVISION_ID and DELIBERATELY never seeded into itotori_source_revisions. This
-// is what makes the reviewer-queue deferral a genuine FK regression guard
+// is what makes the reviewer-queue QA-callout a genuine FK regression guard
 // (issue #76): the OLD bridge FK'd this unregistered per-unit id -> FK
-// violation on UNIT_B's deferral; the fix FKs the run-level REVISION_ID that
+// violation on UNIT_B's QA callout; the fix FKs the run-level REVISION_ID that
 // seedProjectScope registers. If the two ids were equal (as before) the test
 // would pass with OR without the fix.
 const UNIT_CONTENT_HASH_REVISION_ID = "019ed0dd-0000-7000-8000-0000000000c0";
@@ -78,9 +78,9 @@ const SPEAKER_ID = "019ed0dd-0000-7000-8000-000000000005";
 const SOURCE_BUNDLE_ID = "019ed0dd-0000-7000-8000-000000000006";
 const WORKSPACE_ID = "019ed0dd-0000-7000-8000-000000000007";
 
-const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // accepted
-const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // deferred pass 1, accepted pass 2
-const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // accepted
+const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // written in both passes
+const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // QA-callout pass 1, revised pass 2
+const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // written in both passes
 const UNIT_UI = "019ed0aa-0000-7000-8000-0000000000e5"; // ui_label -> OUT OF SCOPE
 
 const SCENE_ID = 6010;
@@ -359,8 +359,8 @@ function cleanQaContent(): string {
  * Fake provider factory: UNIT_B is the FLAGGED unit whose outcome depends
  * ENTIRELY on whether the prior-pass feedback reached its translation prompt —
  * exactly the seam the DB pass ledger controls. When the "Prior pass feedback"
- * block is present it emits the corrected draft (QA clean -> accepted);
- * otherwise the generic draft (critical finding -> deferred).
+ * block is present it emits the corrected draft (QA clean);
+ * otherwise the generic draft (critical finding retained as an annotation).
  */
 function makeCaptureFactory(): {
   factory: AgenticLoopProviderFactory;
@@ -510,7 +510,7 @@ function deterministicClock(): () => Date {
 
 describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->N+1, real DB)", () => {
   it.skipIf(!process.env.DATABASE_URL)(
-    "drives every in-scope unit, persists drafts + reviewer items + the pass record, exports a patch, and pass 2 consumes persisted pass 1",
+    "writes every in-scope unit, persists selected outcomes plus QA callouts, exports a complete patch, and pass 2 consumes persisted pass 1",
     async () => {
       const databaseUrl = process.env.DATABASE_URL as string;
       await migrate(databaseUrl);
@@ -550,7 +550,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
               io,
               actor,
               providerFactory: capture.factory,
-              sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+              sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
               passLedger,
               reviewerQueue: { repository: reviewerQueueRepo },
               now: clock,
@@ -567,9 +567,10 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         expect(p1.result.unitsEnumerated).toBe(4);
         expect(p1.result.unitsInScope).toBe(3);
         expect(p1.result.unitsRun).toBe(3);
-        // UNIT_B deferred (flagged), UNIT_A + UNIT_C accepted.
-        expect(p1.result.acceptedDraftCount).toBe(2);
-        expect(p1.result.deferredCount).toBe(1);
+        // A critical QA finding remains an annotation on UNIT_B's selected
+        // candidate; it cannot withhold the text or make the scope partial.
+        expect(p1.result.writtenOutcomeCount).toBe(3);
+        expect(p1.result.patchReport.coverageComplete).toBe(true);
         // Pass 1 is a blank first pass — the ledger recorded pass 1, no prior.
         expect(p1.record.passNumber).toBe(1);
         expect(p1.record.priorPassNumber).toBeUndefined();
@@ -585,7 +586,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         expect(existsSync(join(pass1.runDir, "patch-report.json"))).toBe(true);
         expect(existsSync(join(pass1.runDir, "run-summary.json"))).toBe(true);
 
-        // Drafts + reviewer items landed in REAL Postgres.
+        // Written outcomes + QA callouts landed in REAL Postgres.
         const draftJobsAfter1 = Number(
           (
             await context.pool.query(
@@ -604,7 +605,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
           ).rows[0].n,
         );
         expect(queueAfter1).toBe(p1.result.reviewerQueueItemCount);
-        expect(queueAfter1).toBeGreaterThanOrEqual(1); // the deferred UNIT_B
+        expect(queueAfter1).toBeGreaterThanOrEqual(1); // UNIT_B's QA callout
         const queueRevisionsAfter1 = await context.pool.query(
           "select distinct source_revision_id from itotori_reviewer_queue_items where project_id = $1",
           [PROJECT_ID],
@@ -625,8 +626,14 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         // The DbPassLedger read path sees the persisted pass 1 (medium of iteration).
         const latest = await passLedger.loadLatestPass(actor, LOCALE_BRANCH_ID);
         expect(latest?.passNumber).toBe(1);
-        const deferredUnit = latest?.outputs.unitOutcomes.find((u) => !u.accepted);
-        expect(deferredUnit?.bridgeUnitId).toBe(UNIT_B);
+        const flaggedUnit = latest?.outputs.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B);
+        expect(flaggedUnit).toMatchObject({
+          bridgeUnitId: UNIT_B,
+          selectedBody: GENERIC_DRAFT,
+          qualityFlags: expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+        });
+        expect(flaggedUnit?.outcomeId).toBeTypeOf("string");
+        expect(flaggedUnit?.selectedCandidateId).toBeTypeOf("string");
 
         // ---------------- PASS 2 (consumes persisted pass 1) ----------------
         const pass2 = await runOnePass("pass-2");
@@ -639,14 +646,23 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         expect(p2.record.priorPassNumber).toBe(1);
         expect(pass2.capture.priorFeedbackSeen.get(UNIT_B)).toBe(true);
 
-        // Consuming the persisted feedback flipped UNIT_B to accepted.
-        expect(p2.result.deferredCount).toBe(0);
-        expect(p2.result.acceptedDraftCount).toBe(3);
+        // Consuming the persisted feedback improves UNIT_B's selected body;
+        // both passes still have full written coverage.
+        expect(p2.result.writtenOutcomeCount).toBe(3);
+        expect(p2.result.patchReport.coverageComplete).toBe(true);
         const pass2UnitB = p2.record.outputs.unitOutcomes.find((u) => u.bridgeUnitId === UNIT_B);
-        expect(pass2UnitB?.accepted).toBe(true);
-        expect(pass2UnitB?.draftText).toBe(CORRECTED_DRAFT);
-        // UNIT_B is the accepted delta vs pass 1 (was deferred, now accepted).
-        expect(p2.record.acceptedDeltas.map((d) => d.bridgeUnitId)).toEqual([UNIT_B]);
+        expect(pass2UnitB?.selectedBody).toBe(CORRECTED_DRAFT);
+        expect(pass2UnitB?.qualityFlags).toEqual([]);
+        // UNIT_B is the selected-body delta vs pass 1. The DB-backed adapter
+        // must round-trip both the prior and current canonical bodies.
+        expect(p2.record.writtenDeltas).toEqual([
+          {
+            bridgeUnitId: UNIT_B,
+            sourceUnitKey: "scene-6010/line-002",
+            priorSelectedBody: GENERIC_DRAFT,
+            currentSelectedBody: CORRECTED_DRAFT,
+          },
+        ]);
 
         // Two pass rows now persisted, chained 1 -> 2.
         const ledgerAfter2 = await context.pool.query(
@@ -659,6 +675,14 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
         // Full history round-trips through the DB adapter.
         const history = await passLedger.loadPassesForBranch(actor, LOCALE_BRANCH_ID);
         expect(history.map((h) => h.passNumber)).toEqual([1, 2]);
+        expect(history[0]?.outputs.unitOutcomes).toHaveLength(3);
+        expect(
+          history[0]?.outputs.unitOutcomes.find((unit) => unit.bridgeUnitId === UNIT_B),
+        ).toMatchObject({
+          selectedBody: GENERIC_DRAFT,
+          qualityFlags: expect.arrayContaining(["qa_unresolved", "repair_budget_exhausted"]),
+        });
+        expect(history[1]?.writtenDeltas).toEqual(p2.record.writtenDeltas);
       } finally {
         await context.close();
       }
@@ -709,7 +733,7 @@ describe("runLocalizeFullProjectCommand (full-project drive + persisted pass N->
               io,
               actor,
               providerFactory: capture.factory,
-              sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+              sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
               passLedger,
               reviewerQueue: { repository: reviewerQueueRepo },
               ...(runtimeValidation !== undefined
@@ -867,7 +891,7 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             io,
             actor,
             providerFactory: capture.factory,
-            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger,
             reviewerQueue: { repository: reviewerQueueRepo },
             // The REAL production port: reads through the SAME repository
@@ -965,7 +989,7 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             io,
             actor,
             providerFactory: capture.factory,
-            sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+            sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
             passLedger,
             reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {

@@ -39,7 +39,7 @@
         "severity": "p0",
         "rationale": "span_deleted on glossary term"
       },
-      "outcome": "deferred_to_human"
+      "outcome": "succeeded"
     },
     {
       "name": "human",

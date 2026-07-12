@@ -3,6 +3,7 @@
 // branch identity is dropped or merged.
 
 import {
+  asNonBlankTargetText,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type BenchmarkReportV02,
   type DraftArtifactBundle,
@@ -50,10 +51,28 @@ function baseDraftBundle(): DraftArtifactBundle {
         sourceUnitId: "019ed001-0000-7000-8000-000000000201",
         draftId: "draft-001",
         providerProofId: "proof-001",
-        protectedSpanValidationResult: { accepted: true },
-        retryFallbackState: "success",
         costLedgerEntryRef: "ledger-entry-001",
-        draftText: "base draft text",
+        writtenOutcome: {
+          id: "outcome-001",
+          status: "written",
+          unitId: "019ed001-0000-7000-8000-000000000201",
+          targetLocale: "fr-FR",
+          selectedCandidateId: "candidate-001",
+          candidates: [
+            {
+              id: "candidate-001",
+              outcomeId: "outcome-001",
+              body: asNonBlankTargetText("base draft text"),
+              producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+              attemptId: "attempt-001",
+              kind: "primary",
+            },
+          ],
+          findings: [],
+          qualityFlags: [],
+          provenance: { fixture: true },
+          writtenAt: "2026-07-11T00:00:00.000Z",
+        },
       },
     ],
     ledgerSummary: {
@@ -97,11 +116,9 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
     expect(b!.draftArtifactBundle.localeBranchId).toBe(BRANCH_B.localeBranchId);
     expect(a!.draftArtifactBundle.projectId).toBe(PROJECT_ID);
     expect(a!.draftArtifactBundle.draftJobId).not.toBe(b!.draftArtifactBundle.draftJobId);
-    expect(a!.draftArtifactBundle.drafts[0]!.draftText).toBe(BRANCH_A.draftText);
-    expect(b!.draftArtifactBundle.drafts[0]!.draftText).toBe(BRANCH_B.draftText);
-    expect(a!.draftArtifactBundle.drafts[0]!.draftText).not.toBe(
-      b!.draftArtifactBundle.drafts[0]!.draftText,
-    );
+    expect(selectedBody(a!.draftArtifactBundle)).toBe(BRANCH_A.draftText);
+    expect(selectedBody(b!.draftArtifactBundle)).toBe(BRANCH_B.draftText);
+    expect(selectedBody(a!.draftArtifactBundle)).not.toBe(selectedBody(b!.draftArtifactBundle));
   });
 
   it("keeps benchmark + cost state per branch without conflation", () => {
@@ -174,3 +191,8 @@ describe("locale-branch seed fixtures (ITOTORI-059)", () => {
     );
   });
 });
+
+function selectedBody(bundle: DraftArtifactBundle): string {
+  const outcome = bundle.drafts[0]!.writtenOutcome;
+  return outcome.candidates.find((candidate) => candidate.id === outcome.selectedCandidateId)!.body;
+}

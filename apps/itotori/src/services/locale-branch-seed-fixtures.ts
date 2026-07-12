@@ -17,6 +17,7 @@
 // JP-to-EN-only assumption) is a structured error, never a silent rollup.
 
 import {
+  asNonBlankTargetText,
   assertBenchmarkReportV02,
   assertDraftArtifactBundle,
   type BenchmarkReportV02,
@@ -182,12 +183,28 @@ function projectDraftOntoBranch(
   bundle.projectId = projectId;
   bundle.localeBranchId = spec.localeBranchId;
   bundle.draftJobId = spec.draftJobId;
-  // Distinct draft text per branch: branch state must never be shared.
-  bundle.drafts = bundle.drafts.map((draft) =>
-    draft.retryFallbackState === "terminal-rejection"
-      ? draft
-      : { ...draft, draftText: spec.draftText },
-  );
+  // Distinct selected bodies per branch: branch state must never be shared.
+  const selectedBody = asNonBlankTargetText(spec.draftText);
+  bundle.drafts = bundle.drafts.map((draft) => {
+    const selectedCandidate = draft.writtenOutcome.candidates.find(
+      (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+    );
+    if (selectedCandidate === undefined) {
+      throw new LocaleBranchSeedConflationError(
+        `draft ${draft.draftId} has no selected written candidate`,
+      );
+    }
+    return {
+      ...draft,
+      writtenOutcome: {
+        ...draft.writtenOutcome,
+        targetLocale: spec.targetLocale,
+        candidates: draft.writtenOutcome.candidates.map((candidate) =>
+          candidate.id === selectedCandidate.id ? { ...candidate, body: selectedBody } : candidate,
+        ),
+      },
+    };
+  });
   return bundle;
 }
 

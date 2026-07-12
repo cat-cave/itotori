@@ -2,9 +2,9 @@
 //
 // The single-unit suite runner already replays and render-validates patched
 // bytes, but the whole-game driver stopped at patch apply. This seam validates
-// the PATCHED whole-game output for EVERY accepted unit (render-validate is
+// the PATCHED whole-game output for EVERY written unit (render-validate is
 // one-message-per-invocation, so a silent one-per-scene de-dupe would leave
-// later accepted lines in the same scene unproven). Optional unit caps must be
+// later written lines in the same scene unproven). Optional unit caps must be
 // honestly logged. Findings are project-agnostic and the pass ledger carries
 // them into pass N+1.
 
@@ -36,10 +36,10 @@ export type WholeGameRenderValidationFinding = {
 };
 
 export type WholeGameRenderValidationCoverage = {
-  acceptedUnitCount: number;
-  /** Accepted units that were candidates for validation (before any sample cap). */
+  writtenUnitCount: number;
+  /** Written units that were candidates for validation (before any sample cap). */
   candidateUnitCount: number;
-  /** Accepted units actually validated (after optional sample cap). */
+  /** Written units actually validated (after optional sample cap). */
   selectedUnitCount: number;
   /** Distinct scenes among candidate units. */
   candidateSceneCount: number;
@@ -98,7 +98,7 @@ export type RunWholeGameReplayRenderValidateArgs = {
   artifactRoot: string;
   redaction?: "on" | "off";
   /**
-   * Optional honest unit-sample cap for cost. Omit to validate every accepted
+   * Optional honest unit-sample cap for cost. Omit to validate every written
    * unit. When set, covered vs skipped unit ids are logged + recorded.
    */
   maxUnits?: number;
@@ -163,7 +163,7 @@ export function runWholeGameReplayRenderValidate(
   const selectedSceneIds = uniqueSceneIds(selectedTargets);
 
   log(
-    `wholegame-render-validate: validating ${selectedTargets.length}/${allTargets.length} accepted unit(s) ` +
+    `wholegame-render-validate: validating ${selectedTargets.length}/${allTargets.length} written unit(s) ` +
       `across ${selectedSceneIds.length}/${candidateSceneIds.length} scene(s)` +
       (sampled
         ? ` (maxUnits=${String(maxUnits)}; sampled cap logged; covered=[${selectedUnitIds.join(",")}]; skipped=[${skippedUnitIds.join(",")}] reason=cost-cap)`
@@ -272,7 +272,7 @@ export function runWholeGameReplayRenderValidate(
     schemaVersion: "itotori.wholegame-render-validation.v0",
     redaction,
     coverage: {
-      acceptedUnitCount: args.patchReport.acceptedUnits.length,
+      writtenUnitCount: args.patchReport.writtenUnits.length,
       candidateUnitCount: allTargets.length,
       selectedUnitCount: selectedTargets.length,
       candidateSceneCount: candidateSceneIds.length,
@@ -288,9 +288,9 @@ export function runWholeGameReplayRenderValidate(
 }
 
 /**
- * One validation target per accepted unit. `utsushi-cli render-validate` asserts
+ * One validation target per written unit. `utsushi-cli render-validate` asserts
  * ONE message per invocation (`--expect-text-contains`), so de-duping by scene
- * would silently skip later accepted lines in the same scene.
+ * would silently skip later written lines in the same scene.
  */
 function validationTargetsForPatchReport(
   rawBridge: unknown,
@@ -299,13 +299,13 @@ function validationTargetsForPatchReport(
   const unitById = bridgeUnitById(rawBridge);
   const targets: ValidationTarget[] = [];
   const ambiguous: AmbiguousValidationTarget[] = [];
-  for (const accepted of patchReport.acceptedUnits) {
-    const indexedUnit = unitById.get(accepted.bridgeUnitId);
-    const expectedTextContains = expectTextExcerpt(accepted.finalDraftText);
+  for (const written of patchReport.writtenUnits) {
+    const indexedUnit = unitById.get(written.bridgeUnitId);
+    const expectedTextContains = expectTextExcerpt(written.selectedBody);
     if (indexedUnit === undefined) {
       ambiguous.push({
-        bridgeUnitId: accepted.bridgeUnitId,
-        sourceUnitKey: accepted.sourceUnitKey,
+        bridgeUnitId: written.bridgeUnitId,
+        sourceUnitKey: written.sourceUnitKey,
         sceneId: 1,
         expectedTextContains,
         reason:
@@ -314,8 +314,8 @@ function validationTargetsForPatchReport(
       continue;
     }
     targets.push({
-      bridgeUnitId: accepted.bridgeUnitId,
-      sourceUnitKey: accepted.sourceUnitKey,
+      bridgeUnitId: written.bridgeUnitId,
+      sourceUnitKey: written.sourceUnitKey,
       sceneId: indexedUnit.sceneId,
       messageIndex: indexedUnit.messageIndex,
       expectedTextContains,
@@ -412,7 +412,7 @@ function artifactPaths(
   dispatchReport: string;
   renderEvidence: string;
 } {
-  // Per-unit paths: multiple accepted lines in one scene must not overwrite.
+  // Per-unit paths: multiple written lines in one scene must not overwrite.
   const sceneArtifactRoot = join(
     artifactRoot,
     `scene-${target.sceneId}`,

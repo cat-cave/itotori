@@ -1114,11 +1114,10 @@ async function runLocalizeFullProject(
         passNumber: record.passNumber,
         priorPassNumber: record.priorPassNumber ?? null,
         unitsRun: result.unitsRun,
-        acceptedDraftCount: result.acceptedDraftCount,
-        deferredCount: result.deferredCount,
+        writtenOutcomeCount: result.writtenOutcomeCount,
         failureCount: result.failures.length,
         reviewerQueueItemCount: result.reviewerQueueItemCount,
-        acceptedDeltaCount: record.acceptedDeltas.length,
+        writtenDeltaCount: record.writtenDeltas.length,
         totalUsageCostUsd: result.totalUsageCostUsd,
         zdrConfirmed: result.zdrConfirmed,
         budgetStopped: result.budgetStopped,
@@ -1270,7 +1269,7 @@ async function runLocalizeGame(
           effectiveConfigPath: result.effectiveConfigPath,
           patchTargetRoot: result.patchTargetRoot,
           unitsRun: result.localize.result.unitsRun,
-          acceptedDraftCount: result.localize.result.acceptedDraftCount,
+          writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
           totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
           zdrConfirmed: result.localize.result.zdrConfirmed,
           patchApplied: result.localize.patchApply !== undefined,
@@ -2159,7 +2158,7 @@ function writePostgresContainerEnvFile(input: {
 }
 
 function envFileLine(name: string, value: string): string {
-  if (/[\r\n\0]/u.test(value)) {
+  if (value.includes("\r") || value.includes("\n") || value.includes(String.fromCharCode(0))) {
     throw new Error(`${name} may not contain newline or NUL characters`);
   }
   return `${name}=${value}`;

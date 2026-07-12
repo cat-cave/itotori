@@ -75,7 +75,7 @@ The surface governed by this policy is:
 2. **The bridge bundle** — `BridgeBundle` / `BridgeBundleV02` in
    [`packages/localization-bridge-schema/src/index.ts`](../packages/localization-bridge-schema/src/index.ts),
    with `schemaVersion: "0.1.0"` / `"0.2.0"`.
-3. **The patch-export / delta format** — `PatchExportBundle` (`PATCH_EXPORT_BUNDLE_SCHEMA_VERSION = "itotori.patch-export-bundle.v2"`)
+3. **The patch-export / delta format** — `PatchExportBundle` (`PATCH_EXPORT_BUNDLE_SCHEMA_VERSION = "itotori.patch-export-bundle.v3"`)
    and the `.kaifuu` delta package it produces.
 4. **The API contract** — the `*.schemaVersion` literals pinned in
    [`apps/itotori/src/api-schema.ts`](../apps/itotori/src/api-schema.ts)
@@ -92,7 +92,7 @@ axes**, by design:
 - The **product version** (`ITOTORI_PRODUCT_VERSION`) describes the whole
   product at a point in time and is what users see.
 - A **`schemaVersion` marker** describes the wire shape of one specific
-  artifact (e.g. `itotori.patch-export-bundle.v2`, `bridge v0.2`). It changes
+  artifact (e.g. `itotori.patch-export-bundle.v3`, `bridge v0.2`). It changes
   only when that artifact's shape changes, independent of the product cadence.
 
 Rules:

@@ -4,10 +4,10 @@
 // actually EXECUTES. Before the executor landed, `RepairJobService` only
 // QUEUED jobs (`claimNext`/`recordOutcome` seam with no consumer) and
 // `repair-rerun-scheduler` only built durable job INPUTS — nothing re-drafted
-// or re-QA'd anything, and no updated draft was persisted. These tests drive
+// or re-QA'd anything, and no written outcome was persisted. These tests drive
 // the executor end-to-end on a synthetic (fake-provider) project so a
-// reviewer correction -> scheduled rerun -> REAL re-draft/re-QA -> persisted
-// updated draft + real billed cost is proven, deterministically.
+// play-test correction -> scheduled rerun -> REAL re-draft/re-QA -> persisted
+// selected body + real billed cost is proven, deterministically.
 //
 // Generic to any project: the only project knowledge lives behind the
 // `RepairRerunUnitResolver` port (an in-memory implementation here). No
@@ -21,15 +21,7 @@ import {
   type LocalizationUnitV02,
   type QaFinding,
 } from "@itotori/localization-bridge-schema";
-import {
-  ReviewerQueueRepositoryError,
-  reviewerQueueItemKindValues,
-  reviewerQueueItemStateValues,
-  type AuthorizationActor,
-  type CreateReviewerQueueItemInput,
-  type ItotoriReviewerQueueRepositoryPort,
-  type ReviewerQueueItemRecord,
-} from "@itotori/db";
+import type { AuthorizationActor } from "@itotori/db";
 import {
   DEV_POLICY,
   fakeSemanticContextContent,
@@ -37,7 +29,6 @@ import {
   type AgenticLoopProviderFactory,
   type AgenticLoopUnitInput,
 } from "../src/orchestrator/agentic-loop.js";
-import type { AgenticLoopReviewerQueueSink } from "../src/orchestrator/reviewer-queue-bridge.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import { usageCostToDecimalString, usageCostToMicros } from "../src/providers/cost.js";
@@ -51,7 +42,7 @@ import {
   type RepairRerunUnitResolver,
 } from "../src/orchestrator/repair/index.js";
 import type {
-  DrivenDraftRecord,
+  DrivenWrittenOutcomeRecord,
   DrivenProviderRunRecord,
 } from "../src/orchestrator/project-driven-executor.js";
 
@@ -89,11 +80,11 @@ const BILLED_COST: ProviderCost = {
 // ---------------------------------------------------------------------------
 
 class InMemorySinks {
-  readonly drafts: DrivenDraftRecord[] = [];
+  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
   readonly providerRuns: DrivenProviderRunRecord[] = [];
-  readonly draft = {
-    persistDraft: async (record: DrivenDraftRecord): Promise<void> => {
-      this.drafts.push(record);
+  readonly writtenOutcome = {
+    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
+      this.writtenOutcomes.push(record);
     },
   };
   readonly providerRun = {
@@ -101,77 +92,6 @@ class InMemorySinks {
       this.providerRuns.push(record);
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// In-memory reviewer-queue sink — mirrors the bridge test's fake so a rerun
-// that DEFERS a unit lands a reviewer_queue_items row exactly as a driven run.
-// Enforces the SAME unique key as the real table so the idempotency backstop
-// (`reviewer_queue_item_duplicate`) is exercised.
-// ---------------------------------------------------------------------------
-
-class InMemoryReviewerQueue implements Pick<
-  ItotoriReviewerQueueRepositoryPort,
-  "createItem" | "loadItemsByBranch"
-> {
-  readonly items: ReviewerQueueItemRecord[] = [];
-  private seq = 0;
-
-  async createItem(
-    _actor: AuthorizationActor,
-    input: CreateReviewerQueueItemInput,
-  ): Promise<ReviewerQueueItemRecord> {
-    const clash = this.items.some(
-      (item) =>
-        item.localeBranchId === input.localeBranchId &&
-        item.sourceRevisionId === input.sourceRevisionId &&
-        item.itemKind === input.itemKind &&
-        item.sourceItemRef === input.sourceItemRef,
-    );
-    if (clash) {
-      throw new ReviewerQueueRepositoryError(
-        "reviewer_queue_item_duplicate",
-        `reviewer queue already has an item for locale_branch=${input.localeBranchId} kind=${input.itemKind} ref=${input.sourceItemRef}`,
-      );
-    }
-    this.seq += 1;
-    const createdAt = input.createdAt ?? new Date();
-    const record: ReviewerQueueItemRecord = {
-      reviewItemId: `repair-executor-queue-inmem-${this.seq}`,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      itemKind: input.itemKind,
-      sourceItemRef: input.sourceItemRef,
-      state: reviewerQueueItemStateValues.pending,
-      priority: input.priority ?? 0,
-      summary: input.summary,
-      affectedArtifactIds: input.affectedArtifactIds ?? [],
-      evidenceTier: input.evidenceTier ?? null,
-      observationEventIds: input.observationEventIds ?? null,
-      artifactHashes: input.artifactHashes ?? null,
-      payload: input.payload ?? {},
-      metadata: input.metadata ?? {},
-      createdByUserId: input.createdByUserId ?? null,
-      assignedToUserId: input.assignedToUserId ?? null,
-      createdAt,
-      updatedAt: createdAt,
-      resolvedAt: null,
-    };
-    this.items.push(record);
-    return record;
-  }
-
-  async loadItemsByBranch(
-    _actor: AuthorizationActor,
-    localeBranchId: string,
-  ): Promise<ReviewerQueueItemRecord[]> {
-    return this.items.filter((item) => item.localeBranchId === localeBranchId);
-  }
-}
-
-function reviewerQueueSink(queue: InMemoryReviewerQueue): AgenticLoopReviewerQueueSink {
-  return { repository: queue };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +239,7 @@ function criticalQaContent(bridgeUnitId: string): string {
     severity: "critical",
     category: "mistranslation",
     evidenceRefs: [],
-    recommendation: "fixture: critical finding forces a defer",
+    recommendation: "fixture: critical finding remains an annotation",
     agentRationale: "fake-critical-finding",
   };
   return JSON.stringify({
@@ -337,10 +257,10 @@ function cleanQaContent(): string {
 
 /**
  * Fake provider factory. Keyed on the CURRENT unit + request markers:
- *   - a unit whose source carries DEFER_MARKER emits a critical QA finding so
- *     the loop defers (with maxRepairAttempts: 0) -> outcome deferred_to_human.
+ *   - a unit whose source carries DEFER_MARKER emits a critical QA finding;
+ *     zero repair budget retains its primary body with quality flags.
  *   - UNIT_A re-drafts to the CORRECTED body (proving the rerun re-drafted).
- *   - every other unit translates cleanly and is accepted.
+ *   - every other unit translates cleanly into a written outcome.
  * Each provider carries the SYNTHETIC billed cost (via the real parser) so the
  * recorded cost is non-zero and demonstrably flows from provider output.
  */
@@ -390,7 +310,7 @@ function makeDeps(
     policy: makePolicy(),
     providerFactory: repairProviderFactory(),
     pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-    sinks: { draft: sinks.draft, providerRun: sinks.providerRun },
+    sinks: { writtenOutcome: sinks.writtenOutcome, providerRun: sinks.providerRun },
     ...overrides,
   };
 }
@@ -406,14 +326,14 @@ function makeService(): RepairJobService {
 // ---------------------------------------------------------------------------
 
 describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () => {
-  it("a reviewer correction (human_decision) schedules a rerun that EXECUTES: re-drafts the affected unit + persists the updated draft + records the real cost", async () => {
+  it("a play-test correction schedules a rerun that persists the selected written body and records real cost", async () => {
     const sinks = new InMemorySinks();
     const resolver = new InMemoryUnitResolver([
       loopInputFor(makeUnit(UNIT_A, "おはよう、{player}。", 1)),
     ]);
     const service = makeService();
 
-    // A reviewer CORRECTION: the prior draft was wrong; the reviewer requests a
+    // A play-test correction: the prior body was wrong; the user requests a
     // re-draft of UNIT_A at the translation stage. This is the trigger the
     // repair-rerun-scheduler / a correction writeback would lower into a job.
     const job = service.enqueue({
@@ -424,7 +344,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A] },
         severity: "p1",
         targetStage: "translation",
-        rationale: "reviewer correction: prior draft mistranslated the greeting",
+        rationale: "play-test correction: prior body mistranslated the greeting",
       },
       pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
     });
@@ -436,19 +356,15 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(service.pending()).toEqual([]);
     expect(service.claimNext()).toBeUndefined();
 
-    // The rerun EXECUTED the real draft + QA path: one unit ran + was accepted.
+    // The rerun executed the real draft + QA path and wrote one outcome.
     expect(result.succeeded).toBe(1);
-    expect(result.deferredToHuman).toBe(0);
 
-    // The updated draft was PERSISTED with the CORRECTED body the re-draft
-    // produced — not the stale prior draft. This is the crux: the rerun
-    // actually re-drafted and the result landed.
-    expect(sinks.drafts).toHaveLength(1);
-    const persistedDraft = sinks.drafts[0]!;
-    expect(persistedDraft.bridgeUnitId).toBe(UNIT_A);
-    expect(persistedDraft.accepted).toBe(true);
-    expect(persistedDraft.draftText).toBe(CORRECTED_DRAFT_A);
-    expect(persistedDraft.outcome).toBe("accepted");
+    // The selected body was persisted — not a stale or optional draft.
+    expect(sinks.writtenOutcomes).toHaveLength(1);
+    const persistedOutcome = sinks.writtenOutcomes[0]!;
+    expect(persistedOutcome.bridgeUnitId).toBe(UNIT_A);
+    expect(persistedOutcome.selectedBody).toBe(CORRECTED_DRAFT_A);
+    expect(persistedOutcome.outcome.status).toBe("written");
 
     // The real billed cost was RECORDED from provider output (PROJECT LAW): a
     // provider-run row landed carrying a non-zero total summed verbatim from
@@ -467,7 +383,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
     // The service's append-only history now reflects the REAL run, not just the
     // enqueue: job_enqueued -> job_started -> job_completed with the succeeded
-    // outcome mirroring the loop's routing summary.
+    // outcome reflecting the written rerun.
     const history = service.repairHistory();
     expect(history.map((event) => event.kind)).toEqual([
       "job_enqueued",
@@ -505,16 +421,15 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
     expect(result.jobsRun).toBe(1);
     expect(result.succeeded).toBe(1);
-    expect(sinks.drafts).toHaveLength(1);
-    expect(sinks.drafts[0]!.bridgeUnitId).toBe(UNIT_B);
-    expect(sinks.drafts[0]!.accepted).toBe(true);
-    expect(sinks.drafts[0]!.draftText).toBe(`Translation of ${UNIT_B}`);
+    expect(sinks.writtenOutcomes).toHaveLength(1);
+    expect(sinks.writtenOutcomes[0]!.bridgeUnitId).toBe(UNIT_B);
+    expect(sinks.writtenOutcomes[0]!.selectedBody).toBe(`Translation of ${UNIT_B}`);
   });
 
-  it("a deferring unit records outcome deferred_to_human + persists the loop's deferred reason (no accepted draft)", async () => {
+  it("a critical zero-budget repair retains a written primary body and informational quality flags", async () => {
     const sinks = new InMemorySinks();
     // The unit's source carries DEFER_MARKER so the fake provider emits a
-    // critical QA finding; with maxRepairAttempts: 0 the loop defers.
+    // critical QA finding; with maxRepairAttempts: 0 it retains the primary.
     const resolver = new InMemoryUnitResolver([
       loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
     ]);
@@ -538,16 +453,14 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     );
 
     expect(result.jobsRun).toBe(1);
-    expect(result.succeeded).toBe(0);
-    expect(result.deferredToHuman).toBe(1);
-    expect(sinks.drafts).toHaveLength(1);
-    const deferred = sinks.drafts[0]!;
-    expect(deferred.bridgeUnitId).toBe(UNIT_C);
-    expect(deferred.accepted).toBe(false);
-    expect(deferred.draftText).toBeUndefined();
-    expect(deferred.deferredReason).toBeDefined();
-    expect(deferred.outcome).toBe("deferred_to_human");
-    // Cost is still recorded from the real invocations the defer fired.
+    expect(result.succeeded).toBe(1);
+    expect(sinks.writtenOutcomes).toHaveLength(1);
+    const flagged = sinks.writtenOutcomes[0]!;
+    expect(flagged.bridgeUnitId).toBe(UNIT_C);
+    expect(flagged.selectedBody).toBe(`Translation of ${UNIT_C}`);
+    expect(flagged.outcome.qualityFlags.length).toBeGreaterThan(0);
+    expect(flagged.outcome.findings.some((finding) => finding.severity === "critical")).toBe(true);
+    // Cost is still recorded from the real invocations the QA annotation fired.
     expect(sinks.providerRuns).toHaveLength(1);
     expect(sinks.providerRuns[0]!.invocationCount).toBeGreaterThan(0);
   });
@@ -578,7 +491,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(result.jobsRun).toBe(1);
     expect(result.noChange).toBe(1);
     expect(result.totalCostUsd).toBe(0);
-    expect(sinks.drafts).toEqual([]);
+    expect(sinks.writtenOutcomes).toEqual([]);
     expect(sinks.providerRuns).toEqual([]);
     expect(service.outcomeOf(service.repairHistory()[0]!.jobId)).toBe("no_change");
   });
@@ -609,8 +522,10 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
     expect(result.jobsRun).toBe(1);
     expect(result.succeeded).toBe(1);
-    expect(sinks.drafts).toHaveLength(2);
-    expect(sinks.drafts.map((d) => d.bridgeUnitId).sort()).toEqual([UNIT_A, UNIT_B].sort());
+    expect(sinks.writtenOutcomes).toHaveLength(2);
+    expect(sinks.writtenOutcomes.map((outcome) => outcome.bridgeUnitId).sort()).toEqual(
+      [UNIT_A, UNIT_B].sort(),
+    );
     expect(sinks.providerRuns).toHaveLength(2);
   });
 
@@ -655,15 +570,15 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(rest.jobsRun).toBe(1);
     expect(service.outcomeOf(p0.jobId)).toBe("succeeded");
     expect(service.outcomeOf(p1.jobId)).toBe("succeeded");
-    expect(sinks.drafts).toHaveLength(2);
+    expect(sinks.writtenOutcomes).toHaveLength(2);
   });
 
-  it("determinism: identical (job, deps) replay produces equal persisted drafts + cost", async () => {
+  it("determinism: identical (job, deps) replay produces equal selected bodies + cost", async () => {
     // Two independent runs over the SAME unit + same deterministic deps must
-    // produce byte-equal persisted draft text + equal recorded cost (the
+    // produce byte-equal selected target text + equal recorded cost (the
     // DEV_POLICY uses deterministic seeds; the clock is fixed).
     async function runOnce(): Promise<{
-      draftText: string | undefined;
+      selectedBody: string;
       totalCostUsd: number;
     }> {
       const sinks = new InMemorySinks();
@@ -683,18 +598,18 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
       });
       const result = await runRepairQueue(service, makeDeps(resolver, sinks));
       return {
-        draftText: sinks.drafts[0]!.draftText,
+        selectedBody: sinks.writtenOutcomes[0]!.selectedBody,
         totalCostUsd: result.totalCostUsd,
       };
     }
 
     const first = await runOnce();
     const second = await runOnce();
-    expect(second.draftText).toBe(first.draftText);
+    expect(second.selectedBody).toBe(first.selectedBody);
     expect(second.totalCostUsd).toBe(first.totalCostUsd);
   });
 
-  it("per-unit isolation + partial_failure: a mixed accept+fail rerun records a NON-success outcome with the failed-unit details (never succeeded)", async () => {
+  it("per-unit isolation + partial_failure: a mixed write+fail rerun records a non-success outcome with failed-unit details", async () => {
     const sinks = new InMemorySinks();
     const goodUnit = loopInputFor(makeUnit(UNIT_A, "おはよう。", 1));
     // A "poison" unit whose translation pack is malformed so the loop throws.
@@ -752,13 +667,12 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     );
 
     // CRUX (FIX 1): a rerun where ANY unit failed is terminally NON-successful.
-    // UNIT_A was accepted but UNIT_B threw, so the outcome is `partial_failure`
+    // UNIT_A was written but UNIT_B threw, so the outcome is `partial_failure`
     // — NEVER `succeeded` (the pre-fix bug hid the failure behind a success).
     expect(result.outcome).toBe("partial_failure");
     expect(result.outcome).not.toBe("succeeded");
-    expect(result.acceptedDraftCount).toBe(1);
+    expect(result.writtenOutcomeCount).toBe(1);
     expect(result.failureCount).toBe(1);
-    expect(result.deferredCount).toBe(0);
 
     // The failed-unit details ride along so the failure is never hidden.
     expect(result.failures).toHaveLength(1);
@@ -767,11 +681,11 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(failure.sourceUnitKey).toBe(poisonUnit.unit.sourceUnitKey);
     expect(failure.message.length).toBeGreaterThan(0);
 
-    // Per-unit isolation held: UNIT_A's accepted draft was still persisted (the
-    // poison unit did not abort the rerun), and UNIT_B's draft stayed untouched.
-    expect(sinks.drafts).toHaveLength(1);
-    expect(sinks.drafts[0]!.bridgeUnitId).toBe(UNIT_A);
-    expect(sinks.drafts[0]!.draftText).toBe(CORRECTED_DRAFT_A);
+    // Per-unit isolation held: UNIT_A's written outcome persisted, while the
+    // poison unit did not receive fabricated source text.
+    expect(sinks.writtenOutcomes).toHaveLength(1);
+    expect(sinks.writtenOutcomes[0]!.bridgeUnitId).toBe(UNIT_A);
+    expect(sinks.writtenOutcomes[0]!.selectedBody).toBe(CORRECTED_DRAFT_A);
 
     // The terminal outcome is what the caller records on the service history.
     service.recordOutcome(job.jobId, result.outcome);
@@ -831,74 +745,5 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(result.jobsRun).toBe(1);
     expect(result.partialFailure).toBe(1);
     expect(result.succeeded).toBe(0);
-    expect(result.deferredToHuman).toBe(0);
-  });
-
-  it("reviewerQueue threading (FIX 2): a unit deferred during a rerun bridges a reviewer_queue_items row", async () => {
-    const sinks = new InMemorySinks();
-    const queue = new InMemoryReviewerQueue();
-    // The resolver's unit input carries NO reviewerQueue of its own — the
-    // executor must thread `deps.reviewerQueue` into it (the pre-fix bug left
-    // the input unchanged so the loop's bridge never fired).
-    const resolver = new InMemoryUnitResolver([
-      loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
-    ]);
-    const service = makeService();
-
-    const job = service.enqueue({
-      trigger: {
-        trigger: "qa_finding",
-        findingId: "019ed0aa-0000-7000-8000-00000000ff03",
-        bridgeUnitId: UNIT_C,
-        severity: "p0",
-        targetStage: "translation",
-        rationale: "rerun of a unit that cannot be auto-resolved -> bridges the queue",
-      },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-    });
-
-    const result = await runRepairQueue(
-      service,
-      // Wire the reviewer-queue sink through deps — exactly how a driven run does.
-      makeDeps(resolver, sinks, {
-        policy: makePolicy({ maxRepairAttempts: 0 }),
-        reviewerQueue: reviewerQueueSink(queue),
-      }),
-    );
-
-    // The rerun deferred the unit (the loop could not auto-resolve it).
-    expect(result.jobsRun).toBe(1);
-    expect(result.deferredToHuman).toBe(1);
-    expect(service.outcomeOf(job.jobId)).toBe("deferred_to_human");
-
-    // CRUX (FIX 2): because deps.reviewerQueue was threaded into the unit input,
-    // the loop's bridge landed ONE context-rich reviewer_queue_items row for the
-    // deferred unit — pre-fix this list was empty (the bridge never fired).
-    expect(queue.items).toHaveLength(1);
-    const item = queue.items[0]!;
-    expect(item.itemKind).toBe(reviewerQueueItemKindValues.qa);
-    expect(item.sourceItemRef).toBe(`agentic-loop:${UNIT_C}`);
-    expect(item.localeBranchId).toBe(LOCALE_BRANCH_ID);
-    expect(item.sourceRevisionId).toBe(REVISION_ID);
-    expect(item.state).toBe(reviewerQueueItemStateValues.pending);
-    expect(item.createdByUserId).toBe(ACTOR.userId);
-  });
-
-  it("reviewerQueue threading (FIX 2): absent dep -> no queue item is written (the sink stays unwired)", async () => {
-    const sinks = new InMemorySinks();
-    const queue = new InMemoryReviewerQueue();
-    const resolver = new InMemoryUnitResolver([
-      loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
-    ]);
-    const service = makeService();
-
-    // No reviewerQueue on deps — the executor has nothing to thread, so the
-    // loop's bridge is a no-op (the synthetic smoke path).
-    await runRepairQueue(
-      service,
-      makeDeps(resolver, sinks, { policy: makePolicy({ maxRepairAttempts: 0 }) }),
-    );
-
-    expect(queue.items).toHaveLength(0);
   });
 });

@@ -29,7 +29,7 @@ import type {
   ExistsTerminologyTermBySurfaceFormInput,
   ItotoriTerminologyCandidateRepositoryPort,
 } from "@itotori/db";
-import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
+import type { AgenticLoopBundle, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
   runAgenticLoopForUnit,
@@ -39,7 +39,6 @@ import {
 } from "../src/orchestrator/agentic-loop.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
-  DEV_PAIR,
   LocalProviderRunArtifactRecorder,
   OpenRouterModelProvider,
   assertOpenRouterZdrAccount,
@@ -145,6 +144,18 @@ function makePolicy(): AgenticLoopPolicy {
       return d;
     },
   };
+}
+
+function selectedWrittenCandidateBody(bundle: AgenticLoopBundle): string {
+  expect(bundle.writtenOutcome.status).toBe("written");
+  const selectedCandidate = bundle.writtenOutcome.candidates.find(
+    (candidate) => candidate.id === bundle.writtenOutcome.selectedCandidateId,
+  );
+  expect(selectedCandidate).toBeDefined();
+  if (selectedCandidate === undefined) {
+    throw new Error("written outcome selectedCandidateId must resolve to a candidate");
+  }
+  return selectedCandidate.body;
 }
 
 // --- Fake content (unit/integration path) ---------------------------------
@@ -284,7 +295,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     expect(prompt).toContain("route-branch-map");
 
     // The loop still completes end-to-end with a real draft.
-    expect(bundle.finalDraft.draftText).toBe("Good morning.");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
   });
 
   it("without a structure, the loop still runs the semantic agents (no injected block)", async () => {
@@ -427,7 +438,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     expect(terminologyDrop?.reason).toContain("ExistingGlossaryConflictError");
 
     // The loop still completes end-to-end (per-agent best-effort isolation).
-    expect(bundle.finalDraft.draftText).toBe("Good morning.");
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
   });
 });
 
@@ -556,7 +567,7 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     // eslint-disable-next-line no-console
     console.warn(
       `[realctx-live] scene=${sceneId} calls=${results.length} totalCost=$${totalCostUsd.toFixed(6)} ` +
-        `zdr=true semanticAgents=4 finalOutcome=${bundle.routingSummary.outcome}`,
+        `zdr=true semanticAgents=4 finalOutcome=${bundle.writtenOutcome.status}`,
     );
   }, 180_000);
 });

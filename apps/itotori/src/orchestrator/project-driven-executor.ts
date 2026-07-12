@@ -15,19 +15,16 @@
 //       on the patch export, per the config-driven patchback contract.
 //   (b) runs `runAgenticLoopForUnit` PER unit WITH the REAL structure-informed
 //       context (the decoded `narrativeStructure` + the unit's `sceneId`, per
-//       P0#1) AND the `reviewerQueue` DB sink wired (per P0#2) so every
-//       deferral / threshold-finding PERSISTS as a `reviewer_queue_items`
-//       record automatically.
-//   (c) PERSISTS, per unit: the draft outcome, a provider-run summary carrying
+//       P0#1) and preserves the loop's canonical written outcome.
+//   (c) PERSISTS, per unit: the written outcome, a provider-run summary carrying
 //       the REAL total `usage.cost` + ZDR posture (summed verbatim from the
 //       bundle's per-invocation telemetry — PROJECT LAW: cost only from real
 //       provider output), and — via the loop's own bridge — the
 //       reviewer_queue_items.
-//   (d) produces ONE patch EXPORT for the ACCEPTED drafts (the translated
-//       bridge bundle + a deterministic patch report), byte-correct per the
-//       config-driven scope (accepted units carry the real translated body;
-//       deferred / out-of-scope units keep `target === source` — a byte no-op
-//       the patchback collapses to zero edits).
+//   (d) produces ONE patch EXPORT only after every configured in-scope unit
+//       has a written body. The translated bridge carries each selected body;
+//       an operational unit failure is recorded as a typed failure and never
+//       fabricated as source text.
 //
 // Robustness (a pilot runs many units): a SINGLE unit's failure — including a
 // live semantic-agent malformed pack (the filed P2) — MUST NOT abort the whole
@@ -46,17 +43,19 @@ import type {
   ReviewerQueueItemRecord,
 } from "@itotori/db";
 import { ReviewerQueueRepositoryError, reviewerQueueItemStateValues } from "@itotori/db";
-import type {
-  AgenticLoopBundle,
-  BridgeBundleV02,
-  LocalizationUnitV02,
-  StyleGuidePolicyV0Draft,
+import {
+  isLocaleTaggedSourceEcho,
+  type AgenticLoopBundle,
+  type BridgeBundleV02,
+  type LocalizationUnitV02,
+  type StyleGuidePolicyV0Draft,
+  type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
-import type { PriorPassFeedback } from "../agents/translation/shapes.js";
 import { planBatches } from "../batch-planner/planner.js";
 import { resolveModelProfile } from "../batch-planner/model-profiles.js";
 import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
 import type {
+  PriorPassFeedback,
   TranslationGlossaryEntry,
   TranslationWorkScopeContext,
 } from "../agents/translation/shapes.js";
@@ -206,17 +205,18 @@ export type PriorPassContext = {
 // Persistence sinks (narrow ports — DB-backed live, in-memory in tests)
 // ---------------------------------------------------------------------------
 
-export type DrivenDraftRecord = {
+/**
+ * The executor's persistence projection of one canonical written outcome.
+ * `selectedBody` is required and is checked against the selected candidate
+ * before this record crosses a persistence or patch-export boundary.
+ */
+export type DrivenWrittenOutcomeRecord = {
   bridgeUnitId: string;
   sourceUnitKey: string;
   sceneId: number | undefined;
-  outcome: AgenticLoopBundle["routingSummary"]["outcome"];
-  accepted: boolean;
-  targetLocale: string;
-  /** The accepted (or repaired-then-accepted) draft body; absent on a defer. */
-  draftText: string | undefined;
-  /** The loop's reasoning when it deferred; absent when accepted. */
-  deferredReason: string | undefined;
+  outcome: WrittenUnitOutcome;
+  /** The selected candidate body, never blank or a source repetition. */
+  selectedBody: string;
 };
 
 export type DrivenProviderRunRecord = {
@@ -233,7 +233,7 @@ export type DrivenProviderRunRecord = {
 };
 
 export type DrivenPatchExportRecord = {
-  /** The translated v0.2 BridgeBundle (accepted units carry the real draft). */
+  /** The translated v0.2 BridgeBundle (in-scope units carry selected bodies). */
   translatedBridge: unknown;
   /** Deterministic patch report summarising the driven run. */
   patchReport: DrivenPatchReport;
@@ -250,13 +250,14 @@ export type DrivenPatchReport = {
   unitsEnumerated: number;
   unitsInScope: number;
   unitsRun: number;
-  acceptedDraftCount: number;
-  deferredCount: number;
+  writtenOutcomeCount: number;
   failureCount: number;
   reviewerQueueItemCount: number;
   totalUsageCostUsd: number;
   zdrConfirmed: boolean;
   budgetStopped: boolean;
+  /** A patch exists only when the configured scope has complete written coverage. */
+  coverageComplete: boolean;
   /**
    * The canonical hash of the RAW bridge this run actually drafted against. The
    * patch-apply seam compares this to the apply-time bridge's hash so a
@@ -264,8 +265,13 @@ export type DrivenPatchReport = {
    * NOT self-referential — it binds to the bridge the drafts were produced from).
    */
   sourceBridgeHash: string;
-  /** The accepted units + their REAL translated body (the patchback splices). */
-  acceptedUnits: Array<{ bridgeUnitId: string; sourceUnitKey: string; finalDraftText: string }>;
+  /** The written units + their selected bodies (the patchback splices). */
+  writtenUnits: Array<{
+    bridgeUnitId: string;
+    sourceUnitKey: string;
+    selectedBody: string;
+    qualityFlags: string[];
+  }>;
 };
 
 /**
@@ -352,8 +358,8 @@ function knownCharactersFromEffectiveScope(
   }));
 }
 
-export type DrivenDraftSink = {
-  persistDraft(record: DrivenDraftRecord): Promise<void>;
+export type DrivenWrittenOutcomeSink = {
+  persistWrittenOutcome(record: DrivenWrittenOutcomeRecord): Promise<void>;
 };
 export type DrivenProviderRunSink = {
   persistProviderRun(record: DrivenProviderRunRecord): Promise<void>;
@@ -445,7 +451,7 @@ export type ProjectDrivenExecutorInput = {
    */
   priorPass?: PriorPassContext;
   sinks: {
-    draft: DrivenDraftSink;
+    writtenOutcome: DrivenWrittenOutcomeSink;
     providerRun: DrivenProviderRunSink;
     patchExport: DrivenPatchExportSink;
   };
@@ -502,22 +508,19 @@ export type ProjectDrivenExecutorResult = {
   unitsEnumerated: number;
   unitsInScope: number;
   unitsRun: number;
-  draftsPersisted: number;
-  acceptedDraftCount: number;
-  deferredCount: number;
+  writtenOutcomesPersisted: number;
+  writtenOutcomeCount: number;
   providerRunsPersisted: number;
   reviewerQueueItemCount: number;
   patchExportCount: number;
   failures: DrivenUnitFailure[];
   /**
-   * itotori-pass-ledger — per-unit outcome breakdown (one entry per
-   * successfully-run unit, in canonical order). The pass ledger consumes this
-   * to record each unit's accepted/deferred state + draft text + defer reason
-   * so a pass N+1 run can build on the prior pass. Failures are surfaced
-   * separately via {@link failures}. Absent only when no driven run has
-   * populated it; the pass-ledger driver always reads it.
+   * Per-unit written outcomes (one entry per successfully-run unit, canonical
+   * order). The pass ledger consumes their required selected body + quality
+   * flags so a later pass always has a written baseline. Operational failures
+   * are surfaced separately via {@link failures}.
    */
-  unitOutcomes: DrivenDraftRecord[];
+  unitOutcomes: DrivenWrittenOutcomeRecord[];
   /**
    * m1-wholegame-replay-render-validate — optional post-patch replay/render
    * validation report. Populated by the pass-ledger post-executor hook so the
@@ -572,15 +575,14 @@ export async function runProjectDrivenExecutor(
   };
 
   const failures: DrivenUnitFailure[] = [];
-  const acceptedBodies = new Map<string, string>();
-  const acceptedUnits: DrivenPatchReport["acceptedUnits"] = [];
-  // itotori-pass-ledger — per-unit outcome accumulator (canonical order), read
-  // by the pass-ledger driver to record each unit's accepted/deferred state.
-  const unitOutcomes: DrivenDraftRecord[] = [];
+  const writtenBodies = new Map<string, string>();
+  const writtenUnits: DrivenPatchReport["writtenUnits"] = [];
+  // Per-unit outcome accumulator (canonical order), read by the pass ledger to
+  // retain a required prior body and informational quality flags.
+  const unitOutcomes: DrivenWrittenOutcomeRecord[] = [];
   let unitsRun = 0;
-  let draftsPersisted = 0;
-  let acceptedDraftCount = 0;
-  let deferredCount = 0;
+  let writtenOutcomesPersisted = 0;
+  let writtenOutcomeCount = 0;
   let providerRunsPersisted = 0;
   let totalUsageCostUsd = 0;
   let zdrConfirmed = true;
@@ -660,26 +662,24 @@ export async function runProjectDrivenExecutor(
   // (buffered per unit during the concurrent phase) all land in unit order.
   for (const slot of slots) {
     if (slot === undefined) {
-      continue; // never dispatched (budget cap) — a byte no-op on the export.
+      continue; // never dispatched (budget cap) — no patch may export incomplete coverage.
     }
     if (slot.status === "failure") {
-      // PER-UNIT ISOLATION — the failing unit was caught in its worker; it
-      // persisted nothing and its target stays a byte no-op (source === target).
+      // PER-UNIT ISOLATION — the failing unit was caught in its worker and
+      // persisted no fabricated target. A later supervisor may resume it.
       failures.push(slot.failure);
       continue;
     }
 
     unitsRun += 1;
 
-    // PERSIST — the draft outcome FIRST. The DB provider-run ledger's FK
-    // references the draft attempt persistDraft creates, so the draft must land
-    // before the provider-run row (the shared adapter keys the attempt id by
-    // bridgeUnitId).
-    await input.sinks.draft.persistDraft(slot.draftRecord);
-    draftsPersisted += 1;
-    // itotori-pass-ledger — capture this unit's outcome for the pass-ledger
-    // driver (canonical order — the persist loop already walks slots in order).
-    unitOutcomes.push(slot.draftRecord);
+    // PERSIST — the written outcome FIRST. The DB provider-run ledger's FK
+    // references the attempt this write creates, so the outcome must land
+    // before the provider-run row (the shared adapter keys it by bridgeUnitId).
+    await input.sinks.writtenOutcome.persistWrittenOutcome(slot.writtenOutcomeRecord);
+    writtenOutcomesPersisted += 1;
+    // Capture this outcome for the pass ledger in canonical order.
+    unitOutcomes.push(slot.writtenOutcomeRecord);
 
     // PERSIST — provider-run summary (real usage.cost + ZDR).
     totalUsageCostUsd += slot.telemetry.totalCostUsd;
@@ -699,24 +699,24 @@ export async function runProjectDrivenExecutor(
       }
     }
 
-    if (slot.accepted && slot.acceptedBody !== undefined) {
-      acceptedDraftCount += 1;
-      acceptedBodies.set(slot.unit.bridgeUnitId, slot.acceptedBody);
-      acceptedUnits.push({
-        bridgeUnitId: slot.unit.bridgeUnitId,
-        sourceUnitKey: slot.unit.sourceUnitKey,
-        finalDraftText: slot.acceptedBody,
-      });
-    } else {
-      deferredCount += 1;
-    }
+    writtenOutcomeCount += 1;
+    writtenBodies.set(slot.unit.bridgeUnitId, slot.exportBody);
+    writtenUnits.push({
+      bridgeUnitId: slot.unit.bridgeUnitId,
+      sourceUnitKey: slot.unit.sourceUnitKey,
+      selectedBody: slot.writtenOutcomeRecord.selectedBody,
+      qualityFlags: slot.writtenOutcomeRecord.outcome.qualityFlags.slice(),
+    });
   }
 
-  // Count the reviewer_queue_items the loop's bridge actually persisted for
-  // this branch (the real DB read — deferrals + threshold findings).
+  // Count reviewer-queue items emitted by the legacy bridge. Written outcomes
+  // do not depend on this informational side channel.
   const reviewerQueueItemCount = await countReviewerQueueItems(input);
 
-  // (d) ONE patch EXPORT for the accepted drafts.
+  // Coverage is the export gate. Do not turn an operational failure, budget
+  // pause, or bounded pilot slice into source text just to manufacture a
+  // complete-looking bridge. The later run finalizer/supervisor owns resume.
+  const coverageComplete = writtenBodies.size === unitsInScope;
   const patchReport: DrivenPatchReport = {
     schemaVersion: "itotori.project-driven-executor.patch-report.v0",
     projectId: input.projectId,
@@ -728,37 +728,39 @@ export async function runProjectDrivenExecutor(
     unitsEnumerated,
     unitsInScope,
     unitsRun,
-    acceptedDraftCount,
-    deferredCount,
+    writtenOutcomeCount,
     failureCount: failures.length,
     reviewerQueueItemCount,
     totalUsageCostUsd,
     zdrConfirmed,
     budgetStopped,
+    coverageComplete,
     sourceBridgeHash: hashDraftedAgainstBridge(input.rawBridge),
-    acceptedUnits,
+    writtenUnits,
   };
-  const translatedBridge = synthesiseDrivenTranslatedBridge({
-    rawBridge: input.rawBridge,
-    acceptedBodies,
-    engineProfile,
-    targetLocale,
-  });
-  await input.sinks.patchExport.exportPatch({ translatedBridge, patchReport });
+  if (coverageComplete) {
+    const translatedBridge = synthesiseDrivenTranslatedBridge({
+      rawBridge: input.rawBridge,
+      writtenBodies,
+      inScopeUnitIds: new Set(enumerated.map((entry) => entry.unit.bridgeUnitId)),
+      engineProfile,
+      targetLocale,
+    });
+    await input.sinks.patchExport.exportPatch({ translatedBridge, patchReport });
+  }
   log(
-    `project-driven-executor: ran ${unitsRun} unit(s); ${acceptedDraftCount} accepted, ${deferredCount} deferred, ${failures.length} failed; ${reviewerQueueItemCount} queue item(s); total usage.cost $${totalUsageCostUsd.toFixed(6)} (zdr=${zdrConfirmed})`,
+    `project-driven-executor: ran ${unitsRun} unit(s); ${writtenOutcomeCount} written, ${failures.length} failed; coverageComplete=${coverageComplete}; ${reviewerQueueItemCount} queue item(s); total usage.cost $${totalUsageCostUsd.toFixed(6)} (zdr=${zdrConfirmed})`,
   );
 
   return {
     unitsEnumerated,
     unitsInScope,
     unitsRun,
-    draftsPersisted,
-    acceptedDraftCount,
-    deferredCount,
+    writtenOutcomesPersisted,
+    writtenOutcomeCount,
     providerRunsPersisted,
     reviewerQueueItemCount,
-    patchExportCount: 1,
+    patchExportCount: coverageComplete ? 1 : 0,
     failures,
     unitOutcomes,
     totalUsageCostUsd,
@@ -782,11 +784,10 @@ type UnitRunResult = UnitRunSuccess | UnitRunFailure;
 type UnitRunSuccess = {
   status: "success";
   unit: LocalizationUnitV02;
-  draftRecord: DrivenDraftRecord;
+  writtenOutcomeRecord: DrivenWrittenOutcomeRecord;
   telemetry: ReturnType<typeof summariseProviderTelemetry>;
-  accepted: boolean;
-  /** The stripped/bracket-wrapped accepted body; `undefined` on a defer. */
-  acceptedBody: string | undefined;
+  /** The selected body after engine-specific out-of-band markup removal. */
+  exportBody: string;
   /** Reviewer-queue writes the loop's bridge buffered for ordered replay. */
   queueCaptures: CapturedReviewerQueueCreate[];
 };
@@ -887,36 +888,36 @@ async function runSingleDrivenUnit(args: {
       input.providerFactory,
     );
 
-    const accepted = bundle.finalDraft.draftText !== undefined;
-    const draftRecord: DrivenDraftRecord = {
-      bridgeUnitId: unit.bridgeUnitId,
-      sourceUnitKey: unit.sourceUnitKey,
+    const writtenOutcomeRecord = materializeDrivenWrittenOutcome({
+      unit,
       sceneId: context?.sceneId,
-      outcome: bundle.routingSummary.outcome,
-      accepted,
       targetLocale,
-      draftText: bundle.finalDraft.draftText,
-      deferredReason: bundle.finalDraft.deferredReason,
-    };
+      outcome: bundle.writtenOutcome,
+    });
     const telemetry = summariseProviderTelemetry(bundle, input.pair);
 
-    let acceptedBody: string | undefined;
-    if (accepted && bundle.finalDraft.draftText !== undefined) {
-      // Strip the out-of-band kidoku markup so the recorded body matches the
-      // patchback splice (mirrors the single-unit driver).
-      acceptedBody =
-        engineProfile === "rpg-maker-mv-mz"
-          ? bundle.finalDraft.draftText
-          : stripOutOfBandControlMarkup(bundle.finalDraft.draftText);
-    }
+    // Strip out-of-band kidoku markup so the patchback splice matches the
+    // engine-visible selected body (mirrors the single-unit driver).
+    const exportBody =
+      engineProfile === "rpg-maker-mv-mz"
+        ? writtenOutcomeRecord.selectedBody
+        : stripOutOfBandControlMarkup(writtenOutcomeRecord.selectedBody);
+    const exportSourceText =
+      engineProfile === "rpg-maker-mv-mz"
+        ? unit.sourceText
+        : stripOutOfBandControlMarkup(unit.sourceText);
+    assertSelectedTargetBody({
+      body: exportBody,
+      sourceText: exportSourceText,
+      label: `export body for ${unit.bridgeUnitId}`,
+    });
 
     return {
       status: "success",
       unit,
-      draftRecord,
+      writtenOutcomeRecord,
       telemetry,
-      accepted,
-      acceptedBody,
+      exportBody,
       queueCaptures,
     };
   } catch (error) {
@@ -951,6 +952,78 @@ async function runSingleDrivenUnit(args: {
         diagnostic,
       },
     };
+  }
+}
+
+/**
+ * Validate and project the loop package's canonical outcome at the executor
+ * boundary. The package validates its own wire shape, but this boundary also
+ * binds it to the unit the worker was asked to run and refuses the historic
+ * source-repetition convention before persistence/export can observe it.
+ */
+export function materializeDrivenWrittenOutcome(args: {
+  unit: Pick<LocalizationUnitV02, "bridgeUnitId" | "sourceUnitKey" | "sourceText">;
+  sceneId: number | undefined;
+  targetLocale: string;
+  outcome: WrittenUnitOutcome;
+}): DrivenWrittenOutcomeRecord {
+  const { unit, sceneId, targetLocale, outcome } = args;
+  if (outcome.status !== "written") {
+    throw new AgenticLoopInvariantError(
+      `written outcome for ${unit.bridgeUnitId} has unsupported status '${String(outcome.status)}'`,
+    );
+  }
+  if (outcome.unitId !== unit.bridgeUnitId) {
+    throw new AgenticLoopInvariantError(
+      `written outcome unitId '${outcome.unitId}' does not match requested unit '${unit.bridgeUnitId}'`,
+    );
+  }
+  if (outcome.targetLocale !== targetLocale) {
+    throw new AgenticLoopInvariantError(
+      `written outcome targetLocale '${outcome.targetLocale}' does not match requested locale '${targetLocale}'`,
+    );
+  }
+  const selectedCandidate = outcome.candidates.find(
+    (candidate) => candidate.id === outcome.selectedCandidateId,
+  );
+  if (selectedCandidate === undefined) {
+    throw new AgenticLoopInvariantError(
+      `written outcome for ${unit.bridgeUnitId} has no candidate '${outcome.selectedCandidateId}'`,
+    );
+  }
+  if (selectedCandidate.outcomeId !== outcome.id) {
+    throw new AgenticLoopInvariantError(
+      `selected candidate '${selectedCandidate.id}' is not bound to written outcome '${outcome.id}'`,
+    );
+  }
+  const selectedBody = selectedCandidate.body;
+  assertSelectedTargetBody({
+    body: selectedBody,
+    sourceText: unit.sourceText,
+    label: `selected candidate '${selectedCandidate.id}' for ${unit.bridgeUnitId}`,
+  });
+  return {
+    bridgeUnitId: unit.bridgeUnitId,
+    sourceUnitKey: unit.sourceUnitKey,
+    sceneId,
+    outcome,
+    selectedBody,
+  };
+}
+
+function assertSelectedTargetBody(args: { body: string; sourceText: string; label: string }): void {
+  const body = args.body.trim();
+  if (body.length === 0) {
+    throw new AgenticLoopInvariantError(`${args.label} must be non-blank`);
+  }
+  if (body !== args.body) {
+    throw new AgenticLoopInvariantError(`${args.label} must already be trimmed`);
+  }
+  if (isLocaleTaggedSourceEcho(body)) {
+    throw new AgenticLoopInvariantError(`${args.label} must not use a locale-tagged source replay`);
+  }
+  if (args.sourceText.trim().length > 0 && body === args.sourceText.trim()) {
+    throw new AgenticLoopInvariantError(`${args.label} must not echo the source text`);
   }
 }
 
@@ -1219,21 +1292,19 @@ async function countReviewerQueueItems(input: ProjectDrivenExecutorInput): Promi
 // ---------------------------------------------------------------------------
 
 /**
- * Build the translated v0.2 BridgeBundle for the driven run. Every ACCEPTED
- * unit carries its REAL translated body (SJIS-bracket-wrapped for RealLive so
- * the KAIFUU-191 lexer captures it as a Textout run; the plain literal for RPG
- * Maker). Every other unit — deferred, out-of-scope, or failed — keeps
- * `target.text === sourceText`, a byte no-op the patchback collapses to zero
- * edits. That is the config-driven byte-fidelity contract: everything outside
- * the accepted set is byte-identical.
+ * Build the translated v0.2 BridgeBundle for a coverage-complete driven run.
+ * Every IN-SCOPE unit must have a selected, non-blank target body. Missing
+ * in-scope text is an operational failure, never an invitation to synthesize
+ * `target === source`. Out-of-scope units retain the byte-no-op projection.
  */
 export function synthesiseDrivenTranslatedBridge(args: {
   rawBridge: unknown;
-  acceptedBodies: ReadonlyMap<string, string>;
+  writtenBodies: ReadonlyMap<string, string>;
+  inScopeUnitIds: ReadonlySet<string>;
   engineProfile: DrivenEngineProfile;
   targetLocale: string;
 }): unknown {
-  const { rawBridge, acceptedBodies, engineProfile, targetLocale } = args;
+  const { rawBridge, writtenBodies, inScopeUnitIds, engineProfile, targetLocale } = args;
   if (typeof rawBridge !== "object" || rawBridge === null || Array.isArray(rawBridge)) {
     throw new Error("project-driven-executor refused: bridge JSON must be an object");
   }
@@ -1242,6 +1313,7 @@ export function synthesiseDrivenTranslatedBridge(args: {
   if (!Array.isArray(units)) {
     throw new Error("project-driven-executor refused: bridge.units must be an array");
   }
+  const seenInScope = new Set<string>();
   for (const unit of units) {
     if (typeof unit !== "object" || unit === null) {
       throw new Error("project-driven-executor refused: bridge unit must be an object");
@@ -1252,15 +1324,40 @@ export function synthesiseDrivenTranslatedBridge(args: {
     if (typeof sourceText !== "string") {
       throw new Error("project-driven-executor refused: bridge unit sourceText must be a string");
     }
-    const accepted =
-      typeof bridgeUnitId === "string" ? acceptedBodies.get(bridgeUnitId) : undefined;
-    const text =
-      accepted === undefined
-        ? sourceText // byte no-op: deferred / out-of-scope / failed unit.
-        : engineProfile === "rpg-maker-mv-mz"
-          ? accepted
-          : bracketWrapForRealLive(accepted);
-    record.target = { locale: targetLocale, text };
+    const inScope = typeof bridgeUnitId === "string" && inScopeUnitIds.has(bridgeUnitId);
+    if (inScope) {
+      seenInScope.add(bridgeUnitId);
+      const writtenBody = writtenBodies.get(bridgeUnitId);
+      if (writtenBody === undefined) {
+        throw new Error(
+          `project-driven-executor refused: in-scope unit ${bridgeUnitId} has no written body; refusing target-source substitution`,
+        );
+      }
+      assertSelectedTargetBody({
+        body: writtenBody,
+        sourceText:
+          engineProfile === "rpg-maker-mv-mz"
+            ? sourceText
+            : stripOutOfBandControlMarkup(sourceText),
+        label: `written body for ${bridgeUnitId}`,
+      });
+      record.target = {
+        locale: targetLocale,
+        text:
+          engineProfile === "rpg-maker-mv-mz" ? writtenBody : bracketWrapForRealLive(writtenBody),
+      };
+      continue;
+    }
+    // Configured-out units are deliberately byte-no-op. This branch is never
+    // available to an in-scope unit, even when a worker failed or stopped.
+    record.target = { locale: targetLocale, text: sourceText };
+  }
+  for (const bridgeUnitId of inScopeUnitIds) {
+    if (!seenInScope.has(bridgeUnitId)) {
+      throw new Error(
+        `project-driven-executor refused: in-scope unit ${bridgeUnitId} is absent from raw bridge export`,
+      );
+    }
   }
   return clone;
 }

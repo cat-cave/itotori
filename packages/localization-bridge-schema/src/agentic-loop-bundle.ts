@@ -12,18 +12,13 @@
 //   - pre_translation     : speaker-label invocation + glossary lookup.
 //   - translation         : draft generation by the TranslationAgent.
 //   - deterministic_checks: protected-spans / glossary / charset /
-//                           length / punctuation gates.
+//                           length diagnostics.
 //   - qa_findings         : the four focused LLM-QA agents (run via
 //                           ScoredFindingWorkflow + optional regrade).
-//   - routing             : FindingTriageRouter classification of every
-//                           finding / violation produced upstream.
-//   - repair              : bounded repair iteration when routing
-//                           identified a repairable cause. May be
-//                           skipped (no repairable cause) or capped at
-//                           policy.maxRepairAttempts.
-//   - final_draft         : the resolved draft surface — either the
-//                           accepted draft or a `deferred_to_human`
-//                           outcome.
+//   - routing             : FindingTriageRouter classification telemetry.
+//   - repair              : bounded best-effort repair iteration.
+//   - final_draft         : historical stage label retained as telemetry;
+//                           the durable result is always `writtenOutcome`.
 //
 // Every stage record carries its `invocations` array (one per LLM
 // call within the stage); every invocation declares the explicit
@@ -34,15 +29,13 @@
 // The schema version is locked to a literal so any change forces a
 // downstream consumer migration.
 
-// ITOTORI-234 bumped v1 -> v2 to add per-invocation `zdr` + `seed`
-// fields on every `AgenticLoopInvocation`. The fields are drawn from
-// the parsed v0.2 pair-policy's per-stage posture and recorded verbatim
-// so an audit can prove the ZDR posture + seed-derived nondeterminism
-// applied at each call.
+// v3 replaces the optional/deferred final-draft XOR with the canonical
+// `WrittenUnitOutcome`. Every in-scope unit has a selected, non-blank target
+// candidate; QA persists as annotations and cannot erase the text.
 //
-// No-legacy-compat: v1 bundles no longer load. Tests + driver fixtures
-// were rewritten in the same change.
-export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v2" as const;
+// No-legacy-compat: v1 and v2 bundles no longer load. Tests + drivers must
+// produce the v3 written-outcome shape in the same change.
+export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v3" as const;
 
 /**
  * Closed enum of stage names. Order is the orchestrator's invocation
@@ -60,36 +53,6 @@ export const AGENTIC_LOOP_STAGE_NAMES = [
   "final_draft",
 ] as const;
 export type AgenticLoopStageName = (typeof AGENTIC_LOOP_STAGE_NAMES)[number];
-
-/**
- * Closed enum of routing outcomes. `accepted` means the draft cleared
- * every gate AND triage routed everything to a benign class.
- * `repaired_then_accepted` means a repair iteration produced a draft
- * that cleared BOTH the deterministic recheck AND a bounded re-QA pass
- * (the QA judge re-evaluated the repaired draft and confirmed the
- * QA-flagged issue that drove the repair is resolved — zero repairable
- * causes + zero critical findings). `repaired_then_qa_rejected` means a
- * repair iteration cleared the deterministic recheck but the bounded
- * re-QA pass STILL flagged a repairable/critical issue on the repaired
- * draft: the repair did not confirmably fix the problem, so the draft is
- * NOT persisted and is routed to the human queue (distinct from a plain
- * budget-exhaustion defer so telemetry shows repair WAS attempted +
- * re-judged but not confirmed). `deferred_to_human` means the
- * orchestrator exhausted the repair budget without ever producing a
- * deterministically-clean repaired draft (or routing immediately
- * requested human review) and the draft was NOT persisted — the human
- * triage queue owns the next step. `escalated_to_runtime` is reserved
- * for runtime-attribution routing (HumanFinding with attribution=runtime).
- */
-export const AGENTIC_LOOP_ROUTING_OUTCOMES = [
-  "accepted",
-  "repaired_then_accepted",
-  "repaired_then_qa_rejected",
-  "deferred_to_human",
-  "escalated_to_runtime",
-  "short_circuit_deterministic_p0",
-] as const;
-export type AgenticLoopRoutingOutcome = (typeof AGENTIC_LOOP_ROUTING_OUTCOMES)[number];
 
 /**
  * Pair declaration that EVERY invocation in the bundle carries.
@@ -156,8 +119,8 @@ export type DroppedContextEnrichment = {
 /**
  * One stage of the agentic loop. `outcome` is a free-text status
  * tag — e.g. `succeeded`, `skipped:no-repairable-cause`,
- * `short_circuit:p0-deterministic`. The router stage carries a more
- * specific `routingOutcome` on the bundle's top-level summary.
+ * `diagnosed:deterministic`. It is telemetry only: it can never gate or
+ * remove the written outcome.
  *
  * `droppedEnrichments` is present ONLY on the context stage and ONLY when at
  * least one best-effort semantic agent was dropped; an all-succeed context
@@ -175,29 +138,74 @@ export type AgenticLoopStageRecord = {
 };
 
 /**
- * Summary of routing classifications applied to all findings +
- * deterministic violations that emerged from the loop. Mirrors the
- * `FindingTriageSummary` shape but is denormalized into the wire
- * surface so the bundle is self-describing.
+ * Branded target text that is safe to persist as a selected candidate. The
+ * constructor and bundle validator require it to be non-blank after trimming,
+ * already trimmed, and not a locale-tagged source replay such as
+ * `[en-US]<source>`.
  */
-export type AgenticLoopRoutingSummary = {
-  outcome: AgenticLoopRoutingOutcome;
-  routedFindingCount: number;
-  criticalFindingCount: number;
-  repairAttempts: number;
-  maxRepairAttempts: number;
+export type NonBlankTargetText = string & { readonly __brand: "NonBlank" };
+
+/**
+ * Convert a known target string into its branded form. This is deliberately
+ * strict rather than a trimming fallback: callers must make their selection
+ * explicit, and the same invariants hold at construction and parsing time.
+ */
+export function asNonBlankTargetText(value: string): NonBlankTargetText {
+  assertNonBlankTargetText(value, "targetText");
+  return value;
+}
+
+/** True when a value uses the toxic locale-tagged source-replay convention. */
+export function isLocaleTaggedSourceEcho(value: string): boolean {
+  return /^\[[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*\]/u.test(value);
+}
+
+/** A candidate generated by a primary or repair translation attempt. */
+export type TranslationCandidate = {
+  id: string;
+  outcomeId: string;
+  body: NonBlankTargetText;
+  producedBy: AgenticLoopProviderPair;
+  attemptId: string;
+  kind: "primary" | "repair";
+};
+
+export const WRITTEN_QA_FINDING_SEVERITIES = ["info", "minor", "major", "critical"] as const;
+export type WrittenQaFindingSeverity = (typeof WRITTEN_QA_FINDING_SEVERITIES)[number];
+
+/**
+ * A permanent QA annotation scoped to the candidate it judged. This is distinct
+ * from the agent response `QaFinding`: outcome findings contain durable
+ * candidate/outcome identities and never encode a release decision.
+ */
+export type WrittenQaFinding = {
+  id: string;
+  outcomeId: string;
+  candidateId: string;
+  severity: WrittenQaFindingSeverity;
+  category: string;
+  note: string;
+  contested: boolean;
+  confidence: number;
 };
 
 /**
- * The final-draft slice surfaced into the bundle. For a repaired or
- * accepted draft this carries `draftText`; for a `deferred_to_human`
- * outcome it carries `deferredReason` instead and `draftText` is
- * undefined.
+ * The canonical terminal result for one in-scope unit. `status` intentionally
+ * has one value: all quality and repair state lives in `findings` and
+ * `qualityFlags`, never in a missing/cleared target draft.
  */
-export type AgenticLoopFinalDraft = {
-  bridgeUnitId: string;
-  draftText?: string;
-  deferredReason?: string;
+export type WrittenUnitOutcome = {
+  /** Stable outcome identity referenced by candidates and QA annotations. */
+  id: string;
+  status: "written";
+  unitId: string;
+  targetLocale: string;
+  selectedCandidateId: string;
+  candidates: TranslationCandidate[];
+  findings: WrittenQaFinding[];
+  qualityFlags: string[];
+  provenance: unknown;
+  writtenAt: string;
 };
 
 export type AgenticLoopBundle = {
@@ -208,8 +216,7 @@ export type AgenticLoopBundle = {
   sourceLocale: string;
   targetLocale: string;
   stages: AgenticLoopStageRecord[];
-  routingSummary: AgenticLoopRoutingSummary;
-  finalDraft: AgenticLoopFinalDraft;
+  writtenOutcome: WrittenUnitOutcome;
 };
 
 // ---------------------------------------------------------------------------
@@ -228,7 +235,9 @@ export class AgenticLoopBundleValidationError extends Error {
 }
 
 const STAGE_NAME_VALUES: ReadonlyArray<string> = [...AGENTIC_LOOP_STAGE_NAMES];
-const ROUTING_OUTCOME_VALUES: ReadonlyArray<string> = [...AGENTIC_LOOP_ROUTING_OUTCOMES];
+const WRITTEN_QA_FINDING_SEVERITY_VALUES: ReadonlyArray<string> = [
+  ...WRITTEN_QA_FINDING_SEVERITIES,
+];
 
 export function assertAgenticLoopBundle(value: unknown): asserts value is AgenticLoopBundle {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -243,8 +252,7 @@ export function assertAgenticLoopBundle(value: unknown): asserts value is Agenti
     "sourceLocale",
     "targetLocale",
     "stages",
-    "routingSummary",
-    "finalDraft",
+    "writtenOutcome",
   ]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
@@ -273,8 +281,22 @@ export function assertAgenticLoopBundle(value: unknown): asserts value is Agenti
   for (const [index, stage] of record.stages.entries()) {
     assertStageRecord(stage, `stages[${index}]`);
   }
-  assertRoutingSummary(record.routingSummary, "routingSummary");
-  assertFinalDraft(record.finalDraft, "finalDraft");
+  assertWrittenUnitOutcome(record.writtenOutcome, "writtenOutcome");
+  const writtenOutcome = record.writtenOutcome as WrittenUnitOutcome;
+  if (writtenOutcome.unitId !== record.bridgeUnitId) {
+    throw new AgenticLoopBundleValidationError(
+      "writtenOutcome.unitId",
+      "unitBinding",
+      `must equal bundle bridgeUnitId '${String(record.bridgeUnitId)}'`,
+    );
+  }
+  if (writtenOutcome.targetLocale !== record.targetLocale) {
+    throw new AgenticLoopBundleValidationError(
+      "writtenOutcome.targetLocale",
+      "localeBinding",
+      `must equal bundle targetLocale '${String(record.targetLocale)}'`,
+    );
+  }
 }
 
 function assertStageRecord(value: unknown, label: string): void {
@@ -422,17 +444,30 @@ function assertProviderPair(value: unknown, label: string): void {
   assertNonEmptyString(record.providerId, `${label}.providerId`);
 }
 
-function assertRoutingSummary(value: unknown, label: string): void {
+/**
+ * Validate the canonical terminal outcome independently of an enclosing loop
+ * bundle. Downstream artifact boundaries use this instead of reintroducing a
+ * second optional-draft result model.
+ */
+export function assertWrittenUnitOutcome(
+  value: unknown,
+  label: string,
+): asserts value is WrittenUnitOutcome {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new AgenticLoopBundleValidationError(label, "type", "expected object");
   }
   const record = value as Record<string, unknown>;
   const allowed = new Set([
-    "outcome",
-    "routedFindingCount",
-    "criticalFindingCount",
-    "repairAttempts",
-    "maxRepairAttempts",
+    "id",
+    "status",
+    "unitId",
+    "targetLocale",
+    "selectedCandidateId",
+    "candidates",
+    "findings",
+    "qualityFlags",
+    "provenance",
+    "writtenAt",
   ]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
@@ -443,25 +478,83 @@ function assertRoutingSummary(value: unknown, label: string): void {
       );
     }
   }
-  if (typeof record.outcome !== "string" || !ROUTING_OUTCOME_VALUES.includes(record.outcome)) {
+  assertTrimmedNonEmptyString(record.id, `${label}.id`);
+  if (record.status !== "written") {
+    throw new AgenticLoopBundleValidationError(`${label}.status`, "const", "expected 'written'");
+  }
+  assertTrimmedNonEmptyString(record.unitId, `${label}.unitId`);
+  assertTrimmedNonEmptyString(record.targetLocale, `${label}.targetLocale`);
+  assertTrimmedNonEmptyString(record.selectedCandidateId, `${label}.selectedCandidateId`);
+  if (!Array.isArray(record.candidates)) {
+    throw new AgenticLoopBundleValidationError(`${label}.candidates`, "type", "expected array");
+  }
+  if (record.candidates.length === 0) {
     throw new AgenticLoopBundleValidationError(
-      `${label}.outcome`,
-      "enum",
-      `must be one of [${ROUTING_OUTCOME_VALUES.join(", ")}]`,
+      `${label}.candidates`,
+      "minItems",
+      "must contain at least one non-blank candidate",
     );
   }
-  assertNonNegativeInteger(record.routedFindingCount, `${label}.routedFindingCount`);
-  assertNonNegativeInteger(record.criticalFindingCount, `${label}.criticalFindingCount`);
-  assertNonNegativeInteger(record.repairAttempts, `${label}.repairAttempts`);
-  assertNonNegativeInteger(record.maxRepairAttempts, `${label}.maxRepairAttempts`);
+  const candidateIds = new Set<string>();
+  for (const [index, candidate] of record.candidates.entries()) {
+    assertTranslationCandidate(candidate, `${label}.candidates[${index}]`, record.id, candidateIds);
+  }
+  if (!candidateIds.has(record.selectedCandidateId as string)) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.selectedCandidateId`,
+      "reference",
+      "must resolve to a candidate in writtenOutcome.candidates",
+    );
+  }
+  if (!Array.isArray(record.findings)) {
+    throw new AgenticLoopBundleValidationError(`${label}.findings`, "type", "expected array");
+  }
+  const findingIds = new Set<string>();
+  for (const [index, finding] of record.findings.entries()) {
+    assertWrittenQaFinding(
+      finding,
+      `${label}.findings[${index}]`,
+      record.id,
+      candidateIds,
+      findingIds,
+    );
+  }
+  if (!Array.isArray(record.qualityFlags)) {
+    throw new AgenticLoopBundleValidationError(`${label}.qualityFlags`, "type", "expected array");
+  }
+  const qualityFlags = new Set<string>();
+  for (const [index, flag] of record.qualityFlags.entries()) {
+    assertTrimmedNonEmptyString(flag, `${label}.qualityFlags[${index}]`);
+    if (qualityFlags.has(flag as string)) {
+      throw new AgenticLoopBundleValidationError(
+        `${label}.qualityFlags[${index}]`,
+        "uniqueItems",
+        `duplicate quality flag '${String(flag)}'`,
+      );
+    }
+    qualityFlags.add(flag as string);
+  }
+  if (!("provenance" in record)) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.provenance`,
+      "required",
+      "missing required field provenance",
+    );
+  }
+  assertTrimmedNonEmptyString(record.writtenAt, `${label}.writtenAt`);
 }
 
-function assertFinalDraft(value: unknown, label: string): void {
+function assertTranslationCandidate(
+  value: unknown,
+  label: string,
+  outcomeId: unknown,
+  candidateIds: Set<string>,
+): void {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new AgenticLoopBundleValidationError(label, "type", "expected object");
   }
   const record = value as Record<string, unknown>;
-  const allowed = new Set(["bridgeUnitId", "draftText", "deferredReason"]);
+  const allowed = new Set(["id", "outcomeId", "body", "producedBy", "attemptId", "kind"]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
       throw new AgenticLoopBundleValidationError(
@@ -471,30 +564,157 @@ function assertFinalDraft(value: unknown, label: string): void {
       );
     }
   }
-  assertNonEmptyString(record.bridgeUnitId, `${label}.bridgeUnitId`);
-  if (record.draftText !== undefined && typeof record.draftText !== "string") {
+  assertTrimmedNonEmptyString(record.id, `${label}.id`);
+  if (candidateIds.has(record.id as string)) {
     throw new AgenticLoopBundleValidationError(
-      `${label}.draftText`,
-      "type",
-      "expected string when present",
+      `${label}.id`,
+      "uniqueItems",
+      `duplicate candidate id '${String(record.id)}'`,
     );
   }
-  if (record.deferredReason !== undefined && typeof record.deferredReason !== "string") {
+  candidateIds.add(record.id as string);
+  assertTrimmedNonEmptyString(record.outcomeId, `${label}.outcomeId`);
+  if (record.outcomeId !== outcomeId) {
     throw new AgenticLoopBundleValidationError(
-      `${label}.deferredReason`,
-      "type",
-      "expected string when present",
+      `${label}.outcomeId`,
+      "outcomeBinding",
+      `must equal writtenOutcome.id '${String(outcomeId)}'`,
     );
   }
-  // Exactly one of draftText / deferredReason must be present so the
-  // bundle is unambiguous about whether the loop produced a draft.
-  const hasDraft = typeof record.draftText === "string";
-  const hasDeferred = typeof record.deferredReason === "string";
-  if (hasDraft === hasDeferred) {
+  assertNonBlankTargetText(record.body, `${label}.body`);
+  assertProviderPair(record.producedBy, `${label}.producedBy`);
+  assertTrimmedNonEmptyString(record.attemptId, `${label}.attemptId`);
+  if (record.kind !== "primary" && record.kind !== "repair") {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.kind`,
+      "enum",
+      "must be one of [primary, repair]",
+    );
+  }
+}
+
+function assertWrittenQaFinding(
+  value: unknown,
+  label: string,
+  outcomeId: unknown,
+  candidateIds: ReadonlySet<string>,
+  findingIds: Set<string>,
+): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new AgenticLoopBundleValidationError(label, "type", "expected object");
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set([
+    "id",
+    "outcomeId",
+    "candidateId",
+    "severity",
+    "category",
+    "note",
+    "contested",
+    "confidence",
+  ]);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      throw new AgenticLoopBundleValidationError(
+        `${label}.${key}`,
+        "additionalProperties",
+        `unexpected property ${key}`,
+      );
+    }
+  }
+  assertTrimmedNonEmptyString(record.id, `${label}.id`);
+  if (findingIds.has(record.id as string)) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.id`,
+      "uniqueItems",
+      `duplicate finding id '${String(record.id)}'`,
+    );
+  }
+  findingIds.add(record.id as string);
+  assertTrimmedNonEmptyString(record.outcomeId, `${label}.outcomeId`);
+  if (record.outcomeId !== outcomeId) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.outcomeId`,
+      "outcomeBinding",
+      `must equal writtenOutcome.id '${String(outcomeId)}'`,
+    );
+  }
+  assertTrimmedNonEmptyString(record.candidateId, `${label}.candidateId`);
+  if (!candidateIds.has(record.candidateId as string)) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.candidateId`,
+      "reference",
+      "must resolve to a candidate in writtenOutcome.candidates",
+    );
+  }
+  if (
+    typeof record.severity !== "string" ||
+    !WRITTEN_QA_FINDING_SEVERITY_VALUES.includes(record.severity)
+  ) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.severity`,
+      "enum",
+      `must be one of [${WRITTEN_QA_FINDING_SEVERITY_VALUES.join(", ")}]`,
+    );
+  }
+  assertTrimmedNonEmptyString(record.category, `${label}.category`);
+  assertTrimmedNonEmptyString(record.note, `${label}.note`);
+  if (typeof record.contested !== "boolean") {
+    throw new AgenticLoopBundleValidationError(`${label}.contested`, "type", "expected boolean");
+  }
+  if (
+    typeof record.confidence !== "number" ||
+    !Number.isFinite(record.confidence) ||
+    record.confidence < 0 ||
+    record.confidence > 1
+  ) {
+    throw new AgenticLoopBundleValidationError(
+      `${label}.confidence`,
+      "range",
+      "expected a finite number from 0 through 1",
+    );
+  }
+}
+
+export function assertNonBlankTargetText(
+  value: unknown,
+  label = "targetText",
+): asserts value is NonBlankTargetText {
+  if (typeof value !== "string") {
+    throw new AgenticLoopBundleValidationError(label, "type", "expected string");
+  }
+  if (value.trim().length === 0) {
+    throw new AgenticLoopBundleValidationError(label, "nonBlank", "must not be blank");
+  }
+  if (value !== value.trim()) {
     throw new AgenticLoopBundleValidationError(
       label,
-      "oneOf",
-      "exactly one of finalDraft.draftText or finalDraft.deferredReason must be present",
+      "trimmed",
+      "must not have leading or trailing whitespace",
+    );
+  }
+  if (isLocaleTaggedSourceEcho(value)) {
+    throw new AgenticLoopBundleValidationError(
+      label,
+      "sourceEcho",
+      "must not use a locale-tagged source replay",
+    );
+  }
+}
+
+function assertTrimmedNonEmptyString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string") {
+    throw new AgenticLoopBundleValidationError(label, "type", "expected string");
+  }
+  if (value.trim().length === 0) {
+    throw new AgenticLoopBundleValidationError(label, "minLength", "must be non-blank");
+  }
+  if (value !== value.trim()) {
+    throw new AgenticLoopBundleValidationError(
+      label,
+      "trimmed",
+      "must not have leading or trailing whitespace",
     );
   }
 }

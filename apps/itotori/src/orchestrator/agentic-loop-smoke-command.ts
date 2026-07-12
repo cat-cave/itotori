@@ -71,10 +71,9 @@ export type AgenticLoopSmokeArgs = {
   /**
    * Optional second output path. When provided, the smoke command
    * also writes a `DraftArtifactBundle` derived from the loop's
-   * final-draft stage so downstream consumers (e.g. `export-patch-v2`)
-   * have a v1 draft-artifact wire shape on disk alongside the
-   * AgenticLoopBundle. Useful for hello-patch which still consumes
-   * a DraftArtifactBundle.
+   * selected written outcome so downstream consumers (e.g.
+   * `export-patch-v2`) receive the canonical DraftArtifactBundle wire shape
+   * on disk alongside the AgenticLoopBundle.
    */
   draftArtifactOutputPath?: string;
 };
@@ -176,9 +175,8 @@ export async function runAgenticLoopSmokeCommand(
 }
 
 /**
- * Project the AgenticLoopBundle's final-draft slice into the legacy
- * `DraftArtifactBundle.v1` wire shape so consumers that still expect
- * a DraftArtifactBundle (e.g. export-patch-v2) keep working.
+ * Project the AgenticLoopBundle's canonical written outcome into the
+ * DraftArtifactBundle boundary consumed by export-patch-v2.
  *
  * The projection commits to one entry per unit (the smoke command
  * runs on a single unit by design). Token / cost totals come from
@@ -204,35 +202,19 @@ function toDraftArtifactBundle(
   const proofId = ledgerProofIds[0] ?? `agentic-loop-smoke:${bundle.bridgeUnitId}:proof`;
   const ledgerEntryRef = `agentic-loop-smoke:${bundle.bridgeUnitId}:ledger`;
   const draftJobId = `agentic-loop-${bundle.bridgeUnitId}-job`;
-  const deferred = bundle.finalDraft.draftText === undefined;
   return {
     schemaVersion: DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
     draftJobId,
     projectId: bundle.projectId,
     localeBranchId: bundle.localeBranchId,
     drafts: [
-      deferred
-        ? {
-            sourceUnitId: unit.bridgeUnitId,
-            draftId: `draft-${ledgerEntryRef}-${unit.bridgeUnitId}`,
-            providerProofId: proofId,
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState: "terminal-rejection",
-            costLedgerEntryRef: ledgerEntryRef,
-            terminalReason: bundle.finalDraft.deferredReason ?? "agentic loop deferred to human",
-          }
-        : {
-            sourceUnitId: unit.bridgeUnitId,
-            draftId: `draft-${ledgerEntryRef}-${unit.bridgeUnitId}`,
-            providerProofId: proofId,
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState:
-              bundle.routingSummary.outcome === "repaired_then_accepted"
-                ? "retried-then-success"
-                : "success",
-            costLedgerEntryRef: ledgerEntryRef,
-            draftText: bundle.finalDraft.draftText ?? "",
-          },
+      {
+        sourceUnitId: unit.bridgeUnitId,
+        draftId: `draft-${ledgerEntryRef}-${unit.bridgeUnitId}`,
+        providerProofId: proofId,
+        costLedgerEntryRef: ledgerEntryRef,
+        writtenOutcome: bundle.writtenOutcome,
+      },
     ],
     ledgerSummary: {
       totalCost: microsToDecimal(totalCostMicros),
@@ -335,7 +317,7 @@ function smokeProviderFactory(
   unit: LocalizationUnitV02,
   policy: AgenticLoopPolicy,
 ): AgenticLoopProviderFactory {
-  const draftText = synthesizeDraftText(unit, policy.targetLocale);
+  const draftText = synthesizeDraftText(unit);
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
       providerName: `agentic-loop-smoke:${stage}:${agentLabel}`,
@@ -360,8 +342,15 @@ function smokeProviderFactory(
     });
 }
 
-function synthesizeDraftText(unit: LocalizationUnitV02, targetLocale: string): string {
-  return `[${targetLocale}] ${unit.sourceText}`;
+function synthesizeDraftText(unit: LocalizationUnitV02): string {
+  // The smoke provider needs a deterministic fixture target, not a target-
+  // locale label wrapped around the source. Keep the synthetic value distinct
+  // even for deliberately adversarial smoke input.
+  let draftText = `Localized smoke draft (${unit.bridgeUnitId}).`;
+  while (draftText === unit.sourceText.trim()) {
+    draftText += "!";
+  }
+  return draftText;
 }
 
 function makeSmokeSpeakerLabel(unit: LocalizationUnitV02): string {

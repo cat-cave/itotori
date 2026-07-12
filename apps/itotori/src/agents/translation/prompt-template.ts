@@ -35,6 +35,7 @@ const SYSTEM_INSTRUCTIONS = [
   "citationRefs cites glossary term ids or context-artifact ids you consulted; never raw quotes.",
   "agentRationale explains the translation choices and any policy applications.",
   "draftText MUST contain ONLY the target-language rendering of the source line.",
+  "draftText MUST be non-blank and MUST NOT repeat the source text or prefix it with a locale tag such as '[locale] source'.",
   "Do NOT append translator's notes, TL notes, meta-commentary, or any parenthetical annotation intended for the reader of the draft (e.g. '(TL note: ...)', '(translator's note: ...)'). All commentary belongs in `agentRationale`, never in `draftText`.",
   `confidenceFloor MUST be one of: ${TRANSLATION_DRAFT_CONFIDENCE_FLOORS.join(", ")}.`,
   `The schemaVersion field MUST equal EXACTLY the string "${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}". Copy it verbatim.`,
@@ -258,9 +259,9 @@ function renderWorkScopeContext(context: TranslationWorkScopeContext): string[] 
  * itotori-pass-ledger — render the prior-pass feedback block for the
  * translation prompt. Deterministic (fixed key order, no free-text sorting) so
  * two pass N+1 runs over the same prior-pass state emit byte-equal prompts.
- * The block tells the model (a) what the prior pass produced, (b) why it was
- * flagged, and (c) the feedback note to address — so the draft iterates rather
- * than re-deriving from a blank slate.
+ * The block tells the model (a) what the prior pass wrote, (b) its
+ * informational quality flags, and (c) the feedback note to address — so the
+ * draft iterates rather than re-deriving from a blank slate.
  */
 function renderPriorPassFeedback(feedback: PriorPassFeedback): string[] {
   const out: string[] = [];
@@ -268,13 +269,12 @@ function renderPriorPassFeedback(feedback: PriorPassFeedback): string[] {
     `Prior pass feedback (from localization pass ${feedback.passNumber} — ` +
       "iterate on this unit's prior result, do NOT restart from scratch):",
   );
-  out.push(`- Prior outcome: ${feedback.priorOutcome}`);
-  if (feedback.priorDraftText !== undefined) {
-    out.push(`- Prior draft: ${JSON.stringify(feedback.priorDraftText)}`);
-  }
-  if (feedback.deferredReason !== undefined) {
-    out.push(`- Prior defer reason: ${feedback.deferredReason}`);
-  }
+  out.push(`- Prior written draft: ${JSON.stringify(feedback.priorDraftText)}`);
+  out.push(
+    `- Informational quality flags: ${
+      feedback.qualityFlags.length > 0 ? feedback.qualityFlags.join(", ") : "none"
+    }`,
+  );
   if (feedback.feedbackNote !== undefined) {
     out.push(`- Feedback to address: ${feedback.feedbackNote}`);
   }

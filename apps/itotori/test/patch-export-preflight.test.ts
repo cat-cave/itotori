@@ -1,11 +1,12 @@
 // ITOTORI-025 — PatchExportPreflight tests.
 //
-// One positive + one negative case per check (six checks → twelve
+// One positive + one negative case per check (five checks → ten
 // scenarios), plus a runAll integration scenario verifying the
 // result-order contract.
 
 import { describe, expect, it } from "vitest";
 import {
+  asNonBlankTargetText,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type DraftArtifactBundle,
 } from "@itotori/localization-bridge-schema";
@@ -60,17 +61,7 @@ function makeDraftBundle(overrides: Partial<DraftArtifactBundle> = {}): DraftArt
     draftJobId: "draft-job-001",
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
-    drafts: [
-      {
-        sourceUnitId: "unit-001",
-        draftId: "draft-001",
-        providerProofId: "proof-001",
-        protectedSpanValidationResult: { accepted: true },
-        retryFallbackState: "success",
-        costLedgerEntryRef: "ledger-001",
-        draftText: "Hello, {player}.",
-      },
-    ],
+    drafts: [makeDraftEntry()],
     ledgerSummary: {
       totalCost: "0.00000000",
       totalTokensIn: 0,
@@ -79,6 +70,48 @@ function makeDraftBundle(overrides: Partial<DraftArtifactBundle> = {}): DraftArt
       providerProofIds: ["proof-001"],
     },
     ...overrides,
+  };
+}
+
+function makeDraftEntry(
+  overrides: {
+    sourceUnitId?: string;
+    draftId?: string;
+    selectedBody?: string;
+    targetLocale?: string;
+    qualityFlags?: string[];
+  } = {},
+): DraftArtifactBundle["drafts"][number] {
+  const sourceUnitId = overrides.sourceUnitId ?? "unit-001";
+  const draftId = overrides.draftId ?? "draft-001";
+  const outcomeId = `outcome:${draftId}`;
+  const candidateId = `${outcomeId}:selected`;
+  return {
+    sourceUnitId,
+    draftId,
+    providerProofId: "proof-001",
+    costLedgerEntryRef: "ledger-001",
+    writtenOutcome: {
+      id: outcomeId,
+      status: "written",
+      unitId: sourceUnitId,
+      targetLocale: overrides.targetLocale ?? TARGET_LOCALE,
+      selectedCandidateId: candidateId,
+      candidates: [
+        {
+          id: candidateId,
+          outcomeId,
+          body: asNonBlankTargetText(overrides.selectedBody ?? "Hello, {player}."),
+          producedBy: { modelId: "fixture-model", providerId: "fixture-provider" },
+          attemptId: `attempt:${draftId}`,
+          kind: "primary",
+        },
+      ],
+      findings: [],
+      qualityFlags: overrides.qualityFlags ?? [],
+      provenance: { fixture: true },
+      writtenAt: "2026-07-11T00:00:00.000Z",
+    },
   };
 }
 
@@ -161,35 +194,6 @@ describe("PatchExportPreflight", () => {
     });
   });
 
-  describe("allDraftsAccepted", () => {
-    it("passes when no draft is terminally rejected", () => {
-      const preflight = new PatchExportPreflight();
-      const result = preflight.allDraftsAccepted(baseInput());
-      expect(result.status).toBe("pass");
-    });
-
-    it("blocks export when any draft terminally rejected", () => {
-      const preflight = new PatchExportPreflight();
-      const bundle = makeDraftBundle({
-        drafts: [
-          {
-            sourceUnitId: "unit-001",
-            draftId: "draft-001",
-            providerProofId: "proof-001",
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState: "terminal-rejection",
-            costLedgerEntryRef: "ledger-001",
-            terminalReason: "model refused to translate",
-          },
-        ],
-      });
-      const result = preflight.allDraftsAccepted(baseInput({ draftArtifactBundle: bundle }));
-      expect(result.status).toBe("fail");
-      expect(result.blockingExport).toBe(true);
-      expect(result.detail).toContain("unit-001");
-    });
-  });
-
   describe("protectedSpanCoverage", () => {
     it("passes when every protected span appears in the draft", () => {
       const preflight = new PatchExportPreflight();
@@ -215,17 +219,7 @@ describe("PatchExportPreflight", () => {
         }),
       ]);
       const bundle = makeDraftBundle({
-        drafts: [
-          {
-            sourceUnitId: "unit-001",
-            draftId: "draft-001",
-            providerProofId: "proof-001",
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState: "success",
-            costLedgerEntryRef: "ledger-001",
-            draftText: "Hello.",
-          },
-        ],
+        drafts: [makeDraftEntry({ selectedBody: "Hello." })],
       });
       const result = new PatchExportPreflight().protectedSpanCoverage(
         baseInput({ sourceBridgeView: view, draftArtifactBundle: bundle }),
@@ -233,7 +227,7 @@ describe("PatchExportPreflight", () => {
       expect(result.status).toBe("pass");
     });
 
-    it("passes when a missing draft has only out-of-band spans", () => {
+    it("blocks when a written outcome is missing even if the unit has only out-of-band spans", () => {
       const view = makeSourceBridgeView([
         makeSourceBridgeUnit({
           protectedSpans: [
@@ -255,7 +249,26 @@ describe("PatchExportPreflight", () => {
           draftArtifactBundle: makeDraftBundle({ drafts: [] }),
         }),
       );
-      expect(result.status).toBe("pass");
+      expect(result.status).toBe("fail");
+      expect(result.blockingExport).toBe(true);
+      expect(result.detail).toContain("unit-001:no_written_outcome");
+    });
+
+    it("blocks duplicate and unknown written outcomes instead of overwriting or ignoring them", () => {
+      const bundle = makeDraftBundle({
+        drafts: [
+          makeDraftEntry(),
+          makeDraftEntry({ draftId: "draft-duplicate" }),
+          makeDraftEntry({ sourceUnitId: "unknown-unit", draftId: "draft-unknown" }),
+        ],
+      });
+      const result = new PatchExportPreflight().protectedSpanCoverage(
+        baseInput({ draftArtifactBundle: bundle }),
+      );
+      expect(result.status).toBe("fail");
+      expect(result.blockingExport).toBe(true);
+      expect(result.detail).toContain("duplicate written outcomes: unit-001");
+      expect(result.detail).toContain("unknown written outcomes: unknown-unit");
     });
 
     it("still blocks when a non-out-of-band control markup span is dropped", () => {
@@ -275,17 +288,7 @@ describe("PatchExportPreflight", () => {
         }),
       ]);
       const bundle = makeDraftBundle({
-        drafts: [
-          {
-            sourceUnitId: "unit-001",
-            draftId: "draft-001",
-            providerProofId: "proof-001",
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState: "success",
-            costLedgerEntryRef: "ledger-001",
-            draftText: "Hello.",
-          },
-        ],
+        drafts: [makeDraftEntry({ selectedBody: "Hello." })],
       });
       const result = new PatchExportPreflight().protectedSpanCoverage(
         baseInput({ sourceBridgeView: view, draftArtifactBundle: bundle }),
@@ -297,17 +300,7 @@ describe("PatchExportPreflight", () => {
     it("blocks export when a protected span is missing from the draft", () => {
       const preflight = new PatchExportPreflight();
       const bundle = makeDraftBundle({
-        drafts: [
-          {
-            sourceUnitId: "unit-001",
-            draftId: "draft-001",
-            providerProofId: "proof-001",
-            protectedSpanValidationResult: { accepted: true },
-            retryFallbackState: "success",
-            costLedgerEntryRef: "ledger-001",
-            draftText: "Hello, friend.", // {player} removed
-          },
-        ],
+        drafts: [makeDraftEntry({ selectedBody: "Hello, friend." })], // {player} removed
       });
       const result = preflight.protectedSpanCoverage(baseInput({ draftArtifactBundle: bundle }));
       expect(result.status).toBe("fail");
@@ -382,7 +375,6 @@ describe("PatchExportPreflight", () => {
       expect(results.map((r) => r.check)).toEqual([
         "sourceBridgeIntegrity",
         "noUnresolvedAssetDecisions",
-        "allDraftsAccepted",
         "protectedSpanCoverage",
         "qaScoreThreshold",
         "glossaryConsistency",

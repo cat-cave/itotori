@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExportBundle v0.2 wire schema.
+// ITOTORI-025 — PatchExportBundle wire schema.
 //
 // The patch-export service (apps/itotori/src/patch-export/exporter.ts)
 // emits one of these bundles per successful run. The bundle is the
@@ -23,7 +23,11 @@
 // draft that lost a span (the preflight `protectedSpanCoverage` check
 // catches this).
 
-export const PATCH_EXPORT_BUNDLE_SCHEMA_VERSION = "itotori.patch-export-bundle.v2" as const;
+import { isLocaleTaggedSourceEcho, type NonBlankTargetText } from "./agentic-loop-bundle.js";
+
+// v3 removes the obsolete all-drafts-accepted gate and tightens emitted target
+// bodies to the same non-blank, non-source-replay invariant as WrittenUnitOutcome.
+export const PATCH_EXPORT_BUNDLE_SCHEMA_VERSION = "itotori.patch-export-bundle.v3" as const;
 
 // ---------------------------------------------------------------------------
 // Closed enums
@@ -39,7 +43,6 @@ export const PATCH_EXPORT_BUNDLE_SCHEMA_VERSION = "itotori.patch-export-bundle.v
 export const PATCH_EXPORT_PREFLIGHT_CHECK_KINDS = [
   "sourceBridgeIntegrity",
   "noUnresolvedAssetDecisions",
-  "allDraftsAccepted",
   "protectedSpanCoverage",
   "qaScoreThreshold",
   "glossaryConsistency",
@@ -119,7 +122,7 @@ export type PatchExportDraft = {
   sourceUnitId: string;
   draftId: string;
   sourceText: string;
-  draftText: string;
+  draftText: NonBlankTargetText;
   protectedSpanMappings: ProtectedSpanMapping[];
   sourceUnitHash: string;
   draftUnitHash: string;
@@ -279,8 +282,13 @@ function assertDraft(value: unknown, label: string): asserts value is PatchExpor
   if (typeof record.sourceText !== "string") {
     throw new PatchExportBundleValidationError(`${label}.sourceText`, "type", "expected string");
   }
-  if (typeof record.draftText !== "string") {
-    throw new PatchExportBundleValidationError(`${label}.draftText`, "type", "expected string");
+  assertNonBlankTargetDraftText(record.draftText, `${label}.draftText`);
+  if (record.sourceText.trim().length > 0 && record.draftText === record.sourceText.trim()) {
+    throw new PatchExportBundleValidationError(
+      `${label}.draftText`,
+      "sourceEcho",
+      "must not repeat the source text",
+    );
   }
   assertNonEmptyString(record.sourceUnitHash, `${label}.sourceUnitHash`);
   assertNonEmptyString(record.draftUnitHash, `${label}.draftUnitHash`);
@@ -293,6 +301,32 @@ function assertDraft(value: unknown, label: string): asserts value is PatchExpor
   }
   for (const [index, mapping] of record.protectedSpanMappings.entries()) {
     assertProtectedSpanMapping(mapping, `${label}.protectedSpanMappings[${index}]`);
+  }
+}
+
+function assertNonBlankTargetDraftText(
+  value: unknown,
+  label: string,
+): asserts value is NonBlankTargetText {
+  if (typeof value !== "string") {
+    throw new PatchExportBundleValidationError(label, "type", "expected string");
+  }
+  if (value.trim().length === 0) {
+    throw new PatchExportBundleValidationError(label, "nonBlank", "must not be blank");
+  }
+  if (value !== value.trim()) {
+    throw new PatchExportBundleValidationError(
+      label,
+      "trimmed",
+      "must not have leading or trailing whitespace",
+    );
+  }
+  if (isLocaleTaggedSourceEcho(value)) {
+    throw new PatchExportBundleValidationError(
+      label,
+      "sourceEcho",
+      "must not use a locale-tagged source replay",
+    );
   }
 }
 

@@ -11,11 +11,11 @@
 // + the extracted bridge + the pair-policy), it runs the FULL project — every
 // in-scope unit — through `runLocalizationPass`, which:
 //   - LOADS the latest prior pass from the DB-backed pass ledger so a live pass
-//     N+1 consumes pass N's accepted state + flagged-unit feedback;
-//   - drives every in-scope unit through the agentic loop, PERSISTING drafts +
+//     N+1 consumes pass N's selected written state + flagged-unit feedback;
+//   - drives every in-scope unit through the agentic loop, PERSISTING outcomes +
 //     provider-runs (real usage.cost + ZDR) + reviewer-queue items and
 //     exporting ONE patch;
-//   - RECORDS the pass in the ledger (deterministic accepted deltas vs prior).
+//   - RECORDS the pass in the ledger (deterministic written deltas vs prior).
 //
 // GAME-AGNOSTIC: there is no game-specific code path and no hardcoded game
 // path anywhere. Everything a run needs — the project/branch/revision ids, the
@@ -40,7 +40,7 @@ import type { AgenticLoopProviderFactory } from "./agentic-loop.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
 import {
-  type DrivenDraftSink,
+  type DrivenWrittenOutcomeSink,
   type DrivenEngineProfile,
   type DrivenPatchExportSink,
   type DrivenProviderRunSink,
@@ -150,7 +150,7 @@ export type LocalizeFullProjectDeps = {
   actor: AuthorizationActor;
   providerFactory: AgenticLoopProviderFactory;
   sinks: {
-    draft: DrivenDraftSink;
+    writtenOutcome: DrivenWrittenOutcomeSink;
     providerRun: DrivenProviderRunSink;
     patchExport: DrivenPatchExportSink;
   };
@@ -366,7 +366,7 @@ export async function runLocalizeFullProjectCommand(
     translationScope,
     engineProfile: config.engineProfile,
     sinks: {
-      draft: deps.sinks.draft,
+      writtenOutcome: deps.sinks.writtenOutcome,
       providerRun: deps.sinks.providerRun,
       patchExport: deps.sinks.patchExport,
     },
@@ -395,7 +395,7 @@ export async function runLocalizeFullProjectCommand(
   );
 
   // Run ONE localization pass through the ledger: pass N+1 consumes the
-  // persisted pass N; the executor persists drafts + reviewer items + exports
+  // persisted pass N; the executor persists written outcomes + reviewer items + exports
   // the patch; the ledger records the pass (real usage.cost + ZDR verbatim).
   const { result, record, prior } = await runPipelineStepWithDiagnostic({
     step: "localize.run-pass",
@@ -452,15 +452,14 @@ export async function runLocalizeFullProjectCommand(
     unitsEnumerated: result.unitsEnumerated,
     unitsInScope: result.unitsInScope,
     unitsRun: result.unitsRun,
-    acceptedDraftCount: result.acceptedDraftCount,
-    deferredCount: result.deferredCount,
+    writtenOutcomeCount: result.writtenOutcomeCount,
     failureCount: result.failures.length,
     reviewerQueueItemCount: result.reviewerQueueItemCount,
     patchExportCount: result.patchExportCount,
     ...(result.runtimeValidation !== undefined
       ? { runtimeValidation: result.runtimeValidation }
       : {}),
-    acceptedDeltaCount: record.acceptedDeltas.length,
+    writtenDeltaCount: record.writtenDeltas.length,
     // PROJECT LAW: the REAL summed usage.cost + ZDR posture, verbatim.
     totalUsageCostUsd: result.totalUsageCostUsd,
     zdrConfirmed: result.zdrConfirmed,
@@ -479,8 +478,8 @@ export async function runLocalizeFullProjectCommand(
   });
   log(
     `localize: pass ${record.passNumber} recorded — ${result.unitsRun} unit(s), ` +
-      `${result.acceptedDraftCount} accepted / ${result.deferredCount} deferred / ${result.failures.length} failed; ` +
-      `${record.acceptedDeltas.length} accepted delta(s); usage.cost $${result.totalUsageCostUsd.toFixed(6)} ` +
+      `${result.writtenOutcomeCount} written / ${result.failures.length} failed; ` +
+      `${record.writtenDeltas.length} written delta(s); usage.cost $${result.totalUsageCostUsd.toFixed(6)} ` +
       `(zdr=${result.zdrConfirmed}); wrote ${args.runSummaryPath}`,
   );
 

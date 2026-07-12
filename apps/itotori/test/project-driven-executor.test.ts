@@ -4,9 +4,9 @@
 // driven pilot: it ENUMERATES the in-scope units (consuming the batch
 // planner's scene grouping), runs `runAgenticLoopForUnit` PER unit WITH the
 // real structure-informed context (narrativeStructure + sceneId, P0#1) AND the
-// reviewer-queue DB sink wired (P0#2), PERSISTS drafts + provider-run summaries
-// (real usage.cost + ZDR) + reviewer_queue_items, and produces ONE patch
-// export for the accepted drafts. Per-unit failure isolation: one unit's
+// reviewer-queue DB sink wired (P0#2), PERSISTS written outcomes + provider-run
+// summaries (real usage.cost + ZDR) + reviewer_queue_items, and produces ONE
+// patch export only after configured-scope coverage is complete. Per-unit failure isolation: one unit's
 // malformed-pack failure (the filed P2) does NOT abort the run.
 //
 // Driven with a FakeModelProvider + in-memory sinks + an in-memory
@@ -66,8 +66,9 @@ import {
 import {
   DEFAULT_DRIVEN_CONCURRENCY,
   runProjectDrivenExecutor,
+  synthesiseDrivenTranslatedBridge,
   unitSurfaceKindInScope,
-  type DrivenDraftRecord,
+  type DrivenWrittenOutcomeRecord,
   type DrivenPatchExportRecord,
   type DrivenProviderRunRecord,
   type DrivenUnitContext,
@@ -92,9 +93,9 @@ const SPEAKER_ID = "019ed0cc-0000-7000-8000-000000000005";
 // Bridge unit ids carry a distinct `019ed0aa` prefix so the fake provider can
 // regex the CURRENT unit's bridge id out of any request blob (asset/revision
 // ids use the `019ed0cc` prefix and never collide).
-const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // clean -> accepted
-const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // critical finding -> deferred
-const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // clean -> accepted
+const UNIT_A = "019ed0aa-0000-7000-8000-0000000000a1"; // clean written outcome
+const UNIT_B = "019ed0aa-0000-7000-8000-0000000000b2"; // critical QA annotation
+const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3"; // clean written outcome
 const UNIT_D = "019ed0aa-0000-7000-8000-0000000000d4"; // POISON -> throws (isolated)
 const UNIT_E = "019ed0aa-0000-7000-8000-0000000000e5"; // ui_label -> out of scope
 
@@ -169,12 +170,12 @@ class InMemoryReviewerQueue implements Pick<
 // --- In-memory persistence sinks --------------------------------------------
 
 class InMemorySinks {
-  readonly drafts: DrivenDraftRecord[] = [];
+  readonly writtenOutcomes: DrivenWrittenOutcomeRecord[] = [];
   readonly providerRuns: DrivenProviderRunRecord[] = [];
   readonly patchExports: DrivenPatchExportRecord[] = [];
-  readonly draft = {
-    persistDraft: async (record: DrivenDraftRecord): Promise<void> => {
-      this.drafts.push(record);
+  readonly writtenOutcome = {
+    persistWrittenOutcome: async (record: DrivenWrittenOutcomeRecord): Promise<void> => {
+      this.writtenOutcomes.push(record);
     },
   };
   readonly providerRun = {
@@ -328,9 +329,9 @@ function cleanQaContent(): string {
  * Fake provider factory. Keyed on the CURRENT unit's source markers:
  *   - a unit carrying POISON_MARKER emits a malformed translation pack (wrong
  *     schemaVersion) so the translation agent throws — the P2 shape.
- *   - a unit carrying DEFER_MARKER emits a critical QA finding so the loop
- *     defers (with maxRepairAttempts: 0) and the bridge lands a queue item.
- *   - every other unit translates cleanly and is accepted.
+ *   - a unit carrying DEFER_MARKER emits a critical QA finding. With zero
+ *     repair budget it remains a written primary candidate plus annotations.
+ *   - every other unit translates cleanly into a written outcome.
  */
 function drivenProviderFactory(): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
@@ -436,8 +437,57 @@ describe("unitSurfaceKindInScope (config-driven scope)", () => {
   });
 });
 
+describe("synthesiseDrivenTranslatedBridge (written-body coverage)", () => {
+  it("rejects a missing in-scope body instead of synthesising source text", () => {
+    const rawBridge = JSON.parse(JSON.stringify(makeBridge())) as unknown;
+    expect(() =>
+      synthesiseDrivenTranslatedBridge({
+        rawBridge,
+        writtenBodies: new Map([[UNIT_A, "Good morning."]]),
+        inScopeUnitIds: new Set([UNIT_A, UNIT_B]),
+        engineProfile: "rpg-maker-mv-mz",
+        targetLocale: "en-US",
+      }),
+    ).toThrow(/no written body; refusing target-source substitution/u);
+  });
+
+  it("rejects a source-equal in-scope body instead of exporting it", () => {
+    const bridge = makeBridge();
+    const rawBridge = JSON.parse(JSON.stringify(bridge)) as unknown;
+    const source = bridge.units.find((unit) => unit.bridgeUnitId === UNIT_A)!.sourceText;
+    expect(() =>
+      synthesiseDrivenTranslatedBridge({
+        rawBridge,
+        writtenBodies: new Map([[UNIT_A, source]]),
+        inScopeUnitIds: new Set([UNIT_A]),
+        engineProfile: "rpg-maker-mv-mz",
+        targetLocale: "en-US",
+      }),
+    ).toThrow(/must not echo the source text/u);
+  });
+
+  it("rejects a source-equal RealLive body after out-of-band markup is stripped", () => {
+    const bridge = makeBridge();
+    const markedUnit = bridge.units.find((unit) => unit.bridgeUnitId === UNIT_A);
+    if (markedUnit === undefined) {
+      throw new Error("fixture must include UNIT_A");
+    }
+    markedUnit.sourceText = "<reallive.kidoku 7>おはよう、和人。";
+
+    expect(() =>
+      synthesiseDrivenTranslatedBridge({
+        rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
+        writtenBodies: new Map([[UNIT_A, "おはよう、和人。"]]),
+        inScopeUnitIds: new Set([UNIT_A]),
+        engineProfile: "reallive",
+        targetLocale: "en-US",
+      }),
+    ).toThrow(/must not echo the source text/u);
+  });
+});
+
 describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () => {
-  it("drives the in-scope units, persists drafts + provider-runs + queue-items + ONE patch export, isolates a failing unit", async () => {
+  it("persists every returned written outcome, retains QA flags, and refuses target-source substitution after an isolated failure", async () => {
     const queue = new InMemoryReviewerQueue();
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor(baseInput(queue, sinks));
@@ -449,22 +499,24 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     // Per-unit isolation: UNIT_D (poison) throws but the run completes.
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]!.bridgeUnitId).toBe(UNIT_D);
-    expect(result.unitsRun).toBe(3); // A, B, C succeeded; D isolated.
+    expect(result.unitsRun).toBe(3); // A, B, C returned written outcomes; D isolated.
 
-    // Drafts: one per successfully-run unit; 2 accepted (A, C), 1 deferred (B).
-    expect(result.draftsPersisted).toBe(3);
-    expect(sinks.drafts).toHaveLength(3);
-    expect(result.acceptedDraftCount).toBe(2);
-    expect(result.deferredCount).toBe(1);
-    const acceptedIds = sinks.drafts
-      .filter((d) => d.accepted)
-      .map((d) => d.bridgeUnitId)
-      .sort();
-    expect(acceptedIds).toEqual([UNIT_A, UNIT_C].sort());
-    const deferred = sinks.drafts.find((d) => !d.accepted);
-    expect(deferred!.bridgeUnitId).toBe(UNIT_B);
-    expect(deferred!.outcome).toBe("deferred_to_human");
-    expect(deferred!.deferredReason).toBeDefined();
+    // Every successfully returned loop bundle persists one required selected
+    // body. UNIT_B's critical QA finding is annotation only, never a missing
+    // draft/deferred state.
+    expect(result.writtenOutcomesPersisted).toBe(3);
+    expect(result.writtenOutcomeCount).toBe(3);
+    expect(sinks.writtenOutcomes).toHaveLength(3);
+    for (const outcome of sinks.writtenOutcomes) {
+      expect(outcome.selectedBody.trim().length).toBeGreaterThan(0);
+      const source = makeBridge().units.find(
+        (unit) => unit.bridgeUnitId === outcome.bridgeUnitId,
+      )!.sourceText;
+      expect(outcome.selectedBody).not.toBe(source);
+    }
+    const flagged = sinks.writtenOutcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B)!;
+    expect(flagged.outcome.findings.some((finding) => finding.severity === "critical")).toBe(true);
+    expect(flagged.outcome.qualityFlags.length).toBeGreaterThan(0);
 
     // Provider runs: one summary per run unit, real zdr:true from the policy.
     expect(result.providerRunsPersisted).toBe(3);
@@ -477,34 +529,18 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     }
     expect(result.zdrConfirmed).toBe(true);
 
-    // Reviewer queue: the single deferral (UNIT_B) persisted a context-rich row.
-    expect(result.reviewerQueueItemCount).toBe(1);
-    expect(queue.items).toHaveLength(1);
-    expect(queue.items[0]!.sourceItemRef).toBe(`agentic-loop:${UNIT_B}`);
-    const decision = queue.items[0]!.payload.decisionRecord as Record<string, unknown>;
-    expect((decision.source as { sourceText: string }).sourceText).toContain(DEFER_MARKER);
+    // The legacy queue is not a write gate; its contents do not affect the
+    // required bodies above.
+    expect(result.reviewerQueueItemCount).toBe(queue.items.length);
 
-    // ONE patch export; accepted units carry the real translated body, others
-    // stay a byte no-op (target === source).
-    expect(result.patchExportCount).toBe(1);
-    expect(sinks.patchExports).toHaveLength(1);
-    const exported = sinks.patchExports[0]!;
-    expect(exported.patchReport.acceptedDraftCount).toBe(2);
-    expect(exported.patchReport.acceptedUnits.map((u) => u.bridgeUnitId).sort()).toEqual(
-      [UNIT_A, UNIT_C].sort(),
+    // UNIT_D failed operationally. Do not fabricate source text for that
+    // in-scope unit just to make an export look complete.
+    expect(result.patchReport.coverageComplete).toBe(false);
+    expect(result.patchReport.writtenUnits.map((unit) => unit.bridgeUnitId).sort()).toEqual(
+      [UNIT_A, UNIT_B, UNIT_C].sort(),
     );
-    const translatedUnits = (exported.translatedBridge as { units: Array<Record<string, unknown>> })
-      .units;
-    const targetById = new Map(
-      translatedUnits.map((u) => [u.bridgeUnitId as string, (u.target as { text: string }).text]),
-    );
-    // Accepted: bracket-wrapped English body (RealLive lexer requirement).
-    expect(targetById.get(UNIT_A)).toContain("Good morning.");
-    expect(targetById.get(UNIT_A)!.startsWith("「")).toBe(true);
-    // Deferred / failed / out-of-scope: byte no-op (target === source).
-    expect(targetById.get(UNIT_B)).toBe(`今日は${DEFER_MARKER}だね。`);
-    expect(targetById.get(UNIT_D)).toBe(`これは${POISON_MARKER}。`);
-    expect(targetById.get(UNIT_E)).toBe("設定");
+    expect(result.patchExportCount).toBe(0);
+    expect(sinks.patchExports).toHaveLength(0);
   });
 
   it("supports a bounded slice via maxUnits (whole-game capable, pilot-bounded)", async () => {
@@ -514,21 +550,22 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     // Only the first 2 in-scope units (A, B) run; the poison D is never reached.
     expect(result.unitsRun).toBe(2);
     expect(result.failures).toHaveLength(0);
-    expect(result.draftsPersisted).toBe(2);
-    expect(result.patchExportCount).toBe(1);
+    expect(result.writtenOutcomesPersisted).toBe(2);
+    expect(result.patchReport.coverageComplete).toBe(false);
+    expect(result.patchExportCount).toBe(0);
   });
 
   it("threads real context per unit: without a wired queue nothing is bridged", async () => {
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor(baseInput(undefined, sinks));
-    // No sink -> no queue items counted, but drafts + runs + patch still persist.
+    // No sink -> no queue items counted; written outcomes + runs still persist.
     expect(result.reviewerQueueItemCount).toBe(0);
-    expect(result.draftsPersisted).toBe(3);
+    expect(result.writtenOutcomesPersisted).toBe(3);
     expect(result.providerRunsPersisted).toBe(3);
-    expect(result.patchExportCount).toBe(1);
-    // Every persisted draft carries the resolved sceneId (real context threaded).
-    for (const draft of sinks.drafts) {
-      expect(draft.sceneId).toBe(SCENE_ID);
+    expect(result.patchExportCount).toBe(0);
+    // Every persisted outcome carries the resolved sceneId (real context threaded).
+    for (const outcome of sinks.writtenOutcomes) {
+      expect(outcome.sceneId).toBe(SCENE_ID);
     }
   });
 
@@ -540,9 +577,9 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
       resolveUnitContext: () => undefined,
     });
     expect(result.unitsRun).toBe(3);
-    expect(result.draftsPersisted).toBe(3);
-    for (const draft of sinks.drafts) {
-      expect(draft.sceneId).toBeUndefined();
+    expect(result.writtenOutcomesPersisted).toBe(3);
+    for (const outcome of sinks.writtenOutcomes) {
+      expect(outcome.sceneId).toBeUndefined();
     }
   });
 
@@ -563,11 +600,11 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     );
     expect(result.failures[0]!.diagnostic?.step).toBe("executor.drive-unit");
     expect(result.unitsRun).toBe(0);
-    expect(result.draftsPersisted).toBe(0);
+    expect(result.writtenOutcomesPersisted).toBe(0);
     expect(result.providerRunsPersisted).toBe(0);
-    expect(sinks.drafts).toHaveLength(0);
+    expect(sinks.writtenOutcomes).toHaveLength(0);
     expect(sinks.providerRuns).toHaveLength(0);
-    expect(result.patchExportCount).toBe(1);
+    expect(result.patchExportCount).toBe(0);
   });
 
   it("injects inherited cross-work glossary and character/style context with per-work overrides into drafting prompts", async () => {
@@ -881,13 +918,13 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
 
     // Concurrency counter reached the bound (never exceeds it — only K workers).
     expect(meter.maxInFlight).toBe(CONCURRENCY);
-    // All N units ran + persisted (accepted, since all clean).
+    // All N units ran + persisted written outcomes (all clean).
     expect(result.unitsRun).toBe(UNIT_COUNT);
-    expect(result.draftsPersisted).toBe(UNIT_COUNT);
+    expect(result.writtenOutcomesPersisted).toBe(UNIT_COUNT);
     expect(result.providerRunsPersisted).toBe(UNIT_COUNT);
-    expect(result.acceptedDraftCount).toBe(UNIT_COUNT);
+    expect(result.writtenOutcomeCount).toBe(UNIT_COUNT);
     expect(result.patchExportCount).toBe(1);
-    expect(sinks.drafts).toHaveLength(UNIT_COUNT);
+    expect(sinks.writtenOutcomes).toHaveLength(UNIT_COUNT);
     // Same number of provider calls, but wall-clock is far below the sequential
     // sum (bounded speedup ~K). A conservative < 0.6x threshold avoids flake.
     expect(meter.totalCalls).toBe(seqMeter.totalCalls);
@@ -907,24 +944,25 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       }),
       concurrency: 4,
     });
-    // One poison unit isolated; the other 7 ran + persisted; ONE patch export.
+    // One poison unit isolated; the other 7 still persist. Incomplete coverage
+    // must not manufacture a target-source patch export.
     expect(result.failures).toHaveLength(1);
     expect(result.unitsRun).toBe(UNIT_COUNT - 1);
-    expect(result.draftsPersisted).toBe(UNIT_COUNT - 1);
-    expect(result.acceptedDraftCount).toBe(UNIT_COUNT - 1);
-    expect(result.patchExportCount).toBe(1);
+    expect(result.writtenOutcomesPersisted).toBe(UNIT_COUNT - 1);
+    expect(result.writtenOutcomeCount).toBe(UNIT_COUNT - 1);
+    expect(result.patchReport.coverageComplete).toBe(false);
+    expect(result.patchExportCount).toBe(0);
     expect(meter.maxInFlight).toBeGreaterThan(1); // genuinely concurrent.
   });
 
-  it("persists drafts + provider-runs + queue-items in CANONICAL order, deterministically", async () => {
+  it("persists written outcomes and provider runs in CANONICAL order, deterministically", async () => {
     const UNIT_COUNT = 9;
-    // A mix: clean units + a mid-list deferral (queue item) + a poison (isolated).
+    // A mix: clean units + a QA-flagged unit + a poison (isolated).
     const markers = { deferAt: 2, poisonAt: 6 };
 
     const runOnce = async (): Promise<{
-      draftOrder: string[];
+      writtenOutcomeOrder: string[];
       providerRunOrder: string[];
-      queueOrder: string[];
       orderedInScopeIds: string[];
     }> => {
       const meter = new ConcurrencyMeter();
@@ -942,9 +980,8 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       });
       expect(meter.maxInFlight).toBeGreaterThan(1);
       return {
-        draftOrder: sinks.drafts.map((d) => d.bridgeUnitId),
+        writtenOutcomeOrder: sinks.writtenOutcomes.map((outcome) => outcome.bridgeUnitId),
         providerRunOrder: sinks.providerRuns.map((r) => r.bridgeUnitId),
-        queueOrder: queue.items.map((i) => i.sourceItemRef),
         orderedInScopeIds,
       };
     };
@@ -953,18 +990,15 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     const second = await runOnce();
 
     // Canonical order == the enumerated in-scope order MINUS the isolated poison.
-    const expectedDraftOrder = first.orderedInScopeIds.filter(
+    const expectedWrittenOutcomeOrder = first.orderedInScopeIds.filter(
       (_id, index) => index !== markers.poisonAt,
     );
-    expect(first.draftOrder).toEqual(expectedDraftOrder);
-    expect(first.providerRunOrder).toEqual(expectedDraftOrder);
-    // The single deferral (index 2) is the only queue item.
-    expect(first.queueOrder).toEqual([`agentic-loop:${first.orderedInScopeIds[markers.deferAt]}`]);
+    expect(first.writtenOutcomeOrder).toEqual(expectedWrittenOutcomeOrder);
+    expect(first.providerRunOrder).toEqual(expectedWrittenOutcomeOrder);
 
     // DETERMINISM: identical persisted order across independent runs.
-    expect(second.draftOrder).toEqual(first.draftOrder);
+    expect(second.writtenOutcomeOrder).toEqual(first.writtenOutcomeOrder);
     expect(second.providerRunOrder).toEqual(first.providerRunOrder);
-    expect(second.queueOrder).toEqual(first.queueOrder);
   });
 
   it("budget cap STOPS dispatching before overspend under concurrency (unspent units not run)", async () => {
@@ -988,7 +1022,7 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(result.unitsRun).toBeGreaterThan(0);
     expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
     // Persisted count matches what actually ran (unspent units never dispatched).
-    expect(sinks.drafts).toHaveLength(result.unitsRun);
+    expect(sinks.writtenOutcomes).toHaveLength(result.unitsRun);
     expect(sinks.providerRuns).toHaveLength(result.unitsRun);
     // Real spend accumulated, bounded: at most `concurrency - 1` in-flight units
     // can overshoot past the cap (here <= ~1 extra unit's worth).
@@ -1149,7 +1183,7 @@ async function seedLiveProjectScope(pool: DatabaseContext["pool"]): Promise<void
 }
 
 describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", () => {
-  it("drives real Sweetie units, PERSISTING drafts + provider-runs + queue-items + patch to real storage under ZDR", async () => {
+  it("drives real Sweetie units, PERSISTING written outcomes + provider runs under ZDR", async () => {
     if (!LIVE_ENABLED) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -1233,7 +1267,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         resolveUnitContext: () => ({ narrativeStructure: structure, sceneId }),
         translationScope: "dialogue-only",
         engineProfile: "reallive",
-        sinks: { draft: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
+        sinks: { writtenOutcome: dbAdapter, providerRun: dbAdapter, patchExport: patchSink },
         maxUnits,
         budgetCapUsd: LIVE_BUDGET_CAP_USD,
       });
@@ -1274,15 +1308,19 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         1e-6,
       );
 
-      // ONE patch export written to disk.
-      expect(patchSink.exportCount).toBe(1);
-      expect(existsSync(join(runDir, "translated-bridge.json"))).toBe(true);
-      expect(existsSync(join(runDir, "patch-report.json"))).toBe(true);
+      // A patch export exists only after complete configured-scope coverage.
+      expect(patchSink.exportCount).toBe(result.patchReport.coverageComplete ? 1 : 0);
+      expect(existsSync(join(runDir, "translated-bridge.json"))).toBe(
+        result.patchReport.coverageComplete,
+      );
+      expect(existsSync(join(runDir, "patch-report.json"))).toBe(
+        result.patchReport.coverageComplete,
+      );
 
       // eslint-disable-next-line no-console
       console.warn(
-        `[driven-live] scene=${sceneId} unitsRun=${result.unitsRun} accepted=${result.acceptedDraftCount} ` +
-          `deferred=${result.deferredCount} failed=${result.failures.length} ` +
+        `[driven-live] scene=${sceneId} unitsRun=${result.unitsRun} written=${result.writtenOutcomeCount} ` +
+          `failed=${result.failures.length} coverageComplete=${result.patchReport.coverageComplete} ` +
           `persisted{draftJobs=${persistedDraftJobs} ledger=${persistedLedger} queue=${persistedQueue}} ` +
           `totalCost=$${result.totalUsageCostUsd.toFixed(6)} zdr=${result.zdrConfirmed} ` +
           `budgetStopped=${result.budgetStopped} patchDir=${runDir}`,

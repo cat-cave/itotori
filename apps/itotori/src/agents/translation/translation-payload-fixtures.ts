@@ -157,8 +157,13 @@ export function missingProtectedSpanFixture(): string {
  * deterministic json-repair path.
  */
 export function repairableTrailingCommaFixture(): string {
-  // Hand-built so we can include the trailing comma directly.
-  return `{"schemaVersion":"${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}","drafts":[],}`;
+  const complete = JSON.stringify(
+    makeStructuredTranslationDraftOutputFixture(representativeTranslationDraftsFixture()),
+  );
+  // Hand-built from a complete valid response so the only defect is the
+  // trailing comma itself; the agent must never treat an empty draft list as a
+  // successful recovery.
+  return `${complete.slice(0, -1)},}`;
 }
 
 /**

@@ -1,124 +1,35 @@
 // ITOTORI-019 — DraftArtifactBundle wire schema.
 //
-// The orchestrator's draft-artifact adapter
-// (apps/itotori/src/orchestrator/agentic-loop-smoke-command.ts, ITOTORI-222)
-// writes one of these bundles per run when `--draft-artifact-output`
-// is provided. The bundle is the deterministic, fixture-mode summary
-// of the drafting loop's structural outcome:
+// The artifact boundary projects one canonical WrittenUnitOutcome per source
+// unit into the patch-export workflow. It intentionally does not define a
+// second terminal state: every entry owns a selected, non-blank target body;
+// quality and repair history remain on the outcome as annotations.
 //
-//   - which drafts each source unit produced (or failed to produce);
-//   - which provider proof / recorded artifact persisted them;
-//   - whether the protected-span validator accepted the result;
-//   - whether the retry policy escalated through retry / fallback /
-//     terminal rejection;
-//   - which ledger entry id captured the cost + provenance.
-//
-// The schema version is locked to a literal so any change forces a
-// downstream consumer migration. There is NO silent fallback: a
-// terminal rejection is a typed `retryFallbackState` value, NOT a
-// missing draft.
-//
-// The bundle is intentionally separate from the wire shape of
-// `StructuredTranslationDraftOutput` (translation-draft.ts) — the
-// agent owns the per-attempt response wire; this bundle owns the
-// per-job artifact wire.
+// This differs from StructuredTranslationDraftOutput: that schema describes a
+// single model response, while this bundle records the durable, selected
+// outcome together with the provider-ledger evidence that funded it.
 
-export const DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION = "itotori.draft-artifact-bundle.v1" as const;
+import {
+  AgenticLoopBundleValidationError,
+  assertWrittenUnitOutcome,
+  type WrittenUnitOutcome,
+} from "./agentic-loop-bundle.js";
+
+// v2 replaces the optional-draft, no-text union with the canonical
+// WrittenUnitOutcome. v1 input is deliberately rejected: callers must migrate
+// rather than preserving a no-text compatibility path.
+export const DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION = "itotori.draft-artifact-bundle.v2" as const;
 
 /**
- * Closed enum of acceptance-time protected-span violation kinds that
- * the drafting fixture command may surface in a terminal-rejection
- * bundle entry. The set MUST match
- * `apps/itotori/src/draft/protected-span-validator.ts`'s
- * `DRAFT_PROTECTED_SPAN_VIOLATION_KINDS`; the schema package owns the
- * wire enum, the validator package owns the runtime kinds, and the
- * downstream `assertDraftArtifactBundle` validates the wire surface.
+ * One persisted written outcome and the ledger proof that funded its selected
+ * candidate. `writtenOutcome.unitId` is bound to `sourceUnitId` at runtime.
  */
-export const DRAFT_ARTIFACT_BUNDLE_VIOLATION_KINDS = [
-  "span_deleted",
-  "span_moved",
-  "span_duplicated",
-  "malformed_markup",
-  "capitalization_drift",
-  "variable_substituted",
-  "glossary_mistranslation",
-] as const;
-export type DraftArtifactBundleViolationKind =
-  (typeof DRAFT_ARTIFACT_BUNDLE_VIOLATION_KINDS)[number];
-
-export const DRAFT_ARTIFACT_BUNDLE_VIOLATION_SPAN_KINDS = [
-  "source_unit",
-  "markup",
-  "variable",
-  "glossary",
-] as const;
-export type DraftArtifactBundleViolationSpanKind =
-  (typeof DRAFT_ARTIFACT_BUNDLE_VIOLATION_SPAN_KINDS)[number];
-
-/**
- * Closed enum naming the structural outcome the orchestrator routed
- * the draft through:
- *
- *   - `success`                  — accepted on the first attempt with the
- *                                  primary provider.
- *   - `retried-then-success`     — at least one retryable attempt failed
- *                                  (schema_validation / span_moved / etc.)
- *                                  before the final accepted attempt with
- *                                  the SAME provider.
- *   - `fallback-then-success`    — primary provider failed
- *                                  (provider_capability / unrecoverable
- *                                  error) and a fallback provider produced
- *                                  the accepted draft.
- *   - `terminal-rejection`       — every attempt was rejected; the draft
- *                                  is NOT persisted and the entry records
- *                                  the violation set + the terminal reason.
- */
-export const DRAFT_ARTIFACT_RETRY_FALLBACK_STATES = [
-  "success",
-  "retried-then-success",
-  "fallback-then-success",
-  "terminal-rejection",
-] as const;
-export type DraftArtifactRetryFallbackState = (typeof DRAFT_ARTIFACT_RETRY_FALLBACK_STATES)[number];
-
-/**
- * Per-source-unit entry in the bundle. The bundle never omits a
- * source unit — a unit that terminally rejected gets an entry with
- * `retryFallbackState: 'terminal-rejection'` and its violation set.
- *
- * `protectedSpanValidationResult` mirrors the structural validator
- * output: `accepted: true` means the gate's validator passed (this
- * entry's draft persisted); `accepted: false` means at least one
- * violation surfaced (only emitted on `terminal-rejection`).
- *
- * `costLedgerEntryRef` is the `ledger_entry_id` of the draft attempt
- * provider ledger row that funded the accepted draft. For terminal
- * rejections it points at the LAST attempt's ledger row.
- */
-export type DraftArtifactProtectedSpanViolation = {
-  kind: DraftArtifactBundleViolationKind;
-  spanRefId: string;
-  spanKind: DraftArtifactBundleViolationSpanKind;
-  bridgeUnitId: string;
-  detail: string;
-};
-
-export type DraftArtifactProtectedSpanValidationResult =
-  | { accepted: true }
-  | {
-      accepted: false;
-      violations: DraftArtifactProtectedSpanViolation[];
-    };
-
 export type DraftArtifactDraftEntry = {
   sourceUnitId: string;
   draftId: string;
   providerProofId: string;
-  protectedSpanValidationResult: DraftArtifactProtectedSpanValidationResult;
-  retryFallbackState: DraftArtifactRetryFallbackState;
   costLedgerEntryRef: string;
-  draftText?: string;
-  terminalReason?: string;
+  writtenOutcome: WrittenUnitOutcome;
 };
 
 export type DraftArtifactLedgerSummary = {
@@ -152,14 +63,6 @@ export class DraftArtifactBundleValidationError extends Error {
     this.name = "DraftArtifactBundleValidationError";
   }
 }
-
-const DRAFT_ARTIFACT_VIOLATION_KIND_VALUES: ReadonlyArray<string> = [
-  ...DRAFT_ARTIFACT_BUNDLE_VIOLATION_KINDS,
-];
-
-const DRAFT_ARTIFACT_VIOLATION_SPAN_KIND_VALUES: ReadonlyArray<string> = [
-  ...DRAFT_ARTIFACT_BUNDLE_VIOLATION_SPAN_KINDS,
-];
 
 export function assertDraftArtifactBundle(value: unknown): asserts value is DraftArtifactBundle {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -196,8 +99,18 @@ export function assertDraftArtifactBundle(value: unknown): asserts value is Draf
   if (!Array.isArray(record.drafts)) {
     throw new DraftArtifactBundleValidationError("drafts", "type", "expected array");
   }
+  const sourceUnitIds = new Set<string>();
   for (const [index, entry] of record.drafts.entries()) {
     assertDraftEntry(entry, `drafts[${index}]`);
+    const sourceUnitId = (entry as DraftArtifactDraftEntry).sourceUnitId;
+    if (sourceUnitIds.has(sourceUnitId)) {
+      throw new DraftArtifactBundleValidationError(
+        `drafts[${index}].sourceUnitId`,
+        "uniqueItems",
+        `duplicate sourceUnitId '${sourceUnitId}'`,
+      );
+    }
+    sourceUnitIds.add(sourceUnitId);
   }
   assertLedgerSummary(record.ledgerSummary, "ledgerSummary");
 }
@@ -211,11 +124,8 @@ function assertDraftEntry(value: unknown, label: string): asserts value is Draft
     "sourceUnitId",
     "draftId",
     "providerProofId",
-    "protectedSpanValidationResult",
-    "retryFallbackState",
     "costLedgerEntryRef",
-    "draftText",
-    "terminalReason",
+    "writtenOutcome",
   ]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
@@ -230,130 +140,22 @@ function assertDraftEntry(value: unknown, label: string): asserts value is Draft
   assertNonEmptyString(record.draftId, `${label}.draftId`);
   assertNonEmptyString(record.providerProofId, `${label}.providerProofId`);
   assertNonEmptyString(record.costLedgerEntryRef, `${label}.costLedgerEntryRef`);
-  if (
-    typeof record.retryFallbackState !== "string" ||
-    !(DRAFT_ARTIFACT_RETRY_FALLBACK_STATES as readonly string[]).includes(record.retryFallbackState)
-  ) {
-    throw new DraftArtifactBundleValidationError(
-      `${label}.retryFallbackState`,
-      "enum",
-      `must be one of [${DRAFT_ARTIFACT_RETRY_FALLBACK_STATES.join(", ")}]`,
-    );
-  }
-  if (record.draftText !== undefined && typeof record.draftText !== "string") {
-    throw new DraftArtifactBundleValidationError(
-      `${label}.draftText`,
-      "type",
-      "expected string when present",
-    );
-  }
-  if (record.terminalReason !== undefined && typeof record.terminalReason !== "string") {
-    throw new DraftArtifactBundleValidationError(
-      `${label}.terminalReason`,
-      "type",
-      "expected string when present",
-    );
-  }
-  // Terminal rejections MUST carry a terminalReason; success states MUST
-  // include the persisted draftText. This invariant is part of the
-  // bundle's no-silent-fallback contract.
-  if (record.retryFallbackState === "terminal-rejection") {
-    if (typeof record.terminalReason !== "string" || record.terminalReason.length === 0) {
-      throw new DraftArtifactBundleValidationError(
-        `${label}.terminalReason`,
-        "required",
-        "terminal-rejection entries must include a non-empty terminalReason",
-      );
+  try {
+    assertWrittenUnitOutcome(record.writtenOutcome, `${label}.writtenOutcome`);
+  } catch (error) {
+    if (error instanceof AgenticLoopBundleValidationError) {
+      throw new DraftArtifactBundleValidationError(error.path, error.rule, error.detail);
     }
-  } else {
-    if (typeof record.draftText !== "string") {
-      throw new DraftArtifactBundleValidationError(
-        `${label}.draftText`,
-        "required",
-        `${String(record.retryFallbackState)} entries must include the persisted draftText`,
-      );
-    }
+    throw error;
   }
-  assertProtectedSpanValidationResult(
-    record.protectedSpanValidationResult,
-    `${label}.protectedSpanValidationResult`,
-  );
-}
-
-function assertProtectedSpanValidationResult(
-  value: unknown,
-  label: string,
-): asserts value is DraftArtifactProtectedSpanValidationResult {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new DraftArtifactBundleValidationError(label, "type", "expected object");
-  }
-  const record = value as Record<string, unknown>;
-  if (record.accepted === true) {
-    const allowed = new Set(["accepted"]);
-    for (const key of Object.keys(record)) {
-      if (!allowed.has(key)) {
-        throw new DraftArtifactBundleValidationError(
-          `${label}.${key}`,
-          "additionalProperties",
-          `unexpected property ${key} on accepted result`,
-        );
-      }
-    }
-    return;
-  }
-  if (record.accepted !== false) {
-    throw new DraftArtifactBundleValidationError(`${label}.accepted`, "type", "expected boolean");
-  }
-  if (!Array.isArray(record.violations)) {
+  const writtenOutcome = record.writtenOutcome as WrittenUnitOutcome;
+  if (writtenOutcome.unitId !== record.sourceUnitId) {
     throw new DraftArtifactBundleValidationError(
-      `${label}.violations`,
-      "type",
-      "expected array when accepted is false",
+      `${label}.writtenOutcome.unitId`,
+      "unitBinding",
+      `must equal sourceUnitId '${String(record.sourceUnitId)}'`,
     );
   }
-  for (const [index, violation] of record.violations.entries()) {
-    assertViolation(violation, `${label}.violations[${index}]`);
-  }
-}
-
-function assertViolation(value: unknown, label: string): void {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new DraftArtifactBundleValidationError(label, "type", "expected object");
-  }
-  const record = value as Record<string, unknown>;
-  const allowed = new Set(["kind", "spanRefId", "spanKind", "bridgeUnitId", "detail"]);
-  for (const key of Object.keys(record)) {
-    if (!allowed.has(key)) {
-      throw new DraftArtifactBundleValidationError(
-        `${label}.${key}`,
-        "additionalProperties",
-        `unexpected property ${key}`,
-      );
-    }
-  }
-  if (
-    typeof record.kind !== "string" ||
-    !DRAFT_ARTIFACT_VIOLATION_KIND_VALUES.includes(record.kind)
-  ) {
-    throw new DraftArtifactBundleValidationError(
-      `${label}.kind`,
-      "enum",
-      `must be one of [${DRAFT_ARTIFACT_VIOLATION_KIND_VALUES.join(", ")}]`,
-    );
-  }
-  if (
-    typeof record.spanKind !== "string" ||
-    !DRAFT_ARTIFACT_VIOLATION_SPAN_KIND_VALUES.includes(record.spanKind)
-  ) {
-    throw new DraftArtifactBundleValidationError(
-      `${label}.spanKind`,
-      "enum",
-      `must be one of [${DRAFT_ARTIFACT_VIOLATION_SPAN_KIND_VALUES.join(", ")}]`,
-    );
-  }
-  assertNonEmptyString(record.spanRefId, `${label}.spanRefId`);
-  assertNonEmptyString(record.bridgeUnitId, `${label}.bridgeUnitId`);
-  assertNonEmptyString(record.detail, `${label}.detail`);
 }
 
 function assertLedgerSummary(
