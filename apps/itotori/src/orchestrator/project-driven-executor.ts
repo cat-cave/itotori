@@ -537,6 +537,13 @@ export type ProjectDrivenExecutorInput = {
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
+  /**
+   * Caller-selected durable run identity. The outer terminal finalizer owns
+   * this in the shipped whole-project path so failures after the run is seeded
+   * can always be reconciled to one terminal summary. Omit it for the
+   * executor's standalone/test convenience identity.
+   */
+  runId?: string;
   targetLocale?: string;
   maxRepairAttempts?: number;
   actor: AuthorizationActor;
@@ -683,8 +690,12 @@ class SceneContextEnrichmentSingleFlight implements ContextEnrichmentSingleFligh
 
 export type ProjectDrivenExecutorResult = {
   journalRunId: string;
-  /** Node-5 finalizer seam: this executor only reports running vs paused. */
-  runState: "running" | "paused";
+  /**
+   * The executor itself returns only `running|paused`; the outer node-5
+   * finalizer projects the same result into a durable terminal state for the
+   * shipped whole-project command.
+   */
+  runState: "running" | "paused" | "succeeded" | "failed" | "aborted";
   pausedBlocker: OperationalBlocker | null;
   unitsEnumerated: number;
   unitsInScope: number;
@@ -729,7 +740,7 @@ export async function runProjectDrivenExecutor(
   const translationScope = input.translationScope ?? "dialogue-only";
   const engineProfile = input.engineProfile ?? "reallive";
   const journalRun: DrivenJournalRunRecord = {
-    runId: input.resumeRunId ?? `localization-journal-run-${randomUUID()}`,
+    runId: input.resumeRunId ?? input.runId ?? `localization-journal-run-${randomUUID()}`,
     projectId: input.projectId,
     localeBranchId: input.localeBranchId,
     sourceRevisionId: input.sourceRevisionId,

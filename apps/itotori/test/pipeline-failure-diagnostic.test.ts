@@ -616,7 +616,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     try {
       await runLocalizeFullProjectCommand({
         configPath: join(workDir, "missing.json"),
-        runSummaryPath: join(workDir, "run-summary.json"),
         deps: makeDeps(),
       });
     } catch (e) {
@@ -654,7 +653,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     try {
       await runLocalizeFullProjectCommand({
         configPath,
-        runSummaryPath: join(workDir, "run-summary.json"),
         deps: makeDeps(),
       });
     } catch (e) {
@@ -677,7 +675,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
 
     const out = await runLocalizeFullProjectCommand({
       configPath,
-      runSummaryPath: join(workDir, "run-summary.json"),
       deps: {
         io,
         actor: ACTOR,
@@ -712,7 +709,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
 
     const out = await runLocalizeFullProjectCommand({
       configPath,
-      runSummaryPath: join(workDir, "run-summary.json"),
       deps: {
         io,
         actor: ACTOR,

@@ -396,6 +396,10 @@ export const migrations = [
     id: "0084_retire_legacy_semantic_agent_tables",
     file: "0084_retire_legacy_semantic_agent_tables.sql",
   },
+  {
+    id: "0085_localization_run_finalizer",
+    file: "0085_localization_run_finalizer.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -1291,7 +1291,7 @@ async function runLocalizeGame(
           totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
           zdrConfirmed: result.localize.result.zdrConfirmed,
           patchApplied: result.localize.patchApply !== undefined,
-          ...(result.localize.result.runState === "running"
+          ...(result.localize.result.runState === "succeeded"
             ? {
                 replayLogPath: result.replayLogPath,
                 renderEvidencePath: result.renderEvidencePath,

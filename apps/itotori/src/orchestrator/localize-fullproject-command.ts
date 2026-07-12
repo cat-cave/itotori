@@ -25,6 +25,7 @@
 // fake provider (tests) records the real zero it produced;
 // nothing is fabricated.
 
+import { randomUUID } from "node:crypto";
 import type {
   AuthorizationActor,
   ItotoriContextArtifactRepositoryPort,
@@ -59,8 +60,6 @@ import {
 } from "./pipeline-failure-diagnostic.js";
 
 const CONFIG_SCHEMA_VERSION = "itotori.localize-fullproject.config.v0";
-const RUN_SUMMARY_SCHEMA_VERSION = "itotori.localize-fullproject.run-summary.v0";
-
 const ENGINE_PROFILES: ReadonlySet<DrivenEngineProfile> = new Set(["reallive", "rpg-maker-mv-mz"]);
 const TRANSLATION_SCOPES: ReadonlySet<TranslationScope> = new Set([
   "dialogue-only",
@@ -193,8 +192,12 @@ export type LocalizeFullProjectDeps = {
 
 export type LocalizeFullProjectArgs = {
   configPath: string;
-  /** Where the deterministic run-summary artifact lands. */
-  runSummaryPath: string;
+  /**
+   * Stable run identity chosen by an outer finalizer. This makes a terminal
+   * summary addressable even when a post-seed provider/persistence/patch stage
+   * throws before the executor can return its result.
+   */
+  runId?: string;
   /** Existing durable journal run to resume from its first pending unit. */
   resumeRunId?: string;
   /**
@@ -314,6 +317,7 @@ export async function runLocalizeFullProjectCommand(
 ): Promise<LocalizeFullProjectResult> {
   const { deps } = args;
   const log = deps.log ?? (() => {});
+  const runId = args.resumeRunId ?? args.runId ?? `localization-journal-run-${randomUUID()}`;
 
   // itotori-agent-facing-pipeline-failure-diagnostics — each pipeline step is
   // wrapped so a thrown error becomes a structured diagnostic naming the step,
@@ -322,8 +326,8 @@ export async function runLocalizeFullProjectCommand(
   // diagnostic, not a bare `Error: <message>` it has to guess at.
   const baseInputs: Record<string, unknown> = {
     configPath: args.configPath,
-    runSummaryPath: args.runSummaryPath,
     ...(args.resumeRunId !== undefined ? { resumeRunId: args.resumeRunId } : {}),
+    runId,
   };
 
   const config = await runPipelineStepWithDiagnostic<LocalizeFullProjectConfig>({
@@ -483,6 +487,7 @@ export async function runLocalizeFullProjectCommand(
     projectId: config.projectId,
     localeBranchId: config.localeBranchId,
     sourceRevisionId: config.sourceRevisionId,
+    runId,
     targetLocale,
     actor: deps.actor,
     providerFactory: deps.providerFactory,
@@ -571,60 +576,9 @@ export async function runLocalizeFullProjectCommand(
     },
   });
 
-  const runSummary = {
-    schemaVersion: RUN_SUMMARY_SCHEMA_VERSION,
-    journalRunId: result.journalRunId,
-    runState: result.runState,
-    pausedBlocker: result.pausedBlocker,
-    projectId: config.projectId,
-    localeBranchId: config.localeBranchId,
-    sourceRevisionId: config.sourceRevisionId,
-    ...(config.dataRoot !== undefined ? { dataRoot: config.dataRoot } : {}),
-    engineProfile: config.engineProfile,
-    translationScope,
-    targetLocale,
-    pair,
-    unitsEnumerated: result.unitsEnumerated,
-    unitsInScope: result.unitsInScope,
-    unitsRun: result.unitsRun,
-    writtenOutcomeCount: result.writtenOutcomeCount,
-    attemptsPersisted: result.attemptsPersisted,
-    failureCount: result.failures.length,
-    reviewerQueueItemCount: result.reviewerQueueItemCount,
-    patchExportCount: result.patchExportCount,
-    ...(result.runtimeValidation !== undefined
-      ? { runtimeValidation: result.runtimeValidation }
-      : {}),
-    // PROJECT LAW: the REAL summed physical usage.cost + ZDR posture.
-    totalUsageCostExactUsd: result.totalUsageCostExactUsd,
-    totalUsageCostUsd: result.totalUsageCostUsd,
-    zdrConfirmed: result.zdrConfirmed,
-    budgetStopped: result.budgetStopped,
-    ...(priorJournalContext !== undefined
-      ? {
-          priorJournalRun: {
-            runId: priorJournalContext.runId,
-            passNumber: priorJournalContext.passNumber,
-            feedbackUnitCount: priorJournalContext.feedbackByUnit.size,
-          },
-        }
-      : {}),
-  };
-  await runPipelineStepWithDiagnostic({
-    step: "localize.write-run-summary",
-    code: "io-error",
-    message: `localize.write-run-summary failed: could not write run summary to '${args.runSummaryPath}'`,
-    inputs: {
-      ...baseInputs,
-      runSummaryPath: args.runSummaryPath,
-      journalRunId: result.journalRunId,
-    },
-    actor: deps.actor,
-    now: deps.now,
-    run: async () => {
-      deps.io.writeJson(args.runSummaryPath, runSummary);
-    },
-  });
+  // This inner command deliberately remains preterminal. It never writes a
+  // `run-summary.json`: only the outer durable finalizer may project the
+  // canonical all-path summary from normalized journal rows.
   const runStateSummary =
     result.pausedBlocker === null
       ? "state=running"
@@ -633,7 +587,7 @@ export async function runLocalizeFullProjectCommand(
     `localize: journal ${result.journalRunId} recorded — ${result.unitsRun} unit(s), ` +
       `${result.writtenOutcomeCount} written / ${result.failures.length} failed; ` +
       `${result.attemptsPersisted} physical attempt(s); usage.cost $${result.totalUsageCostExactUsd} ` +
-      `(zdr=${result.zdrConfirmed}); ${runStateSummary}; wrote ${args.runSummaryPath}`,
+      `(zdr=${result.zdrConfirmed}); ${runStateSummary}; terminal finalization pending`,
   );
 
   return {

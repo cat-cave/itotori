@@ -115,6 +115,10 @@ export {
   terminologyTermKindValues,
   terminologyTermStatusValues,
   wikiBrandContextRoleValues,
+  localizationRunFinalizerOutboxStatusValues,
+  localizationRunFinalizerStageValues,
+  localizationRunPatchVersionStatusValues,
+  localizationRunTerminalStatusValues,
 } from "./schema.js";
 export type {
   AuthSsoProviderProtocol,
@@ -174,6 +178,10 @@ export type {
   TerminologyTermStatus,
   WikiBrandContextRole,
   AuthBillingPeriod,
+  LocalizationRunFinalizerOutboxStatus,
+  LocalizationRunFinalizerStage,
+  LocalizationRunPatchVersionStatus,
+  LocalizationRunTerminalStatus,
 } from "./schema.js";
 export {
   ItotoriAuthBillingSeatRepository,
@@ -866,6 +874,35 @@ export {
   JOBS_RUN_TABLE_SCHEMA_VERSION,
   LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS,
 } from "./repositories/localization-journal-repository.js";
+export {
+  ItotoriLocalizationRunFinalizerRepository,
+  LocalizationRunFinalizerRepositoryError,
+  LOCALIZATION_RUN_TERMINAL_SUMMARY_SCHEMA_VERSION,
+  outboxIdempotencyKeyFor,
+  patchVersionIdFor,
+  resultRevisionIdFor,
+} from "./repositories/localization-run-finalizer-repository.js";
+export type {
+  CompleteSucceededLocalizationRunInput,
+  EnsureLocalizationPatchVersionInput,
+  EnterLocalizationRunFinalizingInput,
+  ItotoriLocalizationRunFinalizerRepositoryPort,
+  LocalizationRunFinalizerAttemptRecord,
+  LocalizationRunFinalizerJson,
+  LocalizationRunFinalizerOutcomeRecord,
+  LocalizationRunFinalizerOutboxRecord,
+  LocalizationRunFinalizerPatchUnitRecord,
+  LocalizationRunFinalizerPatchVersionRecord,
+  LocalizationRunFinalizerRootCause,
+  LocalizationRunFinalizerRootCauseKind,
+  LocalizationRunFinalizerRunRecord,
+  LocalizationRunFinalizerSnapshot,
+  LocalizationRunFinalizerUnitRecord,
+  LocalizationRunTerminalSummary,
+  LocalizationRunTerminalSummaryRecord,
+  TerminalizeLocalizationRunInput,
+  UpsertLocalizationRunFinalizerStageEvidenceInput,
+} from "./repositories/localization-run-finalizer-repository.js";
 export type {
   BeginLocalizationJournalAttemptInput,
   CompleteLocalizationJournalAttemptInput,

@@ -1237,7 +1237,6 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         // --- Whole-game localize (fake provider, real DB persistence) ---
         const { result } = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,
@@ -1399,7 +1398,6 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
         };
         const { result } = await runLocalizeFullProjectCommand({
           configPath,
-          runSummaryPath: join(runDir, "run-summary.json"),
           deps: {
             io,
             actor,
