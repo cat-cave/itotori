@@ -1030,7 +1030,7 @@ function lifecycleCompleteAttempt(
     providerId,
     costUsd: "0.00000000000000000007",
     costKind: "billed" as const,
-    usageResponseJson: { cost: 0.00000000000000000007 },
+    usageResponseJson: { cost: 0.00000000000000000007 }, // itotori-225-audit-allow: synthetic sub-micro provider usage.cost fixture exercising exact-decimal cost persistence, not a real billed amount
     tokensIn: 9,
     tokensOut: 4,
     tokenCountSource: "provider_reported",
