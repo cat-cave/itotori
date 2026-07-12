@@ -80,7 +80,11 @@ export type InvocationAttemptCompleted = InvocationAttemptStarted & {
 
 /** Durable hooks. `attemptStarted` must commit before the physical dispatch. */
 export type InvocationLifecycle = {
-  attemptStarted(attempt: InvocationAttemptStarted): Promise<void>;
+  /**
+   * May return a lease-health signal. Aborting it promptly fails the
+   * supervisor's wait; the same signal is also forwarded to the transport.
+   */
+  attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal | void>;
   attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void>;
   pauseRun(runId: string, blocker: OperationalBlocker): Promise<void>;
 };
@@ -200,14 +204,47 @@ type EvaluatedInvocation<T> =
 
 const SUPERVISOR_BINDING = Symbol("itotori.invocation-supervisor.binding");
 const SUPERVISED_DISPATCH_CAPABILITY = Symbol("itotori.invocation-supervisor.dispatch-capability");
-const activeSupervisedDispatchCapabilities = new Set<symbol>();
+
+type SupervisedDispatchCapability = Readonly<{
+  /** The durable supervisor attempt this opaque issuance belongs to. */
+  attemptId: string;
+  /** Unique even for standalone attempts whose provider request has no runId. */
+  issuance: symbol;
+}>;
+
+type ActiveSupervisedDispatchCapability = {
+  provider: ModelProvider;
+  attemptId: string;
+  requestRunId: string | undefined;
+  requestedModelId: string;
+  requestedProviderId: string;
+  signal: AbortSignal;
+  visitedAdapters: ReadonlySet<ModelProvider>;
+  scope: SupervisedDispatchScope;
+};
+
+type SupervisedDispatchScope = {
+  active: boolean;
+  capabilities: Set<SupervisedDispatchCapability>;
+};
+
+const activeSupervisedDispatchCapabilities = new Map<
+  SupervisedDispatchCapability,
+  ActiveSupervisedDispatchCapability
+>();
+
+// Only adapters constructed through SupervisedModelProviderAdapter enter
+// these maps. There is deliberately no public register/update function: the
+// target resolver is installed once by the base constructor and caches the
+// first concrete provider it returns.
+const providerAdapterTargetResolvers = new WeakMap<ModelProvider, () => ModelProvider>();
 
 type SupervisorBoundProvider = ModelProvider & {
   readonly [SUPERVISOR_BINDING]: InvocationSupervisor;
 };
 
 type SupervisedDispatchRequest = ModelInvocationRequest & {
-  readonly [SUPERVISED_DISPATCH_CAPABILITY]: symbol;
+  readonly [SUPERVISED_DISPATCH_CAPABILITY]: SupervisedDispatchCapability;
 };
 
 export class InvocationOperationalPauseError extends Error {
@@ -256,6 +293,49 @@ export class UnsupervisedProviderAdapterDispatchError extends Error {
       "provider adapter delegation requires an active InvocationSupervisor dispatch capability",
     );
     this.name = "UnsupervisedProviderAdapterDispatchError";
+  }
+}
+
+/**
+ * Base for the small number of request-decorating providers that sit between
+ * InvocationSupervisor and a physical transport. Construction installs one
+ * immutable, privately-held target resolver. Nested adapters each receive a
+ * fresh one-shot capability, while the final transport receives no capability.
+ */
+export abstract class SupervisedModelProviderAdapter implements ModelProvider {
+  abstract readonly descriptor: ProviderDescriptor;
+
+  protected constructor(resolveTarget: () => ModelProvider) {
+    let resolvedTarget: ModelProvider | undefined;
+    providerAdapterTargetResolvers.set(this, () => {
+      resolvedTarget ??= resolveTarget();
+      return resolvedTarget;
+    });
+  }
+
+  protected decorateInvocationRequest(request: ModelInvocationRequest): ModelInvocationRequest {
+    return request;
+  }
+
+  async preflightInvocation(
+    request: ModelInvocationRequest,
+  ): Promise<
+    | { admitted: true }
+    | { admitted: false; detail: string; evidence: string; operatorAction?: string }
+  > {
+    const target = providerAdapterTarget(this);
+    return (
+      (await target.preflightInvocation?.(this.decorateInvocationRequest(request))) ?? {
+        admitted: true,
+      }
+    );
+  }
+
+  invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
+    return dispatchProviderAdapter(
+      providerAdapterTarget(this),
+      this.decorateInvocationRequest(request),
+    );
   }
 }
 
@@ -335,12 +415,18 @@ export class InvocationSupervisor {
       };
 
       await this.assertCostAdmission(routeRequest);
-      await this.options.lifecycle?.attemptStarted(attemptStarted);
+      const dispatchLeaseSignal = await this.options.lifecycle?.attemptStarted(attemptStarted);
+      const dispatchRequest: ModelInvocationRequest = {
+        ...routeRequest,
+        ...(dispatchLeaseSignal === undefined
+          ? {}
+          : { signal: combineAbortSignals(routeRequest.signal, dispatchLeaseSignal) }),
+      };
       totalAttempts += 1;
 
       let invocation: ModelInvocationResult;
       try {
-        invocation = await this.dispatchWithDeadline(routeRequest);
+        invocation = await this.dispatchWithDeadline(dispatchRequest, attemptId);
       } catch (error) {
         const failure = classifyThrownFailure(error);
         lastFailure = failure;
@@ -516,15 +602,27 @@ export class InvocationSupervisor {
 
   private async dispatchWithDeadline(
     request: ModelInvocationRequest,
+    attemptId: string,
   ): Promise<ModelInvocationResult> {
+    const adapterTarget = providerAdapterTargetResolvers.has(this.options.provider)
+      ? providerAdapterTarget(this.options.provider)
+      : undefined;
+    const dispatchScope: SupervisedDispatchScope | undefined =
+      adapterTarget === undefined ? undefined : { active: true, capabilities: new Set() };
     const controller = new AbortController();
     const inheritedSignal = request.signal;
-    const forwardAbort = (): void => controller.abort(inheritedSignal?.reason);
+    let rejectInheritedAbort: ((reason: unknown) => void) | undefined;
+    const inheritedAbort = new Promise<never>((_resolve, reject) => {
+      rejectInheritedAbort = reject;
+    });
+    const forwardAbort = (): void => {
+      const reason = abortReason(inheritedSignal?.reason);
+      controller.abort(reason);
+      rejectInheritedAbort?.(reason);
+    };
     if (inheritedSignal?.aborted) forwardAbort();
     inheritedSignal?.addEventListener("abort", forwardAbort, { once: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const dispatchCapability = Symbol("supervised-provider-dispatch");
-    activeSupervisedDispatchCapabilities.add(dispatchCapability);
     try {
       const deadline = new Promise<never>((_resolve, reject) => {
         timeout = setTimeout(() => {
@@ -532,20 +630,31 @@ export class InvocationSupervisor {
           reject(new InvocationDeadlineError(this.policy.deadlineMs));
         }, this.policy.deadlineMs);
       });
-      // This is the sole non-adapter physical dispatch in production.
-      const dispatchedRequest: SupervisedDispatchRequest = {
+      // This is the sole supervisor entry into an adapter chain or physical
+      // provider in production.
+      const requestWithSignal: ModelInvocationRequest = {
         ...request,
         signal: controller.signal,
-        // Symbol-keyed properties are enumerable by default, so request-
-        // decorating providers preserve this private capability when they
-        // spread the request before delegating. The active set below makes the
-        // copied token useless as soon as this supervised dispatch ends.
-        [SUPERVISED_DISPATCH_CAPABILITY]: dispatchCapability,
       };
-      const dispatched = this.options.provider.invoke(dispatchedRequest);
-      return await Promise.race([dispatched, deadline]);
+      const dispatchedRequest =
+        adapterTarget === undefined
+          ? requestWithSignal
+          : issueSupervisedDispatchCapability({
+              provider: adapterTarget,
+              request: requestWithSignal,
+              attemptId,
+              visitedAdapters: new Set([this.options.provider]),
+              scope: dispatchScope!,
+            });
+      // An already-failed lease/request signal must prevent dispatch. Once a
+      // call is live, race the inherited abort explicitly so a provider that
+      // ignores AbortSignal cannot hold the run until the normal deadline.
+      const dispatched = controller.signal.aborted
+        ? new Promise<never>(() => undefined)
+        : this.options.provider.invoke(dispatchedRequest);
+      return await Promise.race([dispatched, deadline, inheritedAbort]);
     } finally {
-      activeSupervisedDispatchCapabilities.delete(dispatchCapability);
+      if (dispatchScope !== undefined) revokeSupervisedDispatchScope(dispatchScope);
       if (timeout !== undefined) clearTimeout(timeout);
       inheritedSignal?.removeEventListener("abort", forwardAbort);
     }
@@ -664,18 +773,131 @@ export function dispatchProviderAdapter(
   provider: ModelProvider,
   request: ModelInvocationRequest,
 ): Promise<ModelInvocationResult> {
-  const dispatchCapability = (
-    request as ModelInvocationRequest & {
-      readonly [SUPERVISED_DISPATCH_CAPABILITY]?: symbol;
-    }
-  )[SUPERVISED_DISPATCH_CAPABILITY];
+  const dispatchCapability = supervisedDispatchCapabilityFrom(request);
+  const activeDispatch =
+    dispatchCapability === undefined
+      ? undefined
+      : activeSupervisedDispatchCapabilities.get(dispatchCapability);
   if (
     dispatchCapability === undefined ||
-    !activeSupervisedDispatchCapabilities.has(dispatchCapability)
+    activeDispatch === undefined ||
+    activeDispatch.provider !== provider ||
+    activeDispatch.attemptId !== dispatchCapability.attemptId ||
+    activeDispatch.requestRunId !== request.runId ||
+    activeDispatch.requestedModelId !== request.modelId ||
+    activeDispatch.requestedProviderId !== request.providerId ||
+    activeDispatch.signal !== request.signal
   ) {
     throw new UnsupervisedProviderAdapterDispatchError();
   }
-  return provider.invoke(request);
+
+  // Consume synchronously before entering provider code. Re-entrant or
+  // concurrent reuse therefore observes no active capability.
+  revokeSupervisedDispatchCapability(dispatchCapability, activeDispatch.scope);
+  const unprivilegedRequest = requestWithoutDispatchCapability(request);
+  const nestedTargetResolver = providerAdapterTargetResolvers.get(provider);
+  if (nestedTargetResolver === undefined) {
+    // A physical provider never receives the ambient adapter capability.
+    return provider.invoke(unprivilegedRequest);
+  }
+
+  if (activeDispatch.visitedAdapters.has(provider)) {
+    throw new Error("supervised model-provider adapter target cycle");
+  }
+  const visitedAdapters = new Set(activeDispatch.visitedAdapters);
+  visitedAdapters.add(provider);
+  const nestedRequest = issueSupervisedDispatchCapability({
+    provider: nestedTargetResolver(),
+    request: unprivilegedRequest,
+    attemptId: activeDispatch.attemptId,
+    visitedAdapters,
+    scope: activeDispatch.scope,
+  });
+  const nestedCapability = supervisedDispatchCapabilityFrom(nestedRequest)!;
+  try {
+    return provider
+      .invoke(nestedRequest)
+      .finally(() => revokeSupervisedDispatchCapability(nestedCapability, activeDispatch.scope));
+  } catch (error) {
+    revokeSupervisedDispatchCapability(nestedCapability, activeDispatch.scope);
+    throw error;
+  }
+}
+
+function providerAdapterTarget(provider: ModelProvider): ModelProvider {
+  const resolveTarget = providerAdapterTargetResolvers.get(provider);
+  if (resolveTarget === undefined) {
+    throw new Error("model provider is not a registered supervised adapter");
+  }
+  return resolveTarget();
+}
+
+function issueSupervisedDispatchCapability(args: {
+  provider: ModelProvider;
+  request: ModelInvocationRequest;
+  attemptId: string;
+  visitedAdapters: ReadonlySet<ModelProvider>;
+  scope: SupervisedDispatchScope;
+}): SupervisedDispatchRequest {
+  if (!args.scope.active) {
+    throw new UnsupervisedProviderAdapterDispatchError();
+  }
+  if (args.request.signal === undefined) {
+    throw new Error("supervised provider dispatch requires the attempt AbortSignal");
+  }
+  const capability = Object.freeze({
+    attemptId: args.attemptId,
+    issuance: Symbol("supervised-provider-dispatch"),
+  });
+  activeSupervisedDispatchCapabilities.set(capability, {
+    provider: args.provider,
+    attemptId: args.attemptId,
+    requestRunId: args.request.runId,
+    requestedModelId: args.request.modelId,
+    requestedProviderId: args.request.providerId,
+    signal: args.request.signal,
+    visitedAdapters: args.visitedAdapters,
+    scope: args.scope,
+  });
+  args.scope.capabilities.add(capability);
+  // Symbol-keyed properties are enumerable by default, so an adapter's normal
+  // object spread preserves this exact, attempt-unique issuance record.
+  return {
+    ...args.request,
+    [SUPERVISED_DISPATCH_CAPABILITY]: capability,
+  };
+}
+
+function revokeSupervisedDispatchCapability(
+  capability: SupervisedDispatchCapability,
+  scope: SupervisedDispatchScope,
+): void {
+  activeSupervisedDispatchCapabilities.delete(capability);
+  scope.capabilities.delete(capability);
+}
+
+function revokeSupervisedDispatchScope(scope: SupervisedDispatchScope): void {
+  scope.active = false;
+  for (const capability of scope.capabilities) {
+    activeSupervisedDispatchCapabilities.delete(capability);
+  }
+  scope.capabilities.clear();
+}
+
+function supervisedDispatchCapabilityFrom(
+  request: ModelInvocationRequest,
+): SupervisedDispatchCapability | undefined {
+  return (
+    request as ModelInvocationRequest & {
+      readonly [SUPERVISED_DISPATCH_CAPABILITY]?: SupervisedDispatchCapability;
+    }
+  )[SUPERVISED_DISPATCH_CAPABILITY];
+}
+
+function requestWithoutDispatchCapability(request: ModelInvocationRequest): ModelInvocationRequest {
+  const { [SUPERVISED_DISPATCH_CAPABILITY]: _dispatchCapability, ...unprivilegedRequest } =
+    request as SupervisedDispatchRequest;
+  return unprivilegedRequest;
 }
 
 /** Universal entry for schema/semantic structured calls. */
@@ -1114,6 +1336,20 @@ function operationalBlocker(
   now: Date,
 ): OperationalBlocker {
   return { kind, detail, evidence, raisedAt: now.toISOString(), operatorAction };
+}
+
+function combineAbortSignals(
+  requestSignal: AbortSignal | undefined,
+  leaseSignal: AbortSignal,
+): AbortSignal {
+  if (requestSignal === undefined || requestSignal === leaseSignal) return leaseSignal;
+  return AbortSignal.any([requestSignal, leaseSignal]);
+}
+
+function abortReason(reason: unknown): Error {
+  return reason instanceof Error
+    ? reason
+    : new Error("provider dispatch aborted by its inherited attempt signal", { cause: reason });
 }
 
 function defaultSleep(delayMs: number): Promise<void> {

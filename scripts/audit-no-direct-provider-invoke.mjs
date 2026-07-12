@@ -6,6 +6,12 @@
 // supervisor is the one orchestration boundary allowed to dispatch them. No
 // other shipped source may call (or capture) a provider's `invoke` member.
 //
+// This guard is defense-in-depth against accidental direct calls. The primary
+// control is architectural: providers are constructed and handed only to the
+// supervisor. AST-only analysis cannot soundly decide a fully neutral alias
+// such as `function f(p) { p.invoke(req); }`; that undecidable case is
+// intentionally out of scope.
+//
 // This is AST-based rather than a grep so comments and strings do not count,
 // while optional chaining and literal-computed access still do. ModelProvider
 // has the distinctive one-request `invoke(request)` signature; the app's
@@ -399,6 +405,18 @@ function expressionProducesProvider(
     }
     return false;
   }
+  if (unwrapped.type === "ObjectExpression") {
+    return unwrapped.properties.some(
+      (property) =>
+        property.type === "SpreadElement" &&
+        expressionProducesProvider(
+          property.argument,
+          providerAliases,
+          providerTypeNames,
+          typedProviderMemberPaths,
+        ),
+    );
+  }
   if (unwrapped.type === "ConditionalExpression") {
     return (
       expressionProducesProvider(
@@ -720,6 +738,16 @@ function isReflectGetCall(node, aliases) {
   );
 }
 
+function isObjectValuesCall(node, constants) {
+  if (!isCallExpression(node)) return false;
+  const callee = unwrapTsTypeAssertions(node.callee);
+  if (!isMemberExpression(callee) || resolvedMemberPropertyName(callee, constants) !== "values") {
+    return false;
+  }
+  const receiver = unwrapTsTypeAssertions(callee.object);
+  return receiver?.type === "Identifier" && receiver.name === "Object";
+}
+
 function destructuredInvokeProperties(
   pattern,
   source,
@@ -731,7 +759,7 @@ function destructuredInvokeProperties(
 ) {
   const matches = [];
 
-  function collect(current, receiver, receiverIsProvider) {
+  function collectObjectPattern(current, receiver, receiverIsProvider) {
     if (current.type !== "ObjectPattern") return;
     for (const property of current.properties) {
       if (property.type !== "ObjectProperty") continue;
@@ -751,7 +779,7 @@ function destructuredInvokeProperties(
         property.value.type === "AssignmentPattern" ? property.value.left : property.value;
       if (value.type === "ObjectPattern") {
         const childReceiver = key === undefined ? receiver : `${receiver}.${key}`;
-        collect(
+        collectObjectPattern(
           value,
           childReceiver,
           typedProviderMemberPaths.has(childReceiver) || (key !== undefined && isProviderName(key)),
@@ -760,16 +788,40 @@ function destructuredInvokeProperties(
     }
   }
 
-  collect(
-    pattern,
-    nodeText(contents, source).replace(/\s+/gu, " ").slice(0, 120),
-    expressionProducesProvider(
-      source,
-      providerAliases,
-      providerTypeNames,
-      typedProviderMemberPaths,
-    ) || isProviderForwardingReceiver(source, providerAliases),
-  );
+  function collectPattern(current, currentSource) {
+    if (!current) return;
+    if (current.type === "AssignmentPattern") {
+      collectPattern(current.left, currentSource ?? current.right);
+      return;
+    }
+    if (current.type === "ArrayPattern") {
+      const unwrappedSource = unwrapTsTypeAssertions(currentSource);
+      if (unwrappedSource?.type !== "ArrayExpression") return;
+      for (let index = 0; index < current.elements.length; index += 1) {
+        const element = current.elements[index];
+        const elementSource = unwrappedSource.elements[index];
+        if (element === null || elementSource === null || elementSource === undefined) continue;
+        if (element.type === "RestElement" || elementSource.type === "SpreadElement") continue;
+        collectPattern(element, elementSource);
+      }
+      return;
+    }
+    if (current.type !== "ObjectPattern" || !currentSource) return;
+
+    const receiver = nodeText(contents, currentSource).replace(/\s+/gu, " ").slice(0, 120);
+    collectObjectPattern(
+      current,
+      receiver,
+      expressionProducesProvider(
+        currentSource,
+        providerAliases,
+        providerTypeNames,
+        typedProviderMemberPaths,
+      ) || isProviderForwardingReceiver(currentSource, providerAliases),
+    );
+  }
+
+  collectPattern(pattern, source);
   return matches;
 }
 
@@ -833,59 +885,67 @@ export function findViolations(path, contents) {
     });
   }
 
+  function addDestructuringViolations(pattern, source) {
+    for (const match of destructuredInvokeProperties(
+      pattern,
+      source,
+      providerAliases,
+      providerTypeNames,
+      typedProviderMemberPaths,
+      constants,
+      contents,
+    )) {
+      const binding = bindingIdentifier(match.node.value);
+      if (
+        match.receiverIsProvider ||
+        isProviderForwardingReceiver(source, providerAliases) ||
+        expressionProducesProvider(
+          source,
+          providerAliases,
+          providerTypeNames,
+          typedProviderMemberPaths,
+        ) ||
+        (binding !== null && oneArgumentCallBindings.has(binding.name))
+      ) {
+        addViolation(match.node, match.receiver);
+      }
+    }
+  }
+
   walk(root, (node) => {
     if (node.type === "VariableDeclarator" && node.init !== null) {
-      for (const match of destructuredInvokeProperties(
-        node.id,
-        node.init,
-        providerAliases,
-        providerTypeNames,
-        typedProviderMemberPaths,
-        constants,
-        contents,
-      )) {
-        const binding = bindingIdentifier(match.node.value);
-        if (
-          match.receiverIsProvider ||
-          isProviderForwardingReceiver(node.init, providerAliases) ||
-          expressionProducesProvider(
-            node.init,
-            providerAliases,
-            providerTypeNames,
-            typedProviderMemberPaths,
-          ) ||
-          (binding !== null && oneArgumentCallBindings.has(binding.name))
-        ) {
-          addViolation(match.node, match.receiver);
-        }
-      }
+      addDestructuringViolations(node.id, node.init);
       return;
     }
 
     if (node.type === "AssignmentExpression" && node.operator === "=") {
-      for (const match of destructuredInvokeProperties(
-        node.left,
-        node.right,
-        providerAliases,
-        providerTypeNames,
-        typedProviderMemberPaths,
-        constants,
-        contents,
-      )) {
-        const binding = bindingIdentifier(match.node.value);
-        if (
-          match.receiverIsProvider ||
-          isProviderForwardingReceiver(node.right, providerAliases) ||
+      addDestructuringViolations(node.left, node.right);
+      return;
+    }
+
+    if (
+      node.type === "AssignmentPattern" &&
+      Array.isArray(node.parent?.params) &&
+      node.parent.params.includes(node)
+    ) {
+      addDestructuringViolations(node.left, node.right);
+      return;
+    }
+
+    if (isObjectValuesCall(node, constants)) {
+      const receiver = node.arguments[0];
+      if (
+        receiver !== undefined &&
+        receiver.type !== "SpreadElement" &&
+        (isProviderForwardingReceiver(receiver, providerAliases) ||
           expressionProducesProvider(
-            node.right,
+            receiver,
             providerAliases,
             providerTypeNames,
             typedProviderMemberPaths,
-          ) ||
-          (binding !== null && oneArgumentCallBindings.has(binding.name))
-        ) {
-          addViolation(match.node, match.receiver);
-        }
+          ))
+      ) {
+        addViolation(node, nodeText(contents, receiver).replace(/\s+/gu, " ").slice(0, 120));
       }
       return;
     }

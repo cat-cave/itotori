@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   asNonBlankTargetText,
   type SpeakerLabel,
@@ -189,6 +189,57 @@ describe("ItotoriLocalizationJournalRepository", () => {
         { bridgeUnitId: "raw-bridge-unit-lifecycle-2", state: "pending" },
       ]);
     } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects a frozen-run re-seed with an extra unit without persisting it", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-frozen-reseed-extra-unit");
+      await repository.seedRun(localActor, seed);
+
+      const extraUnit = {
+        bridgeUnitId: "raw-bridge-unit-lifecycle-extra",
+        sourceUnitKey: "scene.lifecycle.extra",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      };
+      await expect(
+        repository.seedRun(localActor, { ...seed, units: [...seed.units, extraUnit] }),
+      ).rejects.toMatchObject({ code: "run_seed_conflict" });
+
+      expect(
+        (await repository.loadRunUnits(localActor, seed.runId)).map((unit) => unit.bridgeUnitId),
+      ).toEqual(seed.units.map((unit) => unit.bridgeUnitId));
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("derives lease expiry from PostgreSQL despite executor host-clock skew", async () => {
+    const context = await isolatedMigratedContext();
+    const hostClock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2099-01-01T00:00:00Z"));
+    try {
+      await seedScope(context);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const seed = lifecycleSeedInput("journal-run-db-clock-lease");
+      await repository.seedRun(localActor, seed);
+      await repository.renewRunLease(localActor, seed.runId, driverALease);
+
+      const leaseWindow = await context.db.execute(sql`
+        select extract(epoch from (lease_expires_at - now())) as seconds_remaining
+        from itotori_localization_journal_runs
+        where run_id = ${seed.runId}
+      `);
+      const secondsRemaining = Number(
+        (leaseWindow.rows[0] as { seconds_remaining: string }).seconds_remaining,
+      );
+      expect(secondsRemaining).toBeGreaterThan(110);
+      expect(secondsRemaining).toBeLessThanOrEqual(121);
+    } finally {
+      hostClock.mockRestore();
       await context.close();
     }
   });

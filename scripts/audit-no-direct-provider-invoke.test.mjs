@@ -64,6 +64,40 @@ test("rejects destructuring provider invoke into local bindings", () => {
   assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["options.provider", "provider"]);
 });
 
+test("rejects destructuring provider invoke from a defaulted parameter", () => {
+  const source = [
+    "function bypass({ invoke: send } = provider) {",
+    "  return send(request);",
+    "}",
+  ].join("\n");
+
+  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+});
+
+test("rejects provider invoke nested in array destructuring", () => {
+  const source = ["const [{ invoke: send }] = [provider];", "send(request);"].join("\n");
+
+  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+});
+
+test("rejects provider invoke extraction through Object.values", () => {
+  const source = ["const send = Object.values(provider).find(predicate);", "send(request);"].join(
+    "\n",
+  );
+
+  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+});
+
+test("rejects provider invoke through an object spread copy", () => {
+  const source = [
+    "const copy = { ...provider };",
+    "copy.invoke(request);",
+    "copy.invoke(request, malformedExtraArgument);",
+  ].join("\n");
+
+  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["copy", "copy"]);
+});
+
 test("rejects provider aliases before invoke extraction", () => {
   const source = [
     "const first = options.provider;",

@@ -27,9 +27,12 @@ class RecordingLifecycle implements InvocationLifecycle {
   readonly completed: InvocationAttemptCompleted[] = [];
   readonly blockers: OperationalBlocker[] = [];
 
-  async attemptStarted(attempt: InvocationAttemptStarted): Promise<void> {
+  constructor(private readonly attemptSignal?: AbortSignal) {}
+
+  async attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal | void> {
     this.events.push(`started:${attempt.attemptId}`);
     this.started.push(attempt);
+    return this.attemptSignal;
   }
 
   async attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void> {
@@ -146,6 +149,40 @@ describe("InvocationSupervisor failure matrix", () => {
       failureClass: "timeout",
       retryDecision: "advance",
     });
+  });
+
+  it("fails promptly when the attempt lease signal aborts even if the provider ignores it", async () => {
+    const leaseController = new AbortController();
+    const lifecycle = new RecordingLifecycle(leaseController.signal);
+    let markProviderEntered!: () => void;
+    const providerEntered = new Promise<void>((resolve) => {
+      markProviderEntered = resolve;
+    });
+    const provider: ModelProvider = {
+      descriptor: new FakeModelProvider().descriptor,
+      invoke: async () => {
+        markProviderEntered();
+        return await new Promise<ModelInvocationResult>(() => undefined);
+      },
+    };
+    const execution = executeDraft(
+      supervisorFor(provider, lifecycle, {
+        // The lease abort, not the ordinary deadline, must settle this test.
+        deadlineMs: 60_000,
+      }),
+    );
+
+    await providerEntered;
+    const renewalFailure = new Error("run lease renewal failed");
+    leaseController.abort(renewalFailure);
+
+    await expect(execution).rejects.toMatchObject({
+      name: "InvocationOperationalPauseError",
+      blocker: { kind: "itotori_bug" },
+      causeValue: renewalFailure,
+    });
+    expect(lifecycle.completed[0]).toMatchObject({ failureClass: "itotori_bug" });
+    expect(lifecycle.blockers).toEqual([expect.objectContaining({ kind: "itotori_bug" })]);
   });
 
   it("salvages invalid JSON deterministically without another provider dispatch", async () => {

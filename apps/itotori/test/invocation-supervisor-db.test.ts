@@ -3,6 +3,7 @@ import {
   ItotoriLocalizationJournalRepository,
   localUserId,
   type AuthorizationActor,
+  type ItotoriLocalizationJournalRepositoryPort,
 } from "@itotori/db";
 import {
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
@@ -249,7 +250,7 @@ describe("InvocationSupervisor durable pause/resume", () => {
     }
   });
 
-  it("rejects a second resumer while the original driver has a live provider dispatch", async () => {
+  it("renews a slow provider dispatch beyond its lease window so a second driver cannot dispatch", async () => {
     const context = await isolatedMigratedContext();
     let releaseDispatch: (() => void) | undefined;
     let firstExecution: ReturnType<typeof runProjectDrivenExecutor> | undefined;
@@ -292,6 +293,8 @@ describe("InvocationSupervisor durable pause/resume", () => {
           journal: new DrivenJournalPersistenceAdapter(repository, {
             actor: ACTOR,
             driverId: "live-driver-a",
+            leaseHeartbeatIntervalMs: 100,
+            leaseHeartbeatTimeoutMs: 5_000,
           }),
           patchExport: { exportPatch: async () => undefined },
         },
@@ -304,6 +307,28 @@ describe("InvocationSupervisor durable pause/resume", () => {
         leaseOwnerId: "live-driver-a",
         fenceToken: 1,
       });
+
+      // Compress this test's initially granted DB lease window. The provider
+      // remains blocked beyond it; only the adapter heartbeat can keep the
+      // database-owned lease live (production retains the 120-second floor).
+      await context.pool.query(
+        `
+        update itotori_localization_journal_runs
+        set lease_expires_at = now() + interval '800 milliseconds'
+        where run_id = $1
+        `,
+        [activeRun.runId],
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      const renewedLease = await context.pool.query<{ renewed: boolean }>(
+        `
+        select lease_expires_at > now() + interval '60 seconds' as renewed
+        from itotori_localization_journal_runs
+        where run_id = $1
+        `,
+        [activeRun.runId],
+      );
+      expect(renewedLease.rows[0]).toMatchObject({ renewed: true });
 
       const secondCalls = new Map<string, number>();
       await expect(
@@ -319,7 +344,7 @@ describe("InvocationSupervisor durable pause/resume", () => {
             patchExport: { exportPatch: async () => undefined },
           },
         }),
-      ).rejects.toThrow(/running driver lease is still live/u);
+      ).rejects.toThrow(/running lease fence .* still live/u);
       expect(liveDispatchCount).toBe(1);
       expect(secondCalls.get("__all__") ?? 0).toBe(0);
       expect(await repository.loadAttemptsForRun(ACTOR, activeRun.runId)).toEqual([
@@ -340,6 +365,115 @@ describe("InvocationSupervisor durable pause/resume", () => {
     } finally {
       releaseDispatch?.();
       await firstExecution?.catch(() => undefined);
+      await context.close();
+    }
+  });
+
+  it("aborts the provider and settles the executor when lease renewal hangs", async () => {
+    const context = await isolatedMigratedContext();
+    let releaseDispatch: (() => void) | undefined;
+    let execution: ReturnType<typeof runProjectDrivenExecutor> | undefined;
+    try {
+      await seedScope(context.pool);
+      const repository = new ItotoriLocalizationJournalRepository(context.db);
+      const heartbeatTimeoutDetail = "journal lease heartbeat exceeded 50ms";
+      let renewalCalls = 0;
+      const failingRenewalJournal = new Proxy(repository, {
+        get(target, property) {
+          if (property === "renewRunLease") {
+            return () => {
+              renewalCalls += 1;
+              return new Promise<never>(() => undefined);
+            };
+          }
+          const value = Reflect.get(target, property, target) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as ItotoriLocalizationJournalRepositoryPort;
+
+      let markDispatchStarted!: () => void;
+      const dispatchStarted = new Promise<void>((resolve) => {
+        markDispatchStarted = resolve;
+      });
+      let markDispatchAborted!: () => void;
+      const dispatchAborted = new Promise<void>((resolve) => {
+        markDispatchAborted = resolve;
+      });
+      let physicalDispatches = 0;
+      const healthyFactory = providerFactory(new Map());
+      const blockingFactory: AgenticLoopProviderFactory = (factoryInput) => {
+        if (factoryInput.stage !== "context" || factoryInput.agentLabel !== "scene-summary") {
+          return healthyFactory(factoryInput);
+        }
+        const provider = new FakeModelProvider({
+          providerName: "heartbeat-failure-scene-summary",
+          generate: () => fakeSemanticContextContent("scene-summary"),
+        });
+        return {
+          descriptor: provider.descriptor,
+          invoke: async (request) => {
+            physicalDispatches += 1;
+            markDispatchStarted();
+            await new Promise<void>((resolve, reject) => {
+              const signal = request.signal;
+              if (signal === undefined) {
+                reject(new Error("supervised dispatch did not provide an AbortSignal"));
+                return;
+              }
+              const onAbort = (): void => {
+                markDispatchAborted();
+                reject(signal.reason);
+              };
+              releaseDispatch = () => {
+                signal.removeEventListener("abort", onAbort);
+                resolve();
+              };
+              if (signal.aborted) onAbort();
+              else signal.addEventListener("abort", onAbort, { once: true });
+            });
+            return provider.invoke(request);
+          },
+        };
+      };
+
+      execution = runProjectDrivenExecutor({
+        ...executorInput(blockingFactory),
+        maxUnits: 1,
+        sinks: {
+          journal: new DrivenJournalPersistenceAdapter(failingRenewalJournal, {
+            actor: ACTOR,
+            driverId: "heartbeat-failure-driver",
+            leaseHeartbeatIntervalMs: 50,
+          }),
+          patchExport: { exportPatch: async () => undefined },
+        },
+      });
+      await dispatchStarted;
+      await dispatchAborted;
+      const result = await execution;
+
+      expect(physicalDispatches).toBe(1);
+      expect(result).toMatchObject({
+        runState: "paused",
+        pausedBlocker: {
+          kind: "itotori_bug",
+          detail: expect.stringContaining(heartbeatTimeoutDetail),
+        },
+      });
+      const attempts = await repository.loadAttemptsForRun(ACTOR, result.journalRunId);
+      expect(attempts).toEqual([
+        expect.objectContaining({
+          lifecycleState: "completed",
+          failureClass: "itotori_bug",
+        }),
+      ]);
+      const callsAtSettlement = renewalCalls;
+      expect(callsAtSettlement).toBeGreaterThan(0);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(renewalCalls).toBe(callsAtSettlement);
+    } finally {
+      releaseDispatch?.();
+      await execution?.catch(() => undefined);
       await context.close();
     }
   });

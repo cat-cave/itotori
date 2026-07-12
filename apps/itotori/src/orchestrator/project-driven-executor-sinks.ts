@@ -13,7 +13,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AuthorizationActor, ItotoriLocalizationJournalRepositoryPort } from "@itotori/db";
+import {
+  LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS,
+  type AuthorizationActor,
+  type ItotoriLocalizationJournalRepositoryPort,
+} from "@itotori/db";
 import type {
   DrivenJournalResumeState,
   DrivenJournalRunPlan,
@@ -35,6 +39,23 @@ export type DrivenJournalPersistenceOptions = {
   driverId?: string;
   /** Defaults to the repository's 120-second lease (4x the provider deadline). */
   leaseSeconds?: number;
+  /** Test/operations override; defaults to one third of the configured lease. */
+  leaseHeartbeatIntervalMs?: number;
+  /** Maximum duration of one renewal query; defaults to the heartbeat interval. */
+  leaseHeartbeatTimeoutMs?: number;
+};
+
+type ActiveRunLease = {
+  ownerId: string;
+  fenceToken: number;
+  leaseSeconds?: number;
+};
+
+type RunLeaseHeartbeat = {
+  attemptAbortControllers: Map<string, AbortController>;
+  timer: ReturnType<typeof setInterval>;
+  renewalInFlight: Promise<void> | null;
+  renewalFailure: unknown | null;
 };
 
 /**
@@ -46,17 +67,34 @@ export type DrivenJournalPersistenceOptions = {
  */
 export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
   private readonly seededRuns = new Map<string, Promise<void>>();
-  private readonly activeLeases = new Map<
-    string,
-    { ownerId: string; fenceToken: number; leaseSeconds?: number }
-  >();
+  private readonly activeLeases = new Map<string, ActiveRunLease>();
+  private readonly leaseHeartbeats = new Map<string, RunLeaseHeartbeat>();
   private readonly driverId: string;
+  private readonly leaseHeartbeatIntervalMs: number;
+  private readonly leaseHeartbeatTimeoutMs: number;
 
   constructor(
     private readonly journal: ItotoriLocalizationJournalRepositoryPort,
     private readonly opts: DrivenJournalPersistenceOptions,
   ) {
     this.driverId = opts.driverId ?? `localization-driver-${randomUUID()}`;
+    const leaseMilliseconds = (opts.leaseSeconds ?? LOCALIZATION_JOURNAL_RUN_LEASE_SECONDS) * 1_000;
+    this.leaseHeartbeatIntervalMs =
+      opts.leaseHeartbeatIntervalMs ?? Math.max(1_000, Math.floor(leaseMilliseconds / 3));
+    this.leaseHeartbeatTimeoutMs = opts.leaseHeartbeatTimeoutMs ?? this.leaseHeartbeatIntervalMs;
+    if (
+      !Number.isFinite(this.leaseHeartbeatIntervalMs) ||
+      !Number.isInteger(this.leaseHeartbeatIntervalMs) ||
+      this.leaseHeartbeatIntervalMs <= 0 ||
+      !Number.isFinite(this.leaseHeartbeatTimeoutMs) ||
+      !Number.isInteger(this.leaseHeartbeatTimeoutMs) ||
+      this.leaseHeartbeatTimeoutMs <= 0 ||
+      this.leaseHeartbeatIntervalMs + this.leaseHeartbeatTimeoutMs >= leaseMilliseconds
+    ) {
+      throw new Error(
+        "journal lease heartbeat interval and timeout must be positive integers whose sum is below the lease",
+      );
+    }
   }
 
   async beginJournalRun(plan: DrivenJournalRunPlan, mode: "new" | "resume"): Promise<void> {
@@ -193,7 +231,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     });
   }
 
-  async attemptStarted(attempt: InvocationAttemptStarted): Promise<void> {
+  async attemptStarted(attempt: InvocationAttemptStarted): Promise<AbortSignal> {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
     await this.journal.beginAttempt(this.opts.actor, {
@@ -211,6 +249,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       startedAt: attempt.startedAt,
       lease,
     });
+    return this.startAttemptHeartbeat(attempt.runId, attempt.attemptId);
   }
 
   async attemptCompleted(attempt: InvocationAttemptCompleted): Promise<void> {
@@ -218,40 +257,44 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     await this.requireSeed(attempt.runId);
     const lease = this.requireLease(attempt.runId);
     const usage = run?.tokenUsage;
-    await this.journal.completeAttempt(this.opts.actor, {
-      attemptId: attempt.attemptId,
-      runId: attempt.runId,
-      bridgeUnitId: attempt.bridgeUnitId,
-      modelId: run?.provider.actualModelId ?? null,
-      providerId:
-        run === undefined
-          ? null
-          : (run.provider.upstreamProvider ?? run.provider.requestedProviderId),
-      costUsd: run?.cost.amountUsd ?? null,
-      ...(run !== undefined ? { costKind: run.cost.costKind } : {}),
-      ...(run !== undefined ? { usageResponseJson: run.usageResponseJson } : {}),
-      tokensIn: usage?.promptTokens ?? null,
-      tokensOut: usage?.completionTokens ?? null,
-      ...(usage !== undefined ? { tokenCountSource: usage.tokenCountSource } : {}),
-      ...(usage !== undefined ? { cacheReadTokens: usage.cacheReadTokens ?? null } : {}),
-      ...(usage !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens ?? null } : {}),
-      ...(run !== undefined
-        ? { cacheDiscountMicrosUsd: run.cost.cacheDiscountMicrosUsd ?? null }
-        : {}),
-      ...(run !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
-      ...(run !== undefined ? { fallbackPlan: run.fallbackPlan } : {}),
-      zdr: run?.routingPosture.zdr ?? attempt.zdr,
-      finishState: attempt.finishState,
-      refusalState: attempt.refusalState,
-      validationResult: attempt.validationResult,
-      failureClass: attempt.failureClass,
-      retryDecision: attempt.retryDecision,
-      retryDelayMs: attempt.retryDelayMs,
-      artifactRef: attempt.artifactRef,
-      errorClasses: run?.errorClasses ?? [],
-      completedAt: attempt.completedAt,
-      lease,
-    });
+    try {
+      await this.journal.completeAttempt(this.opts.actor, {
+        attemptId: attempt.attemptId,
+        runId: attempt.runId,
+        bridgeUnitId: attempt.bridgeUnitId,
+        modelId: run?.provider.actualModelId ?? null,
+        providerId:
+          run === undefined
+            ? null
+            : (run.provider.upstreamProvider ?? run.provider.requestedProviderId),
+        costUsd: run?.cost.amountUsd ?? null,
+        ...(run !== undefined ? { costKind: run.cost.costKind } : {}),
+        ...(run !== undefined ? { usageResponseJson: run.usageResponseJson } : {}),
+        tokensIn: usage?.promptTokens ?? null,
+        tokensOut: usage?.completionTokens ?? null,
+        ...(usage !== undefined ? { tokenCountSource: usage.tokenCountSource } : {}),
+        ...(usage !== undefined ? { cacheReadTokens: usage.cacheReadTokens ?? null } : {}),
+        ...(usage !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens ?? null } : {}),
+        ...(run !== undefined
+          ? { cacheDiscountMicrosUsd: run.cost.cacheDiscountMicrosUsd ?? null }
+          : {}),
+        ...(run !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
+        ...(run !== undefined ? { fallbackPlan: run.fallbackPlan } : {}),
+        zdr: run?.routingPosture.zdr ?? attempt.zdr,
+        finishState: attempt.finishState,
+        refusalState: attempt.refusalState,
+        validationResult: attempt.validationResult,
+        failureClass: attempt.failureClass,
+        retryDecision: attempt.retryDecision,
+        retryDelayMs: attempt.retryDelayMs,
+        artifactRef: attempt.artifactRef,
+        errorClasses: run?.errorClasses ?? [],
+        completedAt: attempt.completedAt,
+        lease,
+      });
+    } finally {
+      await this.stopAttemptHeartbeat(attempt.runId, attempt.attemptId);
+    }
   }
 
   async pauseRun(runId: string, blocker: OperationalBlocker): Promise<void> {
@@ -264,6 +307,7 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
     const lease = this.requireLease(runId);
     await this.journal.releaseRunLease(this.opts.actor, runId, lease);
     this.activeLeases.delete(runId);
+    await this.stopRunHeartbeat(runId);
   }
 
   async persistUnitJournal(record: DrivenUnitJournalRecord): Promise<void> {
@@ -310,6 +354,103 @@ export class DrivenJournalPersistenceAdapter implements DrivenUnitJournalSink {
       throw new Error(`journal run ${runId} has no active driver lease`);
     }
     return lease;
+  }
+
+  private startAttemptHeartbeat(runId: string, attemptId: string): AbortSignal {
+    const controller = new AbortController();
+    const existing = this.leaseHeartbeats.get(runId);
+    if (existing !== undefined) {
+      existing.attemptAbortControllers.set(attemptId, controller);
+      if (existing.renewalFailure !== null) controller.abort(existing.renewalFailure);
+      return controller.signal;
+    }
+
+    const attemptAbortControllers = new Map([[attemptId, controller]]);
+    const timer = setInterval(() => {
+      this.renewLeaseHeartbeat(runId);
+    }, this.leaseHeartbeatIntervalMs);
+    timer.unref?.();
+    this.leaseHeartbeats.set(runId, {
+      attemptAbortControllers,
+      timer,
+      renewalInFlight: null,
+      renewalFailure: null,
+    });
+    return controller.signal;
+  }
+
+  private renewLeaseHeartbeat(runId: string): void {
+    const heartbeat = this.leaseHeartbeats.get(runId);
+    const lease = this.activeLeases.get(runId);
+    if (heartbeat === undefined || lease === undefined || heartbeat.renewalInFlight !== null)
+      return;
+
+    const underlyingRenewal = Promise.resolve()
+      .then(async () => {
+        await this.journal.renewRunLease(this.opts.actor, runId, lease);
+      })
+      .then(() => undefined);
+    let renewal!: Promise<void>;
+    renewal = new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(renewalTimeout);
+        resolve();
+      };
+      const renewalTimeout = setTimeout(() => {
+        this.recordHeartbeatFailure(
+          runId,
+          new Error(`journal lease heartbeat exceeded ${String(this.leaseHeartbeatTimeoutMs)}ms`),
+        );
+        settle();
+      }, this.leaseHeartbeatTimeoutMs);
+      renewalTimeout.unref?.();
+      // Both handlers stay attached after a timeout, so a late database
+      // settlement is observed and can never become an unhandled rejection.
+      void underlyingRenewal.then(settle, (error: unknown) => {
+        this.recordHeartbeatFailure(runId, error);
+        settle();
+      });
+    }).finally(() => {
+      const current = this.leaseHeartbeats.get(runId);
+      if (current?.renewalInFlight === renewal) current.renewalInFlight = null;
+    });
+    heartbeat.renewalInFlight = renewal;
+  }
+
+  private recordHeartbeatFailure(runId: string, error: unknown): void {
+    const heartbeat = this.leaseHeartbeats.get(runId);
+    if (heartbeat === undefined) return;
+    heartbeat.renewalFailure ??=
+      error instanceof Error
+        ? error
+        : new Error(`journal lease heartbeat failed: ${String(error)}`);
+    // The provider transport contract requires honoring AbortSignal. Poison
+    // every active dispatch immediately on lease uncertainty, while later
+    // ticks keep trying to renew until all attempts have settled.
+    for (const controller of heartbeat.attemptAbortControllers.values()) {
+      controller.abort(heartbeat.renewalFailure);
+    }
+  }
+
+  private async stopAttemptHeartbeat(runId: string, attemptId: string): Promise<void> {
+    const heartbeat = this.leaseHeartbeats.get(runId);
+    if (heartbeat === undefined) return;
+    heartbeat.attemptAbortControllers.delete(attemptId);
+    if (heartbeat.attemptAbortControllers.size === 0) await this.stopRunHeartbeat(runId);
+  }
+
+  private async stopRunHeartbeat(runId: string): Promise<void> {
+    const heartbeat = this.leaseHeartbeats.get(runId);
+    if (heartbeat === undefined) return;
+    clearInterval(heartbeat.timer);
+    this.leaseHeartbeats.delete(runId);
+    // The interval callback records every renewal promise before returning.
+    // Drain the final one so executor completion/context teardown cannot race
+    // an unobserved database operation.
+    await heartbeat.renewalInFlight;
   }
 }
 

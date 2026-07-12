@@ -112,7 +112,7 @@ export function capturePhysicalProviderAttempts(args: {
     ].join(":");
     const lifecycle: InvocationLifecycle = {
       attemptStarted: async (attempt) => {
-        await args.lifecycle?.attemptStarted(attempt);
+        return await args.lifecycle?.attemptStarted(attempt);
       },
       attemptCompleted: async (attempt) => {
         const record = recordFromCompletedAttempt(attempt);

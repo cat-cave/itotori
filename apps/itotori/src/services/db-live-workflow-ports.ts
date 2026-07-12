@@ -23,15 +23,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AuthorizationActor, ItotoriProjectRepositoryPort } from "@itotori/db";
-import { dispatchProviderAdapter } from "../orchestrator/invocation-supervisor.js";
+import { SupervisedModelProviderAdapter } from "../orchestrator/invocation-supervisor.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import {
   DEV_PAIR,
   getModelCapabilities,
   OpenRouterModelProvider,
   type OpenRouterHttpClient,
-  type ModelInvocationRequest,
-  type ModelInvocationResult,
   type ModelProvider,
   type ProviderDescriptor,
   type ProviderRunArtifactRecorder,
@@ -87,11 +85,11 @@ export type DbBackedDraftProviderOptions = {
  * missing key — so a misconfigured server fails LOUDLY on the real provider, not
  * on a fake draft.
  */
-export class DbBackedDraftModelProvider implements ModelProvider {
+export class DbBackedDraftModelProvider extends SupervisedModelProviderAdapter {
   readonly descriptor: ProviderDescriptor;
-  private inner: ModelProvider | undefined;
 
-  constructor(private readonly buildInner: () => ModelProvider) {
+  constructor(buildInner: () => ModelProvider) {
+    super(buildInner);
     this.descriptor = {
       family: "openrouter",
       endpointFamily: "chat-completions",
@@ -102,21 +100,6 @@ export class DbBackedDraftModelProvider implements ModelProvider {
       defaultModelId: DEV_PAIR.modelId,
       capabilities: getModelCapabilities(DEV_PAIR),
     };
-  }
-
-  async preflightInvocation(
-    request: ModelInvocationRequest,
-  ): Promise<
-    | { admitted: true }
-    | { admitted: false; detail: string; evidence: string; operatorAction?: string }
-  > {
-    this.inner ??= this.buildInner();
-    return (await this.inner.preflightInvocation?.(request)) ?? { admitted: true };
-  }
-
-  async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
-    this.inner ??= this.buildInner();
-    return await dispatchProviderAdapter(this.inner, request);
   }
 }
 

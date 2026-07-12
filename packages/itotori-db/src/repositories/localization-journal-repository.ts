@@ -515,6 +515,12 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     runId: string,
     lease: Omit<LocalizationJournalRunLeaseIdentity, "fenceToken">,
   ): Promise<LocalizationJournalRunRecord>;
+  /** Extend a live owner/fence lease while one or more provider calls are in flight. */
+  renewRunLease(
+    actor: AuthorizationActor,
+    runId: string,
+    lease: LocalizationJournalRunLeaseIdentity,
+  ): Promise<LocalizationJournalRunRecord>;
   /** Release only a paused run after the owning executor has fully quiesced. */
   releaseRunLease(
     actor: AuthorizationActor,
@@ -669,11 +675,13 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const createdAt = toValidDate(input.createdAt ?? new Date(), "createdAt");
     const initialLease =
       input.lease === undefined ? null : normalizeSeedRunLease(input.lease, "lease");
-    const initialLeaseExpiresAt =
-      initialLease === null ? null : leaseExpiryFromNow(initialLease.leaseSeconds);
     return this.db.transaction(async (tx) => {
       await requireRunScopeInTx(tx, input);
-      await tx
+      // Legacy unit synthesis takes this same transaction-scoped lock. It
+      // makes the post-lock frozen-state recheck below a real serialization
+      // boundary instead of a check-then-insert race.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${runId}))`);
+      const insertedRuns = await tx
         .insert(localizationJournalRuns)
         .values({
           runId,
@@ -687,14 +695,17 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           status: "running",
           pausedBlocker: null,
           leaseOwnerId: initialLease?.ownerId ?? null,
-          leaseExpiresAt: initialLeaseExpiresAt,
+          leaseExpiresAt:
+            initialLease === null ? null : leaseExpiryFromDbNow(initialLease.leaseSeconds),
           fenceToken: initialLease === null ? 0 : 1,
           createdAt,
           updatedAt: createdAt,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ runId: localizationJournalRuns.runId });
 
       let run = await requireRunInTx(tx, runId);
+      const preExistingFrozenRun = insertedRuns[0] === undefined && run.frozenScope !== null;
       assertSeedRunIdentity(run, input);
       if (run.frozenScope === null && run.routingPolicy === null && run.costPolicy === null) {
         const upgraded = await tx
@@ -719,6 +730,15 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         );
       }
 
+      // An already-frozen run has an immutable obligation set. Validate the
+      // caller's exact membership/order before attempting any unit insert so
+      // a rejected re-seed cannot persist a newly supplied unit.
+      if (preExistingFrozenRun) {
+        const persistedUnits = await loadRunUnitsInTx(tx, runId);
+        assertSeededUnitSet(runId, persistedUnits, input.units);
+        return journalRunRowToRecord(run);
+      }
+
       if (input.units.length > 0) {
         const unitCreatedAt = new Date();
         await tx
@@ -738,11 +758,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           .onConflictDoNothing();
       }
 
-      const persistedUnits = await tx
-        .select()
-        .from(localizationJournalRunUnits)
-        .where(eq(localizationJournalRunUnits.runId, runId))
-        .orderBy(asc(localizationJournalRunUnits.unitOrdinal));
+      const persistedUnits = await loadRunUnitsInTx(tx, runId);
       assertSeededUnitSet(runId, persistedUnits, input.units);
       return journalRunRowToRecord(run);
     });
@@ -1297,7 +1313,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       .set({
         status: "paused",
         pausedBlocker: normalizedBlocker,
-        leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+        leaseExpiresAt: leaseExpiryFromDbNow(lease.leaseSeconds),
         updatedAt: new Date(),
       })
       .where(
@@ -1325,20 +1341,14 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         `journal run ${runId} does not exist`,
       );
     }
-    if (
-      current.status === "paused" &&
-      current.leaseOwnerId === lease.ownerId &&
-      current.fenceToken === lease.fenceToken &&
-      current.leaseExpiresAt !== null &&
-      current.leaseExpiresAt.getTime() > Date.now()
-    ) {
+    if (current.status === "paused") {
       // Concurrent supervisors can discover the same operational outage. The
       // first durable blocker wins; later pause writes converge on that record
       // without overwriting its evidence or operator action.
-      await this.db
+      const renewed = await this.db
         .update(localizationJournalRuns)
         .set({
-          leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+          leaseExpiresAt: leaseExpiryFromDbNow(lease.leaseSeconds),
           updatedAt: new Date(),
         })
         .where(
@@ -1349,8 +1359,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
             eq(localizationJournalRuns.fenceToken, lease.fenceToken),
             sql`${localizationJournalRuns.leaseExpiresAt} > now()`,
           ),
-        );
-      return journalRunRowToRecord(current);
+        )
+        .returning();
+      if (renewed[0] !== undefined) return journalRunRowToRecord(renewed[0]);
     }
     if (current.status === "running" || current.status === "paused") {
       throw new LocalizationJournalRepositoryError(
@@ -1380,7 +1391,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           status: "running",
           pausedBlocker: null,
           leaseOwnerId: lease.ownerId,
-          leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+          leaseExpiresAt: leaseExpiryFromDbNow(lease.leaseSeconds),
           fenceToken: sql`${localizationJournalRuns.fenceToken} + 1`,
           updatedAt: resumedAt,
         })
@@ -1481,6 +1492,19 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     });
   }
 
+  async renewRunLease(
+    actor: AuthorizationActor,
+    runId: string,
+    leaseInput: LocalizationJournalRunLeaseIdentity,
+  ): Promise<LocalizationJournalRunRecord> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    assertNonBlank(runId, "runId");
+    const lease = normalizeRunLeaseIdentity(leaseInput, "lease");
+    return this.db.transaction(async (tx) =>
+      journalRunRowToRecord(await renewRunLeaseInTx(tx, runId, lease, ["running", "paused"])),
+    );
+  }
+
   async releaseRunLease(
     actor: AuthorizationActor,
     runId: string,
@@ -1526,12 +1550,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           `cannot release journal run ${runId} while it is ${current.status}`,
         );
       }
-      if (
-        current.leaseOwnerId === lease.ownerId &&
-        current.fenceToken === lease.fenceToken &&
-        current.leaseExpiresAt !== null &&
-        current.leaseExpiresAt.getTime() > Date.now()
-      ) {
+      if (await runLeaseIsLiveInTx(tx, runId, lease)) {
         throw new LocalizationJournalRepositoryError(
           "run_lease_conflict",
           `cannot release journal run ${runId}: fence ${lease.fenceToken} still has a dispatching attempt or claimed unit`,
@@ -2208,8 +2227,10 @@ function normalizeRunLeaseIdentity(
   return { ...lease, fenceToken: input.fenceToken };
 }
 
-function leaseExpiryFromNow(leaseSeconds: number): Date {
-  return new Date(Date.now() + leaseSeconds * 1_000);
+function leaseExpiryFromDbNow(leaseSeconds: number) {
+  // Lease admission and expiry validation share PostgreSQL's transaction
+  // clock. Never derive this timestamp from the executor host's wall clock.
+  return sql`now() + (${leaseSeconds} * interval '1 second')`;
 }
 
 function normalizeBeginAttempt(
@@ -2733,6 +2754,17 @@ async function requireSeededUnitInTx(
   return row;
 }
 
+async function loadRunUnitsInTx(
+  tx: JournalTransaction,
+  runId: string,
+): Promise<Array<typeof localizationJournalRunUnits.$inferSelect>> {
+  return tx
+    .select()
+    .from(localizationJournalRunUnits)
+    .where(eq(localizationJournalRunUnits.runId, runId))
+    .orderBy(asc(localizationJournalRunUnits.unitOrdinal));
+}
+
 /** Compatibility for node-2 callers; node-3 dispatch uses seedRun instead. */
 async function ensureLegacyUnitInTx(
   tx: JournalTransaction,
@@ -2763,6 +2795,10 @@ async function ensureLegacyUnitInTx(
   }
 
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${runId}))`);
+  // seedRun takes the same lock before freezing a legacy run. Re-read after
+  // waiting so a concurrent freeze cannot be bypassed with the stale pre-lock
+  // row above.
+  const afterLockRun = await requireRunInTx(tx, runId);
   const afterLock = await tx
     .select()
     .from(localizationJournalRunUnits)
@@ -2774,6 +2810,12 @@ async function ensureLegacyUnitInTx(
     )
     .limit(1);
   if (afterLock[0] !== undefined) return afterLock[0];
+  if (afterLockRun.frozenScope !== null) {
+    throw new LocalizationJournalRepositoryError(
+      "unit_not_seeded",
+      `frozen journal run ${runId} has no planned unit ${bridgeUnitId}`,
+    );
+  }
 
   const ordinalRows = await tx
     .select({
@@ -2826,7 +2868,7 @@ async function renewRunLeaseInTx(
   const rows = await tx
     .update(localizationJournalRuns)
     .set({
-      leaseExpiresAt: leaseExpiryFromNow(lease.leaseSeconds),
+      leaseExpiresAt: leaseExpiryFromDbNow(lease.leaseSeconds),
       updatedAt: new Date(),
     })
     .where(
@@ -2852,6 +2894,27 @@ async function renewRunLeaseInTx(
     "run_lease_lost",
     `driver ${lease.ownerId} fence ${lease.fenceToken} has no live lease for journal run ${runId}`,
   );
+}
+
+async function runLeaseIsLiveInTx(
+  tx: JournalTransaction,
+  runId: string,
+  lease: Required<LocalizationJournalRunLeaseIdentity>,
+): Promise<boolean> {
+  const rows = await tx
+    .select({
+      isLive: sql<boolean>`${localizationJournalRuns.leaseExpiresAt} > now()`,
+    })
+    .from(localizationJournalRuns)
+    .where(
+      and(
+        eq(localizationJournalRuns.runId, runId),
+        eq(localizationJournalRuns.leaseOwnerId, lease.ownerId),
+        eq(localizationJournalRuns.fenceToken, lease.fenceToken),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.isLive === true;
 }
 
 async function loadAttemptInTx(

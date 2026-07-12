@@ -472,7 +472,7 @@ export type DrivenUnitJournalSink = {
   beginJournalRun?(plan: DrivenJournalRunPlan, mode: "new" | "resume"): Promise<void>;
   loadResumeState?(runId: string): Promise<DrivenJournalResumeState>;
   resumeJournalRun?(runId: string): Promise<void>;
-  attemptStarted?(attempt: InvocationAttemptStarted): Promise<void>;
+  attemptStarted?(attempt: InvocationAttemptStarted): Promise<AbortSignal | void>;
   attemptCompleted?(attempt: InvocationAttemptCompleted): Promise<void>;
   pauseRun?(runId: string, blocker: OperationalBlocker): Promise<void>;
   /** Called only after every in-flight worker on a paused run has drained. */
@@ -728,16 +728,9 @@ export async function runProjectDrivenExecutor(
     // Load first so a typo cannot silently seed a brand-new run under an id
     // the operator explicitly asked to resume.
     resumeState = await input.sinks.journal.loadResumeState(journalRun.runId);
-    const leaseExpired =
-      resumeState.leaseOwnerId !== null &&
-      resumeState.leaseExpiresAt !== null &&
-      resumeState.fenceToken > 0 &&
-      Date.parse(resumeState.leaseExpiresAt) <= Date.now();
-    if (resumeState.status !== "paused" && !(resumeState.status === "running" && leaseExpired)) {
+    if (resumeState.status !== "paused" && resumeState.status !== "running") {
       throw new Error(
-        resumeState.status === "running"
-          ? `cannot resume journal run ${journalRun.runId}: its running driver lease is still live`
-          : `cannot resume journal run ${journalRun.runId} from terminal/finalizer state ${resumeState.status}`,
+        `cannot resume journal run ${journalRun.runId} from terminal/finalizer state ${resumeState.status}`,
       );
     }
   }
@@ -752,7 +745,9 @@ export async function runProjectDrivenExecutor(
   if (resumeState !== undefined) {
     // Explicit resume also reconciles any pre-dispatch attempt left in the
     // dispatching state by a process crash, including when the durable run was
-    // still marked running at the time of death.
+    // still marked running at the time of death. The repository's atomic
+    // PostgreSQL-now predicate is the sole lease-expiry authority; executor
+    // host-clock skew must never admit a takeover.
     await input.sinks.journal.resumeJournalRun!(journalRun.runId);
     resumeState = await input.sinks.journal.loadResumeState!(journalRun.runId);
     if (resumeState.status !== "running" || resumeState.pausedBlocker !== null) {
@@ -1108,7 +1103,7 @@ function invocationLifecycleFor(sink: DrivenUnitJournalSink): InvocationLifecycl
   }
   return {
     attemptStarted: async (attempt) => {
-      await sink.attemptStarted?.(attempt);
+      return await sink.attemptStarted?.(attempt);
     },
     attemptCompleted: async (attempt) => {
       await sink.attemptCompleted?.(attempt);
