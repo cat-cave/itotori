@@ -46,16 +46,17 @@ export async function runLocalizeProjectStageLive(args: RunLocalizeProjectStageL
   try {
     const actor = await bootstrapLocalUser(context.db);
     const projectRepository = new ItotoriProjectRepository(context.db);
-    const prepareContextScope: NonNullable<LocalizeProjectStageArgs["prepareContextScope"]> =
-      async (input) => {
-        await projectRepository.importSourceBundle(input.actor, {
-          projectId: input.projectId,
-          localeBranchId: input.localeBranchId,
-          targetLocale: input.targetLocale,
-          drafts: {},
-          bridge: input.bridge,
-        });
-      };
+    const prepareContextScope: NonNullable<
+      LocalizeProjectStageArgs["prepareContextScope"]
+    > = async (input) => {
+      await projectRepository.importSourceBundle(input.actor, {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        targetLocale: input.targetLocale,
+        drafts: {},
+        bridge: input.bridge,
+      });
+    };
     // Import the real bridge before creating the durable journal run. The
     // journal uses the bridge's authoritative source revision rather than a
     // synthetic placeholder revision.

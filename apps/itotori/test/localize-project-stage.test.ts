@@ -342,7 +342,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
           writtenTranslationFactory({
             bridgeUnitId: firstUnit.bridgeUnitId,
             sourceLocale: firstUnit.sourceLocale ?? "ja-JP",
-        }),
+          }),
         io,
         actor: { userId: "test" },
         supervision: testSupervision(),
